@@ -12,7 +12,7 @@ Moce-style PowerShell tooling):
     D365_VERIFY_SSL   | CRM_VERIFY_SSL        optional, default 1
 
 A `.env` file is auto-loaded from the current working directory, the directory
-above, or the path in CLI_ANYTHING_DOTENV. Existing real env vars take precedence.
+above, or the path in CRM_DOTENV. Existing real env vars take precedence.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def load_dotenv(path: str | os.PathLike | None = None, *, override: bool = False
     """Load KEY=VALUE pairs from a `.env` file into os.environ.
 
     Lookup order when path is None:
-        1. CLI_ANYTHING_DOTENV env var
+        1. CRM_DOTENV env var
         2. ./.env in cwd
         3. ../.env (one level up)
 
@@ -77,7 +77,7 @@ def load_dotenv(path: str | os.PathLike | None = None, *, override: bool = False
     """
     if path is None:
         candidates: list[Path] = []
-        env_override = os.environ.get("CLI_ANYTHING_DOTENV")
+        env_override = os.environ.get("CRM_DOTENV")
         if env_override:
             candidates.append(Path(env_override))
         cwd = Path.cwd()

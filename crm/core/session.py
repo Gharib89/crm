@@ -23,7 +23,7 @@ DEFAULT_HOME = Path.home() / ".crm"
 
 
 def _state_root() -> Path:
-    root = Path(os.environ.get("CLI_ANYTHING_D365_HOME", str(DEFAULT_HOME))).expanduser()
+    root = Path(os.environ.get("CRM_HOME", str(DEFAULT_HOME))).expanduser()
     (root / "profiles").mkdir(parents=True, exist_ok=True)
     (root / "sessions").mkdir(parents=True, exist_ok=True)
     return root

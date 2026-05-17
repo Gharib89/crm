@@ -48,7 +48,7 @@ def backend(profile):
 
 @pytest.fixture
 def isolated_home(monkeypatch, tmp_path):
-    monkeypatch.setenv("CLI_ANYTHING_D365_HOME", str(tmp_path / ".d365"))
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".d365"))
     return tmp_path / ".d365"
 
 
@@ -58,7 +58,7 @@ def isolated_home(monkeypatch, tmp_path):
 class TestConnectionEnv:
     def test_profile_from_env_happy_path(self, monkeypatch, tmp_path):
         # Isolate from any developer .env / CRM_* aliases in the surrounding shell.
-        monkeypatch.setenv("CLI_ANYTHING_DOTENV", str(tmp_path / "noop.env"))
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
         for k in (conn_mod.ENV_API_VERSION, "CRM_API_VERSION"):
             monkeypatch.delenv(k, raising=False)
         monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")

@@ -118,7 +118,7 @@ class ReplSkin:
             software: Software name (e.g., "gimp", "shotcut", "blender").
             version: CLI version string.
             history_file: Path for persistent command history.
-                         Defaults to ~/.cli-anything-<software>/history
+                         Defaults to ~/.crm/history
             skill_path: Path to the SKILL.md file for agent discovery.
                         Auto-detected from the repo-root skills/ tree when present,
                         otherwise from the package's skills/ directory.
@@ -129,7 +129,7 @@ class ReplSkin:
         self.version = version
         software_aliases = {"iterm2_ctl": "iterm2"}
         self.skill_slug = software_aliases.get(self.software, self.software).replace("_", "-")
-        self.skill_id = f"cli-anything-{self.skill_slug}"
+        self.skill_id = "crm"
         self.skill_install_cmd = (
             f"npx skills add {_SKILL_SOURCE_REPO} --skill {self.skill_id} -g -y"
         )
@@ -158,7 +158,7 @@ class ReplSkin:
 
         # History file
         if history_file is None:
-            hist_dir = Path.home() / f".cli-anything-{self.software}"
+            hist_dir = Path.home() / ".crm"
             hist_dir.mkdir(parents=True, exist_ok=True)
             self.history_file = str(hist_dir / "history")
         else:

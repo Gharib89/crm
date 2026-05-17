@@ -145,7 +145,7 @@ class TestCLISubprocess:
         assert ("crm" in combined) or ("crm" in combined)
 
     def test_connection_status_json(self, tmp_path):
-        env = {"CLI_ANYTHING_D365_HOME": str(tmp_path / ".d365")}
+        env = {"CRM_HOME": str(tmp_path / ".d365")}
         result = self._run(["--json", "connection", "status"], env=env)
         assert result.returncode == 0
         envelope = json.loads(result.stdout)

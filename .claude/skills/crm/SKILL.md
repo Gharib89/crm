@@ -1,9 +1,9 @@
 ---
-name: cli-anything-d365
+name: crm
 description: Operate a Microsoft Dynamics 365 Customer Engagement on-premises (v9.x) server from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS with NTLM auth. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, and bulk CSV exports. Triggers on Dynamics 365, D365 CE, Dataverse on-prem, Web API, FetchXML, NTLM CRM.
 ---
 
-# cli-anything-d365
+# crm
 
 A stateful CLI for **Microsoft Dynamics 365 Customer Engagement (on-premises),
 version 9.x**. Every command issues a real HTTP request to the Dataverse Web API
@@ -22,9 +22,9 @@ a hard runtime dependency.
 ## Install
 
 ```bash
-pip install cli-anything-d365   # or `pip install -e .` from source
-which cli-anything-d365
-cli-anything-d365 --version
+pip install -e .         # from source (repo root)
+which crm
+crm --version
 ```
 
 Python ≥ 3.9. Depends on `requests`, `requests_ntlm`, `click`, `prompt_toolkit`.
@@ -52,7 +52,7 @@ export CRM_AUTH="ntlm"
 ```
 
 A `.env` file in the current directory (or its parent, or the path in
-`CLI_ANYTHING_DOTENV`) is auto-loaded on every command. Real env vars take
+`CRM_DOTENV`) is auto-loaded on every command. Real env vars take
 precedence. Example `.env`:
 
 ```
@@ -66,13 +66,13 @@ CRM_AUTH=ntlm
 Optional: save a named profile for repeat use.
 
 ```bash
-cli-anything-d365 connection connect \
+crm connection connect \
     --url https://crm.contoso.local/contoso \
     --username alice --domain CONTOSO \
     --profile-name prod
 ```
 
-State directory: `~/.cli-anything-d365/` (override with `CLI_ANYTHING_D365_HOME`).
+State directory: `~/.crm/` (override with `CRM_HOME`).
 
 ## Command Groups
 
@@ -88,7 +88,7 @@ State directory: `~/.cli-anything-d365/` (override with `CLI_ANYTHING_D365_HOME`
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
 | _(top)_      | `service-document`                                                                      | List every entity set the server exposes       |
 
-`cli-anything-d365 <group> --help` lists the per-command options.
+`crm <group> --help` lists the per-command options.
 
 ## Agent guidance — JSON mode
 
@@ -103,7 +103,7 @@ Use `--dry-run` to preview the HTTP request (method/URL/headers/body) without is
 This is the safe way to validate a mutation before commit.
 
 ```bash
-cli-anything-d365 --json --dry-run entity create contacts --data '{"firstname":"Test"}'
+crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
 ```
 
 REPL is the default when no subcommand is given. To stay in one-shot mode, always pass
@@ -114,14 +114,14 @@ a subcommand (e.g. `connection status`, `entity get`, etc.).
 ### 1. Identity check
 
 ```bash
-cli-anything-d365 --json connection whoami
+crm --json connection whoami
 # -> {"ok": true, "data": {"UserId": "...", "BusinessUnitId": "...", "OrganizationId": "..."}}
 ```
 
 ### 2. Read with OData filter
 
 ```bash
-cli-anything-d365 --json query odata contacts \
+crm --json query odata contacts \
     --filter "statecode eq 0" --select fullname,emailaddress1 --top 5
 ```
 
@@ -129,22 +129,22 @@ cli-anything-d365 --json query odata contacts \
 
 ```bash
 # create
-cli-anything-d365 --json entity create contacts \
+crm --json entity create contacts \
     --data '{"firstname":"Rafel","lastname":"Shillo"}'
 # returns {"ok": true, "data": {"contactid": "<guid>", ...}}
 
 # update
-cli-anything-d365 --json entity update contacts <guid> \
+crm --json entity update contacts <guid> \
     --data '{"telephone1":"+1-555-0100"}'
 
 # delete
-cli-anything-d365 --json entity delete contacts <guid> --yes
+crm --json entity delete contacts <guid> --yes
 ```
 
 ### 4. FetchXML query
 
 ```bash
-cli-anything-d365 --json query fetchxml accounts --xml '
+crm --json query fetchxml accounts --xml '
 <fetch top="10">
   <entity name="account">
     <attribute name="name"/>
@@ -157,23 +157,23 @@ cli-anything-d365 --json query fetchxml accounts --xml '
 ### 5. Browse metadata
 
 ```bash
-cli-anything-d365 --json metadata entities --custom-only --top 20
-cli-anything-d365 --json metadata attributes account
-cli-anything-d365 --json metadata attribute account industrycode
+crm --json metadata entities --custom-only --top 20
+crm --json metadata attributes account
+crm --json metadata attribute account industrycode
 ```
 
 ### 6. Export a solution
 
 ```bash
-cli-anything-d365 solution list --unmanaged
-cli-anything-d365 solution export MyCustomSolution -o /tmp/snap.zip
+crm solution list --unmanaged
+crm solution export MyCustomSolution -o /tmp/snap.zip
 # returns {"output": "/tmp/snap.zip", "bytes": 123456, "managed": false, ...}
 ```
 
 ### 7. Bulk CSV export
 
 ```bash
-cli-anything-d365 data export opportunities -o /tmp/op.csv \
+crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue,closeprobability \
     --page-size 500
 ```
@@ -181,14 +181,14 @@ cli-anything-d365 data export opportunities -o /tmp/op.csv \
 ### 8. Call an arbitrary OData function
 
 ```bash
-cli-anything-d365 --json action function RetrieveCurrentOrganization \
+crm --json action function RetrieveCurrentOrganization \
     --params '{"AccessType":"Default"}'
 ```
 
 ### 9. Picklist / option set values (critical for agents writing valid records)
 
 ```bash
-cli-anything-d365 --json metadata picklist account industrycode
+crm --json metadata picklist account industrycode
 # returns {"OptionSet": {"Options": [{"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}}, ...]}}
 ```
 
@@ -196,20 +196,20 @@ cli-anything-d365 --json metadata picklist account industrycode
 
 ```bash
 # Associate a contact to an account's contact_customer_accounts collection (1:N)
-cli-anything-d365 entity associate accounts <account-guid> \
+crm entity associate accounts <account-guid> \
     contact_customer_accounts contacts <contact-guid>
 
 # Set a single-valued lookup (N:1) — sets parent account on a contact
-cli-anything-d365 entity set-lookup contacts <contact-guid> \
+crm entity set-lookup contacts <contact-guid> \
     parentcustomerid_account accounts <account-guid>
 
 # Disassociate (collection) — supply --related-set + --related-id
-cli-anything-d365 entity disassociate accounts <account-guid> \
+crm entity disassociate accounts <account-guid> \
     contact_customer_accounts \
     --related-set contacts --related-id <contact-guid>
 
 # Clear a single-valued lookup
-cli-anything-d365 entity clear-lookup contacts <contact-guid> \
+crm entity clear-lookup contacts <contact-guid> \
     parentcustomerid_account
 ```
 
@@ -217,26 +217,26 @@ cli-anything-d365 entity clear-lookup contacts <contact-guid> \
 
 ```bash
 # First discover the saved query
-cli-anything-d365 query odata savedqueries \
+crm query odata savedqueries \
     --filter "name eq 'Active Accounts'" --select savedqueryid,name
 
 # Then execute it against the entity set
-cli-anything-d365 --json query saved accounts <savedqueryid>
+crm --json query saved accounts <savedqueryid>
 ```
 
 ### 12. Publish customizations after a metadata or solution change
 
 ```bash
-cli-anything-d365 solution publish-all
+crm solution publish-all
 # or selectively:
-cli-anything-d365 solution publish --xml \
+crm solution publish --xml \
     '<importexportxml><entities><entity>account</entity></entities></importexportxml>'
 ```
 
 ### 13. Inspect the server's entity sets
 
 ```bash
-cli-anything-d365 --json service-document
+crm --json service-document
 # returns {"value": [{"name": "accounts", "url": "accounts", ...}, ...]}
 ```
 
@@ -259,6 +259,6 @@ cli-anything-d365 --json service-document
 
 ## Related files
 
-- Full SOP: `d365/agent-harness/D365.md`
-- Test plan + results: `cli_anything/d365/tests/TEST.md`
-- README with installation walkthrough: `cli_anything/d365/README.md`
+- Full SOP: `D365.md`
+- Test plan + results: `crm/tests/TEST.md`
+- README with installation walkthrough: `README.md`
