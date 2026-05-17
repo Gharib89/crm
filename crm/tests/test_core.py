@@ -1,0 +1,599 @@
+"""Unit tests for crm core modules.
+
+All HTTP is mocked via `requests_mock`. No live D365 server needed.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+import requests_mock
+
+from crm.utils.d365_backend import (
+    ConnectionProfile,
+    D365Backend,
+    D365Error,
+)
+from crm.core import (
+    connection as conn_mod,
+    entity as entity_mod,
+    export as export_mod,
+    metadata as meta_mod,
+    query as query_mod,
+    session as session_mod,
+)
+
+
+# ── Fixtures ────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def profile() -> ConnectionProfile:
+    return ConnectionProfile(
+        name="testp",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
+    )
+
+
+@pytest.fixture
+def backend(profile):
+    return D365Backend(profile, password="pw", dry_run=False)
+
+
+@pytest.fixture
+def isolated_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("CLI_ANYTHING_D365_HOME", str(tmp_path / ".d365"))
+    return tmp_path / ".d365"
+
+
+# ── connection.py ───────────────────────────────────────────────────────
+
+
+class TestConnectionEnv:
+    def test_profile_from_env_happy_path(self, monkeypatch, tmp_path):
+        # Isolate from any developer .env / CRM_* aliases in the surrounding shell.
+        monkeypatch.setenv("CLI_ANYTHING_DOTENV", str(tmp_path / "noop.env"))
+        for k in (conn_mod.ENV_API_VERSION, "CRM_API_VERSION"):
+            monkeypatch.delenv(k, raising=False)
+        monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
+        monkeypatch.setenv(conn_mod.ENV_DOMAIN, "CONTOSO")
+        monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
+        monkeypatch.setenv(conn_mod.ENV_AUTH, "ntlm")
+        p = conn_mod.profile_from_env()
+        assert p.url == "https://crm.x.local/org"
+        assert p.domain == "CONTOSO"
+        assert p.username == "alice"
+        assert p.api_version == "v9.2"
+
+    def test_profile_from_env_missing_url(self, monkeypatch):
+        monkeypatch.delenv(conn_mod.ENV_URL, raising=False)
+        with pytest.raises(D365Error, match="D365_URL"):
+            conn_mod.profile_from_env()
+
+    def test_profile_from_env_rejects_non_ntlm_auth(self, monkeypatch):
+        monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
+        monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
+        monkeypatch.setenv(conn_mod.ENV_AUTH, "oauth")
+        with pytest.raises(D365Error, match="ntlm"):
+            conn_mod.profile_from_env()
+
+    def test_resolve_credentials_requires_password(self, monkeypatch):
+        monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
+        monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
+        monkeypatch.delenv(conn_mod.ENV_PASSWORD, raising=False)
+        with pytest.raises(D365Error, match="No password"):
+            conn_mod.resolve_credentials()
+
+
+# ── d365_backend.py ─────────────────────────────────────────────────────
+
+
+class TestD365Backend:
+    def test_url_for_relative_path(self, backend):
+        url = backend.url_for("accounts")
+        assert url == "https://crm.contoso.local/contoso/api/data/v9.2/accounts"
+
+    def test_url_for_absolute_path_passthrough(self, backend):
+        url = backend.url_for("https://other.local/api/data/v9.2/accounts")
+        assert url == "https://other.local/api/data/v9.2/accounts"
+
+    def test_request_sends_required_odata_headers(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("WhoAmI"),
+                json={"UserId": "00000000-0000-0000-0000-000000000001"},
+            )
+            backend.get("WhoAmI")
+        req = m.request_history[0]
+        assert req.headers["OData-Version"] == "4.0"
+        assert req.headers["OData-MaxVersion"] == "4.0"
+        assert req.headers["Accept"] == "application/json"
+
+    def test_request_dry_run_returns_preview(self, profile):
+        b = D365Backend(profile, password="pw", dry_run=True)
+        result = b.post("accounts", json_body={"name": "Foo"})
+        assert result is not None
+        assert result["_dry_run"] is True
+        assert result["method"] == "POST"
+        assert result["body"] == {"name": "Foo"}
+        assert "accounts" in result["url"]
+
+    def test_request_error_4xx_raises_d365error(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("accounts(00000000-0000-0000-0000-0000000000ff)"),
+                status_code=404,
+                json={"error": {"code": "0x80040217", "message": "Record Not Found"}},
+            )
+            with pytest.raises(D365Error) as ex:
+                backend.get("accounts(00000000-0000-0000-0000-0000000000ff)")
+        assert ex.value.status == 404
+        assert ex.value.code == "0x80040217"
+        assert "Record Not Found" in str(ex.value)
+
+
+# ── entity.py ───────────────────────────────────────────────────────────
+
+
+_GUID = "11111111-2222-3333-4444-555555555555"
+
+
+class TestEntityCrud:
+    def test_retrieve_builds_select_expand_params(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"accounts({_GUID})"),
+                json={"accountid": _GUID, "name": "Contoso"},
+            )
+            result = entity_mod.retrieve(
+                backend, "accounts", _GUID,
+                select=["name", "telephone1"], expand=["primarycontactid"],
+            )
+        assert result["name"] == "Contoso"
+        params = m.request_history[0].qs
+        assert params["$select"] == ["name,telephone1"]
+        assert params["$expand"] == ["primarycontactid"]
+
+    def test_create_sets_if_none_match_and_prefer_return(self, backend):
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("contacts"),
+                json={"contactid": _GUID, "firstname": "Rafel"},
+            )
+            entity_mod.create(backend, "contacts", {"firstname": "Rafel"})
+        req = m.request_history[0]
+        assert req.headers["If-None-Match"] == "null"
+        assert req.headers["Prefer"] == "return=representation"
+        assert json.loads(req.body) == {"firstname": "Rafel"}
+
+    def test_update_sets_if_match_star_when_prevent_create(self, backend):
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"contacts({_GUID})"), status_code=204)
+            entity_mod.update(backend, "contacts", _GUID, {"firstname": "R."})
+        req = m.request_history[0]
+        assert req.headers["If-Match"] == "*"
+
+    def test_upsert_omits_if_match_header(self, backend):
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"contacts({_GUID})"), status_code=204)
+            entity_mod.upsert(backend, "contacts", _GUID, {"firstname": "R."})
+        req = m.request_history[0]
+        assert "If-Match" not in req.headers
+
+    def test_delete_returns_id_payload(self, backend):
+        with requests_mock.Mocker() as m:
+            m.delete(backend.url_for(f"contacts({_GUID})"), status_code=204)
+            result = entity_mod.delete(backend, "contacts", _GUID)
+        assert result["deleted"] is True
+        assert result["id"] == _GUID
+
+    def test_invalid_guid_rejected(self, backend):
+        with pytest.raises(D365Error, match="Invalid record id"):
+            entity_mod.retrieve(backend, "contacts", "not-a-guid")
+
+
+# ── query.py ────────────────────────────────────────────────────────────
+
+
+class TestQuery:
+    def test_odata_query_compiles_filter_and_top(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("contacts"), json={"value": []})
+            query_mod.odata_query(
+                backend, "contacts",
+                select=["fullname"],
+                filter_="statecode eq 0",
+                top=5,
+                orderby="fullname desc",
+            )
+        req = m.request_history[0]
+        assert req.qs["$select"] == ["fullname"]
+        assert req.qs["$filter"] == ["statecode eq 0"]
+        assert req.qs["$top"] == ["5"]
+        assert req.qs["$orderby"] == ["fullname desc"]
+
+    def test_odata_query_includes_annotations_prefer_header(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("contacts"), json={"value": []})
+            query_mod.odata_query(backend, "contacts", include_annotations=True)
+        assert (
+            m.request_history[0].headers["Prefer"]
+            == 'odata.include-annotations="*"'
+        )
+
+    def test_fetchxml_query_url_encodes_xml_once(self, backend):
+        fx = "<fetch top='1'><entity name='account'><attribute name='name'/></entity></fetch>"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("accounts"), json={"value": [{"name": "Contoso"}]})
+            result = query_mod.fetchxml_query(backend, "accounts", fx)
+        assert result["value"][0]["name"] == "Contoso"
+        req = m.request_history[0]
+        assert "fetchXml=" in req.url
+        assert "%3Cfetch" in req.url  # `<` encoded once
+
+    def test_fetchxml_query_rejects_non_fetch_payload(self, backend):
+        with pytest.raises(D365Error, match="<fetch>"):
+            query_mod.fetchxml_query(backend, "accounts", "<not_fetch/>")
+
+
+# ── metadata.py ─────────────────────────────────────────────────────────
+
+
+class TestMetadata:
+    def test_list_entities_filters_custom_only(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions"),
+                json={"value": [
+                    {"LogicalName": "new_thing", "EntitySetName": "new_things",
+                     "SchemaName": "new_Thing", "IsCustomEntity": True},
+                ]},
+            )
+            items = meta_mod.list_entities(backend, custom_only=True)
+        assert items[0]["LogicalName"] == "new_thing"
+        assert m.request_history[0].qs["$filter"] == ["iscustomentity eq true"]
+
+    def test_entity_info_uses_logical_name_path(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')"),
+                json={"LogicalName": "account", "EntitySetName": "accounts"},
+            )
+            info = meta_mod.entity_info(backend, "account")
+        assert info["EntitySetName"] == "accounts"
+
+    def test_list_attributes_returns_value_array(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(
+                    "EntityDefinitions(LogicalName='account')/Attributes"
+                ),
+                json={"value": [
+                    {"LogicalName": "name", "SchemaName": "Name",
+                     "AttributeType": "String", "IsCustomAttribute": False},
+                ]},
+            )
+            attrs = meta_mod.list_attributes(backend, "account")
+        assert attrs[0]["LogicalName"] == "name"
+
+
+# ── session.py ──────────────────────────────────────────────────────────
+
+
+class TestSessionStore:
+    def test_save_then_load_profile_roundtrip(self, isolated_home, profile):
+        session_mod.save_profile(profile)
+        loaded = session_mod.load_profile(profile.name)
+        assert loaded.url == profile.url
+        assert loaded.username == profile.username
+        assert loaded.api_version == profile.api_version
+
+    def test_list_profiles_alphabetical(self, isolated_home, profile):
+        for n in ["beta", "alpha", "gamma"]:
+            p = ConnectionProfile(
+                name=n, url="https://x/y", domain="", username="u",
+                api_version="v9.2", verify_ssl=True,
+            )
+            session_mod.save_profile(p)
+        assert session_mod.list_profiles() == ["alpha", "beta", "gamma"]
+
+    def test_session_history_trims_to_max_length(self, isolated_home):
+        state = session_mod.load_session("trim")
+        for i in range(20):
+            session_mod.append_history(state, f"cmd-{i}", max_len=5)
+        assert state["history"] == [f"cmd-{i}" for i in range(15, 20)]
+
+    def test_atomic_write_replaces_file(self, isolated_home):
+        target = Path(isolated_home) / "sessions" / "x.json"
+        session_mod.save_session({"name": "x", "v": 1}, "x")
+        first = target.read_text()
+        session_mod.save_session({"name": "x", "v": 2}, "x")
+        second = target.read_text()
+        assert first != second
+        assert json.loads(second)["v"] == 2
+
+
+# ── export.py ───────────────────────────────────────────────────────────
+
+
+class TestAssociate:
+    def test_associate_posts_odata_id_to_ref(self, backend):
+        with requests_mock.Mocker() as m:
+            target_url = backend.url_for(f"accounts({_GUID})/contact_customer_accounts/$ref")
+            m.post(target_url, status_code=204)
+            other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            entity_mod.associate(
+                backend, "accounts", _GUID,
+                "contact_customer_accounts", "contacts", other,
+            )
+        body = json.loads(m.request_history[0].body)
+        assert body["@odata.id"].endswith(f"contacts({other})")
+
+    def test_disassociate_collection_uses_id_param(self, backend):
+        other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with requests_mock.Mocker() as m:
+            m.delete(requests_mock.ANY, status_code=204)
+            entity_mod.disassociate(
+                backend, "accounts", _GUID,
+                "contact_customer_accounts",
+                related_set="contacts", related_id=other,
+            )
+        url = m.request_history[0].url
+        assert "/contact_customer_accounts/$ref" in url
+        assert "%24id=" in url or "$id=" in url
+
+    def test_disassociate_single_valued_omits_id(self, backend):
+        with requests_mock.Mocker() as m:
+            m.delete(
+                backend.url_for(f"contacts({_GUID})/parentcustomerid_account/$ref"),
+                status_code=204,
+            )
+            entity_mod.disassociate(
+                backend, "contacts", _GUID, "parentcustomerid_account",
+            )
+        assert "$id=" not in m.request_history[0].url
+
+    def test_set_lookup_patches_odata_bind(self, backend):
+        other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"contacts({_GUID})"), status_code=204)
+            entity_mod.set_lookup(
+                backend, "contacts", _GUID,
+                "parentcustomerid_account", "accounts", other,
+            )
+        body = json.loads(m.request_history[0].body)
+        assert body["parentcustomerid_account@odata.bind"] == f"/accounts({other})"
+
+
+class TestSavedAndUserQuery:
+    def test_saved_query_sends_savedquery_param(self, backend):
+        qid = "00000000-0000-0000-00aa-000010001002"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("accounts"), json={"value": []})
+            query_mod.saved_query(backend, "accounts", qid)
+        assert m.request_history[0].qs["savedquery"] == [qid]
+
+    def test_user_query_sends_userquery_param(self, backend):
+        qid = "11111111-2222-3333-4444-555555555555"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("contacts"), json={"value": []})
+            query_mod.user_query(backend, "contacts", qid)
+        assert m.request_history[0].qs["userquery"] == [qid]
+
+
+class TestPicklistMetadata:
+    def test_picklist_options_casts_and_expands(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            m.get(
+                requests_mock.ANY,
+                json={
+                    "LogicalName": "industrycode",
+                    "OptionSet": {"Options": [
+                        {"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}},
+                        {"Value": 2, "Label": {"UserLocalizedLabel": {"Label": "Agri"}}},
+                    ]},
+                },
+            )
+            info = meta_mod_local.picklist_options(backend, "account", "industrycode")
+        assert info["LogicalName"] == "industrycode"
+        assert info["OptionSet"]["Options"][0]["Value"] == 1
+        url = m.request_history[0].url
+        assert "PicklistAttributeMetadata" in url
+        assert "%24expand=OptionSet" in url or "$expand=OptionSet" in url
+
+
+class TestCreateEntity:
+    def test_create_entity_posts_expected_payload(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId":
+                         backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")},
+            )
+            info = meta_mod_local.create_entity(
+                backend,
+                schema_name="new_Project",
+                display_name="Project",
+                description="Test entity",
+                solution="MyDevSolution",
+            )
+        assert info["created"] is True
+        assert info["schema_name"] == "new_Project"
+        assert info["logical_name"] == "new_project"
+        assert info["primary_attribute"] == "new_name"
+        assert info["solution"] == "MyDevSolution"
+        assert "metadata_id_url" in info
+
+        req = m.request_history[0]
+        assert req.method == "POST"
+        assert req.headers.get("MSCRM.SolutionUniqueName") == "MyDevSolution"
+        body = req.json()
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.EntityMetadata"
+        assert body["SchemaName"] == "new_Project"
+        assert body["LogicalName"] == "new_project"
+        assert body["OwnershipType"] == "UserOwned"
+        assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Project"
+        assert body["DisplayCollectionName"]["LocalizedLabels"][0]["Label"] == "Projects"
+        prim = body["Attributes"][0]
+        assert prim["@odata.type"] == "Microsoft.Dynamics.CRM.StringAttributeMetadata"
+        assert prim["SchemaName"] == "new_Name"
+        assert prim["IsPrimaryName"] is True
+        assert prim["MaxLength"] == 200
+        assert body["Description"]["LocalizedLabels"][0]["Label"] == "Test entity"
+
+    def test_create_entity_rejects_schema_without_prefix(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with pytest.raises(D365Error, match="publisher prefix"):
+            meta_mod_local.create_entity(
+                backend, schema_name="Project", display_name="Project",
+            )
+
+
+class TestPublish:
+    def test_publish_all_posts(self, backend):
+        from crm.core import solution as sol_mod_local
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            result = sol_mod_local.publish_all(backend)
+        assert result["published"] is True
+        assert m.request_history[0].method == "POST"
+
+    def test_publish_xml_sends_parameterxml(self, backend):
+        from crm.core import solution as sol_mod_local
+        xml = "<importexportxml><entities><entity>account</entity></entities></importexportxml>"
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("PublishXml"), status_code=204)
+            sol_mod_local.publish_xml(backend, xml)
+        body = json.loads(m.request_history[0].body)
+        assert body["ParameterXml"] == xml
+
+
+class TestConnectionDotenv:
+    def test_load_dotenv_reads_crm_aliases_and_does_not_override(self, tmp_path, monkeypatch):
+        for k in ("D365_URL", "CRM_BASE_URL", "D365_USERNAME", "CRM_USERNAME",
+                  "D365_PASSWORD", "CRM_PASSWORD", "D365_DOMAIN", "CRM_DOMAIN"):
+            monkeypatch.delenv(k, raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "CRM_BASE_URL=http://crm.x.local/MOCE\n"
+            "CRM_API_VERSION=v9.1\n"
+            "CRM_USERNAME=moce\\admin\n"
+            "CRM_PASSWORD=pw\n"
+            "CRM_AUTH=ntlm\n"
+        )
+        from crm.core import connection as conn_mod_local
+        loaded = conn_mod_local.load_dotenv(env_file)
+        assert loaded == env_file
+        profile = conn_mod_local.profile_from_env()
+        assert profile.url == "http://crm.x.local/MOCE"
+        assert profile.api_version == "v9.1"
+        assert profile.domain == "moce"
+        assert profile.username == "admin"
+
+
+class TestExport:
+    def test_export_records_csv(self, backend, tmp_path):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("contacts"),
+                json={"value": [
+                    {"fullname": "Alice", "telephone1": "+1-555-0001"},
+                    {"fullname": "Bob",   "telephone1": "+1-555-0002"},
+                ]},
+            )
+            out = tmp_path / "contacts.csv"
+            info = export_mod.export_records(
+                backend, "contacts", out,
+                select=["fullname", "telephone1"],
+            )
+        assert info["count"] == 2
+        text = out.read_text()
+        assert "fullname,telephone1" in text.splitlines()[0]
+        assert "Alice" in text and "Bob" in text
+
+
+class TestWorkflow:
+    def test_list_workflows_filters_definitions(self, backend):
+        from crm.core import workflow as wf_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("workflows"),
+                json={"value": [
+                    {"workflowid": "w1", "name": "Auto-set Owner", "category": 0,
+                     "primaryentity": "contact", "type": 1,
+                     "statecode": 1, "statuscode": 2, "ondemand": True},
+                ]},
+            )
+            items = wf_mod.list_workflows(
+                backend,
+                category=0,
+                primary_entity="contact",
+                activated_only=True,
+                on_demand_only=True,
+            )
+        assert len(items) == 1
+        assert items[0]["workflowid"] == "w1"
+        req = m.request_history[0]
+        flt = req.qs["$filter"][0]
+        assert "type eq 1" in flt
+        assert "category eq 0" in flt
+        assert "primaryentity eq 'contact'" in flt
+        assert "statecode eq 1" in flt
+        assert "ondemand eq true" in flt
+
+    def test_set_workflow_state_activates(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "11111111-1111-1111-1111-111111111111"
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"workflows({wid})"), status_code=204)
+            info = wf_mod.set_workflow_state(backend, wid, activate=True)
+        assert info["activated"] is True
+        assert info["statecode"] == 1 and info["statuscode"] == 2
+        req = m.request_history[0]
+        body = json.loads(req.body)
+        assert body == {"statecode": 1, "statuscode": 2}
+        assert req.headers.get("If-Match") == "*"
+
+    def test_set_workflow_state_deactivates(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "11111111-1111-1111-1111-111111111111"
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"workflows({wid})"), status_code=204)
+            info = wf_mod.set_workflow_state(backend, wid, activate=False)
+        assert info["activated"] is False
+        body = json.loads(m.request_history[0].body)
+        assert body == {"statecode": 0, "statuscode": 1}
+
+    def test_execute_workflow_posts_bound_action(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "aaaa1111-1111-1111-1111-111111111111"
+        tid = "bbbb2222-2222-2222-2222-222222222222"
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for(
+                    f"workflows({wid})/Microsoft.Dynamics.CRM.ExecuteWorkflow"
+                ),
+                json={"Id": "cccc3333-3333-3333-3333-333333333333"},
+            )
+            info = wf_mod.execute_workflow(backend, wid, tid)
+        assert info["workflow_id"] == wid
+        assert info["target_id"] == tid
+        assert info["async_operation_id"] == "cccc3333-3333-3333-3333-333333333333"
+        body = json.loads(m.request_history[0].body)
+        assert body == {"EntityId": tid}
+
+    def test_execute_workflow_requires_both_ids(self, backend):
+        from crm.core import workflow as wf_mod
+        with pytest.raises(D365Error):
+            wf_mod.execute_workflow(backend, "", "x")
+        with pytest.raises(D365Error):
+            wf_mod.execute_workflow(backend, "x", "")

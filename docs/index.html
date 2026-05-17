@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>cli-anything-d365 — Field Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..900,0..100,0..1&family=Lora:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#0d0c0a;
+    --paper:#f3ecd9;
+    --paper-2:#e8dfc6;
+    --rule:#1c1a14;
+    --accent:#ff4a1f;
+    --accent-2:#f0c000;
+    --muted:#6b6353;
+    --serif:'Fraunces',serif;
+    --body:'Lora',Georgia,serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.55}
+  body{
+    background-image:
+      radial-gradient(rgba(13,12,10,.045) 1px, transparent 1px),
+      radial-gradient(rgba(13,12,10,.025) 1px, transparent 1px);
+    background-size: 3px 3px, 7px 7px;
+    background-position: 0 0, 1px 2px;
+  }
+  a{color:var(--ink);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+  a:hover{color:var(--accent);text-decoration-thickness:2px}
+  ::selection{background:var(--accent);color:var(--paper)}
+
+  /* ── Masthead ────────────────────────────────────────── */
+  header.mast{
+    border-bottom:3px solid var(--ink);
+    padding:18px 28px 14px;
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    align-items:end;
+    gap:24px;
+    background:var(--paper);
+    position:sticky;top:0;z-index:50;
+  }
+  .mast .edition{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .mast .logo{
+    font-family:var(--serif);
+    font-variation-settings:"opsz" 144,"wght" 900,"SOFT" 30,"WONK" 1;
+    font-size:clamp(38px,5vw,68px);
+    line-height:.85;
+    letter-spacing:-.04em;
+    text-align:center;
+    font-style:italic;
+  }
+  .mast .logo .amp{color:var(--accent);font-style:normal}
+  .mast .right{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-align:right}
+  .mast .right b{color:var(--ink)}
+
+  /* ── Banner band ────────────────────────────────────────── */
+  .band{
+    background:var(--ink);color:var(--paper);
+    font-family:var(--mono);font-size:12px;letter-spacing:.3em;text-transform:uppercase;
+    padding:8px 28px;
+    display:flex;justify-content:space-between;gap:24px;
+    border-bottom:1px solid var(--accent);
+  }
+  .band span:nth-child(2){color:var(--accent)}
+
+  /* ── Hero / Lede ────────────────────────────────────────── */
+  .lede{
+    padding:56px 28px 36px;
+    max-width:1280px;margin:0 auto;
+    display:grid;grid-template-columns:7fr 5fr;gap:48px;
+    border-bottom:1px solid var(--rule);
+  }
+  .lede h1{
+    font-family:var(--serif);
+    font-variation-settings:"opsz" 144,"wght" 800,"SOFT" 0,"WONK" 0;
+    font-size:clamp(56px,8.5vw,124px);
+    line-height:.9;
+    margin:0 0 20px;
+    letter-spacing:-.045em;
+  }
+  .lede h1 em{font-style:italic;color:var(--accent);font-variation-settings:"opsz" 144,"wght" 900,"WONK" 1}
+  .lede .kicker{
+    font-family:var(--mono);font-size:12px;letter-spacing:.25em;text-transform:uppercase;
+    color:var(--accent);margin-bottom:18px;
+    display:flex;align-items:center;gap:14px;
+  }
+  .lede .kicker::before{content:"";width:48px;height:1px;background:var(--accent)}
+  .lede .standfirst{
+    font-family:var(--body);font-style:italic;font-size:22px;line-height:1.45;color:var(--ink);
+    border-left:3px solid var(--accent);padding-left:18px;
+  }
+  .lede aside{
+    border-left:1px solid var(--rule);
+    padding-left:24px;
+    font-family:var(--mono);font-size:13px;line-height:1.7;
+  }
+  .lede aside .row{display:grid;grid-template-columns:1fr 2fr;gap:8px;padding:6px 0;border-bottom:1px dashed rgba(13,12,10,.2)}
+  .lede aside .row:last-child{border-bottom:0}
+  .lede aside .row b{color:var(--muted);font-weight:400;letter-spacing:.1em;text-transform:uppercase;font-size:10.5px;align-self:center}
+  .lede aside .row span{color:var(--ink)}
+  .lede aside .row span.ok::before{content:"●";color:#1f8d3c;margin-right:6px}
+  .lede aside .row span.note::before{content:"●";color:var(--accent);margin-right:6px}
+
+  /* ── Section frame ────────────────────────────────────────── */
+  main{max-width:1280px;margin:0 auto;padding:0 28px 96px}
+  section{padding:56px 0;border-bottom:1px solid var(--rule)}
+  section > .section-head{
+    display:flex;align-items:baseline;justify-content:space-between;gap:24px;
+    margin-bottom:32px;
+  }
+  .section-head h2{
+    font-family:var(--serif);
+    font-variation-settings:"opsz" 144,"wght" 800;
+    font-size:clamp(38px,5vw,68px);
+    line-height:.9;margin:0;letter-spacing:-.035em;
+  }
+  .section-head h2 .num{
+    display:inline-block;font-family:var(--mono);font-size:14px;letter-spacing:.2em;
+    vertical-align:top;color:var(--accent);margin-right:14px;font-weight:500;
+    border:1px solid var(--accent);padding:4px 8px;border-radius:99px;
+  }
+  .section-head .meta{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+
+  /* ── Quickstart strip ────────────────────────────────────────── */
+  .quick{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+    border:1px solid var(--rule);
+    background:var(--paper-2);
+  }
+  .quick .step{padding:22px;border-right:1px solid var(--rule);position:relative}
+  .quick .step:last-child{border-right:0}
+  .quick .step .n{
+    position:absolute;top:14px;right:16px;
+    font-family:var(--serif);font-variation-settings:"opsz" 144,"wght" 900,"WONK" 1;
+    font-size:54px;color:var(--accent);opacity:.45;line-height:1;font-style:italic
+  }
+  .quick .step h4{margin:0 0 8px;font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .quick .step p{margin:0 0 12px;font-family:var(--serif);font-size:20px;line-height:1.2;font-variation-settings:"opsz" 144,"wght" 600}
+  .quick .step code{font-family:var(--mono);font-size:12px;background:var(--ink);color:var(--paper);padding:6px 8px;display:inline-block;border-radius:2px}
+
+  /* ── Command catalogue ────────────────────────────────────────── */
+  .groups{display:grid;grid-template-columns:repeat(12,1fr);gap:24px}
+  .group{
+    grid-column:span 6;
+    border:1px solid var(--rule);
+    background:var(--paper);
+    padding:24px 26px 28px;
+    position:relative;
+    transition:transform .15s ease;
+  }
+  .group:hover{transform:translate(-3px,-3px);box-shadow:6px 6px 0 var(--ink)}
+  .group.tall{grid-column:span 12}
+  .group .tag{
+    display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;
+    background:var(--ink);color:var(--paper);padding:3px 9px;border-radius:99px;margin-bottom:14px;
+  }
+  .group h3{
+    font-family:var(--serif);font-variation-settings:"opsz" 144,"wght" 800;
+    font-size:42px;line-height:.95;margin:0 0 6px;letter-spacing:-.03em;
+  }
+  .group h3 em{font-style:italic;color:var(--accent);font-variation-settings:"opsz" 144,"wght" 900,"WONK" 1}
+  .group .blurb{font-family:var(--body);font-style:italic;color:var(--muted);margin:0 0 18px;font-size:15.5px}
+  .cmds{display:grid;grid-template-columns:1fr;gap:0;border-top:1px dashed rgba(13,12,10,.25)}
+  .cmd{
+    display:grid;grid-template-columns:auto 1fr;gap:14px;
+    padding:11px 0;border-bottom:1px dashed rgba(13,12,10,.18);
+    align-items:baseline;
+  }
+  .cmd code{
+    font-family:var(--mono);font-size:13px;font-weight:600;
+    background:var(--paper-2);padding:3px 7px;border-radius:2px;white-space:nowrap;
+    border:1px solid rgba(13,12,10,.12);
+  }
+  .cmd .desc{font-size:14.5px;line-height:1.45;color:var(--ink)}
+  .cmd .desc .opt{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+
+  /* ── Code block ────────────────────────────────────────── */
+  pre.code{
+    font-family:var(--mono);font-size:13px;line-height:1.6;
+    background:var(--ink);color:var(--paper);
+    padding:22px 24px;margin:18px 0 0;border-radius:0;
+    overflow-x:auto;
+    border-left:4px solid var(--accent);
+    position:relative;
+  }
+  pre.code::before{
+    content:attr(data-label);
+    position:absolute;top:-1px;right:0;
+    background:var(--accent);color:var(--ink);
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;
+    padding:4px 10px;font-weight:600;
+  }
+  pre.code .c{color:#8a8270}
+  pre.code .p{color:var(--accent-2)}
+  pre.code .s{color:#9ed27a}
+  pre.code .k{color:#ff8a5c;font-weight:600}
+
+  /* ── Workflow ──────────────────────────────────────────── */
+  .workflow{display:grid;grid-template-columns:1fr 1fr;gap:36px}
+  .workflow .col h3{font-family:var(--serif);font-variation-settings:"opsz" 144,"wght" 700;font-size:30px;margin:0 0 10px;letter-spacing:-.02em}
+  .workflow .col h3 .stamp{
+    display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.18em;
+    background:var(--ink);color:var(--paper);padding:2px 8px;border-radius:2px;
+    transform:translateY(-6px);margin-right:10px;text-transform:uppercase;
+  }
+
+  /* ── Gap table (API-only) ──────────────────────────────────────────── */
+  .gap{
+    border-top:3px solid var(--accent);
+    border-bottom:3px solid var(--accent);
+    margin-top:14px;
+  }
+  .gap table{width:100%;border-collapse:collapse;font-family:var(--body);font-size:15px}
+  .gap thead th{
+    font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--muted);padding:14px 12px;text-align:left;border-bottom:1px solid var(--rule);background:var(--paper-2)
+  }
+  .gap tbody td{padding:16px 12px;border-bottom:1px dashed rgba(13,12,10,.18);vertical-align:top}
+  .gap tbody tr:last-child td{border-bottom:0}
+  .gap tbody td.area{font-family:var(--serif);font-size:21px;font-variation-settings:"opsz" 144,"wght" 700;line-height:1.1;width:24%}
+  .gap tbody td.area .pill{
+    display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+    background:var(--accent);color:var(--ink);padding:2px 7px;margin-bottom:8px;font-weight:700;border-radius:2px;
+  }
+  .gap tbody td.what{width:42%;font-style:italic;color:var(--ink);font-family:var(--body)}
+  .gap tbody td.how{font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--ink)}
+  .gap tbody td.how code{background:var(--paper-2);padding:1px 5px;border-radius:2px}
+
+  /* ── Footer ──────────────────────────────────────────── */
+  footer{
+    margin-top:0;padding:32px 28px;
+    background:var(--ink);color:var(--paper);
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;
+    font-family:var(--mono);font-size:12px;letter-spacing:.06em;
+    border-top:6px solid var(--accent);
+  }
+  footer h5{margin:0 0 8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.25em;text-transform:uppercase;color:var(--accent)}
+  footer p,footer li{margin:0 0 4px;color:var(--paper)}
+  footer ul{padding-left:14px;margin:0}
+  .colophon{font-family:var(--body);font-style:italic;font-size:14px;line-height:1.5;color:#bdb5a3}
+
+  /* ── Pull quote ──────────────────────────────────────────── */
+  .pull{
+    margin:24px 0 0;padding:28px 32px;
+    background:var(--ink);color:var(--paper);
+    border-left:6px solid var(--accent);
+    font-family:var(--serif);font-variation-settings:"opsz" 144,"wght" 600;
+    font-size:26px;line-height:1.25;font-style:italic;
+    letter-spacing:-.01em;
+  }
+  .pull cite{display:block;margin-top:14px;font-family:var(--mono);font-style:normal;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+
+  @media (max-width:880px){
+    .lede{grid-template-columns:1fr}
+    .quick{grid-template-columns:1fr 1fr}
+    .group{grid-column:span 12}
+    .workflow{grid-template-columns:1fr}
+    footer{grid-template-columns:1fr}
+    .mast{grid-template-columns:1fr;text-align:center}
+    .mast .right,.mast .edition{text-align:center}
+    .gap tbody td.area,.gap tbody td.what{width:auto}
+  }
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="edition">Vol. 1 · 2026.05 · Field Manual</div>
+  <div class="logo">cli<span class="amp">&#x2022;</span>any<em>thing</em> · d365</div>
+  <div class="right">v0.2 · MOCE&nbsp;<b>9.1.44.15</b> · 52/52&nbsp;<b>green</b></div>
+</header>
+
+<div class="band">
+  <span>OData · NTLM · FetchXML</span>
+  <span>// THE NEWSROOM</span>
+  <span>JSON-first · REPL · subprocess-safe</span>
+</div>
+
+<section class="lede">
+  <div>
+    <div class="kicker">A terminal for Dynamics 365 CE on-premises</div>
+    <h1>Stop <em>clicking</em>.<br/>Start <em>querying</em>.</h1>
+    <p class="standfirst">
+      cli-anything-d365 wraps every endpoint Power Platform makers reach through XrmToolbox into one
+      composable, agent-friendly command line. One binary. Eight verbs. The whole org under your cursor.
+    </p>
+  </div>
+  <aside>
+    <div class="row"><b>Binary</b><span>cli-anything-d365</span></div>
+    <div class="row"><b>Auth</b><span class="ok">NTLM · OAuth-ready</span></div>
+    <div class="row"><b>Output</b><span class="ok">--json envelope</span></div>
+    <div class="row"><b>Dry-run</b><span class="ok">--dry-run</span></div>
+    <div class="row"><b>Sessions</b><span class="ok">multi-profile</span></div>
+    <div class="row"><b>REPL</b><span class="ok">cli ... repl</span></div>
+    <div class="row"><b>Tested</b><span class="note">live MOCE org</span></div>
+    <div class="row"><b>Verified</b><span class="note">2026-05-17</span></div>
+  </aside>
+</section>
+
+<main>
+
+  <!-- QUICKSTART -->
+  <section>
+    <div class="section-head">
+      <h2><span class="num">§01</span>Quickstart</h2>
+      <div class="meta">four moves &middot; thirty seconds</div>
+    </div>
+    <div class="quick">
+      <div class="step">
+        <div class="n">1</div>
+        <h4>Install</h4>
+        <p>Pip-installable, namespace package.</p>
+        <code>pip install -e .</code>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <h4>Configure</h4>
+        <p>Drop a <code>.env</code> beside the project root.</p>
+        <code>CRM_BASE_URL=… CRM_USERNAME=DOM\user</code>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <h4>Connect</h4>
+        <p>Verify the wire before anything else.</p>
+        <code>cli-anything-d365 connection test</code>
+      </div>
+      <div class="step">
+        <div class="n">4</div>
+        <h4>Drive it</h4>
+        <p>One-shot, JSON, REPL — same surface.</p>
+        <code>cli-anything-d365 --json query odata contacts --top 5</code>
+      </div>
+    </div>
+
+    <pre class="code" data-label="one shot"><span class="c"># Round-trip a contact in three calls.</span>
+$ cli-anything-d365 --json entity create contacts \
+    --data-json <span class="s">'{"firstname":"Ada","lastname":"Lovelace"}'</span>
+
+$ cli-anything-d365 --json entity get contacts <span class="p">&lt;guid&gt;</span> \
+    --select <span class="s">fullname,emailaddress1</span>
+
+$ cli-anything-d365 entity delete contacts <span class="p">&lt;guid&gt;</span> --yes
+</pre>
+  </section>
+
+  <!-- WHAT'S IN THE BOX -->
+  <section>
+    <div class="section-head">
+      <h2><span class="num">§02</span>What ships in the CLI</h2>
+      <div class="meta">9 groups &middot; 45 commands</div>
+    </div>
+
+    <div class="groups">
+
+      <article class="group">
+        <span class="tag">Group · connection</span>
+        <h3>Wire <em>up.</em></h3>
+        <p class="blurb">Six commands to find, hold, and prove the session.</p>
+        <div class="cmds">
+          <div class="cmd"><code>connection connect</code><div class="desc">Save a named profile. <span class="opt">--url --username --domain --password --session</span></div></div>
+          <div class="cmd"><code>connection status</code><div class="desc">Inspect the active session without hitting the wire.</div></div>
+          <div class="cmd"><code>connection whoami</code><div class="desc">Calls <span class="opt">WhoAmI</span> and returns UserId/BU/Org GUID.</div></div>
+          <div class="cmd"><code>connection test</code><div class="desc">End-to-end probe — auth, version, latency.</div></div>
+          <div class="cmd"><code>connection profiles</code><div class="desc">List every saved profile on disk.</div></div>
+          <div class="cmd"><code>connection disconnect</code><div class="desc">Drop the current session.</div></div>
+        </div>
+      </article>
+
+      <article class="group">
+        <span class="tag">Group · entity</span>
+        <h3>Rows, <em>moved.</em></h3>
+        <p class="blurb">Nine verbs over OData CRUD plus lookup wiring.</p>
+        <div class="cmds">
+          <div class="cmd"><code>entity get</code><div class="desc">Read one record. <span class="opt">--select --expand --annotations</span></div></div>
+          <div class="cmd"><code>entity create</code><div class="desc">POST with <span class="opt">--data-json</span> or <span class="opt">--data-file</span>. Returns representation.</div></div>
+          <div class="cmd"><code>entity update</code><div class="desc">PATCH. <span class="opt">--allow-create --return-record</span></div></div>
+          <div class="cmd"><code>entity upsert</code><div class="desc">Alternate-key aware upsert via PATCH/If-None-Match.</div></div>
+          <div class="cmd"><code>entity delete</code><div class="desc">DELETE with <span class="opt">--yes</span> confirm.</div></div>
+          <div class="cmd"><code>entity associate</code><div class="desc">Wire an N:N or 1:N.</div></div>
+          <div class="cmd"><code>entity disassociate</code><div class="desc">Cut the link.</div></div>
+          <div class="cmd"><code>entity set-lookup</code><div class="desc">PATCH <span class="opt">@odata.bind</span> on a lookup nav.</div></div>
+          <div class="cmd"><code>entity clear-lookup</code><div class="desc">DELETE on the lookup ref.</div></div>
+        </div>
+      </article>
+
+      <article class="group">
+        <span class="tag">Group · query</span>
+        <h3>Ask, <em>fast.</em></h3>
+        <p class="blurb">Four shapes: OData, FetchXML, saved, user.</p>
+        <div class="cmds">
+          <div class="cmd"><code>query odata</code><div class="desc"><span class="opt">--select --filter --top --orderby --expand --page-size --count --apply</span></div></div>
+          <div class="cmd"><code>query fetchxml</code><div class="desc">Inline XML or <span class="opt">--xml-file</span>.</div></div>
+          <div class="cmd"><code>query saved</code><div class="desc">Replay a system view by id.</div></div>
+          <div class="cmd"><code>query user</code><div class="desc">Replay a personal view by id.</div></div>
+        </div>
+      </article>
+
+      <article class="group">
+        <span class="tag">Group · metadata</span>
+        <h3>Schema, <em>cracked.</em></h3>
+        <p class="blurb">Browse, then build. Includes brand-new <code>create-entity</code>.</p>
+        <div class="cmds">
+          <div class="cmd"><code>metadata entities</code><div class="desc">List EntityDefinitions. <span class="opt">--custom-only --top</span> (client-side slice).</div></div>
+          <div class="cmd"><code>metadata entity</code><div class="desc">Full EntityMetadata for a logical name.</div></div>
+          <div class="cmd"><code>metadata attributes</code><div class="desc">All attributes on an entity.</div></div>
+          <div class="cmd"><code>metadata attribute</code><div class="desc">Single attribute by logical name.</div></div>
+          <div class="cmd"><code>metadata picklist</code><div class="desc">OptionSet + GlobalOptionSet for a picklist.</div></div>
+          <div class="cmd"><code>metadata create-entity</code><div class="desc">POST EntityDefinitions. <span class="opt">--schema-name --display --primary-attr --ownership --solution --publish/--no-publish</span></div></div>
+          <div class="cmd"><code>metadata relationships</code><div class="desc">1:N + N:N for an entity.</div></div>
+        </div>
+      </article>
+
+      <article class="group">
+        <span class="tag">Group · solution</span>
+        <h3>Ship the <em>customisations.</em></h3>
+        <p class="blurb">List, inspect, export, import, publish.</p>
+        <div class="cmds">
+          <div class="cmd"><code>solution list</code><div class="desc"><span class="opt">--managed/--unmanaged</span></div></div>
+          <div class="cmd"><code>solution info</code><div class="desc">Single solution by uniquename.</div></div>
+          <div class="cmd"><code>solution components</code><div class="desc">Components in a solution.</div></div>
+          <div class="cmd"><code>solution export</code><div class="desc">Stream the .zip to disk. <span class="opt">--output --managed</span></div></div>
+          <div class="cmd"><code>solution import</code><div class="desc">Upload a .zip. <span class="opt">--no-publish --no-overwrite</span></div></div>
+          <div class="cmd"><code>solution publish-all</code><div class="desc">Action <span class="opt">PublishAllXml</span>.</div></div>
+          <div class="cmd"><code>solution publish</code><div class="desc">Targeted publish via ParameterXml.</div></div>
+        </div>
+      </article>
+
+      <article class="group">
+        <span class="tag">Group · data / action / session</span>
+        <h3>The rest, <em>plumbed.</em></h3>
+        <p class="blurb">Bulk export, raw action/function dispatch, session inspection.</p>
+        <div class="cmds">
+          <div class="cmd"><code>data export</code><div class="desc">Paged dump to CSV/JSON/NDJSON. <span class="opt">--select --filter --page-size --max-records --format</span></div></div>
+          <div class="cmd"><code>action function</code><div class="desc">Unbound function GET with URL params.</div></div>
+          <div class="cmd"><code>action invoke</code><div class="desc">Action POST. Unbound by default; <span class="opt">--bind-set --bind-id [--cast]</span> for bound actions.</div></div>
+          <div class="cmd"><code>service-document</code><div class="desc">Root OData service document (entity-set catalog).</div></div>
+          <div class="cmd"><code>session info</code><div class="desc">Resolved profile + cache state.</div></div>
+          <div class="cmd"><code>session clear</code><div class="desc">Wipe the local cache.</div></div>
+          <div class="cmd"><code>session history</code><div class="desc">Recent commands.</div></div>
+          <div class="cmd"><code>repl</code><div class="desc">Interactive shell with command history and tab help.</div></div>
+        </div>
+      </article>
+
+      <article class="group">
+        <span class="tag">Group · workflow</span>
+        <h3>Processes, <em>fired.</em></h3>
+        <p class="blurb">List, activate, deactivate, and trigger on-demand workflows.</p>
+        <div class="cmds">
+          <div class="cmd"><code>workflow list</code><div class="desc">Definitions only (type=1). <span class="opt">--category --entity --activated/--all --on-demand</span></div></div>
+          <div class="cmd"><code>workflow activate</code><div class="desc">PATCH statecode=1, statuscode=2.</div></div>
+          <div class="cmd"><code>workflow deactivate</code><div class="desc">PATCH statecode=0, statuscode=1.</div></div>
+          <div class="cmd"><code>workflow run</code><div class="desc">Bound <span class="opt">ExecuteWorkflow</span> against a target record. <span class="opt">--target &lt;recordid&gt;</span></div></div>
+        </div>
+      </article>
+
+    </div>
+
+    <p class="pull">
+      Every command runs identically in <b>one-shot</b>, <b>--json</b>, and <b>repl</b> mode — JSON envelopes
+      carry <code>ok</code>, <code>data</code>, <code>meta</code>, <code>error</code>. Agents read it like a
+      protocol.
+      <cite>// Design Note · 02</cite>
+    </p>
+  </section>
+
+  <!-- WORKFLOWS -->
+  <section>
+    <div class="section-head">
+      <h2><span class="num">§03</span>Recipes from the field</h2>
+      <div class="meta">tried on MOCE 9.1.44.15</div>
+    </div>
+
+    <div class="workflow">
+      <div class="col">
+        <h3><span class="stamp">A</span>Build a custom table, end to end</h3>
+        <pre class="code" data-label="schema"><span class="c"># 1. Create the table, primary attr, and auto-publish.</span>
+cli-anything-d365 --json metadata create-entity \
+  --schema-name new_Project \
+  --display <span class="s">"Project"</span> \
+  --display-collection <span class="s">"Projects"</span> \
+  --primary-attr new_ProjectName \
+  --primary-label <span class="s">"Project Name"</span> \
+  --ownership UserOwned \
+  --solution DevSandbox
+
+<span class="c"># 2. Confirm it landed.</span>
+cli-anything-d365 metadata entity new_project
+
+<span class="c"># 3. Insert a row.</span>
+cli-anything-d365 --json entity create new_projects \
+  --data-json <span class="s">'{"new_name":"Apollo"}'</span></pre>
+      </div>
+      <div class="col">
+        <h3><span class="stamp">B</span>Mass-extract a view to CSV</h3>
+        <pre class="code" data-label="data export">cli-anything-d365 data export contacts \
+  --output contacts.csv \
+  --select <span class="s">fullname,emailaddress1,telephone1</span> \
+  --filter <span class="s">"statecode eq 0"</span> \
+  --page-size 500 \
+  --max-records 10000 \
+  --format csv</pre>
+
+        <h3 style="margin-top:30px"><span class="stamp">C</span>Lookups & associations</h3>
+        <pre class="code" data-label="links">cli-anything-d365 entity set-lookup \
+  contacts <span class="p">&lt;contactid&gt;</span> parentcustomerid_account \
+  accounts <span class="p">&lt;accountid&gt;</span></pre>
+
+        <h3 style="margin-top:30px"><span class="stamp">D</span>Fire an on-demand workflow</h3>
+        <pre class="code" data-label="workflow"><span class="c"># 1. Find the workflow id.</span>
+cli-anything-d365 --json workflow list \
+  --entity contact --on-demand --activated
+
+<span class="c"># 2. Run it against a contact.</span>
+cli-anything-d365 --json workflow run <span class="p">&lt;workflowid&gt;</span> \
+  --target <span class="p">&lt;contactid&gt;</span>
+
+<span class="c"># Or via the generic bound-action escape hatch:</span>
+cli-anything-d365 action invoke ExecuteWorkflow \
+  --bind-set workflows --bind-id <span class="p">&lt;workflowid&gt;</span> \
+  --body <span class="s">'{"EntityId":"&lt;contactid&gt;"}'</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- API ONLY GAPS -->
+  <section>
+    <div class="section-head">
+      <h2><span class="num">§04</span>Still only on the wire</h2>
+      <div class="meta">honest gaps · raw OData required</div>
+    </div>
+    <p style="max-width:62ch;font-style:italic;color:var(--muted);margin:0 0 14px">
+      Anything below is reachable today by hand-rolling against the Dynamics Web API, but has no first-class
+      verb yet. The CLI's <code>action invoke</code> and <code>action function</code> escape hatches cover
+      most actions; metadata mutations need the underlying <code>POST/PATCH/DELETE</code> on
+      <code>EntityDefinitions(…)</code>.
+    </p>
+
+    <div class="gap">
+      <table>
+        <thead><tr><th>Area</th><th>What the API can do today</th><th>How to reach it now</th></tr></thead>
+        <tbody>
+
+          <tr>
+            <td class="area"><span class="pill">P0</span>Delete / update entity</td>
+            <td class="what">Drop a custom table, rename labels, toggle <code>HasActivities</code>/<code>HasNotes</code> after creation.</td>
+            <td class="how">Raw <code>DELETE /EntityDefinitions(LogicalName='x')</code> or <code>PATCH</code>. CLI verb missing — <em>cleanup of test tables on MOCE today required manual auth</em>.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P0</span>Attribute CRUD</td>
+            <td class="what">Add new columns of any type — string, picklist, lookup, money, datetime — and edit or drop them.</td>
+            <td class="how"><code>POST /EntityDefinitions(LogicalName='x')/Attributes</code> with the appropriate <code>@odata.type</code> cast.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P1</span>Relationships</td>
+            <td class="what">Create 1:N, N:1, and N:N relationships incl. cascade rules and intersect entities.</td>
+            <td class="how"><code>POST /RelationshipDefinitions</code> with the OneToMany or ManyToMany cast.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P1</span>Global option sets</td>
+            <td class="what">Create / update / delete <code>GlobalOptionSetDefinitions</code> and tie picklists to them.</td>
+            <td class="how"><code>POST /GlobalOptionSetDefinitions</code>; CLI today only <em>reads</em> via <code>metadata picklist</code>.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P1</span>Batch operations</td>
+            <td class="what">Multi-statement transactions via <code>$batch</code> with changesets — atomic multi-row inserts.</td>
+            <td class="how">Raw HTTP <code>POST /$batch</code> with <code>multipart/mixed</code>. No verb yet.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">DONE</span>Workflows · v0.2</td>
+            <td class="what">List, activate, deactivate, and run on-demand workflows.</td>
+            <td class="how">Shipped as <code>workflow list / activate / deactivate / run</code>. BPF (category=4) and Modern Flow (category=5) records are visible via <code>--category</code>.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P2</span>Security model</td>
+            <td class="what">Roles, teams, business units, privileges, principal access (<code>RetrievePrincipalAccess</code>).</td>
+            <td class="how">CRUD over <code>roles</code>, <code>teams</code>, <code>businessunits</code> via <code>entity</code> works; principal-access function via <code>action function</code>.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P2</span>Files &amp; images</td>
+            <td class="what">Upload / download File and Image column payloads, chunked uploads.</td>
+            <td class="how">Raw <code>PATCH</code>/<code>GET</code> on <code>{set}({id})/{column}/$value</code> with <code>x-ms-file-name</code> header. No verb yet.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P3</span>Bulk operations</td>
+            <td class="what">BulkDelete, BulkDetectDuplicates, ImportSolutionAsync, AsyncOperation polling.</td>
+            <td class="how"><code>action invoke</code> for the request; status polling must be hand-rolled.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P3</span>Plugins &amp; SDK steps</td>
+            <td class="what">Register assemblies, plugin types, steps, images; manage service endpoints.</td>
+            <td class="how">CRUD over <code>pluginassemblies</code>, <code>plugintypes</code>, <code>sdkmessageprocessingsteps</code> via <code>entity</code>; the upload itself needs custom encoding.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P3</span>Audit &amp; telemetry</td>
+            <td class="what">Read <code>audit</code> records, <code>RetrieveRecordChangeHistory</code>, system jobs.</td>
+            <td class="how"><code>query odata</code> on <code>audits</code>; history via <code>action function RetrieveRecordChangeHistory</code>.</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">DONE</span>Bound actions · v0.2</td>
+            <td class="what">Call actions bound to a specific record, e.g. <code>workflows(id)/ExecuteWorkflow</code>.</td>
+            <td class="how">Shipped: <code>action invoke &lt;Name&gt; --bind-set workflows --bind-id &lt;guid&gt;</code> (<code>--cast</code> overrides namespace).</td>
+          </tr>
+
+          <tr>
+            <td class="area"><span class="pill">P3</span>Raw HTTP override</td>
+            <td class="what">Issue <code>PUT</code> / <code>DELETE</code> calls against arbitrary OData paths (e.g. metadata cleanup).</td>
+            <td class="how">No <code>--method</code> switch on <code>action invoke</code> yet; the bound/unbound action path only POSTs.</td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+
+    <p class="pull">
+      The shortest path to closing every gap above: ship <code>metadata delete-entity</code>,
+      <code>metadata create-attribute</code>, and a <code>--method</code> escape hatch on
+      <code>action invoke</code>. Three commits, ninety percent of the wishlist.
+      <cite>// Roadmap · v0.2</cite>
+    </p>
+  </section>
+
+  <!-- DESIGN NOTES -->
+  <section>
+    <div class="section-head">
+      <h2><span class="num">§05</span>Design notes</h2>
+      <div class="meta">why it bites this way</div>
+    </div>
+    <div class="workflow">
+      <div class="col">
+        <h3><span class="stamp">01</span>JSON envelope, every time</h3>
+        <p>
+          With <code>--json</code> every command emits <code>{ok, data, meta, error}</code>. Agents and humans
+          parse the same payload. <code>meta.count</code>, <code>meta.session</code>, <code>meta.dry_run</code>
+          come for free.
+        </p>
+        <h3 style="margin-top:24px"><span class="stamp">02</span>Backslashes never sourced</h3>
+        <p>
+          <code>set -a; . ./.env</code> mangled <code>moce\crmadmin</code> into <code>mocecrmadmin</code>.
+          The CLI's own <code>load_dotenv</code> reads the file directly so the domain backslash survives.
+        </p>
+        <h3 style="margin-top:24px"><span class="stamp">03</span><code>$top</code> client-side</h3>
+        <p>
+          v9.1 on-prem rejects <code>$top</code> against <code>EntityDefinitions</code> with an explicit
+          400. <code>metadata entities --top N</code> slices the response after retrieval.
+        </p>
+      </div>
+      <div class="col">
+        <h3><span class="stamp">04</span>Auto-publish after metadata writes</h3>
+        <p>
+          <code>metadata create-entity --publish</code> chains <code>PublishAllXml</code> so a new table is
+          immediately visible to UI consumers. Opt out with <code>--no-publish</code> when bundling several
+          changes.
+        </p>
+        <h3 style="margin-top:24px"><span class="stamp">05</span>Dry-run for everything</h3>
+        <p>
+          The global <code>--dry-run</code> flag short-circuits every write — POST, PATCH, DELETE, action
+          dispatch — and returns the would-be payload. Use it as a credential-free unit test.
+        </p>
+        <h3 style="margin-top:24px"><span class="stamp">06</span>Tests are not optional</h3>
+        <p>
+          47/47 green: 39 unit + 8 live E2E against MOCE 9.1.44.15. <code>CLI_ANYTHING_FORCE_INSTALLED=1</code>
+          requires the binary on PATH so CI never falls back to <code>python -m</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div>
+    <h5>Manifest</h5>
+    <ul>
+      <li>cli_anything/d365/d365_cli.py — Click surface</li>
+      <li>cli_anything/d365/core/* — modules</li>
+      <li>cli_anything/d365/utils/d365_backend.py — HTTP+auth</li>
+      <li>cli_anything/d365/tests/* — 47 tests</li>
+    </ul>
+  </div>
+  <div>
+    <h5>Endpoints proven on MOCE</h5>
+    <ul>
+      <li>WhoAmI · EntityDefinitions · contacts CRUD</li>
+      <li>FetchXML · saved/user query · solutions</li>
+      <li>PublishAllXml · metadata create-entity</li>
+    </ul>
+  </div>
+  <div>
+    <h5>Colophon</h5>
+    <p class="colophon">
+      Set in Fraunces &amp; Lora, code in JetBrains Mono. Engraved with one CLI, one Click decorator,
+      and the deliberate refusal to source <code>.env</code> through bash.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
