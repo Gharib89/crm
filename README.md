@@ -29,14 +29,47 @@ to talk to. E2E tests fail loudly if credentials are missing.
 
 ## Install
 
+### Option 1: Prebuilt binary (no Python required)
+
+Download the latest release for your platform from
+<https://github.com/Gharib89/crm/releases/latest>:
+
+- Linux x86_64: `crm-linux-x86_64`
+- Windows x86_64: `crm-windows-x86_64.exe`
+
+**Linux:**
+
+```bash
+curl -L -o crm https://github.com/Gharib89/crm/releases/latest/download/crm-linux-x86_64
+chmod +x crm
+sudo mv crm /usr/local/bin/
+crm --version
+```
+
+**Windows (PowerShell):**
+
+The downloaded `.exe` will be marked as coming from the internet and may
+trigger a SmartScreen warning on first run. Unblock it once:
+
+```powershell
+Unblock-File .\crm-windows-x86_64.exe
+Rename-Item .\crm-windows-x86_64.exe crm.exe
+# Move crm.exe somewhere on your PATH
+.\crm.exe --version
+```
+
+Glibc compatibility: the Linux binary is built on Ubuntu 22.04 (glibc 2.35)
+and runs on any Linux distribution with glibc ≥ 2.35.
+
+### Option 2: From source (development)
+
 ```bash
 # From source (local dev)
-cd d365/agent-harness
 pip install -e .
 
 # Verify the command is on PATH
-which cli-anything-d365
-cli-anything-d365 --version
+which crm
+crm --version
 ```
 
 ## Configure
