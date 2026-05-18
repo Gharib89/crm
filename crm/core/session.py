@@ -106,15 +106,19 @@ def _atomic_write_json(path: Path, payload: Any) -> None:
 
     See guides/session-locking.md for the wider pattern.
     """
-    import fcntl
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None  # Windows: no flock, rely on atomic rename only
 
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
-        try:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-        except (OSError, AttributeError):
-            pass
+        if fcntl is not None:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            except (OSError, AttributeError):
+                pass
         json.dump(payload, f, indent=2, sort_keys=True)
         f.flush()
         os.fsync(f.fileno())
