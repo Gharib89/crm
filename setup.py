@@ -20,7 +20,7 @@ setup(
         "prompt_toolkit>=3.0",
     ],
     extras_require={
-        "dev": ["pytest>=7.0", "requests_mock>=1.10"],
+        "dev": ["pytest>=7.0", "requests_mock>=1.10", "pyinstaller>=6.0"],
     },
     entry_points={
         "console_scripts": [
