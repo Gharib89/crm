@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import urllib.parse
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -69,8 +68,9 @@ def fetchxml_query(
 ) -> dict[str, Any]:
     """Execute a FetchXML query against the given entity set.
 
-    fetch_xml must be a complete `<fetch>...</fetch>` document. We URL-encode it once
-    and pass as the `fetchXml` query parameter.
+    fetch_xml must be a complete `<fetch>...</fetch>` document. It's passed as the
+    `fetchXml` query parameter via requests' `params=` kwarg so encoding stays
+    consistent with the rest of the backend.
 
     Note: for very large FetchXML queries that may exceed URL length limits, $batch
     is the recommended pattern; this helper uses the inline form which is sufficient
@@ -78,13 +78,15 @@ def fetchxml_query(
     """
     if not fetch_xml or "<fetch" not in fetch_xml.lower():
         raise D365Error("fetch_xml must contain a <fetch> element.")
-    encoded = urllib.parse.quote(fetch_xml, safe="")
-    path = f"{entity_set}?fetchXml={encoded}"
 
-    headers = (
+    headers: dict[str, str] | None = (
         {"Prefer": 'odata.include-annotations="*"'} if include_annotations else None
     )
-    return as_dict(backend.get(path, extra_headers=headers))
+    return as_dict(backend.get(
+        entity_set,
+        params={"fetchXml": fetch_xml},
+        extra_headers=headers,
+    ))
 
 
 # ── Count ───────────────────────────────────────────────────────────────

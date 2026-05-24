@@ -242,6 +242,15 @@ class TestQuery:
         with pytest.raises(D365Error, match="<fetch>"):
             query_mod.fetchxml_query(backend, "accounts", "<not_fetch/>")
 
+    def test_fetchxml_passes_params_dict(self, backend):
+        fx = "<fetch top='1'><entity name='account'/></fetch>"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("accounts"), json={"value": []})
+            query_mod.fetchxml_query(backend, "accounts", fx)
+        req = m.request_history[0]
+        # requests_mock lowercases qs keys
+        assert req.qs["fetchxml"] == [fx]
+
 
 # ── metadata.py ─────────────────────────────────────────────────────────
 
