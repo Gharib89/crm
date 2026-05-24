@@ -119,3 +119,60 @@ class TestComputeDelay:
         for _ in range(1000):
             d = _compute_delay(2, profile, retry_after=None)
             assert 0.0 <= d <= 0.4
+
+
+# ── _is_response_retryable ──────────────────────────────────────────────
+
+
+class TestIsResponseRetryable:
+    @pytest.mark.parametrize("method,status,expected", [
+        # 429 retryable on any method
+        ("GET", 429, True),
+        ("POST", 429, True),
+        ("PATCH", 429, True),
+        # 503 retryable on any method
+        ("GET", 503, True),
+        ("POST", 503, True),
+        # 502/504 retryable on idempotent methods only
+        ("GET", 502, True),
+        ("PATCH", 502, True),
+        ("DELETE", 504, True),
+        ("POST", 502, False),
+        ("POST", 504, False),
+        # 2xx, 4xx never retryable
+        ("GET", 200, False),
+        ("GET", 400, False),
+        ("GET", 401, False),
+        ("GET", 404, False),
+        ("POST", 200, False),
+        # 5xx other than 502/503/504 never retryable
+        ("GET", 500, False),
+        ("GET", 505, False),
+    ])
+    def test_truth_table(self, method, status, expected):
+        resp = requests.Response()
+        resp.status_code = status
+        assert _is_response_retryable(resp, method) is expected
+
+
+# ── _is_transport_retryable ─────────────────────────────────────────────
+
+
+class TestIsTransportRetryable:
+    def test_connection_error_retryable(self):
+        assert _is_transport_retryable(requests.exceptions.ConnectionError()) is True
+
+    def test_timeout_retryable(self):
+        assert _is_transport_retryable(requests.exceptions.Timeout()) is True
+
+    def test_chunked_encoding_error_retryable(self):
+        assert _is_transport_retryable(requests.exceptions.ChunkedEncodingError()) is True
+
+    def test_ssl_error_not_retryable(self):
+        assert _is_transport_retryable(requests.exceptions.SSLError()) is False
+
+    def test_invalid_url_not_retryable(self):
+        assert _is_transport_retryable(requests.exceptions.InvalidURL()) is False
+
+    def test_generic_runtime_error_not_retryable(self):
+        assert _is_transport_retryable(RuntimeError("boom")) is False
