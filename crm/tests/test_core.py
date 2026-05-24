@@ -667,6 +667,54 @@ class TestCountEntitySet:
 # ── cli.py ──────────────────────────────────────────────────────────────
 
 
+class TestReplBackendCache:
+    def test_repl_reuses_backend_across_commands(self, monkeypatch, profile):
+        from crm.cli import CLIContext
+        from crm.utils import d365_backend as backend_mod
+        from crm.core.connection import ResolvedCredentials
+        ctx = CLIContext()
+        ctx.password = "pw"
+        # Stub credential resolution to avoid env/profile loading.
+        monkeypatch.setattr(
+            "crm.cli.conn_mod.resolve_credentials",
+            lambda profile_name=None, password_override=None:
+                ResolvedCredentials(profile=profile, password="pw"),
+        )
+        # Count D365Backend instantiations.
+        calls = {"n": 0}
+        real_init = backend_mod.D365Backend.__init__
+        def counting_init(self, *a, **kw):
+            calls["n"] += 1
+            real_init(self, *a, **kw)
+        monkeypatch.setattr(backend_mod.D365Backend, "__init__", counting_init)
+        b1 = ctx.backend()
+        b2 = ctx.backend()
+        assert b1 is b2
+        assert calls["n"] == 1
+
+    def test_repl_backend_invalidated_on_connect(self, monkeypatch, profile):
+        from crm.cli import CLIContext
+        from crm.utils import d365_backend as backend_mod
+        from crm.core.connection import ResolvedCredentials
+        ctx = CLIContext()
+        ctx.password = "pw"
+        monkeypatch.setattr(
+            "crm.cli.conn_mod.resolve_credentials",
+            lambda profile_name=None, password_override=None:
+                ResolvedCredentials(profile=profile, password="pw"),
+        )
+        calls = {"n": 0}
+        real_init = backend_mod.D365Backend.__init__
+        def counting_init(self, *a, **kw):
+            calls["n"] += 1
+            real_init(self, *a, **kw)
+        monkeypatch.setattr(backend_mod.D365Backend, "__init__", counting_init)
+        ctx.backend()
+        ctx.invalidate_backend()
+        ctx.backend()
+        assert calls["n"] == 2
+
+
 class TestErrorEnvelope:
     def test_error_envelope_null_when_status_missing(self, capsys):
         from crm.cli import CLIContext

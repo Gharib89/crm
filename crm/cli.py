@@ -106,6 +106,14 @@ class CLIContext:
             )
         return self._backend
 
+    def invalidate_backend(self) -> None:
+        """Drop the cached D365Backend so the next backend() call rebuilds it.
+
+        Called when the profile changes (`connection connect`/`disconnect`) so
+        the REPL stops reusing a backend wired up to a stale profile.
+        """
+        self._backend = None
+
 
 pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 
@@ -198,6 +206,7 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = profile_name
     session_mod.save_session(state, ctx.session_name)
+    ctx.invalidate_backend()
     ctx.emit(True, data=info, meta={"profile": profile_name})
 
 
@@ -267,6 +276,7 @@ def connection_disconnect(ctx: CLIContext):
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = None
     session_mod.save_session(state, ctx.session_name)
+    ctx.invalidate_backend()
     ctx.emit(True, data={"disconnected": True})
 
 
@@ -1274,7 +1284,7 @@ def repl(ctx: CLIContext):
             ctx.skin.error(f"Parse error: {exc}")
             continue
         try:
-            cli.main(args=argv, standalone_mode=False, prog_name="crm")
+            cli.main(args=argv, obj=ctx, standalone_mode=False, prog_name="crm")
         except SystemExit:
             pass
         except click.ClickException as exc:
