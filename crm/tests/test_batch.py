@@ -335,6 +335,18 @@ class TestBatchMethod:
         with pytest.raises(D365Error, match="body required"):
             backend.batch([{"method": "PATCH", "url": "accounts(x)"}])
 
+    def test_batch_rejects_empty_string_content_id(self, backend):
+        with pytest.raises(D365Error, match="content_id"):
+            backend.batch([{"method": "POST", "url": "accounts", "body": {}, "content_id": ""}])
+
+    def test_batch_rejects_non_str_int_content_id(self, backend):
+        with pytest.raises(D365Error, match="content_id"):
+            backend.batch([{"method": "POST", "url": "accounts", "body": {}, "content_id": 1.5}])
+
+    def test_batch_rejects_bool_content_id(self, backend):
+        with pytest.raises(D365Error, match="content_id"):
+            backend.batch([{"method": "POST", "url": "accounts", "body": {}, "content_id": True}])
+
     def test_batch_dry_run_returns_preview_without_http(self, profile, fixed_boundaries):
         b = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:

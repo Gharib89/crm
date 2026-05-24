@@ -349,6 +349,17 @@ class D365Backend:
                 raise D365Error(
                     f"batch op #{i}: body required on {m_upper}"
                 )
+            cid = op.get("content_id")
+            if cid is not None:
+                if isinstance(cid, str):
+                    if not cid:
+                        raise D365Error(f"batch op #{i}: content_id must be non-empty")
+                elif isinstance(cid, int) and not isinstance(cid, bool):
+                    pass  # int OK
+                else:
+                    raise D365Error(
+                        f"batch op #{i}: content_id must be str or int; got {type(cid).__name__}"
+                    )
             validated.append({**op, "method": m_upper})
 
         if self.dry_run:
