@@ -476,3 +476,53 @@ class TestPollAsyncOperation:
             # No m.get for importjobs — would 404 if called.
             backend.poll_async_operation(self.OP_ID)
         # Pass if we get here without an unmatched-request exception.
+
+
+# ── ConnectionProfile validation ────────────────────────────────────────
+
+
+class TestConnectionProfileValidation:
+    _BASE = dict(
+        name="testp",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+    )
+
+    @pytest.mark.parametrize("field", [
+        "retry_max",
+        "retry_base_delay",
+        "retry_max_delay",
+        "async_poll_initial",
+        "async_poll_max",
+        "async_timeout",
+    ])
+    def test_negative_value_raises(self, field):
+        kwargs = {**self._BASE, field: -1}
+        with pytest.raises(D365Error, match=field):
+            ConnectionProfile(**kwargs)
+
+    def test_zero_is_allowed(self):
+        # retry_max=0 (no retries) is an explicit supported value via env override.
+        # Other fields tolerate zero too (immediate timeout, etc. — user choice).
+        profile = ConnectionProfile(
+            **self._BASE,
+            retry_max=0,
+            retry_base_delay=0.0,
+            retry_max_delay=0.0,
+            async_poll_initial=0.0,
+            async_poll_max=0.0,
+            async_timeout=0,
+        )
+        assert profile.retry_max == 0
+
+    def test_defaults_pass_validation(self):
+        # Sanity: shipped defaults must not trip the validator.
+        profile = ConnectionProfile(**self._BASE)
+        assert profile.retry_max >= 0
+        assert profile.async_timeout >= 0
+
+    def test_from_dict_negative_raises(self):
+        bad = {**self._BASE, "async_poll_max": -2.0}
+        with pytest.raises(D365Error, match="async_poll_max"):
+            ConnectionProfile.from_dict(bad)
