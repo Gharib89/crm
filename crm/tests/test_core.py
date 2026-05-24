@@ -161,7 +161,7 @@ class TestEntityCrud:
         assert params["$select"] == ["name,telephone1"]
         assert params["$expand"] == ["primarycontactid"]
 
-    def test_create_sets_if_none_match_and_prefer_return(self, backend):
+    def test_create_no_if_none_match_header(self, backend):
         with requests_mock.Mocker() as m:
             m.post(
                 backend.url_for("contacts"),
@@ -169,7 +169,7 @@ class TestEntityCrud:
             )
             entity_mod.create(backend, "contacts", {"firstname": "Rafel"})
         req = m.request_history[0]
-        assert req.headers["If-None-Match"] == "null"
+        assert "If-None-Match" not in req.headers
         assert req.headers["Prefer"] == "return=representation"
         assert json.loads(req.body) == {"firstname": "Rafel"}
 

@@ -74,7 +74,7 @@ def create(
     """
     if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise D365Error("Create payload must be a dict.")
-    headers = {"If-None-Match": "null"}
+    headers: dict[str, str] = {}
     if return_record:
         headers["Prefer"] = "return=representation"
 
