@@ -255,6 +255,34 @@ class TestBatchMethod:
         with pytest.raises(D365Error, match="body"):
             backend.batch([{"method": "DELETE", "url": "accounts(x)", "body": {"x": 1}}])
 
+    def test_batch_retries_on_429(self, backend, profile, fixed_boundaries, monkeypatch):
+        monkeypatch.setattr("crm.utils.d365_backend.time.sleep", lambda *_: None)
+        ops = [{"method": "GET", "url": "accounts"}]
+        resp_body = (
+            "--batchresp\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"value": []}\r\n'
+            "--batchresp--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                [
+                    {"status_code": 429, "headers": {"Retry-After": "0"}, "text": ""},
+                    {"status_code": 200,
+                     "headers": {"Content-Type": "multipart/mixed; boundary=batchresp"},
+                     "content": resp_body.encode("utf-8")},
+                ],
+            )
+            results = backend.batch(ops)
+        assert m.call_count == 2
+        assert results[0]["status"] == 200
+
     def test_batch_rejects_missing_body_on_post(self, backend):
         with pytest.raises(D365Error, match="body required"):
             backend.batch([{"method": "POST", "url": "accounts"}])

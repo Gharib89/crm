@@ -358,15 +358,31 @@ class D365Backend:
 
         effective_timeout = timeout if timeout is not None else self.profile.timeout
         url = self.url_for("$batch")
-        try:
-            resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
-                "POST", url,
-                data=body_text.encode("utf-8"),
-                headers=headers,
-                timeout=effective_timeout,
-            )
-        except requests.RequestException as exc:
-            raise D365Error(f"HTTP transport failure on $batch: {exc}") from exc
+        max_attempts = self._effective_retry_max + 1
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
+                    "POST", url,
+                    data=body_text.encode("utf-8"),
+                    headers=headers,
+                    timeout=effective_timeout,
+                )
+            except requests.RequestException as exc:
+                raise D365Error(f"HTTP transport failure on $batch: {exc}") from exc
+
+            if resp.status_code in (429, 503) and attempt < max_attempts:
+                retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
+                delay = retry_after if retry_after is not None else _compute_delay(
+                    attempt - 1, self.profile, retry_after=None
+                )
+                _log_retry("POST", url, attempt - 1, delay,
+                           effective_max=self._effective_retry_max, reason=f"HTTP {resp.status_code}")
+                resp.close()
+                time.sleep(delay)
+                continue
+            break
 
         if not (200 <= resp.status_code < 300):
             raise D365Error(
