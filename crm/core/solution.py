@@ -4,33 +4,34 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
+from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
-def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list[dict]:
+def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list[dict[str, Any]]:
     params = {
         "$select": "uniquename,friendlyname,version,ismanaged,installedon,solutionid",
         "$orderby": "uniquename",
     }
     if managed is not None:
         params["$filter"] = f"ismanaged eq {'true' if managed else 'false'}"
-    result = backend.get("solutions", params=params) or {}
+    result = as_dict(backend.get("solutions", params=params))
     return result.get("value", [])
 
 
-def solution_info(backend: D365Backend, unique_name: str) -> dict:
+def solution_info(backend: D365Backend, unique_name: str) -> dict[str, Any]:
     if not unique_name:
         raise D365Error("solution unique name required.")
     params = {"$filter": f"uniquename eq '{unique_name}'"}
-    result = backend.get("solutions", params=params) or {}
+    result = as_dict(backend.get("solutions", params=params))
     items = result.get("value", [])
     if not items:
         raise D365Error(f"Solution not found: {unique_name}")
     return items[0]
 
 
-def solution_components(backend: D365Backend, unique_name: str) -> list[dict]:
+def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str, Any]]:
     sol = solution_info(backend, unique_name)
     solution_id = sol["solutionid"]
     params = {
@@ -38,7 +39,7 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict]:
         "$filter": f"_solutionid_value eq {solution_id}",
         "$top": "5000",
     }
-    result = backend.get("solutioncomponents", params=params) or {}
+    result = as_dict(backend.get("solutioncomponents", params=params))
     return result.get("value", [])
 
 
@@ -48,9 +49,9 @@ def export_solution(
     output_path: str | Path,
     *,
     managed: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Call ExportSolution action and write the returned ZIP to disk."""
-    body = {
+    body: dict[str, Any] = {
         "SolutionName": unique_name,
         "Managed": managed,
         "ExportAutoNumberingSettings": False,
@@ -64,7 +65,7 @@ def export_solution(
         "ExportRelationshipRoles": False,
         "ExportSales": False,
     }
-    result = backend.post("ExportSolution", json_body=body) or {}
+    result = as_dict(backend.post("ExportSolution", json_body=body))
     if "_dry_run" in result:
         return result
     encoded = result.get("ExportSolutionFile")
@@ -88,34 +89,34 @@ def import_solution(
     *,
     publish_workflows: bool = True,
     overwrite_unmanaged_customizations: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Call ImportSolution action with the contents of a solution ZIP."""
     p = Path(zip_path)
     if not p.is_file():
         raise D365Error(f"Solution file not found: {zip_path}")
     encoded = base64.b64encode(p.read_bytes()).decode("ascii")
-    body = {
+    body: dict[str, Any] = {
         "CustomizationFile": encoded,
         "PublishWorkflows": publish_workflows,
         "OverwriteUnmanagedCustomizations": overwrite_unmanaged_customizations,
         "ImportJobId": _new_guid(),
     }
-    result = backend.post("ImportSolution", json_body=body) or {}
+    result = as_dict(backend.post("ImportSolution", json_body=body))
     return result
 
 
-def publish_all(backend: D365Backend) -> dict:
+def publish_all(backend: D365Backend) -> dict[str, Any]:
     """Call PublishAllXml — publishes all unpublished customizations.
 
     Action returns 204 No Content on success, so we synthesize a confirmation dict.
     """
-    result = backend.post("PublishAllXml")
-    if isinstance(result, dict) and result:
+    result = as_dict(backend.post("PublishAllXml"))
+    if result:
         return result
     return {"published": True, "action": "PublishAllXml"}
 
 
-def publish_xml(backend: D365Backend, parameter_xml: str) -> dict:
+def publish_xml(backend: D365Backend, parameter_xml: str) -> dict[str, Any]:
     """Call PublishXml with a Publish Request Schema XML payload.
 
     Example parameter_xml:
@@ -125,20 +126,20 @@ def publish_xml(backend: D365Backend, parameter_xml: str) -> dict:
     """
     if not parameter_xml or "<" not in parameter_xml:
         raise D365Error("parameter_xml must be a Publish Request XML document.")
-    result = backend.post(
+    result = as_dict(backend.post(
         "PublishXml",
         json_body={"ParameterXml": parameter_xml},
-    )
-    if isinstance(result, dict) and result:
+    ))
+    if result:
         return result
     return {"published": True, "action": "PublishXml"}
 
 
-def service_document(backend: D365Backend) -> dict:
+def service_document(backend: D365Backend) -> dict[str, Any]:
     """GET the root service document — lists all entity sets exposed by the server."""
-    return backend.get("") or {}
+    return as_dict(backend.get(""))
 
 
-def _new_guid() -> str:
+def _new_guid() -> str:  # pyright: ignore[empty-body]
     import uuid
     return str(uuid.uuid4())
