@@ -52,12 +52,31 @@ def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:
         if headers is not None:
             if not isinstance(headers, dict):
                 raise D365Error(f"{p} op #{i}: headers must be an object")
-            validated["headers"] = cast(dict[str, Any], headers)
+            headers_obj = cast(dict[str, Any], headers)
+            for hk, hv in headers_obj.items():
+                if not isinstance(hv, str):
+                    raise D365Error(
+                        f"{p} op #{i}: header {hk!r} value must be a string "
+                        f"(got {type(hv).__name__})"
+                    )
+            validated["headers"] = headers_obj
         cid = op.get("content_id")
         if cid is not None:
-            if not isinstance(cid, str) or not cid:
-                raise D365Error(f"{p} op #{i}: content_id must be a non-empty string")
-            validated["content_id"] = cid
+            if isinstance(cid, bool):
+                raise D365Error(f"{p} op #{i}: content_id must be a string or int, not bool")
+            if isinstance(cid, str):
+                if not cid:
+                    raise D365Error(f"{p} op #{i}: content_id must be a non-empty string")
+                validated["content_id"] = cid
+            elif isinstance(cid, int):
+                if cid <= 0:
+                    raise D365Error(f"{p} op #{i}: content_id int must be positive")
+                validated["content_id"] = cid
+            else:
+                raise D365Error(
+                    f"{p} op #{i}: content_id must be a string or int, "
+                    f"got {type(cid).__name__}"
+                )
         out.append(validated)
     return out
 

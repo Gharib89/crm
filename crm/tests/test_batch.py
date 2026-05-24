@@ -476,7 +476,7 @@ class TestBatchCLI:
         p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
         result = runner.invoke(crm_cli.cli, [
             "batch", str(p), "--continue-on-error",
-        ], env={"D365_URL": "https://x/y", "D365_USER": "u",
+        ], env={"D365_URL": "https://x/y", "D365_USERNAME": "u",
                 "D365_PASSWORD": "p", "D365_DOMAIN": "d"})
         assert result.exit_code != 0
         assert "continue-on-error" in result.output.lower() or "transaction" in result.output.lower()
