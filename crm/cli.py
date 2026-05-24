@@ -14,6 +14,7 @@ import os
 import shlex
 import shutil
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -847,6 +848,30 @@ def solution_components_cmd(ctx, unique_name):
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 
+@contextmanager
+def _no_retry_scope(ctx, enabled: bool):
+    """Scope CRM_NO_RETRY=1 to the command body and rebuild the cached backend.
+
+    Without rebuilding, D365Backend's retry config (captured at construction)
+    misses the flag. Without restoring, the env var leaks into later REPL
+    commands.
+    """
+    if not enabled:
+        yield
+        return
+    prev = os.environ.get("CRM_NO_RETRY")
+    os.environ["CRM_NO_RETRY"] = "1"
+    ctx.invalidate_backend()
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("CRM_NO_RETRY", None)
+        else:
+            os.environ["CRM_NO_RETRY"] = prev
+        ctx.invalidate_backend()
+
+
 _EXPORT_SETTING_KEYS: dict[str, str] = {
     "autonumbering":       "export_autonumbering",
     "calendar":            "export_calendar",
@@ -872,17 +897,23 @@ _EXPORT_SETTING_KEYS: dict[str, str] = {
     type=click.Choice(sorted(_EXPORT_SETTING_KEYS.keys())),
     help="Repeatable; include a named export setting in the solution payload.",
 )
+@click.option("--timeout", type=int, default=None,
+              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
+@click.option("--no-retry", is_flag=True,
+              help="Disable the 429/5xx retry loop for this invocation.")
 @pass_ctx
-def solution_export_cmd(ctx, unique_name, output, managed, export_settings):
+def solution_export_cmd(ctx, unique_name, output, managed, export_settings, timeout, no_retry):
     kwargs = {_EXPORT_SETTING_KEYS[name]: True for name in export_settings}
-    try:
-        info = sol_mod.export_solution(
-            ctx.backend(), unique_name, output, managed=managed, **kwargs,
-        )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    ctx.emit(True, data=info)
+    with _no_retry_scope(ctx, no_retry):
+        try:
+            info = sol_mod.export_solution(
+                ctx.backend(), unique_name, output, managed=managed,
+                timeout=timeout, **kwargs,
+            )
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+        ctx.emit(True, data=info)
 
 
 @solution.command("publish-all")
@@ -942,18 +973,27 @@ def cli_service_document(ctx):
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--no-publish", is_flag=True)
 @click.option("--no-overwrite", is_flag=True)
+@click.option("--timeout", type=int, default=None,
+              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
+@click.option("--no-retry", is_flag=True,
+              help="Disable the 429/5xx retry loop for this invocation.")
+@click.option("--quiet", "-q", is_flag=True,
+              help="Suppress per-tick import-progress lines on stderr.")
 @pass_ctx
-def solution_import_cmd(ctx, zip_path, no_publish, no_overwrite):
-    try:
-        info = sol_mod.import_solution(
-            ctx.backend(), zip_path,
-            publish_workflows=not no_publish,
-            overwrite_unmanaged_customizations=not no_overwrite,
-        )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    ctx.emit(True, data=info)
+def solution_import_cmd(ctx, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet):
+    with _no_retry_scope(ctx, no_retry):
+        try:
+            info = sol_mod.import_solution(
+                ctx.backend(), zip_path,
+                publish_workflows=not no_publish,
+                overwrite_unmanaged_customizations=not no_overwrite,
+                timeout=timeout,
+                quiet=quiet,
+            )
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+        ctx.emit(True, data=info)
 
 
 # ── Data (bulk) group ───────────────────────────────────────────────────

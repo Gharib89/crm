@@ -5,6 +5,7 @@
 | File              | Type | Planned tests | External deps                              |
 |-------------------|------|---------------|--------------------------------------------|
 | `test_core.py`    | Unit | 22            | None (HTTP mocked with `requests_mock`)    |
+| `test_resilience.py` | Unit | 49            | None (HTTP mocked with `requests_mock`)    |
 | `test_full_e2e.py`| E2E  | 8             | **Live D365 on-prem 9.x** + env credentials |
 
 ## Unit Test Plan (`test_core.py`)
@@ -250,3 +251,26 @@ These are wired in the test file and will run automatically once `D365_URL` /
 `D365_USERNAME` / `D365_PASSWORD` are set. In CI/release testing, set
 `CRM_FORCE_INSTALLED=1` so the subprocess tests refuse to fall back to
 `python -m` and instead require the installed `crm` command.
+
+## Manual smoke test — Spec B async solution flow
+
+Pre-req: `D365_URL` / `D365_USERNAME` / `D365_PASSWORD` set against a
+MOCE 9.1.44.15 (or any on-prem 9.x) target.
+
+1. Pick a managed solution on the server (e.g. `MySolution`).
+2. Export it:
+   ```bash
+   crm solution export MySolution -o /tmp/MySolution.zip --managed
+   ```
+   Expected: command blocks, emits `[crm] ratelimit ...` lines only if
+   the server rate-limits, exits 0 with JSON containing
+   `async_operation_id`, `export_job_id`, `duration_ms`, `bytes > 0`.
+3. Re-import it to a sibling org (or the same org after a delete):
+   ```bash
+   crm solution import /tmp/MySolution.zip
+   ```
+   Expected: command blocks, emits `[crm] import progress=…%` lines on
+   stderr, exits 0 with JSON containing `status=succeeded`,
+   `import_job_id`, `async_operation_id`, `progress=100.0`.
+4. `--quiet` suppresses the progress lines; `--timeout 60` lowers the
+   ceiling; `--no-retry` disables transient retries for the invocation.
