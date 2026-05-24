@@ -75,8 +75,8 @@ class TestGet:
             m.get(f"{profile.api_base}asyncoperations({gid})",
                   json={"asyncoperationid": gid, "statecode": 3, "statuscode": 30})
             row = async_ops.get_async_operation(backend, gid)
-            assert row["asyncoperationid"] == gid
-            assert row["statecode"] == 3
+            assert row["asyncoperationid"] == gid  # pyright: ignore[reportTypedDictNotRequiredAccess]
+            assert row["statecode"] == 3  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
 class TestCancel:
@@ -116,7 +116,7 @@ class TestListAll:
                 json={"value": [{"asyncoperationid": "2"}]},
             )
             rows = async_ops.list_all_async_operations(backend, page_size=1, max_pages=10)
-            assert [r["asyncoperationid"] for r in rows] == ["1", "2"]
+            assert [r["asyncoperationid"] for r in rows] == ["1", "2"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
     def test_max_pages_caps_pagination(self, backend, profile):
         with requests_mock.Mocker() as m:
@@ -135,6 +135,6 @@ class TestListAll:
                 },
             )
             rows = async_ops.list_all_async_operations(backend, page_size=1, max_pages=2)
-            assert [r["asyncoperationid"] for r in rows] == ["1", "2"]
+            assert [r["asyncoperationid"] for r in rows] == ["1", "2"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
             # 3rd page (skiptoken=b) is not fetched.
             assert m.call_count == 2

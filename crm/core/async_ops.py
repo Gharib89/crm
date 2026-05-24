@@ -9,6 +9,7 @@ import uuid
 from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_types import AsyncOperationRow
 
 _SELECT = (
     "asyncoperationid,name,messagename,statecode,statuscode,"
@@ -25,7 +26,7 @@ def list_async_operations(
     owner_id: str | None = None,
     top: int = 50,
     order_by: str = "createdon desc",
-) -> list[dict[str, Any]]:
+) -> list[AsyncOperationRow]:
     """List asyncoperation rows. Filters are AND-joined when multiple are set."""
     filters: list[str] = []
     if state is not None:
@@ -50,20 +51,20 @@ def list_async_operations(
     result = as_dict(backend.get("asyncoperations", params=params))
     value: Any = result.get("value", [])
     if isinstance(value, list):
-        return cast(list[dict[str, Any]], value)
+        return cast(list[AsyncOperationRow], value)
     return []
 
 
 def get_async_operation(
     backend: D365Backend,
     async_operation_id: str,
-) -> dict[str, Any]:
+) -> AsyncOperationRow:
     """GET asyncoperations(<id>) and return the row."""
     params = {"$select": _SELECT}
-    return as_dict(backend.get(
+    return cast(AsyncOperationRow, as_dict(backend.get(
         f"asyncoperations({async_operation_id})",
         params=params,
-    ))
+    )))
 
 
 def cancel_async_operation(
@@ -89,7 +90,7 @@ def list_all_async_operations(
     owner_id: str | None = None,
     page_size: int = 50,
     max_pages: int = 20,
-) -> list[dict[str, Any]]:
+) -> list[AsyncOperationRow]:
     """Paginated variant of list_async_operations: follows @odata.nextLink up to max_pages.
 
     The first call uses the same `$filter` / `$select` / `$top` shape as
@@ -97,7 +98,7 @@ def list_all_async_operations(
     @odata.nextLink. Stops when the server stops emitting nextLink or
     when max_pages is reached.
     """
-    out: list[dict[str, Any]] = []
+    out: list[AsyncOperationRow] = []
     filters: list[str] = []
     if state is not None:
         filters.append(f"statecode eq {int(state)}")
@@ -124,7 +125,7 @@ def list_all_async_operations(
     while True:
         value: Any = page.get("value", [])
         if isinstance(value, list):
-            out.extend(cast(list[dict[str, Any]], value))
+            out.extend(cast(list[AsyncOperationRow], value))
         next_link = page.get("@odata.nextLink")
         if not isinstance(next_link, str) or not next_link:
             break
