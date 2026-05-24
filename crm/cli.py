@@ -402,6 +402,11 @@ def entity_create(ctx, entity_set, data_json, data_file, no_return,
 def entity_update(ctx, entity_set, record_id, data_json, data_file, allow_create,
                   return_record, if_match, as_user, suppress_dup_detection, bypass_plugins):
     """PATCH an existing record."""
+    if allow_create and if_match:
+        raise click.UsageError(
+            "--allow-create and --if-match are mutually exclusive: --allow-create permits "
+            "upsert (no If-Match), while --if-match enforces optimistic concurrency."
+        )
     payload = _load_payload(data_json, data_file)
     try:
         result = entity_mod.update(

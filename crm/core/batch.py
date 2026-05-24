@@ -14,7 +14,10 @@ _VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
 def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:
     """Load a $batch JSON file and return a validated list of operation dicts."""
     p = Path(path)
-    text = p.read_text(encoding="utf-8")
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise D365Error(f"Could not read {p}: {exc}") from exc
     try:
         data: Any = json.loads(text)
     except ValueError as exc:

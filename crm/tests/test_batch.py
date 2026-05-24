@@ -520,3 +520,10 @@ class TestParseBatchFileRequiresBody:
         p.write_text('[{"method": "PATCH", "url": "accounts(1)"}]', encoding="utf-8")
         with pytest.raises(D365Error, match="requires a JSON object 'body'"):
             parse_batch_file(p)
+
+
+class TestParseBatchFileIOError:
+    def test_missing_file_raises_d365error(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        with pytest.raises(D365Error, match="Could not read"):
+            parse_batch_file(tmp_path / "missing.json")
