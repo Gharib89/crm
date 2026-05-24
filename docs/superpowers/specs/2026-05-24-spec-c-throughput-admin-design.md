@@ -15,7 +15,7 @@
 - `$batch` endpoint support via backend helper `D365Backend.batch(operations)` and `crm batch <file.json>` CLI. JSON-listed ops; consecutive writes auto-grouped into one changeset (transactional); GETs go as top-level operations. `--no-transaction` opts out of changeset grouping.
 - Impersonation via `MSCRMCallerID`. Per-command `--as-user <systemuserid-guid>` flag and `CRM_AS_USER` env. Applied to every write verb in the affected invocation.
 - `MSCRM.SuppressDuplicateDetection` header. Per-command `--suppress-dup-detection` and `CRM_SUPPRESS_DUP`. Applies to POST/PATCH/Upsert.
-- `MSCRM.BypassCustomPluginExecution` header. Per-command `--bypass-plugins` and `CRM_BYPASS_PLUGINS`. Caller must hold `prvBypassCustomPlugins`; server rejects otherwise.
+- `MSCRM.BypassCustomPluginExecution` header. Per-command `--bypass-plugins` and `CRM_BYPASS_PLUGINS`. Caller must hold `prvBypassCustomPluginExecution`; server rejects otherwise.
 - `asyncoperations` browse: `crm async list/get/cancel` plus `crm solution job-status/job-cancel` aliases.
 - Optimistic concurrency: `backend.patch(url, body, etag=...)` and `backend.delete(url, etag=...)` send `If-Match`. CLI: `entity update --if-match <etag>` and `entity delete --if-match <etag>`. 412 surfaces as `D365Error(status=412, code="PreconditionFailed")`.
 - Bump to **0.4.0**. All additions are additive flags/helpers.
@@ -170,7 +170,7 @@ Read-only commands (`entity get`, `query *`, `metadata *`, `connection *`, `solu
 
 ### 3.5 Error mapping
 
-- Server `403` with `prvBypassCustomPlugins` in the response body → re-raise as `D365Error(status=403, code="MissingPrivilege")` with a hint that the caller lacks `prvBypassCustomPlugins`.
+- Server `403` with `prvBypassCustomPluginExecution` in the response body → re-raise as `D365Error(status=403, code="MissingPrivilege")` with a hint that the caller lacks `prvBypassCustomPluginExecution`.
 - Server `412` on `If-Match` mismatch → `D365Error(status=412, code="PreconditionFailed")` with the row's current etag if the response body's `error.innererror` carries it.
 - All other 4xx/5xx flow through the existing `_parse_response` path unchanged.
 
@@ -394,7 +394,7 @@ Pure-Python, no live server.
 - GUID validation rejects garbage `caller_id`.
 - `etag` rejects empty string; rejects GET/POST; accepts `"*"` and weak-etag formats.
 - 412 maps to `D365Error(status=412, code="PreconditionFailed")`.
-- 403/`prvBypassCustomPlugins` maps to `D365Error(status=403, code="MissingPrivilege")`.
+- 403/`prvBypassCustomPluginExecution` maps to `D365Error(status=403, code="MissingPrivilege")`.
 
 ### 7.2 Unit tests — `crm/tests/test_batch.py` (new)
 

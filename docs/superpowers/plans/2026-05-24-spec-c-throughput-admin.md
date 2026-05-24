@@ -605,7 +605,7 @@ git commit -m "feat(backend): etag kwarg sends If-Match on PATCH/DELETE; rejects
 
 ---
 
-### Task 6: 412 + 403/`prvBypassCustomPlugins` error mapping
+### Task 6: 412 + 403/`prvBypassCustomPluginExecution` error mapping
 
 **Files:**
 - Modify: `crm/utils/d365_backend.py`
@@ -1800,7 +1800,7 @@ def _admin_header_options(f):
     """Stack `--as-user`, `--suppress-dup-detection`, `--bypass-plugins` flags on a command."""
     f = click.option(
         "--bypass-plugins", is_flag=True, default=False,
-        help="Send MSCRM.BypassCustomPluginExecution: true (requires prvBypassCustomPlugins).",
+        help="Send MSCRM.BypassCustomPluginExecution: true (requires prvBypassCustomPluginExecution).",
     )(f)
     f = click.option(
         "--suppress-dup-detection", is_flag=True, default=False,
