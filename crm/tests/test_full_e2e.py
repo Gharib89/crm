@@ -194,3 +194,43 @@ class TestCLISubprocess:
             self._run([
                 "--json", "entity", "delete", "contacts", contact_id, "--yes",
             ], check=False)
+
+
+# ── E2E Tests for Spec A ────────────────────────────────────────────────
+
+
+@pytest.mark.skipif(not _have_live_env(), reason="Live env required")
+class TestE2ESpecA:
+    def test_e2e_create_custom_entity_reads_back_set_name(self, backend):
+        """§3.3: create a unique custom entity, assert returned entity_set_name resolves via metadata.list_entities."""
+        from crm.core import metadata as meta_mod
+        import uuid
+        suffix = uuid.uuid4().hex[:8]
+        schema = f"new_SpecAReadback{suffix}"
+        try:
+            info = meta_mod.create_entity(
+                backend,
+                schema_name=schema,
+                display_name=f"SpecA Readback {suffix}",
+            )
+            assert info["created"] is True
+            assert info["entity_set_name"] is not None
+            entities = meta_mod.list_entities(backend, custom_only=True)
+            logical_names = {e.get("LogicalName") for e in entities}
+            assert schema.lower() in logical_names
+        finally:
+            # Best-effort cleanup; ignore failure (entity stays for manual cleanup).
+            try:
+                backend.delete(f"EntityDefinitions(LogicalName='{schema.lower()}')")
+            except Exception:
+                pass
+
+    def test_e2e_solution_export_with_customization_flag(self, backend, tmp_path):
+        """§3.6: --export-setting customizations yields a non-empty zip."""
+        from crm.core import solution as sol_mod
+        out = tmp_path / "default.zip"
+        sol_mod.export_solution(
+            backend, "Default", out, export_customizations=True,
+        )
+        assert out.exists()
+        assert out.stat().st_size > 1000
