@@ -832,14 +832,38 @@ def solution_components_cmd(ctx, unique_name):
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 
+_EXPORT_SETTING_KEYS: dict[str, str] = {
+    "autonumbering":       "export_autonumbering",
+    "calendar":            "export_calendar",
+    "customizations":      "export_customizations",
+    "email-tracking":      "export_email_tracking",
+    "general":             "export_general",
+    "isv-config":          "export_isv_config",
+    "marketing":           "export_marketing",
+    "outlook-sync":        "export_outlook_sync",
+    "relationship-roles":  "export_relationship_roles",
+    "sales":               "export_sales",
+}
+
+
 @solution.command("export")
 @click.argument("unique_name")
 @click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))
 @click.option("--managed", is_flag=True)
+@click.option(
+    "--export-setting",
+    "export_settings",
+    multiple=True,
+    type=click.Choice(sorted(_EXPORT_SETTING_KEYS.keys())),
+    help="Repeatable; include a named export setting in the solution payload.",
+)
 @pass_ctx
-def solution_export_cmd(ctx, unique_name, output, managed):
+def solution_export_cmd(ctx, unique_name, output, managed, export_settings):
+    kwargs = {_EXPORT_SETTING_KEYS[name]: True for name in export_settings}
     try:
-        info = sol_mod.export_solution(ctx.backend(), unique_name, output, managed=managed)
+        info = sol_mod.export_solution(
+            ctx.backend(), unique_name, output, managed=managed, **kwargs,
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

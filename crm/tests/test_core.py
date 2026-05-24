@@ -715,6 +715,32 @@ class TestReplBackendCache:
         assert calls["n"] == 2
 
 
+class TestSolutionExportFlags:
+    def test_export_solution_passes_flags_to_body(self, backend, tmp_path):
+        from crm.core import solution as sol_mod_local
+        import base64
+        with requests_mock.Mocker() as m:
+            payload = base64.b64encode(b"FAKE-ZIP-CONTENT").decode("ascii")
+            m.post(
+                backend.url_for("ExportSolution"),
+                json={"ExportSolutionFile": payload},
+            )
+            out = tmp_path / "s.zip"
+            sol_mod_local.export_solution(
+                backend, "MySol", out,
+                export_customizations=True,
+                export_general=True,
+            )
+        body = json.loads(m.request_history[0].body)
+        assert body["SolutionName"] == "MySol"
+        assert body["ExportCustomizationSettings"] is True
+        assert body["ExportGeneralSettings"] is True
+        # Other flags default to False
+        assert body["ExportCalendarSettings"] is False
+        assert body["ExportSales"] is False
+        assert body["ExportAutoNumberingSettings"] is False
+
+
 class TestErrorEnvelope:
     def test_error_envelope_null_when_status_missing(self, capsys):
         from crm.cli import CLIContext
