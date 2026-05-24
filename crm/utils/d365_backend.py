@@ -328,6 +328,10 @@ class D365Backend:
                 raise D365Error(
                     f"batch op #{i}: body not allowed on {m_upper}"
                 )
+            if m_upper in ("POST", "PATCH") and op.get("body") is None:
+                raise D365Error(
+                    f"batch op #{i}: body required on {m_upper}"
+                )
             validated.append({**op, "method": m_upper})
 
         if self.dry_run:

@@ -255,6 +255,14 @@ class TestBatchMethod:
         with pytest.raises(D365Error, match="body"):
             backend.batch([{"method": "DELETE", "url": "accounts(x)", "body": {"x": 1}}])
 
+    def test_batch_rejects_missing_body_on_post(self, backend):
+        with pytest.raises(D365Error, match="body required"):
+            backend.batch([{"method": "POST", "url": "accounts"}])
+
+    def test_batch_rejects_missing_body_on_patch(self, backend):
+        with pytest.raises(D365Error, match="body required"):
+            backend.batch([{"method": "PATCH", "url": "accounts(x)"}])
+
     def test_batch_dry_run_returns_preview_without_http(self, profile, fixed_boundaries):
         b = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
