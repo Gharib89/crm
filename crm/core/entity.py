@@ -66,8 +66,8 @@ def create(
     *,
     return_record: bool = True,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """POST a new record.
 
@@ -119,8 +119,8 @@ def update(
     return_record: bool = False,
     if_match: str | None = None,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """PATCH an existing record. By default prevents accidental upsert via If-Match: *."""
     headers: dict[str, str] = {}
@@ -153,8 +153,8 @@ def upsert(
     payload: dict[str, Any],
     *,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """PATCH that creates if missing (no If-Match header)."""
     result = backend.patch(
@@ -177,8 +177,8 @@ def delete(
     *,
     if_match: str | None = None,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """DELETE a record."""
     result = backend.delete(
@@ -203,8 +203,8 @@ def associate(
     related_id: str,
     *,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """POST to a collection-valued navigation property to associate two records.
 
@@ -235,8 +235,8 @@ def disassociate(
     related_set: str | None = None,
     related_id: str | None = None,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """DELETE a relationship.
 
@@ -271,8 +271,8 @@ def set_lookup(
     related_id: str,
     *,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Set or change a single-valued lookup by `@odata.bind` PATCH.
 
@@ -296,8 +296,8 @@ def clear_lookup(
     navigation_property: str,
     *,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Clear a single-valued lookup via DELETE /<set>(<id>)/<nav>/$ref."""
     target_path = _build_record_path(entity_set, record_id)

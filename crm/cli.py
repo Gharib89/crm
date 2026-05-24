@@ -168,11 +168,18 @@ def _admin_header_options(f):
 
 def _admin_kwargs(as_user: str | None, suppress_dup_detection: bool,
                   bypass_plugins: bool) -> dict[str, Any]:
-    """Resolve admin-header CLI flags into backend kwargs."""
+    """Resolve admin-header CLI flags into backend kwargs.
+
+    `is_flag` defaults to False (flag absent). To preserve the backend's
+    tri-state semantics (None = use env default like CRM_SUPPRESS_DUP /
+    CRM_BYPASS_PLUGINS), we forward True only when the flag was actually
+    set on the command line; otherwise None lets the backend env default
+    take effect.
+    """
     return {
         "caller_id": as_user,
-        "suppress_duplicate_detection": suppress_dup_detection,
-        "bypass_custom_plugin_execution": bypass_plugins,
+        "suppress_duplicate_detection": True if suppress_dup_detection else None,
+        "bypass_custom_plugin_execution": True if bypass_plugins else None,
     }
 
 
@@ -1276,14 +1283,15 @@ def async_list(ctx, state, message_name, owner_id, top, fetch_all, max_pages):
     try:
         state_int = _resolve_async_state(state)
         backend = ctx.backend()
-        rows = async_ops_mod.list_async_operations(
-            backend, state=state_int, message_name=message_name,
-            owner_id=owner_id, top=top,
-        )
         if fetch_all:
             rows = async_ops_mod.list_all_async_operations(
                 backend, state=state_int, message_name=message_name,
                 owner_id=owner_id, page_size=top, max_pages=max_pages,
+            )
+        else:
+            rows = async_ops_mod.list_async_operations(
+                backend, state=state_int, message_name=message_name,
+                owner_id=owner_id, top=top,
             )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)

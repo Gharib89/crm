@@ -68,8 +68,8 @@ def set_workflow_state(
     *,
     activate: bool,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Activate or deactivate a workflow via PATCH on statecode/statuscode."""
     if not workflow_id:
@@ -98,8 +98,8 @@ def execute_workflow(
     target_record_id: str,
     *,
     caller_id: str | None = None,
-    suppress_duplicate_detection: bool = False,
-    bypass_custom_plugin_execution: bool = False,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Trigger an on-demand workflow against a target record.
 
