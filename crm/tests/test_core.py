@@ -909,6 +909,43 @@ class TestExportSolutionAsync:
         assert info["_dry_run"] is True
         assert info["action"] == "ExportSolutionAsync"
 
+    def test_export_settings_flags_serialize_into_request_body(
+        self, backend, tmp_path, monkeypatch
+    ):
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        encoded = "UEsBAh4D"
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ExportSolutionAsync"), json={
+                "AsyncOperationId": self.OP_ID,
+                "ExportJobId": self.EXPORT_JOB_ID,
+            })
+            m.get(backend.url_for(f"asyncoperations({self.OP_ID})"), json={
+                "statecode": 3, "statuscode": 30,
+            })
+            m.post(backend.url_for("DownloadSolutionExportData"), json={
+                "ExportSolutionFile": encoded,
+            })
+            from crm.core import solution as sol_mod
+            sol_mod.export_solution(
+                backend, "MySol", tmp_path / "out.zip",
+                managed=True,
+                export_customizations=True,
+                export_general=True,
+            )
+
+        async_post = next(
+            r for r in m.request_history if r.url.endswith("ExportSolutionAsync")
+        )
+        body = json.loads(async_post.body)
+        assert body["SolutionName"] == "MySol"
+        assert body["Managed"] is True
+        assert body["ExportCustomizationSettings"] is True
+        assert body["ExportGeneralSettings"] is True
+        assert body["ExportCalendarSettings"] is False
+        assert body["ExportSales"] is False
+
 
 class TestImportSolutionAsync:
     OP_ID = "55555555-5555-5555-5555-555555555555"

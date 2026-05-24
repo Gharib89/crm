@@ -181,8 +181,8 @@ def import_solution(
         backend.poll_async_operation(
             async_op_id,
             timeout=timeout,
-            import_job_id=import_job_id,
-            on_progress=_on_progress,
+            import_job_id=None if quiet else import_job_id,
+            on_progress=None if quiet else _on_progress,
         )
     except D365Error as exc:
         raise D365Error(
