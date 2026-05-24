@@ -248,6 +248,106 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
     raise D365Error(message, status=resp.status_code, code=code, response_body=body)
 
 
+def _compute_delay(
+    attempt: int,
+    profile: "ConnectionProfile",
+    *,
+    retry_after: float | None,
+) -> float:
+    """Compute the sleep duration before the next retry attempt."""
+    import random
+    if retry_after is not None:
+        return min(retry_after, profile.retry_max_delay)
+    base = min(profile.retry_base_delay * (2 ** attempt), profile.retry_max_delay)
+    if profile.retry_jitter:
+        return random.uniform(0.0, base)
+    return base
+
+
+def _is_response_retryable(resp: "requests.Response", method: str) -> bool:
+    """Return True if the response status warrants a retry for this method."""
+    status = resp.status_code
+    if status == 429:
+        return True
+    method_upper = method.upper()
+    if status == 503 and method_upper == "POST":
+        return True
+    if status in (502, 503, 504) and method_upper in ("GET", "PUT", "PATCH", "DELETE"):
+        return True
+    return False
+
+
+_RETRYABLE_TRANSPORT_TYPES = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+)
+
+
+def _is_transport_retryable(exc: BaseException) -> bool:
+    """Return True if the transport exception is worth retrying."""
+    if isinstance(exc, requests.exceptions.SSLError):
+        return False
+    return isinstance(exc, _RETRYABLE_TRANSPORT_TYPES)
+
+
+import os as _os
+import sys as _sys
+
+
+_RATE_LIMIT_HEADER_MAP = (
+    ("x-ms-ratelimit-time-remaining-xrm-requests", "time-remaining"),
+    ("x-ms-ratelimit-burst-remaining-xrm-requests", "burst-remaining"),
+    ("x-ms-ratelimit-limit-xrm-requests", "limit"),
+    ("Retry-After", "retry-after"),
+)
+
+
+def _log_rate_limit_headers(resp: requests.Response, *, on_429: bool) -> None:
+    """Emit one stderr line with x-ms-ratelimit-* + Retry-After values present."""
+    if not on_429 and _os.environ.get("CRM_VERBOSE") != "1":
+        return
+    parts: list[str] = []
+    for header_name, short_name in _RATE_LIMIT_HEADER_MAP:
+        val = resp.headers.get(header_name)
+        if val is not None and val != "":
+            parts.append(f"{short_name}={val}")
+    if not parts:
+        return
+    _sys.stderr.write(f"[crm] ratelimit {' '.join(parts)}\n")
+
+
+def _parse_retry_after(header: str | None) -> float | None:
+    """Parse an HTTP Retry-After header value.
+
+    Accepts integer/float seconds or an HTTP-date. Returns float seconds or
+    None if the header is missing or unparseable. Negative values clamp to 0.
+    """
+    if not header:
+        return None
+    raw = header.strip()
+    if not raw:
+        return None
+    # Try numeric seconds first.
+    try:
+        secs = float(raw)
+        return max(0.0, secs)
+    except ValueError:
+        pass
+    # Fall back to HTTP-date.
+    try:
+        from email.utils import parsedate_to_datetime
+        import datetime as _dt
+        dt = parsedate_to_datetime(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dt.timezone.utc)
+        now = _dt.datetime.now(_dt.timezone.utc)
+        delta = (dt - now).total_seconds()
+        return max(0.0, delta)
+    except (TypeError, ValueError):
+        return None
+
+
 def as_dict(result: dict[str, Any] | str | None) -> dict[str, Any]:
     """Narrow a backend response to a dict (treat str/None as empty).
 
