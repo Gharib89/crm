@@ -70,7 +70,7 @@ def session_path(name: str = "default") -> Path:
     return _state_root() / "sessions" / f"{name}.json"
 
 
-def load_session(name: str = "default") -> dict:
+def load_session(name: str = "default") -> dict[str, Any]:
     p = session_path(name)
     if not p.is_file():
         return {
@@ -84,14 +84,14 @@ def load_session(name: str = "default") -> dict:
         return json.load(f)
 
 
-def save_session(state: dict, name: str = "default") -> Path:
+def save_session(state: dict[str, Any], name: str = "default") -> Path:
     state.setdefault("name", name)
     p = session_path(name)
     _atomic_write_json(p, state)
     return p
 
 
-def append_history(state: dict, command: str, max_len: int = 500) -> None:
+def append_history(state: dict[str, Any], command: str, max_len: int = 500) -> None:
     history = state.setdefault("history", [])
     history.append(command)
     if len(history) > max_len:
