@@ -49,15 +49,7 @@ def profile() -> ConnectionProfile:
 @pytest.fixture
 def backend(profile, monkeypatch):
     # Disable any inherited env vars so the profile drives behavior.
-    for var in (
-        "CRM_RETRY_MAX",
-        "CRM_RETRY_BASE_DELAY",
-        "CRM_RETRY_MAX_DELAY",
-        "CRM_RETRY_JITTER",
-        "CRM_ASYNC_TIMEOUT",
-        "CRM_NO_RETRY",
-        "CRM_VERBOSE",
-    ):
+    for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_VERBOSE"):
         monkeypatch.delenv(var, raising=False)
     return D365Backend(profile, password="pw", dry_run=False)
 

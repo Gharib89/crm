@@ -219,6 +219,7 @@ class D365Backend:
             delay = _compute_delay(attempt, self.profile, retry_after=retry_after)
             _log_retry(method, url, attempt, delay,
                        effective_max=max_retries, reason=f"HTTP {resp.status_code}")
+            resp.close()
             time.sleep(delay)
             attempt += 1
 
