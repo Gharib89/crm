@@ -287,6 +287,10 @@ class D365Backend:
         Raises:
             D365Error on operation failure (statuscode != 30) or timeout.
         """
+        if timeout is not None and timeout < 0:
+            raise D365Error(
+                f"poll_async_operation timeout must be >= 0, got {timeout!r}"
+            )
         if self.dry_run:
             return {
                 "_dry_run": True,

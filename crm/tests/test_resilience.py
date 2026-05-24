@@ -478,6 +478,12 @@ class TestPollAsyncOperation:
             backend.poll_async_operation(self.OP_ID)
         # Pass if we get here without an unmatched-request exception.
 
+    def test_negative_timeout_override_raises(self, backend):
+        # A negative per-call timeout would make the deadline already-expired
+        # and produce a confusing "within -Ns" error after a wasted GET.
+        with pytest.raises(D365Error, match="timeout"):
+            backend.poll_async_operation(self.OP_ID, timeout=-5)
+
     def test_dry_run_short_circuits(self, profile, monkeypatch):
         # Dry-run must not poll — the preview dict from request() has no
         # statecode, which would hang until async_timeout.
