@@ -51,6 +51,7 @@ class CLIContext:
         self.password: str | None = None
         self.session_name: str = "default"
         self._backend: D365Backend | None = None
+        self._backend_key: tuple[str | None, str | None, bool] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
 
     def emit(self, ok: bool, data: Any = None, *, error: str | None = None,
@@ -96,7 +97,8 @@ class CLIContext:
                 self.skin.status(k, str(v))
 
     def backend(self) -> D365Backend:
-        if self._backend is None:
+        key = (self.profile_name, self.password, self.dry_run)
+        if self._backend is None or self._backend_key != key:
             resolved = conn_mod.resolve_credentials(
                 profile_name=self.profile_name,
                 password_override=self.password,
@@ -104,7 +106,19 @@ class CLIContext:
             self._backend = D365Backend(
                 resolved.profile, resolved.password, dry_run=self.dry_run
             )
+            self._backend_key = key
         return self._backend
+
+    def invalidate_backend(self) -> None:
+        """Drop the cached D365Backend so the next backend() call rebuilds it.
+
+        Called when the profile changes (`connection connect`/`disconnect`) so
+        the REPL stops reusing a backend wired up to a stale profile.
+        Also triggers automatically if `profile_name`/`password`/`dry_run` change
+        between calls (e.g., root opts re-supplied per REPL line).
+        """
+        self._backend = None
+        self._backend_key = None
 
 
 pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
@@ -127,8 +141,8 @@ def _short_repr(v: Any, limit: int = 80) -> str:
 
 def _handle_d365_error(ctx: CLIContext, exc: D365Error) -> None:
     ctx.emit(False, error=str(exc), meta={
-        "status": exc.status or "n/a",
-        "code": exc.code or "n/a",
+        "status": exc.status,
+        "code": exc.code,
     })
 
 
@@ -149,8 +163,13 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     cli_ctx = ctx.ensure_object(CLIContext)
     cli_ctx.json_mode = json_mode
     cli_ctx.dry_run = dry_run
-    cli_ctx.profile_name = profile_name
-    cli_ctx.password = password
+    # Sticky options: in the REPL the same CLIContext is reused across lines, so only
+    # overwrite when the user actually supplied the flag — otherwise prior values
+    # (e.g., set by `connection connect`) would be wiped on the next bare command.
+    if profile_name is not None:
+        cli_ctx.profile_name = profile_name
+    if password is not None:
+        cli_ctx.password = password
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:
@@ -198,6 +217,7 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = profile_name
     session_mod.save_session(state, ctx.session_name)
+    ctx.invalidate_backend()
     ctx.emit(True, data=info, meta={"profile": profile_name})
 
 
@@ -267,6 +287,11 @@ def connection_disconnect(ctx: CLIContext):
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = None
     session_mod.save_session(state, ctx.session_name)
+    # Also clear in-memory state — sticky-options means these would otherwise
+    # persist across REPL lines and defeat the disconnect.
+    ctx.profile_name = None
+    ctx.password = None
+    ctx.invalidate_backend()
     ctx.emit(True, data={"disconnected": True})
 
 
@@ -822,14 +847,38 @@ def solution_components_cmd(ctx, unique_name):
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 
+_EXPORT_SETTING_KEYS: dict[str, str] = {
+    "autonumbering":       "export_autonumbering",
+    "calendar":            "export_calendar",
+    "customizations":      "export_customizations",
+    "email-tracking":      "export_email_tracking",
+    "general":             "export_general",
+    "isv-config":          "export_isv_config",
+    "marketing":           "export_marketing",
+    "outlook-sync":        "export_outlook_sync",
+    "relationship-roles":  "export_relationship_roles",
+    "sales":               "export_sales",
+}
+
+
 @solution.command("export")
 @click.argument("unique_name")
 @click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))
 @click.option("--managed", is_flag=True)
+@click.option(
+    "--export-setting",
+    "export_settings",
+    multiple=True,
+    type=click.Choice(sorted(_EXPORT_SETTING_KEYS.keys())),
+    help="Repeatable; include a named export setting in the solution payload.",
+)
 @pass_ctx
-def solution_export_cmd(ctx, unique_name, output, managed):
+def solution_export_cmd(ctx, unique_name, output, managed, export_settings):
+    kwargs = {_EXPORT_SETTING_KEYS[name]: True for name in export_settings}
     try:
-        info = sol_mod.export_solution(ctx.backend(), unique_name, output, managed=managed)
+        info = sol_mod.export_solution(
+            ctx.backend(), unique_name, output, managed=managed, **kwargs,
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -1274,7 +1323,7 @@ def repl(ctx: CLIContext):
             ctx.skin.error(f"Parse error: {exc}")
             continue
         try:
-            cli.main(args=argv, standalone_mode=False, prog_name="crm")
+            cli.main(args=argv, obj=ctx, standalone_mode=False, prog_name="crm")
         except SystemExit:
             pass
         except click.ClickException as exc:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 import requests_mock
@@ -429,6 +430,10 @@ class TestCreateEntity:
                 headers={"OData-EntityId":
                          backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")},
             )
+            m.get(
+                backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)"),
+                json={"LogicalName": "new_project", "EntitySetName": "new_projects"},
+            )
             info = meta_mod_local.create_entity(
                 backend,
                 schema_name="new_Project",
@@ -466,6 +471,68 @@ class TestCreateEntity:
             meta_mod_local.create_entity(
                 backend, schema_name="Project", display_name="Project",
             )
+
+
+class TestCreateEntityReadback:
+    _MD_ID = "11111111-1111-1111-1111-111111111111"
+
+    def test_create_entity_returns_server_entity_set_name(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            md_url = backend.url_for(f"EntityDefinitions({self._MD_ID})")
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": md_url},
+            )
+            m.get(
+                md_url,
+                json={"LogicalName": "new_city", "EntitySetName": "new_cities"},
+            )
+            info = meta_mod_local.create_entity(
+                backend, schema_name="new_City", display_name="City",
+            )
+        assert info["created"] is True
+        assert info["entity_set_name"] == "new_cities"
+        assert info["metadata_id_url"] == md_url
+
+    def test_create_entity_partial_when_readback_fails(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            md_url = backend.url_for(f"EntityDefinitions({self._MD_ID})")
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": md_url},
+            )
+            m.get(
+                md_url,
+                status_code=500,
+                json={"error": {"code": "0x...", "message": "boom"}},
+            )
+            info = meta_mod_local.create_entity(
+                backend, schema_name="new_City", display_name="City",
+            )
+        assert info["created"] is True
+        assert info["entity_set_name"] is None
+        assert "entity_set_lookup_error" in info
+        assert info["metadata_id_url"] == md_url
+
+    def test_create_entity_partial_when_odata_entityid_header_missing(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                # No OData-EntityId header set
+            )
+            info = meta_mod_local.create_entity(
+                backend, schema_name="new_City", display_name="City",
+            )
+        assert info["created"] is True
+        assert info["entity_set_name"] is None
+        assert info["metadata_id_url"] is None
+        assert "entity_set_lookup_error" in info
 
 
 class TestPublish:
@@ -662,3 +729,148 @@ class TestCountEntitySet:
         assert len(m.request_history) == 2, "fallback must issue two requests in order"
         assert m.request_history[0].url.endswith("/$count")
         assert "$count=true" in m.request_history[1].url or "%24count=true" in m.request_history[1].url
+
+
+# ── cli.py ──────────────────────────────────────────────────────────────
+
+
+class TestReplBackendCache:
+    def test_repl_reuses_backend_across_commands(self, monkeypatch, profile):
+        from crm.cli import CLIContext
+        from crm.utils import d365_backend as backend_mod
+        from crm.core.connection import ResolvedCredentials
+        ctx = CLIContext()
+        ctx.password = "pw"
+        # Stub credential resolution to avoid env/profile loading.
+        monkeypatch.setattr(
+            "crm.cli.conn_mod.resolve_credentials",
+            lambda profile_name=None, password_override=None:
+                ResolvedCredentials(profile=profile, password="pw"),
+        )
+        # Count D365Backend instantiations.
+        calls = {"n": 0}
+        real_init = backend_mod.D365Backend.__init__
+        def counting_init(self, *a, **kw):
+            calls["n"] += 1
+            real_init(self, *a, **kw)
+        monkeypatch.setattr(backend_mod.D365Backend, "__init__", counting_init)
+        b1 = ctx.backend()
+        b2 = ctx.backend()
+        assert b1 is b2
+        assert calls["n"] == 1
+
+    def test_repl_backend_invalidated_on_connect(self, monkeypatch, profile):
+        from crm.cli import CLIContext
+        from crm.utils import d365_backend as backend_mod
+        from crm.core.connection import ResolvedCredentials
+        ctx = CLIContext()
+        ctx.password = "pw"
+        monkeypatch.setattr(
+            "crm.cli.conn_mod.resolve_credentials",
+            lambda profile_name=None, password_override=None:
+                ResolvedCredentials(profile=profile, password="pw"),
+        )
+        calls = {"n": 0}
+        real_init = backend_mod.D365Backend.__init__
+        def counting_init(self, *a, **kw):
+            calls["n"] += 1
+            real_init(self, *a, **kw)
+        monkeypatch.setattr(backend_mod.D365Backend, "__init__", counting_init)
+        ctx.backend()
+        ctx.invalidate_backend()
+        ctx.backend()
+        assert calls["n"] == 2
+
+    def test_repl_root_callback_preserves_profile_and_password(self, monkeypatch, isolated_home):
+        """Root cli() must NOT wipe profile_name/password when flags are omitted on a REPL line."""
+        from click.testing import CliRunner
+        from crm import cli as cli_mod
+        ctx = cli_mod.CLIContext()
+        ctx.profile_name = "myprofile"
+        ctx.password = "pw"
+        # Stub the eventual backend resolution path so we never hit real env.
+        monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
+        # Invoke `connection status` with no --profile/--password — mimics second
+        # REPL line after `connection connect` already populated ctx.
+        result = CliRunner().invoke(cli_mod.cli, ["connection", "status"], obj=ctx)
+        assert result.exit_code == 0, result.output
+        assert ctx.profile_name == "myprofile"
+        assert ctx.password == "pw"
+
+
+class TestSolutionExportFlags:
+    def test_export_solution_passes_flags_to_body(self, backend, tmp_path):
+        from crm.core import solution as sol_mod_local
+        import base64
+        with requests_mock.Mocker() as m:
+            payload = base64.b64encode(b"FAKE-ZIP-CONTENT").decode("ascii")
+            m.post(
+                backend.url_for("ExportSolution"),
+                json={"ExportSolutionFile": payload},
+            )
+            out = tmp_path / "s.zip"
+            sol_mod_local.export_solution(
+                backend, "MySol", out,
+                export_customizations=True,
+                export_general=True,
+            )
+        body = json.loads(m.request_history[0].body)
+        assert body["SolutionName"] == "MySol"
+        assert body["ExportCustomizationSettings"] is True
+        assert body["ExportGeneralSettings"] is True
+        # Other flags default to False
+        assert body["ExportCalendarSettings"] is False
+        assert body["ExportSales"] is False
+        assert body["ExportAutoNumberingSettings"] is False
+
+    def test_cli_export_setting_flag_maps_to_kwargs(self, monkeypatch, tmp_path):
+        """CLI plumbing: --export-setting <name> → kwargs passed to export_solution."""
+        from click.testing import CliRunner
+        from crm import cli as cli_mod
+
+        captured: dict[str, Any] = {}
+
+        def fake_export_solution(_backend, unique_name, output, **kwargs):
+            captured["unique_name"] = unique_name
+            captured["output"] = output
+            captured["kwargs"] = kwargs
+            return {"output": str(output), "bytes": 0, "managed": False, "solution": unique_name}
+
+        monkeypatch.setattr(cli_mod.sol_mod, "export_solution", fake_export_solution)
+        # Stub backend so no real connection resolution happens.
+        monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
+
+        out = tmp_path / "s.zip"
+        result = CliRunner().invoke(
+            cli_mod.cli,
+            [
+                "--json",
+                "solution", "export", "MySol",
+                "-o", str(out),
+                "--export-setting", "customizations",
+                "--export-setting", "general",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert captured["unique_name"] == "MySol"
+        assert captured["kwargs"].get("export_customizations") is True
+        assert captured["kwargs"].get("export_general") is True
+        assert "export_calendar" not in captured["kwargs"]
+        assert "export_sales" not in captured["kwargs"]
+
+
+class TestErrorEnvelope:
+    def test_error_envelope_null_when_status_missing(self, capsys):
+        from crm.cli import CLIContext
+        from crm.utils.d365_backend import D365Error
+        ctx = CLIContext()
+        ctx.json_mode = True
+        exc = D365Error("transport boom")  # no status, no code
+        # Mirror cli._handle_d365_error after the fix:
+        ctx.emit(False, error=str(exc), meta={"status": exc.status, "code": exc.code})
+        out = capsys.readouterr().out
+        envelope = json.loads(out)
+        assert envelope["ok"] is False
+        assert envelope["error"] == "transport boom"
+        assert envelope["meta"]["status"] is None
+        assert envelope["meta"]["code"] is None
