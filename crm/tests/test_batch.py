@@ -421,3 +421,47 @@ class TestBatchMethod:
         assert len(preview) == 1
         assert preview[0]["status"] == 0
         assert preview[0]["error"] is None or preview[0]["error"] == "dry-run"
+
+
+
+class TestParseBatchFile:
+    def test_parses_valid_list(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text(
+            '[{"method": "GET", "url": "accounts"}, '
+            '{"method": "POST", "url": "accounts", "body": {"name": "a"}}]',
+            encoding="utf-8",
+        )
+        ops = parse_batch_file(p)
+        assert len(ops) == 2
+        assert ops[0]["method"] == "GET"
+        assert ops[1]["body"] == {"name": "a"}
+
+    def test_rejects_non_list_root(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('{"method": "GET", "url": "x"}', encoding="utf-8")
+        with pytest.raises(D365Error, match="list"):
+            parse_batch_file(p)
+
+    def test_rejects_invalid_method(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('[{"method": "POKE", "url": "x"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="method"):
+            parse_batch_file(p)
+
+    def test_rejects_missing_url(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('[{"method": "GET"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="url"):
+            parse_batch_file(p)
+
+    def test_rejects_body_on_get(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('[{"method": "GET", "url": "x", "body": {"a": 1}}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="body"):
+            parse_batch_file(p)
