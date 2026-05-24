@@ -16,6 +16,7 @@ import random
 import sys as _sys
 import time
 import urllib.parse
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, cast
 
@@ -484,6 +485,29 @@ def _resolve_retry_max(profile: ConnectionProfile) -> int:
 def _env_truthy(name: str) -> bool:
     val = _os.environ.get(name)
     return val is not None and val.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _resolve_caller_id() -> str | None:
+    """Resolve CRM_AS_USER env into a validated GUID string or None.
+
+    Raises D365Error if the env value is present but not a valid GUID.
+    """
+    raw = _os.environ.get("CRM_AS_USER")
+    if raw is None or raw.strip() == "":
+        return None
+    value = raw.strip()
+    try:
+        uuid.UUID(value)
+    except ValueError as exc:
+        raise D365Error(
+            f"CRM_AS_USER must be a GUID; got {value!r}"
+        ) from exc
+    return value
+
+
+def _resolve_bool_env(name: str) -> bool:
+    """Resolve a boolean-style env var. Empty/unset returns False."""
+    return _env_truthy(name)
 
 
 def _parse_retry_after(header: str | None) -> float | None:
