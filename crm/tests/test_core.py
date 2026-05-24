@@ -73,8 +73,10 @@ class TestConnectionEnv:
         assert p.username == "alice"
         assert p.api_version == "v9.2"
 
-    def test_profile_from_env_missing_url(self, monkeypatch):
-        monkeypatch.delenv(conn_mod.ENV_URL, raising=False)
+    def test_profile_from_env_missing_url(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+        for k in (conn_mod.ENV_URL, "CRM_BASE_URL", "CRM_URL"):
+            monkeypatch.delenv(k, raising=False)
         with pytest.raises(D365Error, match="D365_URL"):
             conn_mod.profile_from_env()
 
@@ -85,10 +87,12 @@ class TestConnectionEnv:
         with pytest.raises(D365Error, match="ntlm"):
             conn_mod.profile_from_env()
 
-    def test_resolve_credentials_requires_password(self, monkeypatch):
+    def test_resolve_credentials_requires_password(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
         monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
         monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
-        monkeypatch.delenv(conn_mod.ENV_PASSWORD, raising=False)
+        for k in (conn_mod.ENV_PASSWORD, "CRM_PASSWORD", "CRM_PASS"):
+            monkeypatch.delenv(k, raising=False)
         with pytest.raises(D365Error, match="No password"):
             conn_mod.resolve_credentials()
 
