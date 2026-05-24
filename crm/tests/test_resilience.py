@@ -7,6 +7,7 @@ PR2 will add async-poll coverage. All HTTP is mocked; no live D365 server needed
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import pytest
 import requests
@@ -386,3 +387,180 @@ class TestResolveRetryMax:
         monkeypatch.delenv("CRM_NO_RETRY", raising=False)
         monkeypatch.setenv("CRM_RETRY_MAX", "   ")
         assert _resolve_retry_max(profile) == profile.retry_max
+
+
+# ── poll_async_operation ────────────────────────────────────────────────
+
+
+class TestPollAsyncOperation:
+    OP_ID = "11111111-1111-1111-1111-111111111111"
+    JOB_ID = "22222222-2222-2222-2222-222222222222"
+
+    def _op_url(self, backend):
+        return backend.url_for(f"asyncoperations({self.OP_ID})")
+
+    def _job_url(self, backend):
+        return backend.url_for(f"importjobs({self.JOB_ID})")
+
+    def test_completes_successfully(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), [
+                {"json": {"statecode": 0, "statuscode": 0, "message": "Ready"}},
+                {"json": {"statecode": 3, "statuscode": 30, "message": "Succeeded"}},
+            ])
+            result = backend.poll_async_operation(self.OP_ID)
+        assert result["statecode"] == 3
+        assert result["statuscode"] == 30
+
+    def test_raises_on_failure_status(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 3, "statuscode": 31,
+                "friendlymessage": "Solution import failed: missing dependency",
+            })
+            with pytest.raises(D365Error) as exc_info:
+                backend.poll_async_operation(self.OP_ID)
+        assert "missing dependency" in str(exc_info.value)
+        assert exc_info.value.status == 31
+
+    def test_raises_on_cancellation(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 3, "statuscode": 32, "message": "User cancelled",
+            })
+            with pytest.raises(D365Error) as exc_info:
+                backend.poll_async_operation(self.OP_ID)
+        assert "32" in str(exc_info.value) or "cancelled" in str(exc_info.value).lower()
+
+    def test_timeout_raises(self, backend, monkeypatch):
+        # profile.async_timeout=2; profile.async_poll_initial=0.05 → many polls
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        # Fake monotonic clock that advances 5s per call → exceeds 2s timeout fast.
+        ticks = iter([0.0, 0.1, 5.0, 10.0])
+        monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 0, "statuscode": 0, "message": "Pending",
+            })
+            with pytest.raises(D365Error, match="did not complete within"):
+                backend.poll_async_operation(self.OP_ID, timeout=2)
+
+    def test_progress_callback_invoked(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        calls: list[tuple[float, str]] = []
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), [
+                {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
+                {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
+            ])
+            m.get(self._job_url(backend), [
+                {"json": {"progress": 50.0, "solutionname": "MySol"}},
+                {"json": {"progress": 100.0, "solutionname": "MySol"}},
+            ])
+            backend.poll_async_operation(
+                self.OP_ID, import_job_id=self.JOB_ID,
+                on_progress=lambda pct, msg: calls.append((pct, msg)),
+            )
+        assert len(calls) == 2
+        assert calls[0][0] == 50.0
+        assert calls[1][0] == 100.0
+
+    def test_no_progress_callback_skips_job_fetch(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 3, "statuscode": 30, "message": "Done",
+            })
+            # No m.get for importjobs — would 404 if called.
+            backend.poll_async_operation(self.OP_ID)
+        # Pass if we get here without an unmatched-request exception.
+
+    def test_negative_timeout_override_raises(self, backend):
+        # A negative per-call timeout would make the deadline already-expired
+        # and produce a confusing "within -Ns" error after a wasted GET.
+        with pytest.raises(D365Error, match="timeout"):
+            backend.poll_async_operation(self.OP_ID, timeout=-5)
+
+    def test_dry_run_short_circuits(self, profile, monkeypatch):
+        # Dry-run must not poll — the preview dict from request() has no
+        # statecode, which would hang until async_timeout.
+        be = D365Backend(profile, password="pw", dry_run=True)
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+        result = be.poll_async_operation(self.OP_ID)
+        assert isinstance(result, dict)
+        assert result["_dry_run"] is True
+        assert result.get("async_operation_id") == self.OP_ID
+        assert slept == []
+
+
+# ── ConnectionProfile validation ────────────────────────────────────────
+
+
+class TestConnectionProfileValidation:
+    _BASE: dict[str, Any] = dict(
+        name="testp",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+    )
+
+    @pytest.mark.parametrize("field", [
+        "retry_max",
+        "retry_base_delay",
+        "retry_max_delay",
+        "async_poll_initial",
+        "async_poll_max",
+        "async_timeout",
+    ])
+    def test_negative_value_raises(self, field):
+        kwargs = {**self._BASE, field: -1}
+        with pytest.raises(D365Error, match=field):
+            ConnectionProfile(**kwargs)
+
+    def test_zero_is_allowed_for_retry_and_timeout(self):
+        # retry_max=0 (no retries) is an explicit supported value via env override.
+        # retry_base_delay/retry_max_delay/async_timeout tolerate zero too.
+        # async_poll_initial/async_poll_max must be > 0 (zero would tight-loop) —
+        # covered separately by test_async_poll_zero_raises.
+        profile = ConnectionProfile(
+            **self._BASE,
+            retry_max=0,
+            retry_base_delay=0.0,
+            retry_max_delay=0.0,
+            async_timeout=0,
+        )
+        assert profile.retry_max == 0
+
+    def test_defaults_pass_validation(self):
+        # Sanity: shipped defaults must not trip the validator.
+        profile = ConnectionProfile(**self._BASE)
+        assert profile.retry_max >= 0
+        assert profile.async_timeout >= 0
+
+    def test_from_dict_negative_raises(self):
+        bad = {**self._BASE, "async_poll_max": -2.0}
+        with pytest.raises(D365Error, match="async_poll_max"):
+            ConnectionProfile.from_dict(bad)
+
+    @pytest.mark.parametrize("field", ["async_poll_initial", "async_poll_max"])
+    def test_async_poll_zero_raises(self, field):
+        # Zero poll intervals tight-loop in poll_async_operation (sleep(0) +
+        # immediate re-request). Require > 0.
+        kwargs = {**self._BASE, field: 0.0}
+        with pytest.raises(D365Error, match=field):
+            ConnectionProfile(**kwargs)
+
+    def test_async_poll_max_below_initial_raises(self):
+        # backoff doubles interval up to async_poll_max; if max < initial the
+        # first sleep already exceeds the cap.
+        kwargs = {
+            **self._BASE,
+            "async_poll_initial": 5.0,
+            "async_poll_max": 2.0,
+        }
+        with pytest.raises(D365Error, match="async_poll_max"):
+            ConnectionProfile(**kwargs)

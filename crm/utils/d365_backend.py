@@ -17,7 +17,7 @@ import sys as _sys
 import time
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import requests
 
@@ -56,6 +56,31 @@ class ConnectionProfile:
     async_poll_initial: float = 2.0
     async_poll_max: float = 30.0
     async_timeout: int = 1800
+
+    def __post_init__(self) -> None:
+        for _field, _value in (
+            ("retry_max", self.retry_max),
+            ("retry_base_delay", self.retry_base_delay),
+            ("retry_max_delay", self.retry_max_delay),
+            ("async_timeout", self.async_timeout),
+        ):
+            if _value < 0:
+                raise D365Error(
+                    f"ConnectionProfile.{_field} must be >= 0, got {_value!r}"
+                )
+        for _field, _value in (
+            ("async_poll_initial", self.async_poll_initial),
+            ("async_poll_max", self.async_poll_max),
+        ):
+            if _value <= 0:
+                raise D365Error(
+                    f"ConnectionProfile.{_field} must be > 0, got {_value!r}"
+                )
+        if self.async_poll_max < self.async_poll_initial:
+            raise D365Error(
+                f"ConnectionProfile.async_poll_max ({self.async_poll_max}) must be "
+                f">= async_poll_initial ({self.async_poll_initial})"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -236,6 +261,80 @@ class D365Backend:
 
     def delete(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("DELETE", path, expect_json=False, **kw)
+
+    def poll_async_operation(
+        self,
+        async_operation_id: str,
+        *,
+        timeout: int | None = None,
+        import_job_id: str | None = None,
+        on_progress: Callable[[float, str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Block until the async operation completes, then return its row.
+
+        Polls asyncoperations(<async_operation_id>) at an increasing interval
+        (profile.async_poll_initial → profile.async_poll_max, doubling each tick).
+        Each poll itself benefits from the retry loop on transient errors.
+
+        If import_job_id is given and on_progress is set, also reads
+        importjobs(<id>).progress on every tick and forwards
+        (percent, asyncoperations.message) to the callback.
+
+        In dry-run mode this short-circuits and returns a preview dict instead
+        of polling — request() can only produce a preview without statecode,
+        which would otherwise hang until async_timeout.
+
+        Raises:
+            D365Error on operation failure (statuscode != 30) or timeout.
+        """
+        if timeout is not None and timeout < 0:
+            raise D365Error(
+                f"poll_async_operation timeout must be >= 0, got {timeout!r}"
+            )
+        if self.dry_run:
+            return {
+                "_dry_run": True,
+                "async_operation_id": async_operation_id,
+                "import_job_id": import_job_id,
+                "timeout": timeout if timeout is not None else self.profile.async_timeout,
+            }
+        effective_timeout = timeout if timeout is not None else self.profile.async_timeout
+        deadline = time.monotonic() + effective_timeout
+        interval = self.profile.async_poll_initial
+        while True:
+            op = cast(dict[str, Any], self.get(f"asyncoperations({async_operation_id})"))
+            state = op.get("statecode")
+            status = op.get("statuscode")
+
+            if import_job_id is not None and on_progress is not None:
+                job_row = cast(dict[str, Any], self.get(
+                    f"importjobs({import_job_id})",
+                    params={"$select": "progress,solutionname,startedon,completedon"},
+                ))
+                pct = float(job_row.get("progress") or 0.0)
+                msg = op.get("message") or ""
+                on_progress(pct, msg)
+
+            if state == 3:
+                if status == 30:
+                    return op
+                raise D365Error(
+                    f"Async operation {async_operation_id} ended with statuscode={status}: "
+                    f"{op.get('friendlymessage') or op.get('message') or '(no message)'}",
+                    status=status if isinstance(status, int) else None,
+                    response_body=op,
+                )
+
+            if time.monotonic() >= deadline:
+                raise D365Error(
+                    f"Async operation {async_operation_id} did not complete within "
+                    f"{effective_timeout}s (last statecode={state})",
+                    response_body=op,
+                )
+
+            sleep_for = min(interval, max(0.0, deadline - time.monotonic()))
+            time.sleep(sleep_for)
+            interval = min(interval * 2, self.profile.async_poll_max)
 
 
 # ── Response parsing ────────────────────────────────────────────────────
