@@ -151,8 +151,8 @@ Pragmatic (approach 2 of three considered): add full annotations + `TypedDict`s 
 ### 3.7 REPL backend reuse
 
 - **Files:** `crm/cli.py:97-106, 1239-1289`
-- **Bug:** REPL builds a fresh `D365Backend` per command line, causing a new NTLM handshake every request.
-- **Change:** REPL outer loop builds the backend once via the shared `CLIContext`; inner `cli.main(args=argv, obj=ctx, standalone_mode=False)` reuses it. Add a public `CLIContext.invalidate_backend()` method (sets the internal cache to `None`); `connection_connect` and `connection_disconnect` call it to force rebuild when profile changes. (Public method avoids pyright strict-zone complaints about external `_backend` access, though `cli.py` is in the basic zone — keeping the API clean is still worthwhile.)
+- **Root cause:** The REPL loop invokes `cli.main(args=argv, standalone_mode=False, prog_name="crm")` (`cli.py:1276`) without passing `obj=ctx`. Click's `make_pass_decorator(CLIContext, ensure=True)` therefore constructs a **fresh `CLIContext` per command**, and the first `ctx.backend()` call on that fresh context builds a brand-new `D365Backend` — triggering a fresh NTLM handshake every line.
+- **Change:** Pass the outer REPL `CLIContext` through to Click: `cli.main(args=argv, obj=ctx, standalone_mode=False, prog_name="crm")`. Click reuses the existing context; the cached `_backend` survives across commands. Add a public `CLIContext.invalidate_backend()` method (sets the internal cache to `None`); `connection_connect` and `connection_disconnect` call it to force rebuild when the profile changes. (Public method keeps the API clean even though `cli.py` is in the pyright basic zone.)
 - **Invalidation policy:** REPL lifetime; only `connection connect` / `connection disconnect` invalidate. No TTL, no auto-invalidate on auth error (locked decision).
 - **Tests:**
   - `test_repl_reuses_backend_across_commands` — spy on `D365Backend.__init__`; run two REPL commands; assert called once.
@@ -177,8 +177,11 @@ Pragmatic (approach 2 of three considered): add full annotations + `TypedDict`s 
 - **Bug:** `_parse_response` discards body when `expect_json=False`, forcing `count_entity_set` to fall back to a second `$count=true` round-trip.
 - **Change:**
   - In `_parse_response`, when 2xx and not expecting JSON, return `resp.text.strip()` if `Content-Type` starts with `text/plain` and the body is non-empty; otherwise return `None` as today.
-  - In `count_entity_set`, parse `int(result)` directly when result is a non-empty string; raise `D365Error("$count returned no body")` when result is `None` or empty. Drop the `odata_query(..., count=True)` fallback entirely.
-- **Test:** `test_count_returns_int_from_text_plain` — mock `200` + `Content-Type: text/plain` + body `"42"` → returns `int(42)` with one request issued.
+  - **Signature change:** `_parse_response` return type widens from `dict | None` to `dict | str | None`. All callers (every method on `D365Backend` and indirectly every `core/*` function) must narrow before use. Under pyright strict, this is enforced — concretely: `D365Backend.get/post/patch/delete` annotations widen to `dict | str | None`, then each `core/*` call site either asserts the expected branch or accepts the wider type. Most callers already do `result or {}` which collapses `None` and `str` to `{}` truthily — needs explicit `isinstance(result, dict)` checks where shape matters. Audit + fix is part of PR2.
+  - In `count_entity_set`, parse `int(result)` directly when result is a non-empty string. **Fallback retained:** if the `text/plain` parse returns `None` or an empty/non-numeric string (proxy stripping body, unexpected `Content-Type`, etc.), fall through to `odata_query(entity_set, top=1, count=True)` and read `@odata.count` from the response. The fallback is the current behavior; keeping it preserves resilience against edge proxies. The win from §3.9 is **one HTTP call instead of two on the happy path**, not eliminating the second call entirely.
+- **Tests:**
+  - `test_count_returns_int_from_text_plain` — mock `200` + `Content-Type: text/plain` + body `"42"` → returns `int(42)` with exactly one request issued.
+  - `test_count_falls_back_when_text_plain_empty` — mock `200` + empty body on `$count` endpoint, then mock subsequent `?$count=true` returning `@odata.count: 7` → returns `int(7)`; assert two requests issued in order.
 
 ### 3.10 Pyright setup
 
@@ -247,7 +250,8 @@ No new error paths. Existing `D365Error` flow unchanged. Two specific notes:
 | 3.7a | `test_repl_reuses_backend_across_commands` | Single backend per REPL session |
 | 3.7b | `test_repl_backend_invalidated_on_connect` | `connection connect` resets cache |
 | 3.8 | `test_dotenv_preserves_inner_quotes` | Outer pair stripped, inner intact |
-| 3.9 | `test_count_returns_int_from_text_plain` | Single request, integer return |
+| 3.9a | `test_count_returns_int_from_text_plain` | Single request, integer return |
+| 3.9b | `test_count_falls_back_when_text_plain_empty` | Fallback to `$count=true` path on empty body |
 
 ### E2E (real server) — `crm/tests/test_full_e2e.py`
 
