@@ -163,8 +163,13 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     cli_ctx = ctx.ensure_object(CLIContext)
     cli_ctx.json_mode = json_mode
     cli_ctx.dry_run = dry_run
-    cli_ctx.profile_name = profile_name
-    cli_ctx.password = password
+    # Sticky options: in the REPL the same CLIContext is reused across lines, so only
+    # overwrite when the user actually supplied the flag — otherwise prior values
+    # (e.g., set by `connection connect`) would be wiped on the next bare command.
+    if profile_name is not None:
+        cli_ctx.profile_name = profile_name
+    if password is not None:
+        cli_ctx.password = password
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:

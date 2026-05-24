@@ -781,6 +781,22 @@ class TestReplBackendCache:
         ctx.backend()
         assert calls["n"] == 2
 
+    def test_repl_root_callback_preserves_profile_and_password(self, monkeypatch):
+        """Root cli() must NOT wipe profile_name/password when flags are omitted on a REPL line."""
+        from click.testing import CliRunner
+        from crm import cli as cli_mod
+        ctx = cli_mod.CLIContext()
+        ctx.profile_name = "myprofile"
+        ctx.password = "pw"
+        # Stub the eventual backend resolution path so we never hit real env.
+        monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
+        # Invoke `connection status` with no --profile/--password — mimics second
+        # REPL line after `connection connect` already populated ctx.
+        result = CliRunner().invoke(cli_mod.cli, ["connection", "status"], obj=ctx)
+        assert result.exit_code == 0, result.output
+        assert ctx.profile_name == "myprofile"
+        assert ctx.password == "pw"
+
 
 class TestSolutionExportFlags:
     def test_export_solution_passes_flags_to_body(self, backend, tmp_path):
