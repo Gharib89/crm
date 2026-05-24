@@ -421,3 +421,109 @@ class TestBatchMethod:
         assert len(preview) == 1
         assert preview[0]["status"] == 0
         assert preview[0]["error"] is None or preview[0]["error"] == "dry-run"
+
+
+
+class TestParseBatchFile:
+    def test_parses_valid_list(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text(
+            '[{"method": "GET", "url": "accounts"}, '
+            '{"method": "POST", "url": "accounts", "body": {"name": "a"}}]',
+            encoding="utf-8",
+        )
+        ops = parse_batch_file(p)
+        assert len(ops) == 2
+        assert ops[0]["method"] == "GET"
+        assert ops[1]["body"] == {"name": "a"}
+
+    def test_rejects_non_list_root(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('{"method": "GET", "url": "x"}', encoding="utf-8")
+        with pytest.raises(D365Error, match="list"):
+            parse_batch_file(p)
+
+    def test_rejects_invalid_method(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('[{"method": "POKE", "url": "x"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="method"):
+            parse_batch_file(p)
+
+    def test_rejects_missing_url(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('[{"method": "GET"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="url"):
+            parse_batch_file(p)
+
+    def test_rejects_body_on_get(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "batch.json"
+        p.write_text('[{"method": "GET", "url": "x", "body": {"a": 1}}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="body"):
+            parse_batch_file(p)
+
+
+class TestBatchCLI:
+    def test_continue_on_error_rejected_in_transactional_mode(self, tmp_path):
+        from click.testing import CliRunner
+        from crm import cli as crm_cli
+        runner = CliRunner()
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
+        result = runner.invoke(crm_cli.cli, [
+            "batch", str(p), "--continue-on-error",
+        ], env={"D365_URL": "https://x/y", "D365_USERNAME": "u",
+                "D365_PASSWORD": "p", "D365_DOMAIN": "d"})
+        assert result.exit_code != 0
+        assert "continue-on-error" in result.output.lower() or "transaction" in result.output.lower()
+
+
+class TestRenderBatchSummary:
+    def test_empty_results(self):
+        from crm.core.batch import render_batch_summary
+        assert render_batch_summary([]) == {"total": 0, "success": 0, "failed": 0}
+
+    def test_mixed_2xx_and_failure(self):
+        from crm.core.batch import render_batch_summary
+        results = [
+            {"status": 200},
+            {"status": 204},
+            {"status": 299},
+            {"status": 400},
+            {"status": 500},
+            {"status": 0},
+        ]
+        assert render_batch_summary(results) == {"total": 6, "success": 3, "failed": 3}
+
+    def test_status_300_counts_as_failed(self):
+        from crm.core.batch import render_batch_summary
+        assert render_batch_summary([{"status": 300}]) == {
+            "total": 1, "success": 0, "failed": 1,
+        }
+
+
+class TestParseBatchFileRequiresBody:
+    def test_post_without_body_rejected(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "POST", "url": "accounts"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="requires a JSON object 'body'"):
+            parse_batch_file(p)
+
+    def test_patch_without_body_rejected(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "PATCH", "url": "accounts(1)"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="requires a JSON object 'body'"):
+            parse_batch_file(p)
+
+
+class TestParseBatchFileIOError:
+    def test_missing_file_raises_d365error(self, tmp_path):
+        from crm.core.batch import parse_batch_file
+        with pytest.raises(D365Error, match="Could not read"):
+            parse_batch_file(tmp_path / "missing.json")

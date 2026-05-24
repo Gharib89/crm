@@ -1,0 +1,97 @@
+"""$batch JSON-file loader + result rendering."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, cast
+
+from crm.utils.d365_backend import D365Error
+
+_VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
+
+
+def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:
+    """Load a $batch JSON file and return a validated list of operation dicts."""
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise D365Error(f"Could not read {p}: {exc}") from exc
+    try:
+        data: Any = json.loads(text)
+    except ValueError as exc:
+        raise D365Error(f"Could not parse {p}: {exc}") from exc
+    if not isinstance(data, list):
+        raise D365Error(f"{p}: expected a JSON list at root, got {type(data).__name__}")
+
+    raw_list = cast(list[Any], data)
+    out: list[dict[str, Any]] = []
+    for i, raw_op in enumerate(raw_list):
+        if not isinstance(raw_op, dict):
+            raise D365Error(f"{p} op #{i}: expected an object, got {type(raw_op).__name__}")
+        op = cast(dict[str, Any], raw_op)
+        method_raw = op.get("method")
+        if not isinstance(method_raw, str):
+            raise D365Error(f"{p} op #{i}: missing or invalid 'method'")
+        method = method_raw.upper()
+        if method not in _VALID_METHODS:
+            raise D365Error(
+                f"{p} op #{i}: invalid method {method_raw!r} "
+                f"(must be one of {_VALID_METHODS})"
+            )
+        url = op.get("url")
+        if not isinstance(url, str) or not url:
+            raise D365Error(f"{p} op #{i}: missing or empty 'url'")
+        body = op.get("body")
+        if method in ("GET", "DELETE") and body is not None:
+            raise D365Error(f"{p} op #{i}: body not allowed on {method}")
+        if method in ("POST", "PATCH") and not isinstance(body, dict):
+            raise D365Error(
+                f"{p} op #{i}: {method} requires a JSON object 'body' "
+                f"(got {type(body).__name__ if body is not None else 'missing'})"
+            )
+        validated: dict[str, Any] = {"method": method, "url": url}
+        if body is not None:
+            if not isinstance(body, dict):
+                raise D365Error(f"{p} op #{i}: body must be an object")
+            validated["body"] = cast(dict[str, Any], body)
+        headers = op.get("headers")
+        if headers is not None:
+            if not isinstance(headers, dict):
+                raise D365Error(f"{p} op #{i}: headers must be an object")
+            headers_obj = cast(dict[str, Any], headers)
+            for hk, hv in headers_obj.items():
+                if not isinstance(hv, str):
+                    raise D365Error(
+                        f"{p} op #{i}: header {hk!r} value must be a string "
+                        f"(got {type(hv).__name__})"
+                    )
+            validated["headers"] = headers_obj
+        cid = op.get("content_id")
+        if cid is not None:
+            if isinstance(cid, bool):
+                raise D365Error(f"{p} op #{i}: content_id must be a string or int, not bool")
+            if isinstance(cid, str):
+                if not cid:
+                    raise D365Error(f"{p} op #{i}: content_id must be a non-empty string")
+                validated["content_id"] = cid
+            elif isinstance(cid, int):
+                if cid <= 0:
+                    raise D365Error(f"{p} op #{i}: content_id int must be positive")
+                validated["content_id"] = cid
+            else:
+                raise D365Error(
+                    f"{p} op #{i}: content_id must be a string or int, "
+                    f"got {type(cid).__name__}"
+                )
+        out.append(validated)
+    return out
+
+
+def render_batch_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate counts for human-readable CLI output."""
+    total = len(results)
+    success = sum(1 for r in results if 200 <= int(r.get("status", 0) or 0) < 300)
+    failed = total - success
+    return {"total": total, "success": success, "failed": failed}

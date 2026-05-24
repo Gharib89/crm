@@ -65,6 +65,9 @@ def create(
     payload: dict[str, Any],
     *,
     return_record: bool = True,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """POST a new record.
 
@@ -76,7 +79,14 @@ def create(
     if return_record:
         headers["Prefer"] = "return=representation"
 
-    result = backend.post(entity_set, json_body=payload, extra_headers=headers)
+    result = backend.post(
+        entity_set,
+        json_body=payload,
+        extra_headers=headers or None,
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    )
     result_dict = as_dict(result)
     if not result_dict:
         return {}
@@ -107,18 +117,28 @@ def update(
     *,
     prevent_create: bool = True,
     return_record: bool = False,
+    if_match: str | None = None,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """PATCH an existing record. By default prevents accidental upsert via If-Match: *."""
     headers: dict[str, str] = {}
-    if prevent_create:
-        headers["If-Match"] = "*"
     if return_record:
         headers["Prefer"] = "return=representation"
+
+    effective_etag: str | None = if_match
+    if effective_etag is None and prevent_create:
+        effective_etag = "*"
 
     result = backend.patch(
         _build_record_path(entity_set, record_id),
         json_body=payload,
         extra_headers=headers or None,
+        etag=effective_etag,
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     return as_dict(result)
 
@@ -131,11 +151,18 @@ def upsert(
     entity_set: str,
     record_id: str,
     payload: dict[str, Any],
+    *,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """PATCH that creates if missing (no If-Match header)."""
     result = backend.patch(
         _build_record_path(entity_set, record_id),
         json_body=payload,
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     return as_dict(result)
 
@@ -143,9 +170,24 @@ def upsert(
 # ── Delete ──────────────────────────────────────────────────────────────
 
 
-def delete(backend: D365Backend, entity_set: str, record_id: str) -> dict[str, Any]:
+def delete(
+    backend: D365Backend,
+    entity_set: str,
+    record_id: str,
+    *,
+    if_match: str | None = None,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
+) -> dict[str, Any]:
     """DELETE a record."""
-    result = backend.delete(_build_record_path(entity_set, record_id))
+    result = backend.delete(
+        _build_record_path(entity_set, record_id),
+        etag=if_match,
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    )
     return result if isinstance(result, dict) else {"deleted": True, "id": _normalize_id(record_id)}
 
 
@@ -159,6 +201,10 @@ def associate(
     navigation_property: str,
     related_set: str,
     related_id: str,
+    *,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """POST to a collection-valued navigation property to associate two records.
 
@@ -170,7 +216,13 @@ def associate(
     target_path = _build_record_path(target_set, target_id)
     related_url = backend.url_for(_build_record_path(related_set, related_id))
     path = f"{target_path}/{navigation_property}/$ref"
-    result = as_dict(backend.post(path, json_body={"@odata.id": related_url}))
+    result = as_dict(backend.post(
+        path,
+        json_body={"@odata.id": related_url},
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    ))
     return result if result else {"associated": True, "target": target_id, "related": related_id}
 
 
@@ -182,6 +234,9 @@ def disassociate(
     *,
     related_set: str | None = None,
     related_id: str | None = None,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """DELETE a relationship.
 
@@ -198,7 +253,12 @@ def disassociate(
         path = f"{target_path}/{navigation_property}/$ref?$id={quote(related_url, safe='')}"
     else:
         path = f"{target_path}/{navigation_property}/$ref"
-    backend.delete(path)
+    backend.delete(
+        path,
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    )
     return {"disassociated": True, "target": target_id, "related": related_id}
 
 
@@ -209,6 +269,10 @@ def set_lookup(
     navigation_property: str,
     related_set: str,
     related_id: str,
+    *,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Set or change a single-valued lookup by `@odata.bind` PATCH.
 
@@ -216,7 +280,13 @@ def set_lookup(
     """
     bind_value = f"/{related_set}({_normalize_id(related_id)})"
     payload = {f"{navigation_property}@odata.bind": bind_value}
-    return update(backend, entity_set, record_id, payload, prevent_create=True)
+    return update(
+        backend, entity_set, record_id, payload,
+        prevent_create=True,
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    )
 
 
 def clear_lookup(
@@ -224,8 +294,17 @@ def clear_lookup(
     entity_set: str,
     record_id: str,
     navigation_property: str,
+    *,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Clear a single-valued lookup via DELETE /<set>(<id>)/<nav>/$ref."""
     target_path = _build_record_path(entity_set, record_id)
-    backend.delete(f"{target_path}/{navigation_property}/$ref")
+    backend.delete(
+        f"{target_path}/{navigation_property}/$ref",
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    )
     return {"cleared": True, "id": _normalize_id(record_id), "nav": navigation_property}

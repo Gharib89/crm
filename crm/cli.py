@@ -22,6 +22,8 @@ import click
 
 from crm import __version__
 from crm.core import (
+    async_ops as async_ops_mod,
+    batch as batch_mod,
     connection as conn_mod,
     entity as entity_mod,
     export as export_mod,
@@ -145,6 +147,40 @@ def _handle_d365_error(ctx: CLIContext, exc: D365Error) -> None:
         "status": exc.status,
         "code": exc.code,
     })
+
+
+def _admin_header_options(f):
+    """Stack `--as-user`, `--suppress-dup-detection`, `--bypass-plugins` flags on a command."""
+    f = click.option(
+        "--bypass-plugins", is_flag=True, default=False,
+        help="Send MSCRM.BypassCustomPluginExecution: true (requires prvBypassCustomPluginExecution).",
+    )(f)
+    f = click.option(
+        "--suppress-dup-detection", is_flag=True, default=False,
+        help="Send MSCRM.SuppressDuplicateDetection: true.",
+    )(f)
+    f = click.option(
+        "--as-user", "as_user", metavar="GUID", default=None,
+        help="Impersonate systemuser by GUID via MSCRMCallerID header.",
+    )(f)
+    return f
+
+
+def _admin_kwargs(as_user: str | None, suppress_dup_detection: bool,
+                  bypass_plugins: bool) -> dict[str, Any]:
+    """Resolve admin-header CLI flags into backend kwargs.
+
+    `is_flag` defaults to False (flag absent). To preserve the backend's
+    tri-state semantics (None = use env default like CRM_SUPPRESS_DUP /
+    CRM_BYPASS_PLUGINS), we forward True only when the flag was actually
+    set on the command line; otherwise None lets the backend env default
+    take effect.
+    """
+    return {
+        "caller_id": as_user,
+        "suppress_duplicate_detection": True if suppress_dup_detection else None,
+        "bypass_custom_plugin_execution": True if bypass_plugins else None,
+    }
 
 
 # ── Root group ──────────────────────────────────────────────────────────
@@ -332,14 +368,17 @@ def entity_get(ctx, entity_set, record_id, select, expand, annotations):
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a JSON file with the record body.")
 @click.option("--no-return", is_flag=True, help="Don't request the record back; just GUID.")
+@_admin_header_options
 @pass_ctx
-def entity_create(ctx, entity_set, data_json, data_file, no_return):
+def entity_create(ctx, entity_set, data_json, data_file, no_return,
+                  as_user, suppress_dup_detection, bypass_plugins):
     """POST a new record."""
     payload = _load_payload(data_json, data_file)
     try:
         result = entity_mod.create(
             ctx.backend(), entity_set, payload,
             return_record=not no_return,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -355,15 +394,27 @@ def entity_create(ctx, entity_set, data_json, data_file, no_return):
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--allow-create", is_flag=True, help="Permit upsert (skip If-Match header).")
 @click.option("--return-record", is_flag=True, help="Ask server to return the updated row.")
+@click.option("--if-match", "if_match", metavar="ETAG", default=None,
+              help='Optimistic concurrency etag. Example (POSIX): --if-match \'W/"123"\'. '
+                   'Use --if-match "*" to require any current version.')
+@_admin_header_options
 @pass_ctx
-def entity_update(ctx, entity_set, record_id, data_json, data_file, allow_create, return_record):
+def entity_update(ctx, entity_set, record_id, data_json, data_file, allow_create,
+                  return_record, if_match, as_user, suppress_dup_detection, bypass_plugins):
     """PATCH an existing record."""
+    if allow_create and if_match:
+        raise click.UsageError(
+            "--allow-create and --if-match are mutually exclusive: --allow-create permits "
+            "upsert (no If-Match), while --if-match enforces optimistic concurrency."
+        )
     payload = _load_payload(data_json, data_file)
     try:
         result = entity_mod.update(
             ctx.backend(), entity_set, record_id, payload,
             prevent_create=not allow_create,
             return_record=return_record,
+            if_match=if_match,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -376,12 +427,17 @@ def entity_update(ctx, entity_set, record_id, data_json, data_file, allow_create
 @click.argument("record_id")
 @click.option("--data", "data_json", help="JSON object as string.")
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False))
+@_admin_header_options
 @pass_ctx
-def entity_upsert(ctx, entity_set, record_id, data_json, data_file):
+def entity_upsert(ctx, entity_set, record_id, data_json, data_file,
+                  as_user, suppress_dup_detection, bypass_plugins):
     """PATCH with create-if-missing semantics."""
     payload = _load_payload(data_json, data_file)
     try:
-        result = entity_mod.upsert(ctx.backend(), entity_set, record_id, payload)
+        result = entity_mod.upsert(
+            ctx.backend(), entity_set, record_id, payload,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -391,12 +447,20 @@ def entity_upsert(ctx, entity_set, record_id, data_json, data_file):
 @entity.command("delete")
 @click.argument("entity_set")
 @click.argument("record_id")
+@click.option("--if-match", "if_match", metavar="ETAG", default=None,
+              help='Optimistic concurrency etag.')
 @click.confirmation_option(prompt="Delete this record?")
+@_admin_header_options
 @pass_ctx
-def entity_delete(ctx, entity_set, record_id):
+def entity_delete(ctx, entity_set, record_id, if_match,
+                  as_user, suppress_dup_detection, bypass_plugins):
     """DELETE a record."""
     try:
-        result = entity_mod.delete(ctx.backend(), entity_set, record_id)
+        result = entity_mod.delete(
+            ctx.backend(), entity_set, record_id,
+            if_match=if_match,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -409,12 +473,15 @@ def entity_delete(ctx, entity_set, record_id):
 @click.argument("nav")
 @click.argument("related_set")
 @click.argument("related_id")
+@_admin_header_options
 @pass_ctx
-def entity_associate(ctx, target_set, target_id, nav, related_set, related_id):
+def entity_associate(ctx, target_set, target_id, nav, related_set, related_id,
+                     as_user, suppress_dup_detection, bypass_plugins):
     """Associate two records via a collection-valued nav property (1:N from one-side or N:N)."""
     try:
         result = entity_mod.associate(
             ctx.backend(), target_set, target_id, nav, related_set, related_id,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -428,13 +495,16 @@ def entity_associate(ctx, target_set, target_id, nav, related_set, related_id):
 @click.argument("nav")
 @click.option("--related-set", help="Required for collection-valued nav properties.")
 @click.option("--related-id", help="Required for collection-valued nav properties.")
+@_admin_header_options
 @pass_ctx
-def entity_disassociate(ctx, target_set, target_id, nav, related_set, related_id):
+def entity_disassociate(ctx, target_set, target_id, nav, related_set, related_id,
+                        as_user, suppress_dup_detection, bypass_plugins):
     """Disassociate two records. Omit --related-* for single-valued lookups."""
     try:
         result = entity_mod.disassociate(
             ctx.backend(), target_set, target_id, nav,
             related_set=related_set, related_id=related_id,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -448,12 +518,15 @@ def entity_disassociate(ctx, target_set, target_id, nav, related_set, related_id
 @click.argument("nav")
 @click.argument("related_set")
 @click.argument("related_id")
+@_admin_header_options
 @pass_ctx
-def entity_set_lookup(ctx, entity_set, record_id, nav, related_set, related_id):
+def entity_set_lookup(ctx, entity_set, record_id, nav, related_set, related_id,
+                      as_user, suppress_dup_detection, bypass_plugins):
     """Set a single-valued lookup via @odata.bind PATCH."""
     try:
         result = entity_mod.set_lookup(
             ctx.backend(), entity_set, record_id, nav, related_set, related_id,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -465,11 +538,16 @@ def entity_set_lookup(ctx, entity_set, record_id, nav, related_set, related_id):
 @click.argument("entity_set")
 @click.argument("record_id")
 @click.argument("nav")
+@_admin_header_options
 @pass_ctx
-def entity_clear_lookup(ctx, entity_set, record_id, nav):
+def entity_clear_lookup(ctx, entity_set, record_id, nav,
+                        as_user, suppress_dup_detection, bypass_plugins):
     """Clear a single-valued lookup via DELETE /$ref."""
     try:
-        result = entity_mod.clear_lookup(ctx.backend(), entity_set, record_id, nav)
+        result = entity_mod.clear_lookup(
+            ctx.backend(), entity_set, record_id, nav,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -951,6 +1029,33 @@ def solution_publish(ctx, parameter_xml, xml_file):
     ctx.emit(True, data=result or {"published": True})
 
 
+@solution.command("job-status")
+@click.argument("async_operation_id")
+@pass_ctx
+def solution_job_status(ctx, async_operation_id):
+    """Alias for `crm async get <id>` — inspect a solution import/export job."""
+    try:
+        row = async_ops_mod.get_async_operation(ctx.backend(), async_operation_id)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=row)
+
+
+@solution.command("job-cancel")
+@click.argument("async_operation_id")
+@click.confirmation_option(prompt="Cancel this job?")
+@pass_ctx
+def solution_job_cancel(ctx, async_operation_id):
+    """Alias for `crm async cancel <id>`."""
+    try:
+        async_ops_mod.cancel_async_operation(ctx.backend(), async_operation_id)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data={"cancelled": True, "id": async_operation_id})
+
+
 @cli.command("service-document")
 @pass_ctx
 def cli_service_document(ctx):
@@ -967,6 +1072,50 @@ def cli_service_document(ctx):
     headers = ["name", "url", "kind"]
     rows = [[s.get("name", ""), s.get("url", ""), s.get("kind", "")] for s in sets[:200]]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(sets)})
+
+
+@cli.command("batch")
+@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--no-transaction", is_flag=True, default=False,
+              help="Send each op as a top-level operation; no changeset wrapping.")
+@click.option("--continue-on-error", is_flag=True, default=False,
+              help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False), default=None,
+              help="Write BatchResult[] JSON to this path.")
+@click.option("--timeout", type=int, default=None,
+              help="Override request timeout (seconds) for the batch call.")
+@pass_ctx
+def cli_batch(ctx, file_path, no_transaction, continue_on_error, output_path, timeout):
+    """Execute a $batch from a JSON file."""
+    if continue_on_error and not no_transaction:
+        raise click.UsageError(
+            "--continue-on-error requires --no-transaction; "
+            "Prefer: odata.continue-on-error is meaningless inside a changeset."
+        )
+    try:
+        ops = batch_mod.parse_batch_file(file_path)
+        results = ctx.backend().batch(
+            ops,
+            transactional=not no_transaction,
+            continue_on_error=continue_on_error,
+            timeout=timeout,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+
+    if output_path:
+        try:
+            Path(output_path).write_text(
+                json.dumps(results, indent=2, default=str), encoding="utf-8"
+            )
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output_path}: {exc}")
+            return
+        ctx.emit(True, data={"written": output_path,
+                             **batch_mod.render_batch_summary(results)})
+    else:
+        ctx.emit(True, data=results, meta=batch_mod.render_batch_summary(results))
 
 
 @solution.command("import")
@@ -1098,6 +1247,95 @@ def action_invoke(ctx, name, body_json, body_file, bind_set, bind_id, cast):
     ctx.emit(True, data=result or {})
 
 
+# ── Async-operations group ──────────────────────────────────────────────
+
+_ASYNC_STATE_NAMES = {
+    "ready": 0,
+    "suspended": 1,
+    "locked": 2,
+    "completed": 3,
+}
+
+
+def _resolve_async_state(value: str | None) -> int | None:
+    if value is None:
+        return None
+    if value.isdigit():
+        return int(value)
+    name = value.lower()
+    if name in _ASYNC_STATE_NAMES:
+        return _ASYNC_STATE_NAMES[name]
+    raise click.BadParameter(
+        f"--state must be one of {sorted(_ASYNC_STATE_NAMES)} or an integer; got {value!r}"
+    )
+
+
+@cli.group("async")
+def async_group():
+    """List, inspect, and cancel asynchronous operations."""
+
+
+@async_group.command("list")
+@click.option("--state", default=None,
+              help="ready | suspended | locked | completed | <int>")
+@click.option("--message", "message_name", default=None,
+              help="Filter by messagename (e.g. ImportSolution).")
+@click.option("--owner", "owner_id", default=None,
+              help="Filter by systemuser GUID.")
+@click.option("--top", type=int, default=50, help="Page size per call (default 50).")
+@click.option("--all", "fetch_all", is_flag=True, default=False,
+              help="Follow @odata.nextLink until exhausted (caps at --max-pages).")
+@click.option("--max-pages", type=int, default=20,
+              help="Safety cap on pagination depth when --all is set (default 20).")
+@pass_ctx
+def async_list(ctx, state, message_name, owner_id, top, fetch_all, max_pages):
+    """List asyncoperation rows."""
+    try:
+        state_int = _resolve_async_state(state)
+        backend = ctx.backend()
+        if fetch_all:
+            rows = async_ops_mod.list_all_async_operations(
+                backend, state=state_int, message_name=message_name,
+                owner_id=owner_id, page_size=top, max_pages=max_pages,
+            )
+        else:
+            rows = async_ops_mod.list_async_operations(
+                backend, state=state_int, message_name=message_name,
+                owner_id=owner_id, top=top,
+            )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=rows, meta={"count": len(rows)})
+
+
+@async_group.command("get")
+@click.argument("async_operation_id")
+@pass_ctx
+def async_get(ctx, async_operation_id):
+    """Get one asyncoperation row."""
+    try:
+        row = async_ops_mod.get_async_operation(ctx.backend(), async_operation_id)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=row)
+
+
+@async_group.command("cancel")
+@click.argument("async_operation_id")
+@click.confirmation_option(prompt="Cancel this async operation?")
+@pass_ctx
+def async_cancel(ctx, async_operation_id):
+    """Cancel a pending or suspended asyncoperation."""
+    try:
+        async_ops_mod.cancel_async_operation(ctx.backend(), async_operation_id)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data={"cancelled": True, "id": async_operation_id})
+
+
 # ── Workflow group ──────────────────────────────────────────────────────
 
 
@@ -1132,11 +1370,15 @@ def workflow_list(ctx, category, primary_entity, activated_only, on_demand_only)
 
 @workflow.command("activate")
 @click.argument("workflow_id")
+@_admin_header_options
 @pass_ctx
-def workflow_activate(ctx, workflow_id):
+def workflow_activate(ctx, workflow_id, as_user, suppress_dup_detection, bypass_plugins):
     """Activate a workflow (statecode=1, statuscode=2)."""
     try:
-        info = workflow_mod.set_workflow_state(ctx.backend(), workflow_id, activate=True)
+        info = workflow_mod.set_workflow_state(
+            ctx.backend(), workflow_id, activate=True,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -1145,11 +1387,15 @@ def workflow_activate(ctx, workflow_id):
 
 @workflow.command("deactivate")
 @click.argument("workflow_id")
+@_admin_header_options
 @pass_ctx
-def workflow_deactivate(ctx, workflow_id):
+def workflow_deactivate(ctx, workflow_id, as_user, suppress_dup_detection, bypass_plugins):
     """Deactivate a workflow (statecode=0, statuscode=1)."""
     try:
-        info = workflow_mod.set_workflow_state(ctx.backend(), workflow_id, activate=False)
+        info = workflow_mod.set_workflow_state(
+            ctx.backend(), workflow_id, activate=False,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -1160,11 +1406,16 @@ def workflow_deactivate(ctx, workflow_id):
 @click.argument("workflow_id")
 @click.option("--target", "target_record_id", required=True,
               help="GUID of the record to run the workflow against.")
+@_admin_header_options
 @pass_ctx
-def workflow_run(ctx, workflow_id, target_record_id):
+def workflow_run(ctx, workflow_id, target_record_id,
+                 as_user, suppress_dup_detection, bypass_plugins):
     """Trigger an on-demand workflow against a target record via ExecuteWorkflow."""
     try:
-        info = workflow_mod.execute_workflow(ctx.backend(), workflow_id, target_record_id)
+        info = workflow_mod.execute_workflow(
+            ctx.backend(), workflow_id, target_record_id,
+            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
