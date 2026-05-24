@@ -104,7 +104,11 @@ def load_dotenv(path: str | os.PathLike[str] | None = None, *, override: bool = 
             key = key[7:].strip()
         if not key:
             continue
-        value = raw.strip().strip('"').strip("'")
+        raw_value = raw.strip()
+        if len(raw_value) >= 2 and raw_value[0] == raw_value[-1] and raw_value[0] in ('"', "'"):
+            value = raw_value[1:-1]
+        else:
+            value = raw_value
         if override or key not in os.environ or not os.environ[key]:
             os.environ[key] = value
     return p

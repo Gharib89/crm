@@ -509,6 +509,16 @@ class TestConnectionDotenv:
         assert profile.domain == "moce"
         assert profile.username == "admin"
 
+    def test_dotenv_preserves_inner_quotes(self, tmp_path, monkeypatch):
+        for k in ("KEY_WITH_QUOTE", "D365_URL", "CRM_BASE_URL"):
+            monkeypatch.delenv(k, raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text('KEY_WITH_QUOTE="foo\'s bar"\n')
+        from crm.core import connection as conn_mod_local
+        conn_mod_local.load_dotenv(env_file)
+        import os
+        assert os.environ["KEY_WITH_QUOTE"] == "foo's bar"
+
 
 class TestOrderedKeys:
     def test_ordered_keys_drops_lookups_and_annotations(self):
