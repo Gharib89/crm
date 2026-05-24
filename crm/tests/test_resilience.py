@@ -478,6 +478,18 @@ class TestPollAsyncOperation:
             backend.poll_async_operation(self.OP_ID)
         # Pass if we get here without an unmatched-request exception.
 
+    def test_dry_run_short_circuits(self, profile, monkeypatch):
+        # Dry-run must not poll — the preview dict from request() has no
+        # statecode, which would hang until async_timeout.
+        be = D365Backend(profile, password="pw", dry_run=True)
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+        result = be.poll_async_operation(self.OP_ID)
+        assert isinstance(result, dict)
+        assert result["_dry_run"] is True
+        assert result.get("async_operation_id") == self.OP_ID
+        assert slept == []
+
 
 # ── ConnectionProfile validation ────────────────────────────────────────
 

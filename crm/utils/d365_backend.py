@@ -278,11 +278,22 @@ class D365Backend:
 
         If import_job_id is given and on_progress is set, also reads
         importjobs(<id>).progress on every tick and forwards
-        (percent, status_message) to the callback.
+        (percent, asyncoperations.message) to the callback.
+
+        In dry-run mode this short-circuits and returns a preview dict instead
+        of polling — request() can only produce a preview without statecode,
+        which would otherwise hang until async_timeout.
 
         Raises:
             D365Error on operation failure (statuscode != 30) or timeout.
         """
+        if self.dry_run:
+            return {
+                "_dry_run": True,
+                "async_operation_id": async_operation_id,
+                "import_job_id": import_job_id,
+                "timeout": timeout if timeout is not None else self.profile.async_timeout,
+            }
         effective_timeout = timeout if timeout is not None else self.profile.async_timeout
         deadline = time.monotonic() + effective_timeout
         interval = self.profile.async_poll_initial
