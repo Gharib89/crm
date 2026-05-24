@@ -412,6 +412,15 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
         body = resp.text
         message = f"HTTP {resp.status_code}: {resp.text[:500]}"
 
+    if resp.status_code == 412:
+        code = "PreconditionFailed"
+    elif (
+        resp.status_code == 403
+        and isinstance(message, str)
+        and "prvBypassCustomPluginExecution" in message
+    ):
+        code = "MissingPrivilege"
+
     raise D365Error(message, status=resp.status_code, code=code, response_body=body)
 
 

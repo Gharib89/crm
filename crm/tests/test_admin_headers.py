@@ -214,3 +214,43 @@ class TestEtag:
             with pytest.raises(D365Error, match="non-empty"):
                 backend.patch("accounts(x)", json_body={}, etag="")
             assert m.call_count == 0
+
+
+class TestErrorMapping:
+    def test_412_maps_to_precondition_failed(self, backend, profile):
+        body = {"error": {"code": "0x80048d04", "message": "Concurrency mismatch"}}
+        with requests_mock.Mocker() as m:
+            m.patch(
+                f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
+                status_code=412, json=body,
+            )
+            with pytest.raises(D365Error) as exc_info:
+                backend.patch(
+                    "accounts(00000000-0000-0000-0000-000000000001)",
+                    json_body={"name": "a"},
+                    etag='W/"1"',
+                )
+            assert exc_info.value.status == 412
+            assert exc_info.value.code == "PreconditionFailed"
+
+    def test_403_with_priv_bypass_maps_to_missing_privilege(self, backend, profile):
+        body = {"error": {
+            "code": "0x80040220",
+            "message": "User does not have prvBypassCustomPluginExecution privilege",
+        }}
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=403, json=body)
+            with pytest.raises(D365Error) as exc_info:
+                backend.post("accounts", json_body={"name": "a"},
+                             bypass_custom_plugin_execution=True)
+            assert exc_info.value.status == 403
+            assert exc_info.value.code == "MissingPrivilege"
+
+    def test_403_without_priv_keyword_keeps_server_code(self, backend, profile):
+        body = {"error": {"code": "0x80040220", "message": "Insufficient privileges"}}
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=403, json=body)
+            with pytest.raises(D365Error) as exc_info:
+                backend.post("accounts", json_body={"name": "a"})
+            assert exc_info.value.status == 403
+            assert exc_info.value.code == "0x80040220"
