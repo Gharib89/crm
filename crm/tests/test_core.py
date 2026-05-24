@@ -501,6 +501,21 @@ class TestConnectionDotenv:
         assert profile.username == "admin"
 
 
+class TestOrderedKeys:
+    def test_ordered_keys_drops_lookups_and_annotations(self):
+        from crm.core.export import _ordered_keys
+        records = [
+            {
+                "name": "Contoso",
+                "_owner_value": "guid-1",
+                "@odata.etag": "W/\"123\"",
+                "createdon": "2026-01-01",
+            },
+            {"name": "Initech", "_modifiedby_value": "guid-2"},
+        ]
+        assert _ordered_keys(records) == ["name", "createdon"]
+
+
 class TestExport:
     def test_export_records_csv(self, backend, tmp_path):
         with requests_mock.Mocker() as m:

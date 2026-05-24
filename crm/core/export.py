@@ -98,9 +98,7 @@ def _ordered_keys(records: list[dict[str, Any]]) -> list[str]:
     seen_set: set[str] = set()
     for rec in records:
         for k in rec.keys():
-            if k.startswith("@") or k.startswith("_") and not k.startswith("_"):
-                continue
-            if k.startswith("@"):
+            if k.startswith(("@", "_")):
                 continue
             if k not in seen_set:
                 seen.append(k)
