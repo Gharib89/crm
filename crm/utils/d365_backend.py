@@ -11,6 +11,7 @@ parsed JSON or a raised `D365Error`.
 from __future__ import annotations
 
 import json
+import time
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any, cast
@@ -131,6 +132,7 @@ class D365Backend:
         )
         self._session.auth = HttpNtlmAuth(user_principal, password)
         self._session.verify = profile.verify_ssl
+        self._effective_retry_max = _resolve_retry_max(profile)
 
     # ── URL helpers ─────────────────────────────────────────────────────
 
@@ -154,8 +156,12 @@ class D365Backend:
     ) -> dict[str, Any] | str | None:
         """Issue an HTTP request and return parsed JSON (or None for 204).
 
-        Raises D365Error on transport failure or non-2xx response.
-        Honors self.dry_run by returning a preview dict instead of issuing the call.
+        Retries on 429, idempotent 5xx, and retryable transport errors per the
+        backend's profile + env config. Honors self.dry_run by returning a
+        preview dict instead of issuing the call.
+
+        Raises D365Error on transport failure or non-2xx response after retries
+        are exhausted.
         """
         url = self.url_for(path)
         headers = dict(_DEFAULT_HEADERS)
@@ -172,19 +178,46 @@ class D365Backend:
                 "body": json_body,
             }
 
-        try:
-            resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
-                method,
-                url,
-                params=params,
-                data=json.dumps(json_body) if json_body is not None else None,
-                headers=headers,
-                timeout=self.profile.timeout,
-            )
-        except requests.RequestException as exc:
-            raise D365Error(f"HTTP transport failure: {exc}") from exc
+        max_retries = self._effective_retry_max
+        attempt = 0
+        while True:
+            try:
+                resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
+                    method,
+                    url,
+                    params=params,
+                    data=json.dumps(json_body) if json_body is not None else None,
+                    headers=headers,
+                    timeout=self.profile.timeout,
+                )
+            except requests.RequestException as exc:
+                if attempt >= max_retries or not _is_transport_retryable(exc):
+                    raise D365Error(f"HTTP transport failure: {exc}") from exc
+                delay = _compute_delay(attempt, self.profile, retry_after=None)
+                _log_retry(method, url, attempt, delay,
+                           effective_max=max_retries, reason=str(exc))
+                time.sleep(delay)
+                attempt += 1
+                continue
 
-        return _parse_response(resp, expect_json=expect_json)
+            # One log per response: always emit when status warrants retry
+            # (i.e., a 429/5xx that has rate-limit headers); otherwise emit
+            # only when CRM_VERBOSE=1 is set.
+            retryable = _is_response_retryable(resp, method)
+            _log_rate_limit_headers(resp, on_429=retryable)
+
+            if not retryable:
+                return _parse_response(resp, expect_json=expect_json)
+
+            if attempt >= max_retries:
+                return _parse_response(resp, expect_json=expect_json)  # raises D365Error
+
+            retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
+            delay = _compute_delay(attempt, self.profile, retry_after=retry_after)
+            _log_retry(method, url, attempt, delay,
+                       effective_max=max_retries, reason=f"HTTP {resp.status_code}")
+            time.sleep(delay)
+            attempt += 1
 
     # ── Convenience verbs ───────────────────────────────────────────────
 
@@ -323,6 +356,32 @@ def _log_retry(method: str, url: str, attempt: int, delay: float, *, effective_m
         f"[crm] retry {method} {url} attempt={attempt + 1}/{effective_max} "
         f"delay={delay:.1f}s reason={reason}\n"
     )
+
+
+def _resolve_retry_max(profile: ConnectionProfile) -> int:
+    """Resolve the effective retry max from profile + env overrides.
+
+    CRM_NO_RETRY=1 forces 0. Otherwise CRM_RETRY_MAX overrides profile.retry_max.
+    """
+    if _env_truthy("CRM_NO_RETRY"):
+        return 0
+    override = _os.environ.get("CRM_RETRY_MAX")
+    if override is not None and override.strip() != "":
+        try:
+            value = int(override)
+        except ValueError as exc:
+            raise D365Error(
+                f"CRM_RETRY_MAX must be an integer; got {override!r}"
+            ) from exc
+        if value < 0:
+            raise D365Error(f"CRM_RETRY_MAX must be >= 0; got {value}")
+        return value
+    return profile.retry_max
+
+
+def _env_truthy(name: str) -> bool:
+    val = _os.environ.get(name)
+    return val is not None and val.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _parse_retry_after(header: str | None) -> float | None:
