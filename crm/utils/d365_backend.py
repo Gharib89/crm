@@ -888,22 +888,33 @@ def _parse_batch_response(
         raise D365Error(f"Cannot find boundary in $batch response Content-Type: {content_type!r}")
     boundary = m.group(1).strip('"')
 
-    # Walk input ops to determine the top-level slot order and changeset groups.
+    # Walk input ops to determine the top-level slot order, changeset groups,
+    # and per-changeset cid→op_index maps (supports both int and str content_id).
     # transactional=True:  GETs are top-level; consecutive writes go into changesets.
     # transactional=False: ALL ops are top-level (no changeset wrapping).
     top_level_indexes: list[int] = []
     changeset_groups: list[list[int]] = []
+    changeset_cid_maps: list[dict[int | str, int]] = []
     current_group: list[int] = []
+    current_cid_map: dict[int | str, int] = {}
+    seq_counter = 0
     for i, op in enumerate(operations):
         if not transactional or op["method"].upper() == "GET":
             if current_group:
                 changeset_groups.append(current_group)
+                changeset_cid_maps.append(current_cid_map)
                 current_group = []
+                current_cid_map = {}
+                seq_counter = 0
             top_level_indexes.append(i)
         else:
             current_group.append(i)
+            seq_counter += 1
+            cid: int | str = op.get("content_id") if op.get("content_id") is not None else seq_counter
+            current_cid_map[cid] = i
     if current_group:
         changeset_groups.append(current_group)
+        changeset_cid_maps.append(current_cid_map)
 
     results: list[dict[str, Any] | None] = [None] * len(operations)
     top_level_cursor = 0
@@ -921,22 +932,29 @@ def _parse_batch_response(
             if changeset_cursor >= len(changeset_groups):
                 continue
             group = changeset_groups[changeset_cursor]
+            cid_map = changeset_cid_maps[changeset_cursor]
             changeset_cursor += 1
             inner_parts = _split_mime_parts(part, inner_boundary)
-            # Match inner parts to group by Content-ID order
+            # Match inner parts to group by Content-ID; fall back to positional.
             for sub_idx, inner in enumerate(inner_parts):
                 parsed = _parse_http_subpart(inner)
                 cid_raw = parsed.get("_content_id")
-                try:
-                    cid = int(cid_raw) if cid_raw is not None else sub_idx + 1
-                except ValueError:
-                    cid = sub_idx + 1
-                if 0 <= cid - 1 < len(group):
-                    op_index = group[cid - 1]
-                    parsed["method"] = operations[op_index]["method"]
-                    parsed["url"] = operations[op_index]["url"]
-                    parsed.pop("_content_id", None)
-                    results[op_index] = parsed
+                resolved_cid: int | str | None = None
+                if cid_raw is not None:
+                    try:
+                        resolved_cid = int(cid_raw)
+                    except ValueError:
+                        resolved_cid = cid_raw  # keep as string
+                if resolved_cid is not None and resolved_cid in cid_map:
+                    op_index = cid_map[resolved_cid]
+                elif 0 <= sub_idx < len(group):
+                    op_index = group[sub_idx]
+                else:
+                    continue
+                parsed["method"] = operations[op_index]["method"]
+                parsed["url"] = operations[op_index]["url"]
+                parsed.pop("_content_id", None)
+                results[op_index] = parsed
         else:
             parsed = _parse_http_subpart(part)
             parsed.pop("_content_id", None)

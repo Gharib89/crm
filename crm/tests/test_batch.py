@@ -223,6 +223,71 @@ class TestParseResponse:
         assert results[0]["error"] is None
         assert results[1]["error"] is None
 
+    def test_parses_changeset_with_string_content_id(self):
+        cs_part = (
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: acct1\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-EntityId: https://x/accounts(11111111-1111-1111-1111-111111111111)\r\n"
+            "\r\n"
+            "--cs1--"
+        )
+        body = self._build_response_body([cs_part], boundary="batchresp")
+        ops = [
+            {"method": "POST", "url": "accounts", "body": {"name": "a"}, "content_id": "acct1"},
+        ]
+        results = _parse_batch_response(
+            body, "multipart/mixed; boundary=batchresp", ops, transactional=True,
+        )
+        assert results[0]["status"] == 204
+        assert "accounts(11111111-1111-1111-1111-111111111111)" in (
+            results[0]["headers"].get("OData-EntityId", "")
+        )
+
+    def test_parses_changeset_out_of_order_via_string_ids(self):
+        # Response delivers cs parts in reverse order; cid mapping must restore alignment.
+        cs_part = (
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: b\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-EntityId: https://x/contacts(22222222-2222-2222-2222-222222222222)\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: a\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-EntityId: https://x/accounts(11111111-1111-1111-1111-111111111111)\r\n"
+            "\r\n"
+            "--cs1--"
+        )
+        body = self._build_response_body([cs_part], boundary="batchresp")
+        ops = [
+            {"method": "POST", "url": "accounts", "body": {"name": "x"}, "content_id": "a"},
+            {"method": "POST", "url": "contacts", "body": {"name": "y"}, "content_id": "b"},
+        ]
+        results = _parse_batch_response(
+            body, "multipart/mixed; boundary=batchresp", ops, transactional=True,
+        )
+        # Despite the response coming in cs-part order [b, a], results align to input ops by cid.
+        assert "accounts(11111111-1111-1111-1111-111111111111)" in (
+            results[0]["headers"].get("OData-EntityId", "")
+        )
+        assert "contacts(22222222-2222-2222-2222-222222222222)" in (
+            results[1]["headers"].get("OData-EntityId", "")
+        )
+
     def test_error_populated_on_non_2xx_subpart(self):
         body = self._build_response_body([
             "Content-Type: application/http\r\n"
