@@ -67,6 +67,9 @@ def set_workflow_state(
     workflow_id: str,
     *,
     activate: bool,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool = False,
+    bypass_custom_plugin_execution: bool = False,
 ) -> dict[str, Any]:
     """Activate or deactivate a workflow via PATCH on statecode/statuscode."""
     if not workflow_id:
@@ -76,7 +79,10 @@ def set_workflow_state(
     backend.patch(
         f"workflows({workflow_id})",
         json_body=body,
-        extra_headers={"If-Match": "*"},
+        etag="*",
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     return {
         "workflow_id": workflow_id,
@@ -90,6 +96,10 @@ def execute_workflow(
     backend: D365Backend,
     workflow_id: str,
     target_record_id: str,
+    *,
+    caller_id: str | None = None,
+    suppress_duplicate_detection: bool = False,
+    bypass_custom_plugin_execution: bool = False,
 ) -> dict[str, Any]:
     """Trigger an on-demand workflow against a target record.
 
@@ -101,7 +111,13 @@ def execute_workflow(
         f"workflows({workflow_id})/Microsoft.Dynamics.CRM.ExecuteWorkflow"
     )
     body: dict[str, Any] = {"EntityId": target_record_id}
-    result = as_dict(backend.post(path, json_body=body))
+    result = as_dict(backend.post(
+        path,
+        json_body=body,
+        caller_id=caller_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    ))
     return {
         "workflow_id": workflow_id,
         "target_id": target_record_id,
