@@ -119,7 +119,7 @@ class TestD365Backend:
     def test_request_dry_run_returns_preview(self, profile):
         b = D365Backend(profile, password="pw", dry_run=True)
         result = b.post("accounts", json_body={"name": "Foo"})
-        assert result is not None
+        assert isinstance(result, dict)
         assert result["_dry_run"] is True
         assert result["method"] == "POST"
         assert result["body"] == {"name": "Foo"}

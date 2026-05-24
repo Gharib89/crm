@@ -116,7 +116,7 @@ def _atomic_write_json(path: Path, payload: Any) -> None:
     with tmp.open("w", encoding="utf-8") as f:
         if fcntl is not None:
             try:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
             except (OSError, AttributeError):
                 pass
         json.dump(payload, f, indent=2, sort_keys=True)
