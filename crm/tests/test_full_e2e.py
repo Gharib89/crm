@@ -216,8 +216,10 @@ class TestE2ESpecA:
             assert info["created"] is True
             assert info["entity_set_name"] is not None
             entities = meta_mod.list_entities(backend, custom_only=True)
-            logical_names = {e.get("LogicalName") for e in entities}
-            assert schema.lower() in logical_names
+            by_logical = {e.get("LogicalName"): e for e in entities}
+            assert schema.lower() in by_logical
+            server_set_name = by_logical[schema.lower()].get("EntitySetName")
+            assert info["entity_set_name"] == server_set_name
         finally:
             # Best-effort cleanup; ignore failure (entity stays for manual cleanup).
             try:

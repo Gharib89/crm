@@ -51,6 +51,7 @@ class CLIContext:
         self.password: str | None = None
         self.session_name: str = "default"
         self._backend: D365Backend | None = None
+        self._backend_key: tuple[str | None, str | None, bool] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
 
     def emit(self, ok: bool, data: Any = None, *, error: str | None = None,
@@ -96,7 +97,8 @@ class CLIContext:
                 self.skin.status(k, str(v))
 
     def backend(self) -> D365Backend:
-        if self._backend is None:
+        key = (self.profile_name, self.password, self.dry_run)
+        if self._backend is None or self._backend_key != key:
             resolved = conn_mod.resolve_credentials(
                 profile_name=self.profile_name,
                 password_override=self.password,
@@ -104,6 +106,7 @@ class CLIContext:
             self._backend = D365Backend(
                 resolved.profile, resolved.password, dry_run=self.dry_run
             )
+            self._backend_key = key
         return self._backend
 
     def invalidate_backend(self) -> None:
@@ -111,8 +114,11 @@ class CLIContext:
 
         Called when the profile changes (`connection connect`/`disconnect`) so
         the REPL stops reusing a backend wired up to a stale profile.
+        Also triggers automatically if `profile_name`/`password`/`dry_run` change
+        between calls (e.g., root opts re-supplied per REPL line).
         """
         self._backend = None
+        self._backend_key = None
 
 
 pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)

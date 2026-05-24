@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 import requests_mock
@@ -805,6 +806,41 @@ class TestSolutionExportFlags:
         assert body["ExportCalendarSettings"] is False
         assert body["ExportSales"] is False
         assert body["ExportAutoNumberingSettings"] is False
+
+    def test_cli_export_setting_flag_maps_to_kwargs(self, monkeypatch, tmp_path):
+        """CLI plumbing: --export-setting <name> → kwargs passed to export_solution."""
+        from click.testing import CliRunner
+        from crm import cli as cli_mod
+
+        captured: dict[str, Any] = {}
+
+        def fake_export_solution(_backend, unique_name, output, **kwargs):
+            captured["unique_name"] = unique_name
+            captured["output"] = output
+            captured["kwargs"] = kwargs
+            return {"output": str(output), "bytes": 0, "managed": False, "solution": unique_name}
+
+        monkeypatch.setattr(cli_mod.sol_mod, "export_solution", fake_export_solution)
+        # Stub backend so no real connection resolution happens.
+        monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
+
+        out = tmp_path / "s.zip"
+        result = CliRunner().invoke(
+            cli_mod.cli,
+            [
+                "--json",
+                "solution", "export", "MySol",
+                "-o", str(out),
+                "--export-setting", "customizations",
+                "--export-setting", "general",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert captured["unique_name"] == "MySol"
+        assert captured["kwargs"].get("export_customizations") is True
+        assert captured["kwargs"].get("export_general") is True
+        assert "export_calendar" not in captured["kwargs"]
+        assert "export_sales" not in captured["kwargs"]
 
 
 class TestErrorEnvelope:
