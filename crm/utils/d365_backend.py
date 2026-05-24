@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -46,7 +46,7 @@ class ConnectionProfile:
     verify_ssl: bool = True
     timeout: int = 120
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "url": self.url.rstrip("/"),
@@ -58,7 +58,7 @@ class ConnectionProfile:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ConnectionProfile":
+    def from_dict(cls, d: dict[str, Any]) -> "ConnectionProfile":
         return cls(
             name=d["name"],
             url=d["url"].rstrip("/"),
@@ -77,7 +77,7 @@ class ConnectionProfile:
 
 # ── Default headers per Web API spec ────────────────────────────────────
 
-_DEFAULT_HEADERS = {
+_DEFAULT_HEADERS: dict[str, str] = {
     "OData-MaxVersion": "4.0",
     "OData-Version": "4.0",
     "Accept": "application/json",
@@ -104,7 +104,7 @@ class D365Backend:
 
         self.profile = profile
         self.dry_run = dry_run
-        self._session = requests.Session()
+        self._session: requests.Session = requests.Session()
         user_principal = (
             f"{profile.domain}\\{profile.username}" if profile.domain else profile.username
         )
@@ -126,11 +126,11 @@ class D365Backend:
         method: str,
         path: str,
         *,
-        params: dict | None = None,
+        params: dict[str, Any] | None = None,
         json_body: Any = None,
-        extra_headers: dict | None = None,
+        extra_headers: dict[str, str] | None = None,
         expect_json: bool = True,
-    ) -> dict | None:
+    ) -> dict[str, Any] | str | None:
         """Issue an HTTP request and return parsed JSON (or None for 204).
 
         Raises D365Error on transport failure or non-2xx response.
@@ -152,7 +152,7 @@ class D365Backend:
             }
 
         try:
-            resp = self._session.request(
+            resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
                 method,
                 url,
                 params=params,
@@ -167,23 +167,23 @@ class D365Backend:
 
     # ── Convenience verbs ───────────────────────────────────────────────
 
-    def get(self, path: str, **kw) -> dict | None:
+    def get(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("GET", path, **kw)
 
-    def post(self, path: str, json_body: Any = None, **kw) -> dict | None:
+    def post(self, path: str, json_body: Any = None, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("POST", path, json_body=json_body, **kw)
 
-    def patch(self, path: str, json_body: Any = None, **kw) -> dict | None:
+    def patch(self, path: str, json_body: Any = None, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("PATCH", path, json_body=json_body, **kw)
 
-    def delete(self, path: str, **kw) -> dict | None:
+    def delete(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("DELETE", path, expect_json=False, **kw)
 
 
 # ── Response parsing ────────────────────────────────────────────────────
 
 
-def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict | None:
+def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, Any] | str | None:
     """Parse a Web API response. Raises D365Error on non-2xx."""
     if 200 <= resp.status_code < 300:
         if resp.status_code == 204 or not resp.content:
@@ -203,15 +203,29 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict | Non
     # Error path
     body: Any = None
     code: str | None = None
-    message = f"HTTP {resp.status_code}"
+    message: str = f"HTTP {resp.status_code}"
     try:
         body = resp.json()
-        err = body.get("error") if isinstance(body, dict) else None
+        err = cast(dict[str, Any], body).get("error") if isinstance(body, dict) else None
         if isinstance(err, dict):
-            code = err.get("code")
-            message = err.get("message", message)
+            err_d = cast(dict[str, Any], err)
+            code_val = err_d.get("code")
+            if isinstance(code_val, str):
+                code = code_val
+            msg_val = err_d.get("message")
+            if isinstance(msg_val, str):
+                message = msg_val
     except ValueError:
         body = resp.text
         message = f"HTTP {resp.status_code}: {resp.text[:500]}"
 
     raise D365Error(message, status=resp.status_code, code=code, response_body=body)
+
+
+def as_dict(result: dict[str, Any] | str | None) -> dict[str, Any]:
+    """Narrow a backend response to a dict (treat str/None as empty).
+
+    Used by core/* callers that need dict semantics — preserves the existing
+    `result or {}` idiom in a type-safe way under pyright strict.
+    """
+    return result if isinstance(result, dict) else {}

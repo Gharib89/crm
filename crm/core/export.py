@@ -5,9 +5,9 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core import query as query_mod
 
 
@@ -21,7 +21,7 @@ def export_records(
     page_size: int = 500,
     max_records: int | None = None,
     fmt: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Page through an entity set and write to CSV or JSON.
 
     `fmt` is `"csv"` or `"json"`. If omitted, inferred from `output_path` suffix.
@@ -59,12 +59,12 @@ def _iter_records(
     filter_: str | None,
     page_size: int,
     max_records: int | None,
-) -> Iterable[dict]:
+) -> Iterable[dict[str, Any]]:
     fetched = 0
     next_link: str | None = None
     while True:
         if next_link:
-            page = backend.get(next_link) or {}
+            page = as_dict(backend.get(next_link))
         else:
             page = query_mod.odata_query(
                 backend, entity_set,
@@ -81,7 +81,7 @@ def _iter_records(
             return
 
 
-def _write_csv(out: Path, records: list[dict], *, select: list[str] | None) -> None:
+def _write_csv(out: Path, records: list[dict[str, Any]], *, select: list[str] | None) -> None:
     if not records:
         out.write_text("", encoding="utf-8")
         return
@@ -93,7 +93,7 @@ def _write_csv(out: Path, records: list[dict], *, select: list[str] | None) -> N
             w.writerow({k: _flatten(rec.get(k)) for k in fieldnames})
 
 
-def _ordered_keys(records: list[dict]) -> list[str]:
+def _ordered_keys(records: list[dict[str, Any]]) -> list[str]:
     seen: list[str] = []
     seen_set: set[str] = set()
     for rec in records:
@@ -108,7 +108,7 @@ def _ordered_keys(records: list[dict]) -> list[str]:
     return seen
 
 
-def _flatten(v):
+def _flatten(v: Any) -> Any:
     if isinstance(v, (dict, list)):
         return json.dumps(v, default=str)
     return v

@@ -5,6 +5,7 @@ Entry point: `crm` (installed) or `python -m crm`.
 Running with no subcommand drops into the REPL. Each command supports `--json` for
 machine-readable output. `--dry-run` previews the HTTP request without issuing it.
 """
+# pyright: basic
 
 from __future__ import annotations
 

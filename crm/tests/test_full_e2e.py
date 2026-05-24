@@ -13,6 +13,7 @@ Required env:
 CI / release runs should also set CRM_FORCE_INSTALLED=1 to require the
 installed `crm` command (not a python -m fallback).
 """
+# pyright: basic
 
 from __future__ import annotations
 

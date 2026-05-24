@@ -5,7 +5,7 @@ from __future__ import annotations
 import urllib.parse
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
 # ── OData query ─────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ def odata_query(
     count: bool = False,
     include_annotations: bool = False,
     page_size: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Execute a GET against an entity set with OData query options.
 
     Returns the raw response dict (with `value` array + optional `@odata.nextLink`).
@@ -54,7 +54,7 @@ def odata_query(
         page_pref = f"odata.maxpagesize={page_size}"
         headers["Prefer"] = f"{existing},{page_pref}" if existing else page_pref
 
-    return backend.get(entity_set, params=params or None, extra_headers=headers or None) or {}
+    return as_dict(backend.get(entity_set, params=params or None, extra_headers=headers or None))
 
 
 # ── FetchXML query ──────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ def fetchxml_query(
     fetch_xml: str,
     *,
     include_annotations: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Execute a FetchXML query against the given entity set.
 
     fetch_xml must be a complete `<fetch>...</fetch>` document. We URL-encode it once
@@ -84,7 +84,7 @@ def fetchxml_query(
     headers = (
         {"Prefer": 'odata.include-annotations="*"'} if include_annotations else None
     )
-    return backend.get(path, extra_headers=headers) or {}
+    return as_dict(backend.get(path, extra_headers=headers))
 
 
 # ── Count ───────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ def saved_query(
     *,
     include_annotations: bool = False,
     page_size: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Execute a system view (savedquery) by GUID.
 
     Equivalent to: GET /<set>?savedQuery=<guid>
@@ -105,17 +105,17 @@ def saved_query(
     """
     headers: dict[str, str] = {}
     if include_annotations or page_size is not None:
-        prefer_parts = []
+        prefer_parts: list[str] = []
         if include_annotations:
             prefer_parts.append('odata.include-annotations="*"')
         if page_size is not None:
             prefer_parts.append(f"odata.maxpagesize={page_size}")
         headers["Prefer"] = ",".join(prefer_parts)
-    return backend.get(
+    return as_dict(backend.get(
         entity_set,
         params={"savedQuery": savedquery_id},
         extra_headers=headers or None,
-    ) or {}
+    ))
 
 
 def user_query(
@@ -125,24 +125,24 @@ def user_query(
     *,
     include_annotations: bool = False,
     page_size: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Execute a saved view (userquery) by GUID.
 
     Equivalent to: GET /<set>?userQuery=<guid>
     """
     headers: dict[str, str] = {}
     if include_annotations or page_size is not None:
-        prefer_parts = []
+        prefer_parts: list[str] = []
         if include_annotations:
             prefer_parts.append('odata.include-annotations="*"')
         if page_size is not None:
             prefer_parts.append(f"odata.maxpagesize={page_size}")
         headers["Prefer"] = ",".join(prefer_parts)
-    return backend.get(
+    return as_dict(backend.get(
         entity_set,
         params={"userQuery": userquery_id},
         extra_headers=headers or None,
-    ) or {}
+    ))
 
 
 def count_entity_set(backend: D365Backend, entity_set: str) -> int:
