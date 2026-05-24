@@ -10,7 +10,7 @@ Required env:
     D365_DOMAIN=<DOMAIN>   (optional for UPN)
     D365_AUTH=ntlm
 
-CI / release runs should also set CLI_ANYTHING_FORCE_INSTALLED=1 to require the
+CI / release runs should also set CRM_FORCE_INSTALLED=1 to require the
 installed `crm` command (not a python -m fallback).
 """
 
@@ -35,9 +35,9 @@ def _have_live_env() -> bool:
 def _resolve_cli(name: str):
     """Resolve installed CLI command; falls back to python -m for dev.
 
-    Set env CLI_ANYTHING_FORCE_INSTALLED=1 to require the installed command.
+    Set env CRM_FORCE_INSTALLED=1 to require the installed command.
     """
-    force = os.environ.get("CLI_ANYTHING_FORCE_INSTALLED", "").strip() == "1"
+    force = os.environ.get("CRM_FORCE_INSTALLED", "").strip() == "1"
     path = shutil.which(name)
     if path:
         print(f"[_resolve_cli] Using installed command: {path}")

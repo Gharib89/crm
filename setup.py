@@ -6,7 +6,7 @@ setup(
     description="Stateful CLI harness for Microsoft Dynamics 365 Customer Engagement (on-premises) v9.x Web API",
     long_description=open("README.md", encoding="utf-8").read() if __import__("os").path.exists("README.md") else "",
     long_description_content_type="text/markdown",
-    author="cli-anything",
+    author="Ahmed Gharib",
     license="MIT",
     python_requires=">=3.9",
     packages=find_packages(),

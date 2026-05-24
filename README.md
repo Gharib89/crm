@@ -1,15 +1,15 @@
-# cli-anything-d365
+# crm
 
-Stateful CLI harness for **Microsoft Dynamics 365 Customer Engagement on-premises,
+Stateful CRM CLI for **Microsoft Dynamics 365 Customer Engagement on-premises,
 version 9.x**. Wraps the real Dataverse Web API (OData v4) over HTTPS with NTLM
-(Windows Integrated) authentication. Built per the cli-anything methodology.
+(Windows Integrated) authentication.
 
 ## Why
 
 D365 CE on-prem ships with a GUI and a SOAP/.NET SDK. There's no first-party CLI
 optimized for AI agents or shell scripting. This harness gives you:
 
-- `cli-anything-d365` in your `PATH`
+- `crm` in your `PATH`
 - One-shot subcommands for record CRUD, OData and FetchXML queries, metadata
   introspection, and solution lifecycle
 - A stateful REPL for ad-hoc admin work
@@ -88,20 +88,20 @@ export D365_API_VERSION="v9.2"    # optional; default v9.2
 Or save a reusable profile (no password):
 
 ```bash
-cli-anything-d365 connection connect \
+crm connection connect \
     --url https://crm.contoso.local/contoso \
     --username alice --domain CONTOSO \
     --profile-name prod
 ```
 
-State lives under `~/.cli-anything-d365/` (override with `CLI_ANYTHING_D365_HOME`).
+State lives under `~/.crm/` (override with `CRM_HOME`).
 
 ## Use
 
 ### Default REPL
 
 ```bash
-$ cli-anything-d365
+$ crm
 ◆ d365 [prod] ❯ connection whoami
 ◆ d365 [prod] ❯ query odata contacts --top 5 --select fullname,emailaddress1
 ◆ d365 [prod] ❯ help
@@ -112,28 +112,28 @@ $ cli-anything-d365
 
 ```bash
 # Identity check
-cli-anything-d365 --json connection whoami
+crm --json connection whoami
 
 # Read
-cli-anything-d365 query odata contacts \
+crm query odata contacts \
     --filter "statecode eq 0" --select fullname,telephone1 --top 10
 
 # Write (preview first)
-cli-anything-d365 --dry-run entity create contacts \
+crm --dry-run entity create contacts \
     --data '{"firstname":"Rafel","lastname":"Shillo"}'
 
 # Then actually create
-cli-anything-d365 --json entity create contacts \
+crm --json entity create contacts \
     --data '{"firstname":"Rafel","lastname":"Shillo"}'
 
 # FetchXML
-cli-anything-d365 query fetchxml accounts --file ./reports/by_industry.xml
+crm query fetchxml accounts --file ./reports/by_industry.xml
 
 # Solution export
-cli-anything-d365 solution export MyCustomSolution -o /tmp/snap.zip
+crm solution export MyCustomSolution -o /tmp/snap.zip
 
 # Bulk CSV
-cli-anything-d365 data export opportunities -o /tmp/op.csv \
+crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue
 ```
 
@@ -164,18 +164,18 @@ Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state and command history                    |
 
-Use `cli-anything-d365 <group> --help` for command-level details.
+Use `crm <group> --help` for command-level details.
 
 ## Testing
 
 ```bash
 # Unit tests (mocked HTTP, no server needed)
 pip install -e .[dev]
-pytest cli_anything/d365/tests/test_core.py -v
+pytest crm/tests/test_core.py -v
 
 # E2E (requires live server credentials)
 export D365_URL=... D365_USERNAME=... D365_PASSWORD=...
-CLI_ANYTHING_FORCE_INSTALLED=1 pytest cli_anything/d365/tests/ -v -s
+CRM_FORCE_INSTALLED=1 pytest crm/tests/ -v -s
 ```
 
 See `tests/TEST.md` for the full test plan and recorded results.
@@ -183,15 +183,15 @@ See `tests/TEST.md` for the full test plan and recorded results.
 ## Architecture
 
 ```
-cli-anything-d365 (Click + REPL)
-        │
-        ├─ core/        record CRUD, queries, metadata, solutions, export, session
-        └─ utils/
-             ├─ d365_backend.py   requests + requests_ntlm → live Web API
-             └─ repl_skin.py      shared cli-anything REPL chrome
+crm (Click + REPL)
+    │
+    ├─ core/        record CRUD, queries, metadata, solutions, export, session
+    └─ utils/
+         ├─ d365_backend.py   requests + requests_ntlm → live Web API
+         └─ repl_skin.py      shared REPL chrome
 ```
 
-See `D365.md` in the project root (`d365/agent-harness/D365.md`) for the full SOP.
+See `D365.md` in the project root for the full SOP.
 
 ## Limits / Out of Scope
 

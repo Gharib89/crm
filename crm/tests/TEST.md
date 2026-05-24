@@ -1,4 +1,4 @@
-# Test Plan & Results — cli-anything-d365
+# Test Plan & Results — crm
 
 ## Test Inventory
 
@@ -71,7 +71,7 @@ Required environment:
 4. `test_fetchxml_query_returns_contacts` — runs a FetchXML query and asserts the value array shape.
 
 ### CLI subprocess E2E (`TestCLISubprocess`)
-5. `test_help` — `cli-anything-d365 --help` exits 0.
+5. `test_help` — `crm --help` exits 0.
 6. `test_connection_status_json` — `--json connection status` parses as JSON.
 7. `test_metadata_entities_json` — `--json metadata entities --top 3` returns rows.
 8. `test_full_contact_workflow` — installed CLI: create → get → delete a contact via subcommands, all in `--json` mode.
@@ -137,8 +137,8 @@ PATH="$PWD/.venv/bin:$PATH" \
   D365_USERNAME="moce\crmadmin" \
   D365_PASSWORD=*** \
   D365_AUTH=ntlm D365_API_VERSION=v9.1 \
-  CLI_ANYTHING_FORCE_INSTALLED=1 \
-  .venv/bin/pytest cli_anything/d365/tests/ -v --tb=no
+  CRM_FORCE_INSTALLED=1 \
+  .venv/bin/pytest crm/tests/ -v --tb=no
 ```
 
 Result: **45 passed in 5.41s** (37 unit + 8 E2E live).
@@ -154,14 +154,14 @@ All E2E paths exercised against the live MOCE org:
 
 Run command:
 ```bash
-PATH="$PWD/.venv/bin:$PATH" .venv/bin/pytest cli_anything/d365/tests/ -v --tb=no
+PATH="$PWD/.venv/bin:$PATH" .venv/bin/pytest crm/tests/ -v --tb=no
 ```
 
 Output:
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0
-rootdir: /home/gharib/wip/projects/cc/cli-anything/d365/agent-harness
+rootdir: /home/gharib/wip/projects/cc/crm
 plugins: requests-mock-1.12.1
 collected 35 items
 
@@ -238,7 +238,7 @@ Covered by `test_core.py`:
 - Export: CSV round-trip from a mocked OData page
 
 Covered by `test_full_e2e.py` (subprocess, no live env):
-- `cli-anything-d365 --help` runs and exits 0
+- `crm --help` runs and exits 0
 - `--json connection status` returns valid JSON envelope with `ok=true`
 
 Not yet covered (requires live D365 server, gated by env):
@@ -248,5 +248,5 @@ Not yet covered (requires live D365 server, gated by env):
 
 These are wired in the test file and will run automatically once `D365_URL` /
 `D365_USERNAME` / `D365_PASSWORD` are set. In CI/release testing, set
-`CLI_ANYTHING_FORCE_INSTALLED=1` so the subprocess tests refuse to fall back to
-`python -m` and instead require the installed `cli-anything-d365` command.
+`CRM_FORCE_INSTALLED=1` so the subprocess tests refuse to fall back to
+`python -m` and instead require the installed `crm` command.

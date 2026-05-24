@@ -1,21 +1,13 @@
-"""cli-anything REPL Skin — Unified terminal interface for all CLI harnesses.
-
-Copy this file into your CLI package at:
-    crm/<software>/utils/repl_skin.py
+"""crm REPL skin — terminal interface for the crm CLI.
 
 Usage:
-    from crm.<software>.utils.repl_skin import ReplSkin
+    from crm.utils.repl_skin import ReplSkin
 
-    skin = ReplSkin("shotcut", version="1.0.0")
-    skin.print_banner()  # auto-detects repo-root or packaged SKILL.md
-    prompt_text = skin.prompt(project_name="my_video.mlt", modified=True)
-    skin.success("Project saved")
-    skin.error("File not found")
-    skin.warning("Unsaved changes")
-    skin.info("Processing 24 clips...")
-    skin.status("Track 1", "3 clips, 00:02:30")
+    skin = ReplSkin("d365", version="1.0.0")
+    skin.print_banner()
+    skin.success("Saved")
+    skin.error("Not found")
     skin.table(headers, rows)
-    skin.print_goodbye()
 """
 
 import os
@@ -31,7 +23,7 @@ _ITALIC = "\033[3m"
 _UNDERLINE = "\033[4m"
 
 # Brand colors
-_CYAN = "\033[38;5;80m"       # cli-anything brand cyan
+_CYAN = "\033[38;5;80m"       # crm brand cyan
 _CYAN_BG = "\033[48;5;80m"
 _WHITE = "\033[97m"
 _GRAY = "\033[38;5;245m"
@@ -58,11 +50,11 @@ _RED = "\033[38;5;196m"
 _BLUE = "\033[38;5;75m"
 _MAGENTA = "\033[38;5;176m"
 
-_SKILL_SOURCE_REPO = os.environ.get("CLI_ANYTHING_SKILL_REPO", "HKUDS/CLI-Anything")
+_SKILL_SOURCE_REPO = os.environ.get("CRM_SKILL_REPO", "Gharib89/crm")
 
 # ── Brand icon ────────────────────────────────────────────────────────
 
-# The cli-anything icon: a small colored diamond/chevron mark
+# Brand icon: a small colored diamond/chevron mark
 _ICON = f"{_CYAN}{_BOLD}◆{_RESET}"
 _ICON_SMALL = f"{_CYAN}▸{_RESET}"
 
@@ -104,10 +96,10 @@ def _display_home_path(path: str) -> str:
 
 
 class ReplSkin:
-    """Unified REPL skin for cli-anything CLIs.
+    """REPL skin for the crm CLI.
 
-    Provides consistent branding, prompts, and message formatting
-    across all CLI harnesses built with the cli-anything methodology.
+    Provides branding, prompts, and message formatting for the
+    interactive REPL and human-readable command output.
     """
 
     def __init__(self, software: str, version: str = "1.0.0",
@@ -134,13 +126,13 @@ class ReplSkin:
             f"npx skills add {_SKILL_SOURCE_REPO} --skill {self.skill_id} -g -y"
         )
         global_skill_root = Path(
-            os.environ.get("CLI_ANYTHING_GLOBAL_SKILLS_DIR", str(Path.home() / ".agents" / "skills"))
+            os.environ.get("CRM_GLOBAL_SKILLS_DIR", str(Path.home() / ".agents" / "skills"))
         ).expanduser()
         self.global_skill_path = str(global_skill_root / self.skill_id / "SKILL.md")
 
         # Prefer repo-root canonical skills/<skill-id>/SKILL.md when running
-        # inside the CLI-Anything monorepo. Fall back to the packaged
-        # crm/<software>/skills/SKILL.md for installed harnesses.
+        # from a source checkout. Fall back to the packaged
+        # crm/skills/SKILL.md for installed harnesses.
         if skill_path is None:
             package_skill = Path(__file__).resolve().parent.parent / "skills" / "SKILL.md"
             repo_skill = None
@@ -171,7 +163,7 @@ class ReplSkin:
         """Check if terminal supports color."""
         if os.environ.get("NO_COLOR"):
             return False
-        if os.environ.get("CLI_ANYTHING_NO_COLOR"):
+        if os.environ.get("CRM_NO_COLOR"):
             return False
         if not hasattr(sys.stdout, "isatty"):
             return False
@@ -218,9 +210,9 @@ class ReplSkin:
         top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
         bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
 
-        # Title:  ◆  cli-anything · Shotcut
+        # Title:  ◆  crm · D365
         icon = self._c(_CYAN + _BOLD, "◆")
-        brand = self._c(_CYAN + _BOLD, "cli-anything")
+        brand = self._c(_CYAN + _BOLD, "crm")
         dot = self._c(_DARK_GRAY, "·")
         name = self._c(self.accent + _BOLD, self.display_name)
         title = f" {icon}  {brand} {dot} {name}"
