@@ -231,3 +231,122 @@ class TestLogRateLimitHeaders:
         assert "burst-remaining" not in err
         assert "limit=" not in err
         assert "retry-after" not in err
+
+
+# ── Retry loop integration ──────────────────────────────────────────────
+
+
+class TestRetryLoop:
+    def test_429_then_success(self, backend, monkeypatch):
+        sleeps: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        url = backend.url_for("WhoAmI")
+        with requests_mock.Mocker() as m:
+            m.get(url, [
+                {"status_code": 429, "headers": {"Retry-After": "0"}, "text": ""},
+                {"status_code": 200, "json": {"UserId": "00000000-0000-0000-0000-000000000001"}},
+            ])
+            result = backend.get("WhoAmI")
+        assert isinstance(result, dict)
+        assert result["UserId"] == "00000000-0000-0000-0000-000000000001"
+        assert len(sleeps) == 1
+        assert sleeps[0] == 0.0  # Retry-After: 0
+
+    def test_429_exhausts_then_raises(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("WhoAmI")
+        with requests_mock.Mocker() as m:
+            m.get(url, status_code=429, headers={"Retry-After": "0"},
+                  json={"error": {"code": "0x80072322", "message": "Rate limited"}})
+            with pytest.raises(D365Error) as exc_info:
+                backend.get("WhoAmI")
+        assert exc_info.value.status == 429
+        # retry_max=3 → 1 initial + 3 retries = 4 attempts
+        assert m.call_count == 4
+
+    def test_transport_error_retried(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("WhoAmI")
+        with requests_mock.Mocker() as m:
+            m.get(url, [
+                {"exc": requests.exceptions.ConnectionError("boom")},
+                {"exc": requests.exceptions.ConnectionError("boom")},
+                {"status_code": 200, "json": {"ok": True}},
+            ])
+            result = backend.get("WhoAmI")
+        assert isinstance(result, dict) and result["ok"] is True
+
+    def test_non_retryable_4xx_raises_immediately(self, backend, monkeypatch):
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+        url = backend.url_for("WhoAmI")
+        with requests_mock.Mocker() as m:
+            m.get(url, status_code=404,
+                  json={"error": {"code": "0x80040217", "message": "Not found"}})
+            with pytest.raises(D365Error) as exc_info:
+                backend.get("WhoAmI")
+        assert exc_info.value.status == 404
+        assert m.call_count == 1
+        assert slept == []
+
+    def test_post_does_not_retry_on_502(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, status_code=502, json={"error": {"message": "Bad Gateway"}})
+            with pytest.raises(D365Error):
+                backend.post("accounts", json_body={"name": "Acme"})
+        assert m.call_count == 1
+
+    def test_post_does_retry_on_503(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, [
+                {"status_code": 503, "headers": {"Retry-After": "0"}},
+                {"status_code": 200, "headers": {"OData-EntityId": "https://x/y(1)"},
+                 "text": ""},
+            ])
+            result = backend.post("accounts", json_body={"name": "Acme"})
+        assert isinstance(result, dict)
+        assert m.call_count == 2
+
+    def test_no_retry_env_disables_loop(self, profile, monkeypatch):
+        monkeypatch.setenv("CRM_NO_RETRY", "1")
+        be = D365Backend(profile, password="pw")
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+        url = be.url_for("WhoAmI")
+        with requests_mock.Mocker() as m:
+            m.get(url, status_code=429, headers={"Retry-After": "0"},
+                  json={"error": {"message": "rate"}})
+            with pytest.raises(D365Error):
+                be.get("WhoAmI")
+        assert m.call_count == 1
+        assert slept == []
+
+    def test_dry_run_skips_retry(self, profile, monkeypatch):
+        be = D365Backend(profile, password="pw", dry_run=True)
+        slept: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+        result = be.get("WhoAmI")
+        assert isinstance(result, dict)
+        assert result["_dry_run"] is True
+        assert slept == []
+
+    def test_429_emits_rate_limit_log(self, backend, monkeypatch, capsys):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("WhoAmI")
+        with requests_mock.Mocker() as m:
+            m.get(url, [
+                {"status_code": 429, "headers": {
+                    "Retry-After": "0",
+                    "x-ms-ratelimit-time-remaining-xrm-requests": "30",
+                }, "text": ""},
+                {"status_code": 200, "json": {"ok": True}},
+            ])
+            backend.get("WhoAmI")
+        err = capsys.readouterr().err
+        assert "ratelimit" in err
+        assert "time-remaining=30" in err
+        assert "retry " in err  # _log_retry line
