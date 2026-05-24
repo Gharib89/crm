@@ -6,7 +6,9 @@ quoting/path-building behind small helpers.
 
 from __future__ import annotations
 
-from crm.utils.d365_backend import D365Backend, D365Error
+from typing import Any
+
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
 def list_entities(
@@ -14,7 +16,7 @@ def list_entities(
     *,
     custom_only: bool = False,
     top: int | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """List entity definitions. Returns a list of `{LogicalName, EntitySetName, ...}` dicts.
 
     Note: `EntityDefinitions` does NOT support `$top` server-side (rejects with
@@ -27,7 +29,7 @@ def list_entities(
     if custom_only:
         params["$filter"] = "IsCustomEntity eq true"
 
-    result = backend.get("EntityDefinitions", params=params) or {}
+    result = as_dict(backend.get("EntityDefinitions", params=params))
     items = result.get("value", [])
     if top is not None:
         if top < 1:
@@ -36,31 +38,31 @@ def list_entities(
     return items
 
 
-def entity_info(backend: D365Backend, logical_name: str) -> dict:
+def entity_info(backend: D365Backend, logical_name: str) -> dict[str, Any]:
     """Retrieve the full entity definition for `logical_name`."""
     if not logical_name:
         raise D365Error("logical_name is required.")
     path = f"EntityDefinitions(LogicalName='{logical_name}')"
-    return backend.get(path) or {}
+    return as_dict(backend.get(path))
 
 
-def list_attributes(backend: D365Backend, logical_name: str) -> list[dict]:
+def list_attributes(backend: D365Backend, logical_name: str) -> list[dict[str, Any]]:
     """List attributes for an entity (logical name)."""
     path = f"EntityDefinitions(LogicalName='{logical_name}')/Attributes"
-    result = backend.get(
+    result = as_dict(backend.get(
         path,
         params={"$select": "LogicalName,SchemaName,AttributeType,IsCustomAttribute"},
-    ) or {}
+    ))
     return result.get("value", [])
 
 
-def attribute_info(backend: D365Backend, logical_name: str, attribute: str) -> dict:
+def attribute_info(backend: D365Backend, logical_name: str, attribute: str) -> dict[str, Any]:
     """Retrieve a single attribute definition."""
     path = (
         f"EntityDefinitions(LogicalName='{logical_name}')"
         f"/Attributes(LogicalName='{attribute}')"
     )
-    return backend.get(path) or {}
+    return as_dict(backend.get(path))
 
 
 def picklist_options(
@@ -69,7 +71,7 @@ def picklist_options(
     attribute: str,
     *,
     global_optionset: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Retrieve option set values for a picklist / state / status / boolean attribute.
 
     Casts to `Microsoft.Dynamics.CRM.PicklistAttributeMetadata` and expands
@@ -86,13 +88,13 @@ def picklist_options(
         f"/Attributes(LogicalName='{attribute}')/{cast}"
     )
     expand = "OptionSet" + (",GlobalOptionSet" if global_optionset else "")
-    return backend.get(
+    return as_dict(backend.get(
         path,
         params={"$select": "LogicalName", "$expand": expand},
-    ) or {}
+    ))
 
 
-def _label(text: str, lang: int = 1033) -> dict:
+def _label(text: str, lang: int = 1033) -> dict[str, Any]:
     """Build a Dataverse Label payload from a single string."""
     return {"LocalizedLabels": [{"Label": text, "LanguageCode": lang}]}
 
@@ -112,7 +114,7 @@ def create_entity(
     has_notes: bool = False,
     is_activity: bool = False,
     solution: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Create a new custom entity (table) via POST /EntityDefinitions.
 
     Args:
@@ -156,7 +158,7 @@ def create_entity(
     primary_label_text = primary_attr_label or "Name"
     collection_label = display_collection_name or (display_name + "s")
 
-    body: dict = {
+    body: dict[str, Any] = {
         "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
         "SchemaName": schema_name,
         "LogicalName": logical_name,
@@ -206,16 +208,16 @@ def create_entity(
     }
 
 
-def list_relationships(backend: D365Backend, logical_name: str) -> dict:
+def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:
     """Return one-to-many and many-to-many relationships for an entity."""
-    one_to_many = backend.get(
+    one_to_many = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/OneToManyRelationships",
         params={"$select": "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"},
-    ) or {}
-    many_to_many = backend.get(
+    ))
+    many_to_many = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/ManyToManyRelationships",
         params={"$select": "SchemaName,Entity1LogicalName,Entity2LogicalName,IntersectEntityName"},
-    ) or {}
+    ))
     return {
         "OneToMany": one_to_many.get("value", []),
         "ManyToMany": many_to_many.get("value", []),
