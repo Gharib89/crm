@@ -2,6 +2,7 @@
 
 All HTTP is mocked via `requests_mock`. No live D365 server needed.
 """
+# pyright: basic
 
 from __future__ import annotations
 

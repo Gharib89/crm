@@ -9,6 +9,7 @@ Usage:
     skin.error("Not found")
     skin.table(headers, rows)
 """
+# pyright: basic
 
 import os
 import sys
