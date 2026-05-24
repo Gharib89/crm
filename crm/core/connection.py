@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from crm.utils.d365_backend import (
     ConnectionProfile,
@@ -65,7 +66,7 @@ def _env(name: str, default: str = "") -> str:
 # ── .env autoload ───────────────────────────────────────────────────────
 
 
-def load_dotenv(path: str | os.PathLike | None = None, *, override: bool = False) -> Path | None:
+def load_dotenv(path: str | os.PathLike[str] | None = None, *, override: bool = False) -> Path | None:
     """Load KEY=VALUE pairs from a `.env` file into os.environ.
 
     Lookup order when path is None:
@@ -204,12 +205,13 @@ def resolve_credentials(
 # ── Live probes ─────────────────────────────────────────────────────────
 
 
-def whoami(backend: D365Backend) -> dict:
+def whoami(backend: D365Backend) -> dict[str, Any]:
     """Call WhoAmI() — the canonical D365 identity probe."""
-    return backend.get("WhoAmI") or {}
+    from crm.utils.d365_backend import as_dict
+    return as_dict(backend.get("WhoAmI"))
 
 
-def test_connection(backend: D365Backend) -> dict:
+def test_connection(backend: D365Backend) -> dict[str, Any]:
     """Lightweight reachability test: WhoAmI + report API base."""
     info = whoami(backend)
     return {
