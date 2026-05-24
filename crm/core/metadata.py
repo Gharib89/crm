@@ -6,6 +6,7 @@ quoting/path-building behind small helpers.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -186,26 +187,57 @@ def create_entity(
     if solution:
         headers["MSCRM.SolutionUniqueName"] = solution
 
-    result = backend.post(
+    result = as_dict(backend.post(
         "EntityDefinitions",
         json_body=body,
         extra_headers=headers or None,
-    )
-    entity_id_url: str | None = None
-    if isinstance(result, dict):
-        entity_id_url = result.get("_entity_id_url")
-        if result.get("_dry_run"):
-            return result
+    ))
+    if result.get("_dry_run"):
+        return result
+    entity_id_url: str | None = result.get("_entity_id_url")
 
-    return {
+    # Read-back: parse MetadataId from the OData-EntityId URL, then GET the
+    # server's authoritative EntitySetName. Failure here does NOT fail the
+    # command — the entity was created.
+    entity_set_name: str | None = None
+    entity_set_lookup_error: str | None = None
+    if not entity_id_url:
+        entity_set_lookup_error = "OData-EntityId header missing from create response."
+    else:
+        match = re.search(r"EntityDefinitions\(([0-9a-fA-F-]{36})\)", entity_id_url)
+        if not match:
+            entity_set_lookup_error = (
+                f"Could not parse MetadataId from OData-EntityId URL: {entity_id_url!r}"
+            )
+        else:
+            metadata_id = match.group(1)
+            try:
+                rb = as_dict(backend.get(
+                    f"EntityDefinitions({metadata_id})",
+                    params={"$select": "EntitySetName,LogicalName"},
+                ))
+                name = rb.get("EntitySetName")
+                if isinstance(name, str) and name:  # pyright: ignore[reportUnnecessaryIsInstance]
+                    entity_set_name = name
+                else:
+                    entity_set_lookup_error = (
+                        f"Read-back returned no EntitySetName for MetadataId {metadata_id}."
+                    )
+            except D365Error as exc:
+                entity_set_lookup_error = f"Read-back failed: {exc}"
+
+    out: dict[str, Any] = {
         "created": True,
         "schema_name": schema_name,
         "logical_name": logical_name,
-        "entity_set_name": logical_name + ("es" if logical_name.endswith("s") else "s"),
+        "entity_set_name": entity_set_name,
         "primary_attribute": primary_logical,
         "metadata_id_url": entity_id_url,
         "solution": solution,
     }
+    if entity_set_lookup_error is not None:
+        out["entity_set_lookup_error"] = entity_set_lookup_error
+    return out
 
 
 def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:

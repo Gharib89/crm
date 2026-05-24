@@ -429,6 +429,10 @@ class TestCreateEntity:
                 headers={"OData-EntityId":
                          backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")},
             )
+            m.get(
+                backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)"),
+                json={"LogicalName": "new_project", "EntitySetName": "new_projects"},
+            )
             info = meta_mod_local.create_entity(
                 backend,
                 schema_name="new_Project",
@@ -466,6 +470,68 @@ class TestCreateEntity:
             meta_mod_local.create_entity(
                 backend, schema_name="Project", display_name="Project",
             )
+
+
+class TestCreateEntityReadback:
+    _MD_ID = "11111111-1111-1111-1111-111111111111"
+
+    def test_create_entity_returns_server_entity_set_name(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            md_url = backend.url_for(f"EntityDefinitions({self._MD_ID})")
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": md_url},
+            )
+            m.get(
+                md_url,
+                json={"LogicalName": "new_city", "EntitySetName": "new_cities"},
+            )
+            info = meta_mod_local.create_entity(
+                backend, schema_name="new_City", display_name="City",
+            )
+        assert info["created"] is True
+        assert info["entity_set_name"] == "new_cities"
+        assert info["metadata_id_url"] == md_url
+
+    def test_create_entity_partial_when_readback_fails(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            md_url = backend.url_for(f"EntityDefinitions({self._MD_ID})")
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": md_url},
+            )
+            m.get(
+                md_url,
+                status_code=500,
+                json={"error": {"code": "0x...", "message": "boom"}},
+            )
+            info = meta_mod_local.create_entity(
+                backend, schema_name="new_City", display_name="City",
+            )
+        assert info["created"] is True
+        assert info["entity_set_name"] is None
+        assert "entity_set_lookup_error" in info
+        assert info["metadata_id_url"] == md_url
+
+    def test_create_entity_partial_when_odata_entityid_header_missing(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                # No OData-EntityId header set
+            )
+            info = meta_mod_local.create_entity(
+                backend, schema_name="new_City", display_name="City",
+            )
+        assert info["created"] is True
+        assert info["entity_set_name"] is None
+        assert info["metadata_id_url"] is None
+        assert "entity_set_lookup_error" in info
 
 
 class TestPublish:
