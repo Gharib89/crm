@@ -386,3 +386,93 @@ class TestResolveRetryMax:
         monkeypatch.delenv("CRM_NO_RETRY", raising=False)
         monkeypatch.setenv("CRM_RETRY_MAX", "   ")
         assert _resolve_retry_max(profile) == profile.retry_max
+
+
+# ── poll_async_operation ────────────────────────────────────────────────
+
+
+class TestPollAsyncOperation:
+    OP_ID = "11111111-1111-1111-1111-111111111111"
+    JOB_ID = "22222222-2222-2222-2222-222222222222"
+
+    def _op_url(self, backend):
+        return backend.url_for(f"asyncoperations({self.OP_ID})")
+
+    def _job_url(self, backend):
+        return backend.url_for(f"importjobs({self.JOB_ID})")
+
+    def test_completes_successfully(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), [
+                {"json": {"statecode": 0, "statuscode": 0, "message": "Ready"}},
+                {"json": {"statecode": 3, "statuscode": 30, "message": "Succeeded"}},
+            ])
+            result = backend.poll_async_operation(self.OP_ID)
+        assert result["statecode"] == 3
+        assert result["statuscode"] == 30
+
+    def test_raises_on_failure_status(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 3, "statuscode": 31,
+                "friendlymessage": "Solution import failed: missing dependency",
+            })
+            with pytest.raises(D365Error) as exc_info:
+                backend.poll_async_operation(self.OP_ID)
+        assert "missing dependency" in str(exc_info.value)
+        assert exc_info.value.status == 31
+
+    def test_raises_on_cancellation(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 3, "statuscode": 32, "message": "User cancelled",
+            })
+            with pytest.raises(D365Error) as exc_info:
+                backend.poll_async_operation(self.OP_ID)
+        assert "32" in str(exc_info.value) or "cancelled" in str(exc_info.value).lower()
+
+    def test_timeout_raises(self, backend, monkeypatch):
+        # profile.async_timeout=2; profile.async_poll_initial=0.05 → many polls
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        # Fake monotonic clock that advances 5s per call → exceeds 2s timeout fast.
+        ticks = iter([0.0, 0.1, 5.0, 10.0])
+        monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 0, "statuscode": 0, "message": "Pending",
+            })
+            with pytest.raises(D365Error, match="did not complete within"):
+                backend.poll_async_operation(self.OP_ID, timeout=2)
+
+    def test_progress_callback_invoked(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        calls: list[tuple[float, str]] = []
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), [
+                {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
+                {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
+            ])
+            m.get(self._job_url(backend), [
+                {"json": {"progress": 50.0, "solutionname": "MySol"}},
+                {"json": {"progress": 100.0, "solutionname": "MySol"}},
+            ])
+            backend.poll_async_operation(
+                self.OP_ID, import_job_id=self.JOB_ID,
+                on_progress=lambda pct, msg: calls.append((pct, msg)),
+            )
+        assert len(calls) == 2
+        assert calls[0][0] == 50.0
+        assert calls[1][0] == 100.0
+
+    def test_no_progress_callback_skips_job_fetch(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 3, "statuscode": 30, "message": "Done",
+            })
+            # No m.get for importjobs — would 404 if called.
+            backend.poll_async_operation(self.OP_ID)
+        # Pass if we get here without an unmatched-request exception.
