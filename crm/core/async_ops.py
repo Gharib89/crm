@@ -5,9 +5,10 @@ Reference: https://learn.microsoft.com/power-apps/developer/data-platform/asynch
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, cast
 
-from crm.utils.d365_backend import D365Backend, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 _SELECT = (
     "asyncoperationid,name,messagename,statecode,statuscode,"
@@ -33,6 +34,10 @@ def list_async_operations(
         escaped = message_name.replace("'", "''")
         filters.append(f"messagename eq '{escaped}'")
     if owner_id is not None:
+        try:
+            uuid.UUID(owner_id)
+        except ValueError as exc:
+            raise D365Error(f"owner_id must be a GUID; got {owner_id!r}") from exc
         filters.append(f"_ownerid_value eq {owner_id}")
 
     params: dict[str, Any] = {
@@ -100,6 +105,10 @@ def list_all_async_operations(
         escaped = message_name.replace("'", "''")
         filters.append(f"messagename eq '{escaped}'")
     if owner_id is not None:
+        try:
+            uuid.UUID(owner_id)
+        except ValueError as exc:
+            raise D365Error(f"owner_id must be a GUID; got {owner_id!r}") from exc
         filters.append(f"_ownerid_value eq {owner_id}")
 
     params: dict[str, Any] = {

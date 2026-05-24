@@ -91,6 +91,18 @@ class TestCancel:
             assert body == {"statecode": 3, "statuscode": 32}
 
 
+class TestOwnerValidation:
+    def test_list_rejects_invalid_owner_id(self, backend):
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="owner_id"):
+            async_ops.list_async_operations(backend, owner_id="not-a-guid")
+
+    def test_list_all_rejects_invalid_owner_id(self, backend):
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="owner_id"):
+            async_ops.list_all_async_operations(backend, owner_id="not-a-guid")
+
+
 class TestListAll:
     def test_follows_next_link_until_exhausted(self, backend, profile):
         next_url = f"{profile.api_base}asyncoperations?$skiptoken=cookie"
