@@ -876,7 +876,7 @@ class TestExportSolutionAsync:
         assert info["output"] == str(out)
         assert info["async_operation_id"] == self.OP_ID
         assert info["export_job_id"] == self.EXPORT_JOB_ID
-        assert info["bytes"] == 3  # base64 "UEsBAh4D" decodes to 6 bytes
+        assert info["bytes"] == 6  # base64 "UEsBAh4D" decodes to 6 bytes
         assert "duration_ms" in info
         assert out.exists()
 
