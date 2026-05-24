@@ -171,8 +171,13 @@ def import_solution(
         if quiet:
             return
         now = _time.monotonic()
-        if pct == last_progress["pct"] and (now - last_emit["t"]) < 1.0:
-            return
+        # Always emit terminal (100%). Otherwise: rate-limit to once per second
+        # AND drop duplicate-percent ticks within that window.
+        if pct < 100.0:
+            if (now - last_emit["t"]) < 1.0:
+                return
+            if pct == last_progress["pct"]:
+                return
         last_progress["pct"] = pct
         last_emit["t"] = now
         _sys.stderr.write(f"[crm] import progress={pct:.1f}% status={msg}\n")
@@ -193,7 +198,7 @@ def import_solution(
     # Final importjobs read for the canonical progress + timestamps.
     job_row = as_dict(backend.get(
         f"importjobs({import_job_id})",
-        params={"$select": "progress,startedon,completedon,solutionname"},
+        params={"$select": "progress,startedon,completedon"},
     ))
     duration_ms = int((_time.monotonic() - started) * 1000)
     prog = job_row.get("progress")
