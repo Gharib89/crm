@@ -91,6 +91,7 @@ full design.
   async operation reports completion, emitting per-tick progress to
   stderr (import only; suppress with `--quiet`).
 
+[0.4.0]: https://github.com/Gharib89/crm/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Gharib89/crm/releases/tag/v0.3.0
 
 ## [0.2.0] — 2026-05-24
