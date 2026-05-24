@@ -147,6 +147,33 @@ def _handle_d365_error(ctx: CLIContext, exc: D365Error) -> None:
     })
 
 
+def _admin_header_options(f):
+    """Stack `--as-user`, `--suppress-dup-detection`, `--bypass-plugins` flags on a command."""
+    f = click.option(
+        "--bypass-plugins", is_flag=True, default=False,
+        help="Send MSCRM.BypassCustomPluginExecution: true (requires prvBypassCustomPluginExecution).",
+    )(f)
+    f = click.option(
+        "--suppress-dup-detection", is_flag=True, default=False,
+        help="Send MSCRM.SuppressDuplicateDetection: true.",
+    )(f)
+    f = click.option(
+        "--as-user", "as_user", metavar="GUID", default=None,
+        help="Impersonate systemuser by GUID via MSCRMCallerID header.",
+    )(f)
+    return f
+
+
+def _admin_kwargs(as_user: str | None, suppress_dup_detection: bool,
+                  bypass_plugins: bool) -> dict[str, Any]:
+    """Resolve admin-header CLI flags into backend kwargs."""
+    return {
+        "caller_id": as_user,
+        "suppress_duplicate_detection": suppress_dup_detection,
+        "bypass_custom_plugin_execution": bypass_plugins,
+    }
+
+
 # ── Root group ──────────────────────────────────────────────────────────
 
 
