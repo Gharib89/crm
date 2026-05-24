@@ -177,6 +177,26 @@ class TestHeaderInjection:
             b.get("accounts", caller_id="")
             assert "MSCRMCallerID" not in m.last_request.headers
 
+    def test_caller_id_empty_pops_extra_headers_collision(self, monkeypatch, profile):
+        monkeypatch.setenv("CRM_AS_USER", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        b = D365Backend(profile, password="pw")
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            b.get("accounts",
+                  caller_id="",
+                  extra_headers={"MSCRMCallerID": "ffffffff-ffff-ffff-ffff-ffffffffffff"})
+            assert "MSCRMCallerID" not in m.last_request.headers
+
+    def test_suppress_false_pops_extra_headers_collision(self, monkeypatch, profile):
+        monkeypatch.setenv("CRM_SUPPRESS_DUP", "1")
+        b = D365Backend(profile, password="pw")
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204)
+            b.post("accounts", json_body={"name": "a"},
+                   suppress_duplicate_detection=False,
+                   extra_headers={"MSCRM.SuppressDuplicateDetection": "true"})
+            assert "MSCRM.SuppressDuplicateDetection" not in m.last_request.headers
+
     def test_headers_absent_when_neither_kwarg_nor_env(self, monkeypatch, backend, profile):
         for k in ("CRM_AS_USER", "CRM_SUPPRESS_DUP", "CRM_BYPASS_PLUGINS"):
             monkeypatch.delenv(k, raising=False)

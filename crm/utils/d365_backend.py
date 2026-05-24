@@ -225,6 +225,8 @@ class D365Backend:
                     f"Invalid GUID for caller_id: {effective_caller!r}"
                 ) from exc
             headers["MSCRMCallerID"] = effective_caller
+        else:
+            headers.pop("MSCRMCallerID", None)
 
         effective_suppress = (
             suppress_duplicate_detection
@@ -233,6 +235,8 @@ class D365Backend:
         )
         if effective_suppress:
             headers["MSCRM.SuppressDuplicateDetection"] = "true"
+        else:
+            headers.pop("MSCRM.SuppressDuplicateDetection", None)
 
         effective_bypass = (
             bypass_custom_plugin_execution
@@ -241,6 +245,8 @@ class D365Backend:
         )
         if effective_bypass:
             headers["MSCRM.BypassCustomPluginExecution"] = "true"
+        else:
+            headers.pop("MSCRM.BypassCustomPluginExecution", None)
 
         if etag is not None:
             if etag == "":
