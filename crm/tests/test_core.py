@@ -662,3 +662,23 @@ class TestCountEntitySet:
         assert len(m.request_history) == 2, "fallback must issue two requests in order"
         assert m.request_history[0].url.endswith("/$count")
         assert "$count=true" in m.request_history[1].url or "%24count=true" in m.request_history[1].url
+
+
+# ── cli.py ──────────────────────────────────────────────────────────────
+
+
+class TestErrorEnvelope:
+    def test_error_envelope_null_when_status_missing(self, capsys):
+        from crm.cli import CLIContext
+        from crm.utils.d365_backend import D365Error
+        ctx = CLIContext()
+        ctx.json_mode = True
+        exc = D365Error("transport boom")  # no status, no code
+        # Mirror cli._handle_d365_error after the fix:
+        ctx.emit(False, error=str(exc), meta={"status": exc.status, "code": exc.code})
+        out = capsys.readouterr().out
+        envelope = json.loads(out)
+        assert envelope["ok"] is False
+        assert envelope["error"] == "transport boom"
+        assert envelope["meta"]["status"] is None
+        assert envelope["meta"]["code"] is None

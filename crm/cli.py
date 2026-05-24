@@ -127,8 +127,8 @@ def _short_repr(v: Any, limit: int = 80) -> str:
 
 def _handle_d365_error(ctx: CLIContext, exc: D365Error) -> None:
     ctx.emit(False, error=str(exc), meta={
-        "status": exc.status or "n/a",
-        "code": exc.code or "n/a",
+        "status": exc.status,
+        "code": exc.code,
     })
 
 
