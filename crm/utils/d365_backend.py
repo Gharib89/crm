@@ -220,6 +220,13 @@ class D365Backend:
         if bypass_custom_plugin_execution or self._default_bypass_plugins:
             headers["MSCRM.BypassCustomPluginExecution"] = "true"
 
+        if etag is not None:
+            if etag == "":
+                raise D365Error("etag must be non-empty")
+            if method.upper() not in ("PATCH", "DELETE"):
+                raise D365Error(f"etag not valid on {method.upper()}")
+            headers["If-Match"] = etag
+
         if self.dry_run:
             return {
                 "_dry_run": True,

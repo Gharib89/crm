@@ -162,3 +162,55 @@ class TestHeaderInjection:
             assert "MSCRMCallerID" not in m.last_request.headers
             assert "MSCRM.SuppressDuplicateDetection" not in m.last_request.headers
             assert "MSCRM.BypassCustomPluginExecution" not in m.last_request.headers
+
+
+class TestEtag:
+    def test_etag_value_sets_if_match(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.patch(f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
+                    status_code=204)
+            backend.patch(
+                "accounts(00000000-0000-0000-0000-000000000001)",
+                json_body={"name": "a"},
+                etag='W/"123"',
+            )
+            assert m.last_request.headers["If-Match"] == 'W/"123"'
+
+    def test_etag_star_sets_if_match_star(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.patch(f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
+                    status_code=204)
+            backend.patch(
+                "accounts(00000000-0000-0000-0000-000000000001)",
+                json_body={"name": "a"},
+                etag="*",
+            )
+            assert m.last_request.headers["If-Match"] == "*"
+
+    def test_etag_on_delete(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.delete(f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
+                     status_code=204)
+            backend.delete(
+                "accounts(00000000-0000-0000-0000-000000000001)",
+                etag='W/"7"',
+            )
+            assert m.last_request.headers["If-Match"] == 'W/"7"'
+
+    def test_etag_on_get_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="etag not valid on GET"):
+                backend.get("accounts", etag='W/"1"')
+            assert m.call_count == 0
+
+    def test_etag_on_post_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="etag not valid on POST"):
+                backend.post("accounts", json_body={}, etag='W/"1"')
+            assert m.call_count == 0
+
+    def test_etag_empty_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="non-empty"):
+                backend.patch("accounts(x)", json_body={}, etag="")
+            assert m.call_count == 0
