@@ -503,16 +503,16 @@ class TestConnectionProfileValidation:
         with pytest.raises(D365Error, match=field):
             ConnectionProfile(**kwargs)
 
-    def test_zero_is_allowed(self):
+    def test_zero_is_allowed_for_retry_and_timeout(self):
         # retry_max=0 (no retries) is an explicit supported value via env override.
-        # Other fields tolerate zero too (immediate timeout, etc. — user choice).
+        # retry_base_delay/retry_max_delay/async_timeout tolerate zero too.
+        # async_poll_initial/async_poll_max must be > 0 (zero would tight-loop) —
+        # covered separately by test_async_poll_zero_raises.
         profile = ConnectionProfile(
             **self._BASE,
             retry_max=0,
             retry_base_delay=0.0,
             retry_max_delay=0.0,
-            async_poll_initial=0.0,
-            async_poll_max=0.0,
             async_timeout=0,
         )
         assert profile.retry_max == 0
@@ -527,3 +527,22 @@ class TestConnectionProfileValidation:
         bad = {**self._BASE, "async_poll_max": -2.0}
         with pytest.raises(D365Error, match="async_poll_max"):
             ConnectionProfile.from_dict(bad)
+
+    @pytest.mark.parametrize("field", ["async_poll_initial", "async_poll_max"])
+    def test_async_poll_zero_raises(self, field):
+        # Zero poll intervals tight-loop in poll_async_operation (sleep(0) +
+        # immediate re-request). Require > 0.
+        kwargs = {**self._BASE, field: 0.0}
+        with pytest.raises(D365Error, match=field):
+            ConnectionProfile(**kwargs)
+
+    def test_async_poll_max_below_initial_raises(self):
+        # backoff doubles interval up to async_poll_max; if max < initial the
+        # first sleep already exceeds the cap.
+        kwargs = {
+            **self._BASE,
+            "async_poll_initial": 5.0,
+            "async_poll_max": 2.0,
+        }
+        with pytest.raises(D365Error, match="async_poll_max"):
+            ConnectionProfile(**kwargs)

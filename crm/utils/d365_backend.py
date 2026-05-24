@@ -62,14 +62,25 @@ class ConnectionProfile:
             ("retry_max", self.retry_max),
             ("retry_base_delay", self.retry_base_delay),
             ("retry_max_delay", self.retry_max_delay),
-            ("async_poll_initial", self.async_poll_initial),
-            ("async_poll_max", self.async_poll_max),
             ("async_timeout", self.async_timeout),
         ):
             if _value < 0:
                 raise D365Error(
                     f"ConnectionProfile.{_field} must be >= 0, got {_value!r}"
                 )
+        for _field, _value in (
+            ("async_poll_initial", self.async_poll_initial),
+            ("async_poll_max", self.async_poll_max),
+        ):
+            if _value <= 0:
+                raise D365Error(
+                    f"ConnectionProfile.{_field} must be > 0, got {_value!r}"
+                )
+        if self.async_poll_max < self.async_poll_initial:
+            raise D365Error(
+                f"ConnectionProfile.async_poll_max ({self.async_poll_max}) must be "
+                f">= async_poll_initial ({self.async_poll_initial})"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
