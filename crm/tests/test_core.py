@@ -161,7 +161,7 @@ class TestEntityCrud:
         assert params["$select"] == ["name,telephone1"]
         assert params["$expand"] == ["primarycontactid"]
 
-    def test_create_sets_if_none_match_and_prefer_return(self, backend):
+    def test_create_no_if_none_match_header(self, backend):
         with requests_mock.Mocker() as m:
             m.post(
                 backend.url_for("contacts"),
@@ -169,7 +169,7 @@ class TestEntityCrud:
             )
             entity_mod.create(backend, "contacts", {"firstname": "Rafel"})
         req = m.request_history[0]
-        assert req.headers["If-None-Match"] == "null"
+        assert "If-None-Match" not in req.headers
         assert req.headers["Prefer"] == "return=representation"
         assert json.loads(req.body) == {"firstname": "Rafel"}
 
@@ -241,6 +241,15 @@ class TestQuery:
     def test_fetchxml_query_rejects_non_fetch_payload(self, backend):
         with pytest.raises(D365Error, match="<fetch>"):
             query_mod.fetchxml_query(backend, "accounts", "<not_fetch/>")
+
+    def test_fetchxml_passes_params_dict(self, backend):
+        fx = "<fetch top='1'><entity name='account'/></fetch>"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("accounts"), json={"value": []})
+            query_mod.fetchxml_query(backend, "accounts", fx)
+        req = m.request_history[0]
+        # requests_mock lowercases qs keys
+        assert req.qs["fetchxml"] == [fx]
 
 
 # ── metadata.py ─────────────────────────────────────────────────────────
@@ -500,6 +509,31 @@ class TestConnectionDotenv:
         assert profile.domain == "moce"
         assert profile.username == "admin"
 
+    def test_dotenv_preserves_inner_quotes(self, tmp_path, monkeypatch):
+        for k in ("KEY_WITH_QUOTE", "D365_URL", "CRM_BASE_URL"):
+            monkeypatch.delenv(k, raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text('KEY_WITH_QUOTE="foo\'s bar"\n')
+        from crm.core import connection as conn_mod_local
+        conn_mod_local.load_dotenv(env_file)
+        import os
+        assert os.environ["KEY_WITH_QUOTE"] == "foo's bar"
+
+
+class TestOrderedKeys:
+    def test_ordered_keys_drops_lookups_and_annotations(self):
+        from crm.core.export import _ordered_keys
+        records = [
+            {
+                "name": "Contoso",
+                "_owner_value": "guid-1",
+                "@odata.etag": "W/\"123\"",
+                "createdon": "2026-01-01",
+            },
+            {"name": "Initech", "_modifiedby_value": "guid-2"},
+        ]
+        assert _ordered_keys(records) == ["name", "createdon"]
+
 
 class TestExport:
     def test_export_records_csv(self, backend, tmp_path):
@@ -598,3 +632,33 @@ class TestWorkflow:
             wf_mod.execute_workflow(backend, "", "x")
         with pytest.raises(D365Error):
             wf_mod.execute_workflow(backend, "x", "")
+
+
+class TestCountEntitySet:
+    def test_count_returns_int_from_text_plain(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("contacts/$count"),
+                text="42",
+                headers={"Content-Type": "text/plain"},
+            )
+            result = query_mod.count_entity_set(backend, "contacts")
+        assert result == 42
+        assert len(m.request_history) == 1, "happy path must issue exactly one request"
+
+    def test_count_falls_back_when_text_plain_empty(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("contacts/$count"),
+                text="",
+                headers={"Content-Type": "text/plain"},
+            )
+            m.get(
+                backend.url_for("contacts"),
+                json={"value": [{"contactid": "x"}], "@odata.count": 7},
+            )
+            result = query_mod.count_entity_set(backend, "contacts")
+        assert result == 7
+        assert len(m.request_history) == 2, "fallback must issue two requests in order"
+        assert m.request_history[0].url.endswith("/$count")
+        assert "$count=true" in m.request_history[1].url or "%24count=true" in m.request_history[1].url
