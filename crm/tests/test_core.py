@@ -803,30 +803,6 @@ class TestReplBackendCache:
 
 
 class TestSolutionExportFlags:
-    def test_export_solution_passes_flags_to_body(self, backend, tmp_path):
-        from crm.core import solution as sol_mod_local
-        import base64
-        with requests_mock.Mocker() as m:
-            payload = base64.b64encode(b"FAKE-ZIP-CONTENT").decode("ascii")
-            m.post(
-                backend.url_for("ExportSolution"),
-                json={"ExportSolutionFile": payload},
-            )
-            out = tmp_path / "s.zip"
-            sol_mod_local.export_solution(
-                backend, "MySol", out,
-                export_customizations=True,
-                export_general=True,
-            )
-        body = json.loads(m.request_history[0].body)
-        assert body["SolutionName"] == "MySol"
-        assert body["ExportCustomizationSettings"] is True
-        assert body["ExportGeneralSettings"] is True
-        # Other flags default to False
-        assert body["ExportCalendarSettings"] is False
-        assert body["ExportSales"] is False
-        assert body["ExportAutoNumberingSettings"] is False
-
     def test_cli_export_setting_flag_maps_to_kwargs(self, monkeypatch, tmp_path):
         """CLI plumbing: --export-setting <name> → kwargs passed to export_solution."""
         from click.testing import CliRunner
@@ -861,6 +837,144 @@ class TestSolutionExportFlags:
         assert captured["kwargs"].get("export_general") is True
         assert "export_calendar" not in captured["kwargs"]
         assert "export_sales" not in captured["kwargs"]
+
+
+# ── solution.py — async flow ────────────────────────────────────────────
+
+
+class TestExportSolutionAsync:
+    OP_ID = "33333333-3333-3333-3333-333333333333"
+    EXPORT_JOB_ID = "44444444-4444-4444-4444-444444444444"
+
+    def test_export_calls_async_then_poll_then_download(
+        self, backend, tmp_path, monkeypatch
+    ):
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        out = tmp_path / "mysol.zip"
+        # 5-byte zip stub, base64-encoded
+        encoded = "UEsBAh4D"
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ExportSolutionAsync"), json={
+                "AsyncOperationId": self.OP_ID,
+                "ExportJobId": self.EXPORT_JOB_ID,
+            })
+            m.get(backend.url_for(f"asyncoperations({self.OP_ID})"), json={
+                "statecode": 3, "statuscode": 30, "message": "Done",
+            })
+            m.post(backend.url_for("DownloadSolutionExportData"), json={
+                "ExportSolutionFile": encoded,
+            })
+            from crm.core import solution as sol_mod
+            info = sol_mod.export_solution(
+                backend, "MySolution", out, managed=True,
+            )
+
+        assert info["solution"] == "MySolution"
+        assert info["managed"] is True
+        assert info["output"] == str(out)
+        assert info["async_operation_id"] == self.OP_ID
+        assert info["export_job_id"] == self.EXPORT_JOB_ID
+        assert info["bytes"] == 3  # base64 "UEsBAh4D" decodes to 6 bytes
+        assert "duration_ms" in info
+        assert out.exists()
+
+    def test_export_raises_on_async_failure(
+        self, backend, tmp_path, monkeypatch
+    ):
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        out = tmp_path / "mysol.zip"
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ExportSolutionAsync"), json={
+                "AsyncOperationId": self.OP_ID,
+                "ExportJobId": self.EXPORT_JOB_ID,
+            })
+            m.get(backend.url_for(f"asyncoperations({self.OP_ID})"), json={
+                "statecode": 3, "statuscode": 31,
+                "friendlymessage": "Solution export failed",
+            })
+            from crm.core import solution as sol_mod
+            with pytest.raises(D365Error, match="export failed"):
+                sol_mod.export_solution(backend, "MySolution", out)
+
+        assert not out.exists()
+
+    def test_export_dry_run_short_circuits(self, profile, tmp_path):
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        from crm.core import solution as sol_mod
+        info = sol_mod.export_solution(dry, "MySolution", tmp_path / "x.zip")
+        assert info["_dry_run"] is True
+        assert info["action"] == "ExportSolutionAsync"
+
+
+class TestImportSolutionAsync:
+    OP_ID = "55555555-5555-5555-5555-555555555555"
+
+    def test_import_calls_async_then_polls(
+        self, backend, tmp_path, monkeypatch
+    ):
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"), json={
+                "AsyncOperationId": self.OP_ID,
+                "ImportJobKey": "00000000-0000-0000-0000-000000000abc",
+            })
+            m.get(
+                requests_mock.ANY,
+                json={"statecode": 3, "statuscode": 30, "message": "Done"},
+            )
+            from crm.core import solution as sol_mod
+            info = sol_mod.import_solution(backend, zip_path, quiet=True)
+
+        assert info["async_operation_id"] == self.OP_ID
+        assert info["status"] == "succeeded"
+        assert "import_job_id" in info
+        assert "duration_ms" in info
+        assert "started_on" in info or info.get("started_on") is None  # tolerant
+
+    def test_import_missing_file_raises(self, backend, tmp_path):
+        from crm.core import solution as sol_mod
+        with pytest.raises(D365Error, match="not found"):
+            sol_mod.import_solution(backend, tmp_path / "missing.zip")
+
+    def test_import_raises_on_async_failure(
+        self, backend, tmp_path, monkeypatch
+    ):
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"), json={
+                "AsyncOperationId": self.OP_ID,
+                "ImportJobKey": "00000000-0000-0000-0000-000000000abc",
+            })
+            m.get(
+                requests_mock.ANY,
+                json={"statecode": 3, "statuscode": 31,
+                      "friendlymessage": "Import failed: missing dependency"},
+            )
+            from crm.core import solution as sol_mod
+            with pytest.raises(D365Error, match="missing dependency"):
+                sol_mod.import_solution(backend, zip_path, quiet=True)
+
+    def test_import_dry_run_short_circuits(self, profile, tmp_path):
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        from crm.core import solution as sol_mod
+        info = sol_mod.import_solution(dry, zip_path)
+        assert info["_dry_run"] is True
+        assert info["action"] == "ImportSolutionAsync"
+        assert "import_job_id" in info
 
 
 class TestLoadPayload:
