@@ -7,6 +7,7 @@ PR2 will add async-poll coverage. All HTTP is mocked; no live D365 server needed
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import pytest
 import requests
@@ -482,7 +483,7 @@ class TestPollAsyncOperation:
 
 
 class TestConnectionProfileValidation:
-    _BASE = dict(
+    _BASE: dict[str, Any] = dict(
         name="testp",
         url="https://crm.contoso.local/contoso",
         domain="CONTOSO",
