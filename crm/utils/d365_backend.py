@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os as _os
 import random
+import re
 import sys as _sys
 import time
 import urllib.parse
@@ -651,9 +652,176 @@ def _assemble_batch_body(
     return body_text, f"multipart/mixed; boundary={batch_boundary}"
 
 
-def _parse_batch_response(*args: Any, **kwargs: Any) -> Any:
-    """Stub — full implementation in Task 8."""
-    raise NotImplementedError
+def _split_mime_parts(body: bytes, boundary: str) -> list[bytes]:
+    """Split a multipart body on its boundary, ignoring preamble/epilogue."""
+    sep = f"--{boundary}".encode("utf-8")
+    chunks = body.split(sep)
+    # First chunk is preamble (often empty); last is "--\r\n" epilogue marker.
+    parts: list[bytes] = []
+    for c in chunks[1:]:
+        c = c.lstrip(b"\r\n")
+        if c.startswith(b"--"):
+            break
+        if c.endswith(b"\r\n"):
+            c = c[:-2]
+        parts.append(c)
+    return parts
+
+
+def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
+    """Parse one application/http subpart into a BatchResult dict."""
+    # Strip the leading MIME headers (Content-Type: application/http, etc.)
+    sep = raw.find(b"\r\n\r\n")
+    if sep < 0:
+        return {"method": "", "url": "", "status": 0, "headers": {}, "body": None,
+                "error": "malformed batch subpart"}
+    mime_headers_raw = raw[:sep].decode("utf-8", errors="replace")
+    http_block = raw[sep + 4:]
+
+    # First line of http_block: "HTTP/1.1 <code> <reason>"
+    status_sep = http_block.find(b"\r\n")
+    if status_sep < 0:
+        return {"method": "", "url": "", "status": 0, "headers": {}, "body": None,
+                "error": "malformed status line"}
+    status_line = http_block[:status_sep].decode("utf-8", errors="replace").strip()
+    rest = http_block[status_sep + 2:]
+    m = re.match(r"^HTTP/[\d.]+\s+(\d+)", status_line)
+    status = int(m.group(1)) if m else 0
+
+    # Parse remaining headers + body
+    body_sep = rest.find(b"\r\n\r\n")
+    if body_sep < 0:
+        header_text = rest.decode("utf-8", errors="replace")
+        body_text = ""
+    else:
+        header_text = rest[:body_sep].decode("utf-8", errors="replace")
+        body_text = rest[body_sep + 4:].decode("utf-8", errors="replace").strip()
+
+    headers: dict[str, str] = {}
+    for line in header_text.splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            headers[k.strip()] = v.strip()
+
+    parsed_body: Any
+    if body_text:
+        try:
+            parsed_body = json.loads(body_text)
+        except ValueError:
+            parsed_body = body_text
+    else:
+        parsed_body = None
+
+    content_id = None
+    for line in mime_headers_raw.splitlines():
+        if line.lower().startswith("content-id:"):
+            content_id = line.split(":", 1)[1].strip()
+            break
+
+    error: str | None = None
+    if not (200 <= status < 300):
+        if isinstance(parsed_body, dict):
+            err = parsed_body.get("error")
+            if isinstance(err, dict):
+                error = str(err.get("message") or f"HTTP {status}")
+            else:
+                error = f"HTTP {status}"
+        else:
+            error = f"HTTP {status}: {body_text[:200]}" if body_text else f"HTTP {status}"
+
+    return {
+        "method": "",
+        "url": "",
+        "status": status,
+        "headers": headers,
+        "body": parsed_body,
+        "error": error,
+        "_content_id": content_id,
+    }
+
+
+def _parse_batch_response(
+    body: bytes,
+    content_type: str,
+    operations: "Sequence[dict[str, Any]]",
+) -> list[dict[str, Any]]:
+    """Parse a multipart/mixed $batch response into one BatchResult per input op."""
+    m = re.search(r'boundary=([^;\s]+)', content_type)
+    if not m:
+        raise D365Error(f"Cannot find boundary in $batch response Content-Type: {content_type!r}")
+    boundary = m.group(1).strip('"')
+
+    # Walk input ops to learn the order of expected GET parts and changeset write-indexes.
+    get_indexes: list[int] = []
+    changeset_groups: list[list[int]] = []
+    current_group: list[int] = []
+    for i, op in enumerate(operations):
+        if op["method"].upper() == "GET":
+            if current_group:
+                changeset_groups.append(current_group)
+                current_group = []
+            get_indexes.append(i)
+        else:
+            current_group.append(i)
+    if current_group:
+        changeset_groups.append(current_group)
+
+    results: list[dict[str, Any] | None] = [None] * len(operations)
+    get_cursor = 0
+    changeset_cursor = 0
+
+    for part in _split_mime_parts(body, boundary):
+        ctype_match = re.search(rb"Content-Type:\s*([^\r\n;]+)", part, re.IGNORECASE)
+        ctype_val = ctype_match.group(1).decode("utf-8").strip() if ctype_match else ""
+        if ctype_val.lower() == "multipart/mixed":
+            # Changeset response
+            inner_m = re.search(rb"boundary=([^\r\n;]+)", part, re.IGNORECASE)
+            if not inner_m:
+                continue
+            inner_boundary = inner_m.group(1).decode("utf-8").strip('"')
+            if changeset_cursor >= len(changeset_groups):
+                continue
+            group = changeset_groups[changeset_cursor]
+            changeset_cursor += 1
+            inner_parts = _split_mime_parts(part, inner_boundary)
+            # Match inner parts to group by Content-ID order
+            id_map: dict[int, list[int]] = {}
+            for sub_idx, inner in enumerate(inner_parts):
+                parsed = _parse_http_subpart(inner)
+                cid_raw = parsed.get("_content_id")
+                try:
+                    cid = int(cid_raw) if cid_raw is not None else sub_idx + 1
+                except ValueError:
+                    cid = sub_idx + 1
+                id_map.setdefault(cid, []).append(sub_idx)
+                if 0 <= cid - 1 < len(group):
+                    op_index = group[cid - 1]
+                    parsed["method"] = operations[op_index]["method"]
+                    parsed["url"] = operations[op_index]["url"]
+                    parsed.pop("_content_id", None)
+                    results[op_index] = parsed
+        else:
+            parsed = _parse_http_subpart(part)
+            parsed.pop("_content_id", None)
+            if get_cursor < len(get_indexes):
+                op_index = get_indexes[get_cursor]
+                parsed["method"] = operations[op_index]["method"]
+                parsed["url"] = operations[op_index]["url"]
+                results[op_index] = parsed
+                get_cursor += 1
+
+    # Backfill any missing slots with an error placeholder.
+    for i, r in enumerate(results):
+        if r is None:
+            results[i] = {
+                "method": operations[i]["method"],
+                "url": operations[i]["url"],
+                "status": 0,
+                "headers": {},
+                "body": None,
+                "error": "no matching response part",
+            }
+    return [r for r in results if r is not None]
 
 
 def as_dict(result: dict[str, Any] | str | None) -> dict[str, Any]:
