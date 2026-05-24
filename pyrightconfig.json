@@ -1,0 +1,12 @@
+{
+  "include": ["crm"],
+  "exclude": ["**/__pycache__", "build", "dist"],
+  "pythonVersion": "3.9",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false,
+  "executionEnvironments": [
+    { "root": "crm/cli.py",             "typeCheckingMode": "basic" },
+    { "root": "crm/utils/repl_skin.py", "typeCheckingMode": "basic" },
+    { "root": "crm/tests",              "typeCheckingMode": "basic" }
+  ]
+}
