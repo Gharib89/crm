@@ -196,11 +196,12 @@ def import_solution(
         params={"$select": "progress,startedon,completedon,solutionname"},
     ))
     duration_ms = int((_time.monotonic() - started) * 1000)
+    prog = job_row.get("progress")
     return {
         "import_job_id": import_job_id,
         "async_operation_id": async_op_id,
         "status": "succeeded",
-        "progress": float(job_row.get("progress") or 100.0),
+        "progress": float(prog) if prog is not None else 100.0,
         "started_on": job_row.get("startedon"),
         "completed_on": job_row.get("completedon"),
         "duration_ms": duration_ms,
