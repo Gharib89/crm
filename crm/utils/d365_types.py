@@ -106,6 +106,50 @@ class ODataCollection(TypedDict, Generic[T], total=False):
     value: list[T]
 
 
+class BatchOperation(TypedDict, total=False):
+    """One operation inside a $batch request.
+
+    `method` and `url` are required. `body` is required on POST/PATCH and
+    rejected on GET/DELETE. `headers` is optional (per-op overrides such
+    as `If-Match` or `MSCRMCallerID`). `content_id` is optional;
+    consumed only inside changesets for `$<n>` back-references.
+    """
+
+    method: str
+    url: str
+    body: dict[str, Any]
+    headers: dict[str, str]
+    content_id: str
+
+
+class BatchResult(TypedDict):
+    """One result inside a $batch response, aligned to input order."""
+
+    method: str
+    url: str
+    status: int
+    headers: dict[str, str]
+    body: Union[dict[str, Any], str, None]
+    error: Union[str, None]
+
+
+class AsyncOperationRow(TypedDict, total=False):
+    """Subset of asyncoperation fields the CLI reads + displays."""
+
+    asyncoperationid: str
+    name: str
+    messagename: str
+    statecode: int
+    statuscode: int
+    createdon: str
+    startedon: str
+    completedon: str
+    _ownerid_value: str
+    errorcode: int
+    message: str
+    friendlymessage: str
+
+
 # Raw response unions used at the wire boundary. Backend methods widen to these;
 # core/* callers narrow before use (helper: `as_dict` in d365_backend.py).
 JsonValue = Union[dict[str, Any], list[Any], str, int, float, bool, None]
