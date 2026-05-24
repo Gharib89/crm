@@ -907,7 +907,6 @@ def _parse_batch_response(
             changeset_cursor += 1
             inner_parts = _split_mime_parts(part, inner_boundary)
             # Match inner parts to group by Content-ID order
-            id_map: dict[int, list[int]] = {}
             for sub_idx, inner in enumerate(inner_parts):
                 parsed = _parse_http_subpart(inner)
                 cid_raw = parsed.get("_content_id")
@@ -915,7 +914,6 @@ def _parse_batch_response(
                     cid = int(cid_raw) if cid_raw is not None else sub_idx + 1
                 except ValueError:
                     cid = sub_idx + 1
-                id_map.setdefault(cid, []).append(sub_idx)
                 if 0 <= cid - 1 < len(group):
                     op_index = group[cid - 1]
                     parsed["method"] = operations[op_index]["method"]
