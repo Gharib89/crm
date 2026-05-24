@@ -7,8 +7,6 @@ All HTTP is mocked. No live D365 server needed.
 from __future__ import annotations
 
 import time
-from typing import Any
-from unittest.mock import patch
 
 import pytest
 import requests
@@ -23,6 +21,7 @@ from crm.utils.d365_backend import (
     _is_transport_retryable,
     _log_rate_limit_headers,
     _parse_retry_after,
+    _resolve_retry_max,
 )
 
 
@@ -353,3 +352,45 @@ class TestRetryLoop:
         assert "ratelimit" in err
         assert "time-remaining=30" in err
         assert "retry " in err  # _log_retry line
+
+
+# ── _resolve_retry_max ──────────────────────────────────────────────────
+
+
+class TestResolveRetryMax:
+    def test_no_env_returns_profile_default(self, profile, monkeypatch):
+        for var in ("CRM_NO_RETRY", "CRM_RETRY_MAX"):
+            monkeypatch.delenv(var, raising=False)
+        assert _resolve_retry_max(profile) == profile.retry_max
+
+    def test_crm_no_retry_forces_zero(self, profile, monkeypatch):
+        monkeypatch.setenv("CRM_NO_RETRY", "1")
+        monkeypatch.setenv("CRM_RETRY_MAX", "99")
+        assert _resolve_retry_max(profile) == 0
+
+    def test_crm_retry_max_overrides_profile(self, profile, monkeypatch):
+        monkeypatch.delenv("CRM_NO_RETRY", raising=False)
+        monkeypatch.setenv("CRM_RETRY_MAX", "7")
+        assert _resolve_retry_max(profile) == 7
+
+    def test_crm_retry_max_zero_allowed(self, profile, monkeypatch):
+        monkeypatch.delenv("CRM_NO_RETRY", raising=False)
+        monkeypatch.setenv("CRM_RETRY_MAX", "0")
+        assert _resolve_retry_max(profile) == 0
+
+    def test_crm_retry_max_non_integer_raises(self, profile, monkeypatch):
+        monkeypatch.delenv("CRM_NO_RETRY", raising=False)
+        monkeypatch.setenv("CRM_RETRY_MAX", "abc")
+        with pytest.raises(D365Error, match="must be an integer"):
+            _resolve_retry_max(profile)
+
+    def test_crm_retry_max_negative_raises(self, profile, monkeypatch):
+        monkeypatch.delenv("CRM_NO_RETRY", raising=False)
+        monkeypatch.setenv("CRM_RETRY_MAX", "-1")
+        with pytest.raises(D365Error, match=">= 0"):
+            _resolve_retry_max(profile)
+
+    def test_blank_crm_retry_max_falls_back_to_profile(self, profile, monkeypatch):
+        monkeypatch.delenv("CRM_NO_RETRY", raising=False)
+        monkeypatch.setenv("CRM_RETRY_MAX", "   ")
+        assert _resolve_retry_max(profile) == profile.retry_max

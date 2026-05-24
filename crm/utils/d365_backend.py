@@ -336,7 +336,7 @@ _RATE_LIMIT_HEADER_MAP = (
 
 def _log_rate_limit_headers(resp: requests.Response, *, on_429: bool) -> None:
     """Emit one stderr line with x-ms-ratelimit-* + Retry-After values present."""
-    if not on_429 and _os.environ.get("CRM_VERBOSE") != "1":
+    if not on_429 and not _env_truthy("CRM_VERBOSE"):
         return
     parts: list[str] = []
     for header_name, short_name in _RATE_LIMIT_HEADER_MAP:
