@@ -185,6 +185,10 @@ class D365Backend:
         json_body: Any = None,
         extra_headers: dict[str, str] | None = None,
         expect_json: bool = True,
+        caller_id: str | None = None,
+        suppress_duplicate_detection: bool = False,
+        bypass_custom_plugin_execution: bool = False,
+        etag: str | None = None,
     ) -> dict[str, Any] | str | None:
         """Issue an HTTP request and return parsed JSON (or None for 204).
 
@@ -199,6 +203,22 @@ class D365Backend:
         headers = dict(_DEFAULT_HEADERS)
         if extra_headers:
             headers.update(extra_headers)
+
+        effective_caller = caller_id if caller_id is not None else self._default_caller_id
+        if effective_caller is not None:
+            try:
+                uuid.UUID(effective_caller)
+            except ValueError as exc:
+                raise D365Error(
+                    f"Invalid GUID for caller_id: {effective_caller!r}"
+                ) from exc
+            headers["MSCRMCallerID"] = effective_caller
+
+        if suppress_duplicate_detection or self._default_suppress_dup:
+            headers["MSCRM.SuppressDuplicateDetection"] = "true"
+
+        if bypass_custom_plugin_execution or self._default_bypass_plugins:
+            headers["MSCRM.BypassCustomPluginExecution"] = "true"
 
         if self.dry_run:
             return {

@@ -86,3 +86,79 @@ class TestBackendDefaults:
         monkeypatch.setenv("CRM_AS_USER", "not-a-guid")
         with pytest.raises(D365Error, match="CRM_AS_USER"):
             D365Backend(profile, password="pw")
+
+
+class TestHeaderInjection:
+    def _mock_ok(self, m, method, path, profile):
+        url = f"{profile.api_base}{path}"
+        m.request(method, url, json={"value": []}, status_code=200,
+                  headers={"Content-Type": "application/json"})
+        return url
+
+    def test_caller_id_kwarg_sets_mscrmcallerid(self, backend, profile):
+        guid = "11111111-2222-3333-4444-555555555555"
+        with requests_mock.Mocker() as m:
+            url = self._mock_ok(m, "GET", "accounts", profile)
+            backend.get("accounts", caller_id=guid)
+            assert m.last_request.headers["MSCRMCallerID"] == guid
+
+    def test_caller_id_invalid_guid_raises_before_http(self, backend):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="GUID"):
+                backend.get("accounts", caller_id="not-a-guid")
+            assert m.call_count == 0
+
+    def test_caller_id_kwarg_overrides_env_default(self, monkeypatch, profile):
+        monkeypatch.setenv("CRM_AS_USER", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        b = D365Backend(profile, password="pw")
+        guid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            b.get("accounts", caller_id=guid)
+            assert m.last_request.headers["MSCRMCallerID"] == guid
+
+    def test_env_default_applied_when_kwarg_absent(self, monkeypatch, profile):
+        env_guid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        monkeypatch.setenv("CRM_AS_USER", env_guid)
+        b = D365Backend(profile, password="pw")
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            b.get("accounts")
+            assert m.last_request.headers["MSCRMCallerID"] == env_guid
+
+    def test_suppress_dup_detection_kwarg_sets_header(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204,
+                   headers={"OData-EntityId": f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"})
+            backend.post("accounts", json_body={"name": "a"},
+                         suppress_duplicate_detection=True)
+            assert m.last_request.headers["MSCRM.SuppressDuplicateDetection"] == "true"
+
+    def test_bypass_plugins_kwarg_sets_header(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204,
+                   headers={"OData-EntityId": f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)"})
+            backend.post("accounts", json_body={"name": "a"},
+                         bypass_custom_plugin_execution=True)
+            assert m.last_request.headers["MSCRM.BypassCustomPluginExecution"] == "true"
+
+    def test_typed_kwargs_win_over_extra_headers(self, backend, profile):
+        guid = "11111111-2222-3333-4444-555555555555"
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            backend.get(
+                "accounts",
+                caller_id=guid,
+                extra_headers={"MSCRMCallerID": "ffffffff-ffff-ffff-ffff-ffffffffffff"},
+            )
+            assert m.last_request.headers["MSCRMCallerID"] == guid
+
+    def test_headers_absent_when_neither_kwarg_nor_env(self, monkeypatch, backend, profile):
+        for k in ("CRM_AS_USER", "CRM_SUPPRESS_DUP", "CRM_BYPASS_PLUGINS"):
+            monkeypatch.delenv(k, raising=False)
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            backend.get("accounts")
+            assert "MSCRMCallerID" not in m.last_request.headers
+            assert "MSCRM.SuppressDuplicateDetection" not in m.last_request.headers
+            assert "MSCRM.BypassCustomPluginExecution" not in m.last_request.headers
