@@ -863,6 +863,32 @@ class TestSolutionExportFlags:
         assert "export_sales" not in captured["kwargs"]
 
 
+class TestLoadPayload:
+    def test_rejects_json_list_with_typename(self):
+        import click
+        from crm.cli import _load_payload
+
+        with pytest.raises(click.UsageError, match=r"JSON object.*list"):
+            _load_payload("[1,2,3]", None)
+
+    @pytest.mark.parametrize("raw,typename", [
+        ('"hello"', "str"),
+        ("null", "NoneType"),
+        ("42", "int"),
+    ])
+    def test_rejects_non_object_json(self, raw, typename):
+        import click
+        from crm.cli import _load_payload
+
+        with pytest.raises(click.UsageError, match=rf"JSON object.*{typename}"):
+            _load_payload(raw, None)
+
+    def test_accepts_json_object(self):
+        from crm.cli import _load_payload
+
+        assert _load_payload('{"name":"x"}', None) == {"name": "x"}
+
+
 class TestErrorEnvelope:
     def test_error_envelope_null_when_status_missing(self, capsys):
         from crm.cli import CLIContext

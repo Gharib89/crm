@@ -1363,13 +1363,19 @@ def _repl_help(ctx: CLIContext):
 # ── Helpers ─────────────────────────────────────────────────────────────
 
 
-def _load_payload(data_json: str | None, data_file: str | None) -> dict:
+def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
     if data_file:
         with open(data_file, "r", encoding="utf-8") as f:
-            return json.load(f)
-    if data_json:
-        return json.loads(data_json)
-    raise click.UsageError("Either --data or --data-file is required.")
+            parsed = json.load(f)
+    elif data_json:
+        parsed = json.loads(data_json)
+    else:
+        raise click.UsageError("Either --data or --data-file is required.")
+    if not isinstance(parsed, dict):
+        raise click.UsageError(
+            f"Payload must be a JSON object, got {type(parsed).__name__}."
+        )
+    return parsed
 
 
 def _touch_session(ctx: CLIContext, entity_set: str, *,

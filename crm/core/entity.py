@@ -72,8 +72,6 @@ def create(
     record back in the response. Otherwise we extract the GUID from the
     `OData-EntityId` header and return `{ "id": "<guid>" }`.
     """
-    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
-        raise D365Error("Create payload must be a dict.")
     headers: dict[str, str] = {}
     if return_record:
         headers["Prefer"] = "return=representation"
@@ -111,8 +109,6 @@ def update(
     return_record: bool = False,
 ) -> dict[str, Any]:
     """PATCH an existing record. By default prevents accidental upsert via If-Match: *."""
-    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
-        raise D365Error("Update payload must be a dict.")
     headers: dict[str, str] = {}
     if prevent_create:
         headers["If-Match"] = "*"
