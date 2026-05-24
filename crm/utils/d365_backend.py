@@ -391,7 +391,10 @@ class D365Backend:
                 response_body=resp.text,
             )
 
-        return _parse_batch_response(resp.content, resp.headers.get("Content-Type", ""), validated)
+        return _parse_batch_response(
+            resp.content, resp.headers.get("Content-Type", ""), validated,
+            transactional=transactional,
+        )
 
     def poll_async_operation(
         self,
@@ -843,6 +846,8 @@ def _parse_batch_response(
     body: bytes,
     content_type: str,
     operations: "Sequence[dict[str, Any]]",
+    *,
+    transactional: bool = True,
 ) -> list[dict[str, Any]]:
     """Parse a multipart/mixed $batch response into one BatchResult per input op."""
     m = re.search(r'boundary=([^;\s]+)', content_type)
@@ -850,23 +855,25 @@ def _parse_batch_response(
         raise D365Error(f"Cannot find boundary in $batch response Content-Type: {content_type!r}")
     boundary = m.group(1).strip('"')
 
-    # Walk input ops to learn the order of expected GET parts and changeset write-indexes.
-    get_indexes: list[int] = []
+    # Walk input ops to determine the top-level slot order and changeset groups.
+    # transactional=True:  GETs are top-level; consecutive writes go into changesets.
+    # transactional=False: ALL ops are top-level (no changeset wrapping).
+    top_level_indexes: list[int] = []
     changeset_groups: list[list[int]] = []
     current_group: list[int] = []
     for i, op in enumerate(operations):
-        if op["method"].upper() == "GET":
+        if not transactional or op["method"].upper() == "GET":
             if current_group:
                 changeset_groups.append(current_group)
                 current_group = []
-            get_indexes.append(i)
+            top_level_indexes.append(i)
         else:
             current_group.append(i)
     if current_group:
         changeset_groups.append(current_group)
 
     results: list[dict[str, Any] | None] = [None] * len(operations)
-    get_cursor = 0
+    top_level_cursor = 0
     changeset_cursor = 0
 
     for part in _split_mime_parts(body, boundary):
@@ -902,12 +909,12 @@ def _parse_batch_response(
         else:
             parsed = _parse_http_subpart(part)
             parsed.pop("_content_id", None)
-            if get_cursor < len(get_indexes):
-                op_index = get_indexes[get_cursor]
+            if top_level_cursor < len(top_level_indexes):
+                op_index = top_level_indexes[top_level_cursor]
                 parsed["method"] = operations[op_index]["method"]
                 parsed["url"] = operations[op_index]["url"]
                 results[op_index] = parsed
-                get_cursor += 1
+                top_level_cursor += 1
 
     # Backfill any missing slots with an error placeholder.
     for i, r in enumerate(results):

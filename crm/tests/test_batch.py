@@ -179,6 +179,32 @@ class TestParseResponse:
             "accounts(00000000-0000-0000-0000-000000000001)"
         )
 
+    def test_parses_non_transactional_writes_at_top_level(self):
+        body = self._build_response_body([
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-EntityId: https://x/accounts(11111111-1111-1111-1111-111111111111)\r\n"
+            "\r\n",
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-EntityId: https://x/contacts(22222222-2222-2222-2222-222222222222)\r\n"
+            "\r\n",
+        ], boundary="batchresp")
+        ops = [
+            {"method": "POST", "url": "accounts", "body": {"name": "a"}},
+            {"method": "POST", "url": "contacts", "body": {"firstname": "c"}},
+        ]
+        results = _parse_batch_response(body, "multipart/mixed; boundary=batchresp", ops, transactional=False)
+        assert len(results) == 2
+        assert results[0]["status"] == 204
+        assert results[1]["status"] == 204
+        assert results[0]["error"] is None
+        assert results[1]["error"] is None
+
     def test_error_populated_on_non_2xx_subpart(self):
         body = self._build_response_body([
             "Content-Type: application/http\r\n"
