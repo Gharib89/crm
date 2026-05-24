@@ -148,16 +148,26 @@ def user_query(
 
 
 def count_entity_set(backend: D365Backend, entity_set: str) -> int:
-    """Return the integer record count for an entity set via /<set>/$count."""
+    """Return the integer record count for an entity set via /<set>/$count.
+
+    Fast path: the `$count` endpoint returns a `text/plain` integer in one HTTP call.
+    Fallback: if the body is missing, non-numeric, or otherwise unparseable (proxies
+    occasionally strip text/plain bodies), fall through to `?$count=true` and read
+    `@odata.count` from the resulting collection envelope. The fallback is
+    belt-and-braces — preserves the resilience the previous implementation had.
+    """
     result = backend.get(
         f"{entity_set}/$count",
         extra_headers={"Accept": "text/plain"},
         expect_json=False,
     )
-    # backend returns None for non-json; we re-issue raw to get text
-    # Fall back: use $count=true on the set itself.
-    if result is None:
-        raw = odata_query(backend, entity_set, top=1, count=True)
-        c = raw.get("@odata.count")
-        return int(c) if c is not None else 0
-    return int(result) if isinstance(result, (int, str)) else 0
+    if isinstance(result, str) and result.strip():
+        try:
+            return int(result)
+        except ValueError:
+            pass  # fall through to the fallback
+
+    # Fallback: ask the collection with $count=true and read @odata.count.
+    raw = odata_query(backend, entity_set, top=1, count=True)
+    c = raw.get("@odata.count")
+    return int(c) if c is not None else 0

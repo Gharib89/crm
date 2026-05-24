@@ -632,3 +632,33 @@ class TestWorkflow:
             wf_mod.execute_workflow(backend, "", "x")
         with pytest.raises(D365Error):
             wf_mod.execute_workflow(backend, "x", "")
+
+
+class TestCountEntitySet:
+    def test_count_returns_int_from_text_plain(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("contacts/$count"),
+                text="42",
+                headers={"Content-Type": "text/plain"},
+            )
+            result = query_mod.count_entity_set(backend, "contacts")
+        assert result == 42
+        assert len(m.request_history) == 1, "happy path must issue exactly one request"
+
+    def test_count_falls_back_when_text_plain_empty(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("contacts/$count"),
+                text="",
+                headers={"Content-Type": "text/plain"},
+            )
+            m.get(
+                backend.url_for("contacts"),
+                json={"value": [{"contactid": "x"}], "@odata.count": 7},
+            )
+            result = query_mod.count_entity_set(backend, "contacts")
+        assert result == 7
+        assert len(m.request_history) == 2, "fallback must issue two requests in order"
+        assert m.request_history[0].url.endswith("/$count")
+        assert "$count=true" in m.request_history[1].url or "%24count=true" in m.request_history[1].url
