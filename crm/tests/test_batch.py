@@ -58,7 +58,7 @@ class TestAssembly:
             {"method": "GET", "url": "contacts(00000000-0000-0000-0000-000000000001)"},
         ]
         body, content_type = _assemble_batch_body(
-            ops, profile.api_base, transactional=True,
+            ops, transactional=True,
         )
         assert content_type == "multipart/mixed; boundary=batch_batchXX"
         # GET parts only; no changeset wrapper.
@@ -72,7 +72,7 @@ class TestAssembly:
             {"method": "PATCH", "url": "accounts(00000000-0000-0000-0000-000000000001)",
              "body": {"name": "b"}},
         ]
-        body, _ = _assemble_batch_body(ops, profile.api_base, transactional=True)
+        body, _ = _assemble_batch_body(ops, transactional=True)
         assert "multipart/mixed; boundary=changeset_csetXX" in body
         # Two write sub-parts inside the changeset.
         assert body.count("--changeset_csetXX") == 3  # 2 parts + closing
@@ -88,7 +88,7 @@ class TestAssembly:
             {"method": "PATCH", "url": "accounts(00000000-0000-0000-0000-000000000001)",
              "body": {"name": "b"}},
         ]
-        body, _ = _assemble_batch_body(ops, profile.api_base, transactional=True)
+        body, _ = _assemble_batch_body(ops, transactional=True)
         # 1 GET part + 1 changeset part = 2 top-level parts.
         assert body.count("--batch_batchXX") == 3   # 2 + closing
         assert "multipart/mixed; boundary=changeset_csetXX" in body
@@ -101,7 +101,7 @@ class TestAssembly:
             {"method": "POST", "url": "accounts", "body": {"name": "a"}, "content_id": "acct1"},
             {"method": "PATCH", "url": "$acct1", "body": {"name": "b"}},
         ]
-        body, _ = _assemble_batch_body(ops, profile.api_base, transactional=True)
+        body, _ = _assemble_batch_body(ops, transactional=True)
         assert "Content-ID: acct1" in body
         assert "Content-ID: 2" in body  # second op falls back to sequence
         assert "PATCH $acct1 HTTP/1.1" in body
@@ -112,7 +112,7 @@ class TestAssembly:
             {"method": "PATCH", "url": "$dup", "body": {"name": "b"}, "content_id": "dup"},
         ]
         with pytest.raises(D365Error, match="duplicate content_id"):
-            _assemble_batch_body(ops, profile.api_base, transactional=True)
+            _assemble_batch_body(ops, transactional=True)
 
     def test_non_transactional_flattens(self, profile, fixed_boundaries):
         ops = [
@@ -120,7 +120,7 @@ class TestAssembly:
             {"method": "PATCH", "url": "accounts(00000000-0000-0000-0000-000000000001)",
              "body": {"name": "b"}},
         ]
-        body, _ = _assemble_batch_body(ops, profile.api_base, transactional=False)
+        body, _ = _assemble_batch_body(ops, transactional=False)
         assert "boundary=changeset" not in body
         # Two top-level parts directly.
         assert body.count("--batch_batchXX") == 3

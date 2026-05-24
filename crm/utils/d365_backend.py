@@ -359,7 +359,7 @@ class D365Backend:
             ]
 
         body_text, content_type = _assemble_batch_body(
-            validated, self.profile.api_base, transactional=transactional,
+            validated, transactional=transactional,
         )
 
         headers = dict(_DEFAULT_HEADERS)
@@ -716,7 +716,6 @@ def _format_http_part(op: dict[str, Any], content_id: int | str | None = None) -
 
 def _assemble_batch_body(
     operations: Sequence[dict[str, Any]],
-    api_base: str,
     *,
     transactional: bool,
 ) -> tuple[str, str]:
