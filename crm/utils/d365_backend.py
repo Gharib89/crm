@@ -294,6 +294,75 @@ class D365Backend:
     def delete(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("DELETE", path, expect_json=False, **kw)
 
+    def batch(
+        self,
+        operations: "Sequence[dict[str, Any]]",
+        *,
+        transactional: bool = True,
+        continue_on_error: bool = False,
+        timeout: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Execute a list of operations via POST $batch.
+
+        See spec C §4 for transactional semantics, request shape, and
+        size/count limits. Returns one BatchResult per input op in input order.
+        """
+        validated: list[dict[str, Any]] = []
+        for i, op in enumerate(operations):
+            if "method" not in op or "url" not in op:
+                raise D365Error(f"batch op #{i} missing method or url: {op!r}")
+            m_upper = op["method"].upper()
+            if m_upper not in ("GET", "POST", "PATCH", "DELETE"):
+                raise D365Error(f"batch op #{i} invalid method: {op['method']!r}")
+            if m_upper in ("GET", "DELETE") and op.get("body") is not None:
+                raise D365Error(
+                    f"batch op #{i}: body not allowed on {m_upper}"
+                )
+            validated.append({**op, "method": m_upper})
+
+        if self.dry_run:
+            return [
+                {
+                    "method": op["method"],
+                    "url": op["url"],
+                    "status": 0,
+                    "headers": {},
+                    "body": None,
+                    "error": "dry-run",
+                }
+                for op in validated
+            ]
+
+        body_text, content_type = _assemble_batch_body(
+            validated, self.profile.api_base, transactional=transactional,
+        )
+
+        headers = dict(_DEFAULT_HEADERS)
+        headers["Content-Type"] = content_type
+        if continue_on_error:
+            headers["Prefer"] = "odata.continue-on-error"
+
+        effective_timeout = timeout if timeout is not None else self.profile.timeout
+        url = self.url_for("$batch")
+        try:
+            resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
+                "POST", url,
+                data=body_text.encode("utf-8"),
+                headers=headers,
+                timeout=effective_timeout,
+            )
+        except requests.RequestException as exc:
+            raise D365Error(f"HTTP transport failure on $batch: {exc}") from exc
+
+        if not (200 <= resp.status_code < 300):
+            raise D365Error(
+                f"$batch failed: HTTP {resp.status_code}: {resp.text[:500]}",
+                status=resp.status_code,
+                response_body=resp.text,
+            )
+
+        return _parse_batch_response(resp.content, resp.headers.get("Content-Type", ""), validated)
+
     def poll_async_operation(
         self,
         async_operation_id: str,

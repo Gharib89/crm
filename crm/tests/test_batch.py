@@ -193,3 +193,74 @@ class TestParseResponse:
         results = _parse_batch_response(body, "multipart/mixed; boundary=batchresp", ops)
         assert results[0]["status"] == 404
         assert "Record not found" in (results[0]["error"] or "")
+
+
+class TestBatchMethod:
+    def test_batch_round_trip_writes_only(self, backend, profile, fixed_boundaries):
+        ops = [
+            {"method": "POST", "url": "accounts", "body": {"name": "a"}},
+            {"method": "POST", "url": "contacts", "body": {"firstname": "c"}},
+        ]
+        resp_body = (
+            "--batchresp\r\n"
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: 1\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-EntityId: https://x/accounts(11111111-1111-1111-1111-111111111111)\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: 2\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "OData-EntityId: https://x/contacts(22222222-2222-2222-2222-222222222222)\r\n"
+            "\r\n"
+            "--cs1--\r\n"
+            "--batchresp--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresp"},
+                status_code=200,
+            )
+            results = backend.batch(ops)
+        assert len(results) == 2
+        assert results[0]["status"] == 204
+        assert results[1]["status"] == 204
+        assert "accounts(11111111-1111-1111-1111-111111111111)" in (
+            results[0]["headers"].get("OData-EntityId", "")
+        )
+
+    def test_batch_validates_method(self, backend):
+        with pytest.raises(D365Error, match="method"):
+            backend.batch([{"method": "POKE", "url": "accounts"}])
+
+    def test_batch_requires_url(self, backend):
+        with pytest.raises(D365Error, match="url"):
+            backend.batch([{"method": "GET"}])
+
+    def test_batch_rejects_body_on_get(self, backend):
+        with pytest.raises(D365Error, match="body"):
+            backend.batch([{"method": "GET", "url": "accounts", "body": {"x": 1}}])
+
+    def test_batch_rejects_body_on_delete(self, backend):
+        with pytest.raises(D365Error, match="body"):
+            backend.batch([{"method": "DELETE", "url": "accounts(x)", "body": {"x": 1}}])
+
+    def test_batch_dry_run_returns_preview_without_http(self, profile, fixed_boundaries):
+        b = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            preview = b.batch([{"method": "GET", "url": "accounts"}])
+            assert m.call_count == 0
+        assert isinstance(preview, list)
+        assert len(preview) == 1
+        assert preview[0]["status"] == 0
+        assert preview[0]["error"] is None or preview[0]["error"] == "dry-run"
