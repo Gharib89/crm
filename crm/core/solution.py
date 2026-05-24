@@ -59,8 +59,15 @@ def export_solution(
     export_outlook_sync: bool = False,
     export_relationship_roles: bool = False,
     export_sales: bool = False,
+    timeout: int | None = None,
 ) -> dict[str, Any]:
-    """Call ExportSolution action and write the returned ZIP to disk."""
+    """Call ExportSolutionAsync, poll to completion, then DownloadSolutionExportData.
+
+    Blocks until the async operation finishes (or timeout). Returns a dict with
+    the on-disk path, byte count, async operation id, export job id, and total
+    duration in ms.
+    """
+    import time as _time
     body: dict[str, Any] = {
         "SolutionName": unique_name,
         "Managed": managed,
@@ -75,21 +82,44 @@ def export_solution(
         "ExportRelationshipRoles": export_relationship_roles,
         "ExportSales": export_sales,
     }
-    result = as_dict(backend.post("ExportSolution", json_body=body))
-    if "_dry_run" in result:
-        return result
-    encoded = result.get("ExportSolutionFile")
+
+    started = _time.monotonic()
+    resp = as_dict(backend.post("ExportSolutionAsync", json_body=body))
+    if "_dry_run" in resp:
+        return {**resp, "action": "ExportSolutionAsync"}
+
+    async_op_id = resp.get("AsyncOperationId")
+    export_job_id = resp.get("ExportJobId")
+    if not async_op_id or not export_job_id:
+        raise D365Error(
+            "ExportSolutionAsync returned no AsyncOperationId / ExportJobId."
+        )
+
+    backend.poll_async_operation(async_op_id, timeout=timeout)
+
+    dl = as_dict(backend.post(
+        "DownloadSolutionExportData",
+        json_body={"ExportJobId": export_job_id},
+    ))
+    encoded = dl.get("ExportSolutionFile")
     if not encoded:
-        raise D365Error("ExportSolution returned no ExportSolutionFile payload.")
+        raise D365Error(
+            "DownloadSolutionExportData returned no ExportSolutionFile payload."
+        )
     data = base64.b64decode(encoded)
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
+
+    duration_ms = int((_time.monotonic() - started) * 1000)
     return {
         "output": str(out),
         "bytes": len(data),
         "managed": managed,
         "solution": unique_name,
+        "async_operation_id": async_op_id,
+        "export_job_id": export_job_id,
+        "duration_ms": duration_ms,
     }
 
 
