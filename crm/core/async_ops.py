@@ -5,7 +5,7 @@ Reference: https://learn.microsoft.com/power-apps/developer/data-platform/asynch
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, as_dict
 
@@ -43,8 +43,10 @@ def list_async_operations(
     if filters:
         params["$filter"] = " and ".join(filters)
     result = as_dict(backend.get("asyncoperations", params=params))
-    value = result.get("value", [])
-    return list(value) if isinstance(value, list) else []
+    value: Any = result.get("value", [])
+    if isinstance(value, list):
+        return cast(list[dict[str, Any]], value)
+    return []
 
 
 def get_async_operation(
@@ -111,9 +113,9 @@ def list_all_async_operations(
     page = as_dict(backend.get("asyncoperations", params=params))
     pages_consumed = 1
     while True:
-        value = page.get("value", [])
+        value: Any = page.get("value", [])
         if isinstance(value, list):
-            out.extend(value)
+            out.extend(cast(list[dict[str, Any]], value))
         next_link = page.get("@odata.nextLink")
         if not isinstance(next_link, str) or not next_link:
             break

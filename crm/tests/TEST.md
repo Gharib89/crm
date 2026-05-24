@@ -7,6 +7,9 @@
 | `test_core.py`    | Unit | 22            | None (HTTP mocked with `requests_mock`)    |
 | `test_resilience.py` | Unit | 49            | None (HTTP mocked with `requests_mock`)    |
 | `test_full_e2e.py`| E2E  | 8             | **Live D365 on-prem 9.x** + env credentials |
+| `test_admin_headers.py` | Unit | 26       | None (HTTP mocked with `requests_mock`)    |
+| `test_batch.py`   | Unit | 13            | None (HTTP mocked with `requests_mock`)    |
+| `test_async_ops.py` | Unit | 7           | None (HTTP mocked with `requests_mock`)    |
 
 ## Unit Test Plan (`test_core.py`)
 

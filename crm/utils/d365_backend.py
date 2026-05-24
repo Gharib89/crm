@@ -486,7 +486,6 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
         code = "PreconditionFailed"
     elif (
         resp.status_code == 403
-        and isinstance(message, str)
         and "prvBypassCustomPluginExecution" in message
     ):
         code = "MissingPrivilege"
@@ -654,7 +653,7 @@ def _format_http_part(op: dict[str, Any], content_id: int | None = None) -> str:
     """Render one operation as an `application/http` MIME part body."""
     method = op["method"].upper()
     url = op["url"]
-    extra = op.get("headers") or {}
+    extra: dict[str, str] = op.get("headers") or {}
     lines: list[str] = ["Content-Type: application/http",
                         "Content-Transfer-Encoding: binary"]
     if content_id is not None:
@@ -790,8 +789,9 @@ def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
     error: str | None = None
     if not (200 <= status < 300):
         if isinstance(parsed_body, dict):
-            err = parsed_body.get("error")
-            if isinstance(err, dict):
+            pb = cast(dict[str, Any], parsed_body)
+            err: dict[str, Any] | None = pb.get("error") if isinstance(pb.get("error"), dict) else None
+            if err is not None:
                 error = str(err.get("message") or f"HTTP {status}")
             else:
                 error = f"HTTP {status}"
