@@ -96,6 +96,24 @@ class TestAssembly:
         assert "Content-ID: 1" in body
         assert "Content-ID: 2" in body
 
+    def test_changeset_honors_caller_content_id(self, profile, fixed_boundaries):
+        ops = [
+            {"method": "POST", "url": "accounts", "body": {"name": "a"}, "content_id": "acct1"},
+            {"method": "PATCH", "url": "$acct1", "body": {"name": "b"}},
+        ]
+        body, _ = _assemble_batch_body(ops, profile.api_base, transactional=True)
+        assert "Content-ID: acct1" in body
+        assert "Content-ID: 2" in body  # second op falls back to sequence
+        assert "PATCH $acct1 HTTP/1.1" in body
+
+    def test_changeset_rejects_duplicate_content_id(self, profile, fixed_boundaries):
+        ops = [
+            {"method": "POST", "url": "accounts", "body": {"name": "a"}, "content_id": "dup"},
+            {"method": "PATCH", "url": "$dup", "body": {"name": "b"}, "content_id": "dup"},
+        ]
+        with pytest.raises(D365Error, match="duplicate content_id"):
+            _assemble_batch_body(ops, profile.api_base, transactional=True)
+
     def test_non_transactional_flattens(self, profile, fixed_boundaries):
         ops = [
             {"method": "POST", "url": "accounts", "body": {"name": "a"}},

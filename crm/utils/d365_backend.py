@@ -682,7 +682,7 @@ def _parse_retry_after(header: str | None) -> float | None:
         return None
 
 
-def _format_http_part(op: dict[str, Any], content_id: int | None = None) -> str:
+def _format_http_part(op: dict[str, Any], content_id: int | str | None = None) -> str:
     """Render one operation as an `application/http` MIME part body."""
     method = op["method"].upper()
     url = op["url"]
@@ -726,9 +726,15 @@ def _assemble_batch_body(
         out.append(f"--{batch_boundary}")
         out.append(f"Content-Type: multipart/mixed; boundary={cs_boundary}")
         out.append("")
+        seen_ids: set[int | str] = set()
         for i, op in enumerate(write_ops, start=1):
+            caller_cid: int | str | None = op.get("content_id")
+            cid: int | str = caller_cid if caller_cid is not None else i
+            if cid in seen_ids:
+                raise D365Error(f"batch changeset: duplicate content_id {cid!r}")
+            seen_ids.add(cid)
             out.append(f"--{cs_boundary}")
-            out.append(_format_http_part(op, content_id=i))
+            out.append(_format_http_part(op, content_id=cid))
         out.append(f"--{cs_boundary}--")
 
     write_buffer: list[dict[str, Any]] = []
