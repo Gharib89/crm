@@ -23,6 +23,8 @@ from typing import Any, Callable, Sequence, cast
 
 import requests
 
+from crm.utils.d365_types import BatchOperation, BatchResult
+
 try:
     from requests_ntlm import HttpNtlmAuth
 except ImportError:
@@ -323,12 +325,12 @@ class D365Backend:
 
     def batch(
         self,
-        operations: "Sequence[dict[str, Any]]",
+        operations: "Sequence[BatchOperation]",
         *,
         transactional: bool = True,
         continue_on_error: bool = False,
         timeout: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[BatchResult]:
         """Execute a list of operations via POST $batch.
 
         See spec C §4 for transactional semantics, request shape, and
@@ -351,19 +353,16 @@ class D365Backend:
                 )
             cid = op.get("content_id")
             if cid is not None:
-                if isinstance(cid, str):
-                    if not cid:
-                        raise D365Error(f"batch op #{i}: content_id must be non-empty")
-                elif isinstance(cid, int) and not isinstance(cid, bool):
-                    pass  # int OK
-                else:
+                if isinstance(cid, bool) or not isinstance(cid, (str, int)):  # pyright: ignore[reportUnnecessaryIsInstance]
                     raise D365Error(
                         f"batch op #{i}: content_id must be str or int; got {type(cid).__name__}"
                     )
+                if isinstance(cid, str) and not cid:
+                    raise D365Error(f"batch op #{i}: content_id must be non-empty")
             validated.append({**op, "method": m_upper})
 
         if self.dry_run:
-            return [
+            return cast(list[BatchResult], [
                 {
                     "method": op["method"],
                     "url": op["url"],
@@ -373,7 +372,7 @@ class D365Backend:
                     "error": "dry-run",
                 }
                 for op in validated
-            ]
+            ])
 
         body_text, content_type = _assemble_batch_body(
             validated, transactional=transactional,
@@ -419,10 +418,10 @@ class D365Backend:
                 response_body=resp.text,
             )
 
-        return _parse_batch_response(
+        return cast(list[BatchResult], _parse_batch_response(
             resp.content, resp.headers.get("Content-Type", ""), validated,
             transactional=transactional,
-        )
+        ))
 
     def poll_async_operation(
         self,
@@ -910,7 +909,8 @@ def _parse_batch_response(
         else:
             current_group.append(i)
             seq_counter += 1
-            cid: int | str = op.get("content_id") if op.get("content_id") is not None else seq_counter
+            _raw_cid: object = op.get("content_id")
+            cid: int | str = cast("int | str", _raw_cid) if _raw_cid is not None else seq_counter
             current_cid_map[cid] = i
     if current_group:
         changeset_groups.append(current_group)

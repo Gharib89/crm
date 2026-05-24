@@ -119,7 +119,7 @@ class BatchOperation(TypedDict, total=False):
     url: str
     body: dict[str, Any]
     headers: dict[str, str]
-    content_id: str
+    content_id: Union[str, int]
 
 
 class BatchResult(TypedDict):
