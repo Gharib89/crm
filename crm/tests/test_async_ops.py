@@ -138,3 +138,51 @@ class TestListAll:
             assert [r["asyncoperationid"] for r in rows] == ["1", "2"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
             # 3rd page (skiptoken=b) is not fetched.
             assert m.call_count == 2
+
+
+class TestAsyncCLI:
+    def test_async_list_help(self):
+        from click.testing import CliRunner
+        from crm import cli as crm_cli
+        runner = CliRunner()
+        result = runner.invoke(crm_cli.cli, ["async", "list", "--help"])
+        assert result.exit_code == 0
+        assert "--state" in result.output
+        assert "--message" in result.output
+
+    def test_async_list_state_resolves_named_value(self, monkeypatch, profile):
+        from click.testing import CliRunner
+        from crm import cli as crm_cli
+
+        captured: dict[str, Any] = {}
+
+        def fake_list(backend, **kw):
+            captured.update(kw)
+            return []
+
+        monkeypatch.setattr("crm.core.async_ops.list_async_operations", fake_list)
+        monkeypatch.setattr("crm.cli.CLIContext.backend",
+                            lambda self: object())  # dummy backend; fake_list ignores it
+        runner = CliRunner()
+        result = runner.invoke(crm_cli.cli, ["async", "list", "--state", "ready"])
+        assert result.exit_code == 0, result.output
+        assert captured["state"] == 0
+
+    def test_solution_job_status_alias(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm import cli as crm_cli
+
+        called: dict[str, Any] = {}
+
+        def fake_get(backend, async_id):
+            called["async_id"] = async_id
+            return {"asyncoperationid": async_id, "statecode": 3, "statuscode": 30}
+
+        monkeypatch.setattr("crm.core.async_ops.get_async_operation", fake_get)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        result = runner.invoke(crm_cli.cli, [
+            "solution", "job-status", "11111111-1111-1111-1111-111111111111",
+        ])
+        assert result.exit_code == 0, result.output
+        assert called["async_id"] == "11111111-1111-1111-1111-111111111111"
