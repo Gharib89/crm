@@ -207,7 +207,7 @@ class D365Backend:
             # (i.e., a 429/5xx that has rate-limit headers); otherwise emit
             # only when CRM_VERBOSE=1 is set.
             retryable = _is_response_retryable(resp, method)
-            _log_rate_limit_headers(resp, on_429=retryable)
+            _log_rate_limit_headers(resp, on_retryable=retryable)
 
             if not retryable:
                 return _parse_response(resp, expect_json=expect_json)
@@ -334,9 +334,13 @@ _RATE_LIMIT_HEADER_MAP = (
 )
 
 
-def _log_rate_limit_headers(resp: requests.Response, *, on_429: bool) -> None:
-    """Emit one stderr line with x-ms-ratelimit-* + Retry-After values present."""
-    if not on_429 and not _env_truthy("CRM_VERBOSE"):
+def _log_rate_limit_headers(resp: requests.Response, *, on_retryable: bool) -> None:
+    """Emit one stderr line with x-ms-ratelimit-* + Retry-After values present.
+
+    on_retryable=True: log always when any header is present (used on 429/5xx retry responses).
+    on_retryable=False: log only when CRM_VERBOSE=1 in env (used on every other response).
+    """
+    if not on_retryable and not _env_truthy("CRM_VERBOSE"):
         return
     parts: list[str] = []
     for header_name, short_name in _RATE_LIMIT_HEADER_MAP:

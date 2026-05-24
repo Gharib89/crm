@@ -1,6 +1,6 @@
-"""Unit tests for the retry + async-poll resilience layer.
+"""Unit tests for the retry resilience layer.
 
-All HTTP is mocked. No live D365 server needed.
+PR2 will add async-poll coverage. All HTTP is mocked; no live D365 server needed.
 """
 # pyright: basic
 
@@ -198,7 +198,7 @@ class TestLogRateLimitHeaders:
             "x-ms-ratelimit-limit-xrm-requests": "6000",
             "Retry-After": "12",
         })
-        _log_rate_limit_headers(resp, on_429=True)
+        _log_rate_limit_headers(resp, on_retryable=True)
         err = capsys.readouterr().err
         assert "ratelimit" in err
         assert "time-remaining=30" in err
@@ -208,26 +208,26 @@ class TestLogRateLimitHeaders:
 
     def test_on_429_no_headers_emits_no_line(self, capsys):
         resp = self._make_resp({})
-        _log_rate_limit_headers(resp, on_429=True)
+        _log_rate_limit_headers(resp, on_retryable=True)
         assert capsys.readouterr().err == ""
 
     def test_verbose_off_silent_on_2xx(self, capsys, monkeypatch):
         monkeypatch.delenv("CRM_VERBOSE", raising=False)
         resp = self._make_resp({"x-ms-ratelimit-time-remaining-xrm-requests": "30"})
         resp.status_code = 200
-        _log_rate_limit_headers(resp, on_429=False)
+        _log_rate_limit_headers(resp, on_retryable=False)
         assert capsys.readouterr().err == ""
 
     def test_verbose_on_logs_2xx(self, capsys, monkeypatch):
         monkeypatch.setenv("CRM_VERBOSE", "1")
         resp = self._make_resp({"x-ms-ratelimit-time-remaining-xrm-requests": "30"})
         resp.status_code = 200
-        _log_rate_limit_headers(resp, on_429=False)
+        _log_rate_limit_headers(resp, on_retryable=False)
         assert "time-remaining=30" in capsys.readouterr().err
 
     def test_partial_headers_only_logs_present(self, capsys):
         resp = self._make_resp({"x-ms-ratelimit-time-remaining-xrm-requests": "30"})
-        _log_rate_limit_headers(resp, on_429=True)
+        _log_rate_limit_headers(resp, on_retryable=True)
         err = capsys.readouterr().err
         assert "time-remaining=30" in err
         assert "burst-remaining" not in err
