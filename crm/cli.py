@@ -872,12 +872,19 @@ _EXPORT_SETTING_KEYS: dict[str, str] = {
     type=click.Choice(sorted(_EXPORT_SETTING_KEYS.keys())),
     help="Repeatable; include a named export setting in the solution payload.",
 )
+@click.option("--timeout", type=int, default=None,
+              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
+@click.option("--no-retry", is_flag=True,
+              help="Disable the 429/5xx retry loop for this invocation.")
 @pass_ctx
-def solution_export_cmd(ctx, unique_name, output, managed, export_settings):
+def solution_export_cmd(ctx, unique_name, output, managed, export_settings, timeout, no_retry):
+    if no_retry:
+        os.environ["CRM_NO_RETRY"] = "1"
     kwargs = {_EXPORT_SETTING_KEYS[name]: True for name in export_settings}
     try:
         info = sol_mod.export_solution(
-            ctx.backend(), unique_name, output, managed=managed, **kwargs,
+            ctx.backend(), unique_name, output, managed=managed,
+            timeout=timeout, **kwargs,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -942,13 +949,23 @@ def cli_service_document(ctx):
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--no-publish", is_flag=True)
 @click.option("--no-overwrite", is_flag=True)
+@click.option("--timeout", type=int, default=None,
+              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
+@click.option("--no-retry", is_flag=True,
+              help="Disable the 429/5xx retry loop for this invocation.")
+@click.option("--quiet", "-q", is_flag=True,
+              help="Suppress per-tick import-progress lines on stderr.")
 @pass_ctx
-def solution_import_cmd(ctx, zip_path, no_publish, no_overwrite):
+def solution_import_cmd(ctx, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet):
+    if no_retry:
+        os.environ["CRM_NO_RETRY"] = "1"
     try:
         info = sol_mod.import_solution(
             ctx.backend(), zip_path,
             publish_workflows=not no_publish,
             overwrite_unmanaged_customizations=not no_overwrite,
+            timeout=timeout,
+            quiet=quiet,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
