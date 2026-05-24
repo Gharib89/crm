@@ -45,6 +45,13 @@ class ConnectionProfile:
     api_version: str = "v9.2"
     verify_ssl: bool = True
     timeout: int = 120
+    retry_max: int = 5
+    retry_base_delay: float = 1.0
+    retry_max_delay: float = 60.0
+    retry_jitter: bool = True
+    async_poll_initial: float = 2.0
+    async_poll_max: float = 30.0
+    async_timeout: int = 1800
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +62,13 @@ class ConnectionProfile:
             "api_version": self.api_version,
             "verify_ssl": self.verify_ssl,
             "timeout": self.timeout,
+            "retry_max": self.retry_max,
+            "retry_base_delay": self.retry_base_delay,
+            "retry_max_delay": self.retry_max_delay,
+            "retry_jitter": self.retry_jitter,
+            "async_poll_initial": self.async_poll_initial,
+            "async_poll_max": self.async_poll_max,
+            "async_timeout": self.async_timeout,
         }
 
     @classmethod
@@ -67,6 +81,13 @@ class ConnectionProfile:
             api_version=d.get("api_version", "v9.2"),
             verify_ssl=d.get("verify_ssl", True),
             timeout=d.get("timeout", 120),
+            retry_max=d.get("retry_max", 5),
+            retry_base_delay=d.get("retry_base_delay", 1.0),
+            retry_max_delay=d.get("retry_max_delay", 60.0),
+            retry_jitter=d.get("retry_jitter", True),
+            async_poll_initial=d.get("async_poll_initial", 2.0),
+            async_poll_max=d.get("async_poll_max", 30.0),
+            async_timeout=d.get("async_timeout", 1800),
         )
 
     @property
