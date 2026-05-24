@@ -113,6 +113,7 @@ Pragmatic (approach 2 of three considered): add full annotations + `TypedDict`s 
 - **Tests:**
   - `test_create_entity_returns_server_entity_set_name` — mock returns `EntitySetName: "new_cities"`; assert returned dict carries that exact value.
   - `test_create_entity_partial_when_readback_fails` — mock read-back returns 500; assert `created: True`, `entity_set_name: None`, `entity_set_lookup_error` present.
+  - `test_create_entity_partial_when_odata_entityid_header_missing` — proxy strips `OData-EntityId` header so `_entity_id_url` is `None`; assert `created: True`, `entity_set_name: None`, `metadata_id_url: None`, and a diagnostic key flagging the missing header.
 
 ### 3.4 `fetchxml_query` uses `params=`
 
@@ -135,18 +136,16 @@ Pragmatic (approach 2 of three considered): add full annotations + `TypedDict`s 
 
 - **Files:** `crm/core/solution.py:45-82`, `crm/cli.py:824-835`
 - **Bug:** All `Export*Settings` hardcoded to `False`. Real admin exports often need `ExportCustomizationSettings=true`.
-- **Change:** Promote each setting to a kwarg of `export_solution` (default `False`). CLI exposes:
-  - `--export-customizations`
-  - `--export-calendar`
-  - `--export-general`
-  - `--export-isv-config`
-  - `--export-marketing`
-  - `--export-outlook-sync`
-  - `--export-relationship-roles`
-  - `--export-sales`
-  - `--export-autonumbering`
-  - `--export-email-tracking`
-- **Test:** `test_export_solution_passes_flags_to_body` — assert the POST body dict reflects the supplied flag values.
+- **Change:** Promote each setting to a kwarg of `export_solution` (default `False`). CLI exposes a single repeatable option:
+  ```
+  --export-setting <name>     repeatable; one per --include
+  ```
+  where `<name>` is a `click.Choice` of: `customizations`, `calendar`, `general`, `isv-config`, `marketing`, `outlook-sync`, `relationship-roles`, `sales`, `autonumbering`, `email-tracking`. Internally each value maps to its `Export*Settings` body key. Example:
+  ```
+  crm solution export MySol -o snap.zip --export-setting customizations --export-setting general
+  ```
+- **Rationale:** keeps `--help` short (one option line vs ten); names are autocompletable via `click.Choice`; same expressiveness as 10 boolean flags.
+- **Test:** `test_export_solution_passes_flags_to_body` — supply two settings; assert the POST body has those two keys set to `True` and the other eight keys set to `False`.
 
 ### 3.7 REPL backend reuse
 
@@ -189,8 +188,14 @@ Pragmatic (approach 2 of three considered): add full annotations + `TypedDict`s 
   - `pyrightconfig.json` (new, shape in §2).
   - `setup.py` — add `pyright>=1.1.380` to `extras_require['dev']`.
   - `.github/workflows/build.yml` — modify; add a `pyright` step after the existing test step, on the same Python matrix. (Repo currently has `build.yml` + `release.yml`; no separate `ci.yml` is created.)
+- **Pre-count (run on the current main, 2026-05-24):** strict mode on `crm/core/*` + `crm/utils/d365_backend.py` surfaces **342 errors** across 10 files; ~11 are real (`reportAttributeAccessIssue`, `reportUnnecessaryIsInstance`, `reportMissingImports`, `reportMissingParameterType`); the remaining 331 are the `reportUnknown*` family (97 `UnknownVariableType`, 82 `UnknownMemberType`, 61 `UnknownParameterType`, 56 `MissingTypeArgument`, 35 `UnknownArgumentType`) — driven primarily by `requests`/`json` returns leaking `Any`.
+- **Decision (full typing approach):** PR1 does the full typing work — no error suppression. This expands PR1 materially (1–2 days of typing grunt-work) but lands strict-from-day-one cleanly.
+- **Required typing artifacts to add in PR1:**
+  - `crm/utils/d365_types.py` — new module with `TypedDict` definitions for the Web API response shapes the codebase actually consumes: `WhoAmIResponse`, `EntityDefinition`, `AttributeDefinition`, `SolutionRow`, `SolutionComponent`, `WorkflowRow`, `OptionSetResponse`, `ODataCollection[T]` (generic with `value: list[T]`, `@odata.nextLink`, `@odata.count`).
+  - Explicit return type annotations on every public function in `crm/core/*` and `crm/utils/d365_backend.py`.
+  - `D365Backend.request` / `get` / `post` / `patch` / `delete` get overloads or a single union return `dict[str, Any] | str | None` with a narrowing helper (`_as_dict(result)`) used by callers that need a dict.
+  - `cast(...)` is permitted at the wire boundary (raw `resp.json()` → TypedDict) but discouraged inside `core/*`.
 - **Acceptance:** `pyright` from the repo root exits `0` on a clean checkout. CI job fails the PR if exit code != 0.
-- **Type-cleanup work:** Any errors pyright surfaces inside the strict zones (`crm/core/*`, `crm/utils/d365_backend.py`) are fixed inline in **PR1**, not deferred to a follow-up. The fixes themselves are expected to be small (adding return type hints, narrowing `dict[str, Any]` to `TypedDict` where wire-shape is stable). If the surface area is larger than expected, PR1 is split, not loosened.
 
 ---
 
@@ -244,6 +249,7 @@ No new error paths. Existing `D365Error` flow unchanged. Two specific notes:
 | 3.2 | `test_ordered_keys_drops_lookups_and_annotations` | `_value` + `@` keys filtered |
 | 3.3a | `test_create_entity_returns_server_entity_set_name` | Server-truth EntitySetName |
 | 3.3b | `test_create_entity_partial_when_readback_fails` | Partial success on read-back failure |
+| 3.3c | `test_create_entity_partial_when_odata_entityid_header_missing` | Partial success when `OData-EntityId` header absent |
 | 3.4 | `test_fetchxml_passes_params_dict` | `params={"fetchXml": ...}` shape |
 | 3.5 | `test_error_envelope_null_when_status_missing` | `meta.status` emits `null` |
 | 3.6 | `test_export_solution_passes_flags_to_body` | All `Export*Settings` flags flow through |
@@ -273,7 +279,7 @@ None. New tests cover new branches; existing tests are not relaxed.
 
 | PR | Branch | Contents | Risk |
 |----|--------|----------|------|
-| **PR1** | `feat/pyright-setup` | `pyrightconfig.json`, `setup.py` dev extra, CI workflow. Any pyright errors surfaced in strict zones fixed inline. | Low — tooling-only otherwise. |
+| **PR1** | `feat/pyright-setup` | `pyrightconfig.json`, `setup.py` dev extra, `build.yml` pyright step, **new `crm/utils/d365_types.py` module with TypedDicts**, full type annotations across `crm/core/*` + `crm/utils/d365_backend.py` to clear all 342 strict errors surfaced by the pre-count. | Medium — large mechanical diff, no behavioral change but every strict-zone file gets edited. |
 | **PR2** | `fix/correctness` | §3.1, §3.2, §3.4, §3.8, §3.9 + unit tests. Pure internals; no CLI surface change. | Low. |
 | **PR3** | `feat/api-shape-0.2.0` | §3.3, §3.5, §3.6, §3.7 + unit tests + e2e tests + version bump to **0.2.0** + new `CHANGELOG.md` covering all three PRs. | Medium — one breaking envelope change + new CLI flags. |
 
