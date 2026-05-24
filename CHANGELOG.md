@@ -5,6 +5,39 @@ All notable changes to `crm` are documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-25
+
+This release lands Spec C from the post-code-review roadmap: `$batch`
+support, on-prem-correct impersonation via `MSCRMCallerID`, two admin
+headers for write paths, an `asyncoperations` browse surface, and
+explicit optimistic concurrency via `If-Match`. See
+`docs/superpowers/specs/2026-05-24-spec-c-throughput-admin-design.md`
+for the full design.
+
+### Added
+
+- `D365Backend.batch(operations, *, transactional=True, continue_on_error=False, timeout=None)` — execute a list of operations via POST `$batch`. Consecutive writes are auto-grouped into one changeset; GETs go as top-level operations.
+- `crm batch <file.json>` CLI command with `--no-transaction`, `--continue-on-error`, `--output`, `--timeout` flags.
+- Backend typed kwargs on every verb: `caller_id`, `suppress_duplicate_detection`, `bypass_custom_plugin_execution`, `etag`. Env defaults: `CRM_AS_USER`, `CRM_SUPPRESS_DUP`, `CRM_BYPASS_PLUGINS`.
+- Per-command CLI flags on every write/action verb: `--as-user <guid>`, `--suppress-dup-detection`, `--bypass-plugins`. `--if-match <etag>` on `entity update` and `entity delete`.
+- `crm async list/get/cancel` plus `crm solution job-status / job-cancel` aliases.
+- New TypedDicts: `BatchOperation`, `BatchResult`, `AsyncOperationRow`.
+
+### Changed
+
+- HTTP `412` responses now map to `D365Error(code="PreconditionFailed")`.
+- HTTP `403` responses whose body references `prvBypassCustomPluginExecution` map to `D365Error(code="MissingPrivilege")`.
+
+### Deferred
+
+- `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple` — Dataverse cloud only; not present on MOCE 9.1.x on-prem.
+- `CallerObjectId` impersonation header — requires Microsoft Entra ID; on-prem AD users use `MSCRMCallerID`.
+- Server-side `$batch` size limits (typical Dataverse: 100 changesets per batch; 1000 ops per changeset) are not enforced client-side; the server's `MaxBatchSize` / `MaxChangesetSize` error surfaces verbatim.
+
+### Notes for callers
+
+- `POST $batch` is retried only on `429` and `503` (Spec B conservative-POST policy). A retried batch re-sends the assembled body verbatim — idempotency is the caller's responsibility.
+
 ## [0.3.0] — 2026-05-24
 
 This release lands Spec B from the post-code-review roadmap: a retry
