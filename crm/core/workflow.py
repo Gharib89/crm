@@ -10,7 +10,9 @@ Reference:
 
 from __future__ import annotations
 
-from crm.utils.d365_backend import D365Backend, D365Error
+from typing import Any
+
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
 # `workflow.category` values per the SDK
@@ -37,13 +39,13 @@ def list_workflows(
     primary_entity: str | None = None,
     activated_only: bool = False,
     on_demand_only: bool = False,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return `workflow` rows filtered to definition records (type=1).
 
     Activation records (type=2) are internal copies the server creates when a
     workflow is activated; callers want the definition.
     """
-    filters = [f"type eq {TYPE_DEFINITION}"]
+    filters: list[str] = [f"type eq {TYPE_DEFINITION}"]
     if category is not None:
         filters.append(f"category eq {category}")
     if primary_entity:
@@ -52,12 +54,12 @@ def list_workflows(
         filters.append(f"statecode eq {STATE_ACTIVATED[0]}")
     if on_demand_only:
         filters.append("ondemand eq true")
-    params = {
+    params: dict[str, str] = {
         "$select": "workflowid,name,category,primaryentity,statecode,statuscode,ondemand,type",
         "$filter": " and ".join(filters),
     }
-    result = backend.get("workflows", params=params) or {}
-    return result.get("value", [])
+    result = backend.get("workflows", params=params)
+    return as_dict(result).get("value", [])
 
 
 def set_workflow_state(
@@ -65,12 +67,12 @@ def set_workflow_state(
     workflow_id: str,
     *,
     activate: bool,
-) -> dict:
+) -> dict[str, Any]:
     """Activate or deactivate a workflow via PATCH on statecode/statuscode."""
     if not workflow_id:
         raise D365Error("workflow_id is required.")
     state, status = STATE_ACTIVATED if activate else STATE_DRAFT
-    body = {"statecode": state, "statuscode": status}
+    body: dict[str, Any] = {"statecode": state, "statuscode": status}
     backend.patch(
         f"workflows({workflow_id})",
         json_body=body,
@@ -88,7 +90,7 @@ def execute_workflow(
     backend: D365Backend,
     workflow_id: str,
     target_record_id: str,
-) -> dict:
+) -> dict[str, Any]:
     """Trigger an on-demand workflow against a target record.
 
     `ExecuteWorkflow` is a bound action on the `workflow` entity set.
@@ -98,11 +100,11 @@ def execute_workflow(
     path = (
         f"workflows({workflow_id})/Microsoft.Dynamics.CRM.ExecuteWorkflow"
     )
-    body = {"EntityId": target_record_id}
-    result = backend.post(path, json_body=body) or {}
+    body: dict[str, Any] = {"EntityId": target_record_id}
+    result = backend.post(path, json_body=body)
     return {
         "workflow_id": workflow_id,
         "target_id": target_record_id,
-        "async_operation_id": result.get("Id"),
-        "raw": result,
+        "async_operation_id": as_dict(result).get("Id"),
+        "raw": as_dict(result),
     }
