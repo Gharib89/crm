@@ -465,3 +465,18 @@ class TestParseBatchFile:
         p.write_text('[{"method": "GET", "url": "x", "body": {"a": 1}}]', encoding="utf-8")
         with pytest.raises(D365Error, match="body"):
             parse_batch_file(p)
+
+
+class TestBatchCLI:
+    def test_continue_on_error_rejected_in_transactional_mode(self, tmp_path):
+        from click.testing import CliRunner
+        from crm import cli as crm_cli
+        runner = CliRunner()
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
+        result = runner.invoke(crm_cli.cli, [
+            "batch", str(p), "--continue-on-error",
+        ], env={"D365_URL": "https://x/y", "D365_USER": "u",
+                "D365_PASSWORD": "p", "D365_DOMAIN": "d"})
+        assert result.exit_code != 0
+        assert "continue-on-error" in result.output.lower() or "transaction" in result.output.lower()

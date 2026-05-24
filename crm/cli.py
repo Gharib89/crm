@@ -22,6 +22,8 @@ import click
 
 from crm import __version__
 from crm.core import (
+    async_ops as async_ops_mod,
+    batch as batch_mod,
     connection as conn_mod,
     entity as entity_mod,
     export as export_mod,
@@ -1031,6 +1033,45 @@ def cli_service_document(ctx):
     headers = ["name", "url", "kind"]
     rows = [[s.get("name", ""), s.get("url", ""), s.get("kind", "")] for s in sets[:200]]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(sets)})
+
+
+@cli.command("batch")
+@click.argument("file_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--no-transaction", is_flag=True, default=False,
+              help="Send each op as a top-level operation; no changeset wrapping.")
+@click.option("--continue-on-error", is_flag=True, default=False,
+              help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False), default=None,
+              help="Write BatchResult[] JSON to this path.")
+@click.option("--timeout", type=int, default=None,
+              help="Override request timeout (seconds) for the batch call.")
+@pass_ctx
+def cli_batch(ctx, file_path, no_transaction, continue_on_error, output_path, timeout):
+    """Execute a $batch from a JSON file."""
+    if continue_on_error and not no_transaction:
+        ctx.emit(False, error=(
+            "--continue-on-error requires --no-transaction; "
+            "Prefer: odata.continue-on-error is meaningless inside a changeset."
+        ))
+        sys.exit(2)
+    try:
+        ops = batch_mod.parse_batch_file(file_path)
+        results = ctx.backend().batch(
+            ops,
+            transactional=not no_transaction,
+            continue_on_error=continue_on_error,
+            timeout=timeout,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+
+    if output_path:
+        Path(output_path).write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
+        ctx.emit(True, data={"written": output_path,
+                             **batch_mod.render_batch_summary(results)})
+    else:
+        ctx.emit(True, data=results, meta=batch_mod.render_batch_summary(results))
 
 
 @solution.command("import")
