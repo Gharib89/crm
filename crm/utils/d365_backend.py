@@ -17,7 +17,7 @@ import sys as _sys
 import time
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import requests
 
@@ -236,6 +236,65 @@ class D365Backend:
 
     def delete(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("DELETE", path, expect_json=False, **kw)
+
+    def poll_async_operation(
+        self,
+        async_operation_id: str,
+        *,
+        timeout: int | None = None,
+        import_job_id: str | None = None,
+        on_progress: Callable[[float, str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Block until the async operation completes, then return its row.
+
+        Polls asyncoperations(<async_operation_id>) at an increasing interval
+        (profile.async_poll_initial → profile.async_poll_max, doubling each tick).
+        Each poll itself benefits from the retry loop on transient errors.
+
+        If import_job_id is given and on_progress is set, also reads
+        importjobs(<id>).progress on every tick and forwards
+        (percent, status_message) to the callback.
+
+        Raises:
+            D365Error on operation failure (statuscode != 30) or timeout.
+        """
+        effective_timeout = timeout if timeout is not None else self.profile.async_timeout
+        deadline = time.monotonic() + effective_timeout
+        interval = self.profile.async_poll_initial
+        while True:
+            op = cast(dict[str, Any], self.get(f"asyncoperations({async_operation_id})"))
+            state = op.get("statecode")
+            status = op.get("statuscode")
+
+            if import_job_id is not None and on_progress is not None:
+                job_row = cast(dict[str, Any], self.get(
+                    f"importjobs({import_job_id})",
+                    params={"$select": "progress,solutionname,startedon,completedon"},
+                ))
+                pct = float(job_row.get("progress") or 0.0)
+                msg = op.get("message") or ""
+                on_progress(pct, msg)
+
+            if state == 3:
+                if status == 30:
+                    return op
+                raise D365Error(
+                    f"Async operation {async_operation_id} ended with statuscode={status}: "
+                    f"{op.get('friendlymessage') or op.get('message') or '(no message)'}",
+                    status=status if isinstance(status, int) else None,
+                    response_body=op,
+                )
+
+            if time.monotonic() >= deadline:
+                raise D365Error(
+                    f"Async operation {async_operation_id} did not complete within "
+                    f"{effective_timeout}s (last statecode={state})",
+                    response_body=op,
+                )
+
+            sleep_for = min(interval, max(0.0, deadline - time.monotonic()))
+            time.sleep(sleep_for)
+            interval = min(interval * 2, self.profile.async_poll_max)
 
 
 # ── Response parsing ────────────────────────────────────────────────────
