@@ -62,3 +62,27 @@ class TestEnvResolution:
     def test_bool_env_missing_returns_false(self, monkeypatch):
         monkeypatch.delenv("CRM_SUPPRESS_DUP", raising=False)
         assert _resolve_bool_env("CRM_SUPPRESS_DUP") is False
+
+
+class TestBackendDefaults:
+    def test_defaults_resolved_from_env(self, monkeypatch, profile):
+        monkeypatch.setenv("CRM_AS_USER", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        monkeypatch.setenv("CRM_SUPPRESS_DUP", "1")
+        monkeypatch.setenv("CRM_BYPASS_PLUGINS", "true")
+        b = D365Backend(profile, password="pw")
+        assert b._default_caller_id == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        assert b._default_suppress_dup is True
+        assert b._default_bypass_plugins is True
+
+    def test_defaults_absent_when_env_unset(self, monkeypatch, profile):
+        for k in ("CRM_AS_USER", "CRM_SUPPRESS_DUP", "CRM_BYPASS_PLUGINS"):
+            monkeypatch.delenv(k, raising=False)
+        b = D365Backend(profile, password="pw")
+        assert b._default_caller_id is None
+        assert b._default_suppress_dup is False
+        assert b._default_bypass_plugins is False
+
+    def test_invalid_caller_id_env_raises_at_construction(self, monkeypatch, profile):
+        monkeypatch.setenv("CRM_AS_USER", "not-a-guid")
+        with pytest.raises(D365Error, match="CRM_AS_USER"):
+            D365Backend(profile, password="pw")

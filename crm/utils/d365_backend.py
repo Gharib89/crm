@@ -162,6 +162,9 @@ class D365Backend:
         self._session.auth = HttpNtlmAuth(user_principal, password)
         self._session.verify = profile.verify_ssl
         self._effective_retry_max = _resolve_retry_max(profile)
+        self._default_caller_id: str | None = _resolve_caller_id()
+        self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
+        self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
 
     # ── URL helpers ─────────────────────────────────────────────────────
 
