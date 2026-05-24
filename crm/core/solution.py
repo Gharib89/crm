@@ -140,6 +140,6 @@ def service_document(backend: D365Backend) -> dict[str, Any]:
     return as_dict(backend.get(""))
 
 
-def _new_guid() -> str:  # pyright: ignore[empty-body]
+def _new_guid() -> str:
     import uuid
     return str(uuid.uuid4())

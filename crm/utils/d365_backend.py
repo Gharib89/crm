@@ -206,12 +206,13 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
     message: str = f"HTTP {resp.status_code}"
     try:
         body = resp.json()
-        err = cast(Any, body).get("error") if isinstance(body, dict) else None
+        err = cast(dict[str, Any], body).get("error") if isinstance(body, dict) else None
         if isinstance(err, dict):
-            code_val = cast(Any, err).get("code")
+            err_d = cast(dict[str, Any], err)
+            code_val = err_d.get("code")
             if isinstance(code_val, str):
                 code = code_val
-            msg_val = cast(Any, err).get("message")
+            msg_val = err_d.get("message")
             if isinstance(msg_val, str):
                 message = msg_val
     except ValueError:

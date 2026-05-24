@@ -107,6 +107,6 @@ class ODataCollection(TypedDict, Generic[T], total=False):
 
 
 # Raw response unions used at the wire boundary. Backend methods widen to these;
-# core/* callers narrow before use (helper: `_as_dict` in d365_backend.py).
+# core/* callers narrow before use (helper: `as_dict` in d365_backend.py).
 JsonValue = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
 JsonObject = Dict[str, Any]
