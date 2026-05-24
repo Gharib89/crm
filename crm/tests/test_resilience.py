@@ -89,3 +89,33 @@ class TestParseRetryAfter:
 
     def test_garbage_returns_none(self):
         assert _parse_retry_after("not-a-date") is None
+
+
+# ── _compute_delay ──────────────────────────────────────────────────────
+
+
+class TestComputeDelay:
+    def test_retry_after_honored_below_cap(self, profile):
+        # retry_max_delay=2.0; retry_after=1.0 → return 1.0
+        assert _compute_delay(0, profile, retry_after=1.0) == 1.0
+
+    def test_retry_after_clamped_to_max(self, profile):
+        # retry_max_delay=2.0; retry_after=99.0 → clamp to 2.0
+        assert _compute_delay(0, profile, retry_after=99.0) == 2.0
+
+    def test_no_jitter_exponential(self, profile):
+        # base_delay=0.1; attempt 0 → 0.1; attempt 1 → 0.2; attempt 2 → 0.4
+        assert _compute_delay(0, profile, retry_after=None) == 0.1
+        assert _compute_delay(1, profile, retry_after=None) == 0.2
+        assert _compute_delay(2, profile, retry_after=None) == 0.4
+
+    def test_no_jitter_caps_at_max(self, profile):
+        # base_delay=0.1, 2**10=1024 → 102.4, but cap is 2.0
+        assert _compute_delay(10, profile, retry_after=None) == 2.0
+
+    def test_jitter_bounded(self, profile):
+        profile.retry_jitter = True
+        # 1000 draws at attempt=2 should all sit in [0, 0.4]
+        for _ in range(1000):
+            d = _compute_delay(2, profile, retry_after=None)
+            assert 0.0 <= d <= 0.4
