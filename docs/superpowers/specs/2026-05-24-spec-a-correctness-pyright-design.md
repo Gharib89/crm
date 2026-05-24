@@ -52,7 +52,7 @@ CHANGELOG.md               — NEW
 
 ### Pyright configuration
 
-Two-zone strictness via `executionEnvironments`:
+Global strict at the project level + file-level `# pyright: basic` pragmas for the basic-zone files. `executionEnvironments[*].typeCheckingMode` is silently ignored by pyright 1.1.409, so it cannot be used to zone basic mode by directory/file root.
 
 ```json
 {
@@ -61,15 +61,13 @@ Two-zone strictness via `executionEnvironments`:
   "pythonVersion": "3.9",
   "typeCheckingMode": "strict",
   "reportMissingTypeStubs": false,
-  "executionEnvironments": [
-    { "root": "crm/cli.py",             "typeCheckingMode": "basic" },
-    { "root": "crm/utils/repl_skin.py", "typeCheckingMode": "basic" },
-    { "root": "crm/tests",              "typeCheckingMode": "basic" }
-  ]
+  "extraPaths": ["."]
 }
 ```
 
-Strict applies to `crm/core/*` and `crm/utils/d365_backend.py`. CLI and REPL skin stay basic; tests stay basic.
+Files that opt down to basic mode start with the line `# pyright: basic` (right after any module docstring): `crm/cli.py`, `crm/utils/repl_skin.py`, `crm/tests/test_core.py`, `crm/tests/test_full_e2e.py`.
+
+Strict applies to `crm/core/*` and `crm/utils/d365_backend.py`. CLI, REPL skin, and tests stay basic.
 
 ### Typing strategy
 

@@ -95,6 +95,8 @@ git commit -m "build: add pyright to dev extras"
 
 - [ ] **Step 1: Write the config**
 
+Pyright 1.1.409 silently ignores `executionEnvironments[*].typeCheckingMode`, so zoning is done via global strict + file-level `# pyright: basic` pragmas. `extraPaths: ["."]` is required so pyright resolves `crm.*` imports.
+
 ```json
 {
   "include": ["crm"],
@@ -102,13 +104,11 @@ git commit -m "build: add pyright to dev extras"
   "pythonVersion": "3.9",
   "typeCheckingMode": "strict",
   "reportMissingTypeStubs": false,
-  "executionEnvironments": [
-    { "root": "crm/cli.py",             "typeCheckingMode": "basic" },
-    { "root": "crm/utils/repl_skin.py", "typeCheckingMode": "basic" },
-    { "root": "crm/tests",              "typeCheckingMode": "basic" }
-  ]
+  "extraPaths": ["."]
 }
 ```
+
+Add `# pyright: basic` (right after any module docstring) to each basic-zone file: `crm/cli.py`, `crm/utils/repl_skin.py`, `crm/tests/test_core.py`, `crm/tests/test_full_e2e.py`.
 
 - [ ] **Step 2: Run pyright to confirm the strict-zone baseline**
 

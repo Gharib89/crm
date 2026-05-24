@@ -101,10 +101,10 @@ def execute_workflow(
         f"workflows({workflow_id})/Microsoft.Dynamics.CRM.ExecuteWorkflow"
     )
     body: dict[str, Any] = {"EntityId": target_record_id}
-    result = backend.post(path, json_body=body)
+    result = as_dict(backend.post(path, json_body=body))
     return {
         "workflow_id": workflow_id,
         "target_id": target_record_id,
-        "async_operation_id": as_dict(result).get("Id"),
-        "raw": as_dict(result),
+        "async_operation_id": result.get("Id"),
+        "raw": result,
     }

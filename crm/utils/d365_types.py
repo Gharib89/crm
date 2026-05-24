@@ -10,7 +10,7 @@ Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi
 
 from __future__ import annotations
 
-from typing import Any, Dict, Generic, List, TypedDict, TypeVar, Union
+from typing import Any, Generic, TypedDict, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -108,5 +108,5 @@ class ODataCollection(TypedDict, Generic[T], total=False):
 
 # Raw response unions used at the wire boundary. Backend methods widen to these;
 # core/* callers narrow before use (helper: `as_dict` in d365_backend.py).
-JsonValue = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
-JsonObject = Dict[str, Any]
+JsonValue = Union[dict[str, Any], list[Any], str, int, float, bool, None]
+JsonObject = dict[str, Any]
