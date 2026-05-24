@@ -18,7 +18,7 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, cast
+from typing import Any, Callable, Sequence, cast
 
 import requests
 
@@ -578,6 +578,82 @@ def _parse_retry_after(header: str | None) -> float | None:
         return max(0.0, delta)
     except (TypeError, ValueError):
         return None
+
+
+def _format_http_part(op: dict[str, Any], content_id: int | None = None) -> str:
+    """Render one operation as an `application/http` MIME part body."""
+    method = op["method"].upper()
+    url = op["url"]
+    extra = op.get("headers") or {}
+    lines: list[str] = ["Content-Type: application/http",
+                        "Content-Transfer-Encoding: binary"]
+    if content_id is not None:
+        lines.append(f"Content-ID: {content_id}")
+    lines.append("")
+    lines.append(f"{method} {url} HTTP/1.1")
+    if method in ("POST", "PATCH"):
+        lines.append("Content-Type: application/json")
+    for hk, hv in extra.items():
+        lines.append(f"{hk}: {hv}")
+    lines.append("")
+    if "body" in op and op["body"] is not None:
+        lines.append(json.dumps(op["body"]))
+    return "\r\n".join(lines)
+
+
+def _assemble_batch_body(
+    operations: Sequence[dict[str, Any]],
+    api_base: str,
+    *,
+    transactional: bool,
+) -> tuple[str, str]:
+    """Assemble a multipart/mixed batch body. Returns (body_text, content_type)."""
+    batch_boundary = f"batch_{uuid.uuid4().hex}"
+    out: list[str] = []
+
+    def _emit_top_get(op: dict[str, Any]) -> None:
+        out.append(f"--{batch_boundary}")
+        out.append(_format_http_part(op))
+
+    def _emit_top_write(op: dict[str, Any]) -> None:
+        out.append(f"--{batch_boundary}")
+        out.append(_format_http_part(op))
+
+    def _emit_changeset(write_ops: list[dict[str, Any]]) -> None:
+        cs_boundary = f"changeset_{uuid.uuid4().hex}"
+        out.append(f"--{batch_boundary}")
+        out.append(f"Content-Type: multipart/mixed; boundary={cs_boundary}")
+        out.append("")
+        for i, op in enumerate(write_ops, start=1):
+            out.append(f"--{cs_boundary}")
+            out.append(_format_http_part(op, content_id=i))
+        out.append(f"--{cs_boundary}--")
+
+    write_buffer: list[dict[str, Any]] = []
+    for op in operations:
+        method = op["method"].upper()
+        is_write = method in ("POST", "PATCH", "DELETE")
+        if transactional and is_write:
+            write_buffer.append(op)
+            continue
+        if write_buffer:
+            _emit_changeset(write_buffer)
+            write_buffer = []
+        if method == "GET":
+            _emit_top_get(op)
+        else:
+            _emit_top_write(op)
+    if write_buffer:
+        _emit_changeset(write_buffer)
+
+    out.append(f"--{batch_boundary}--")
+    body_text = "\r\n".join(out) + "\r\n"
+    return body_text, f"multipart/mixed; boundary={batch_boundary}"
+
+
+def _parse_batch_response(*args: Any, **kwargs: Any) -> Any:
+    """Stub — full implementation in Task 8."""
+    raise NotImplementedError
 
 
 def as_dict(result: dict[str, Any] | str | None) -> dict[str, Any]:
