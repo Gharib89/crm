@@ -1083,11 +1083,10 @@ def cli_service_document(ctx):
 def cli_batch(ctx, file_path, no_transaction, continue_on_error, output_path, timeout):
     """Execute a $batch from a JSON file."""
     if continue_on_error and not no_transaction:
-        ctx.emit(False, error=(
+        raise click.UsageError(
             "--continue-on-error requires --no-transaction; "
             "Prefer: odata.continue-on-error is meaningless inside a changeset."
-        ))
-        sys.exit(2)
+        )
     try:
         ops = batch_mod.parse_batch_file(file_path)
         results = ctx.backend().batch(
@@ -1101,7 +1100,13 @@ def cli_batch(ctx, file_path, no_transaction, continue_on_error, output_path, ti
         return
 
     if output_path:
-        Path(output_path).write_text(json.dumps(results, indent=2, default=str), encoding="utf-8")
+        try:
+            Path(output_path).write_text(
+                json.dumps(results, indent=2, default=str), encoding="utf-8"
+            )
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output_path}: {exc}")
+            return
         ctx.emit(True, data={"written": output_path,
                              **batch_mod.render_batch_summary(results)})
     else:

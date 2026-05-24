@@ -43,6 +43,11 @@ def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:
         body = op.get("body")
         if method in ("GET", "DELETE") and body is not None:
             raise D365Error(f"{p} op #{i}: body not allowed on {method}")
+        if method in ("POST", "PATCH") and not isinstance(body, dict):
+            raise D365Error(
+                f"{p} op #{i}: {method} requires a JSON object 'body' "
+                f"(got {type(body).__name__ if body is not None else 'missing'})"
+            )
         validated: dict[str, Any] = {"method": method, "url": url}
         if body is not None:
             if not isinstance(body, dict):
