@@ -287,6 +287,10 @@ def connection_disconnect(ctx: CLIContext):
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = None
     session_mod.save_session(state, ctx.session_name)
+    # Also clear in-memory state — sticky-options means these would otherwise
+    # persist across REPL lines and defeat the disconnect.
+    ctx.profile_name = None
+    ctx.password = None
     ctx.invalidate_backend()
     ctx.emit(True, data={"disconnected": True})
 

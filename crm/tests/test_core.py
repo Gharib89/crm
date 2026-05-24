@@ -781,7 +781,7 @@ class TestReplBackendCache:
         ctx.backend()
         assert calls["n"] == 2
 
-    def test_repl_root_callback_preserves_profile_and_password(self, monkeypatch):
+    def test_repl_root_callback_preserves_profile_and_password(self, monkeypatch, isolated_home):
         """Root cli() must NOT wipe profile_name/password when flags are omitted on a REPL line."""
         from click.testing import CliRunner
         from crm import cli as cli_mod
