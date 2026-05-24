@@ -187,8 +187,8 @@ class D365Backend:
         extra_headers: dict[str, str] | None = None,
         expect_json: bool = True,
         caller_id: str | None = None,
-        suppress_duplicate_detection: bool = False,
-        bypass_custom_plugin_execution: bool = False,
+        suppress_duplicate_detection: bool | None = None,
+        bypass_custom_plugin_execution: bool | None = None,
         etag: str | None = None,
     ) -> dict[str, Any] | str | None:
         """Issue an HTTP request and return parsed JSON (or None for 204).
@@ -215,10 +215,20 @@ class D365Backend:
                 ) from exc
             headers["MSCRMCallerID"] = effective_caller
 
-        if suppress_duplicate_detection or self._default_suppress_dup:
+        effective_suppress = (
+            suppress_duplicate_detection
+            if suppress_duplicate_detection is not None
+            else self._default_suppress_dup
+        )
+        if effective_suppress:
             headers["MSCRM.SuppressDuplicateDetection"] = "true"
 
-        if bypass_custom_plugin_execution or self._default_bypass_plugins:
+        effective_bypass = (
+            bypass_custom_plugin_execution
+            if bypass_custom_plugin_execution is not None
+            else self._default_bypass_plugins
+        )
+        if effective_bypass:
             headers["MSCRM.BypassCustomPluginExecution"] = "true"
 
         if etag is not None:

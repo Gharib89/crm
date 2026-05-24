@@ -153,6 +153,22 @@ class TestHeaderInjection:
             )
             assert m.last_request.headers["MSCRMCallerID"] == guid
 
+    def test_suppress_dup_false_kwarg_overrides_true_env(self, monkeypatch, profile):
+        monkeypatch.setenv("CRM_SUPPRESS_DUP", "1")
+        b = D365Backend(profile, password="pw")
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204)
+            b.post("accounts", json_body={"name": "a"}, suppress_duplicate_detection=False)
+            assert "MSCRM.SuppressDuplicateDetection" not in m.last_request.headers
+
+    def test_bypass_plugins_false_kwarg_overrides_true_env(self, monkeypatch, profile):
+        monkeypatch.setenv("CRM_BYPASS_PLUGINS", "1")
+        b = D365Backend(profile, password="pw")
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204)
+            b.post("accounts", json_body={"name": "a"}, bypass_custom_plugin_execution=False)
+            assert "MSCRM.BypassCustomPluginExecution" not in m.last_request.headers
+
     def test_headers_absent_when_neither_kwarg_nor_env(self, monkeypatch, backend, profile):
         for k in ("CRM_AS_USER", "CRM_SUPPRESS_DUP", "CRM_BYPASS_PLUGINS"):
             monkeypatch.delenv(k, raising=False)
