@@ -83,9 +83,12 @@ class TestParseRetryAfter:
         assert _parse_retry_after("-5") == 0.0
 
     def test_http_date(self):
-        # 2026-05-24T12:00:30Z — exact value depends on parser; just assert > 0
-        result = _parse_retry_after("Sun, 24 May 2026 12:00:30 GMT")
-        assert result is not None and result >= 0.0
+        # Use a dynamic future date so the positive-delta branch is always exercised.
+        import datetime as _dt
+        from email.utils import format_datetime
+        future = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=60)
+        result = _parse_retry_after(format_datetime(future))
+        assert result is not None and result > 0.0
 
     def test_garbage_returns_none(self):
         assert _parse_retry_after("not-a-date") is None

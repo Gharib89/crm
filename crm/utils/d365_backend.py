@@ -11,6 +11,9 @@ parsed JSON or a raised `D365Error`.
 from __future__ import annotations
 
 import json
+import os as _os
+import random
+import sys as _sys
 import time
 import urllib.parse
 from dataclasses import dataclass
@@ -288,7 +291,6 @@ def _compute_delay(
     retry_after: float | None,
 ) -> float:
     """Compute the sleep duration before the next retry attempt."""
-    import random
     if retry_after is not None:
         return min(retry_after, profile.retry_max_delay)
     base = min(profile.retry_base_delay * (2 ** attempt), profile.retry_max_delay)
@@ -322,10 +324,6 @@ def _is_transport_retryable(exc: BaseException) -> bool:
     if isinstance(exc, requests.exceptions.SSLError):
         return False
     return isinstance(exc, _RETRYABLE_TRANSPORT_TYPES)
-
-
-import os as _os
-import sys as _sys
 
 
 _RATE_LIMIT_HEADER_MAP = (
