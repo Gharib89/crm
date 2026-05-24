@@ -57,6 +57,20 @@ class ConnectionProfile:
     async_poll_max: float = 30.0
     async_timeout: int = 1800
 
+    def __post_init__(self) -> None:
+        for _field, _value in (
+            ("retry_max", self.retry_max),
+            ("retry_base_delay", self.retry_base_delay),
+            ("retry_max_delay", self.retry_max_delay),
+            ("async_poll_initial", self.async_poll_initial),
+            ("async_poll_max", self.async_poll_max),
+            ("async_timeout", self.async_timeout),
+        ):
+            if _value < 0:
+                raise D365Error(
+                    f"ConnectionProfile.{_field} must be >= 0, got {_value!r}"
+                )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
