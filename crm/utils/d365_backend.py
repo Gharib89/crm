@@ -317,6 +317,14 @@ def _log_rate_limit_headers(resp: requests.Response, *, on_429: bool) -> None:
     _sys.stderr.write(f"[crm] ratelimit {' '.join(parts)}\n")
 
 
+def _log_retry(method: str, url: str, attempt: int, delay: float, *, effective_max: int, reason: str) -> None:
+    """One-line stderr trace of a retry decision."""
+    _sys.stderr.write(
+        f"[crm] retry {method} {url} attempt={attempt + 1}/{effective_max} "
+        f"delay={delay:.1f}s reason={reason}\n"
+    )
+
+
 def _parse_retry_after(header: str | None) -> float | None:
     """Parse an HTTP Retry-After header value.
 
