@@ -197,6 +197,11 @@ class D365Backend:
         backend's profile + env config. Honors self.dry_run by returning a
         preview dict instead of issuing the call.
 
+        caller_id tri-state:
+          - None (default): use the CRM_AS_USER env default (self._default_caller_id).
+          - ""  (empty str): disable impersonation for this call, even if CRM_AS_USER is set.
+          - any other str:  use this GUID directly; must be a valid UUID.
+
         Raises D365Error on transport failure or non-2xx response after retries
         are exhausted.
         """
@@ -205,7 +210,13 @@ class D365Backend:
         if extra_headers:
             headers.update(extra_headers)
 
-        effective_caller = caller_id if caller_id is not None else self._default_caller_id
+        if caller_id is None:
+            effective_caller = self._default_caller_id
+        elif caller_id == "":
+            effective_caller = None
+        else:
+            effective_caller = caller_id
+
         if effective_caller is not None:
             try:
                 uuid.UUID(effective_caller)
