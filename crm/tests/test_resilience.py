@@ -176,3 +176,58 @@ class TestIsTransportRetryable:
 
     def test_generic_runtime_error_not_retryable(self):
         assert _is_transport_retryable(RuntimeError("boom")) is False
+
+
+# ── _log_rate_limit_headers ─────────────────────────────────────────────
+
+
+class TestLogRateLimitHeaders:
+    def _make_resp(self, headers: dict[str, str]) -> requests.Response:
+        resp = requests.Response()
+        resp.status_code = 429
+        for k, v in headers.items():
+            resp.headers[k] = v
+        return resp
+
+    def test_on_429_logs_all_present_headers(self, capsys):
+        resp = self._make_resp({
+            "x-ms-ratelimit-time-remaining-xrm-requests": "30",
+            "x-ms-ratelimit-burst-remaining-xrm-requests": "5",
+            "x-ms-ratelimit-limit-xrm-requests": "6000",
+            "Retry-After": "12",
+        })
+        _log_rate_limit_headers(resp, on_429=True)
+        err = capsys.readouterr().err
+        assert "ratelimit" in err
+        assert "time-remaining=30" in err
+        assert "burst-remaining=5" in err
+        assert "limit=6000" in err
+        assert "retry-after=12" in err
+
+    def test_on_429_no_headers_emits_no_line(self, capsys):
+        resp = self._make_resp({})
+        _log_rate_limit_headers(resp, on_429=True)
+        assert capsys.readouterr().err == ""
+
+    def test_verbose_off_silent_on_2xx(self, capsys, monkeypatch):
+        monkeypatch.delenv("CRM_VERBOSE", raising=False)
+        resp = self._make_resp({"x-ms-ratelimit-time-remaining-xrm-requests": "30"})
+        resp.status_code = 200
+        _log_rate_limit_headers(resp, on_429=False)
+        assert capsys.readouterr().err == ""
+
+    def test_verbose_on_logs_2xx(self, capsys, monkeypatch):
+        monkeypatch.setenv("CRM_VERBOSE", "1")
+        resp = self._make_resp({"x-ms-ratelimit-time-remaining-xrm-requests": "30"})
+        resp.status_code = 200
+        _log_rate_limit_headers(resp, on_429=False)
+        assert "time-remaining=30" in capsys.readouterr().err
+
+    def test_partial_headers_only_logs_present(self, capsys):
+        resp = self._make_resp({"x-ms-ratelimit-time-remaining-xrm-requests": "30"})
+        _log_rate_limit_headers(resp, on_429=True)
+        err = capsys.readouterr().err
+        assert "time-remaining=30" in err
+        assert "burst-remaining" not in err
+        assert "limit=" not in err
+        assert "retry-after" not in err
