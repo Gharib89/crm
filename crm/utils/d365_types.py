@@ -171,7 +171,7 @@ class AddAttributeResult(TypedDict, total=False):
 
 class CreateRelationshipResult(TypedDict, total=False):
     created: bool
-    kind: str  # "OneToMany" | "ManyToMany"
+    kind: Literal["OneToMany", "ManyToMany"]
     schema_name: str
     referenced_entity: str
     referencing_entity: str
