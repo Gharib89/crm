@@ -100,6 +100,16 @@ def _label(text: str, lang: int = 1033) -> dict[str, Any]:
     return {"LocalizedLabels": [{"Label": text, "LanguageCode": lang}]}
 
 
+def _maybe_publish(backend: D365Backend, info: dict[str, Any], publish: bool) -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
+    """Run PublishAllXml unless dry-run or publish=False. Returns info dict (mutated)."""
+    if not publish or info.get("_dry_run"):
+        return info
+    from crm.core import solution as sol_mod
+    sol_mod.publish_all(backend)
+    info["published"] = True
+    return info
+
+
 def create_entity(
     backend: D365Backend,
     *,

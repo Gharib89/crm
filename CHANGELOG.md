@@ -5,6 +5,27 @@ All notable changes to `crm` are documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.5.0 — 2026-05-25
+
+### Added
+
+- `metadata add-attribute` — add columns to existing entities. Supports 14
+  attribute kinds: string, memo, integer, bigint, decimal, double, money,
+  boolean, datetime, picklist, multiselect, lookup, image, file.
+- `metadata create-one-to-many` + `metadata create-many-to-many` — create
+  1:N and N:N relationships via the dedicated Dataverse actions.
+- Global option set CRUD: `metadata list-optionsets`, `get-optionset`,
+  `create-optionset`, `update-optionset`, `delete-optionset`. `update`
+  is granular: `--insert-option` / `--update-option` / `--delete-option`
+  / `--reorder` flags map to the matching bound actions.
+- `metadata delete-entity` — drop a custom table, guarded by interactive
+  confirm + `--yes` skip + client-side `IsCustomEntity` + `IsManaged`
+  pre-flight check.
+
+All new write verbs accept `--solution <uniquename>` (header
+`MSCRM.SolutionUniqueName`) and `--publish/--no-publish` (default ON),
+matching `metadata create-entity`. Delete verbs skip publish.
+
 ## [0.4.0] — 2026-05-25
 
 This release lands Spec C from the post-code-review roadmap: `$batch`

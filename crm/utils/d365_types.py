@@ -10,7 +10,7 @@ Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypedDict, TypeVar, Union
+from typing import Any, Generic, Literal, TypedDict, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -148,6 +148,57 @@ class AsyncOperationRow(TypedDict, total=False):
     errorcode: int
     message: str
     friendlymessage: str
+
+
+AttributeKind = Literal[
+    "string", "memo", "integer", "bigint", "decimal", "double", "money",
+    "boolean", "datetime", "picklist", "multiselect", "lookup", "image", "file",
+]
+
+
+class AddAttributeResult(TypedDict, total=False):
+    created: bool
+    entity: str
+    schema_name: str
+    logical_name: str
+    attribute_type: str
+    attribute_logical_name: str
+    metadata_id_url: str
+    solution: str
+    published: bool
+    attribute_lookup_error: str
+
+
+class CreateRelationshipResult(TypedDict, total=False):
+    created: bool
+    kind: str  # "OneToMany" | "ManyToMany"
+    schema_name: str
+    referenced_entity: str
+    referencing_entity: str
+    referencing_attribute: str
+    intersect_entity: str
+    relationship_id: str
+    metadata_id_url: str
+    solution: str
+    published: bool
+    relationship_lookup_error: str
+
+
+class OptionSetRow(TypedDict, total=False):
+    Name: str
+    DisplayName: LabelPayload
+    IsCustomOptionSet: bool
+    IsGlobal: bool
+    IsManaged: bool
+
+
+class OptionSetCreateResult(TypedDict, total=False):
+    created: bool
+    name: str
+    metadata_id_url: str
+    solution: str
+    published: bool
+    optionset_lookup_error: str
 
 
 # Raw response unions used at the wire boundary. Backend methods widen to these;
