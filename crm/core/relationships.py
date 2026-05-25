@@ -13,7 +13,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import _label, _maybe_publish  # pyright: ignore[reportPrivateUsage]
+from crm.core.metadata import label, maybe_publish
 
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
@@ -91,11 +91,11 @@ def create_one_to_many(
     lookup_payload: dict[str, Any] = {
         "@odata.type": "Microsoft.Dynamics.CRM.LookupAttributeMetadata",
         "SchemaName": lookup_schema,
-        "DisplayName": _label(lookup_display),
+        "DisplayName": label(lookup_display),
         "RequiredLevel": {"Value": lookup_required},
     }
     if lookup_description:
-        lookup_payload["Description"] = _label(lookup_description)
+        lookup_payload["Description"] = label(lookup_description)
 
     body: dict[str, Any] = {
         "OneToManyRelationship": {
@@ -106,7 +106,7 @@ def create_one_to_many(
             "AssociatedMenuConfiguration": {
                 "Behavior": menu_behavior,
                 "Group": "Details",
-                "Label": _label(menu_label) if menu_label else None,
+                "Label": label(menu_label) if menu_label else None,
                 "Order": menu_order,
             },
             "CascadeConfiguration": {
@@ -165,5 +165,5 @@ def create_one_to_many(
     }
     if lookup_error:
         out["relationship_lookup_error"] = lookup_error
-    _maybe_publish(backend, out, publish)
+    maybe_publish(backend, out, publish)
     return out

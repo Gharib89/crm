@@ -95,12 +95,12 @@ def picklist_options(
     ))
 
 
-def _label(text: str, lang: int = 1033) -> dict[str, Any]:
+def label(text: str, lang: int = 1033) -> dict[str, Any]:
     """Build a Dataverse Label payload from a single string."""
     return {"LocalizedLabels": [{"Label": text, "LanguageCode": lang}]}
 
 
-def _maybe_publish(backend: D365Backend, info: dict[str, Any], publish: bool) -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]
+def maybe_publish(backend: D365Backend, info: dict[str, Any], publish: bool) -> dict[str, Any]:
     """Run PublishAllXml unless dry-run or publish=False. Returns info dict (mutated)."""
     if not publish or info.get("_dry_run"):
         return info
@@ -173,8 +173,8 @@ def create_entity(
         "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
         "SchemaName": schema_name,
         "LogicalName": logical_name,
-        "DisplayName": _label(display_name),
-        "DisplayCollectionName": _label(collection_label),
+        "DisplayName": label(display_name),
+        "DisplayCollectionName": label(collection_label),
         "OwnershipType": ownership,
         "HasActivities": has_activities,
         "HasNotes": has_notes,
@@ -186,12 +186,12 @@ def create_entity(
             "RequiredLevel": {"Value": "ApplicationRequired"},
             "MaxLength": primary_attr_max_length,
             "FormatName": {"Value": "Text"},
-            "DisplayName": _label(primary_label_text),
+            "DisplayName": label(primary_label_text),
             "IsPrimaryName": True,
         }],
     }
     if description:
-        body["Description"] = _label(description)
+        body["Description"] = label(description)
 
     headers = {}
     if solution:
