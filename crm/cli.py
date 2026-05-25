@@ -141,10 +141,22 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         log_level: str | None, verbose: bool, log_format: str | None,
         auth_scheme: str | None, session_name: str):
     """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
+    _valid_levels = ("debug", "info", "warning", "error")
+    _valid_fmts = ("text", "json-line")
     effective_level = log_level or os.environ.get("CRM_LOG_LEVEL") or "warning"
     if verbose:
         effective_level = "debug"
+    if effective_level not in _valid_levels:
+        raise click.BadParameter(
+            f"{effective_level!r} is not a valid log level; choose from {_valid_levels}",
+            param_hint="--log-level / CRM_LOG_LEVEL",
+        )
     effective_fmt = log_format or os.environ.get("CRM_LOG_FORMAT") or "text"
+    if effective_fmt not in _valid_fmts:
+        raise click.BadParameter(
+            f"{effective_fmt!r} is not a valid log format; choose from {_valid_fmts}",
+            param_hint="--log-format / CRM_LOG_FORMAT",
+        )
     setup_logging(level=effective_level, fmt=effective_fmt)  # type: ignore[arg-type]
 
     cli_ctx = ctx.ensure_object(CLIContext)

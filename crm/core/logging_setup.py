@@ -59,6 +59,10 @@ class CrmLogHandler(logging.StreamHandler):
 
 def setup_logging(level: LogLevel = "warning", fmt: LogFormat = "text") -> None:
     """Configure the `crm` logger tree. Idempotent."""
+    if level not in _LEVEL_MAP:
+        raise ValueError(f"Invalid log level {level!r}; expected: {list(_LEVEL_MAP)}")
+    if fmt not in ("text", "json-line"):
+        raise ValueError(f"Invalid log format {fmt!r}; expected: text, json-line")
     logger = logging.getLogger("crm")
     logger.setLevel(_LEVEL_MAP[level])
     for h in list(logger.handlers):
