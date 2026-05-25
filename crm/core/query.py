@@ -171,3 +171,26 @@ def count_entity_set(backend: D365Backend, entity_set: str) -> int:
     raw = odata_query(backend, entity_set, top=1, count=True)
     c = raw.get("@odata.count")
     return int(c) if c is not None else 0
+
+
+# ── RetrieveTotalRecordCount ─────────────────────────────────────────────
+
+
+def total_record_count(backend: D365Backend, entity: str) -> int:
+    """Call RetrieveTotalRecordCount for one entity logical name.
+
+    D365 caches counts; value may lag inserts/deletes by minutes.
+    """
+    if not entity:
+        raise D365Error("entity logical name is required")
+    path = f"RetrieveTotalRecordCount(EntityNames=['{entity}'])"
+    result = as_dict(backend.get(path))
+    coll = result.get("EntityRecordCountCollection") or {}
+    keys = coll.get("Keys") or []
+    values = coll.get("Values") or []
+    if not keys or not values:
+        raise D365Error(
+            f"RetrieveTotalRecordCount returned no rows for {entity!r}",
+            response_body=result,
+        )
+    return int(values[0])

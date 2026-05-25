@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import click
 from crm.core import query as query_mod
+from crm.core.query import total_record_count
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -114,3 +115,16 @@ def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size
         _handle_d365_error(ctx, exc)
         return
     _emit_query_result(ctx, result, entity_set)
+
+
+@query_group.command("count")
+@click.argument("entity")
+@pass_ctx
+def query_count(ctx: CLIContext, entity: str):
+    """Count rows for an entity via RetrieveTotalRecordCount (cached server-side)."""
+    try:
+        n = total_record_count(ctx.backend(), entity)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data={"entity": entity, "count": n})
