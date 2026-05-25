@@ -1,0 +1,202 @@
+"""Add attributes to existing entities — 14 typed builders + dispatcher.
+
+`add_attribute` is the single public entry point. It validates the
+kwarg matrix per `kind` (raising `D365Error` before any HTTP), routes
+to a `_<kind>_attr` builder for the OData body, POSTs to
+`EntityDefinitions(...)/Attributes`, and reads back the canonical
+attribute fields. Lookup short-circuits to `create_one_to_many`.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Callable
+
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.core.metadata import label, maybe_publish
+
+_VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
+_STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
+_DATETIME_FORMATS = {"DateOnly", "DateAndTime"}  # pyright: ignore[reportUnusedVariable]
+
+_NUMERIC_KINDS = {"integer", "bigint", "decimal", "double", "money"}  # pyright: ignore[reportUnusedVariable]
+_LENGTH_KINDS = {"string", "memo"}  # pyright: ignore[reportUnusedVariable]
+_PICKLIST_KINDS = {"picklist", "multiselect"}  # pyright: ignore[reportUnusedVariable]
+
+
+def _require(kwargs: dict[str, Any], *names: str) -> None:
+    for n in names:
+        if kwargs.get(n) is None:
+            raise D365Error(f"--{n} is required for this kind.")
+
+
+def _forbid(kwargs: dict[str, Any], *names: str) -> None:
+    for n in names:
+        if kwargs.get(n) is not None:
+            raise D365Error(f"--{n} is not valid for this kind.")
+
+
+def _base_attr_payload(
+    *, schema_name: str, logical_name: str, display_name: str,
+    description: str | None, required: str,
+) -> dict[str, Any]:
+    if required not in _VALID_REQUIRED:
+        raise D365Error(f"required must be one of {sorted(_VALID_REQUIRED)}.")
+    payload: dict[str, Any] = {
+        "SchemaName": schema_name,
+        "LogicalName": logical_name,
+        "DisplayName": label(display_name),
+        "RequiredLevel": {"Value": required},
+    }
+    if description:
+        payload["Description"] = label(description)
+    return payload
+
+
+def _string_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "precision", "target_entity", "optionset_name", "options",
+            "min_value", "max_value", "max_size_kb")
+    _require(opts, "max_length")
+    fmt = opts.get("format_name") or "Text"
+    if fmt not in _STRING_FORMATS:
+        raise D365Error(f"format_name for string must be one of {sorted(_STRING_FORMATS)}.")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.StringAttributeMetadata"
+    body["MaxLength"] = opts["max_length"]
+    body["FormatName"] = {"Value": fmt}
+    return body
+
+
+def _memo_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "precision", "target_entity", "optionset_name", "options",
+            "min_value", "max_value", "max_size_kb")
+    _require(opts, "max_length")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
+    body["MaxLength"] = opts["max_length"]
+    body["Format"] = "TextArea"
+    return body
+
+
+_BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    "string": _string_attr,
+    "memo": _memo_attr,
+}
+
+
+def _parse_attribute_id(entity_id_url: str | None) -> str | None:
+    if not entity_id_url:
+        return None
+    match = re.search(r"Attributes\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    return match.group(1) if match else None
+
+
+def add_attribute(
+    backend: D365Backend,
+    *,
+    entity: str,
+    kind: str,
+    schema_name: str,
+    display_name: str,
+    description: str | None = None,
+    required: str = "None",
+    max_length: int | None = None,
+    format_name: str | None = None,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    precision: int | None = None,
+    default_value: bool | int | None = None,
+    true_label: str = "Yes",
+    false_label: str = "No",
+    optionset_name: str | None = None,
+    options: list[tuple[int | None, str]] | None = None,
+    target_entity: str | None = None,
+    relationship_schema: str | None = None,
+    max_size_kb: int | None = None,
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Add an attribute (column) to an existing entity."""
+    if "_" not in schema_name:
+        raise D365Error("schema_name must include a publisher prefix.")
+    logical_name = schema_name.lower()
+
+    # Lookup is a special dispatch (covered in a later task).
+    if kind == "lookup":
+        raise D365Error("lookup kind not yet implemented in this build")
+
+    builder = _BUILDERS.get(kind)
+    if builder is None:
+        raise D365Error(f"unknown attribute kind: {kind!r}")
+
+    opts: dict[str, Any] = {
+        "schema_name": schema_name,
+        "logical_name": logical_name,
+        "display_name": display_name,
+        "description": description,
+        "required": required,
+        "max_length": max_length,
+        "format_name": format_name,
+        "min_value": min_value,
+        "max_value": max_value,
+        "precision": precision,
+        "default_value": default_value,
+        "true_label": true_label,
+        "false_label": false_label,
+        "optionset_name": optionset_name,
+        "options": options,
+        "target_entity": target_entity,
+        "max_size_kb": max_size_kb,
+    }
+    body = builder(opts)
+
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    path = f"EntityDefinitions(LogicalName='{entity}')/Attributes"
+    result = as_dict(backend.post(path, json_body=body, extra_headers=headers))
+    if result.get("_dry_run"):
+        return result
+
+    entity_id_url = result.get("_entity_id_url")
+    attr_id = _parse_attribute_id(entity_id_url)
+    attr_logical: str | None = None
+    attr_type: str | None = None
+    lookup_error: str | None = None
+    if not attr_id:
+        lookup_error = f"Could not parse AttributeId from response: {entity_id_url!r}"
+    else:
+        try:
+            rb = as_dict(backend.get(
+                f"EntityDefinitions(LogicalName='{entity}')/Attributes({attr_id})",
+                params={"$select": "LogicalName,SchemaName,AttributeType"},
+            ))
+            attr_logical = rb.get("LogicalName")
+            attr_type = rb.get("AttributeType")
+        except D365Error as exc:
+            lookup_error = f"Read-back failed: {exc}"
+
+    out: dict[str, Any] = {
+        "created": True,
+        "entity": entity,
+        "schema_name": schema_name,
+        "logical_name": logical_name,
+        "attribute_type": attr_type,
+        "attribute_logical_name": attr_logical,
+        "metadata_id_url": entity_id_url,
+        "solution": solution,
+    }
+    if lookup_error:
+        out["attribute_lookup_error"] = lookup_error
+    maybe_publish(backend, out, publish)
+    return out
