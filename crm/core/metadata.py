@@ -287,3 +287,55 @@ def delete_entity(
         "logical_name": logical_name,
         "solution": solution,
     }
+
+
+import xml.etree.ElementTree as _ET  # noqa: E402
+
+_EDM_NS = "http://docs.oasis-open.org/odata/ns/edm"
+
+
+def _fetch_csdl(backend: D365Backend) -> _ET.Element:
+    """GET $metadata and parse as XML. Returns the <Schema> element."""
+    raw = backend.get("$metadata", expect_json=False)
+    if not isinstance(raw, str):
+        raise D365Error("$metadata response was not text/xml")
+    root = _ET.fromstring(raw)
+    schema = root.find(f".//{{{_EDM_NS}}}Schema")
+    if schema is None:
+        raise D365Error("No <Schema> element in $metadata response")
+    return schema
+
+
+def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for elem in schema.findall(f"{{{_EDM_NS}}}{tag}"):
+        params: list[dict[str, str]] = []
+        for p in elem.findall(f"{{{_EDM_NS}}}Parameter"):
+            params.append({
+                "name": p.attrib.get("Name", ""),
+                "type": p.attrib.get("Type", ""),
+            })
+        items.append({"name": elem.attrib.get("Name", ""), "parameters": params})
+    return items
+
+
+def list_actions(backend: D365Backend) -> list[dict[str, Any]]:
+    """List OData actions (POST verbs) declared by the D365 service."""
+    return _extract_callable(_fetch_csdl(backend), "Action")
+
+
+def list_functions(backend: D365Backend) -> list[dict[str, Any]]:
+    """List OData functions (GET verbs) declared by the D365 service."""
+    return _extract_callable(_fetch_csdl(backend), "Function")
+
+
+def list_entity_names(backend: D365Backend) -> list[str]:
+    """Return entity logical names. Powers REPL tab completion."""
+    result = as_dict(backend.get(
+        "EntityDefinitions",
+        params={"$select": "LogicalName"},
+    ))
+    return [
+        e.get("LogicalName", "") for e in result.get("value", [])
+        if e.get("LogicalName")
+    ]

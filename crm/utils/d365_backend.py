@@ -553,9 +553,9 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
                 return {"_entity_id_url": entity_id}
             return None
         if not expect_json:
-            # Return text/plain bodies as a stripped string; otherwise None as before.
+            # Return text/plain and XML bodies as a stripped string; otherwise None.
             ctype = resp.headers.get("Content-Type", "")
-            if ctype.startswith("text/plain"):
+            if ctype.startswith(("text/plain", "application/xml", "text/xml")):
                 text = resp.text.strip()
                 return text if text else None
             return None

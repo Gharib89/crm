@@ -586,3 +586,48 @@ def metadata_delete_optionset(ctx: CLIContext, name, yes, solution):
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+
+
+from crm.core.metadata import list_actions, list_functions  # noqa: E402
+
+
+@metadata_group.command("list-actions")
+@pass_ctx
+def metadata_list_actions(ctx: CLIContext):
+    """List OData actions advertised by the service ($metadata)."""
+    try:
+        items = list_actions(ctx.backend())
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if ctx.json_mode:
+        ctx.emit(True, data=items, meta={"count": len(items)})
+        return
+    headers = ["Name", "Parameters"]
+    rows = [
+        [a["name"], ", ".join(f"{p['name']}:{p['type']}" for p in a["parameters"])]
+        for a in items
+    ]
+    ctx.emit(True, table={"headers": headers, "rows": rows},
+             meta={"count": len(items)})
+
+
+@metadata_group.command("list-functions")
+@pass_ctx
+def metadata_list_functions(ctx: CLIContext):
+    """List OData functions advertised by the service ($metadata)."""
+    try:
+        items = list_functions(ctx.backend())
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if ctx.json_mode:
+        ctx.emit(True, data=items, meta={"count": len(items)})
+        return
+    headers = ["Name", "Parameters"]
+    rows = [
+        [f["name"], ", ".join(f"{p['name']}:{p['type']}" for p in f["parameters"])]
+        for f in items
+    ]
+    ctx.emit(True, table={"headers": headers, "rows": rows},
+             meta={"count": len(items)})
