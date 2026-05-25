@@ -983,7 +983,16 @@ def metadata_add_attribute(
     parsed_default: bool | int | None = None
     if default_value is not None:
         if kind == "boolean":
-            parsed_default = default_value.lower() in ("1", "true", "yes", "on")
+            lv = default_value.lower()
+            if lv in ("1", "true", "yes", "on", "t", "y"):
+                parsed_default = True
+            elif lv in ("0", "false", "no", "off", "f", "n"):
+                parsed_default = False
+            else:
+                raise click.UsageError(
+                    f"--default-value for kind 'boolean' must be one of "
+                    f"true/false/1/0/yes/no/on/off, got: {default_value!r}"
+                )
         else:
             try:
                 parsed_default = int(default_value)

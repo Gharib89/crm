@@ -157,14 +157,19 @@ AttributeKind = Literal[
 
 
 class AddAttributeResult(TypedDict, total=False):
+    """Producers always include every key; values may be None where the
+    server response was unparseable or the read-back failed. Reflect
+    that with `str | None` for fields populated from the response.
+    """
+
     created: bool
     entity: str
     schema_name: str
     logical_name: str
-    attribute_type: str
-    attribute_logical_name: str
-    metadata_id_url: str
-    solution: str
+    attribute_type: str | None
+    attribute_logical_name: str | None
+    metadata_id_url: str | None
+    solution: str | None
     published: bool
     attribute_lookup_error: str
 
@@ -175,11 +180,11 @@ class CreateRelationshipResult(TypedDict, total=False):
     schema_name: str
     referenced_entity: str
     referencing_entity: str
-    referencing_attribute: str
-    intersect_entity: str
-    relationship_id: str
-    metadata_id_url: str
-    solution: str
+    referencing_attribute: str | None
+    intersect_entity: str | None
+    relationship_id: str | None
+    metadata_id_url: str | None
+    solution: str | None
     published: bool
     relationship_lookup_error: str
 
@@ -195,8 +200,8 @@ class OptionSetRow(TypedDict, total=False):
 class OptionSetCreateResult(TypedDict, total=False):
     created: bool
     name: str
-    metadata_id_url: str
-    solution: str
+    metadata_id_url: str | None
+    solution: str | None
     published: bool
     optionset_lookup_error: str
 

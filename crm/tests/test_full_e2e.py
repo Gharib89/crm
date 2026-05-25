@@ -256,6 +256,23 @@ class TestDeleteEntityCli:
         assert '"error": "aborted by user"' in result.output
 
 
+class TestAddAttributeBooleanDefaultParsing:
+    def test_rejects_unknown_boolean_default(self):
+        from click.testing import CliRunner
+        from crm.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "metadata", "add-attribute", "new_widget",
+            "--kind", "boolean",
+            "--schema-name", "new_isactive", "--display", "Active",
+            "--default-value", "maybe",
+        ])
+        # Click UsageError → non-zero exit + message routed to stderr
+        assert result.exit_code != 0
+        assert "must be one of" in (result.output + str(result.exception))
+
+
 @pytest.mark.skipif(not _have_live_env(), reason="Live env required")
 class TestSpecDMetadataWriteLive:
     """End-to-end metadata-write smoke against a real MOCE server.
