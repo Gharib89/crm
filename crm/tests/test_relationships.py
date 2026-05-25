@@ -125,3 +125,44 @@ class TestListRelationshipsMoved:
             result = rel.list_relationships(backend, "account")
         assert result["OneToMany"][0]["SchemaName"] == "one"
         assert result["ManyToMany"][0]["SchemaName"] == "many"
+
+
+class TestCreateManyToMany:
+    def test_happy_path(self, backend):
+        from crm.core import relationships as rel
+        rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("CreateManyToManyRequest"),
+                status_code=204,
+                headers={"OData-EntityId": rel_url},
+            )
+            m.get(
+                rel_url,
+                json={"SchemaName": "new_account_project",
+                      "IntersectEntityName": "new_account_project"},
+            )
+            info = rel.create_many_to_many(
+                backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+            )
+        assert info["created"] is True
+        assert info["kind"] == "ManyToMany"
+        assert info["intersect_entity"] == "new_account_project"
+        body = m.request_history[0].json()
+        assert body["IntersectEntitySchemaName"] == "new_account_project"
+        assert body["ManyToManyRelationship"]["Entity1LogicalName"] == "account"
+
+    def test_rejects_self_relationship(self, backend):
+        from crm.core import relationships as rel
+        with pytest.raises(D365Error, match="self N:N"):
+            rel.create_many_to_many(
+                backend,
+                schema_name="new_x_y",
+                entity1_logical="new_project",
+                entity2_logical="new_project",
+                intersect_entity="new_xy",
+            )

@@ -167,3 +167,104 @@ def create_one_to_many(
         out["relationship_lookup_error"] = lookup_error
     maybe_publish(backend, out, publish)
     return out
+
+
+def create_many_to_many(
+    backend: D365Backend,
+    *,
+    schema_name: str,
+    entity1_logical: str,
+    entity2_logical: str,
+    intersect_entity: str,
+    entity1_menu_label: str | None = None,
+    entity1_menu_behavior: str = "UseCollectionName",
+    entity1_menu_order: int = 10000,
+    entity2_menu_label: str | None = None,
+    entity2_menu_behavior: str = "UseCollectionName",
+    entity2_menu_order: int = 10000,
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Create an N:N relationship via `CreateManyToManyRequest`.
+
+    Server creates the intersect entity (`intersect_entity` is its logical name).
+    """
+    if "_" not in schema_name:
+        raise D365Error(
+            "schema_name must include a publisher prefix."
+        )
+    if entity1_logical == entity2_logical:
+        raise D365Error("self N:N is not supported by Dataverse Web API.")
+    for name, value in (
+        ("entity1_menu_behavior", entity1_menu_behavior),
+        ("entity2_menu_behavior", entity2_menu_behavior),
+    ):
+        if value not in _VALID_MENU_BEHAVIOR:
+            raise D365Error(f"{name} must be one of {sorted(_VALID_MENU_BEHAVIOR)}.")
+
+    body: dict[str, Any] = {
+        "ManyToManyRelationship": {
+            "@odata.type": "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+            "SchemaName": schema_name,
+            "Entity1LogicalName": entity1_logical,
+            "Entity2LogicalName": entity2_logical,
+            "Entity1AssociatedMenuConfiguration": {
+                "Behavior": entity1_menu_behavior,
+                "Group": "Details",
+                "Label": label(entity1_menu_label) if entity1_menu_label else None,
+                "Order": entity1_menu_order,
+            },
+            "Entity2AssociatedMenuConfiguration": {
+                "Behavior": entity2_menu_behavior,
+                "Group": "Details",
+                "Label": label(entity2_menu_label) if entity2_menu_label else None,
+                "Order": entity2_menu_order,
+            },
+        },
+        "IntersectEntitySchemaName": intersect_entity,
+    }
+    if solution:
+        body["SolutionUniqueName"] = solution
+
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post(
+        "CreateManyToManyRequest",
+        json_body=body,
+        extra_headers=headers,
+    ))
+    if result.get("_dry_run"):
+        return result
+
+    entity_id_url = result.get("_entity_id_url")
+    relationship_id = _parse_relationship_id(entity_id_url)
+    schema_readback: str | None = None
+    intersect_readback: str | None = None
+    lookup_error: str | None = None
+    if not relationship_id:
+        lookup_error = (
+            f"Could not parse RelationshipId from response: {entity_id_url!r}"
+        )
+    else:
+        try:
+            rb = as_dict(backend.get(
+                f"RelationshipDefinitions({relationship_id})",
+                params={"$select": "SchemaName,IntersectEntityName"},
+            ))
+            schema_readback = rb.get("SchemaName")
+            intersect_readback = rb.get("IntersectEntityName")
+        except D365Error as exc:
+            lookup_error = f"Read-back failed: {exc}"
+
+    out: dict[str, Any] = {
+        "created": True,
+        "kind": "ManyToMany",
+        "schema_name": schema_readback or schema_name,
+        "intersect_entity": intersect_readback or intersect_entity,
+        "relationship_id": relationship_id,
+        "metadata_id_url": entity_id_url,
+        "solution": solution,
+    }
+    if lookup_error:
+        out["relationship_lookup_error"] = lookup_error
+    maybe_publish(backend, out, publish)
+    return out
