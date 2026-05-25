@@ -3,40 +3,60 @@ from __future__ import annotations
 import shlex
 import click
 from crm.core import session as session_mod
-from crm.core.metadata import list_entity_names
+from crm.core.metadata import list_entity_definitions
 from crm.utils.d365_backend import D365Error
 from prompt_toolkit.completion import Completer, Completion
 
-# Slot-aware completion table: (group, verb) -> argument index (0-based)
-_ENTITY_SLOTS: dict[tuple[str, str], int] = {
-    ("entity",   "get"):        2,
-    ("entity",   "create"):     2,
-    ("entity",   "update"):     2,
-    ("entity",   "upsert"):     2,
-    ("entity",   "delete"):     2,
-    ("query",    "odata"):      2,
-    ("query",    "fetchxml"):   2,
-    ("query",    "count"):      2,
-    ("query",    "saved"):      2,
-    ("query",    "user"):       2,
-    ("metadata", "entity"):     2,
-    ("metadata", "attributes"): 2,
+# Slot table: (group, verb) -> (token_index, name_type)
+# name_type "logical" = LogicalName (account); "set" = EntitySetName (accounts)
+_ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
+    ("entity",   "get"):        (2, "set"),
+    ("entity",   "create"):     (2, "set"),
+    ("entity",   "update"):     (2, "set"),
+    ("entity",   "upsert"):     (2, "set"),
+    ("entity",   "delete"):     (2, "set"),
+    ("query",    "odata"):      (2, "set"),
+    ("query",    "fetchxml"):   (2, "set"),
+    ("query",    "saved"):      (2, "set"),
+    ("query",    "user"):       (2, "set"),
+    ("query",    "count"):      (2, "logical"),
+    ("metadata", "entity"):     (2, "logical"),
+    ("metadata", "attributes"): (2, "logical"),
 }
 
 
 class MetadataCache:
-    """In-memory cache of entity logical names for the REPL session."""
+    """In-memory cache of entity names for the REPL session."""
 
     def __init__(self) -> None:
-        self._entities: list[str] | None = None
+        self._logical: list[str] | None = None
+        self._set_names: list[str] | None = None
+
+    def _load(self, backend) -> None:
+        defs = list_entity_definitions(backend)
+        self._logical = [d["logical"] for d in defs]
+        self._set_names = [d["set_name"] for d in defs]
+
+    def logical_names(self, backend) -> list[str]:
+        if self._logical is None:
+            self._load(backend)
+        return self._logical  # type: ignore[return-value]
+
+    def set_names(self, backend) -> list[str]:
+        if self._set_names is None:
+            self._load(backend)
+        return self._set_names  # type: ignore[return-value]
 
     def entities(self, backend) -> list[str]:
-        if self._entities is None:
-            self._entities = list_entity_names(backend)
-        return self._entities
+        """Backward-compat: returns logical names."""
+        return self.logical_names(backend)
 
 
-def complete_entity_token(line: str, names: list[str]) -> list[str] | None:
+def complete_entity_token(
+    line: str,
+    logical_names: list[str],
+    set_names: list[str],
+) -> list[str] | None:
     """Return entity-name completions or None if not on an entity-name slot."""
     parts = line.split()
     if line.endswith(" "):
@@ -51,9 +71,13 @@ def complete_entity_token(line: str, names: list[str]) -> list[str] | None:
     if len(parts) < 2:
         return None
     group, verb = parts[0], parts[1]
-    expected_idx = _ENTITY_SLOTS.get((group, verb))
-    if expected_idx is None or expected_idx != token_index:
+    slot = _ENTITY_SLOTS.get((group, verb))
+    if slot is None:
         return None
+    expected_idx, name_type = slot
+    if expected_idx != token_index:
+        return None
+    names = set_names if name_type == "set" else logical_names
     return [n for n in names if n.startswith(prefix)]
 
 
@@ -67,10 +91,12 @@ class _EntityCompleter(Completer):
     def get_completions(self, document, complete_event):
         line = document.text_before_cursor
         try:
-            names = self._cache.entities(self._get_backend())
+            backend = self._get_backend()
+            logical = self._cache.logical_names(backend)
+            sets = self._cache.set_names(backend)
         except Exception:  # completion must never raise
             return
-        matches = complete_entity_token(line, names)
+        matches = complete_entity_token(line, logical, sets)
         if matches is None:
             return
         if line.endswith(" "):

@@ -294,8 +294,11 @@ import xml.etree.ElementTree as _ET  # noqa: E402
 _EDM_NS = "http://docs.oasis-open.org/odata/ns/edm"
 
 
-def _fetch_csdl(backend: D365Backend) -> _ET.Element:
-    """GET $metadata and parse as XML. Returns the <Schema> element."""
+_D365_NAMESPACE = "Microsoft.Dynamics.CRM"
+
+
+def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
+    """GET $metadata and parse as XML. Returns all <Schema> elements."""
     raw = backend.get("$metadata", expect_json=False)
     if not isinstance(raw, str):
         raise D365Error("$metadata response was not text/xml")
@@ -303,10 +306,10 @@ def _fetch_csdl(backend: D365Backend) -> _ET.Element:
         root = _ET.fromstring(raw)
     except _ET.ParseError as exc:
         raise D365Error(f"Failed to parse $metadata XML: {exc}") from exc
-    schema = root.find(f".//{{{_EDM_NS}}}Schema")
-    if schema is None:
+    schemas = root.findall(f".//{{{_EDM_NS}}}Schema")
+    if not schemas:
         raise D365Error("No <Schema> element in $metadata response")
-    return schema
+    return schemas
 
 
 def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:
@@ -322,23 +325,43 @@ def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:
     return items
 
 
+def _extract_all_callables(schemas: list[_ET.Element], tag: str) -> list[dict[str, Any]]:
+    """Aggregate callables of `tag` across all Schema elements."""
+    items: list[dict[str, Any]] = []
+    for schema in schemas:
+        items.extend(_extract_callable(schema, tag))
+    return items
+
+
 def list_actions(backend: D365Backend) -> list[dict[str, Any]]:
     """List OData actions (POST verbs) declared by the D365 service."""
-    return _extract_callable(_fetch_csdl(backend), "Action")
+    return _extract_all_callables(_fetch_csdl(backend), "Action")
 
 
 def list_functions(backend: D365Backend) -> list[dict[str, Any]]:
     """List OData functions (GET verbs) declared by the D365 service."""
-    return _extract_callable(_fetch_csdl(backend), "Function")
+    return _extract_all_callables(_fetch_csdl(backend), "Function")
+
+
+def list_entity_definitions(backend: D365Backend) -> list[dict[str, str]]:
+    """Return `[{logical, set_name}]` for all entities.
+
+    Fetches both LogicalName and EntitySetName in one call so callers can
+    derive either list without a second round-trip.
+    """
+    result = as_dict(backend.get(
+        "EntityDefinitions",
+        params={"$select": "LogicalName,EntitySetName"},
+    ))
+    items: list[dict[str, str]] = []
+    for e in result.get("value", []):
+        logical: str = e.get("LogicalName") or ""
+        set_name: str = e.get("EntitySetName") or ""
+        if logical:
+            items.append({"logical": logical, "set_name": set_name})
+    return items
 
 
 def list_entity_names(backend: D365Backend) -> list[str]:
-    """Return entity logical names. Powers REPL tab completion."""
-    result = as_dict(backend.get(
-        "EntityDefinitions",
-        params={"$select": "LogicalName"},
-    ))
-    return [
-        e.get("LogicalName", "") for e in result.get("value", [])
-        if e.get("LogicalName")
-    ]
+    """Return entity logical names (backward-compat wrapper)."""
+    return [d["logical"] for d in list_entity_definitions(backend)]
