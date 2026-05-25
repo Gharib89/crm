@@ -29,6 +29,7 @@ from crm.core import (
     export as export_mod,
     metadata as meta_mod,
     query as query_mod,
+    relationships as rel_mod,
     session as session_mod,
     solution as sol_mod,
     workflow as workflow_mod,
@@ -867,7 +868,7 @@ def metadata_create_entity(
 def metadata_relationships(ctx, logical_name):
     """Show one-to-many + many-to-many relationships."""
     try:
-        info = meta_mod.list_relationships(ctx.backend(), logical_name)
+        info = rel_mod.list_relationships(ctx.backend(), logical_name)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

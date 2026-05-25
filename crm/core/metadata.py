@@ -250,22 +250,6 @@ def create_entity(
     return out
 
 
-def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:
-    """Return one-to-many and many-to-many relationships for an entity."""
-    one_to_many = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/OneToManyRelationships",
-        params={"$select": "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"},
-    ))
-    many_to_many = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/ManyToManyRelationships",
-        params={"$select": "SchemaName,Entity1LogicalName,Entity2LogicalName,IntersectEntityName"},
-    ))
-    return {
-        "OneToMany": one_to_many.get("value", []),
-        "ManyToMany": many_to_many.get("value", []),
-    }
-
-
 def delete_entity(
     backend: D365Backend,
     logical_name: str,
