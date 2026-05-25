@@ -10,6 +10,7 @@ machine-readable output. `--dry-run` previews the HTTP request without issuing i
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import click
@@ -18,6 +19,7 @@ from crm import __version__
 from crm.core import (
     connection as conn_mod,
 )
+from crm.core.logging_setup import setup_logging
 from crm.utils.d365_backend import D365Backend
 from crm.utils.repl_skin import ReplSkin
 from crm.commands._helpers import _sanitize, _short_repr
@@ -114,12 +116,30 @@ pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 @click.option("--dry-run", is_flag=True, help="Preview HTTP request without issuing it.")
 @click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
 @click.option("--password", help="Override password (otherwise read from D365_PASSWORD).")
+@click.option("--log-level",
+              type=click.Choice(["debug", "info", "warning", "error"]),
+              default=None,
+              help="Log level (env: CRM_LOG_LEVEL). Default: warning.")
+@click.option("--verbose", "verbose", is_flag=True,
+              help="Alias for --log-level debug.")
+@click.option("--log-format",
+              type=click.Choice(["text", "json-line"]),
+              default=None,
+              help="Log output format (env: CRM_LOG_FORMAT). Default: text.")
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
 def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
-        profile_name: str | None, password: str | None, session_name: str):
+        profile_name: str | None, password: str | None,
+        log_level: str | None, verbose: bool, log_format: str | None,
+        session_name: str):
     """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
+    effective_level = log_level or os.environ.get("CRM_LOG_LEVEL") or "warning"
+    if verbose:
+        effective_level = "debug"
+    effective_fmt = log_format or os.environ.get("CRM_LOG_FORMAT") or "text"
+    setup_logging(level=effective_level, fmt=effective_fmt)  # type: ignore[arg-type]
+
     cli_ctx = ctx.ensure_object(CLIContext)
     cli_ctx.json_mode = json_mode
     cli_ctx.dry_run = dry_run

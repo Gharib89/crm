@@ -21,9 +21,13 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence, cast
 
+import logging as _logging
+
 import requests
 
 from crm.utils.d365_types import BatchOperation, BatchResult
+
+_http_logger = _logging.getLogger("crm.http")
 
 try:
     from requests_ntlm import HttpNtlmAuth
@@ -276,6 +280,7 @@ class D365Backend:
         attempt = 0
         while True:
             try:
+                _http_logger.debug("request", extra={"event": "request", "method": method, "url": url})
                 resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
                     method,
                     url,
@@ -293,6 +298,9 @@ class D365Backend:
                 time.sleep(delay)
                 attempt += 1
                 continue
+
+            elapsed_ms = int((resp.elapsed.total_seconds() if resp.elapsed else 0) * 1000)
+            _http_logger.debug("response", extra={"event": "response", "status": resp.status_code, "ms": elapsed_ms})
 
             # One log per response: always emit when status warrants retry
             # (i.e., a 429/5xx that has rate-limit headers); otherwise emit
