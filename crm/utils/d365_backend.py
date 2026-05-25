@@ -40,6 +40,11 @@ class D365Error(RuntimeError):
         self.status = status
         self.code = code
         self.response_body = response_body
+        # Optional partial-failure context — set by multi-stage callers
+        # (e.g. `optionsets.update_optionset`) to record which steps
+        # already landed on the server before this exception fired.
+        self.completed_steps: list[str] | None = None
+        self.stage: str | None = None
 
 
 @dataclass

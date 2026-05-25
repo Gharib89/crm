@@ -175,6 +175,8 @@ class TestUpdateOptionset:
                     update=[(99, "Bad")],
                 )
             assert "value 99 not found" in str(exc_info.value)
+            assert exc_info.value.completed_steps == ["insert:7"]
+            assert exc_info.value.stage == "update"
 
     def test_empty_request_rejected(self, backend):
         from crm.core import optionsets as os_mod

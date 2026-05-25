@@ -97,18 +97,20 @@ def create_one_to_many(
     if lookup_description:
         lookup_payload["Description"] = label(lookup_description)
 
+    menu_config: dict[str, Any] = {
+        "Behavior": menu_behavior,
+        "Group": "Details",
+        "Order": menu_order,
+    }
+    if menu_label:
+        menu_config["Label"] = label(menu_label)
     body: dict[str, Any] = {
         "OneToManyRelationship": {
             "@odata.type": "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
             "SchemaName": schema_name,
             "ReferencedEntity": referenced_entity,
             "ReferencingEntity": referencing_entity,
-            "AssociatedMenuConfiguration": {
-                "Behavior": menu_behavior,
-                "Group": "Details",
-                "Label": label(menu_label) if menu_label else None,
-                "Order": menu_order,
-            },
+            "AssociatedMenuConfiguration": menu_config,
             "CascadeConfiguration": {
                 "Assign": cascade_assign,
                 "Delete": cascade_delete,
@@ -202,24 +204,28 @@ def create_many_to_many(
         if value not in _VALID_MENU_BEHAVIOR:
             raise D365Error(f"{name} must be one of {sorted(_VALID_MENU_BEHAVIOR)}.")
 
+    entity1_menu: dict[str, Any] = {
+        "Behavior": entity1_menu_behavior,
+        "Group": "Details",
+        "Order": entity1_menu_order,
+    }
+    if entity1_menu_label:
+        entity1_menu["Label"] = label(entity1_menu_label)
+    entity2_menu: dict[str, Any] = {
+        "Behavior": entity2_menu_behavior,
+        "Group": "Details",
+        "Order": entity2_menu_order,
+    }
+    if entity2_menu_label:
+        entity2_menu["Label"] = label(entity2_menu_label)
     body: dict[str, Any] = {
         "ManyToManyRelationship": {
             "@odata.type": "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
             "SchemaName": schema_name,
             "Entity1LogicalName": entity1_logical,
             "Entity2LogicalName": entity2_logical,
-            "Entity1AssociatedMenuConfiguration": {
-                "Behavior": entity1_menu_behavior,
-                "Group": "Details",
-                "Label": label(entity1_menu_label) if entity1_menu_label else None,
-                "Order": entity1_menu_order,
-            },
-            "Entity2AssociatedMenuConfiguration": {
-                "Behavior": entity2_menu_behavior,
-                "Group": "Details",
-                "Label": label(entity2_menu_label) if entity2_menu_label else None,
-                "Order": entity2_menu_order,
-            },
+            "Entity1AssociatedMenuConfiguration": entity1_menu,
+            "Entity2AssociatedMenuConfiguration": entity2_menu,
         },
         "IntersectEntitySchemaName": intersect_entity,
     }

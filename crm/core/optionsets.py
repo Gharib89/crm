@@ -146,9 +146,11 @@ def update_optionset(
 ) -> dict[str, Any]:
     """Granular global-option-set update.
 
-    Dispatch order: insert → update → delete → reorder. Stops on first
-    error and re-raises; the completed steps list is attached on the
-    success path via the returned `{completed_steps: [...]}`.
+    Dispatch order: insert → update → delete → reorder. Stops on the
+    first per-stage HTTP error and re-raises a `D365Error` whose
+    `.completed_steps` and `.stage` attributes record what already
+    landed on the server — partial mutation is observable but not
+    silently swallowed.
     """
     if not (insert or update or delete or reorder):
         raise D365Error("nothing to update — pass at least one of insert/update/delete/reorder.")
@@ -156,38 +158,55 @@ def update_optionset(
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     completed: list[str] = []
 
+    def _attach_partial(exc: D365Error, stage: str) -> D365Error:
+        exc.completed_steps = list(completed)
+        exc.stage = stage
+        return exc
+
     if insert:
         for value, lbl in insert:
             if not lbl:
-                raise D365Error("insert label must not be empty.")
+                raise _attach_partial(D365Error("insert label must not be empty."), "insert")
             body: dict[str, Any] = {"OptionSetName": name, "Label": label(lbl)}
             if value is not None:
                 body["Value"] = value
-            backend.post("InsertOptionValue", json_body=body, extra_headers=headers)
+            try:
+                backend.post("InsertOptionValue", json_body=body, extra_headers=headers)
+            except D365Error as exc:
+                raise _attach_partial(exc, "insert")
             completed.append(f"insert:{value if value is not None else 'auto'}")
 
     if update:
         for value, lbl in update:
             if not lbl:
-                raise D365Error("update label must not be empty.")
+                raise _attach_partial(D365Error("update label must not be empty."), "update")
             body = {
                 "OptionSetName": name,
                 "Value": value,
                 "Label": label(lbl),
                 "MergeLabels": False,
             }
-            backend.post("UpdateOptionValue", json_body=body, extra_headers=headers)
+            try:
+                backend.post("UpdateOptionValue", json_body=body, extra_headers=headers)
+            except D365Error as exc:
+                raise _attach_partial(exc, "update")
             completed.append(f"update:{value}")
 
     if delete:
         for value in delete:
             body = {"OptionSetName": name, "Value": value}
-            backend.post("DeleteOptionValue", json_body=body, extra_headers=headers)
+            try:
+                backend.post("DeleteOptionValue", json_body=body, extra_headers=headers)
+            except D365Error as exc:
+                raise _attach_partial(exc, "delete")
             completed.append(f"delete:{value}")
 
     if reorder:
         body = {"OptionSetName": name, "Values": list(reorder)}
-        backend.post("OrderOption", json_body=body, extra_headers=headers)
+        try:
+            backend.post("OrderOption", json_body=body, extra_headers=headers)
+        except D365Error as exc:
+            raise _attach_partial(exc, "reorder")
         completed.append("reorder")
 
     out: dict[str, Any] = {
