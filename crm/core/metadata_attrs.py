@@ -257,6 +257,38 @@ def _multiselect_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+def _image_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "max_length", "precision", "target_entity",
+            "min_value", "max_value", "optionset_name", "options",
+            "format_name", "max_size_kb")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.ImageAttributeMetadata"
+    body["IsPrimaryImage"] = True
+    return body
+
+
+def _file_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "max_length", "precision", "target_entity",
+            "min_value", "max_value", "optionset_name", "options",
+            "format_name")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.FileAttributeMetadata"
+    body["MaxSizeInKB"] = opts.get("max_size_kb") or 32768
+    return body
+
+
 _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "string": _string_attr,
     "memo": _memo_attr,
@@ -269,6 +301,8 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "datetime": _datetime_attr,
     "picklist": _picklist_attr,
     "multiselect": _multiselect_attr,
+    "image": _image_attr,
+    "file": _file_attr,
 }
 
 

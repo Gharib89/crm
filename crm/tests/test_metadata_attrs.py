@@ -390,3 +390,75 @@ class TestAddAttributeLookup:
                 backend, entity="new_widget", kind="lookup",
                 schema_name="new_AccountId", display_name="Account",
             )
+
+
+class TestAddAttributeImageFile:
+    def test_image(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_photo", "Image")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="image",
+                schema_name="new_Photo", display_name="Photo",
+            )
+        body = m.request_history[0].json()
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.ImageAttributeMetadata"
+
+    def test_file_default_size(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_doc", "File")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="file",
+                schema_name="new_Doc", display_name="Doc",
+            )
+        body = m.request_history[0].json()
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.FileAttributeMetadata"
+        assert body["MaxSizeInKB"] == 32768
+
+    def test_file_custom_size(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_doc", "File")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="file",
+                schema_name="new_Doc", display_name="Doc",
+                max_size_kb=131072,
+            )
+        body = m.request_history[0].json()
+        assert body["MaxSizeInKB"] == 131072
+
+
+class TestAddAttributeReadbackFail:
+    def test_readback_fail_marks_lookup_error(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            attr_url = backend.url_for(
+                f"EntityDefinitions(LogicalName='new_widget')/Attributes({_ATTR_ID})"
+            )
+            m.post(
+                backend.url_for("EntityDefinitions(LogicalName='new_widget')/Attributes"),
+                status_code=204,
+                headers={"OData-EntityId": attr_url},
+            )
+            m.get(attr_url, status_code=500, json={"error": {"message": "boom"}})
+            info = ma.add_attribute(
+                backend, entity="new_widget", kind="string",
+                schema_name="new_Label", display_name="Label",
+                max_length=10,
+            )
+        assert info["created"] is True
+        assert "attribute_lookup_error" in info
+
+
+class TestAddAttributeDryRun:
+    def test_dry_run_returns_envelope(self, profile, monkeypatch):
+        monkeypatch.setenv("CRM_DRY_RUN", "1")
+        backend = D365Backend(profile, password="pw", dry_run=True)
+        from crm.core import metadata_attrs as ma
+        info = ma.add_attribute(
+            backend, entity="new_widget", kind="string",
+            schema_name="new_Label", display_name="Label",
+            max_length=10,
+        )
+        assert info.get("_dry_run") is True
