@@ -1022,6 +1022,112 @@ def metadata_add_attribute(
     ctx.emit(True, data=info)
 
 
+_CASCADE = click.Choice(
+    ["NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"]
+)
+_MENU = click.Choice(["UseLabel", "UseCollectionName", "DoNotDisplay"])
+_REQUIRED = click.Choice(["None", "Recommended", "ApplicationRequired"])
+
+
+@metadata.command("create-one-to-many")
+@click.option("--schema-name", required=True, help="Relationship schema name with publisher prefix.")
+@click.option("--referenced-entity", required=True, help='"1" side logical name (e.g. account).')
+@click.option("--referencing-entity", required=True, help='"N" side logical name (e.g. new_project).')
+@click.option("--lookup-schema", required=True, help="Lookup attribute schema name on referencing entity.")
+@click.option("--lookup-display", required=True, help="UI label for the lookup attribute.")
+@click.option("--lookup-required", type=_REQUIRED, default="None")
+@click.option("--lookup-description", default=None)
+@click.option("--cascade-assign", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-delete", type=_CASCADE, default="RemoveLink")
+@click.option("--cascade-reparent", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-share", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-unshare", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-merge", type=_CASCADE, default="NoCascade")
+@click.option("--menu-label", default=None)
+@click.option("--menu-behavior", type=_MENU, default="UseLabel")
+@click.option("--menu-order", type=int, default=10000)
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_create_one_to_many(
+    ctx, schema_name, referenced_entity, referencing_entity, lookup_schema,
+    lookup_display, lookup_required, lookup_description,
+    cascade_assign, cascade_delete, cascade_reparent, cascade_share,
+    cascade_unshare, cascade_merge, menu_label, menu_behavior, menu_order,
+    solution, publish,
+):
+    """Create a 1:N relationship and its lookup attribute atomically."""
+    try:
+        info = rel_mod.create_one_to_many(
+            ctx.backend(),
+            schema_name=schema_name,
+            referenced_entity=referenced_entity,
+            referencing_entity=referencing_entity,
+            lookup_schema=lookup_schema,
+            lookup_display=lookup_display,
+            lookup_required=lookup_required,
+            lookup_description=lookup_description,
+            cascade_assign=cascade_assign,
+            cascade_delete=cascade_delete,
+            cascade_reparent=cascade_reparent,
+            cascade_share=cascade_share,
+            cascade_unshare=cascade_unshare,
+            cascade_merge=cascade_merge,
+            menu_label=menu_label,
+            menu_behavior=menu_behavior,
+            menu_order=menu_order,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("create-many-to-many")
+@click.option("--schema-name", required=True)
+@click.option("--entity1", "entity1_logical", required=True)
+@click.option("--entity2", "entity2_logical", required=True)
+@click.option("--intersect-entity", required=True)
+@click.option("--entity1-menu-label", default=None)
+@click.option("--entity1-menu-behavior", type=_MENU, default="UseCollectionName")
+@click.option("--entity1-menu-order", type=int, default=10000)
+@click.option("--entity2-menu-label", default=None)
+@click.option("--entity2-menu-behavior", type=_MENU, default="UseCollectionName")
+@click.option("--entity2-menu-order", type=int, default=10000)
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_create_many_to_many(
+    ctx, schema_name, entity1_logical, entity2_logical, intersect_entity,
+    entity1_menu_label, entity1_menu_behavior, entity1_menu_order,
+    entity2_menu_label, entity2_menu_behavior, entity2_menu_order,
+    solution, publish,
+):
+    """Create an N:N relationship via the dedicated action."""
+    try:
+        info = rel_mod.create_many_to_many(
+            ctx.backend(),
+            schema_name=schema_name,
+            entity1_logical=entity1_logical,
+            entity2_logical=entity2_logical,
+            intersect_entity=intersect_entity,
+            entity1_menu_label=entity1_menu_label,
+            entity1_menu_behavior=entity1_menu_behavior,
+            entity1_menu_order=entity1_menu_order,
+            entity2_menu_label=entity2_menu_label,
+            entity2_menu_behavior=entity2_menu_behavior,
+            entity2_menu_order=entity2_menu_order,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
 # ── Solution group ──────────────────────────────────────────────────────
 
 
