@@ -28,7 +28,9 @@ from crm.core import (
     entity as entity_mod,
     export as export_mod,
     metadata as meta_mod,
+    optionsets as os_mod,
     query as query_mod,
+    relationships as rel_mod,
     session as session_mod,
     solution as sol_mod,
     workflow as workflow_mod,
@@ -147,6 +149,19 @@ def _handle_d365_error(ctx: CLIContext, exc: D365Error) -> None:
         "status": exc.status,
         "code": exc.code,
     })
+
+
+def _confirm_destructive(thing: str, name: str, yes: bool) -> bool:
+    """Return True to proceed, False to bail.
+
+    `--yes` skips the prompt. In non-TTY contexts, click.confirm aborts safely.
+    """
+    if yes:
+        return True
+    return click.confirm(
+        f"This will permanently delete {thing} {name!r} and all related data. Continue?",
+        default=False,
+    )
 
 
 def _admin_header_options(f):
@@ -867,7 +882,7 @@ def metadata_create_entity(
 def metadata_relationships(ctx, logical_name):
     """Show one-to-many + many-to-many relationships."""
     try:
-        info = meta_mod.list_relationships(ctx.backend(), logical_name)
+        info = rel_mod.list_relationships(ctx.backend(), logical_name)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -875,6 +890,403 @@ def metadata_relationships(ctx, logical_name):
         "one_to_many": len(info.get("OneToMany", [])),
         "many_to_many": len(info.get("ManyToMany", [])),
     })
+
+
+@metadata.command("delete-entity")
+@click.argument("logical_name")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@pass_ctx
+def metadata_delete_entity(ctx, logical_name, yes, solution):
+    """Permanently delete a custom entity (table) and ALL its rows."""
+    if not _confirm_destructive("entity", logical_name, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = meta_mod.delete_entity(
+            ctx.backend(), logical_name, solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("add-attribute")
+@click.argument("entity")
+@click.option("--kind", required=True,
+              type=click.Choice([
+                  "string", "memo", "integer", "bigint", "decimal", "double",
+                  "money", "boolean", "datetime", "picklist", "multiselect",
+                  "lookup", "image", "file",
+              ]),
+              help="Attribute kind.")
+@click.option("--schema-name", required=True,
+              help="PascalCase with publisher prefix, e.g. 'new_Amount'.")
+@click.option("--display", "display_name", required=True,
+              help="UI label.")
+@click.option("--description", default=None)
+@click.option("--required", "required",
+              type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
+              default="None")
+@click.option("--max-length", type=int, default=None,
+              help="String/memo: max characters.")
+@click.option("--format", "format_name", default=None,
+              help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@click.option("--min", "min_value", type=float, default=None,
+              help="Numeric kinds: minimum value.")
+@click.option("--max", "max_value", type=float, default=None,
+              help="Numeric kinds: maximum value.")
+@click.option("--precision", type=int, default=None,
+              help="Decimal/double/money: precision (decimals).")
+@click.option("--true-label", default="Yes", help="Boolean: label for true.")
+@click.option("--false-label", default="No", help="Boolean: label for false.")
+@click.option("--default-value", default=None,
+              help="Boolean: 'true'/'false'. Picklist: int option value.")
+@click.option("--optionset-name", default=None,
+              help="Picklist/multiselect: reference an existing global option set.")
+@click.option("--option", "options", multiple=True,
+              help="Picklist/multiselect: inline option as 'value:label' or ':label' (auto value). Repeatable.")
+@click.option("--target-entity", default=None,
+              help="Lookup: referenced entity logical name.")
+@click.option("--relationship-schema", default=None,
+              help="Lookup: override auto-generated relationship name.")
+@click.option("--max-size-kb", type=int, default=None,
+              help="File: max attachment size in KB. Default 32768.")
+@click.option("--solution", default=None,
+              help="Add to a solution via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after creation. Default: publish.")
+@pass_ctx
+def metadata_add_attribute(
+    ctx, entity, kind, schema_name, display_name, description, required,
+    max_length, format_name, min_value, max_value, precision,
+    true_label, false_label, default_value,
+    optionset_name, options, target_entity, relationship_schema,
+    max_size_kb, solution, publish,
+):
+    """Add an attribute (column) to an existing entity."""
+    parsed_options: list[tuple[int | None, str]] | None = None
+    if options:
+        parsed_options = []
+        for raw in options:
+            if ":" not in raw:
+                raise click.UsageError(
+                    f"--option must be 'value:label' or ':label', got: {raw!r}"
+                )
+            v, _, lab = raw.partition(":")
+            v = v.strip()
+            lab = lab.strip()
+            parsed_options.append((int(v) if v else None, lab))
+
+    parsed_default: bool | int | None = None
+    if default_value is not None:
+        if kind == "boolean":
+            lv = default_value.lower()
+            if lv in ("1", "true", "yes", "on", "t", "y"):
+                parsed_default = True
+            elif lv in ("0", "false", "no", "off", "f", "n"):
+                parsed_default = False
+            else:
+                raise click.UsageError(
+                    f"--default-value for kind 'boolean' must be one of "
+                    f"true/false/1/0/yes/no/on/off, got: {default_value!r}"
+                )
+        else:
+            try:
+                parsed_default = int(default_value)
+            except ValueError as exc:
+                raise click.UsageError(
+                    f"--default-value must be int for kind {kind!r}: {default_value!r}"
+                ) from exc
+
+    try:
+        from crm.core import metadata_attrs as ma_mod
+        info = ma_mod.add_attribute(
+            ctx.backend(),
+            entity=entity,
+            kind=kind,
+            schema_name=schema_name,
+            display_name=display_name,
+            description=description,
+            required=required,
+            max_length=max_length,
+            format_name=format_name,
+            min_value=min_value,
+            max_value=max_value,
+            precision=precision,
+            default_value=parsed_default,
+            true_label=true_label,
+            false_label=false_label,
+            optionset_name=optionset_name,
+            options=parsed_options,
+            target_entity=target_entity,
+            relationship_schema=relationship_schema,
+            max_size_kb=max_size_kb,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+_CASCADE = click.Choice(
+    ["NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"]
+)
+_MENU = click.Choice(["UseLabel", "UseCollectionName", "DoNotDisplay"])
+_REQUIRED = click.Choice(["None", "Recommended", "ApplicationRequired"])
+
+
+@metadata.command("create-one-to-many")
+@click.option("--schema-name", required=True, help="Relationship schema name with publisher prefix.")
+@click.option("--referenced-entity", required=True, help='"1" side logical name (e.g. account).')
+@click.option("--referencing-entity", required=True, help='"N" side logical name (e.g. new_project).')
+@click.option("--lookup-schema", required=True, help="Lookup attribute schema name on referencing entity.")
+@click.option("--lookup-display", required=True, help="UI label for the lookup attribute.")
+@click.option("--lookup-required", type=_REQUIRED, default="None")
+@click.option("--lookup-description", default=None)
+@click.option("--cascade-assign", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-delete", type=_CASCADE, default="RemoveLink")
+@click.option("--cascade-reparent", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-share", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-unshare", type=_CASCADE, default="NoCascade")
+@click.option("--cascade-merge", type=_CASCADE, default="NoCascade")
+@click.option("--menu-label", default=None)
+@click.option("--menu-behavior", type=_MENU, default="UseLabel")
+@click.option("--menu-order", type=int, default=10000)
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_create_one_to_many(
+    ctx, schema_name, referenced_entity, referencing_entity, lookup_schema,
+    lookup_display, lookup_required, lookup_description,
+    cascade_assign, cascade_delete, cascade_reparent, cascade_share,
+    cascade_unshare, cascade_merge, menu_label, menu_behavior, menu_order,
+    solution, publish,
+):
+    """Create a 1:N relationship and its lookup attribute atomically."""
+    try:
+        info = rel_mod.create_one_to_many(
+            ctx.backend(),
+            schema_name=schema_name,
+            referenced_entity=referenced_entity,
+            referencing_entity=referencing_entity,
+            lookup_schema=lookup_schema,
+            lookup_display=lookup_display,
+            lookup_required=lookup_required,
+            lookup_description=lookup_description,
+            cascade_assign=cascade_assign,
+            cascade_delete=cascade_delete,
+            cascade_reparent=cascade_reparent,
+            cascade_share=cascade_share,
+            cascade_unshare=cascade_unshare,
+            cascade_merge=cascade_merge,
+            menu_label=menu_label,
+            menu_behavior=menu_behavior,
+            menu_order=menu_order,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("create-many-to-many")
+@click.option("--schema-name", required=True)
+@click.option("--entity1", "entity1_logical", required=True)
+@click.option("--entity2", "entity2_logical", required=True)
+@click.option("--intersect-entity", required=True)
+@click.option("--entity1-menu-label", default=None)
+@click.option("--entity1-menu-behavior", type=_MENU, default="UseCollectionName")
+@click.option("--entity1-menu-order", type=int, default=10000)
+@click.option("--entity2-menu-label", default=None)
+@click.option("--entity2-menu-behavior", type=_MENU, default="UseCollectionName")
+@click.option("--entity2-menu-order", type=int, default=10000)
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_create_many_to_many(
+    ctx, schema_name, entity1_logical, entity2_logical, intersect_entity,
+    entity1_menu_label, entity1_menu_behavior, entity1_menu_order,
+    entity2_menu_label, entity2_menu_behavior, entity2_menu_order,
+    solution, publish,
+):
+    """Create an N:N relationship via the dedicated action."""
+    try:
+        info = rel_mod.create_many_to_many(
+            ctx.backend(),
+            schema_name=schema_name,
+            entity1_logical=entity1_logical,
+            entity2_logical=entity2_logical,
+            intersect_entity=intersect_entity,
+            entity1_menu_label=entity1_menu_label,
+            entity1_menu_behavior=entity1_menu_behavior,
+            entity1_menu_order=entity1_menu_order,
+            entity2_menu_label=entity2_menu_label,
+            entity2_menu_behavior=entity2_menu_behavior,
+            entity2_menu_order=entity2_menu_order,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("list-optionsets")
+@click.option("--custom-only", is_flag=True)
+@click.option("--top", type=int, default=None)
+@pass_ctx
+def metadata_list_optionsets(ctx, custom_only, top):
+    """List global option set definitions."""
+    try:
+        rows = os_mod.list_optionsets(ctx.backend(), custom_only=custom_only, top=top)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    headers = ["Name", "IsCustomOptionSet", "IsManaged"]
+    table_rows = [
+        [r.get("Name", ""), str(r.get("IsCustomOptionSet", "")),
+         str(r.get("IsManaged", ""))]
+        for r in rows
+    ]
+    ctx.emit(True, data=rows, table={"headers": headers, "rows": table_rows},
+             meta={"count": len(rows)})
+
+
+@metadata.command("get-optionset")
+@click.argument("name")
+@pass_ctx
+def metadata_get_optionset(ctx, name):
+    """Retrieve a global option set with options expanded."""
+    try:
+        info = os_mod.get_optionset(ctx.backend(), name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("create-optionset")
+@click.option("--name", required=True,
+              help="Fully prefixed option set name, e.g. 'new_priority'.")
+@click.option("--display", "display_name", required=True)
+@click.option("--description", default=None)
+@click.option("--option", "options", multiple=True,
+              help="Option as 'value:label' or ':label' (auto value). Repeatable.")
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_create_optionset(ctx, name, display_name, description, options,
+                              solution, publish):
+    """Create a global option set."""
+    parsed: list[tuple[int | None, str]] = []
+    for raw in options:
+        if ":" not in raw:
+            raise click.UsageError(f"--option must be 'value:label' or ':label', got: {raw!r}")
+        v, _, lab = raw.partition(":")
+        v = v.strip()
+        lab = lab.strip()
+        parsed.append((int(v) if v else None, lab))
+    try:
+        info = os_mod.create_optionset(
+            ctx.backend(),
+            name=name, display_name=display_name,
+            description=description, options=parsed or None,
+            publish=publish, solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("update-optionset")
+@click.argument("name")
+@click.option("--insert-option", "insert_options", multiple=True,
+              help="Insert option 'value:label' or ':label'. Repeatable.")
+@click.option("--update-option", "update_options", multiple=True,
+              help="Update existing option 'value:new_label'. Repeatable.")
+@click.option("--delete-option", "delete_options", multiple=True, type=int,
+              help="Delete option by value. Repeatable.")
+@click.option("--reorder", default=None,
+              help="Comma-separated full ordered list of values, e.g. '1,2,7,4'.")
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_update_optionset(ctx, name, insert_options, update_options,
+                              delete_options, reorder, solution, publish):
+    """Granular update: insert/update/delete/reorder options."""
+    insert: list[tuple[int | None, str]] = []
+    for raw in insert_options:
+        if ":" not in raw:
+            raise click.UsageError(f"--insert-option must be 'value:label' or ':label': {raw!r}")
+        v, _, lab = raw.partition(":")
+        v = v.strip()
+        lab = lab.strip()
+        insert.append((int(v) if v else None, lab))
+
+    update: list[tuple[int, str]] = []
+    for raw in update_options:
+        if ":" not in raw:
+            raise click.UsageError(f"--update-option must be 'value:new_label': {raw!r}")
+        v, _, lab = raw.partition(":")
+        lab = lab.strip()
+        try:
+            update.append((int(v.strip()), lab))
+        except ValueError as exc:
+            raise click.UsageError(
+                f"--update-option value must be int: {raw!r}"
+            ) from exc
+
+    reorder_list: list[int] | None = None
+    if reorder:
+        try:
+            reorder_list = [int(x.strip()) for x in reorder.split(",") if x.strip()]
+        except ValueError as exc:
+            raise click.UsageError(
+                f"--reorder must be a comma-separated list of integers: {reorder!r}"
+            ) from exc
+
+    try:
+        info = os_mod.update_optionset(
+            ctx.backend(),
+            name,
+            insert=insert or None,
+            update=update or None,
+            delete=list(delete_options) or None,
+            reorder=reorder_list,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("delete-optionset")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@click.option("--solution", default=None)
+@pass_ctx
+def metadata_delete_optionset(ctx, name, yes, solution):
+    """Delete a custom global option set."""
+    if not _confirm_destructive("option set", name, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = os_mod.delete_optionset(ctx.backend(), name, solution=solution)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
 
 
 # ── Solution group ──────────────────────────────────────────────────────
@@ -1643,6 +2055,10 @@ def _repl_help(ctx: CLIContext):
         "query fetchxml <set> --xml '<fetch>...</fetch>'": "FetchXML query",
         "metadata entities": "List entity definitions",
         "metadata attributes <entity>": "List attributes",
+        "metadata add-attribute <entity> --kind <k>": "Add a column to an entity",
+        "metadata create-entity / delete-entity": "Custom entity lifecycle",
+        "metadata create-one-to-many / create-many-to-many": "Relationships",
+        "metadata list-optionsets / create-optionset / update-optionset / delete-optionset": "Global option sets",
         "solution list / info / export / import": "Solution lifecycle",
         "data export <set> -o file.csv": "Bulk export",
         "action function/invoke <name>": "Call OData function/action",

@@ -95,9 +95,19 @@ def picklist_options(
     ))
 
 
-def _label(text: str, lang: int = 1033) -> dict[str, Any]:
+def label(text: str, lang: int = 1033) -> dict[str, Any]:
     """Build a Dataverse Label payload from a single string."""
     return {"LocalizedLabels": [{"Label": text, "LanguageCode": lang}]}
+
+
+def maybe_publish(backend: D365Backend, info: dict[str, Any], publish: bool) -> dict[str, Any]:
+    """Run PublishAllXml unless dry-run or publish=False. Returns info dict (mutated)."""
+    if not publish or info.get("_dry_run"):
+        return info
+    from crm.core import solution as sol_mod
+    sol_mod.publish_all(backend)
+    info["published"] = True
+    return info
 
 
 def create_entity(
@@ -163,8 +173,8 @@ def create_entity(
         "@odata.type": "Microsoft.Dynamics.CRM.EntityMetadata",
         "SchemaName": schema_name,
         "LogicalName": logical_name,
-        "DisplayName": _label(display_name),
-        "DisplayCollectionName": _label(collection_label),
+        "DisplayName": label(display_name),
+        "DisplayCollectionName": label(collection_label),
         "OwnershipType": ownership,
         "HasActivities": has_activities,
         "HasNotes": has_notes,
@@ -176,12 +186,12 @@ def create_entity(
             "RequiredLevel": {"Value": "ApplicationRequired"},
             "MaxLength": primary_attr_max_length,
             "FormatName": {"Value": "Text"},
-            "DisplayName": _label(primary_label_text),
+            "DisplayName": label(primary_label_text),
             "IsPrimaryName": True,
         }],
     }
     if description:
-        body["Description"] = _label(description)
+        body["Description"] = label(description)
 
     headers = {}
     if solution:
@@ -240,17 +250,40 @@ def create_entity(
     return out
 
 
-def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:
-    """Return one-to-many and many-to-many relationships for an entity."""
-    one_to_many = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/OneToManyRelationships",
-        params={"$select": "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"},
+def delete_entity(
+    backend: D365Backend,
+    logical_name: str,
+    *,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Permanently delete a custom entity (table) and ALL its rows.
+
+    Pre-flight: refuses if `IsCustomEntity=False` or `IsManaged=True`.
+    Server enforces remaining dependency checks (workflows, forms,
+    relationships) and returns 4xx on conflict.
+    """
+    if not logical_name:
+        raise D365Error("logical_name is required.")
+    path = f"EntityDefinitions(LogicalName='{logical_name}')"
+    rb = as_dict(backend.get(
+        path,
+        params={"$select": "IsCustomEntity,IsManaged"},
     ))
-    many_to_many = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/ManyToManyRelationships",
-        params={"$select": "SchemaName,Entity1LogicalName,Entity2LogicalName,IntersectEntityName"},
-    ))
+    if rb.get("IsCustomEntity") is False:
+        raise D365Error(
+            f"{logical_name!r} is not a custom entity; refusing to delete.",
+            code="NotCustomEntity",
+        )
+    if rb.get("IsManaged") is True:
+        raise D365Error(
+            f"{logical_name!r} is a managed entity; uninstall the parent "
+            "solution to remove it.",
+            code="ManagedEntity",
+        )
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    backend.delete(path, extra_headers=headers)
     return {
-        "OneToMany": one_to_many.get("value", []),
-        "ManyToMany": many_to_many.get("value", []),
+        "deleted": True,
+        "logical_name": logical_name,
+        "solution": solution,
     }
