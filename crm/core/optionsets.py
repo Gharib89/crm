@@ -131,3 +131,70 @@ def create_optionset(
         out["optionset_lookup_error"] = lookup_error
     maybe_publish(backend, out, publish)
     return out
+
+
+def update_optionset(
+    backend: D365Backend,
+    name: str,
+    *,
+    insert: list[tuple[int | None, str]] | None = None,
+    update: list[tuple[int, str]] | None = None,
+    delete: list[int] | None = None,
+    reorder: list[int] | None = None,
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Granular global-option-set update.
+
+    Dispatch order: insert → update → delete → reorder. Stops on first
+    error and re-raises; the completed steps list is attached on the
+    success path via the returned `{completed_steps: [...]}`.
+    """
+    if not (insert or update or delete or reorder):
+        raise D365Error("nothing to update — pass at least one of insert/update/delete/reorder.")
+
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    completed: list[str] = []
+
+    if insert:
+        for value, lbl in insert:
+            if not lbl:
+                raise D365Error("insert label must not be empty.")
+            body: dict[str, Any] = {"OptionSetName": name, "Label": label(lbl)}
+            if value is not None:
+                body["Value"] = value
+            backend.post("InsertOptionValue", json_body=body, extra_headers=headers)
+            completed.append(f"insert:{value if value is not None else 'auto'}")
+
+    if update:
+        for value, lbl in update:
+            if not lbl:
+                raise D365Error("update label must not be empty.")
+            body = {
+                "OptionSetName": name,
+                "Value": value,
+                "Label": label(lbl),
+                "MergeLabels": False,
+            }
+            backend.post("UpdateOptionValue", json_body=body, extra_headers=headers)
+            completed.append(f"update:{value}")
+
+    if delete:
+        for value in delete:
+            body = {"OptionSetName": name, "Value": value}
+            backend.post("DeleteOptionValue", json_body=body, extra_headers=headers)
+            completed.append(f"delete:{value}")
+
+    if reorder:
+        body = {"OptionSetName": name, "Values": list(reorder)}
+        backend.post("OrderOption", json_body=body, extra_headers=headers)
+        completed.append("reorder")
+
+    out: dict[str, Any] = {
+        "updated": True,
+        "name": name,
+        "completed_steps": completed,
+        "solution": solution,
+    }
+    maybe_publish(backend, out, publish)
+    return out

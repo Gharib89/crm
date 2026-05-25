@@ -122,3 +122,61 @@ class TestCreateOptionset:
                 backend, name="new_dupe", display_name="Dupe",
                 options=[(1, "A"), (1, "B")],
             )
+
+
+class TestUpdateOptionset:
+    def test_insert_only(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("InsertOptionValue"),
+                   status_code=204, json={})
+            info = os_mod.update_optionset(
+                backend, "new_priority",
+                insert=[(7, "Critical")],
+            )
+        assert info["completed_steps"] == ["insert:7"]
+        body = m.request_history[0].json()
+        assert body["OptionSetName"] == "new_priority"
+        assert body["Value"] == 7
+
+    def test_full_dispatch_order(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("InsertOptionValue"), status_code=204, json={})
+            m.post(backend.url_for("UpdateOptionValue"), status_code=204, json={})
+            m.post(backend.url_for("DeleteOptionValue"), status_code=204, json={})
+            m.post(backend.url_for("OrderOption"), status_code=204, json={})
+            info = os_mod.update_optionset(
+                backend, "new_priority",
+                insert=[(None, "Auto")],
+                update=[(2, "New Medium")],
+                delete=[3],
+                reorder=[1, 2, 7],
+            )
+        # Verify order: InsertOptionValue, UpdateOptionValue, DeleteOptionValue, OrderOption
+        history_paths = [r.url.split("/")[-1] for r in m.request_history]
+        assert "InsertOptionValue" in history_paths[0]
+        assert "UpdateOptionValue" in history_paths[1]
+        assert "DeleteOptionValue" in history_paths[2]
+        assert "OrderOption" in history_paths[3]
+        assert info["completed_steps"]
+
+    def test_partial_failure_returns_envelope(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("InsertOptionValue"), status_code=204, json={})
+            m.post(backend.url_for("UpdateOptionValue"),
+                   status_code=400,
+                   json={"error": {"message": "value 99 not found"}})
+            with pytest.raises(D365Error, match="value 99 not found") as exc_info:
+                os_mod.update_optionset(
+                    backend, "new_priority",
+                    insert=[(7, "OK")],
+                    update=[(99, "Bad")],
+                )
+            assert "value 99 not found" in str(exc_info.value)
+
+    def test_empty_request_rejected(self, backend):
+        from crm.core import optionsets as os_mod
+        with pytest.raises(D365Error, match="nothing to update"):
+            os_mod.update_optionset(backend, "new_priority")
