@@ -299,7 +299,10 @@ def _fetch_csdl(backend: D365Backend) -> _ET.Element:
     raw = backend.get("$metadata", expect_json=False)
     if not isinstance(raw, str):
         raise D365Error("$metadata response was not text/xml")
-    root = _ET.fromstring(raw)
+    try:
+        root = _ET.fromstring(raw)
+    except _ET.ParseError as exc:
+        raise D365Error(f"Failed to parse $metadata XML: {exc}") from exc
     schema = root.find(f".//{{{_EDM_NS}}}Schema")
     if schema is None:
         raise D365Error("No <Schema> element in $metadata response")
