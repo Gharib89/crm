@@ -3,7 +3,8 @@
 `update_optionset` is granular: insert/update/delete/reorder dispatch
 to `InsertOptionValue`, `UpdateOptionValue`, `DeleteOptionValue`,
 `OrderOption` bound actions in that order. Partial failure stops and
-returns `{stage, completed_steps, error}` — no rollback.
+re-raises `D365Error` with `.completed_steps` and `.stage` attached
+so callers can inspect what already landed — no rollback.
 """
 
 from __future__ import annotations

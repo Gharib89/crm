@@ -90,7 +90,7 @@ Read-back failure → populates `*_lookup_error` field on the result. Matches `c
 
 ### 2.5 Publish dispatch
 
-A single private helper `_maybe_publish(backend, info, publish) -> dict` lives in `crm/core/metadata.py` and is imported by every write verb. Same `publish_all(backend)` call site as `create-entity`. Skipped when any of: `_dry_run`, `publish=False`, verb is destructive (`delete-entity`, `delete-optionset`).
+A shared helper `maybe_publish(backend, info, publish) -> dict` lives in `crm/core/metadata.py` and is imported by every write verb. Same `publish_all(backend)` call site as `create-entity`. Skipped when any of: `_dry_run`, `publish=False`, verb is destructive (`delete-entity`, `delete-optionset`).
 
 ### 2.6 Lookup attribute special case
 
@@ -176,7 +176,7 @@ POST /api/data/v9.x/EntityDefinitions(LogicalName='new_project')/Attributes
   "@odata.type": "Microsoft.Dynamics.CRM.StringAttributeMetadata",
   "SchemaName": "new_Amount",
   "LogicalName": "new_amount",
-  "DisplayName": _label("Amount"),
+  "DisplayName": label("Amount"),
   "RequiredLevel": {"Value": "None"},
   "MaxLength": 100,
   "FormatName": {"Value": "Text"}
@@ -224,7 +224,7 @@ Calls `POST /api/data/v9.x/CreateOneToManyRequest`. Body nests:
     "SchemaName": "...",
     "ReferencedEntity": "...",
     "ReferencingEntity": "...",
-    "AssociatedMenuConfiguration": { "Behavior": "...", "Label": _label(...), "Order": 10000 },
+    "AssociatedMenuConfiguration": { "Behavior": "...", "Label": label(...), "Order": 10000 },
     "CascadeConfiguration": {
       "Assign": "NoCascade", "Delete": "RemoveLink", "Reparent": "NoCascade",
       "Share": "NoCascade", "Unshare": "NoCascade", "Merge": "NoCascade"
@@ -232,7 +232,7 @@ Calls `POST /api/data/v9.x/CreateOneToManyRequest`. Body nests:
   },
   "Lookup": {
     "@odata.type": "Microsoft.Dynamics.CRM.LookupAttributeMetadata",
-    "SchemaName": "...", "DisplayName": _label(...), "RequiredLevel": {"Value": "None"}
+    "SchemaName": "...", "DisplayName": label(...), "RequiredLevel": {"Value": "None"}
   },
   "SolutionUniqueName": "<solution-or-omitted>"
 }
@@ -354,12 +354,12 @@ Dispatch order: `insert` → `update` → `delete` → `reorder`. Each step is i
 
 | Mutation | Action | Body |
 |---|---|---|
-| insert | `POST /InsertOptionValue` | `{OptionSetName, Value?, Label: _label(...)}` |
-| update | `POST /UpdateOptionValue` | `{OptionSetName, Value, Label: _label(...), MergeLabels: false}` |
+| insert | `POST /InsertOptionValue` | `{OptionSetName, Value?, Label: label(...)}` |
+| update | `POST /UpdateOptionValue` | `{OptionSetName, Value, Label: label(...), MergeLabels: false}` |
 | delete | `POST /DeleteOptionValue` | `{OptionSetName, Value}` |
 | reorder | `POST /OrderOption` | `{OptionSetName, Values: [int, ...]}` |
 
-Each call accepts `--solution`. On partial failure, dispatcher stops at the failing stage and returns `{stage, completed_steps, error}`. **No rollback**: multi-stage atomic update is doable via Spec C's `$batch` changeset but out of scope here. Empty operation set → `D365Error("nothing to update")` before any HTTP.
+Each call accepts `--solution`. On partial failure, dispatcher stops at the failing stage and re-raises D365Error with .completed_steps and .stage attached. **No rollback**: multi-stage atomic update is doable via Spec C's `$batch` changeset but out of scope here. Empty operation set → `D365Error("nothing to update")` before any HTTP.
 
 ### 5.3 CLI surface
 
@@ -481,12 +481,12 @@ Coverage targets per `add_attribute`:
 | `TestAddAttributeValidation` | `D365Error` raised before HTTP for: forbidden flag per kind, missing required flag, bad enum value |
 | `TestAddAttributeDryRun` | `_dry_run` envelope, no read-back, no publish |
 | `TestAddAttributeReadbackFail` | `attribute_lookup_error` populated, `created: True` still surfaces |
-| `TestAddAttributeNonAsciiLabel` | UTF-8 display names round-trip through `_label()` |
+| `TestAddAttributeNonAsciiLabel` | UTF-8 display names round-trip through `label()` |
 
 Per `update_optionset`:
 
 - 4 dispatch-order tests (insert → update → delete → reorder), each isolated.
-- Partial-failure mid-stage returns `{stage, completed_steps, error}`.
+- Partial-failure mid-stage re-raises D365Error with .completed_steps and .stage attached.
 - Empty operation set → `D365Error("nothing to update")` before any HTTP.
 
 Per `delete_entity`:
@@ -509,9 +509,9 @@ Extend `test_full_e2e.py`:
 
 `CliRunner.invoke(input="y\n")` exercises the `click.confirm` branch.
 
-### 7.3 Live e2e (`@pytest.mark.live`)
+### 7.3 Live e2e (`@pytest.mark.skipif(not _have_live_env())`)
 
-Gated by `D365_LIVE=1` (existing pattern). Sequence:
+Gated by `_have_live_env()` (checks `D365_URL` + `D365_USERNAME` + `D365_PASSWORD`). Sequence:
 
 1. `create-entity` ephemeral (unique schema suffix: epoch + 8-char uuid).
 2. `add-attribute` all 14 kinds against the ephemeral entity (skip `image`/`file` if server feature flag disabled; mark skipped).
@@ -557,11 +557,11 @@ Suggested internal commit order for review-ability (not enforced; not separate P
 | `add-attribute` flag matrix grows error-prone (14 kinds × ~10 flags each) | Medium | Confusing UX | Per-kind validation table (§3.2) raises `D365Error` before HTTP; unit-test every forbidden-flag combination |
 | Lookup dispatching to `create_one_to_many` surprises users (creates relationship as side effect) | Medium | User astonishment | Docstring + `--help` warning: "creates 1:N relationship automatically; use `create-one-to-many` for cascade control" |
 | `MultiSelectPicklist`, `Image`, `File` attribute metadata not uniformly available on v9.1 on-prem | Medium | Server 400 with vague error | Document supported-version notes in command docstring; surface server error verbatim — no client-side gate that could go stale |
-| `update-optionset` partial failure leaves option set in half-mutated state | Low | Manual cleanup | `{stage, completed_steps, error}` envelope tells caller exactly where it stopped. Follow-up: wrap in `$batch` changeset (Spec C primitive exists) |
+| `update-optionset` partial failure leaves option set in half-mutated state | Low | Manual cleanup | Attached .completed_steps and .stage on the raised D365Error tell caller exactly where it stopped. Follow-up: wrap in `$batch` changeset (Spec C primitive exists) |
 | Race between pre-flight GET and DELETE on `delete-entity` (entity removed by another caller in between) | Very low | Confusing 404 | DELETE 404 surfaces as `D365Error(code="NotFound")`; caller re-checks |
 | `click.confirm` on `delete-entity` in non-TTY hangs on older Click | Very low | CI hang | Project pins `click>=8` (`setup.py`); 8.x aborts on non-TTY by default |
 | Cascade enum mistyped at CLI | Low | Click error | `click.Choice` enforces; crisp error |
-| `_label()` non-ASCII handling | Low | Garbled display name | Existing `_label()` accepts any `str`; Dataverse stores UTF-8. Add `test_non_ascii_label` |
+| `label()` non-ASCII handling | Low | Garbled display name | Existing `label()` accepts any `str`; Dataverse stores UTF-8. Add `test_non_ascii_label` |
 | `MSCRM.SolutionUniqueName` against managed solution rejects with 4xx | Medium | Confusing | Surface server error; document that `--solution` must be the user's *unmanaged* working solution |
 | Read-back GET after DELETE entity briefly returns the row (eventual consistency) | Low | Stale read | DELETE returns immediately on HTTP success; no verify-gone in the helper (test-only) |
 | `File` / `Image` attribute requires server-side feature toggles on some v9.1 builds | Low | Server 400 | No client-side gate; document the toggle path in the command docstring |

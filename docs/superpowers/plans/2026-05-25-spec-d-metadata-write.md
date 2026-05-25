@@ -4,6 +4,8 @@
 
 **Goal:** Add metadata write verbs to the `crm` CLI: `add-attribute` (14 attribute casts), `create-one-to-many` + `create-many-to-many` relationships, global option set CRUD (5 verbs), and `delete-entity`. Ship as a single PR + bump to `0.5.0`.
 
+> **Implementation note (post-hoc):** During execution, the helpers `_label` and `_maybe_publish` shipped as `label` and `maybe_publish` (no leading underscore) because they're genuinely shared across `crm.core` sibling modules and the leading-underscore convention conflicted with strict pyright's `reportPrivateUsage` on cross-module imports. The plan steps below show the original underscore names; the committed code uses the unprefixed names.
+
 **Architecture:** Three new strict-pyright modules in `crm/core/` split the new write surface by domain — `metadata_attrs.py` (attribute builders), `relationships.py` (1:N + N:N), `optionsets.py` (CRUD + granular update). `metadata.py` gains `delete_entity` and a shared `_maybe_publish` helper. All write verbs reuse Spec C's backend plumbing — no new `D365Backend` signatures. `cli.py` exposes nine new commands under the existing `metadata` group, all wired with `--solution` + `--publish/--no-publish` (default ON) matching `metadata create-entity`. Single PR against `main`.
 
 **Tech Stack:** Python 3.9+, `requests` + `requests_ntlm` for HTTP, Click 8.x for CLI, `pytest` + `requests_mock` for tests, pyright (strict on `crm/core/*` + `crm/utils/d365_backend.py` + `crm/utils/d365_types.py`).
