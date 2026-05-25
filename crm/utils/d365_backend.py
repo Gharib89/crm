@@ -181,7 +181,7 @@ class D365Backend:
 
     # ── Auth helpers ─────────────────────────────────────────────────────
 
-    def _make_auth(self, password: str):
+    def _make_auth(self, password: str) -> Any:
         """Pick the auth adapter based on profile.auth_scheme."""
         scheme = self.profile.auth_scheme
         if scheme == "ntlm":
@@ -203,7 +203,7 @@ class D365Backend:
                     "Kerberos/Negotiate auth requires 'requests_negotiate_sspi'. "
                     "Install it: pip install crm[kerberos]"
                 ) from exc
-            return HttpNegotiateAuth()
+            return HttpNegotiateAuth()  # type: ignore[no-any-return]
         raise D365Error(
             f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate"
         )

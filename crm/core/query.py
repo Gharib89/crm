@@ -184,10 +184,10 @@ def total_record_count(backend: D365Backend, entity: str) -> int:
     if not entity:
         raise D365Error("entity logical name is required")
     path = f"RetrieveTotalRecordCount(EntityNames=['{entity}'])"
-    result = as_dict(backend.get(path))
-    coll = result.get("EntityRecordCountCollection") or {}
-    keys = coll.get("Keys") or []
-    values = coll.get("Values") or []
+    result: dict[str, Any] = as_dict(backend.get(path))
+    coll: dict[str, Any] = result.get("EntityRecordCountCollection") or {}
+    keys: list[Any] = coll.get("Keys") or []
+    values: list[Any] = coll.get("Values") or []
     if not keys or not values:
         raise D365Error(
             f"RetrieveTotalRecordCount returned no rows for {entity!r}",
