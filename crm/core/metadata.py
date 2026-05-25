@@ -306,10 +306,12 @@ def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
         root = _ET.fromstring(raw)
     except _ET.ParseError as exc:
         raise D365Error(f"Failed to parse $metadata XML: {exc}") from exc
-    schemas = root.findall(f".//{{{_EDM_NS}}}Schema")
-    if not schemas:
+    all_schemas = root.findall(f".//{{{_EDM_NS}}}Schema")
+    if not all_schemas:
         raise D365Error("No <Schema> element in $metadata response")
-    return schemas
+    d365_schemas = [s for s in all_schemas
+                    if s.attrib.get("Namespace") == _D365_NAMESPACE]
+    return d365_schemas if d365_schemas else all_schemas
 
 
 def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:

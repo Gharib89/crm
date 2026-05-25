@@ -2,7 +2,6 @@
 from __future__ import annotations
 import click
 from crm.core import entity as entity_mod
-from crm.core import session as session_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
