@@ -90,9 +90,73 @@ def _memo_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+def _common_numeric(opts: dict[str, Any], odata_type: str) -> dict[str, Any]:
+    _forbid(opts, "max_length", "target_entity", "optionset_name", "options",
+            "format_name", "max_size_kb")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = odata_type
+    if opts.get("min_value") is not None:
+        body["MinValue"] = opts["min_value"]
+    if opts.get("max_value") is not None:
+        body["MaxValue"] = opts["max_value"]
+    return body
+
+
+def _int_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "precision")
+    return _common_numeric(opts, "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+
+
+def _bigint_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "precision")
+    return _common_numeric(opts, "Microsoft.Dynamics.CRM.BigIntAttributeMetadata")
+
+
+def _numeric_with_precision(
+    opts: dict[str, Any], odata_type: str, precision_range: tuple[int, int],
+) -> dict[str, Any]:
+    _require(opts, "precision")
+    prec = opts["precision"]
+    lo, hi = precision_range
+    if not (lo <= prec <= hi):
+        raise D365Error(f"precision for this kind must be in [{lo}, {hi}].")
+    body = _common_numeric(opts, odata_type)
+    body["Precision"] = prec
+    return body
+
+
+def _decimal_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    return _numeric_with_precision(
+        opts, "Microsoft.Dynamics.CRM.DecimalAttributeMetadata", (0, 10),
+    )
+
+
+def _double_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    return _numeric_with_precision(
+        opts, "Microsoft.Dynamics.CRM.DoubleAttributeMetadata", (0, 5),
+    )
+
+
+def _money_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    return _numeric_with_precision(
+        opts, "Microsoft.Dynamics.CRM.MoneyAttributeMetadata", (0, 4),
+    )
+
+
 _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "string": _string_attr,
     "memo": _memo_attr,
+    "integer": _int_attr,
+    "bigint": _bigint_attr,
+    "decimal": _decimal_attr,
+    "double": _double_attr,
+    "money": _money_attr,
 }
 
 
