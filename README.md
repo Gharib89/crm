@@ -158,11 +158,18 @@ Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code
 | `connection` | Profiles, WhoAmI, reachability checks                      |
 | `entity`     | Record CRUD (get/create/update/upsert/delete)              |
 | `query`      | OData v4 and FetchXML queries                              |
-| `metadata`   | Entity / attribute / relationship introspection            |
+| `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `solution`   | List / info / components / export / import solutions       |
 | `data`       | Bulk CSV/JSON dataset export                               |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state and command history                    |
+
+The `metadata` group covers both browsing and write verbs. New in 0.5.0:
+
+- `metadata add-attribute <entity> --kind <k>` — add a column (14 kinds)
+- `metadata create-one-to-many` / `create-many-to-many` — relationships
+- `metadata list-optionsets` / `get-optionset` / `create-optionset` / `update-optionset` / `delete-optionset` — global option sets
+- `metadata delete-entity <logical-name>` — drop a custom entity (gated)
 
 Use `crm <group> --help` for command-level details.
 
