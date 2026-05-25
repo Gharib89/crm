@@ -4,7 +4,7 @@ import os
 import click
 from crm.core import connection as conn_mod
 from crm.core import session as session_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import _handle_d365_error
 
@@ -33,13 +33,14 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
         username=username,
         api_version=api_version,
         verify_ssl=not no_verify_ssl,
+        auth_scheme=ctx.auth_scheme or "ntlm",
     )
     session_mod.save_profile(profile)
     ctx.profile_name = profile_name
     ctx.password = password_opt or os.environ.get(conn_mod.ENV_PASSWORD, "")
+    ctx.invalidate_backend()
     try:
-        backend = D365Backend(profile, ctx.password, dry_run=ctx.dry_run)
-        info = conn_mod.test_connection(backend)
+        info = conn_mod.test_connection(ctx.backend())
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

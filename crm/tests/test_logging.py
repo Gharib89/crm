@@ -16,12 +16,14 @@ def _reset_crm_logger():
     logger = logging.getLogger("crm")
     saved_handlers = list(logger.handlers)
     saved_level = logger.level
+    saved_propagate = logger.propagate
     logger.handlers.clear()
     yield
     logger.handlers.clear()
     for h in saved_handlers:
         logger.addHandler(h)
     logger.setLevel(saved_level)
+    logger.propagate = saved_propagate
 
 
 class TestTextFormat:
