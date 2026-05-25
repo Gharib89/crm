@@ -264,3 +264,42 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
         "OneToMany": one_to_many.get("value", []),
         "ManyToMany": many_to_many.get("value", []),
     }
+
+
+def delete_entity(
+    backend: D365Backend,
+    logical_name: str,
+    *,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Permanently delete a custom entity (table) and ALL its rows.
+
+    Pre-flight: refuses if `IsCustomEntity=False` or `IsManaged=True`.
+    Server enforces remaining dependency checks (workflows, forms,
+    relationships) and returns 4xx on conflict.
+    """
+    if not logical_name:
+        raise D365Error("logical_name is required.")
+    path = f"EntityDefinitions(LogicalName='{logical_name}')"
+    rb = as_dict(backend.get(
+        path,
+        params={"$select": "IsCustomEntity,IsManaged"},
+    ))
+    if rb.get("IsCustomEntity") is False:
+        raise D365Error(
+            f"{logical_name!r} is not a custom entity; refusing to delete.",
+            code="NotCustomEntity",
+        )
+    if rb.get("IsManaged") is True:
+        raise D365Error(
+            f"{logical_name!r} is a managed entity; uninstall the parent "
+            "solution to remove it.",
+            code="ManagedEntity",
+        )
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    backend.delete(path, extra_headers=headers)
+    return {
+        "deleted": True,
+        "logical_name": logical_name,
+        "solution": solution,
+    }
