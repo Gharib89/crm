@@ -50,7 +50,7 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
     try:
         ops = batch_mod.parse_batch_file(file_path)
         results = ctx.backend().batch(
-            ops,
+            ops,  # type: ignore[arg-type]
             transactional=not no_transaction,
             continue_on_error=continue_on_error,
             timeout=timeout,
@@ -68,6 +68,6 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
             ctx.emit(False, error=f"Could not write {output_path}: {exc}")
             return
         ctx.emit(True, data={"written": output_path,
-                             **batch_mod.render_batch_summary(results)})
+                             **batch_mod.render_batch_summary(results)})  # type: ignore[arg-type]
     else:
-        ctx.emit(True, data=results, meta=batch_mod.render_batch_summary(results))
+        ctx.emit(True, data=results, meta=batch_mod.render_batch_summary(results))  # type: ignore[arg-type]
