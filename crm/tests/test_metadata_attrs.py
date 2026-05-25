@@ -288,3 +288,65 @@ class TestAddAttributeDateTime:
                 schema_name="new_When", display_name="When",
                 format_name="Garbage",
             )
+
+
+class TestAddAttributePicklist:
+    def test_picklist_inline_options(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_priority", "Picklist")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="picklist",
+                schema_name="new_Priority", display_name="Priority",
+                options=[(1, "Low"), (2, "Medium"), (3, "High")],
+            )
+        body = m.request_history[0].json()
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+        opts = body["OptionSet"]["Options"]
+        assert opts[0]["Value"] == 1
+        assert opts[0]["Label"]["LocalizedLabels"][0]["Label"] == "Low"
+        assert body["OptionSet"]["IsGlobal"] is False
+
+    def test_picklist_global_optionset_ref(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_priority", "Picklist")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="picklist",
+                schema_name="new_Priority", display_name="Priority",
+                optionset_name="new_global_priority",
+            )
+        body = m.request_history[0].json()
+        assert body["OptionSet"]["Name"] == "new_global_priority"
+        assert body["OptionSet"]["IsGlobal"] is True
+
+    def test_picklist_rejects_both_options_and_global(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="mutually exclusive"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="picklist",
+                schema_name="new_Priority", display_name="Priority",
+                options=[(1, "Low")], optionset_name="new_other",
+            )
+
+    def test_picklist_requires_one_of(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="optionset_name or options"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="picklist",
+                schema_name="new_Priority", display_name="Priority",
+            )
+
+
+class TestAddAttributeMultiselect:
+    def test_multiselect_inline(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_tags", "Virtual")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="multiselect",
+                schema_name="new_Tags", display_name="Tags",
+                options=[(1, "A"), (2, "B")],
+            )
+        body = m.request_history[0].json()
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"

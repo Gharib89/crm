@@ -188,6 +188,75 @@ def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+def _build_options_payload(
+    options: list[tuple[int | None, str]] | None,
+    optionset_name: str | None,
+) -> dict[str, Any]:
+    has_inline = bool(options)
+    has_global = bool(optionset_name)
+    if has_inline and has_global:
+        raise D365Error(
+            "--options and --optionset-name are mutually exclusive."
+        )
+    if not has_inline and not has_global:
+        raise D365Error(
+            "either optionset_name or options is required for picklist/multiselect."
+        )
+    if has_global:
+        return {"Name": optionset_name, "IsGlobal": True, "OptionSetType": "Picklist"}
+    seen: set[int] = set()
+    option_list: list[dict[str, Any]] = []
+    assert options is not None  # has_inline ensures non-empty
+    for value, lbl in options:
+        if value is not None:
+            if value in seen:
+                raise D365Error(f"Duplicate option value: {value}.")
+            seen.add(value)
+        if not lbl:
+            raise D365Error("Option label must not be empty.")
+        opt: dict[str, Any] = {"Label": label(lbl)}
+        if value is not None:
+            opt["Value"] = value
+        option_list.append(opt)
+    return {"Options": option_list, "IsGlobal": False, "OptionSetType": "Picklist"}
+
+
+def _picklist_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "max_length", "precision", "target_entity",
+            "min_value", "max_value", "format_name", "max_size_kb")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+    body["OptionSet"] = _build_options_payload(
+        opts.get("options"), opts.get("optionset_name"),
+    )
+    if opts.get("default_value") is not None:
+        body["DefaultFormValue"] = int(opts["default_value"])
+    return body
+
+
+def _multiselect_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "max_length", "precision", "target_entity",
+            "min_value", "max_value", "format_name", "max_size_kb")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
+    body["OptionSet"] = _build_options_payload(
+        opts.get("options"), opts.get("optionset_name"),
+    )
+    return body
+
+
 _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "string": _string_attr,
     "memo": _memo_attr,
@@ -198,6 +267,8 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "money": _money_attr,
     "boolean": _bool_attr,
     "datetime": _datetime_attr,
+    "picklist": _picklist_attr,
+    "multiselect": _multiselect_attr,
 }
 
 
