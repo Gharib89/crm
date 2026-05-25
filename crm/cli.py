@@ -28,6 +28,7 @@ from crm.core import (
     entity as entity_mod,
     export as export_mod,
     metadata as meta_mod,
+    optionsets as os_mod,
     query as query_mod,
     relationships as rel_mod,
     session as session_mod,
@@ -1122,6 +1123,153 @@ def metadata_create_many_to_many(
             publish=publish,
             solution=solution,
         )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("list-optionsets")
+@click.option("--custom-only", is_flag=True)
+@click.option("--top", type=int, default=None)
+@pass_ctx
+def metadata_list_optionsets(ctx, custom_only, top):
+    """List global option set definitions."""
+    try:
+        rows = os_mod.list_optionsets(ctx.backend(), custom_only=custom_only, top=top)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    headers = ["Name", "IsCustomOptionSet", "IsManaged"]
+    table_rows = [
+        [r.get("Name", ""), str(r.get("IsCustomOptionSet", "")),
+         str(r.get("IsManaged", ""))]
+        for r in rows
+    ]
+    ctx.emit(True, data=rows, table={"headers": headers, "rows": table_rows},
+             meta={"count": len(rows)})
+
+
+@metadata.command("get-optionset")
+@click.argument("name")
+@pass_ctx
+def metadata_get_optionset(ctx, name):
+    """Retrieve a global option set with options expanded."""
+    try:
+        info = os_mod.get_optionset(ctx.backend(), name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("create-optionset")
+@click.option("--name", required=True,
+              help="Fully prefixed option set name, e.g. 'new_priority'.")
+@click.option("--display", "display_name", required=True)
+@click.option("--description", default=None)
+@click.option("--option", "options", multiple=True,
+              help="Option as 'value:label' or ':label' (auto value). Repeatable.")
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_create_optionset(ctx, name, display_name, description, options,
+                              solution, publish):
+    """Create a global option set."""
+    parsed: list[tuple[int | None, str]] = []
+    for raw in options:
+        if ":" not in raw:
+            raise click.UsageError(f"--option must be 'value:label' or ':label', got: {raw!r}")
+        v, _, lab = raw.partition(":")
+        v = v.strip()
+        parsed.append((int(v) if v else None, lab))
+    try:
+        info = os_mod.create_optionset(
+            ctx.backend(),
+            name=name, display_name=display_name,
+            description=description, options=parsed or None,
+            publish=publish, solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("update-optionset")
+@click.argument("name")
+@click.option("--insert-option", "insert_options", multiple=True,
+              help="Insert option 'value:label' or ':label'. Repeatable.")
+@click.option("--update-option", "update_options", multiple=True,
+              help="Update existing option 'value:new_label'. Repeatable.")
+@click.option("--delete-option", "delete_options", multiple=True, type=int,
+              help="Delete option by value. Repeatable.")
+@click.option("--reorder", default=None,
+              help="Comma-separated full ordered list of values, e.g. '1,2,7,4'.")
+@click.option("--solution", default=None)
+@click.option("--publish/--no-publish", default=True)
+@pass_ctx
+def metadata_update_optionset(ctx, name, insert_options, update_options,
+                              delete_options, reorder, solution, publish):
+    """Granular update: insert/update/delete/reorder options."""
+    insert: list[tuple[int | None, str]] = []
+    for raw in insert_options:
+        if ":" not in raw:
+            raise click.UsageError(f"--insert-option must be 'value:label' or ':label': {raw!r}")
+        v, _, lab = raw.partition(":")
+        v = v.strip()
+        insert.append((int(v) if v else None, lab))
+
+    update: list[tuple[int, str]] = []
+    for raw in update_options:
+        if ":" not in raw:
+            raise click.UsageError(f"--update-option must be 'value:new_label': {raw!r}")
+        v, _, lab = raw.partition(":")
+        try:
+            update.append((int(v.strip()), lab))
+        except ValueError as exc:
+            raise click.UsageError(
+                f"--update-option value must be int: {raw!r}"
+            ) from exc
+
+    reorder_list: list[int] | None = None
+    if reorder:
+        try:
+            reorder_list = [int(x.strip()) for x in reorder.split(",") if x.strip()]
+        except ValueError as exc:
+            raise click.UsageError(
+                f"--reorder must be a comma-separated list of integers: {reorder!r}"
+            ) from exc
+
+    try:
+        info = os_mod.update_optionset(
+            ctx.backend(),
+            name,
+            insert=insert or None,
+            update=update or None,
+            delete=list(delete_options) or None,
+            reorder=reorder_list,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata.command("delete-optionset")
+@click.argument("name")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@click.option("--solution", default=None)
+@pass_ctx
+def metadata_delete_optionset(ctx, name, yes, solution):
+    """Delete a custom global option set."""
+    if not _confirm_destructive("option set", name, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = os_mod.delete_optionset(ctx.backend(), name, solution=solution)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
