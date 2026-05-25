@@ -33,9 +33,10 @@ class CLIContext:
         self.dry_run: bool = False
         self.profile_name: str | None = None
         self.password: str | None = None
+        self.auth_scheme: str | None = None
         self.session_name: str = "default"
         self._backend: D365Backend | None = None
-        self._backend_key: tuple[str | None, str | None, bool] | None = None
+        self._backend_key: tuple[str | None, str | None, bool, str | None] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
 
     def emit(self, ok: bool, data: Any = None, *, error: str | None = None,
@@ -81,12 +82,14 @@ class CLIContext:
                 self.skin.status(k, str(v))
 
     def backend(self) -> D365Backend:
-        key = (self.profile_name, self.password, self.dry_run)
+        key = (self.profile_name, self.password, self.dry_run, self.auth_scheme)
         if self._backend is None or self._backend_key != key:
             resolved = conn_mod.resolve_credentials(
                 profile_name=self.profile_name,
                 password_override=self.password,
             )
+            if self.auth_scheme is not None:
+                resolved.profile.auth_scheme = self.auth_scheme
             self._backend = D365Backend(
                 resolved.profile, resolved.password, dry_run=self.dry_run
             )
@@ -126,13 +129,17 @@ pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
               type=click.Choice(["text", "json-line"]),
               default=None,
               help="Log output format (env: CRM_LOG_FORMAT). Default: text.")
+@click.option("--auth-scheme",
+              type=click.Choice(["ntlm", "kerberos", "negotiate"]),
+              default=None,
+              help="HTTP auth scheme (env: CRM_AUTH_SCHEME). Default: ntlm.")
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
 def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         profile_name: str | None, password: str | None,
         log_level: str | None, verbose: bool, log_format: str | None,
-        session_name: str):
+        auth_scheme: str | None, session_name: str):
     """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
     effective_level = log_level or os.environ.get("CRM_LOG_LEVEL") or "warning"
     if verbose:
@@ -150,6 +157,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         cli_ctx.profile_name = profile_name
     if password is not None:
         cli_ctx.password = password
+    cli_ctx.auth_scheme = auth_scheme or os.environ.get("CRM_AUTH_SCHEME")
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:

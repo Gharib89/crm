@@ -61,6 +61,7 @@ class ConnectionProfile:
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
+    auth_scheme: str = "ntlm"      # ntlm | kerberos | negotiate
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -71,6 +72,11 @@ class ConnectionProfile:
     async_timeout: int = 1800
 
     def __post_init__(self) -> None:
+        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate"):
+            raise D365Error(
+                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate, "
+                f"got {self.auth_scheme!r}"
+            )
         for _field, _value in (
             ("retry_max", self.retry_max),
             ("retry_base_delay", self.retry_base_delay),
@@ -103,6 +109,7 @@ class ConnectionProfile:
             "username": self.username,
             "api_version": self.api_version,
             "verify_ssl": self.verify_ssl,
+            "auth_scheme": self.auth_scheme,
             "timeout": self.timeout,
             "retry_max": self.retry_max,
             "retry_base_delay": self.retry_base_delay,
@@ -122,6 +129,7 @@ class ConnectionProfile:
             username=d["username"],
             api_version=d.get("api_version", "v9.2"),
             verify_ssl=d.get("verify_ssl", True),
+            auth_scheme=d.get("auth_scheme", "ntlm"),
             timeout=d.get("timeout", 120),
             retry_max=d.get("retry_max", 5),
             retry_base_delay=d.get("retry_base_delay", 1.0),
@@ -156,10 +164,6 @@ class D365Backend:
 
     def __init__(self, profile: ConnectionProfile, password: str,
                  dry_run: bool = False):
-        if HttpNtlmAuth is None:
-            raise D365Error(
-                "requests_ntlm is not installed. Install with: pip install requests_ntlm"
-            )
         if not profile.url:
             raise D365Error("Profile is missing the server URL.")
         if not profile.username:
@@ -168,15 +172,41 @@ class D365Backend:
         self.profile = profile
         self.dry_run = dry_run
         self._session: requests.Session = requests.Session()
-        user_principal = (
-            f"{profile.domain}\\{profile.username}" if profile.domain else profile.username
-        )
-        self._session.auth = HttpNtlmAuth(user_principal, password)
+        self._session.auth = self._make_auth(password)
         self._session.verify = profile.verify_ssl
         self._effective_retry_max = _resolve_retry_max(profile)
         self._default_caller_id: str | None = _resolve_caller_id()
         self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
         self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
+
+    # ── Auth helpers ─────────────────────────────────────────────────────
+
+    def _make_auth(self, password: str):
+        """Pick the auth adapter based on profile.auth_scheme."""
+        scheme = self.profile.auth_scheme
+        if scheme == "ntlm":
+            if HttpNtlmAuth is None:
+                raise D365Error(
+                    "requests_ntlm is not installed. "
+                    "Install with: pip install requests_ntlm"
+                )
+            user_principal = (
+                f"{self.profile.domain}\\{self.profile.username}"
+                if self.profile.domain else self.profile.username
+            )
+            return HttpNtlmAuth(user_principal, password)
+        if scheme in ("kerberos", "negotiate"):
+            try:
+                from requests_negotiate_sspi import HttpNegotiateAuth  # type: ignore[import-untyped]
+            except ImportError as exc:
+                raise D365Error(
+                    "Kerberos/Negotiate auth requires 'requests_negotiate_sspi'. "
+                    "Install it: pip install crm[kerberos]"
+                ) from exc
+            return HttpNegotiateAuth()
+        raise D365Error(
+            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate"
+        )
 
     # ── URL helpers ─────────────────────────────────────────────────────
 
