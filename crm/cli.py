@@ -912,6 +912,116 @@ def metadata_delete_entity(ctx, logical_name, yes, solution):
     ctx.emit(True, data=info)
 
 
+@metadata.command("add-attribute")
+@click.argument("entity")
+@click.option("--kind", required=True,
+              type=click.Choice([
+                  "string", "memo", "integer", "bigint", "decimal", "double",
+                  "money", "boolean", "datetime", "picklist", "multiselect",
+                  "lookup", "image", "file",
+              ]),
+              help="Attribute kind.")
+@click.option("--schema-name", required=True,
+              help="PascalCase with publisher prefix, e.g. 'new_Amount'.")
+@click.option("--display", "display_name", required=True,
+              help="UI label.")
+@click.option("--description", default=None)
+@click.option("--required", "required",
+              type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
+              default="None")
+@click.option("--max-length", type=int, default=None,
+              help="String/memo: max characters.")
+@click.option("--format", "format_name", default=None,
+              help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@click.option("--min", "min_value", type=float, default=None,
+              help="Numeric kinds: minimum value.")
+@click.option("--max", "max_value", type=float, default=None,
+              help="Numeric kinds: maximum value.")
+@click.option("--precision", type=int, default=None,
+              help="Decimal/double/money: precision (decimals).")
+@click.option("--true-label", default="Yes", help="Boolean: label for true.")
+@click.option("--false-label", default="No", help="Boolean: label for false.")
+@click.option("--default-value", default=None,
+              help="Boolean: 'true'/'false'. Picklist: int option value.")
+@click.option("--optionset-name", default=None,
+              help="Picklist/multiselect: reference an existing global option set.")
+@click.option("--option", "options", multiple=True,
+              help="Picklist/multiselect: inline option as 'value:label' or ':label' (auto value). Repeatable.")
+@click.option("--target-entity", default=None,
+              help="Lookup: referenced entity logical name.")
+@click.option("--relationship-schema", default=None,
+              help="Lookup: override auto-generated relationship name.")
+@click.option("--max-size-kb", type=int, default=None,
+              help="File: max attachment size in KB. Default 32768.")
+@click.option("--solution", default=None,
+              help="Add to a solution via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after creation. Default: publish.")
+@pass_ctx
+def metadata_add_attribute(
+    ctx, entity, kind, schema_name, display_name, description, required,
+    max_length, format_name, min_value, max_value, precision,
+    true_label, false_label, default_value,
+    optionset_name, options, target_entity, relationship_schema,
+    max_size_kb, solution, publish,
+):
+    """Add an attribute (column) to an existing entity."""
+    parsed_options: list[tuple[int | None, str]] | None = None
+    if options:
+        parsed_options = []
+        for raw in options:
+            if ":" not in raw:
+                raise click.UsageError(
+                    f"--option must be 'value:label' or ':label', got: {raw!r}"
+                )
+            v, _, lab = raw.partition(":")
+            v = v.strip()
+            parsed_options.append((int(v) if v else None, lab))
+
+    parsed_default: bool | int | None = None
+    if default_value is not None:
+        if kind == "boolean":
+            parsed_default = default_value.lower() in ("1", "true", "yes", "on")
+        else:
+            try:
+                parsed_default = int(default_value)
+            except ValueError as exc:
+                raise click.UsageError(
+                    f"--default-value must be int for kind {kind!r}: {default_value!r}"
+                ) from exc
+
+    try:
+        from crm.core import metadata_attrs as ma_mod
+        info = ma_mod.add_attribute(
+            ctx.backend(),
+            entity=entity,
+            kind=kind,
+            schema_name=schema_name,
+            display_name=display_name,
+            description=description,
+            required=required,
+            max_length=max_length,
+            format_name=format_name,
+            min_value=min_value,
+            max_value=max_value,
+            precision=precision,
+            default_value=parsed_default,
+            true_label=true_label,
+            false_label=false_label,
+            optionset_name=optionset_name,
+            options=parsed_options,
+            target_entity=target_entity,
+            relationship_schema=relationship_schema,
+            max_size_kb=max_size_kb,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
 # ── Solution group ──────────────────────────────────────────────────────
 
 
