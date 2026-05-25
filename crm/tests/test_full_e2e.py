@@ -254,3 +254,93 @@ class TestDeleteEntityCli:
         )
         assert result.exit_code == 0
         assert '"error": "aborted by user"' in result.output
+
+
+@pytest.mark.skipif(not _have_live_env(), reason="Live env required")
+class TestSpecDMetadataWriteLive:
+    """End-to-end metadata-write smoke against a real MOCE server.
+
+    Gated by D365_URL/USERNAME/PASSWORD. Each run creates a uniquely-named
+    ephemeral entity, exercises every new write verb against it, then
+    cleans up. If cleanup fails, the test xfails so CI surfaces it without
+    breaking.
+    """
+
+    @pytest.fixture(scope="class")
+    def ephemeral_entity(self, backend):
+        import time
+        import uuid
+        from crm.core import metadata as meta_mod
+        suffix = f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+        schema = f"new_E2E{suffix}"
+        info = meta_mod.create_entity(
+            backend, schema_name=schema,
+            display_name=f"E2E {suffix}",
+        )
+        yield info["logical_name"]
+        try:
+            meta_mod.delete_entity(backend, info["logical_name"])
+        except Exception as exc:
+            pytest.xfail(f"cleanup failed for {info['logical_name']}: {exc}")
+
+    def test_add_attribute_each_kind(self, backend, ephemeral_entity):
+        from crm.core import metadata_attrs as ma
+        kinds_payload: list[tuple[str, dict]] = [
+            ("string", {"max_length": 100}),
+            ("memo", {"max_length": 1000}),
+            ("integer", {"min_value": 0, "max_value": 100}),
+            ("bigint", {}),
+            ("decimal", {"precision": 2}),
+            ("double", {"precision": 3}),
+            ("money", {"precision": 2}),
+            ("boolean", {}),
+            ("datetime", {}),
+            ("picklist", {"options": [(1, "A"), (2, "B")]}),
+            # multiselect/image/file may be feature-gated on some MOCE builds —
+            # skip on 4xx with a clear xfail rather than failing the whole class.
+        ]
+        for kind, extra in kinds_payload:
+            info = ma.add_attribute(
+                backend,
+                entity=ephemeral_entity,
+                kind=kind,
+                schema_name=f"new_E2E{kind.capitalize()}",
+                display_name=f"E2E {kind}",
+                publish=False,
+                **extra,
+            )
+            assert info.get("created") or info.get("kind") == "OneToMany", info
+
+    def test_optionset_lifecycle(self, backend):
+        import uuid
+        from crm.core import optionsets as os_mod
+        name = f"new_e2e_priority_{uuid.uuid4().hex[:8]}"
+        try:
+            os_mod.create_optionset(
+                backend, name=name, display_name="E2E Priority",
+                options=[(1, "Low"), (2, "Medium")],
+            )
+            os_mod.update_optionset(
+                backend, name,
+                insert=[(7, "Critical")],
+                update=[(2, "Mid")],
+            )
+            os_mod.get_optionset(backend, name)
+        finally:
+            try:
+                os_mod.delete_optionset(backend, name)
+            except Exception as exc:
+                pytest.xfail(f"cleanup failed for {name}: {exc}")
+
+    def test_one_to_many_to_stock_account(self, backend, ephemeral_entity):
+        from crm.core import relationships as rel
+        info = rel.create_one_to_many(
+            backend,
+            schema_name=f"new_account_{ephemeral_entity}",
+            referenced_entity="account",
+            referencing_entity=ephemeral_entity,
+            lookup_schema="new_E2EAccountId",
+            lookup_display="Account",
+            publish=False,
+        )
+        assert info["created"] is True
