@@ -74,7 +74,7 @@ class TestAddAttributeString:
 
     def test_string_requires_max_length(self, backend):
         from crm.core import metadata_attrs as ma
-        with pytest.raises(D365Error, match="max_length"):
+        with pytest.raises(D365Error, match="max-length"):
             ma.add_attribute(
                 backend,
                 entity="new_widget",
@@ -116,7 +116,7 @@ class TestAddAttributeMemo:
 
     def test_memo_requires_max_length(self, backend):
         from crm.core import metadata_attrs as ma
-        with pytest.raises(D365Error, match="max_length"):
+        with pytest.raises(D365Error, match="max-length"):
             ma.add_attribute(
                 backend,
                 entity="new_widget",
@@ -385,7 +385,7 @@ class TestAddAttributeLookup:
 
     def test_lookup_requires_target_entity(self, backend):
         from crm.core import metadata_attrs as ma
-        with pytest.raises(D365Error, match="target_entity"):
+        with pytest.raises(D365Error, match="target-entity"):
             ma.add_attribute(
                 backend, entity="new_widget", kind="lookup",
                 schema_name="new_AccountId", display_name="Account",

@@ -27,13 +27,13 @@ _PICKLIST_KINDS = {"picklist", "multiselect"}  # pyright: ignore[reportUnusedVar
 def _require(kwargs: dict[str, Any], *names: str) -> None:
     for n in names:
         if kwargs.get(n) is None:
-            raise D365Error(f"--{n} is required for this kind.")
+            raise D365Error(f"--{n.replace('_', '-')} is required for this kind.")
 
 
 def _forbid(kwargs: dict[str, Any], *names: str) -> None:
     for n in names:
         if kwargs.get(n) is not None:
-            raise D365Error(f"--{n} is not valid for this kind.")
+            raise D365Error(f"--{n.replace('_', '-')} is not valid for this kind.")
 
 
 def _base_attr_payload(
@@ -345,7 +345,7 @@ def add_attribute(
 
     if kind == "lookup":
         if target_entity is None:
-            raise D365Error("--target_entity is required for lookup attribute.")
+            raise D365Error("--target-entity is required for lookup attribute.")
         _forbid_kwargs = {
             "max_length": max_length, "precision": precision,
             "min_value": min_value, "max_value": max_value,
@@ -355,7 +355,7 @@ def add_attribute(
         }
         for n, v in _forbid_kwargs.items():
             if v is not None:
-                raise D365Error(f"--{n} is not valid for lookup.")
+                raise D365Error(f"--{n.replace('_', '-')} is not valid for lookup.")
         from crm.core import relationships as rel
         rel_schema = relationship_schema or f"{entity}_{logical_name}"
         return rel.create_one_to_many(

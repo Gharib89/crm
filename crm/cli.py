@@ -977,6 +977,7 @@ def metadata_add_attribute(
                 )
             v, _, lab = raw.partition(":")
             v = v.strip()
+            lab = lab.strip()
             parsed_options.append((int(v) if v else None, lab))
 
     parsed_default: bool | int | None = None
@@ -1182,6 +1183,7 @@ def metadata_create_optionset(ctx, name, display_name, description, options,
             raise click.UsageError(f"--option must be 'value:label' or ':label', got: {raw!r}")
         v, _, lab = raw.partition(":")
         v = v.strip()
+        lab = lab.strip()
         parsed.append((int(v) if v else None, lab))
     try:
         info = os_mod.create_optionset(
@@ -1218,6 +1220,7 @@ def metadata_update_optionset(ctx, name, insert_options, update_options,
             raise click.UsageError(f"--insert-option must be 'value:label' or ':label': {raw!r}")
         v, _, lab = raw.partition(":")
         v = v.strip()
+        lab = lab.strip()
         insert.append((int(v) if v else None, lab))
 
     update: list[tuple[int, str]] = []
@@ -1225,6 +1228,7 @@ def metadata_update_optionset(ctx, name, insert_options, update_options,
         if ":" not in raw:
             raise click.UsageError(f"--update-option must be 'value:new_label': {raw!r}")
         v, _, lab = raw.partition(":")
+        lab = lab.strip()
         try:
             update.append((int(v.strip()), lab))
         except ValueError as exc:
