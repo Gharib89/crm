@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 import requests_mock
 
@@ -350,3 +352,41 @@ class TestAddAttributeMultiselect:
             )
         body = m.request_history[0].json()
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
+
+
+class TestAddAttributeLookup:
+    def test_lookup_dispatches_to_one_to_many(self, backend, monkeypatch):
+        from crm.core import metadata_attrs as ma
+        from crm.core import relationships as rel
+        calls: dict[str, Any] = {}
+
+        def fake_one_to_many(b, **kw):
+            calls.update(kw)
+            return {
+                "created": True, "kind": "OneToMany",
+                "schema_name": kw["schema_name"],
+                "referencing_attribute": "new_accountid",
+                "relationship_id": "rel-id",
+                "metadata_id_url": "url",
+                "solution": kw.get("solution"),
+            }
+
+        monkeypatch.setattr(rel, "create_one_to_many", fake_one_to_many)
+        info = ma.add_attribute(
+            backend, entity="new_widget", kind="lookup",
+            schema_name="new_AccountId", display_name="Account",
+            target_entity="account",
+        )
+        assert info["kind"] == "OneToMany"
+        assert calls["referenced_entity"] == "account"
+        assert calls["referencing_entity"] == "new_widget"
+        assert calls["lookup_schema"] == "new_AccountId"
+        assert calls["lookup_display"] == "Account"
+
+    def test_lookup_requires_target_entity(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="target_entity"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="lookup",
+                schema_name="new_AccountId", display_name="Account",
+            )

@@ -309,9 +309,33 @@ def add_attribute(
         raise D365Error("schema_name must include a publisher prefix.")
     logical_name = schema_name.lower()
 
-    # Lookup is a special dispatch (covered in a later task).
     if kind == "lookup":
-        raise D365Error("lookup kind not yet implemented in this build")
+        if target_entity is None:
+            raise D365Error("--target_entity is required for lookup attribute.")
+        _forbid_kwargs = {
+            "max_length": max_length, "precision": precision,
+            "min_value": min_value, "max_value": max_value,
+            "format_name": format_name,
+            "optionset_name": optionset_name, "options": options,
+            "max_size_kb": max_size_kb,
+        }
+        for n, v in _forbid_kwargs.items():
+            if v is not None:
+                raise D365Error(f"--{n} is not valid for lookup.")
+        from crm.core import relationships as rel
+        rel_schema = relationship_schema or f"{entity}_{logical_name}"
+        return rel.create_one_to_many(
+            backend,
+            schema_name=rel_schema,
+            referenced_entity=target_entity,
+            referencing_entity=entity,
+            lookup_schema=schema_name,
+            lookup_display=display_name,
+            lookup_required=required,
+            lookup_description=description,
+            publish=publish,
+            solution=solution,
+        )
 
     builder = _BUILDERS.get(kind)
     if builder is None:
