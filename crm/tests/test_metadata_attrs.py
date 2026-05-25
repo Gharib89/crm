@@ -221,3 +221,70 @@ class TestAddAttributeNumeric:
         body = m.request_history[0].json()
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MoneyAttributeMetadata"
         assert body["Precision"] == 2
+
+
+class TestAddAttributeBoolean:
+    def test_boolean_default_labels(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_active", "Boolean")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="boolean",
+                schema_name="new_Active", display_name="Active",
+            )
+        body = m.request_history[0].json()
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.BooleanAttributeMetadata"
+        os = body["OptionSet"]
+        assert os["TrueOption"]["Value"] == 1
+        assert os["TrueOption"]["Label"]["LocalizedLabels"][0]["Label"] == "Yes"
+        assert os["FalseOption"]["Value"] == 0
+        assert os["FalseOption"]["Label"]["LocalizedLabels"][0]["Label"] == "No"
+
+    def test_boolean_custom_labels_and_default(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_active", "Boolean")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="boolean",
+                schema_name="new_Active", display_name="Active",
+                true_label="On", false_label="Off",
+                default_value=True,
+            )
+        body = m.request_history[0].json()
+        assert body["DefaultValue"] is True
+        assert body["OptionSet"]["TrueOption"]["Label"]["LocalizedLabels"][0]["Label"] == "On"
+
+
+class TestAddAttributeDateTime:
+    def test_datetime_default_format(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_when", "DateTime")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_When", display_name="When",
+            )
+        body = m.request_history[0].json()
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+        assert body["Format"] == "DateAndTime"
+
+    def test_datetime_date_only(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_day", "DateTime")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_Day", display_name="Day",
+                format_name="DateOnly",
+            )
+        body = m.request_history[0].json()
+        assert body["Format"] == "DateOnly"
+
+    def test_datetime_bad_format_rejected(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="format_name"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_When", display_name="When",
+                format_name="Garbage",
+            )

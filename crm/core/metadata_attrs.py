@@ -17,7 +17,7 @@ from crm.core.metadata import label, maybe_publish
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 _STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
-_DATETIME_FORMATS = {"DateOnly", "DateAndTime"}  # pyright: ignore[reportUnusedVariable]
+_DATETIME_FORMATS = {"DateOnly", "DateAndTime"}
 
 _NUMERIC_KINDS = {"integer", "bigint", "decimal", "double", "money"}  # pyright: ignore[reportUnusedVariable]
 _LENGTH_KINDS = {"string", "memo"}  # pyright: ignore[reportUnusedVariable]
@@ -149,6 +149,45 @@ def _money_attr(opts: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _bool_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "max_length", "precision", "target_entity", "optionset_name",
+            "options", "format_name", "min_value", "max_value", "max_size_kb")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.BooleanAttributeMetadata"
+    body["OptionSet"] = {
+        "TrueOption": {"Value": 1, "Label": label(opts.get("true_label", "Yes"))},
+        "FalseOption": {"Value": 0, "Label": label(opts.get("false_label", "No"))},
+        "OptionSetType": "Boolean",
+    }
+    if opts.get("default_value") is not None:
+        body["DefaultValue"] = bool(opts["default_value"])
+    return body
+
+
+def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    _forbid(opts, "max_length", "precision", "target_entity", "optionset_name",
+            "options", "min_value", "max_value", "max_size_kb")
+    fmt = opts.get("format_name") or "DateAndTime"
+    if fmt not in _DATETIME_FORMATS:
+        raise D365Error(f"format_name for datetime must be one of {sorted(_DATETIME_FORMATS)}.")
+    body = _base_attr_payload(
+        schema_name=opts["schema_name"],
+        logical_name=opts["logical_name"],
+        display_name=opts["display_name"],
+        description=opts.get("description"),
+        required=opts.get("required", "None"),
+    )
+    body["@odata.type"] = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+    body["Format"] = fmt
+    return body
+
+
 _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "string": _string_attr,
     "memo": _memo_attr,
@@ -157,6 +196,8 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "decimal": _decimal_attr,
     "double": _double_attr,
     "money": _money_attr,
+    "boolean": _bool_attr,
+    "datetime": _datetime_attr,
 }
 
 
