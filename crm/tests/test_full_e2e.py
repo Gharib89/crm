@@ -236,3 +236,21 @@ class TestE2ESpecA:
         )
         assert out.exists()
         assert out.stat().st_size > 1000
+
+
+# ── CLI unit smoke tests (no live backend) ──────────────────────────────
+
+
+class TestDeleteEntityCli:
+    def test_delete_entity_requires_confirmation(self):
+        from click.testing import CliRunner
+        from crm.cli import cli
+
+        runner = CliRunner()
+        # No --yes, default Enter on confirm prompt → aborted
+        result = runner.invoke(
+            cli, ["--json", "metadata", "delete-entity", "new_widget"],
+            input="\n",
+        )
+        assert result.exit_code == 0
+        assert '"error": "aborted by user"' in result.output

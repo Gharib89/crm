@@ -150,6 +150,19 @@ def _handle_d365_error(ctx: CLIContext, exc: D365Error) -> None:
     })
 
 
+def _confirm_destructive(thing: str, name: str, yes: bool) -> bool:
+    """Return True to proceed, False to bail.
+
+    `--yes` skips the prompt. In non-TTY contexts, click.confirm aborts safely.
+    """
+    if yes:
+        return True
+    return click.confirm(
+        f"This will permanently delete {thing} {name!r} and all related data. Continue?",
+        default=False,
+    )
+
+
 def _admin_header_options(f):
     """Stack `--as-user`, `--suppress-dup-detection`, `--bypass-plugins` flags on a command."""
     f = click.option(
@@ -876,6 +889,27 @@ def metadata_relationships(ctx, logical_name):
         "one_to_many": len(info.get("OneToMany", [])),
         "many_to_many": len(info.get("ManyToMany", [])),
     })
+
+
+@metadata.command("delete-entity")
+@click.argument("logical_name")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@pass_ctx
+def metadata_delete_entity(ctx, logical_name, yes, solution):
+    """Permanently delete a custom entity (table) and ALL its rows."""
+    if not _confirm_destructive("entity", logical_name, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = meta_mod.delete_entity(
+            ctx.backend(), logical_name, solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
 
 
 # ── Solution group ──────────────────────────────────────────────────────
