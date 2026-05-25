@@ -1,0 +1,210 @@
+"""Shared helpers used across crm.commands.*."""
+from __future__ import annotations
+import json
+import os
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any
+import click
+from crm.core import session as session_mod
+from crm.utils.d365_backend import D365Error
+if TYPE_CHECKING:
+    from crm.cli import CLIContext
+
+
+def _sanitize(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(x) for x in obj]
+    if isinstance(obj, bytes):
+        return obj.decode("utf-8", errors="replace")
+    return obj
+
+
+def _short_repr(v: Any, limit: int = 80) -> str:
+    s = json.dumps(v, default=str) if isinstance(v, (dict, list)) else str(v)
+    return s if len(s) <= limit else s[: limit - 3] + "..."
+
+
+def _handle_d365_error(ctx: "CLIContext", exc: D365Error) -> None:
+    ctx.emit(False, error=str(exc), meta={
+        "status": exc.status,
+        "code": exc.code,
+    })
+
+
+def _confirm_destructive(thing: str, name: str, yes: bool) -> bool:
+    """Return True to proceed, False to bail.
+
+    `--yes` skips the prompt. In non-TTY contexts, click.confirm aborts safely.
+    """
+    if yes:
+        return True
+    return click.confirm(
+        f"This will permanently delete {thing} {name!r} and all related data. Continue?",
+        default=False,
+    )
+
+
+def _admin_header_options(f):
+    """Stack `--as-user`, `--suppress-dup-detection`, `--bypass-plugins` flags on a command."""
+    f = click.option(
+        "--bypass-plugins", is_flag=True, default=False,
+        help="Send MSCRM.BypassCustomPluginExecution: true (requires prvBypassCustomPluginExecution).",
+    )(f)
+    f = click.option(
+        "--suppress-dup-detection", is_flag=True, default=False,
+        help="Send MSCRM.SuppressDuplicateDetection: true.",
+    )(f)
+    f = click.option(
+        "--as-user", "as_user", metavar="GUID", default=None,
+        help="Impersonate systemuser by GUID via MSCRMCallerID header.",
+    )(f)
+    return f
+
+
+def _admin_kwargs(as_user: str | None, suppress_dup_detection: bool,
+                  bypass_plugins: bool) -> dict[str, Any]:
+    """Resolve admin-header CLI flags into backend kwargs.
+
+    `is_flag` defaults to False (flag absent). To preserve the backend's
+    tri-state semantics (None = use env default like CRM_SUPPRESS_DUP /
+    CRM_BYPASS_PLUGINS), we forward True only when the flag was actually
+    set on the command line; otherwise None lets the backend env default
+    take effect.
+    """
+    return {
+        "caller_id": as_user,
+        "suppress_duplicate_detection": True if suppress_dup_detection else None,
+        "bypass_custom_plugin_execution": True if bypass_plugins else None,
+    }
+
+
+def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
+    if data_file:
+        with open(data_file, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+    elif data_json:
+        parsed = json.loads(data_json)
+    else:
+        raise click.UsageError("Either --data or --data-file is required.")
+    if not isinstance(parsed, dict):
+        raise click.UsageError(
+            f"Payload must be a JSON object, got {type(parsed).__name__}."
+        )
+    return parsed
+
+
+def _touch_session(ctx: "CLIContext", entity_set: str, *,
+                   last_query: dict | None = None) -> None:
+    state = session_mod.load_session(ctx.session_name)
+    state["current_entity_set"] = entity_set
+    if last_query is not None:
+        state["last_query"] = last_query
+    session_mod.save_session(state, ctx.session_name)
+
+
+def _odata_literal(v: Any) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    s = str(v).replace("'", "''")
+    return f"'{s}'"
+
+
+def _emit_query_result(ctx: "CLIContext", result: dict, entity_set: str) -> None:
+    values = result.get("value", []) if isinstance(result, dict) else []
+    meta: dict[str, Any] = {"entity_set": entity_set, "count": len(values)}
+    if "@odata.count" in (result or {}):
+        meta["odata_count"] = result["@odata.count"]
+    if "@odata.nextLink" in (result or {}):
+        meta["next_link"] = "(present)"
+    if ctx.json_mode:
+        ctx.emit(True, data=result, meta=meta)
+        return
+    if not values:
+        ctx.skin.info("No results.")
+        return
+    headers = _infer_columns(values)
+    rows = [[_short_repr(rec.get(h, ""), 40) for h in headers] for rec in values[:50]]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+    if len(values) > 50:
+        ctx.skin.hint(f"... {len(values) - 50} more rows")
+
+
+def _infer_columns(values: list[dict]) -> list[str]:
+    cols: list[str] = []
+    seen: set[str] = set()
+    for rec in values[:5]:
+        for k in rec.keys():
+            if k.startswith("@") or k in seen:
+                continue
+            cols.append(k)
+            seen.add(k)
+    return cols[:8]
+
+
+@contextmanager
+def _no_retry_scope(ctx: "CLIContext", enabled: bool):
+    """Scope CRM_NO_RETRY=1 to the command body and rebuild the cached backend.
+
+    Without rebuilding, D365Backend's retry config (captured at construction)
+    misses the flag. Without restoring, the env var leaks into later REPL
+    commands.
+    """
+    if not enabled:
+        yield
+        return
+    prev = os.environ.get("CRM_NO_RETRY")
+    os.environ["CRM_NO_RETRY"] = "1"
+    ctx.invalidate_backend()
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("CRM_NO_RETRY", None)
+        else:
+            os.environ["CRM_NO_RETRY"] = prev
+        ctx.invalidate_backend()
+
+
+_EXPORT_SETTING_KEYS: dict[str, str] = {
+    "autonumbering":       "export_autonumbering",
+    "calendar":            "export_calendar",
+    "customizations":      "export_customizations",
+    "email-tracking":      "export_email_tracking",
+    "general":             "export_general",
+    "isv-config":          "export_isv_config",
+    "marketing":           "export_marketing",
+    "outlook-sync":        "export_outlook_sync",
+    "relationship-roles":  "export_relationship_roles",
+    "sales":               "export_sales",
+}
+
+_ASYNC_STATE_NAMES = {
+    "ready": 0,
+    "suspended": 1,
+    "locked": 2,
+    "completed": 3,
+}
+
+
+def _resolve_async_state(value: str | None) -> int | None:
+    if value is None:
+        return None
+    if value.isdigit():
+        return int(value)
+    name = value.lower()
+    if name in _ASYNC_STATE_NAMES:
+        return _ASYNC_STATE_NAMES[name]
+    raise click.BadParameter(
+        f"--state must be one of {sorted(_ASYNC_STATE_NAMES)} or an integer; got {value!r}"
+    )
+
+
+_CASCADE = click.Choice(
+    ["NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"]
+)
+_MENU = click.Choice(["UseLabel", "UseCollectionName", "DoNotDisplay"])
+_REQUIRED = click.Choice(["None", "Recommended", "ApplicationRequired"])
