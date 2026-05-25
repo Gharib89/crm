@@ -3,18 +3,95 @@ from __future__ import annotations
 import shlex
 import click
 from crm.core import session as session_mod
+from crm.core.metadata import list_entity_names
 from crm.utils.d365_backend import D365Error
-from crm.cli import CLIContext, pass_ctx
+from prompt_toolkit.completion import Completer, Completion
+
+# Slot-aware completion table: (group, verb) -> argument index (0-based)
+_ENTITY_SLOTS: dict[tuple[str, str], int] = {
+    ("entity",   "get"):        2,
+    ("entity",   "create"):     2,
+    ("entity",   "update"):     2,
+    ("entity",   "upsert"):     2,
+    ("entity",   "delete"):     2,
+    ("query",    "odata"):      2,
+    ("query",    "fetchxml"):   2,
+    ("query",    "count"):      2,
+    ("query",    "saved"):      2,
+    ("query",    "user"):       2,
+    ("metadata", "entity"):     2,
+    ("metadata", "attributes"): 2,
+}
+
+
+class MetadataCache:
+    """In-memory cache of entity logical names for the REPL session."""
+
+    def __init__(self) -> None:
+        self._entities: list[str] | None = None
+
+    def entities(self, backend) -> list[str]:
+        if self._entities is None:
+            self._entities = list_entity_names(backend)
+        return self._entities
+
+
+def complete_entity_token(line: str, names: list[str]) -> list[str] | None:
+    """Return entity-name completions or None if not on an entity-name slot."""
+    parts = line.split()
+    if line.endswith(" "):
+        token_index = len(parts)
+        prefix = ""
+    else:
+        if not parts:
+            return None
+        token_index = len(parts) - 1
+        prefix = parts[-1]
+
+    if len(parts) < 2:
+        return None
+    group, verb = parts[0], parts[1]
+    expected_idx = _ENTITY_SLOTS.get((group, verb))
+    if expected_idx is None or expected_idx != token_index:
+        return None
+    return [n for n in names if n.startswith(prefix)]
+
+
+class _EntityCompleter(Completer):
+    """prompt_toolkit completer for entity-name slots."""
+
+    def __init__(self, backend_getter, cache: MetadataCache):
+        self._get_backend = backend_getter
+        self._cache = cache
+
+    def get_completions(self, document, complete_event):
+        line = document.text_before_cursor
+        try:
+            names = self._cache.entities(self._get_backend())
+        except Exception:  # completion must never raise
+            return
+        matches = complete_entity_token(line, names)
+        if matches is None:
+            return
+        if line.endswith(" "):
+            prefix_len = 0
+        else:
+            prefix_len = len(line.split()[-1]) if line.split() else 0
+        for name in matches:
+            yield Completion(name, start_position=-prefix_len)
 
 
 @click.command("repl")
-@pass_ctx
-def repl(ctx: CLIContext):
+@click.pass_context
+def repl(click_ctx: click.Context):
     """Interactive REPL (default when no subcommand is provided)."""
-    from crm.cli import cli
+    from crm.cli import CLIContext, cli
+    ctx = click_ctx.ensure_object(CLIContext)
     ctx.skin.print_banner()
     ctx.skin.info(f"Session: {ctx.session_name}  |  Type 'help' for commands, 'quit' to exit.")
-    pt_session = ctx.skin.create_prompt_session()
+    cache = MetadataCache()
+    completer = _EntityCompleter(ctx.backend, cache)
+    pt_session = ctx.skin.create_prompt_session(completer=completer)
     state = session_mod.load_session(ctx.session_name)
 
     while True:
@@ -61,7 +138,7 @@ def repl(ctx: CLIContext):
     ctx.skin.print_goodbye()
 
 
-def _repl_help(ctx: CLIContext):
+def _repl_help(ctx):
     ctx.skin.help({
         "connection connect": "Save profile and verify with WhoAmI",
         "connection status": "Show active session/profile",
