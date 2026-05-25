@@ -816,7 +816,8 @@ class TestSolutionExportFlags:
             captured["kwargs"] = kwargs
             return {"output": str(output), "bytes": 0, "managed": False, "solution": unique_name}
 
-        monkeypatch.setattr(cli_mod.sol_mod, "export_solution", fake_export_solution)
+        import crm.commands.solution as sol_commands_mod
+        monkeypatch.setattr(sol_commands_mod.sol_mod, "export_solution", fake_export_solution)
         # Stub backend so no real connection resolution happens.
         monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
 
@@ -1017,7 +1018,7 @@ class TestImportSolutionAsync:
 class TestLoadPayload:
     def test_rejects_json_list_with_typename(self):
         import click
-        from crm.cli import _load_payload
+        from crm.commands._helpers import _load_payload
 
         with pytest.raises(click.UsageError, match=r"JSON object.*list"):
             _load_payload("[1,2,3]", None)
@@ -1029,13 +1030,13 @@ class TestLoadPayload:
     ])
     def test_rejects_non_object_json(self, raw, typename):
         import click
-        from crm.cli import _load_payload
+        from crm.commands._helpers import _load_payload
 
         with pytest.raises(click.UsageError, match=rf"JSON object.*{typename}"):
             _load_payload(raw, None)
 
     def test_accepts_json_object(self):
-        from crm.cli import _load_payload
+        from crm.commands._helpers import _load_payload
 
         assert _load_payload('{"name":"x"}', None) == {"name": "x"}
 

@@ -478,8 +478,11 @@ class ReplSkin:
 
     # ── Prompt toolkit session factory ────────────────────────────────
 
-    def create_prompt_session(self):
+    def create_prompt_session(self, completer=None):
         """Create a prompt_toolkit PromptSession with skin styling.
+
+        Args:
+            completer: Optional prompt_toolkit Completer for tab completion.
 
         Returns:
             A configured PromptSession, or None if prompt_toolkit unavailable.
@@ -497,6 +500,7 @@ class ReplSkin:
                 auto_suggest=AutoSuggestFromHistory(),
                 style=style,
                 enable_history_search=True,
+                completer=completer,
             )
             return session
         except ImportError:

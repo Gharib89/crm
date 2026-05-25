@@ -5,6 +5,33 @@ All notable changes to `crm` are documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.0 — Spec E: DX Polish
+
+**Refactor**
+- Split `crm/cli.py` (2098 lines) into focused modules under `crm/commands/`
+  (one Click group per file). Pure refactor — zero behavior change.
+
+**Added**
+- `--log-level debug|info|warning|error` + `--log-format text|json-line` on
+  the root CLI group (env: `CRM_LOG_LEVEL`, `CRM_LOG_FORMAT`).
+- `--verbose` flag (alias for `--log-level debug`).
+- `--auth-scheme ntlm|kerberos|negotiate` on the root CLI group
+  (env: `CRM_AUTH_SCHEME`). Kerberos/Negotiate via `requests_negotiate_sspi`
+  (install with `pip install crm[kerberos]`).
+- `crm init` command: `--template` writes `.env.example`; no args runs an
+  interactive profile wizard.
+- `query count <entity>` — calls `RetrieveTotalRecordCount`.
+- `metadata list-actions` — parses `$metadata` and lists OData actions.
+- `metadata list-functions` — parses `$metadata` and lists OData functions.
+- REPL tab completion for entity-name argument slots, backed by a lazy
+  in-memory `MetadataCache`.
+
+**Changed**
+- `ConnectionProfile` gains an `auth_scheme` field (default `"ntlm"`,
+  backward compatible).
+- `crm/utils/repl_skin.py::create_prompt_session` accepts an optional
+  `completer` argument.
+
 ## [0.5.0] — 2026-05-25
 
 ### Added

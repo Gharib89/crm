@@ -21,9 +21,13 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence, cast
 
+import logging as _logging
+
 import requests
 
 from crm.utils.d365_types import BatchOperation, BatchResult
+
+_http_logger = _logging.getLogger("crm.http")
 
 try:
     from requests_ntlm import HttpNtlmAuth
@@ -57,6 +61,7 @@ class ConnectionProfile:
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
+    auth_scheme: str = "ntlm"      # ntlm | kerberos | negotiate
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -67,6 +72,11 @@ class ConnectionProfile:
     async_timeout: int = 1800
 
     def __post_init__(self) -> None:
+        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate"):
+            raise D365Error(
+                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate, "
+                f"got {self.auth_scheme!r}"
+            )
         for _field, _value in (
             ("retry_max", self.retry_max),
             ("retry_base_delay", self.retry_base_delay),
@@ -99,6 +109,7 @@ class ConnectionProfile:
             "username": self.username,
             "api_version": self.api_version,
             "verify_ssl": self.verify_ssl,
+            "auth_scheme": self.auth_scheme,
             "timeout": self.timeout,
             "retry_max": self.retry_max,
             "retry_base_delay": self.retry_base_delay,
@@ -118,6 +129,7 @@ class ConnectionProfile:
             username=d["username"],
             api_version=d.get("api_version", "v9.2"),
             verify_ssl=d.get("verify_ssl", True),
+            auth_scheme=d.get("auth_scheme", "ntlm"),
             timeout=d.get("timeout", 120),
             retry_max=d.get("retry_max", 5),
             retry_base_delay=d.get("retry_base_delay", 1.0),
@@ -152,10 +164,6 @@ class D365Backend:
 
     def __init__(self, profile: ConnectionProfile, password: str,
                  dry_run: bool = False):
-        if HttpNtlmAuth is None:
-            raise D365Error(
-                "requests_ntlm is not installed. Install with: pip install requests_ntlm"
-            )
         if not profile.url:
             raise D365Error("Profile is missing the server URL.")
         if not profile.username:
@@ -164,15 +172,41 @@ class D365Backend:
         self.profile = profile
         self.dry_run = dry_run
         self._session: requests.Session = requests.Session()
-        user_principal = (
-            f"{profile.domain}\\{profile.username}" if profile.domain else profile.username
-        )
-        self._session.auth = HttpNtlmAuth(user_principal, password)
+        self._session.auth = self._make_auth(password)
         self._session.verify = profile.verify_ssl
         self._effective_retry_max = _resolve_retry_max(profile)
         self._default_caller_id: str | None = _resolve_caller_id()
         self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
         self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
+
+    # ── Auth helpers ─────────────────────────────────────────────────────
+
+    def _make_auth(self, password: str) -> Any:
+        """Pick the auth adapter based on profile.auth_scheme."""
+        scheme = self.profile.auth_scheme
+        if scheme == "ntlm":
+            if HttpNtlmAuth is None:
+                raise D365Error(
+                    "requests_ntlm is not installed. "
+                    "Install with: pip install requests_ntlm"
+                )
+            user_principal = (
+                f"{self.profile.domain}\\{self.profile.username}"
+                if self.profile.domain else self.profile.username
+            )
+            return HttpNtlmAuth(user_principal, password)
+        if scheme in ("kerberos", "negotiate"):
+            try:
+                from requests_negotiate_sspi import HttpNegotiateAuth  # type: ignore[import-untyped]
+            except ImportError as exc:
+                raise D365Error(
+                    "Kerberos/Negotiate auth requires 'requests_negotiate_sspi'. "
+                    "Install it: pip install crm[kerberos]"
+                ) from exc
+            return HttpNegotiateAuth()  # type: ignore[no-any-return]
+        raise D365Error(
+            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate"
+        )
 
     # ── URL helpers ─────────────────────────────────────────────────────
 
@@ -276,6 +310,7 @@ class D365Backend:
         attempt = 0
         while True:
             try:
+                _http_logger.debug("request", extra={"event": "request", "method": method, "url": url})
                 resp = self._session.request(  # pyright: ignore[reportUnknownMemberType]
                     method,
                     url,
@@ -293,6 +328,9 @@ class D365Backend:
                 time.sleep(delay)
                 attempt += 1
                 continue
+
+            elapsed_ms = int((resp.elapsed.total_seconds() if resp.elapsed else 0) * 1000)
+            _http_logger.debug("response", extra={"event": "response", "status": resp.status_code, "ms": elapsed_ms})
 
             # One log per response: always emit when status warrants retry
             # (i.e., a 429/5xx that has rate-limit headers); otherwise emit
@@ -515,9 +553,9 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
                 return {"_entity_id_url": entity_id}
             return None
         if not expect_json:
-            # Return text/plain bodies as a stripped string; otherwise None as before.
+            # Return text/plain and XML bodies as a stripped string; otherwise None.
             ctype = resp.headers.get("Content-Type", "")
-            if ctype.startswith("text/plain"):
+            if ctype.startswith(("text/plain", "application/xml", "text/xml")):
                 text = resp.text.strip()
                 return text if text else None
             return None
