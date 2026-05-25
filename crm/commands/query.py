@@ -1,4 +1,5 @@
 """Query commands (OData, FetchXML, saved/user views)."""
+# pyright: basic
 from __future__ import annotations
 from pathlib import Path
 import click

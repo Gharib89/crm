@@ -1,4 +1,5 @@
 """Metadata commands (entities, attributes, relationships, option sets)."""
+# pyright: basic
 from __future__ import annotations
 import click
 from crm.core import metadata as meta_mod

@@ -1,4 +1,5 @@
 """Workflow commands."""
+# pyright: basic
 from __future__ import annotations
 import click
 from crm.core import workflow as workflow_mod

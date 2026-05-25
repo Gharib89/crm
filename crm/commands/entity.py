@@ -1,4 +1,5 @@
 """Entity CRUD commands."""
+# pyright: basic
 from __future__ import annotations
 import click
 from crm.core import entity as entity_mod

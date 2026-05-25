@@ -1,4 +1,5 @@
 """Async-operations commands."""
+# pyright: basic
 from __future__ import annotations
 import click
 from crm.core import async_ops as async_ops_mod

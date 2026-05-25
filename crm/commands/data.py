@@ -1,4 +1,5 @@
 """Data bulk export commands."""
+# pyright: basic
 from __future__ import annotations
 import click
 from crm.core import export as export_mod
