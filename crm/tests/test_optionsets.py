@@ -180,3 +180,40 @@ class TestUpdateOptionset:
         from crm.core import optionsets as os_mod
         with pytest.raises(D365Error, match="nothing to update"):
             os_mod.update_optionset(backend, "new_priority")
+
+
+class TestDeleteOptionset:
+    def test_refuses_non_custom(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='statecode')"),
+                json={"Name": "statecode", "IsCustomOptionSet": False, "IsManaged": True},
+            )
+            with pytest.raises(D365Error, match="not a custom"):
+                os_mod.delete_optionset(backend, "statecode")
+
+    def test_refuses_managed(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='vendor_set')"),
+                json={"Name": "vendor_set", "IsCustomOptionSet": True, "IsManaged": True},
+            )
+            with pytest.raises(D365Error, match="managed"):
+                os_mod.delete_optionset(backend, "vendor_set")
+
+    def test_happy_path(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False},
+            )
+            m.delete(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                status_code=204,
+            )
+            info = os_mod.delete_optionset(backend, "new_priority")
+        assert info["deleted"] is True
+        assert info["name"] == "new_priority"

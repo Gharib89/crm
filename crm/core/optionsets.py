@@ -198,3 +198,35 @@ def update_optionset(
     }
     maybe_publish(backend, out, publish)
     return out
+
+
+def delete_optionset(
+    backend: D365Backend,
+    name: str,
+    *,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Delete a custom global option set.
+
+    Refuses if `IsCustomOptionSet=False` or `IsManaged=True`. Server
+    rejects with 400 if any picklist still references the option set.
+    """
+    if not name:
+        raise D365Error("name is required.")
+    path = f"GlobalOptionSetDefinitions(Name='{name}')"
+    rb = as_dict(backend.get(
+        path, params={"$select": "IsCustomOptionSet,IsManaged"},
+    ))
+    if rb.get("IsCustomOptionSet") is False:
+        raise D365Error(
+            f"{name!r} is not a custom option set; refusing to delete.",
+            code="NotCustomOptionSet",
+        )
+    if rb.get("IsManaged") is True:
+        raise D365Error(
+            f"{name!r} is managed; uninstall the parent solution to remove it.",
+            code="ManagedOptionSet",
+        )
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    backend.delete(path, extra_headers=headers)
+    return {"deleted": True, "name": name, "solution": solution}
