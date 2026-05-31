@@ -167,6 +167,66 @@ def test_stage_only_applies_to_create_entity(use_backend):
     assert env["meta"]["staged"] is True
 
 
+_REL_ID = "44444444-4444-4444-4444-444444444444"
+
+
+def _setup_one_to_many(m, backend):
+    rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+    m.post(
+        backend.url_for("CreateOneToManyRequest"),
+        status_code=204,
+        headers={"OData-EntityId": rel_url},
+    )
+    m.get(rel_url, json={"SchemaName": "new_a_new_b", "ReferencingAttribute": "new_aid"})
+    return [
+        "--json", "metadata", "create-one-to-many",
+        "--schema-name", "new_a_new_b",
+        "--referenced-entity", "new_a", "--referencing-entity", "new_b",
+        "--lookup-schema", "new_AId", "--lookup-display", "A",
+    ]
+
+
+def _setup_many_to_many(m, backend):
+    rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+    m.post(
+        backend.url_for("CreateManyToManyRequest"),
+        status_code=204,
+        headers={"OData-EntityId": rel_url},
+    )
+    m.get(rel_url, json={"SchemaName": "new_a_new_b", "IntersectEntityName": "new_a_new_b"})
+    return [
+        "--json", "metadata", "create-many-to-many",
+        "--schema-name", "new_a_new_b",
+        "--entity1", "new_a", "--entity2", "new_b",
+        "--intersect-entity", "new_a_new_b",
+    ]
+
+
+def _setup_update_optionset(m, backend):
+    m.post(backend.url_for("InsertOptionValue"), status_code=204)
+    return [
+        "--json", "metadata", "update-optionset", "new_priority",
+        "--insert-option", "3:Critical",
+    ]
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [_setup_one_to_many, _setup_many_to_many, _setup_update_optionset],
+    ids=["create-one-to-many", "create-many-to-many", "update-optionset"],
+)
+def test_stage_only_applies_to_metadata_command(use_backend, setup):
+    backend = use_backend
+    with requests_mock.Mocker() as m:
+        args = setup(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        result = CliRunner().invoke(cli, ["--stage-only", *args])
+    assert result.exit_code == 0, result.output
+    assert _publish_hits(m, backend) == []
+    env = json.loads(result.output)
+    assert env["meta"]["staged"] is True
+
+
 def test_stage_only_applies_to_create_optionset(use_backend):
     backend = use_backend
     os_url = backend.url_for("GlobalOptionSetDefinitions(22222222-2222-2222-2222-222222222222)")

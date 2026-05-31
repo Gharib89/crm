@@ -180,7 +180,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     if password is not None:
         cli_ctx.password = password
     cli_ctx.auth_scheme = auth_scheme or os.environ.get("CRM_AUTH_SCHEME")
-    cli_ctx.stage_only = stage_only or bool(os.environ.get("CRM_STAGE_ONLY"))
+    cli_ctx.stage_only = stage_only or os.environ.get("CRM_STAGE_ONLY", "").lower() in ("1", "true", "yes", "on")
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:
