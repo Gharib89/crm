@@ -100,6 +100,30 @@ def label(text: str, lang: int = 1033) -> dict[str, Any]:
     return {"LocalizedLabels": [{"Label": text, "LanguageCode": lang}]}
 
 
+def target_exists(backend: D365Backend, path: str) -> bool:
+    """Probe whether a metadata target exists via a read-only GET.
+
+    Returns True when the GET succeeds (target present), False when it raises
+    `D365Error` with status 404 (target absent). Any other `D365Error` is
+    re-raised — a real failure must not be masked as "not found".
+
+    The probe is always a real GET even when the backend is in dry-run mode:
+    it never mutates, and idempotency checks need the live answer to build an
+    accurate preview.
+    """
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        backend.get(path, params={"$select": "MetadataId"})
+        return True
+    except D365Error as exc:
+        if exc.status == 404:
+            return False
+        raise
+    finally:
+        backend.dry_run = was_dry
+
+
 def maybe_publish(backend: D365Backend, info: dict[str, Any], publish: bool) -> dict[str, Any]:
     """Run PublishAllXml unless dry-run or publish=False. Returns info dict (mutated)."""
     if not publish or info.get("_dry_run"):
@@ -125,6 +149,7 @@ def create_entity(
     has_notes: bool = False,
     is_activity: bool = False,
     solution: str | None = None,
+    if_exists: str = "error",
 ) -> dict[str, Any]:
     """Create a new custom entity (table) via POST /EntityDefinitions.
 
@@ -157,8 +182,28 @@ def create_entity(
     if ownership not in ("UserOwned", "OrganizationOwned"):
         raise D365Error("ownership must be 'UserOwned' or 'OrganizationOwned'.")
 
+    if if_exists not in ("error", "skip"):
+        raise D365Error("if_exists must be 'error' or 'skip'.")
+
     prefix, _, _ = schema_name.partition("_")
     logical_name = schema_name.lower()
+
+    exists = target_exists(
+        backend, f"EntityDefinitions(LogicalName='{logical_name}')"
+    )
+    if exists and not backend.dry_run:
+        if if_exists == "error":
+            raise D365Error(
+                f"Entity {logical_name!r} already exists.",
+                code="AlreadyExists",
+            )
+        return {
+            "skipped": True,
+            "exists": True,
+            "schema_name": schema_name,
+            "logical_name": logical_name,
+        }
+
     primary_schema = primary_attr_schema or f"{prefix}_Name"
     if "_" not in primary_schema:
         raise D365Error(
@@ -203,6 +248,8 @@ def create_entity(
         extra_headers=headers or None,
     ))
     if result.get("_dry_run"):
+        result["_exists"] = exists
+        result["would_skip"] = exists and if_exists == "skip"
         return result
     entity_id_url: str | None = result.get("_entity_id_url")
 

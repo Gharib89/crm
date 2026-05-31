@@ -34,6 +34,11 @@ class TestCreateOneToMany:
         from crm.core import relationships as rel
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("CreateOneToManyRequest"),
                 status_code=204,
@@ -58,7 +63,7 @@ class TestCreateOneToMany:
         assert info["referencing_attribute"] == "new_accountid"
         assert info["relationship_id"] == _REL_ID
         # Verify default cascade
-        body = m.request_history[0].json()
+        body = next(r for r in m.request_history if r.method == "POST").json()
         cc = body["OneToManyRelationship"]["CascadeConfiguration"]
         assert cc["Delete"] == "RemoveLink"
         assert cc["Assign"] == "NoCascade"
@@ -92,6 +97,11 @@ class TestCreateOneToMany:
         from crm.core import relationships as rel
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_a_b')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("CreateOneToManyRequest"),
                 status_code=204,
@@ -132,6 +142,11 @@ class TestCreateManyToMany:
         from crm.core import relationships as rel
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("CreateManyToManyRequest"),
                 status_code=204,
@@ -152,7 +167,7 @@ class TestCreateManyToMany:
         assert info["created"] is True
         assert info["kind"] == "ManyToMany"
         assert info["intersect_entity"] == "new_account_project"
-        body = m.request_history[0].json()
+        body = next(r for r in m.request_history if r.method == "POST").json()
         assert body["IntersectEntitySchemaName"] == "new_account_project"
         assert body["ManyToManyRelationship"]["Entity1LogicalName"] == "account"
 

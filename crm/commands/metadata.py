@@ -3,6 +3,7 @@
 from __future__ import annotations
 import click
 from crm.core import metadata as meta_mod
+from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.utils.d365_backend import D365Error
@@ -13,6 +14,11 @@ from crm.commands._helpers import (
     _admin_kwargs,
     _confirm_destructive,
     _resolve_publish,
+    _solution_option,
+    _require_solution,
+    _resolve_solution,
+    _resolve_schema_name,
+    _emit_with_warning,
     _CASCADE,
     _MENU,
     _REQUIRED,
@@ -128,8 +134,9 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
 
 
 @metadata_group.command("create-entity")
-@click.option("--schema-name", required=True,
-              help="PascalCase with publisher prefix, e.g. 'new_Project'.")
+@click.option("--schema-name", default=None,
+              help="PascalCase with publisher prefix, e.g. 'new_Project'. "
+                   "Defaults to <publisher_prefix>_<Display> from the profile.")
 @click.option("--display", "display_name", required=True,
               help="Singular UI label, e.g. 'Project'.")
 @click.option("--display-collection", default=None,
@@ -147,17 +154,21 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
 @click.option("--has-notes", is_flag=True)
 @click.option("--is-activity", is_flag=True,
               help="Create as an activity entity.")
-@click.option("--solution", default=None,
-              help="Add to a specific solution (uniquename, via MSCRM.SolutionUniqueName).")
+@_solution_option
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the entity already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True,
               help="Run PublishAllXml after creation. Default: publish.")
 @pass_ctx
 def metadata_create_entity(
     ctx: CLIContext, schema_name, display_name, display_collection, primary_attr_schema,
     primary_attr_label, primary_max_length, description, ownership,
-    has_activities, has_notes, is_activity, solution, publish,
+    has_activities, has_notes, is_activity, solution, require_solution, if_exists, publish,
 ):
     """Create a new custom entity (table)."""
+    schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     try:
         info = meta_mod.create_entity(
@@ -174,11 +185,154 @@ def metadata_create_entity(
             has_notes=has_notes,
             is_activity=is_activity,
             solution=solution,
+            if_exists=if_exists,
         )
-        if publish and not info.get("_dry_run"):
+        if publish and not info.get("_dry_run") and not info.get("skipped"):
             from crm.core import solution as sol_mod
             sol_mod.publish_all(ctx.backend())
             info["published"] = True
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+
+
+@metadata_group.command("update-entity")
+@click.argument("logical_name")
+@click.option("--display", "display_name", default=None, help="New singular UI label.")
+@click.option("--display-collection", "display_collection_name", default=None,
+              help="New plural UI label.")
+@click.option("--description", default=None, help="New entity description.")
+@click.option("--ownership", type=click.Choice(["UserOwned", "OrganizationOwned"]),
+              default=None,
+              help="Note: Dataverse rejects ownership changes post-create.")
+@click.option("--has-activities/--no-has-activities", "has_activities", default=None,
+              help="Enable/disable activities.")
+@click.option("--has-notes/--no-has-notes", "has_notes", default=None,
+              help="Enable/disable notes.")
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after update. Default: publish.")
+@pass_ctx
+def metadata_update_entity(
+    ctx: CLIContext, logical_name, display_name, display_collection_name,
+    description, ownership, has_activities, has_notes, solution, publish,
+):
+    """Update an entity (table) definition (retrieve-merge-write)."""
+    publish = _resolve_publish(ctx, publish)
+    try:
+        info = mu_mod.update_entity(
+            ctx.backend(),
+            logical_name,
+            display_name=display_name,
+            display_collection_name=display_collection_name,
+            description=description,
+            ownership=ownership,
+            has_activities=has_activities,
+            has_notes=has_notes,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+
+
+@metadata_group.command("update-attribute")
+@click.argument("entity")
+@click.argument("attribute")
+@click.option("--display", "display_name", default=None, help="New UI label.")
+@click.option("--description", default=None)
+@click.option("--required", "required",
+              type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
+              default=None)
+@click.option("--max-length", type=int, default=None, help="String/memo: max characters.")
+@click.option("--precision", type=int, default=None,
+              help="Decimal/double/money: precision (decimals).")
+@click.option("--min", "min_value", type=float, default=None, help="Numeric: minimum value.")
+@click.option("--max", "max_value", type=float, default=None, help="Numeric: maximum value.")
+@click.option("--format", "format_name", default=None,
+              help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after update. Default: publish.")
+@pass_ctx
+def metadata_update_attribute(
+    ctx: CLIContext, entity, attribute, display_name, description, required,
+    max_length, precision, min_value, max_value, format_name, solution, publish,
+):
+    """Update an attribute (column) definition (retrieve-merge-write).
+
+    Option-set option edits are NOT handled here — use `update-optionset`.
+    """
+    publish = _resolve_publish(ctx, publish)
+    try:
+        info = mu_mod.update_attribute(
+            ctx.backend(),
+            entity,
+            attribute,
+            display_name=display_name,
+            description=description,
+            required=required,
+            max_length=max_length,
+            precision=precision,
+            min_value=min_value,
+            max_value=max_value,
+            format_name=format_name,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+
+
+@metadata_group.command("update-relationship")
+@click.argument("schema_name")
+@click.option("--cascade-assign", type=_CASCADE, default=None)
+@click.option("--cascade-delete", type=_CASCADE, default=None)
+@click.option("--cascade-reparent", type=_CASCADE, default=None)
+@click.option("--cascade-share", type=_CASCADE, default=None)
+@click.option("--cascade-unshare", type=_CASCADE, default=None)
+@click.option("--cascade-merge", type=_CASCADE, default=None)
+@click.option("--menu-behavior", type=_MENU, default=None)
+@click.option("--menu-label", default=None)
+@click.option("--menu-order", type=int, default=None)
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after update. Default: publish.")
+@pass_ctx
+def metadata_update_relationship(
+    ctx: CLIContext, schema_name, cascade_assign, cascade_delete, cascade_reparent,
+    cascade_share, cascade_unshare, cascade_merge, menu_behavior, menu_label,
+    menu_order, solution, publish,
+):
+    """Update a relationship definition (retrieve-merge-write)."""
+    publish = _resolve_publish(ctx, publish)
+    cascade: dict[str, str] = {}
+    for member, value in (
+        ("Assign", cascade_assign), ("Delete", cascade_delete),
+        ("Reparent", cascade_reparent), ("Share", cascade_share),
+        ("Unshare", cascade_unshare), ("Merge", cascade_merge),
+    ):
+        if value is not None:
+            cascade[member] = value
+    try:
+        info = mu_mod.update_relationship(
+            ctx.backend(),
+            schema_name,
+            cascade=cascade or None,
+            menu_behavior=menu_behavior,
+            menu_label=menu_label,
+            menu_order=menu_order,
+            publish=publish,
+            solution=solution,
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -204,14 +358,15 @@ def metadata_relationships(ctx: CLIContext, logical_name):
 @metadata_group.command("delete-entity")
 @click.argument("logical_name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
-@click.option("--solution", default=None,
-              help="Apply via MSCRM.SolutionUniqueName.")
+@_solution_option
 @pass_ctx
-def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution):
+def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require_solution):
     """Permanently delete a custom entity (table) and ALL its rows."""
     if not _confirm_destructive("entity", logical_name, yes):
         ctx.emit(False, error="aborted by user")
         return
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     try:
         info = meta_mod.delete_entity(
             ctx.backend(), logical_name, solution=solution,
@@ -219,7 +374,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    _emit_with_warning(ctx, info, warning)
 
 
 @metadata_group.command("add-attribute")
@@ -231,8 +386,9 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution):
                   "lookup", "image", "file",
               ]),
               help="Attribute kind.")
-@click.option("--schema-name", required=True,
-              help="PascalCase with publisher prefix, e.g. 'new_Amount'.")
+@click.option("--schema-name", default=None,
+              help="PascalCase with publisher prefix, e.g. 'new_Amount'. "
+                   "Defaults to <publisher_prefix>_<Display> from the profile.")
 @click.option("--display", "display_name", required=True,
               help="UI label.")
 @click.option("--description", default=None)
@@ -263,8 +419,9 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution):
               help="Lookup: override auto-generated relationship name.")
 @click.option("--max-size-kb", type=int, default=None,
               help="File: max attachment size in KB. Default 32768.")
-@click.option("--solution", default=None,
-              help="Add to a solution via MSCRM.SolutionUniqueName.")
+@_solution_option
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the attribute already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True,
               help="Run PublishAllXml after creation. Default: publish.")
 @pass_ctx
@@ -273,9 +430,12 @@ def metadata_add_attribute(
     max_length, format_name, min_value, max_value, precision,
     true_label, false_label, default_value,
     optionset_name, options, target_entity, relationship_schema,
-    max_size_kb, solution, publish,
+    max_size_kb, solution, require_solution, if_exists, publish,
 ):
     """Add an attribute (column) to an existing entity."""
+    schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     parsed_options: list[tuple[int | None, str]] | None = None
     if options:
@@ -336,13 +496,18 @@ def metadata_add_attribute(
             max_size_kb=max_size_kb,
             publish=publish,
             solution=solution,
+            if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
+# Relationship-creation commands (create-one-to-many / create-many-to-many)
+# intentionally keep --schema-name required and do NOT get publisher-prefix
+# defaulting: a relationship name spans two entities and cannot be derived from
+# a single display token, unlike create-entity/add-attribute/create-optionset.
 @metadata_group.command("create-one-to-many")
 @click.option("--schema-name", required=True, help="Relationship schema name with publisher prefix.")
 @click.option("--referenced-entity", required=True, help='"1" side logical name (e.g. account).')
@@ -360,7 +525,9 @@ def metadata_add_attribute(
 @click.option("--menu-label", default=None)
 @click.option("--menu-behavior", type=_MENU, default="UseLabel")
 @click.option("--menu-order", type=int, default=10000)
-@click.option("--solution", default=None)
+@_solution_option
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the relationship already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def metadata_create_one_to_many(
@@ -368,9 +535,11 @@ def metadata_create_one_to_many(
     lookup_display, lookup_required, lookup_description,
     cascade_assign, cascade_delete, cascade_reparent, cascade_share,
     cascade_unshare, cascade_merge, menu_label, menu_behavior, menu_order,
-    solution, publish,
+    solution, require_solution, if_exists, publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     try:
         info = rel_mod.create_one_to_many(
@@ -393,11 +562,12 @@ def metadata_create_one_to_many(
             menu_order=menu_order,
             publish=publish,
             solution=solution,
+            if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("create-many-to-many")
@@ -411,16 +581,20 @@ def metadata_create_one_to_many(
 @click.option("--entity2-menu-label", default=None)
 @click.option("--entity2-menu-behavior", type=_MENU, default="UseCollectionName")
 @click.option("--entity2-menu-order", type=int, default=10000)
-@click.option("--solution", default=None)
+@_solution_option
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the relationship already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def metadata_create_many_to_many(
     ctx: CLIContext, schema_name, entity1_logical, entity2_logical, intersect_entity,
     entity1_menu_label, entity1_menu_behavior, entity1_menu_order,
     entity2_menu_label, entity2_menu_behavior, entity2_menu_order,
-    solution, publish,
+    solution, require_solution, if_exists, publish,
 ):
     """Create an N:N relationship via the dedicated action."""
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     try:
         info = rel_mod.create_many_to_many(
@@ -437,11 +611,12 @@ def metadata_create_many_to_many(
             entity2_menu_order=entity2_menu_order,
             publish=publish,
             solution=solution,
+            if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("list-optionsets")
@@ -479,18 +654,24 @@ def metadata_get_optionset(ctx: CLIContext, name):
 
 
 @metadata_group.command("create-optionset")
-@click.option("--name", required=True,
-              help="Fully prefixed option set name, e.g. 'new_priority'.")
+@click.option("--name", default=None,
+              help="Fully prefixed option set name, e.g. 'new_priority'. "
+                   "Defaults to <publisher_prefix>_<display> from the profile.")
 @click.option("--display", "display_name", required=True)
 @click.option("--description", default=None)
 @click.option("--option", "options", multiple=True,
               help="Option as 'value:label' or ':label' (auto value). Repeatable.")
-@click.option("--solution", default=None)
+@_solution_option
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the option set already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def metadata_create_optionset(ctx: CLIContext, name, display_name, description, options,
-                              solution, publish):
+                              solution, require_solution, if_exists, publish):
     """Create a global option set."""
+    name = _resolve_schema_name(ctx, name, display_name, "--name")
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     parsed: list[tuple[int | None, str]] = []
     for raw in options:
@@ -505,12 +686,12 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
             ctx.backend(),
             name=name, display_name=display_name,
             description=description, options=parsed or None,
-            publish=publish, solution=solution,
+            publish=publish, solution=solution, if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("update-optionset")
@@ -523,12 +704,14 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
               help="Delete option by value. Repeatable.")
 @click.option("--reorder", default=None,
               help="Comma-separated full ordered list of values, e.g. '1,2,7,4'.")
-@click.option("--solution", default=None)
+@_solution_option
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_options,
-                              delete_options, reorder, solution, publish):
+                              delete_options, reorder, solution, require_solution, publish):
     """Granular update: insert/update/delete/reorder options."""
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     insert: list[tuple[int | None, str]] = []
     for raw in insert_options:
@@ -575,25 +758,27 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("delete-optionset")
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
-@click.option("--solution", default=None)
+@_solution_option
 @pass_ctx
-def metadata_delete_optionset(ctx: CLIContext, name, yes, solution):
+def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solution):
     """Delete a custom global option set."""
     if not _confirm_destructive("option set", name, yes):
         ctx.emit(False, error="aborted by user")
         return
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
     try:
         info = os_mod.delete_optionset(ctx.backend(), name, solution=solution)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    _emit_with_warning(ctx, info, warning)
 
 
 from crm.core.metadata import list_actions, list_functions  # noqa: E402

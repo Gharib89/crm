@@ -13,7 +13,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish
+from crm.core.metadata import label, maybe_publish, target_exists
 
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
@@ -64,6 +64,7 @@ def create_one_to_many(
     menu_order: int = 10000,
     publish: bool = False,
     solution: str | None = None,
+    if_exists: str = "error",
 ) -> dict[str, Any]:
     """Create a 1:N relationship + lookup attribute atomically.
 
@@ -74,6 +75,8 @@ def create_one_to_many(
         raise D365Error(
             "schema_name must include a publisher prefix, e.g. 'new_account_new_project'."
         )
+    if if_exists not in ("error", "skip"):
+        raise D365Error("if_exists must be 'error' or 'skip'.")
     if "_" not in lookup_schema:
         raise D365Error("lookup_schema must include a publisher prefix.")
     if lookup_required not in _VALID_REQUIRED:
@@ -87,6 +90,22 @@ def create_one_to_many(
             raise D365Error(f"{name} must be one of {sorted(_VALID_CASCADE)}.")
     if menu_behavior not in _VALID_MENU_BEHAVIOR:
         raise D365Error(f"menu_behavior must be one of {sorted(_VALID_MENU_BEHAVIOR)}.")
+
+    exists = target_exists(
+        backend, f"RelationshipDefinitions(SchemaName='{schema_name}')"
+    )
+    if exists and not backend.dry_run:
+        if if_exists == "error":
+            raise D365Error(
+                f"Relationship {schema_name!r} already exists.",
+                code="AlreadyExists",
+            )
+        return {
+            "skipped": True,
+            "exists": True,
+            "kind": "OneToMany",
+            "schema_name": schema_name,
+        }
 
     lookup_payload: dict[str, Any] = {
         "@odata.type": "Microsoft.Dynamics.CRM.LookupAttributeMetadata",
@@ -132,6 +151,8 @@ def create_one_to_many(
         extra_headers=headers,
     ))
     if result.get("_dry_run"):
+        result["_exists"] = exists
+        result["would_skip"] = exists and if_exists == "skip"
         return result
 
     entity_id_url = result.get("_entity_id_url")
@@ -186,6 +207,7 @@ def create_many_to_many(
     entity2_menu_order: int = 10000,
     publish: bool = False,
     solution: str | None = None,
+    if_exists: str = "error",
 ) -> dict[str, Any]:
     """Create an N:N relationship via `CreateManyToManyRequest`.
 
@@ -195,6 +217,8 @@ def create_many_to_many(
         raise D365Error(
             "schema_name must include a publisher prefix."
         )
+    if if_exists not in ("error", "skip"):
+        raise D365Error("if_exists must be 'error' or 'skip'.")
     if entity1_logical == entity2_logical:
         raise D365Error("self N:N is not supported by Dataverse Web API.")
     for name, value in (
@@ -203,6 +227,22 @@ def create_many_to_many(
     ):
         if value not in _VALID_MENU_BEHAVIOR:
             raise D365Error(f"{name} must be one of {sorted(_VALID_MENU_BEHAVIOR)}.")
+
+    exists = target_exists(
+        backend, f"RelationshipDefinitions(SchemaName='{schema_name}')"
+    )
+    if exists and not backend.dry_run:
+        if if_exists == "error":
+            raise D365Error(
+                f"Relationship {schema_name!r} already exists.",
+                code="AlreadyExists",
+            )
+        return {
+            "skipped": True,
+            "exists": True,
+            "kind": "ManyToMany",
+            "schema_name": schema_name,
+        }
 
     entity1_menu: dict[str, Any] = {
         "Behavior": entity1_menu_behavior,
@@ -239,6 +279,8 @@ def create_many_to_many(
         extra_headers=headers,
     ))
     if result.get("_dry_run"):
+        result["_exists"] = exists
+        result["would_skip"] = exists and if_exists == "skip"
         return result
 
     entity_id_url = result.get("_entity_id_url")

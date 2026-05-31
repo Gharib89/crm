@@ -13,7 +13,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish
+from crm.core.metadata import label, maybe_publish, target_exists
 
 
 def _parse_optionset_id(entity_id_url: str | None) -> str | None:
@@ -64,10 +64,13 @@ def create_optionset(
     is_global: bool = True,
     publish: bool = False,
     solution: str | None = None,
+    if_exists: str = "error",
 ) -> dict[str, Any]:
     """Create a global option set. Returns `{created, name, metadata_id_url, ...}`."""
     if not name or "_" not in name:
         raise D365Error("name must include a publisher prefix, e.g. 'new_priority'.")
+    if if_exists not in ("error", "skip"):
+        raise D365Error("if_exists must be 'error' or 'skip'.")
 
     option_list: list[dict[str, Any]] = []
     if options:
@@ -83,6 +86,15 @@ def create_optionset(
             if value is not None:
                 opt["Value"] = value
             option_list.append(opt)
+
+    exists = target_exists(backend, f"GlobalOptionSetDefinitions(Name='{name}')")
+    if exists and not backend.dry_run:
+        if if_exists == "error":
+            raise D365Error(
+                f"Global option set {name!r} already exists.",
+                code="AlreadyExists",
+            )
+        return {"skipped": True, "exists": True, "name": name}
 
     body: dict[str, Any] = {
         "@odata.type": "Microsoft.Dynamics.CRM.OptionSetMetadata",
@@ -102,6 +114,8 @@ def create_optionset(
         extra_headers=headers,
     ))
     if result.get("_dry_run"):
+        result["_exists"] = exists
+        result["would_skip"] = exists and if_exists == "skip"
         return result
 
     entity_id_url = result.get("_entity_id_url")

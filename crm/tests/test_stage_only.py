@@ -45,6 +45,12 @@ def _mock_add_attribute(m, backend):
     attr_url = backend.url_for(
         f"EntityDefinitions(LogicalName='{_ENTITY}')/Attributes({_ATTR_ID})"
     )
+    m.get(
+        backend.url_for(
+            f"EntityDefinitions(LogicalName='{_ENTITY}')/Attributes(LogicalName='new_label')"
+        ),
+        status_code=404,
+    )
     m.post(
         backend.url_for(f"EntityDefinitions(LogicalName='{_ENTITY}')/Attributes"),
         status_code=204,
@@ -181,6 +187,10 @@ def test_stage_only_applies_to_create_entity(use_backend):
     backend = use_backend
     ent_url = backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")
     with requests_mock.Mocker() as m:
+        m.get(
+            backend.url_for("EntityDefinitions(LogicalName='new_project')"),
+            status_code=404,
+        )
         m.post(
             backend.url_for("EntityDefinitions"),
             status_code=204,
@@ -203,6 +213,10 @@ _REL_ID = "44444444-4444-4444-4444-444444444444"
 
 def _setup_one_to_many(m, backend):
     rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+    m.get(
+        backend.url_for("RelationshipDefinitions(SchemaName='new_a_new_b')"),
+        status_code=404,
+    )
     m.post(
         backend.url_for("CreateOneToManyRequest"),
         status_code=204,
@@ -219,6 +233,10 @@ def _setup_one_to_many(m, backend):
 
 def _setup_many_to_many(m, backend):
     rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+    m.get(
+        backend.url_for("RelationshipDefinitions(SchemaName='new_a_new_b')"),
+        status_code=404,
+    )
     m.post(
         backend.url_for("CreateManyToManyRequest"),
         status_code=204,
@@ -262,6 +280,10 @@ def test_stage_only_applies_to_create_optionset(use_backend):
     backend = use_backend
     os_url = backend.url_for("GlobalOptionSetDefinitions(22222222-2222-2222-2222-222222222222)")
     with requests_mock.Mocker() as m:
+        m.get(
+            backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+            status_code=404,
+        )
         m.post(
             backend.url_for("GlobalOptionSetDefinitions"),
             status_code=204,

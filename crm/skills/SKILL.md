@@ -267,6 +267,30 @@ crm --json service-document
 # returns {"value": [{"name": "accounts", "url": "accounts", ...}, ...]}
 ```
 
+## Destructive operations — `--yes` confirm contract
+
+These verbs permanently delete or cancel server-side state. Every one accepts a
+`--yes` flag to skip the interactive confirmation; without `--yes` in a non-TTY
+context they abort safely and emit `{"ok": false, "error": "aborted by user"}`
+(exit 1). Always pass `--yes` when invoking them non-interactively (e.g. from an
+agent), and only after you have confirmed intent.
+
+| Command | What it destroys |
+| --- | --- |
+| `crm metadata delete-entity <logical>` | A custom entity (table) and ALL its rows |
+| `crm metadata delete-optionset <name>` | A custom global option set |
+| `crm metadata delete-attribute ...` | A column (when shipped) |
+| `crm metadata delete-relationship ...` | A relationship (when shipped) |
+| `crm entity delete <set> <guid>` | A single record |
+| `crm solution job-cancel <id>` | A running async job |
+| `crm async cancel <id>` | A pending/suspended async operation |
+
+A deterministic Claude Code PreToolUse hook (`.claude/hooks/destructive_op_gate.py`)
+hard-blocks any of these Bash invocations (exit 2, reason on stderr) unless the
+`--yes` token is present — so the gate holds even if a prompt instruction is
+ignored. The hook matches by verb name, so not-yet-shipped delete verbs are
+gated the moment they ship.
+
 ## Errors & recovery
 
 - `D365Error` is the wrapper for any HTTP / API failure. In `--json` mode it
