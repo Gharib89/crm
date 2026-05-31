@@ -147,6 +147,48 @@ def test_create_entity_uses_publisher_prefix(monkeypatch, tmp_path):
     assert captured["schema_name"] == "new_Project"
 
 
+def test_create_entity_multiword_display_pascalcases(monkeypatch, tmp_path):
+    """No --schema-name + multi-word --display: PascalCased across word boundaries."""
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
+    captured = {}
+
+    from crm.core import metadata as meta_mod
+
+    def fake_create_entity(_backend, **kwargs):
+        captured.update(kwargs)
+        return {"schema_name": kwargs["schema_name"], "_dry_run": True}
+
+    monkeypatch.setattr(meta_mod, "create_entity", fake_create_entity)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--profile", "p", "metadata", "create-entity",
+         "--display", "Project Task", "--no-publish"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["schema_name"] == "new_ProjectTask"
+
+
+def test_create_optionset_multiword_display_pascalcases(monkeypatch, tmp_path):
+    """No --name + multi-word --display: PascalCased across word boundaries."""
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
+    captured = {}
+
+    from crm.core import optionsets as os_mod
+
+    def fake_create_optionset(_backend, **kwargs):
+        captured.update(kwargs)
+        return {"name": kwargs["name"], "_dry_run": True}
+
+    monkeypatch.setattr(os_mod, "create_optionset", fake_create_optionset)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--profile", "p", "metadata", "create-optionset",
+         "--display", "Task Priority", "--no-publish"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["name"] == "new_TaskPriority"
+
+
 def test_create_entity_strict_no_solution_errors(monkeypatch, tmp_path):
     """CRM_REQUIRE_SOLUTION=1 + no resolvable solution -> non-zero, ok=false."""
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")  # no default_solution

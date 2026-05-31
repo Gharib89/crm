@@ -110,7 +110,20 @@ def connection_profiles(ctx: CLIContext):
     """List saved profiles."""
     names = session_mod.list_profiles()
     if ctx.json_mode:
-        ctx.emit(True, data=names)
+        # Surface the per-profile default_solution / publisher_prefix (AC) in
+        # addition to the names, while keeping the bare name list available.
+        profiles = []
+        for n in names:
+            try:
+                p = session_mod.load_profile(n)
+                profiles.append({
+                    "name": n,
+                    "default_solution": p.default_solution,
+                    "publisher_prefix": p.publisher_prefix,
+                })
+            except FileNotFoundError:
+                profiles.append({"name": n})
+        ctx.emit(True, data={"names": names, "profiles": profiles})
         return
     ctx.skin.section("Profiles")
     if not names:

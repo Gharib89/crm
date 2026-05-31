@@ -3,6 +3,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
@@ -183,7 +184,17 @@ def _resolve_schema_name(
         )
     if not token:
         raise click.UsageError(f"{flag} is required to default the schema name.")
-    pascal = token[:1].upper() + token[1:]
+    # PascalCase across word boundaries and drop non-alphanumerics so a
+    # multi-word display like "Project Task" -> "ProjectTask", not the invalid
+    # "Project Task". Preserve casing of the rest of each word (don't lower it).
+    pascal = "".join(
+        w[:1].upper() + w[1:] for w in re.split(r"[^0-9A-Za-z]+", token) if w
+    )
+    if not pascal:
+        raise click.UsageError(
+            f"{flag} could not be defaulted from {token!r} (no alphanumeric "
+            f"characters); pass {flag} explicitly."
+        )
     return f"{prefix}_{pascal}"
 
 

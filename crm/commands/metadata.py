@@ -352,6 +352,10 @@ def metadata_add_attribute(
     _emit_with_warning(ctx, info, warning)
 
 
+# Relationship-creation commands (create-one-to-many / create-many-to-many)
+# intentionally keep --schema-name required and do NOT get publisher-prefix
+# defaulting: a relationship name spans two entities and cannot be derived from
+# a single display token, unlike create-entity/add-attribute/create-optionset.
 @metadata_group.command("create-one-to-many")
 @click.option("--schema-name", required=True, help="Relationship schema name with publisher prefix.")
 @click.option("--referenced-entity", required=True, help='"1" side logical name (e.g. account).')
