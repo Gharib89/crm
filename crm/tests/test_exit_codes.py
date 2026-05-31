@@ -66,12 +66,12 @@ def test_usage_error_exits_2():
     assert json.loads(result.output)["ok"] is False
 
 
-def test_missing_required_option_json_envelope():
-    """Missing required option under --json → exit 2 with parseable {ok: false}."""
-    # `entity create <set>` requires payload; omit it and pass --data="" is not it —
-    # instead drive a command with a genuinely missing required option. Here we use
-    # the in-command UsageError site below; for a Click-level missing argument we
-    # invoke `entity get` with no arguments at all.
+def test_missing_required_argument_json_envelope():
+    """Missing required argument under --json → exit 2 with parseable {ok: false}.
+
+    `entity get` requires positional arguments; omitting them is a Click-level
+    missing-argument usage error, which must still render as a JSON envelope.
+    """
     result = CliRunner().invoke(cli, ["--json", "entity", "get"])
     assert result.exit_code == 2, result.output
     env = json.loads(result.output)
