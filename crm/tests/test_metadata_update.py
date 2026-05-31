@@ -1,0 +1,311 @@
+"""Unit tests for crm.core.metadata_update — safe retrieve-merge-write."""
+# pyright: basic
+
+from __future__ import annotations
+
+import pytest
+import requests_mock
+
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+
+
+@pytest.fixture
+def profile() -> ConnectionProfile:
+    return ConnectionProfile(
+        name="testp",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
+    )
+
+
+@pytest.fixture
+def backend(profile):
+    return D365Backend(profile, password="pw", dry_run=False)
+
+
+@pytest.fixture
+def dry_backend(profile):
+    return D365Backend(profile, password="pw", dry_run=True)
+
+
+_REL_ID = "33333333-3333-3333-3333-333333333333"
+
+# A realistic, property-rich entity definition as the server would return it.
+_FULL_ENTITY = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.EntityMetadata",
+    "MetadataId": "11111111-1111-1111-1111-111111111111",
+    "SchemaName": "new_Project",
+    "LogicalName": "new_project",
+    "DisplayName": {
+        "LocalizedLabels": [{"Label": "Project", "LanguageCode": 1033}],
+        "UserLocalizedLabel": {"Label": "Project", "LanguageCode": 1033},
+    },
+    "DisplayCollectionName": {
+        "LocalizedLabels": [{"Label": "Projects", "LanguageCode": 1033}],
+    },
+    "Description": {
+        "LocalizedLabels": [{"Label": "A project", "LanguageCode": 1033}],
+    },
+    "OwnershipType": "UserOwned",
+    "HasActivities": False,
+    "HasNotes": True,
+    "IsAuditEnabled": {"Value": True, "CanBeChanged": True},
+    "IsCustomEntity": True,
+}
+
+
+class TestRetrieveMergeWriteEntity:
+    def test_put_carries_all_original_properties_plus_change(self, backend):
+        from crm.core import metadata_update as mu
+        path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
+        with requests_mock.Mocker() as m:
+            m.get(path, json=_FULL_ENTITY)
+            m.put(path, status_code=204)
+            mu.update_entity(backend, "new_project", display_name="Engagement",
+                             publish=False)
+        # Last request is the PUT.
+        put_req = m.request_history[-1]
+        assert put_req.method == "PUT"
+        body = put_req.json()
+        # No-wipe proof: every original top-level property survives.
+        for key in ("SchemaName", "LogicalName", "DisplayCollectionName",
+                    "Description", "OwnershipType", "HasActivities", "HasNotes",
+                    "IsAuditEnabled", "IsCustomEntity"):
+            assert body[key] == _FULL_ENTITY[key], key
+        # New DisplayName landed.
+        assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Engagement"
+        # Retrieved keys are a subset of PUT-body keys (superset guarantee).
+        assert set(_FULL_ENTITY).issubset(set(body))
+
+    def test_put_to_exact_path_with_mergelabels_header(self, backend):
+        from crm.core import metadata_update as mu
+        path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
+        with requests_mock.Mocker() as m:
+            m.get(path, json=_FULL_ENTITY)
+            m.put(path, status_code=204)
+            mu.update_entity(backend, "new_project", display_name="Engagement")
+        put_req = m.request_history[-1]
+        assert put_req.method == "PUT"
+        assert put_req.url == path
+        assert put_req.headers.get("MSCRM.MergeLabels") == "true"
+
+    def test_empty_changes_raises_before_any_http(self, backend):
+        from crm.core import metadata_update as mu
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, status_code=500)
+            with pytest.raises(D365Error, match="nothing to update"):
+                mu.update_entity(backend, "new_project")
+            assert m.call_count == 0
+
+    def test_get_error_propagates_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        path = backend.url_for("EntityDefinitions(LogicalName='nope')")
+        with requests_mock.Mocker() as m:
+            m.get(path, status_code=404, json={"error": {"message": "not found"}})
+            put = m.put(path, status_code=204)
+            with pytest.raises(D365Error):
+                mu.update_entity(backend, "nope", display_name="X")
+            assert put.call_count == 0
+
+
+_FULL_STRING_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
+    "MetadataId": "22222222-2222-2222-2222-222222222222",
+    "SchemaName": "new_Code",
+    "LogicalName": "new_code",
+    "MaxLength": 100,
+    "FormatName": {"Value": "Text"},
+    "DisplayName": {"LocalizedLabels": [{"Label": "Code", "LanguageCode": 1033}]},
+    "Description": {"LocalizedLabels": [{"Label": "The code", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+
+class TestUpdateAttribute:
+    def test_changing_required_preserves_other_props_via_cast_path(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_code')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_STRING_ATTR)
+            m.get(cast, json=_FULL_STRING_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_code",
+                                required="ApplicationRequired")
+        put_req = m.request_history[-1]
+        assert put_req.method == "PUT"
+        assert put_req.url == cast
+        body = put_req.json()
+        # Changed.
+        assert body["RequiredLevel"]["Value"] == "ApplicationRequired"
+        # Preserved.
+        assert body["MaxLength"] == 100
+        assert body["FormatName"] == {"Value": "Text"}
+        assert body["DisplayName"] == _FULL_STRING_ATTR["DisplayName"]
+        assert body["Description"] == _FULL_STRING_ATTR["Description"]
+        assert put_req.headers.get("MSCRM.MergeLabels") == "true"
+
+
+_FULL_PICKLIST_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.PicklistAttributeMetadata",
+    "MetadataId": "44444444-4444-4444-4444-444444444444",
+    "SchemaName": "new_Stage",
+    "LogicalName": "new_stage",
+    "DisplayName": {"LocalizedLabels": [{"Label": "Stage", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None"},
+    "OptionSet": {
+        "MetadataId": "55555555-5555-5555-5555-555555555555",
+        "IsGlobal": False,
+        "Options": [
+            {"Value": 1, "Label": {"LocalizedLabels": [{"Label": "New", "LanguageCode": 1033}]}},
+            {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "Done", "LanguageCode": 1033}]}},
+        ],
+    },
+}
+
+
+class TestUpdateAttributeOptionSetCarveOut:
+    def test_display_update_leaves_optionset_block_untouched(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_stage')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_PICKLIST_ATTR)
+            m.get(cast, json=_FULL_PICKLIST_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_stage",
+                                display_name="Phase")
+        body = m.request_history[-1].json()
+        assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Phase"
+        # OptionSet block is byte-for-byte the retrieved one (no option edits).
+        assert body["OptionSet"] == _FULL_PICKLIST_ATTR["OptionSet"]
+
+    def test_update_attribute_does_not_accept_option_edits(self):
+        from crm.core import metadata_update as mu
+        import inspect
+        params = inspect.signature(mu.update_attribute).parameters
+        for forbidden in ("options", "optionset_name", "insert", "delete"):
+            assert forbidden not in params
+
+
+_FULL_ONE_TO_MANY = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+    "MetadataId": _REL_ID,
+    "SchemaName": "new_account_new_project",
+    "ReferencedEntity": "account",
+    "ReferencingEntity": "new_project",
+    "ReferencingAttribute": "new_accountid",
+    "CascadeConfiguration": {
+        "Assign": "NoCascade",
+        "Delete": "RemoveLink",
+        "Reparent": "NoCascade",
+        "Share": "NoCascade",
+        "Unshare": "NoCascade",
+        "Merge": "NoCascade",
+    },
+    "AssociatedMenuConfiguration": {
+        "Behavior": "UseCollectionName",
+        "Group": "Details",
+        "Order": 10000,
+        "Label": {"LocalizedLabels": []},
+    },
+}
+
+
+class TestUpdateRelationship:
+    def test_changing_one_cascade_preserves_the_rest(self, backend):
+        from crm.core import metadata_update as mu
+        resolve = backend.url_for(
+            "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        )
+        cast = backend.url_for(
+            f"RelationshipDefinitions({_REL_ID})"
+            "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(resolve, json={
+                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                "MetadataId": _REL_ID,
+                "SchemaName": "new_account_new_project",
+                "RelationshipType": "OneToManyRelationship",
+            })
+            m.get(cast, json=_FULL_ONE_TO_MANY)
+            m.put(cast, status_code=204)
+            mu.update_relationship(
+                backend, "new_account_new_project",
+                cascade={"Delete": "Restrict"},
+            )
+        put_req = m.request_history[-1]
+        assert put_req.method == "PUT"
+        assert put_req.url == cast
+        body = put_req.json()
+        cc = body["CascadeConfiguration"]
+        assert cc["Delete"] == "Restrict"
+        # All other cascade members preserved.
+        assert cc["Assign"] == "NoCascade"
+        assert cc["Reparent"] == "NoCascade"
+        assert cc["Share"] == "NoCascade"
+        assert cc["Unshare"] == "NoCascade"
+        assert cc["Merge"] == "NoCascade"
+        # AssociatedMenuConfiguration preserved.
+        assert body["AssociatedMenuConfiguration"] == \
+            _FULL_ONE_TO_MANY["AssociatedMenuConfiguration"]
+
+
+class TestDryRun:
+    def test_dry_run_does_not_put_and_returns_merged_body_and_diff(self, dry_backend):
+        from crm.core import metadata_update as mu
+        path = dry_backend.url_for("EntityDefinitions(LogicalName='new_project')")
+        with requests_mock.Mocker() as m:
+            getter = m.get(path, json=_FULL_ENTITY)
+            put = m.put(path, status_code=204)
+            out = mu.update_entity(dry_backend, "new_project",
+                                   display_name="Engagement")
+            assert getter.call_count == 1
+            assert put.call_count == 0
+        assert out["_dry_run"] is True
+        assert out["method"] == "PUT"
+        # Merged body has the new value AND preserves originals.
+        assert out["body"]["DisplayName"]["LocalizedLabels"][0]["Label"] == "Engagement"
+        assert out["body"]["OwnershipType"] == "UserOwned"
+        # Diff: changed key old -> new.
+        assert "DisplayName" in out["diff"]
+        assert out["diff"]["DisplayName"]["old"] == _FULL_ENTITY["DisplayName"]
+        assert out["diff"]["DisplayName"]["new"]["LocalizedLabels"][0]["Label"] == \
+            "Engagement"
+
+
+class TestPublishGating:
+    def test_publish_true_posts_publishallxml(self, backend):
+        from crm.core import metadata_update as mu
+        path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
+        pub = backend.url_for("PublishAllXml")
+        with requests_mock.Mocker() as m:
+            m.get(path, json=_FULL_ENTITY)
+            m.put(path, status_code=204)
+            publish_mock = m.post(pub, status_code=204)
+            out = mu.update_entity(backend, "new_project",
+                                   display_name="X", publish=True)
+        assert publish_mock.call_count == 1
+        assert out["published"] is True
+
+    def test_publish_false_does_not_post_publishallxml(self, backend):
+        from crm.core import metadata_update as mu
+        path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
+        pub = backend.url_for("PublishAllXml")
+        with requests_mock.Mocker() as m:
+            m.get(path, json=_FULL_ENTITY)
+            m.put(path, status_code=204)
+            publish_mock = m.post(pub, status_code=204)
+            mu.update_entity(backend, "new_project",
+                             display_name="X", publish=False)
+        assert publish_mock.call_count == 0
