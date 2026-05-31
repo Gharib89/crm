@@ -88,6 +88,25 @@ def _admin_kwargs(as_user: str | None, suppress_dup_detection: bool,
     }
 
 
+def _resolve_publish(ctx: "CLIContext", publish: bool) -> bool:
+    """Derive the effective publish value, honoring the global --stage-only flag.
+
+    When `ctx.stage_only` is set, every metadata-mutating command behaves as
+    --no-publish. Passing an explicit --publish on the command line alongside
+    --stage-only is contradictory and rejected. An explicit --no-publish is fine.
+    """
+    if not ctx.stage_only:
+        return publish
+    # Imported from click.core (not top-level click) because pyright's bundled click
+    # stubs only export ParameterSource there; `click.ParameterSource` / `from click
+    # import ParameterSource` fail strict type-checking even though both work at runtime.
+    from click.core import ParameterSource
+    source = click.get_current_context().get_parameter_source("publish")
+    if source == ParameterSource.COMMANDLINE and publish:
+        raise click.UsageError("--publish cannot be combined with --stage-only")
+    return False
+
+
 def _active_profile(ctx: "CLIContext") -> ConnectionProfile | None:
     """Load the active connection profile, or None if none is resolvable."""
     name = ctx.profile_name

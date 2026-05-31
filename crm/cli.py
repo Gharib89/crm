@@ -39,6 +39,7 @@ class CLIContext:
         self.profile_name: str | None = None
         self.password: str | None = None
         self.auth_scheme: str | None = None
+        self.stage_only: bool = False
         self.session_name: str = "default"
         self._backend: D365Backend | None = None
         self._backend_key: tuple[str | None, str | None, bool, str | None] | None = None
@@ -214,13 +215,16 @@ class _JsonAwareGroup(click.Group):
               type=click.Choice(["ntlm", "kerberos", "negotiate"]),
               default=None,
               help="HTTP auth scheme (env: CRM_AUTH_SCHEME). Default: ntlm.")
+@click.option("--stage-only", "stage_only", is_flag=True,
+              help="Stage metadata changes without publishing (env: CRM_STAGE_ONLY). "
+                   "Forces every create/update command to --no-publish.")
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
 def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         profile_name: str | None, password: str | None,
         log_level: str | None, verbose: bool, log_format: str | None,
-        auth_scheme: str | None, session_name: str):
+        auth_scheme: str | None, stage_only: bool, session_name: str):
     """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
     _valid_levels = ("debug", "info", "warning", "error")
     _valid_fmts = ("text", "json-line")
@@ -251,6 +255,11 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     if password is not None:
         cli_ctx.password = password
     cli_ctx.auth_scheme = auth_scheme or os.environ.get("CRM_AUTH_SCHEME")
+    # Sticky safety flag: once --stage-only (or CRM_STAGE_ONLY) is set, never clear it
+    # back to False on a later bare REPL line that omits the token, which would silently
+    # re-enable auto-publish and lose the safety guarantee.
+    env_stage_only = os.environ.get("CRM_STAGE_ONLY", "").lower() in ("1", "true", "yes", "on")
+    cli_ctx.stage_only = cli_ctx.stage_only or stage_only or env_stage_only
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:

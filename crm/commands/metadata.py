@@ -13,6 +13,7 @@ from crm.commands._helpers import (
     _admin_header_options,
     _admin_kwargs,
     _confirm_destructive,
+    _resolve_publish,
     _solution_option,
     _require_solution,
     _resolve_solution,
@@ -168,6 +169,7 @@ def metadata_create_entity(
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
+    publish = _resolve_publish(ctx, publish)
     try:
         info = meta_mod.create_entity(
             ctx.backend(),
@@ -192,7 +194,7 @@ def metadata_create_entity(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("update-entity")
@@ -218,6 +220,7 @@ def metadata_update_entity(
     description, ownership, has_activities, has_notes, solution, publish,
 ):
     """Update an entity (table) definition (retrieve-merge-write)."""
+    publish = _resolve_publish(ctx, publish)
     try:
         info = mu_mod.update_entity(
             ctx.backend(),
@@ -234,7 +237,7 @@ def metadata_update_entity(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("update-attribute")
@@ -265,6 +268,7 @@ def metadata_update_attribute(
 
     Option-set option edits are NOT handled here — use `update-optionset`.
     """
+    publish = _resolve_publish(ctx, publish)
     try:
         info = mu_mod.update_attribute(
             ctx.backend(),
@@ -284,7 +288,7 @@ def metadata_update_attribute(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("update-relationship")
@@ -309,6 +313,7 @@ def metadata_update_relationship(
     menu_order, solution, publish,
 ):
     """Update a relationship definition (retrieve-merge-write)."""
+    publish = _resolve_publish(ctx, publish)
     cascade: dict[str, str] = {}
     for member, value in (
         ("Assign", cascade_assign), ("Delete", cascade_delete),
@@ -331,7 +336,7 @@ def metadata_update_relationship(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("relationships")
@@ -431,6 +436,7 @@ def metadata_add_attribute(
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
+    publish = _resolve_publish(ctx, publish)
     parsed_options: list[tuple[int | None, str]] | None = None
     if options:
         parsed_options = []
@@ -495,7 +501,7 @@ def metadata_add_attribute(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 # Relationship-creation commands (create-one-to-many / create-many-to-many)
@@ -534,6 +540,7 @@ def metadata_create_one_to_many(
     """Create a 1:N relationship and its lookup attribute atomically."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
+    publish = _resolve_publish(ctx, publish)
     try:
         info = rel_mod.create_one_to_many(
             ctx.backend(),
@@ -560,7 +567,7 @@ def metadata_create_one_to_many(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("create-many-to-many")
@@ -588,6 +595,7 @@ def metadata_create_many_to_many(
     """Create an N:N relationship via the dedicated action."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
+    publish = _resolve_publish(ctx, publish)
     try:
         info = rel_mod.create_many_to_many(
             ctx.backend(),
@@ -608,7 +616,7 @@ def metadata_create_many_to_many(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("list-optionsets")
@@ -664,6 +672,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
     name = _resolve_schema_name(ctx, name, display_name, "--name")
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
+    publish = _resolve_publish(ctx, publish)
     parsed: list[tuple[int | None, str]] = []
     for raw in options:
         if ":" not in raw:
@@ -682,7 +691,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("update-optionset")
@@ -703,6 +712,7 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
     """Granular update: insert/update/delete/reorder options."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
+    publish = _resolve_publish(ctx, publish)
     insert: list[tuple[int | None, str]] = []
     for raw in insert_options:
         if ":" not in raw:
@@ -748,7 +758,7 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("delete-optionset")
