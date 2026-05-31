@@ -20,9 +20,9 @@ jobs:
             binary_path: dist/crm.exe
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -61,7 +61,7 @@ jobs:
       # PR builds gate on tests/pyright/build/smoke above; the binary itself is
       # only worth persisting for main. Skipping PR uploads + short retention
       # keeps Actions artifact storage from filling the quota.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.event_name == 'push'
         with:
           name: ${{ matrix.artifact_name }}
