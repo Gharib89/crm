@@ -23,6 +23,7 @@ from crm.core.metadata import label, maybe_publish
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
+_VALID_CASCADE_KEYS = {"Assign", "Delete", "Merge", "Reparent", "Share", "Unshare", "RollupView"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
 _VALID_OWNERSHIP = {"UserOwned", "OrganizationOwned"}
 
@@ -46,6 +47,16 @@ _PRECISION_TYPES = {
     "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
     "Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
 }
+# Valid precision range (inclusive) by @odata.type cast, mirroring the create
+# path in metadata_attrs.py (`_numeric_with_precision`).
+_PRECISION_RANGES = {
+    "Microsoft.Dynamics.CRM.DecimalAttributeMetadata": (0, 10),
+    "Microsoft.Dynamics.CRM.DoubleAttributeMetadata": (0, 5),
+    "Microsoft.Dynamics.CRM.MoneyAttributeMetadata": (0, 4),
+}
+
+# Relationship @odata.type cast for many-to-many.
+_MANY_TO_MANY_CAST = "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
 _LENGTH_TYPES = {_STRING_TYPE, _MEMO_TYPE}
 
 # Write-time header: preserve localized labels in untouched languages.
@@ -257,6 +268,9 @@ def _build_attribute_changes(
             raise D365Error(
                 "--precision is only valid for decimal/double/money attributes."
             )
+        lo, hi = _PRECISION_RANGES[odata_type]
+        if not lo <= precision <= hi:
+            raise D365Error(f"--precision for this type must be {lo}..{hi}.")
         changes["Precision"] = precision
     if min_value is not None:
         if odata_type not in _NUMERIC_TYPES:
@@ -371,6 +385,11 @@ def _build_relationship_changes(
     changes: dict[str, Any] = {}
     if cascade:
         for name, value in cascade.items():
+            if name not in _VALID_CASCADE_KEYS:
+                raise D365Error(
+                    f"cascade key {name!r} is not valid; must be one of "
+                    f"{sorted(_VALID_CASCADE_KEYS)}."
+                )
             if value not in _VALID_CASCADE:
                 raise D365Error(
                     f"cascade {name} must be one of {sorted(_VALID_CASCADE)}."
@@ -441,6 +460,21 @@ def update_relationship(
         odata_cast = "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
     else:
         odata_cast = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+
+    # Cascade and associated-menu changes are one-to-many shaped. A many-to-many
+    # relationship has no CascadeConfiguration/AssociatedMenuConfiguration (it
+    # uses Entity1/Entity2-side menus, which are out of scope here), so emitting
+    # them would produce an invalid PUT. Reject client-side instead.
+    if odata_cast == _MANY_TO_MANY_CAST and (
+        cascade or menu_behavior is not None
+        or menu_label is not None or menu_order is not None
+    ):
+        raise D365Error(
+            f"relationship {schema_name!r} is many-to-many; cascade and "
+            "associated-menu updates are only valid for one-to-many "
+            "relationships (N:N side-specific menus are not supported)."
+        )
+
     path = f"RelationshipDefinitions({metadata_id})/{odata_cast}"
 
     out = _retrieve_merge_write(

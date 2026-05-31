@@ -335,6 +335,136 @@ class TestUpdateRelationship:
             _FULL_ONE_TO_MANY["AssociatedMenuConfiguration"]
 
 
+_FULL_MANY_TO_MANY = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+    "MetadataId": _REL_ID,
+    "SchemaName": "new_account_new_project_n_n",
+    "Entity1LogicalName": "account",
+    "Entity2LogicalName": "new_project",
+    "IntersectEntityName": "new_account_new_project_n_n",
+}
+
+
+def _mock_resolve_n_n(m, backend):
+    """Register the N:N relationship resolve GET. Returns the resolve URL."""
+    resolve = backend.url_for(
+        "RelationshipDefinitions(SchemaName='new_account_new_project_n_n')"
+    )
+    m.get(resolve, json={
+        "@odata.type": "#Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+        "MetadataId": _REL_ID,
+        "SchemaName": "new_account_new_project_n_n",
+        "RelationshipType": "ManyToManyRelationship",
+    })
+    return resolve
+
+
+class TestUpdateRelationshipManyToManyGuards:
+    def test_cascade_on_n_n_raises_client_side_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        with requests_mock.Mocker() as m:
+            _mock_resolve_n_n(m, backend)
+            put = m.put(requests_mock.ANY, status_code=204)
+            with pytest.raises(D365Error, match="one-to-many"):
+                mu.update_relationship(
+                    backend, "new_account_new_project_n_n",
+                    cascade={"Delete": "Restrict"},
+                )
+            assert put.call_count == 0
+
+    def test_menu_on_n_n_raises_client_side_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        with requests_mock.Mocker() as m:
+            _mock_resolve_n_n(m, backend)
+            put = m.put(requests_mock.ANY, status_code=204)
+            with pytest.raises(D365Error, match="one-to-many"):
+                mu.update_relationship(
+                    backend, "new_account_new_project_n_n",
+                    menu_behavior="UseLabel",
+                )
+            assert put.call_count == 0
+
+
+class TestUpdateRelationshipCascadeKey:
+    def test_bad_cascade_key_raises_client_side_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        with requests_mock.Mocker() as m:
+            put = m.put(requests_mock.ANY, status_code=204)
+            with pytest.raises(D365Error, match="cascade"):
+                mu.update_relationship(
+                    backend, "new_account_new_project",
+                    cascade={"Delte": "Restrict"},
+                )
+            # Bad key is caught before resolving/PUT.
+            assert put.call_count == 0
+
+
+_FULL_DECIMAL_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+    "MetadataId": "77777777-7777-7777-7777-777777777777",
+    "SchemaName": "new_Amount",
+    "LogicalName": "new_amount",
+    "Precision": 2,
+    "DisplayName": {"LocalizedLabels": [{"Label": "Amount", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+_FULL_MONEY_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
+    "MetadataId": "88888888-8888-8888-8888-888888888888",
+    "SchemaName": "new_Cost",
+    "LogicalName": "new_cost",
+    "Precision": 2,
+    "DisplayName": {"LocalizedLabels": [{"Label": "Cost", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+
+class TestUpdateAttributePrecisionRange:
+    def test_decimal_precision_over_max_raises_client_side_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_amount')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.DecimalAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DECIMAL_ATTR)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="precision"):
+                mu.update_attribute(backend, "new_project", "new_amount", precision=11)
+            assert put.call_count == 0
+
+    def test_money_precision_over_max_raises_client_side_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_cost')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.MoneyAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_MONEY_ATTR)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="precision"):
+                mu.update_attribute(backend, "new_project", "new_cost", precision=5)
+            assert put.call_count == 0
+
+    def test_decimal_precision_in_range_puts(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_amount')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.DecimalAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DECIMAL_ATTR)
+            m.get(cast, json=_FULL_DECIMAL_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_amount", precision=4)
+        body = m.request_history[-1].json()
+        assert body["Precision"] == 4
+
+
 class TestDryRun:
     def test_dry_run_does_not_put_and_returns_merged_body_and_diff(self, dry_backend):
         from crm.core import metadata_update as mu
