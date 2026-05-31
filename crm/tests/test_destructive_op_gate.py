@@ -184,6 +184,18 @@ class TestFlagOrdering:
         r = _run("crm --profile=prod metadata delete-entity new_widget")
         assert r.returncode == BLOCK
 
+    @pytest.mark.parametrize("cmd", [
+        # `--yes` smuggled in as the VALUE of a value-taking global option must
+        # NOT count as a confirm — the verb is still destructive and unconfirmed.
+        "crm --profile --yes metadata delete-entity foo",
+        "crm --password --yes entity delete contacts abc",
+        "crm --session --yes solution job-cancel 22222222-2222-2222-2222-222222222222",
+        "crm --log-level --yes metadata delete-optionset new_color",
+    ])
+    def test_yes_smuggled_as_option_value_blocked(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed by --yes-as-option-value: {cmd}\n{r.stdout}"
+
 
 class TestCompoundAndPathPrefix:
     def test_path_prefixed_crm_blocked(self):

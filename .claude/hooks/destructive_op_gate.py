@@ -79,6 +79,26 @@ def _strip_global_options(tokens: list[str]) -> list[str]:
     return rest
 
 
+def _confirm_present(tokens: list[str]) -> bool:
+    """True if a real `--yes` confirm flag is present in `tokens`.
+
+    A `--yes` that is consumed as the VALUE of a value-taking global option
+    (e.g. `crm --profile --yes metadata delete-entity x`) does NOT count — it is
+    the option's argument, not a confirmation. Walk with the same skip-next
+    logic as `_strip_global_options` so such a smuggled `--yes` is ignored."""
+    skip_next = False
+    for tok in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if tok.startswith("-") and "=" not in tok and tok in VALUE_OPTIONS:
+            skip_next = True
+            continue
+        if tok == "--yes":
+            return True
+    return False
+
+
 # Shell operators that separate one command from the next inside a single Bash
 # string. We split the RAW command string on these BEFORE shlex so a destructive
 # sub-command is isolated even when the operator is glued to adjacent words
@@ -170,7 +190,7 @@ def main() -> int:
         label = _destructive_match(segment)
         if label is None:
             continue
-        if "--yes" in segment:
+        if _confirm_present(segment):
             continue
         sys.stderr.write(
             f"BLOCKED: `crm {label}` is a destructive operation and was prevented by "
