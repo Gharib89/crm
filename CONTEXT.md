@@ -34,7 +34,9 @@ envelope.
 ## Relationships
 
 - Every **operational failure** is an **emit envelope** with `ok=false` and exits `1`.
-- A **usage error** never reaches `emit`; Click rejects it and exits `2`.
+- A **usage error** is rejected by Click and exits `2`. Without `--json` it prints
+  raw Click text; under `--json` the root group renders it as an `{ok: false, error}`
+  envelope on stdout (still exit `2`, never `1`) — it does not flow through `emit`.
 - The **exit-code contract** is the union: `{0 success, 1 operational failure, 2 usage error}`.
 
 ## Example dialogue

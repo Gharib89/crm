@@ -152,7 +152,15 @@ def repl(click_ctx: click.Context):
             cli.main(args=argv, obj=ctx, standalone_mode=False, prog_name="crm")
         except SystemExit:
             pass
+        except click.exceptions.Exit:
+            # emit() (operational failure) or the root group (usage error, json mode)
+            # already printed the envelope; nothing more to show — keep going.
+            pass
         except click.ClickException as exc:
+            # Usage errors (UsageError/BadParameter) under json_mode are rendered as
+            # the envelope by _JsonAwareGroup and surface as click.exceptions.Exit
+            # above, so they never reach here. This is the generic fallback for any
+            # other ClickException.
             ctx.skin.error(exc.format_message())
         except D365Error as exc:
             ctx.skin.error(str(exc))
