@@ -6,8 +6,7 @@ silently drops every property you omit. To make a partial update impossible,
 every update here GETs the full current definition, deep-merges a *sparse*
 `changes` dict onto it, and PUTs the complete merged body back. The
 `MSCRM.MergeLabels: true` header preserves localized labels in languages we
-did not touch; `Consistency: Strong` on the read makes the GET see the most
-recent write.
+did not touch.
 
 Reference:
   https://learn.microsoft.com/power-apps/developer/data-platform/webapi/create-update-entity-definitions-using-web-api#update-table-definitions
@@ -27,8 +26,28 @@ _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
 _VALID_OWNERSHIP = {"UserOwned", "OrganizationOwned"}
 
-# Read-time headers: Strong consistency so we read our own latest write.
-_READ_HEADERS = {"Consistency": "Strong"}
+# Per-type valid format values (mirror the create path in metadata_attrs.py).
+_STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
+_DATETIME_FORMATS = {"DateOnly", "DateAndTime"}
+
+# Attribute @odata.type cast names (without leading '#') by capability.
+_STRING_TYPE = "Microsoft.Dynamics.CRM.StringAttributeMetadata"
+_MEMO_TYPE = "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
+_DATETIME_TYPE = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+_NUMERIC_TYPES = {
+    "Microsoft.Dynamics.CRM.IntegerAttributeMetadata",
+    "Microsoft.Dynamics.CRM.BigIntAttributeMetadata",
+    "Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+    "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
+    "Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
+}
+_PRECISION_TYPES = {
+    "Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+    "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
+    "Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
+}
+_LENGTH_TYPES = {_STRING_TYPE, _MEMO_TYPE}
+
 # Write-time header: preserve localized labels in untouched languages.
 _WRITE_HEADERS = {"MSCRM.MergeLabels": "true"}
 
@@ -100,7 +119,7 @@ def _retrieve_merge_write(
     on top — never the sparse `changes` alone — so omitted properties can never
     be dropped. Fails closed: a GET error propagates and no PUT is attempted.
     """
-    current = _read(backend, path, extra_headers=dict(_READ_HEADERS))
+    current = _read(backend, path)
 
     if backend.dry_run:
         merged = _deep_merge(current, changes)
@@ -190,6 +209,7 @@ def update_entity(
 
 def _build_attribute_changes(
     *,
+    odata_type: str,
     display_name: str | None,
     description: str | None,
     required: str | None,
@@ -199,6 +219,15 @@ def _build_attribute_changes(
     max_value: float | None,
     format_name: str | None,
 ) -> dict[str, Any]:
+    """Build the sparse `changes` dict, validated against the attribute type.
+
+    `odata_type` is the attribute's `@odata.type` cast name (no leading '#').
+    Numeric/length/format options that are incompatible with the type are
+    rejected client-side (mirrors `_forbid` on the create path) instead of
+    producing an invalid PUT body, and `--format` writes the correct property
+    for the type: `Format` (string) on DateTime, `FormatName` (Value-wrapped)
+    on string attributes.
+    """
     changes: dict[str, Any] = {}
     if display_name is not None:
         changes["DisplayName"] = label(display_name)
@@ -209,15 +238,40 @@ def _build_attribute_changes(
             raise D365Error(f"required must be one of {sorted(_VALID_REQUIRED)}.")
         changes["RequiredLevel"] = {"Value": required}
     if max_length is not None:
+        if odata_type not in _LENGTH_TYPES:
+            raise D365Error("--max-length is only valid for string/memo attributes.")
         changes["MaxLength"] = max_length
     if precision is not None:
+        if odata_type not in _PRECISION_TYPES:
+            raise D365Error(
+                "--precision is only valid for decimal/double/money attributes."
+            )
         changes["Precision"] = precision
     if min_value is not None:
+        if odata_type not in _NUMERIC_TYPES:
+            raise D365Error("--min is only valid for numeric attributes.")
         changes["MinValue"] = min_value
     if max_value is not None:
+        if odata_type not in _NUMERIC_TYPES:
+            raise D365Error("--max is only valid for numeric attributes.")
         changes["MaxValue"] = max_value
     if format_name is not None:
-        changes["FormatName"] = {"Value": format_name}
+        if odata_type == _DATETIME_TYPE:
+            if format_name not in _DATETIME_FORMATS:
+                raise D365Error(
+                    f"--format for datetime must be one of {sorted(_DATETIME_FORMATS)}."
+                )
+            changes["Format"] = format_name
+        elif odata_type == _STRING_TYPE:
+            if format_name not in _STRING_FORMATS:
+                raise D365Error(
+                    f"--format for string must be one of {sorted(_STRING_FORMATS)}."
+                )
+            changes["FormatName"] = {"Value": format_name}
+        else:
+            raise D365Error(
+                "--format is only valid for string or datetime attributes."
+            )
     return changes
 
 
@@ -246,17 +300,13 @@ def update_attribute(
     """
     if not entity or not attribute:
         raise D365Error("entity and attribute are required.")
-    changes = _build_attribute_changes(
-        display_name=display_name,
-        description=description,
-        required=required,
-        max_length=max_length,
-        precision=precision,
-        min_value=min_value,
-        max_value=max_value,
-        format_name=format_name,
-    )
-    if not changes:
+    if all(
+        v is None
+        for v in (
+            display_name, description, required, max_length, precision,
+            min_value, max_value, format_name,
+        )
+    ):
         raise D365Error(
             "nothing to update — pass at least one of "
             "--display/--description/--required/--max-length/--precision/"
@@ -267,15 +317,27 @@ def update_attribute(
         f"EntityDefinitions(LogicalName='{entity}')"
         f"/Attributes(LogicalName='{attribute}')"
     )
-    base = _read(backend, base_path, extra_headers=dict(_READ_HEADERS))
+    base = _read(backend, base_path)
     odata_type = base.get("@odata.type")
     if not isinstance(odata_type, str) or not odata_type:
         raise D365Error(
             f"Could not determine attribute metadata type for {entity}.{attribute} "
             "(missing @odata.type); cannot build the cast path for PUT."
         )
-    cast = odata_type.lstrip("#")
-    cast_path = f"{base_path}/{cast}"
+    odata_cast = odata_type.lstrip("#")
+    cast_path = f"{base_path}/{odata_cast}"
+
+    changes = _build_attribute_changes(
+        odata_type=odata_cast,
+        display_name=display_name,
+        description=description,
+        required=required,
+        max_length=max_length,
+        precision=precision,
+        min_value=min_value,
+        max_value=max_value,
+        format_name=format_name,
+    )
 
     out = _retrieve_merge_write(
         backend, path=cast_path, changes=changes, solution=solution, publish=publish,
@@ -351,7 +413,6 @@ def update_relationship(
         backend,
         f"RelationshipDefinitions(SchemaName='{schema_name}')",
         params={"$select": "MetadataId,SchemaName,RelationshipType"},
-        extra_headers=dict(_READ_HEADERS),
     )
     metadata_id = resolve.get("MetadataId")
     if not isinstance(metadata_id, str) or not metadata_id:
@@ -361,12 +422,12 @@ def update_relationship(
     odata_type = resolve.get("@odata.type")
     rel_type = resolve.get("RelationshipType")
     if isinstance(odata_type, str) and odata_type:
-        cast = odata_type.lstrip("#")
+        odata_cast = odata_type.lstrip("#")
     elif rel_type == "ManyToManyRelationship":
-        cast = "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
+        odata_cast = "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
     else:
-        cast = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
-    path = f"RelationshipDefinitions({metadata_id})/{cast}"
+        odata_cast = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+    path = f"RelationshipDefinitions({metadata_id})/{odata_cast}"
 
     out = _retrieve_merge_write(
         backend, path=path, changes=changes, solution=solution, publish=publish,

@@ -152,6 +152,80 @@ class TestUpdateAttribute:
         assert put_req.headers.get("MSCRM.MergeLabels") == "true"
 
 
+_FULL_DATETIME_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
+    "MetadataId": "66666666-6666-6666-6666-666666666666",
+    "SchemaName": "new_Due",
+    "LogicalName": "new_due",
+    "Format": "DateAndTime",
+    "DisplayName": {"LocalizedLabels": [{"Label": "Due", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+
+class TestUpdateAttributeFormat:
+    def test_datetime_format_writes_plain_format_not_formatname(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_due')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DATETIME_ATTR)
+            m.get(cast, json=_FULL_DATETIME_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_due", format_name="DateOnly")
+        body = m.request_history[-1].json()
+        # The datetime format change lands on the plain string `Format` property.
+        assert body["Format"] == "DateOnly"
+        # And does NOT write the bogus FormatName key for a datetime column.
+        assert "FormatName" not in body
+
+    def test_string_format_writes_value_wrapped_formatname(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_code')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_STRING_ATTR)
+            m.get(cast, json=_FULL_STRING_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_code", format_name="Email")
+        body = m.request_history[-1].json()
+        assert body["FormatName"] == {"Value": "Email"}
+
+    def test_datetime_rejects_string_format_value_client_side(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_due')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DATETIME_ATTR)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="datetime"):
+                mu.update_attribute(backend, "new_project", "new_due", format_name="Email")
+            assert put.call_count == 0
+
+    def test_max_length_on_datetime_rejected_client_side(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_due')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_DATETIME_ATTR)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="max-length"):
+                mu.update_attribute(backend, "new_project", "new_due", max_length=50)
+            assert put.call_count == 0
+
+
 _FULL_PICKLIST_ATTR = {
     "@odata.type": "#Microsoft.Dynamics.CRM.PicklistAttributeMetadata",
     "MetadataId": "44444444-4444-4444-4444-444444444444",
