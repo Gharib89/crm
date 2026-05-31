@@ -83,9 +83,15 @@ def _strip_global_options(tokens: list[str]) -> list[str]:
 # string. We split the RAW command string on these BEFORE shlex so a destructive
 # sub-command is isolated even when the operator is glued to adjacent words
 # (`a|crm ...`, `&&crm ...`, `$(crm ...)`). shlex never emits a glued operator
-# as its own token, so token-level splitting would miss these. Order matters:
-# the two-char operators (`||`, `&&`, `$(`) must precede the single-char class.
-_SEGMENT_SPLIT = re.compile(r"\|\||&&|\$\(|[;|&()]")
+# as its own token, so token-level splitting would miss these. A newline (and
+# carriage return) separates commands exactly like `;`, so a destructive verb on
+# any line after the first must split into its own segment. Order matters: the
+# two-char operators (`||`, `&&`, `$(`) must precede the single-char class.
+_SEGMENT_SPLIT = re.compile(r"\|\||&&|\$\(|[;|&()\n\r]")
+
+# A leading shell variable-assignment prefix (`FOO=1 crm ...`) is valid syntax
+# that would otherwise make the assignment the first token and hide the crm verb.
+_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
 def _is_crm_invocation(token: str) -> bool:
@@ -112,8 +118,14 @@ def _split_segments(command: str) -> list[list[str]]:
 
 def _destructive_match(tokens: list[str]) -> str | None:
     """Return a human-readable verb label if `tokens` (one command segment) are
-    a destructive crm invocation, else None. The first token must be a `crm`
-    invocation (bare or path-prefixed). Does not block on --yes (caller checks)."""
+    a destructive crm invocation, else None. The first non-assignment token must
+    be a `crm` invocation (bare or path-prefixed). Does not block on --yes."""
+    # Drop any leading `NAME=value` env-var assignment prefixes so `FOO=1 crm ...`
+    # is treated identically to `crm ...`.
+    i = 0
+    while i < len(tokens) and _ASSIGNMENT.match(tokens[i]):
+        i += 1
+    tokens = tokens[i:]
     if not tokens or not _is_crm_invocation(tokens[0]):
         return None
 

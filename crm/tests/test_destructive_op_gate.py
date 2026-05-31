@@ -229,6 +229,41 @@ class TestCompoundAndPathPrefix:
         assert r.returncode == 0, r.stderr
 
 
+class TestSeparatorAndPrefixBypass:
+    @pytest.mark.parametrize("cmd", [
+        # Newline separates commands just like `;` — a destructive verb on any
+        # line after the first must still be caught.
+        "crm query x\ncrm entity delete contacts abc",
+        "set -e\ncrm entity delete contacts abc",
+        "crm query accounts\ncrm metadata delete-entity new_widget",
+        "crm query x\r\ncrm entity delete contacts abc",
+    ])
+    def test_newline_separated_destructive_blocked(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed by newline: {cmd!r}\n{r.stdout}"
+
+    def test_newline_separated_with_yes_allowed(self):
+        r = _run("crm query x\ncrm entity delete contacts abc --yes")
+        assert r.returncode == 0, r.stderr
+
+    @pytest.mark.parametrize("cmd", [
+        # A leading shell variable-assignment prefix must not hide the crm verb.
+        "FOO=1 crm entity delete contacts abc",
+        "A=1 B=2 crm metadata delete-entity new_widget",
+    ])
+    def test_env_var_prefix_destructive_blocked(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed by env-var prefix: {cmd!r}\n{r.stdout}"
+
+    def test_env_var_prefix_with_yes_allowed(self):
+        r = _run("FOO=1 crm entity delete contacts abc --yes")
+        assert r.returncode == 0, r.stderr
+
+    def test_env_var_prefix_non_destructive_passthrough(self):
+        r = _run("FOO=1 crm query accounts")
+        assert r.returncode == 0, r.stderr
+
+
 class TestStdinParsing:
     def test_ignores_non_bash_tool(self):
         r = _run("crm metadata delete-entity new_widget", tool_name="Read")
