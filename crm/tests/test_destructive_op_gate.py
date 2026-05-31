@@ -160,6 +160,59 @@ class TestFlagOrdering:
         r = _run("crm --json metadata delete-entity new_widget")
         assert r.returncode == BLOCK
 
+    @pytest.mark.parametrize("cmd", [
+        "crm --profile prod metadata delete-entity new_widget",
+        "crm --session foo entity delete contacts abc",
+        "crm --log-level debug metadata delete-entity new_widget",
+        "crm --log-format json-line metadata delete-optionset new_color",
+        "crm --auth-scheme ntlm async cancel 33333333-3333-3333-3333-333333333333",
+        "crm --password s3cret solution job-cancel 22222222-2222-2222-2222-222222222222",
+    ])
+    def test_value_option_before_verb_without_yes_blocked(self, cmd):
+        # The option VALUE (prod/foo/debug/...) must not be mistaken for the
+        # command group, which would silently defeat the gate.
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed by value option: {cmd}\n{r.stdout}"
+
+    @pytest.mark.parametrize("cmd", [
+        "crm --profile prod metadata delete-entity new_widget --yes",
+        "crm --session foo entity delete contacts abc --yes",
+        "crm --log-level debug metadata delete-entity new_widget --yes",
+    ])
+    def test_value_option_before_verb_with_yes_allowed(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == 0, r.stderr
+
+    def test_equals_form_value_option_blocked(self):
+        # `--flag=value` already starts with `-`; ensure it is still dropped.
+        r = _run("crm --profile=prod metadata delete-entity new_widget")
+        assert r.returncode == BLOCK
+
+
+class TestCompoundAndPathPrefix:
+    def test_path_prefixed_crm_blocked(self):
+        r = _run("/usr/local/bin/crm entity delete contacts abc")
+        assert r.returncode == BLOCK
+        assert "delete" in r.stderr
+
+    def test_path_prefixed_crm_with_yes_allowed(self):
+        r = _run("/usr/local/bin/crm entity delete contacts abc --yes")
+        assert r.returncode == 0
+
+    @pytest.mark.parametrize("op", ["&&", "||", ";", "|"])
+    def test_crm_after_shell_operator_blocked(self, op):
+        r = _run(f"true {op} crm entity delete contacts abc")
+        assert r.returncode == BLOCK, f"gate bypassed after {op!r}\n{r.stdout}"
+
+    def test_crm_after_operator_with_yes_allowed(self):
+        r = _run("true && crm entity delete contacts abc --yes")
+        assert r.returncode == 0
+
+    def test_yes_in_other_segment_does_not_unblock(self):
+        # A --yes on an unrelated sub-command must not unblock the destructive one.
+        r = _run("echo --yes && crm entity delete contacts abc")
+        assert r.returncode == BLOCK
+
 
 class TestStdinParsing:
     def test_ignores_non_bash_tool(self):
@@ -207,10 +260,11 @@ class TestCliConfirmParity:
     def test_entity_delete_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        # No input => EOF on stdin, the real non-TTY agent scenario. click.confirm
+        # raises Abort; the documented JSON envelope must still be emitted.
         result = self._runner().invoke(
             crm_cli.cli,
             ["--json", "entity", "delete", "contacts", _GUID],
-            input="\n",
         )
         assert result.exit_code == 1
         assert '"error": "aborted by user"' in result.output
@@ -231,7 +285,7 @@ class TestCliConfirmParity:
         from crm import cli as crm_cli
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "solution", "job-cancel", _GUID], input="\n",
+            crm_cli.cli, ["--json", "solution", "job-cancel", _GUID],
         )
         assert result.exit_code == 1
         assert '"error": "aborted by user"' in result.output
@@ -252,7 +306,7 @@ class TestCliConfirmParity:
         from crm import cli as crm_cli
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
-            crm_cli.cli, ["--json", "async", "cancel", _GUID], input="\n",
+            crm_cli.cli, ["--json", "async", "cancel", _GUID],
         )
         assert result.exit_code == 1
         assert '"error": "aborted by user"' in result.output
