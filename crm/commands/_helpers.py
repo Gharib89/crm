@@ -81,6 +81,22 @@ def _admin_kwargs(as_user: str | None, suppress_dup_detection: bool,
     }
 
 
+def _resolve_publish(ctx: "CLIContext", publish: bool) -> bool:
+    """Derive the effective publish value, honoring the global --stage-only flag.
+
+    When `ctx.stage_only` is set, every metadata-mutating command behaves as
+    --no-publish. Passing an explicit --publish on the command line alongside
+    --stage-only is contradictory and rejected. An explicit --no-publish is fine.
+    """
+    if not ctx.stage_only:
+        return publish
+    from click.core import ParameterSource
+    source = click.get_current_context().get_parameter_source("publish")
+    if source == ParameterSource.COMMANDLINE and publish:
+        raise click.UsageError("--publish cannot be combined with --stage-only")
+    return False
+
+
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
     if data_file:
         with open(data_file, "r", encoding="utf-8") as f:

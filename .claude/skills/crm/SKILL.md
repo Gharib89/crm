@@ -242,6 +242,24 @@ crm solution publish --xml \
     '<importexportxml><entities><entity>account</entity></entities></importexportxml>'
 ```
 
+#### Stage many changes, then publish once
+
+By default each create/update metadata command auto-publishes. Use the global
+`--stage-only` flag (or `CRM_STAGE_ONLY=1`) to suppress publishing across a batch
+of changes, then run `publish-all` once at the end. `--stage-only` forces every
+create/update command to `--no-publish`; in `--json` mode the envelope `meta`
+records `staged: true`. Combining `--stage-only` with an explicit `--publish` is
+rejected.
+
+```bash
+crm --stage-only metadata add-attribute new_widget \
+    --kind string --schema-name new_Label --display Label --max-length 100
+crm --stage-only metadata create-optionset --name new_priority --display Priority \
+    --option 1:Low --option 2:High
+# ... more staged changes ...
+crm solution publish-all   # single publish for all staged customizations
+```
+
 ### 13. Inspect the server's entity sets
 
 ```bash

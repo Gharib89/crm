@@ -12,6 +12,7 @@ from crm.commands._helpers import (
     _admin_header_options,
     _admin_kwargs,
     _confirm_destructive,
+    _resolve_publish,
     _CASCADE,
     _MENU,
     _REQUIRED,
@@ -157,6 +158,7 @@ def metadata_create_entity(
     has_activities, has_notes, is_activity, solution, publish,
 ):
     """Create a new custom entity (table)."""
+    publish = _resolve_publish(ctx, publish)
     try:
         info = meta_mod.create_entity(
             ctx.backend(),
@@ -180,7 +182,7 @@ def metadata_create_entity(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("relationships")
@@ -274,6 +276,7 @@ def metadata_add_attribute(
     max_size_kb, solution, publish,
 ):
     """Add an attribute (column) to an existing entity."""
+    publish = _resolve_publish(ctx, publish)
     parsed_options: list[tuple[int | None, str]] | None = None
     if options:
         parsed_options = []
@@ -337,7 +340,7 @@ def metadata_add_attribute(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("create-one-to-many")
@@ -368,6 +371,7 @@ def metadata_create_one_to_many(
     solution, publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
+    publish = _resolve_publish(ctx, publish)
     try:
         info = rel_mod.create_one_to_many(
             ctx.backend(),
@@ -393,7 +397,7 @@ def metadata_create_one_to_many(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("create-many-to-many")
@@ -417,6 +421,7 @@ def metadata_create_many_to_many(
     solution, publish,
 ):
     """Create an N:N relationship via the dedicated action."""
+    publish = _resolve_publish(ctx, publish)
     try:
         info = rel_mod.create_many_to_many(
             ctx.backend(),
@@ -436,7 +441,7 @@ def metadata_create_many_to_many(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("list-optionsets")
@@ -486,6 +491,7 @@ def metadata_get_optionset(ctx: CLIContext, name):
 def metadata_create_optionset(ctx: CLIContext, name, display_name, description, options,
                               solution, publish):
     """Create a global option set."""
+    publish = _resolve_publish(ctx, publish)
     parsed: list[tuple[int | None, str]] = []
     for raw in options:
         if ":" not in raw:
@@ -504,7 +510,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("update-optionset")
@@ -523,6 +529,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
 def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_options,
                               delete_options, reorder, solution, publish):
     """Granular update: insert/update/delete/reorder options."""
+    publish = _resolve_publish(ctx, publish)
     insert: list[tuple[int | None, str]] = []
     for raw in insert_options:
         if ":" not in raw:
@@ -568,7 +575,7 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
 
 
 @metadata_group.command("delete-optionset")
