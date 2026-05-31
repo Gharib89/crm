@@ -3,11 +3,12 @@
 from __future__ import annotations
 import json
 import os
+import re
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
 from crm.core import session as session_mod
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Error
 if TYPE_CHECKING:
     from crm.cli import CLIContext
 
@@ -37,14 +38,20 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error) -> None:
 def _confirm_destructive(thing: str, name: str, yes: bool) -> bool:
     """Return True to proceed, False to bail.
 
-    `--yes` skips the prompt. In non-TTY contexts, click.confirm aborts safely.
+    `--yes` skips the prompt. On a true non-TTY (EOF) stdin, `click.confirm`
+    raises `click.Abort`; we catch it and return False so the caller can emit
+    the documented ``{"ok": false, "error": "aborted by user"}`` envelope
+    (exit 1) instead of click's bare ``Aborted!`` with no JSON.
     """
     if yes:
         return True
-    return click.confirm(
-        f"This will permanently delete {thing} {name!r} and all related data. Continue?",
-        default=False,
-    )
+    try:
+        return click.confirm(
+            f"This will permanently delete {thing} {name!r} and all related data. Continue?",
+            default=False,
+        )
+    except click.Abort:
+        return False
 
 
 def _admin_header_options(f):
@@ -79,6 +86,122 @@ def _admin_kwargs(as_user: str | None, suppress_dup_detection: bool,
         "suppress_duplicate_detection": True if suppress_dup_detection else None,
         "bypass_custom_plugin_execution": True if bypass_plugins else None,
     }
+
+
+def _active_profile(ctx: "CLIContext") -> ConnectionProfile | None:
+    """Load the active connection profile, or None if none is resolvable."""
+    name = ctx.profile_name
+    if not name:
+        state = session_mod.load_session(ctx.session_name)
+        name = state.get("active_profile")
+    if not name:
+        return None
+    try:
+        return session_mod.load_profile(name)
+    except FileNotFoundError:
+        return None
+
+
+def _require_solution(require_flag: bool) -> bool:
+    """Strict mode active when the --require-solution flag OR CRM_REQUIRE_SOLUTION set."""
+    if require_flag:
+        return True
+    return os.environ.get("CRM_REQUIRE_SOLUTION", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _solution_option(f):
+    """Stack `--solution` / `--require-solution` on a mutating metadata command."""
+    f = click.option(
+        "--require-solution", is_flag=True, default=False,
+        help="Fail if no solution resolves (also via CRM_REQUIRE_SOLUTION).",
+    )(f)
+    f = click.option(
+        "--solution", default=None,
+        help="Target solution uniquename (MSCRM.SolutionUniqueName). "
+             "Defaults to the profile's default_solution.",
+    )(f)
+    return f
+
+
+def _resolve_solution(
+    ctx: "CLIContext", explicit: str | None, *, require: bool,
+) -> tuple[str | None, str | None]:
+    """Resolve the effective solution for a mutating metadata command.
+
+    Precedence: explicit `--solution` > profile `default_solution` > None.
+
+    Returns `(solution, warning)`. When none resolves and `require` is False,
+    `warning` is a non-empty string the caller stashes under the JSON `meta`
+    envelope (or prints via skin.warning in human mode). When none resolves and
+    `require` is True, this routes a hard failure through `ctx.emit(False)`
+    (raising click.exceptions.Exit per ADR 0001) instead of returning.
+    """
+    if explicit:
+        return explicit, None
+    profile = _active_profile(ctx)
+    if profile and profile.default_solution:
+        return profile.default_solution, None
+    msg = (
+        "No solution resolved: pass --solution or set a profile default_solution. "
+        "The change targets the default (unmanaged) solution."
+    )
+    if require:
+        ctx.emit(False, error=msg)
+        return None, None  # unreachable: emit(False) raises Exit
+    return None, msg
+
+
+def _emit_with_warning(
+    ctx: "CLIContext", data: Any, warning: str | None,
+    *, meta: dict[str, Any] | None = None,
+) -> None:
+    """Emit a successful result, surfacing a solution warning if present.
+
+    In JSON mode the warning is stashed under the `meta` envelope (no envelope
+    contract change). In human mode it is printed via skin.warning.
+    """
+    if warning:
+        if ctx.json_mode:
+            meta = {**(meta or {}), "warning": warning}
+        else:
+            ctx.skin.warning(warning)
+    ctx.emit(True, data=data, meta=meta)
+
+
+def _resolve_schema_name(
+    ctx: "CLIContext", schema_name: str | None, token: str | None, flag: str,
+) -> str:
+    """Resolve a create command's schema name from an explicit value or prefix.
+
+    If `schema_name` is given, return it verbatim. Otherwise build
+    `<publisher_prefix>_<PascalToken>` from the active profile prefix and the
+    display/name token. Raises UsageError when neither is available.
+    """
+    if schema_name:
+        return schema_name
+    profile = _active_profile(ctx)
+    prefix = profile.publisher_prefix if profile else None
+    if not prefix:
+        raise click.UsageError(
+            f"{flag} is required (no publisher_prefix on the active profile to "
+            "default from)."
+        )
+    if not token:
+        raise click.UsageError(f"{flag} is required to default the schema name.")
+    # PascalCase across word boundaries and drop non-alphanumerics so a
+    # multi-word display like "Project Task" -> "ProjectTask", not the invalid
+    # "Project Task". Preserve casing of the rest of each word (don't lower it).
+    pascal = "".join(
+        w[:1].upper() + w[1:] for w in re.split(r"[^0-9A-Za-z]+", token) if w
+    )
+    if not pascal:
+        raise click.UsageError(
+            f"{flag} could not be defaulted from {token!r} (no alphanumeric "
+            f"characters); pass {flag} explicitly."
+        )
+    return f"{prefix}_{pascal}"
 
 
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:

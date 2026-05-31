@@ -9,6 +9,7 @@ from crm.commands._helpers import (
     _handle_d365_error,
     _admin_header_options,
     _admin_kwargs,
+    _confirm_destructive,
     _load_payload,
     _touch_session,
 )
@@ -128,12 +129,15 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
 @click.argument("record_id")
 @click.option("--if-match", "if_match", metavar="ETAG", default=None,
               help='Optimistic concurrency etag.')
-@click.confirmation_option(prompt="Delete this record?")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_admin_header_options
 @pass_ctx
-def entity_delete(ctx: CLIContext, entity_set, record_id, if_match,
+def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
                   as_user, suppress_dup_detection, bypass_plugins):
     """DELETE a record."""
+    if not _confirm_destructive("record", f"{entity_set}({record_id})", yes):
+        ctx.emit(False, error="aborted by user")
+        return
     try:
         result = entity_mod.delete(
             ctx.backend(), entity_set, record_id,

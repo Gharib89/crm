@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from typing import Any
 
 import click
@@ -117,10 +118,84 @@ class CLIContext:
 pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 
 
+def _emit_usage_envelope(message: str) -> None:
+    """Print the standard {ok: false, error: ...} JSON envelope for a usage error."""
+    click.echo(json.dumps({"ok": False, "error": message}, indent=2, default=str))
+
+
+def _json_mode_active(args: list[str] | None) -> bool:
+    """Decide whether to emit JSON by scanning argv — the authoritative per-invocation
+    signal. The root --json must precede the subcommand and is always present in argv
+    for a real --json invocation, so argv is the reliable source. The parsed
+    CLIContext.json_mode is deliberately NOT consulted: the root callback may not have
+    run yet when a usage error fires, and in the REPL it carries a stale value from a
+    prior --json line, which would mis-skin a subsequent human-mode error.
+
+    Only the leading run of root-level option tokens (everything before the first
+    subcommand token) is considered, and a value consumed by a preceding
+    value-taking root option is skipped — so a literal '--json' passed as an option
+    value (e.g. `entity get accounts --select --json`) is not mistaken for the flag."""
+    if not args:
+        return False
+    # Root options that consume the following token as their value; '--json' sitting
+    # in such a slot is a value, not the root flag.
+    value_opts = {
+        "--profile", "--password", "--log-level", "--log-format",
+        "--auth-scheme", "--session",
+    }
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if not tok.startswith("-"):
+            # First subcommand token reached; the root --json must appear before it.
+            return False
+        if tok == "--json":
+            return True
+        if tok in value_opts:
+            i += 2  # skip the option and its value
+            continue
+        i += 1
+    return False
+
+
+class _JsonAwareGroup(click.Group):
+    """Root group that, under --json, renders Click usage errors as the standard
+    JSON envelope on stdout while preserving the exit code (2, per ADR 0001)."""
+
+    def main(self, args=None, **kwargs):  # type: ignore[override]
+        argv = list(args) if args is not None else sys.argv[1:]
+        json_mode = _json_mode_active(argv)
+        if not json_mode:
+            return super().main(args=args, **kwargs)
+
+        # Under --json, intercept Click usage errors so they render as the standard
+        # envelope on stdout. Run non-standalone so the UsageError reaches us instead
+        # of Click printing raw text to stderr; otherwise replicate standalone exit
+        # semantics so the operational-failure (Exit) / Abort paths are unchanged.
+        # In non-standalone mode super().main() returns the command's value on
+        # success, or the Exit code (an int) when emit() raised Exit.
+        standalone = kwargs.pop("standalone_mode", True)
+        try:
+            rv = super().main(args=args, standalone_mode=False, **kwargs)
+        except click.UsageError as exc:
+            _emit_usage_envelope(exc.format_message())
+            if standalone:
+                sys.exit(exc.exit_code)
+            raise click.exceptions.Exit(exc.exit_code)
+        except click.exceptions.Abort:
+            if standalone:
+                click.echo("Aborted!", file=sys.stderr)
+                sys.exit(1)
+            raise
+        if standalone:
+            sys.exit(rv if isinstance(rv, int) else 0)
+        return rv
+
+
 # ── Root group ──────────────────────────────────────────────────────────
 
 
-@click.group(invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(cls=_JsonAwareGroup, invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True, help="Preview HTTP request without issuing it.")
 @click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
