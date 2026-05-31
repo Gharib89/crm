@@ -125,10 +125,35 @@ def _emit_usage_envelope(message: str) -> None:
 
 def _json_mode_active(ctx: CLIContext | None, args: list[str] | None) -> bool:
     """Decide whether to emit JSON. The root --json may not yet be parsed onto the
-    CLIContext when a root-level usage error fires, so fall back to scanning argv."""
+    CLIContext when a root-level usage error fires, so fall back to inspecting argv.
+
+    Only the leading run of root-level option tokens (everything before the first
+    subcommand token) is considered, and a value consumed by a preceding
+    value-taking root option is skipped — so a literal '--json' passed as an option
+    value (e.g. `entity get accounts --select --json`) is not mistaken for the flag."""
     if ctx is not None and ctx.json_mode:
         return True
-    return bool(args) and "--json" in args
+    if not args:
+        return False
+    # Root options that consume the following token as their value; '--json' sitting
+    # in such a slot is a value, not the root flag.
+    value_opts = {
+        "--profile", "--password", "--log-level", "--log-format",
+        "--auth-scheme", "--session",
+    }
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if not tok.startswith("-"):
+            # First subcommand token reached; the root --json must appear before it.
+            return False
+        if tok == "--json":
+            return True
+        if tok in value_opts:
+            i += 2  # skip the option and its value
+            continue
+        i += 1
+    return False
 
 
 class _JsonAwareGroup(click.Group):

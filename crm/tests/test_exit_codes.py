@@ -113,10 +113,14 @@ def test_usage_error_human_path_not_json():
 
 
 def test_usage_error_json_exits_2_not_1():
-    """The JSON-wrapped usage error stays exit 2, distinct from operational failure."""
-    result = CliRunner().invoke(cli, ["--json", "query", "count", "--nope"])
-    assert result.exit_code == 2
-    assert result.exit_code != 1
+    """The JSON-wrapped usage error stays exit 2, distinct from an operational
+    failure (exit 1) — contrast both to prove the distinction is real."""
+    usage = CliRunner().invoke(cli, ["--json", "query", "count", "--nope"])
+    operational = CliRunner().invoke(
+        cli, ["--json", "action", "invoke", "foo", "--bind-set", "workflows"]
+    )
+    assert usage.exit_code == 2, usage.output
+    assert operational.exit_code == 1, operational.output
 
 
 def test_repl_path_emits_json_envelope(capsys):

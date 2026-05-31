@@ -157,11 +157,11 @@ def repl(click_ctx: click.Context):
             # already printed the envelope; nothing more to show — keep going.
             pass
         except click.ClickException as exc:
-            if ctx.json_mode:
-                from crm.cli import _emit_usage_envelope
-                _emit_usage_envelope(exc.format_message())
-            else:
-                ctx.skin.error(exc.format_message())
+            # Usage errors (UsageError/BadParameter) under json_mode are rendered as
+            # the envelope by _JsonAwareGroup and surface as click.exceptions.Exit
+            # above, so they never reach here. This is the generic fallback for any
+            # other ClickException.
+            ctx.skin.error(exc.format_message())
         except D365Error as exc:
             ctx.skin.error(str(exc))
         except Exception as exc:  # noqa: BLE001 — REPL must keep running
