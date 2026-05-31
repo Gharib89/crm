@@ -123,16 +123,18 @@ def _emit_usage_envelope(message: str) -> None:
     click.echo(json.dumps({"ok": False, "error": message}, indent=2, default=str))
 
 
-def _json_mode_active(ctx: CLIContext | None, args: list[str] | None) -> bool:
-    """Decide whether to emit JSON. The root --json may not yet be parsed onto the
-    CLIContext when a root-level usage error fires, so fall back to inspecting argv.
+def _json_mode_active(args: list[str] | None) -> bool:
+    """Decide whether to emit JSON by scanning argv — the authoritative per-invocation
+    signal. The root --json must precede the subcommand and is always present in argv
+    for a real --json invocation, so argv is the reliable source. The parsed
+    CLIContext.json_mode is deliberately NOT consulted: the root callback may not have
+    run yet when a usage error fires, and in the REPL it carries a stale value from a
+    prior --json line, which would mis-skin a subsequent human-mode error.
 
     Only the leading run of root-level option tokens (everything before the first
     subcommand token) is considered, and a value consumed by a preceding
     value-taking root option is skipped — so a literal '--json' passed as an option
     value (e.g. `entity get accounts --select --json`) is not mistaken for the flag."""
-    if ctx is not None and ctx.json_mode:
-        return True
     if not args:
         return False
     # Root options that consume the following token as their value; '--json' sitting
@@ -162,10 +164,7 @@ class _JsonAwareGroup(click.Group):
 
     def main(self, args=None, **kwargs):  # type: ignore[override]
         argv = list(args) if args is not None else sys.argv[1:]
-        ctx_obj = kwargs.get("obj")
-        json_mode = _json_mode_active(
-            ctx_obj if isinstance(ctx_obj, CLIContext) else None, argv
-        )
+        json_mode = _json_mode_active(argv)
         if not json_mode:
             return super().main(args=args, **kwargs)
 

@@ -124,16 +124,17 @@ def test_usage_error_json_exits_2_not_1():
 
 
 def test_repl_path_emits_json_envelope(capsys):
-    """REPL json_mode: a usage error emits the envelope to stdout, not skin.error."""
+    """REPL --json line: a usage error emits the envelope to stdout, not skin.error.
+    The signal is the '--json' token in argv, not a pre-set ctx flag — so we leave
+    ctx.json_mode at its default to prove argv alone drives the envelope."""
     import click
 
     ctx = CLIContext()
-    ctx.json_mode = True
     errors: list[str] = []
     ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
     try:
         cli.main(
-            args=["query", "count", "--nope"], obj=ctx,
+            args=["--json", "query", "count", "--nope"], obj=ctx,
             standalone_mode=False, prog_name="crm",
         )
     except (SystemExit, click.exceptions.Exit, click.ClickException):
@@ -144,22 +145,49 @@ def test_repl_path_emits_json_envelope(capsys):
     assert errors == [], "skin.error must not be used in json mode"
 
 
-def test_repl_path_human_uses_skin_error():
-    """REPL without json_mode: usage error still routes to skin.error text path."""
+def _repl_run(ctx, argv, errors):
+    """Mirror repl.py's invocation + catch: run one line through the real wrapper,
+    routing any leftover ClickException to skin.error like the loop does."""
     import click
 
-    ctx = CLIContext()
-    ctx.json_mode = False
-    errors: list[str] = []
-    ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
     try:
-        cli.main(
-            args=["query", "count", "--nope"], obj=ctx,
-            standalone_mode=False, prog_name="crm",
-        )
-    except click.ClickException as exc:
-        # mirror repl.py: the loop catches ClickException and calls skin.error
-        ctx.skin.error(exc.format_message())
+        cli.main(args=argv, obj=ctx, standalone_mode=False, prog_name="crm")
     except (SystemExit, click.exceptions.Exit):
         pass
+    except click.ClickException as exc:
+        ctx.skin.error(exc.format_message())
+
+
+def test_repl_path_human_uses_skin_error():
+    """REPL without --json: usage error routes to skin.error text path, no envelope."""
+    ctx = CLIContext()
+    errors: list[str] = []
+    ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
+    _repl_run(ctx, ["query", "count", "--nope"], errors)
     assert errors, "skin.error should carry the usage error text in human mode"
+
+
+def test_repl_human_line_survives_prior_json_line(capsys):
+    """Regression guard for the stale-json_mode bug: a --json line followed by a
+    no-'--json' usage-error line on the SAME CLIContext must keep the human path —
+    skin.error is called and NO JSON envelope is written to stdout for line 2."""
+    ctx = CLIContext()
+    errors: list[str] = []
+    ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
+
+    # Line 1: a --json invocation. This sets ctx.json_mode=True via the root callback.
+    _repl_run(ctx, ["--json", "--dry-run", "query", "count", "account"], errors)
+    capsys.readouterr()  # discard line-1 output
+    errors.clear()
+
+    # Line 2: a HUMAN-mode usage error (no --json). The stale ctx.json_mode must NOT
+    # cause a JSON envelope; argv has no '--json', so it stays human.
+    _repl_run(ctx, ["query", "count", "--nope"], errors)
+    out = capsys.readouterr().out
+    assert errors, "human line after a json line must route to skin.error"
+    try:
+        json.loads(out)
+        is_json = True
+    except (ValueError, json.JSONDecodeError):
+        is_json = False
+    assert not is_json, "stale json_mode must not emit an envelope on a human line"
