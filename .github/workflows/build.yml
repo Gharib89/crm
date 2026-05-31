@@ -58,8 +58,13 @@ jobs:
           mkdir -p out
           cp "${{ matrix.binary_path }}" "out/${{ matrix.artifact_name }}"
 
+      # PR builds gate on tests/pyright/build/smoke above; the binary itself is
+      # only worth persisting for main. Skipping PR uploads + short retention
+      # keeps Actions artifact storage from filling the quota.
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
         with:
           name: ${{ matrix.artifact_name }}
           path: out/${{ matrix.artifact_name }}
           if-no-files-found: error
+          retention-days: 7
