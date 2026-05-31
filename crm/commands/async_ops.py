@@ -5,7 +5,11 @@ import click
 from crm.core import async_ops as async_ops_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error, _resolve_async_state
+from crm.commands._helpers import (
+    _handle_d365_error,
+    _confirm_destructive,
+    _resolve_async_state,
+)
 
 
 @click.group("async")
@@ -62,10 +66,13 @@ def async_get(ctx: CLIContext, async_operation_id):
 
 @async_group.command("cancel")
 @click.argument("async_operation_id")
-@click.confirmation_option(prompt="Cancel this async operation?")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @pass_ctx
-def async_cancel(ctx: CLIContext, async_operation_id):
+def async_cancel(ctx: CLIContext, async_operation_id, yes):
     """Cancel a pending or suspended asyncoperation."""
+    if not _confirm_destructive("async job", async_operation_id, yes):
+        ctx.emit(False, error="aborted by user")
+        return
     try:
         async_ops_mod.cancel_async_operation(ctx.backend(), async_operation_id)
     except D365Error as exc:
