@@ -62,6 +62,8 @@ class ConnectionProfile:
     api_version: str = "v9.2"
     verify_ssl: bool = True
     auth_scheme: str = "ntlm"      # ntlm | kerberos | negotiate
+    default_solution: str | None = None  # uniquename for MSCRM.SolutionUniqueName
+    publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -110,6 +112,8 @@ class ConnectionProfile:
             "api_version": self.api_version,
             "verify_ssl": self.verify_ssl,
             "auth_scheme": self.auth_scheme,
+            "default_solution": self.default_solution,
+            "publisher_prefix": self.publisher_prefix,
             "timeout": self.timeout,
             "retry_max": self.retry_max,
             "retry_base_delay": self.retry_base_delay,
@@ -130,6 +134,8 @@ class ConnectionProfile:
             api_version=d.get("api_version", "v9.2"),
             verify_ssl=d.get("verify_ssl", True),
             auth_scheme=d.get("auth_scheme", "ntlm"),
+            default_solution=d.get("default_solution"),
+            publisher_prefix=d.get("publisher_prefix"),
             timeout=d.get("timeout", 120),
             retry_max=d.get("retry_max", 5),
             retry_base_delay=d.get("retry_base_delay", 1.0),

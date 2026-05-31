@@ -23,9 +23,14 @@ def connection_group():
 @click.option("--profile-name", default="default", help="Save under this profile name.")
 @click.option("--api-version", default="v9.2")
 @click.option("--no-verify-ssl", is_flag=True, help="Skip SSL certificate verification.")
+@click.option("--default-solution", default=None,
+              help="Default solution uniquename for mutating metadata commands.")
+@click.option("--publisher-prefix", default=None,
+              help="Default schema-name prefix for create commands, e.g. 'new'.")
 @pass_ctx
 def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
-                       profile_name, api_version, no_verify_ssl):
+                       profile_name, api_version, no_verify_ssl,
+                       default_solution, publisher_prefix):
     """Save a connection profile and test the credentials with WhoAmI."""
     profile = ConnectionProfile(
         name=profile_name,
@@ -35,6 +40,8 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
         api_version=api_version,
         verify_ssl=not no_verify_ssl,
         auth_scheme=ctx.auth_scheme or "ntlm",
+        default_solution=default_solution,
+        publisher_prefix=publisher_prefix,
     )
     session_mod.save_profile(profile)
     ctx.profile_name = profile_name
