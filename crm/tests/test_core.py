@@ -428,6 +428,11 @@ class TestCreateEntity:
     def test_create_entity_posts_expected_payload(self, backend):
         from crm.core import metadata as meta_mod_local
         with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='new_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("EntityDefinitions"),
                 status_code=204,
@@ -452,7 +457,7 @@ class TestCreateEntity:
         assert info["solution"] == "MyDevSolution"
         assert "metadata_id_url" in info
 
-        req = m.request_history[0]
+        req = next(r for r in m.request_history if r.method == "POST")
         assert req.method == "POST"
         assert req.headers.get("MSCRM.SolutionUniqueName") == "MyDevSolution"
         body = req.json()
@@ -484,6 +489,11 @@ class TestCreateEntityReadback:
         from crm.core import metadata as meta_mod_local
         with requests_mock.Mocker() as m:
             md_url = backend.url_for(f"EntityDefinitions({self._MD_ID})")
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='new_city')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("EntityDefinitions"),
                 status_code=204,
@@ -504,6 +514,11 @@ class TestCreateEntityReadback:
         from crm.core import metadata as meta_mod_local
         with requests_mock.Mocker() as m:
             md_url = backend.url_for(f"EntityDefinitions({self._MD_ID})")
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='new_city')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("EntityDefinitions"),
                 status_code=204,
@@ -525,6 +540,11 @@ class TestCreateEntityReadback:
     def test_create_entity_partial_when_odata_entityid_header_missing(self, backend):
         from crm.core import metadata as meta_mod_local
         with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='new_city')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("EntityDefinitions"),
                 status_code=204,

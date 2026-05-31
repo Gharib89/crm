@@ -13,7 +13,7 @@ import re
 from typing import Any, Callable
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish
+from crm.core.metadata import label, maybe_publish, target_exists
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 _STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
@@ -337,10 +337,13 @@ def add_attribute(
     max_size_kb: int | None = None,
     publish: bool = False,
     solution: str | None = None,
+    if_exists: str = "error",
 ) -> dict[str, Any]:
     """Add an attribute (column) to an existing entity."""
     if "_" not in schema_name:
         raise D365Error("schema_name must include a publisher prefix.")
+    if if_exists not in ("error", "skip"):
+        raise D365Error("if_exists must be 'error' or 'skip'.")
     logical_name = schema_name.lower()
 
     if kind == "lookup":
@@ -369,6 +372,7 @@ def add_attribute(
             lookup_description=description,
             publish=publish,
             solution=solution,
+            if_exists=if_exists,
         )
 
     builder = _BUILDERS.get(kind)
@@ -396,10 +400,31 @@ def add_attribute(
     }
     body = builder(opts)
 
+    exists = target_exists(
+        backend,
+        f"EntityDefinitions(LogicalName='{entity}')"
+        f"/Attributes(LogicalName='{logical_name}')",
+    )
+    if exists and not backend.dry_run:
+        if if_exists == "error":
+            raise D365Error(
+                f"Attribute {logical_name!r} already exists on entity {entity!r}.",
+                code="AlreadyExists",
+            )
+        return {
+            "skipped": True,
+            "exists": True,
+            "entity": entity,
+            "schema_name": schema_name,
+            "logical_name": logical_name,
+        }
+
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     path = f"EntityDefinitions(LogicalName='{entity}')/Attributes"
     result = as_dict(backend.post(path, json_body=body, extra_headers=headers))
     if result.get("_dry_run"):
+        result["_exists"] = exists
+        result["would_skip"] = exists and if_exists == "skip"
         return result
 
     entity_id_url = result.get("_entity_id_url")

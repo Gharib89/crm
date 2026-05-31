@@ -90,6 +90,12 @@ class TestCreateOptionset:
         from crm.core import optionsets as os_mod
         url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
         with requests_mock.Mocker() as m:
+            # --if-exists probe: option set not present (404), so create proceeds.
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
             m.post(
                 backend.url_for("GlobalOptionSetDefinitions"),
                 status_code=204,
@@ -108,12 +114,13 @@ class TestCreateOptionset:
             )
         assert info["created"] is True
         assert info["name"] == "new_priority"
-        body = m.request_history[0].json()
+        post_req = next(r for r in m.request_history if r.method == "POST")
+        body = post_req.json()
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.OptionSetMetadata"
         assert body["Name"] == "new_priority"
         assert body["IsGlobal"] is True
         assert body["Options"][0]["Value"] == 1
-        assert m.request_history[0].headers["MSCRM.SolutionUniqueName"] == "DevSolution"
+        assert post_req.headers["MSCRM.SolutionUniqueName"] == "DevSolution"
 
     def test_create_rejects_duplicate_values(self, backend):
         from crm.core import optionsets as os_mod
