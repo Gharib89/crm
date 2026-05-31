@@ -129,7 +129,14 @@ def connection_profiles(ctx: CLIContext):
     if not names:
         ctx.skin.hint("(none)")
     for n in names:
-        ctx.skin.info(n)
+        try:
+            p = session_mod.load_profile(n)
+            ctx.skin.status(
+                n,
+                f"solution={p.default_solution} prefix={p.publisher_prefix}",
+            )
+        except FileNotFoundError:
+            ctx.skin.info(n)
 
 
 @connection_group.command("disconnect")
