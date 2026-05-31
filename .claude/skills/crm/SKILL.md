@@ -99,6 +99,15 @@ State directory: `~/.crm/` (override with `CRM_HOME`).
 { "ok": false, "error": "Record Not Found", "meta": {"status": 404, "code": "0x80040217"} }
 ```
 
+**Exit codes** — check `$?`, then read the envelope:
+| code | meaning |
+|------|---------|
+| 0 | success (`ok: true`) |
+| 1 | operational failure: server / validation / declined |
+| 2 | usage error: bad or unknown flag (not JSON-wrapped) |
+
+Non-zero = the operation did not take effect. Pass `--yes` to skip confirmations non-interactively.
+
 Use `--dry-run` to preview the HTTP request (method/URL/headers/body) without issuing it.
 This is the safe way to validate a mutation before commit.
 

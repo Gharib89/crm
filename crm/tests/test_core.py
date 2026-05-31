@@ -1043,13 +1043,17 @@ class TestLoadPayload:
 
 class TestErrorEnvelope:
     def test_error_envelope_null_when_status_missing(self, capsys):
+        import click
+
         from crm.cli import CLIContext
         from crm.utils.d365_backend import D365Error
         ctx = CLIContext()
         ctx.json_mode = True
         exc = D365Error("transport boom")  # no status, no code
-        # Mirror cli._handle_d365_error after the fix:
-        ctx.emit(False, error=str(exc), meta={"status": exc.status, "code": exc.code})
+        # Mirror cli._handle_d365_error after the fix: emit prints the envelope,
+        # then raises Exit(1) per ADR 0001 (operational failure → exit 1).
+        with pytest.raises(click.exceptions.Exit):
+            ctx.emit(False, error=str(exc), meta={"status": exc.status, "code": exc.code})
         out = capsys.readouterr().out
         envelope = json.loads(out)
         assert envelope["ok"] is False
