@@ -13,6 +13,7 @@ stderr back to the agent (Claude Code hooks docs).
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import sys
 
@@ -79,9 +80,12 @@ def _strip_global_options(tokens: list[str]) -> list[str]:
 
 
 # Shell operators that separate one command from the next inside a single Bash
-# string. Splitting on these lets us inspect each sub-command (e.g. the `crm`
-# call in `true && crm entity delete ...`) instead of only the first token.
-SHELL_SEPARATORS: set[str] = {"&&", "||", ";", "|", "&", "(", ")", "$(", "{", "}"}
+# string. We split the RAW command string on these BEFORE shlex so a destructive
+# sub-command is isolated even when the operator is glued to adjacent words
+# (`a|crm ...`, `&&crm ...`, `$(crm ...)`). shlex never emits a glued operator
+# as its own token, so token-level splitting would miss these. Order matters:
+# the two-char operators (`||`, `&&`, `$(`) must precede the single-char class.
+_SEGMENT_SPLIT = re.compile(r"\|\||&&|\$\(|[;|&()]")
 
 
 def _is_crm_invocation(token: str) -> bool:
@@ -89,19 +93,20 @@ def _is_crm_invocation(token: str) -> bool:
     return token == "crm" or token.endswith("/crm")
 
 
-def _split_segments(tokens: list[str]) -> list[list[str]]:
-    """Split a token stream into command segments on shell operators."""
+def _split_segments(command: str) -> list[list[str]]:
+    """Split the raw command string into shlex-tokenized command segments on
+    shell operators. Splitting the string (not the token list) catches operators
+    glued to neighbouring words, which shlex would otherwise fold into one token."""
     segments: list[list[str]] = []
-    current: list[str] = []
-    for tok in tokens:
-        if tok in SHELL_SEPARATORS:
-            if current:
-                segments.append(current)
-                current = []
+    for piece in _SEGMENT_SPLIT.split(command):
+        if not piece.strip():
             continue
-        current.append(tok)
-    if current:
-        segments.append(current)
+        try:
+            tokens = shlex.split(piece)
+        except ValueError:
+            continue
+        if tokens:
+            segments.append(tokens)
     return segments
 
 
@@ -144,15 +149,11 @@ def main() -> int:
     if not isinstance(command, str) or not command.strip():
         return 0
 
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return 0
-
     # Inspect every sub-command so a destructive crm call inside a compound
-    # command (`true && crm ...`) or with a path prefix (`/usr/bin/crm ...`)
-    # is still caught. --yes is scoped to its own segment.
-    for segment in _split_segments(tokens):
+    # command (`true && crm ...`, `a|crm ...`, `$(crm ...)`) or with a path
+    # prefix (`/usr/bin/crm ...`) is still caught. --yes is scoped to its own
+    # segment.
+    for segment in _split_segments(command):
         label = _destructive_match(segment)
         if label is None:
             continue

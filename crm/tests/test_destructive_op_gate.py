@@ -134,15 +134,11 @@ class TestNoFalsePositives:
         "git status",
         "cat crmnotes.txt",
         "grep delete-entity README.md",
-        "echo crm metadata delete-entity",  # quoted/echoed, not an invocation... still a heuristic
     ])
     def test_non_crm_commands_pass(self, cmd):
         # Commands that are not an actual `crm` invocation must not block.
-        # (echo case documents the heuristic boundary; see note in test below.)
         r = _run(cmd)
-        # ls / git / cat / grep clearly are not crm invocations.
-        if cmd.split()[0] != "echo":
-            assert r.returncode == 0, f"false positive on: {cmd}\n{r.stderr}"
+        assert r.returncode == 0, f"false positive on: {cmd}\n{r.stderr}"
 
     def test_crm_as_substring_path_does_not_match(self):
         r = _run("cat crmnotes.txt")
@@ -212,6 +208,25 @@ class TestCompoundAndPathPrefix:
         # A --yes on an unrelated sub-command must not unblock the destructive one.
         r = _run("echo --yes && crm entity delete contacts abc")
         assert r.returncode == BLOCK
+
+    @pytest.mark.parametrize("cmd", [
+        # Operator glued to the destructive sub-command: shlex would fold the
+        # operator into a single token, so the gate must split the raw string.
+        "crm query x|crm entity delete y",
+        "crm query accounts &&crm entity delete y",
+        "crm query x||crm entity delete y",
+        "crm query x;crm entity delete y",
+        # Command substitution.
+        "$(crm entity delete x)",
+        "echo $(crm metadata delete-entity new_widget)",
+    ])
+    def test_glued_operator_and_command_substitution_blocked(self, cmd):
+        r = _run(cmd)
+        assert r.returncode == BLOCK, f"gate bypassed by glued operator/subst: {cmd}\n{r.stdout}"
+
+    def test_glued_operator_with_yes_allowed(self):
+        r = _run("crm query x|crm entity delete y --yes")
+        assert r.returncode == 0, r.stderr
 
 
 class TestStdinParsing:
