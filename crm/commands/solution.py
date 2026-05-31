@@ -9,6 +9,7 @@ from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
+    _confirm_destructive,
     _no_retry_scope,
     _EXPORT_SETTING_KEYS,
 )
@@ -140,10 +141,13 @@ def solution_job_status(ctx: CLIContext, async_operation_id):
 
 @solution_group.command("job-cancel")
 @click.argument("async_operation_id")
-@click.confirmation_option(prompt="Cancel this job?")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @pass_ctx
-def solution_job_cancel(ctx: CLIContext, async_operation_id):
+def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
     """Alias for `crm async cancel <id>`."""
+    if not _confirm_destructive("async job", async_operation_id, yes):
+        ctx.emit(False, error="aborted by user")
+        return
     try:
         async_ops_mod.cancel_async_operation(ctx.backend(), async_operation_id)
     except D365Error as exc:
