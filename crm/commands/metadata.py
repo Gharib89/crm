@@ -148,13 +148,15 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
               help="Create as an activity entity.")
 @click.option("--solution", default=None,
               help="Add to a specific solution (uniquename, via MSCRM.SolutionUniqueName).")
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the entity already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True,
               help="Run PublishAllXml after creation. Default: publish.")
 @pass_ctx
 def metadata_create_entity(
     ctx: CLIContext, schema_name, display_name, display_collection, primary_attr_schema,
     primary_attr_label, primary_max_length, description, ownership,
-    has_activities, has_notes, is_activity, solution, publish,
+    has_activities, has_notes, is_activity, solution, if_exists, publish,
 ):
     """Create a new custom entity (table)."""
     try:
@@ -172,8 +174,9 @@ def metadata_create_entity(
             has_notes=has_notes,
             is_activity=is_activity,
             solution=solution,
+            if_exists=if_exists,
         )
-        if publish and not info.get("_dry_run"):
+        if publish and not info.get("_dry_run") and not info.get("skipped"):
             from crm.core import solution as sol_mod
             sol_mod.publish_all(ctx.backend())
             info["published"] = True
@@ -263,6 +266,8 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution):
               help="File: max attachment size in KB. Default 32768.")
 @click.option("--solution", default=None,
               help="Add to a solution via MSCRM.SolutionUniqueName.")
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the attribute already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True,
               help="Run PublishAllXml after creation. Default: publish.")
 @pass_ctx
@@ -271,7 +276,7 @@ def metadata_add_attribute(
     max_length, format_name, min_value, max_value, precision,
     true_label, false_label, default_value,
     optionset_name, options, target_entity, relationship_schema,
-    max_size_kb, solution, publish,
+    max_size_kb, solution, if_exists, publish,
 ):
     """Add an attribute (column) to an existing entity."""
     parsed_options: list[tuple[int | None, str]] | None = None
@@ -333,6 +338,7 @@ def metadata_add_attribute(
             max_size_kb=max_size_kb,
             publish=publish,
             solution=solution,
+            if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -358,6 +364,8 @@ def metadata_add_attribute(
 @click.option("--menu-behavior", type=_MENU, default="UseLabel")
 @click.option("--menu-order", type=int, default=10000)
 @click.option("--solution", default=None)
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the relationship already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def metadata_create_one_to_many(
@@ -365,7 +373,7 @@ def metadata_create_one_to_many(
     lookup_display, lookup_required, lookup_description,
     cascade_assign, cascade_delete, cascade_reparent, cascade_share,
     cascade_unshare, cascade_merge, menu_label, menu_behavior, menu_order,
-    solution, publish,
+    solution, if_exists, publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
     try:
@@ -389,6 +397,7 @@ def metadata_create_one_to_many(
             menu_order=menu_order,
             publish=publish,
             solution=solution,
+            if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -408,13 +417,15 @@ def metadata_create_one_to_many(
 @click.option("--entity2-menu-behavior", type=_MENU, default="UseCollectionName")
 @click.option("--entity2-menu-order", type=int, default=10000)
 @click.option("--solution", default=None)
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the relationship already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def metadata_create_many_to_many(
     ctx: CLIContext, schema_name, entity1_logical, entity2_logical, intersect_entity,
     entity1_menu_label, entity1_menu_behavior, entity1_menu_order,
     entity2_menu_label, entity2_menu_behavior, entity2_menu_order,
-    solution, publish,
+    solution, if_exists, publish,
 ):
     """Create an N:N relationship via the dedicated action."""
     try:
@@ -432,6 +443,7 @@ def metadata_create_many_to_many(
             entity2_menu_order=entity2_menu_order,
             publish=publish,
             solution=solution,
+            if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -481,10 +493,12 @@ def metadata_get_optionset(ctx: CLIContext, name):
 @click.option("--option", "options", multiple=True,
               help="Option as 'value:label' or ':label' (auto value). Repeatable.")
 @click.option("--solution", default=None)
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the option set already exists: error (default) or skip (no-op success).")
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def metadata_create_optionset(ctx: CLIContext, name, display_name, description, options,
-                              solution, publish):
+                              solution, if_exists, publish):
     """Create a global option set."""
     parsed: list[tuple[int | None, str]] = []
     for raw in options:
@@ -499,7 +513,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
             ctx.backend(),
             name=name, display_name=display_name,
             description=description, options=parsed or None,
-            publish=publish, solution=solution,
+            publish=publish, solution=solution, if_exists=if_exists,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)

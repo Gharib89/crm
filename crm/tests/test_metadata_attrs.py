@@ -31,8 +31,26 @@ def backend(profile):
 _ATTR_ID = "33333333-3333-3333-3333-333333333333"
 
 
+def _post_body(m):
+    """Return the JSON body of the first POST request (skips the existence probe GET)."""
+    for r in m.request_history:
+        if r.method == "POST":
+            return r.json()
+    raise AssertionError("no POST request recorded")
+
+
 def _mock_post_and_readback(m, backend, entity: str, attr_logical: str,
                             attr_type: str = "String"):
+    # The --if-exists existence probe issues a GET against the attribute path
+    # before POSTing; mock it as 404 (not present) so the create proceeds.
+    m.get(
+        backend.url_for(
+            f"EntityDefinitions(LogicalName='{entity}')"
+            f"/Attributes(LogicalName='{attr_logical}')"
+        ),
+        status_code=404,
+        json={"error": {"code": "0x", "message": "not found"}},
+    )
     attr_url = backend.url_for(
         f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})"
     )
@@ -67,7 +85,7 @@ class TestAddAttributeString:
             )
         assert info["created"] is True
         assert info["attribute_type"] == "String"
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.StringAttributeMetadata"
         assert body["MaxLength"] == 100
         assert body["FormatName"]["Value"] == "Text"
@@ -110,7 +128,7 @@ class TestAddAttributeMemo:
                 display_name="Notes",
                 max_length=4000,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
         assert body["MaxLength"] == 4000
 
@@ -139,7 +157,7 @@ class TestAddAttributeNonAsciiLabel:
                 display_name="Étiquette — niño",
                 max_length=100,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Étiquette — niño"
 
 
@@ -153,7 +171,7 @@ class TestAddAttributeNumeric:
                 schema_name="new_Qty", display_name="Qty",
                 min_value=0, max_value=1000,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
         assert body["MinValue"] == 0
         assert body["MaxValue"] == 1000
@@ -166,7 +184,7 @@ class TestAddAttributeNumeric:
                 backend, entity="new_widget", kind="bigint",
                 schema_name="new_Bignum", display_name="Bignum",
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.BigIntAttributeMetadata"
 
     def test_decimal_requires_precision(self, backend):
@@ -186,7 +204,7 @@ class TestAddAttributeNumeric:
                 schema_name="new_Amount", display_name="Amount",
                 precision=4, min_value=-1000, max_value=1000,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["Precision"] == 4
 
     def test_decimal_precision_out_of_range(self, backend):
@@ -207,7 +225,7 @@ class TestAddAttributeNumeric:
                 schema_name="new_Rate", display_name="Rate",
                 precision=3,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.DoubleAttributeMetadata"
         assert body["Precision"] == 3
 
@@ -220,7 +238,7 @@ class TestAddAttributeNumeric:
                 schema_name="new_Price", display_name="Price",
                 precision=2,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MoneyAttributeMetadata"
         assert body["Precision"] == 2
 
@@ -234,7 +252,7 @@ class TestAddAttributeBoolean:
                 backend, entity="new_widget", kind="boolean",
                 schema_name="new_Active", display_name="Active",
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.BooleanAttributeMetadata"
         os = body["OptionSet"]
         assert os["TrueOption"]["Value"] == 1
@@ -252,7 +270,7 @@ class TestAddAttributeBoolean:
                 true_label="On", false_label="Off",
                 default_value=True,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["DefaultValue"] is True
         assert body["OptionSet"]["TrueOption"]["Label"]["LocalizedLabels"][0]["Label"] == "On"
 
@@ -266,7 +284,7 @@ class TestAddAttributeDateTime:
                 backend, entity="new_widget", kind="datetime",
                 schema_name="new_When", display_name="When",
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
         assert body["Format"] == "DateAndTime"
 
@@ -279,7 +297,7 @@ class TestAddAttributeDateTime:
                 schema_name="new_Day", display_name="Day",
                 format_name="DateOnly",
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["Format"] == "DateOnly"
 
     def test_datetime_bad_format_rejected(self, backend):
@@ -302,7 +320,7 @@ class TestAddAttributePicklist:
                 schema_name="new_Priority", display_name="Priority",
                 options=[(1, "Low"), (2, "Medium"), (3, "High")],
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
         opts = body["OptionSet"]["Options"]
         assert opts[0]["Value"] == 1
@@ -318,7 +336,7 @@ class TestAddAttributePicklist:
                 schema_name="new_Priority", display_name="Priority",
                 optionset_name="new_global_priority",
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["OptionSet"]["Name"] == "new_global_priority"
         assert body["OptionSet"]["IsGlobal"] is True
 
@@ -350,7 +368,7 @@ class TestAddAttributeMultiselect:
                 schema_name="new_Tags", display_name="Tags",
                 options=[(1, "A"), (2, "B")],
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
 
 
@@ -401,7 +419,7 @@ class TestAddAttributeImageFile:
                 backend, entity="new_widget", kind="image",
                 schema_name="new_Photo", display_name="Photo",
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.ImageAttributeMetadata"
 
     def test_file_default_size(self, backend):
@@ -412,7 +430,7 @@ class TestAddAttributeImageFile:
                 backend, entity="new_widget", kind="file",
                 schema_name="new_Doc", display_name="Doc",
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.FileAttributeMetadata"
         assert body["MaxSizeInKB"] == 32768
 
@@ -425,7 +443,7 @@ class TestAddAttributeImageFile:
                 schema_name="new_Doc", display_name="Doc",
                 max_size_kb=131072,
             )
-        body = m.request_history[0].json()
+        body = _post_body(m)
         assert body["MaxSizeInKB"] == 131072
 
 
@@ -440,6 +458,14 @@ class TestAddAttributeReadbackFail:
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')/Attributes"),
                 status_code=204,
                 headers={"OData-EntityId": attr_url},
+            )
+            m.get(
+                backend.url_for(
+                    "EntityDefinitions(LogicalName='new_widget')"
+                    "/Attributes(LogicalName='new_label')"
+                ),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
             )
             m.get(attr_url, status_code=500, json={"error": {"message": "boom"}})
             info = ma.add_attribute(
@@ -456,9 +482,19 @@ class TestAddAttributeDryRun:
         monkeypatch.setenv("CRM_DRY_RUN", "1")
         backend = D365Backend(profile, password="pw", dry_run=True)
         from crm.core import metadata_attrs as ma
-        info = ma.add_attribute(
-            backend, entity="new_widget", kind="string",
-            schema_name="new_Label", display_name="Label",
-            max_length=10,
-        )
+        with requests_mock.Mocker() as m:
+            # The existence probe is a real GET even under dry-run.
+            m.get(
+                backend.url_for(
+                    "EntityDefinitions(LogicalName='new_widget')"
+                    "/Attributes(LogicalName='new_label')"
+                ),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            info = ma.add_attribute(
+                backend, entity="new_widget", kind="string",
+                schema_name="new_Label", display_name="Label",
+                max_length=10,
+            )
         assert info.get("_dry_run") is True
