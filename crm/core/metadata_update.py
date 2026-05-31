@@ -112,14 +112,20 @@ def _retrieve_merge_write(
     changes: dict[str, Any],
     solution: str | None,
     publish: bool,
+    current: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET the full definition at `path`, deep-merge `changes`, PUT it back.
 
     The PUT body is always the full retrieved definition with `changes` merged
     on top — never the sparse `changes` alone — so omitted properties can never
     be dropped. Fails closed: a GET error propagates and no PUT is attempted.
+
+    `current` may be supplied by callers that have already fetched the full
+    typed definition (e.g. the attribute path, whose un-cast GET already returns
+    every property including `@odata.type`), avoiding a redundant second GET.
     """
-    current = _read(backend, path)
+    if current is None:
+        current = _read(backend, path)
 
     if backend.dry_run:
         merged = _deep_merge(current, changes)
@@ -182,7 +188,12 @@ def update_entity(
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
-    """Update an entity (table) definition via safe retrieve-merge-write."""
+    """Update an entity (table) definition via safe retrieve-merge-write.
+
+    Note: `--ownership` mirrors the create surface, but Dataverse rejects an
+    OwnershipType change after creation; passing a different value yields a
+    server-side D365Error. This is expected, not a client bug.
+    """
     if not logical_name:
         raise D365Error("logical_name is required.")
     changes = _build_entity_changes(
@@ -296,7 +307,9 @@ def update_attribute(
     The attribute is retrieved and written through its `@odata.type` cast path
     (e.g. `.../Microsoft.Dynamics.CRM.StringAttributeMetadata`); a metadata PUT
     of a typed attribute is rejected without the cast. The cast is derived from
-    the `@odata.type` returned by the un-cast GET.
+    the `@odata.type` returned by the un-cast GET, whose body already carries
+    the full typed definition and is reused as the merge base — so the PUT is
+    built from a single GET, not two.
     """
     if not entity or not attribute:
         raise D365Error("entity and attribute are required.")
@@ -340,7 +353,8 @@ def update_attribute(
     )
 
     out = _retrieve_merge_write(
-        backend, path=cast_path, changes=changes, solution=solution, publish=publish,
+        backend, path=cast_path, changes=changes, solution=solution,
+        publish=publish, current=base,
     )
     out.setdefault("entity", entity)
     out.setdefault("attribute", attribute)

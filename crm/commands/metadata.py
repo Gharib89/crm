@@ -191,7 +191,8 @@ def metadata_create_entity(
               help="New plural UI label.")
 @click.option("--description", default=None, help="New entity description.")
 @click.option("--ownership", type=click.Choice(["UserOwned", "OrganizationOwned"]),
-              default=None)
+              default=None,
+              help="Note: Dataverse rejects ownership changes post-create.")
 @click.option("--has-activities/--no-has-activities", "has_activities", default=None,
               help="Enable/disable activities.")
 @click.option("--has-notes/--no-has-notes", "has_notes", default=None,

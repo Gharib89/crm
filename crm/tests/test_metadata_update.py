@@ -357,6 +357,78 @@ class TestDryRun:
         assert out["diff"]["DisplayName"]["new"]["LocalizedLabels"][0]["Label"] == \
             "Engagement"
 
+    def test_dry_run_attribute_gets_no_put_returns_merged_body_and_diff(
+        self, dry_backend
+    ):
+        from crm.core import metadata_update as mu
+        base_rel = (
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_code')"
+        )
+        cast_rel = base_rel + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+        base = dry_backend.url_for(base_rel)
+        cast = dry_backend.url_for(cast_rel)
+        with requests_mock.Mocker() as m:
+            base_get = m.get(base, json=_FULL_STRING_ATTR)
+            cast_get = m.get(cast, json=_FULL_STRING_ATTR)
+            put = m.put(cast, status_code=204)
+            out = mu.update_attribute(dry_backend, "new_project", "new_code",
+                                      required="ApplicationRequired")
+            # The un-cast base GET fires to learn @odata.type; its body is reused
+            # as the merge base, so the cast GET is NOT issued, and no PUT is sent.
+            assert base_get.call_count == 1
+            assert cast_get.call_count == 0
+            assert put.call_count == 0
+        assert out["_dry_run"] is True
+        assert out["method"] == "PUT"
+        assert out["path"] == cast_rel
+        # Merged body: change landed, other props preserved.
+        assert out["body"]["RequiredLevel"]["Value"] == "ApplicationRequired"
+        assert out["body"]["MaxLength"] == 100
+        assert out["body"]["FormatName"] == {"Value": "Text"}
+        # Diff: changed key old -> new.
+        assert out["diff"]["RequiredLevel"]["old"] == \
+            _FULL_STRING_ATTR["RequiredLevel"]
+        assert out["diff"]["RequiredLevel"]["new"]["Value"] == "ApplicationRequired"
+
+    def test_dry_run_relationship_resolves_id_gets_no_put(self, dry_backend):
+        from crm.core import metadata_update as mu
+        resolve = dry_backend.url_for(
+            "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        )
+        cast_rel = (
+            f"RelationshipDefinitions({_REL_ID})"
+            "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        )
+        cast = dry_backend.url_for(cast_rel)
+        with requests_mock.Mocker() as m:
+            resolve_get = m.get(resolve, json={
+                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                "MetadataId": _REL_ID,
+                "SchemaName": "new_account_new_project",
+                "RelationshipType": "OneToManyRelationship",
+            })
+            cast_get = m.get(cast, json=_FULL_ONE_TO_MANY)
+            put = m.put(cast, status_code=204)
+            out = mu.update_relationship(
+                dry_backend, "new_account_new_project",
+                cascade={"Delete": "Restrict"},
+            )
+            # MetadataId is resolved first, then the cast definition is fetched
+            # for the merge; no PUT is sent in dry-run.
+            assert resolve_get.call_count == 1
+            assert cast_get.call_count == 1
+            assert put.call_count == 0
+        assert out["_dry_run"] is True
+        assert out["method"] == "PUT"
+        assert out["path"] == cast_rel
+        # Merged body: changed cascade member + preserved siblings.
+        cc = out["body"]["CascadeConfiguration"]
+        assert cc["Delete"] == "Restrict"
+        assert cc["Assign"] == "NoCascade"
+        # Diff: CascadeConfiguration old -> new.
+        assert out["diff"]["CascadeConfiguration"]["new"]["Delete"] == "Restrict"
+
 
 class TestPublishGating:
     def test_publish_true_posts_publishallxml(self, backend):
