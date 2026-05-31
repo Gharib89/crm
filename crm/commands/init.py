@@ -44,7 +44,6 @@ def _write_template(ctx: CLIContext) -> None:
     dest = Path.cwd() / ".env.example"
     if dest.exists():
         ctx.emit(False, error=f"{dest} already exists; refusing to overwrite.")
-        raise SystemExit(1)
     dest.write_text(_ENV_TEMPLATE, encoding="utf-8")
     ctx.emit(True, data={"written": str(dest)})
 
@@ -66,7 +65,6 @@ def _run_wizard(ctx: CLIContext) -> None:
         f"Profile {profile_name!r} already exists. Overwrite?", default=False,
     ):
         ctx.emit(False, error="aborted by user")
-        raise SystemExit(1)
 
     profile = ConnectionProfile(
         name=profile_name,

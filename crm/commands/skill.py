@@ -2,7 +2,6 @@
 # pyright: basic
 from __future__ import annotations
 import shutil
-import sys
 from pathlib import Path
 import click
 from crm.cli import CLIContext, pass_ctx
@@ -61,7 +60,6 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
     src = _bundled_skill_path()
     if not src.exists():
         ctx.emit(False, error=f"Bundled SKILL.md not found at {src}.")
-        sys.exit(1)
 
     dest_dir = _resolve_skill_dest(target, dest)
     dest_file = dest_dir / "SKILL.md"
@@ -72,7 +70,6 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
             error=f"{dest_file} already exists. Use --force to overwrite.",
             meta={"target": target, "dest": str(dest_dir)},
         )
-        sys.exit(1)
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, dest_file)

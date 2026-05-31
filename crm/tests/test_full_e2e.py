@@ -252,7 +252,8 @@ class TestDeleteEntityCli:
             cli, ["--json", "metadata", "delete-entity", "new_widget"],
             input="\n",
         )
-        assert result.exit_code == 0
+        # Declined confirmation is an operational failure → exit 1 (ADR 0001)
+        assert result.exit_code == 1
         assert '"error": "aborted by user"' in result.output
 
 

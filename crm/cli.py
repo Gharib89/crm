@@ -24,6 +24,10 @@ from crm.utils.d365_backend import D365Backend
 from crm.utils.repl_skin import ReplSkin
 from crm.commands._helpers import _sanitize, _short_repr
 
+# Exit code for an operational failure (ADR 0001): a command that ran but did not
+# achieve its effect — D365 server error, in-command validation, declined confirm.
+FAILURE_EXIT_CODE = 1
+
 
 class CLIContext:
     """Per-invocation state shared across subcommands."""
@@ -51,11 +55,13 @@ class CLIContext:
             if meta:
                 envelope["meta"] = meta
             click.echo(json.dumps(envelope, indent=2, default=str))
+            if not ok:
+                raise click.exceptions.Exit(FAILURE_EXIT_CODE)
             return
 
         if not ok:
             self.skin.error(error or "Operation failed.")
-            return
+            raise click.exceptions.Exit(FAILURE_EXIT_CODE)
 
         if table:
             headers = table.get("headers", [])
