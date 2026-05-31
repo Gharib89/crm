@@ -60,6 +60,102 @@ def test_success_exits_0(monkeypatch):
 
 
 def test_usage_error_exits_2():
-    """Usage error: an unknown flag is rejected by Click → exit 2 (not JSON-wrapped)."""
+    """Usage error under --json: unknown flag → exit 2 AND a parseable envelope."""
+    result = CliRunner().invoke(cli, ["--json", "query", "count", "--nope"])
+    assert result.exit_code == 2, result.output
+    assert json.loads(result.output)["ok"] is False
+
+
+def test_missing_required_option_json_envelope():
+    """Missing required option under --json → exit 2 with parseable {ok: false}."""
+    # `entity create <set>` requires payload; omit it and pass --data="" is not it —
+    # instead drive a command with a genuinely missing required option. Here we use
+    # the in-command UsageError site below; for a Click-level missing argument we
+    # invoke `entity get` with no arguments at all.
+    result = CliRunner().invoke(cli, ["--json", "entity", "get"])
+    assert result.exit_code == 2, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert isinstance(env["error"], str) and env["error"]
+
+
+def test_in_command_usage_error_json_envelope():
+    """In-command UsageError (_load_payload) under --json → exit 2, parseable envelope."""
+    result = CliRunner().invoke(cli, ["--json", "entity", "create", "accounts"])
+    assert result.exit_code == 2, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert "--data" in env["error"]
+
+
+def test_root_level_bad_parameter_json_envelope():
+    """Root-callback BadParameter (--log-level) under --json → exit 2, parseable envelope."""
+    result = CliRunner().invoke(
+        cli, ["--json", "--log-level", "bogus", "query", "count", "account"]
+    )
+    assert result.exit_code == 2, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert isinstance(env["error"], str) and env["error"]
+
+
+def test_usage_error_human_path_not_json():
+    """No --json: usage error stays raw Click text on stderr, exit 2 (no regression)."""
+    result = CliRunner().invoke(cli, ["query", "count", "--nope"])
+    assert result.exit_code == 2, result.output
+    assert "Error" in result.output
+    try:
+        json.loads(result.output)
+        is_json = True
+    except (ValueError, json.JSONDecodeError):
+        is_json = False
+    assert not is_json, "human path must not emit a JSON envelope"
+
+
+def test_usage_error_json_exits_2_not_1():
+    """The JSON-wrapped usage error stays exit 2, distinct from operational failure."""
     result = CliRunner().invoke(cli, ["--json", "query", "count", "--nope"])
     assert result.exit_code == 2
+    assert result.exit_code != 1
+
+
+def test_repl_path_emits_json_envelope(capsys):
+    """REPL json_mode: a usage error emits the envelope to stdout, not skin.error."""
+    import click
+
+    ctx = CLIContext()
+    ctx.json_mode = True
+    errors: list[str] = []
+    ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
+    try:
+        cli.main(
+            args=["query", "count", "--nope"], obj=ctx,
+            standalone_mode=False, prog_name="crm",
+        )
+    except (SystemExit, click.exceptions.Exit, click.ClickException):
+        pass
+    out = capsys.readouterr().out
+    env = json.loads(out)
+    assert env["ok"] is False
+    assert errors == [], "skin.error must not be used in json mode"
+
+
+def test_repl_path_human_uses_skin_error():
+    """REPL without json_mode: usage error still routes to skin.error text path."""
+    import click
+
+    ctx = CLIContext()
+    ctx.json_mode = False
+    errors: list[str] = []
+    ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
+    try:
+        cli.main(
+            args=["query", "count", "--nope"], obj=ctx,
+            standalone_mode=False, prog_name="crm",
+        )
+    except click.ClickException as exc:
+        # mirror repl.py: the loop catches ClickException and calls skin.error
+        ctx.skin.error(exc.format_message())
+    except (SystemExit, click.exceptions.Exit):
+        pass
+    assert errors, "skin.error should carry the usage error text in human mode"

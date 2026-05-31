@@ -152,8 +152,16 @@ def repl(click_ctx: click.Context):
             cli.main(args=argv, obj=ctx, standalone_mode=False, prog_name="crm")
         except SystemExit:
             pass
+        except click.exceptions.Exit:
+            # emit() (operational failure) or the root group (usage error, json mode)
+            # already printed the envelope; nothing more to show — keep going.
+            pass
         except click.ClickException as exc:
-            ctx.skin.error(exc.format_message())
+            if ctx.json_mode:
+                from crm.cli import _emit_usage_envelope
+                _emit_usage_envelope(exc.format_message())
+            else:
+                ctx.skin.error(exc.format_message())
         except D365Error as exc:
             ctx.skin.error(str(exc))
         except Exception as exc:  # noqa: BLE001 — REPL must keep running

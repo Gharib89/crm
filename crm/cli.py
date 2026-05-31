@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from typing import Any
 
 import click
@@ -117,10 +118,60 @@ class CLIContext:
 pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 
 
+def _emit_usage_envelope(message: str) -> None:
+    """Print the standard {ok: false, error: ...} JSON envelope for a usage error."""
+    click.echo(json.dumps({"ok": False, "error": message}, indent=2, default=str))
+
+
+def _json_mode_active(ctx: CLIContext | None, args: list[str] | None) -> bool:
+    """Decide whether to emit JSON. The root --json may not yet be parsed onto the
+    CLIContext when a root-level usage error fires, so fall back to scanning argv."""
+    if ctx is not None and ctx.json_mode:
+        return True
+    return bool(args) and "--json" in args
+
+
+class _JsonAwareGroup(click.Group):
+    """Root group that, under --json, renders Click usage errors as the standard
+    JSON envelope on stdout while preserving the exit code (2, per ADR 0001)."""
+
+    def main(self, args=None, **kwargs):  # type: ignore[override]
+        argv = list(args) if args is not None else sys.argv[1:]
+        ctx_obj = kwargs.get("obj")
+        json_mode = _json_mode_active(
+            ctx_obj if isinstance(ctx_obj, CLIContext) else None, argv
+        )
+        if not json_mode:
+            return super().main(args=args, **kwargs)
+
+        # Under --json, intercept Click usage errors so they render as the standard
+        # envelope on stdout. Run non-standalone so the UsageError reaches us instead
+        # of Click printing raw text to stderr; otherwise replicate standalone exit
+        # semantics so the operational-failure (Exit) / Abort paths are unchanged.
+        # In non-standalone mode super().main() returns the command's value on
+        # success, or the Exit code (an int) when emit() raised Exit.
+        standalone = kwargs.pop("standalone_mode", True)
+        try:
+            rv = super().main(args=args, standalone_mode=False, **kwargs)
+        except click.UsageError as exc:
+            _emit_usage_envelope(exc.format_message())
+            if standalone:
+                sys.exit(exc.exit_code)
+            raise click.exceptions.Exit(exc.exit_code)
+        except click.exceptions.Abort:
+            if standalone:
+                click.echo("Aborted!", file=sys.stderr)
+                sys.exit(1)
+            raise
+        if standalone:
+            sys.exit(rv if isinstance(rv, int) else 0)
+        return rv
+
+
 # ── Root group ──────────────────────────────────────────────────────────
 
 
-@click.group(invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(cls=_JsonAwareGroup, invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True, help="Preview HTTP request without issuing it.")
 @click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
