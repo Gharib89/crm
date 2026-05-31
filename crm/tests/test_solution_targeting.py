@@ -243,3 +243,19 @@ def test_connection_status_surfaces_new_fields(monkeypatch, tmp_path):
     prof = env["data"]["profile"]
     assert prof["default_solution"] == "MySol"
     assert prof["publisher_prefix"] == "new"
+
+
+def test_connection_profiles_json_keeps_data_as_name_list(monkeypatch, tmp_path):
+    # Back-compat: `--json` consumers iterate `data` as the list of profile
+    # names. The richer per-profile detail is surfaced under `meta`, not by
+    # changing the shape of `data`.
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
+    result = CliRunner().invoke(
+        cli, ["--json", "--profile", "p", "connection", "profiles"],
+    )
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["data"] == ["p"]
+    detail = {d["name"]: d for d in env["meta"]["profiles"]}
+    assert detail["p"]["default_solution"] == "MySol"
+    assert detail["p"]["publisher_prefix"] == "new"
