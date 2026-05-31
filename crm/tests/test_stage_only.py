@@ -133,6 +133,37 @@ def test_stage_only_with_explicit_no_publish_is_allowed(use_backend):
     assert _publish_hits(m, backend) == []
 
 
+def test_stage_only_persists_across_repl_lines(use_backend):
+    """`crm --stage-only` then a bare per-line mutation must still suppress
+    PublishAllXml. The REPL re-invokes cli.main(args=..., obj=ctx) with the SAME
+    CLIContext per line; a per-line command carries no --stage-only token, so the
+    sticky flag must not be cleared back to False (regression for #19 round 2)."""
+    backend = use_backend
+    ctx = CLIContext()
+    with requests_mock.Mocker() as m:
+        _mock_add_attribute(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        # Line 1: user launches with --stage-only, sets the flag on this shared ctx.
+        try:
+            cli.main(
+                args=["--stage-only", *_add_attribute_args()],
+                obj=ctx, standalone_mode=False, prog_name="crm",
+            )
+        except SystemExit:
+            pass
+        assert ctx.stage_only is True
+        # Line 2: bare per-line mutation, no --stage-only token.
+        try:
+            cli.main(
+                args=_add_attribute_args(), obj=ctx,
+                standalone_mode=False, prog_name="crm",
+            )
+        except SystemExit:
+            pass
+    assert ctx.stage_only is True
+    assert _publish_hits(m, backend) == []
+
+
 def test_crm_stage_only_env_var_recognized(use_backend, monkeypatch):
     backend = use_backend
     monkeypatch.setenv("CRM_STAGE_ONLY", "1")

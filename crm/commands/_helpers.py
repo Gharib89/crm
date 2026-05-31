@@ -90,6 +90,9 @@ def _resolve_publish(ctx: "CLIContext", publish: bool) -> bool:
     """
     if not ctx.stage_only:
         return publish
+    # Imported from click.core (not top-level click) because pyright's bundled click
+    # stubs only export ParameterSource there; `click.ParameterSource` / `from click
+    # import ParameterSource` fail strict type-checking even though both work at runtime.
     from click.core import ParameterSource
     source = click.get_current_context().get_parameter_source("publish")
     if source == ParameterSource.COMMANDLINE and publish:

@@ -180,7 +180,11 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     if password is not None:
         cli_ctx.password = password
     cli_ctx.auth_scheme = auth_scheme or os.environ.get("CRM_AUTH_SCHEME")
-    cli_ctx.stage_only = stage_only or os.environ.get("CRM_STAGE_ONLY", "").lower() in ("1", "true", "yes", "on")
+    # Sticky safety flag: once --stage-only (or CRM_STAGE_ONLY) is set, never clear it
+    # back to False on a later bare REPL line that omits the token, which would silently
+    # re-enable auto-publish and lose the safety guarantee.
+    env_stage_only = os.environ.get("CRM_STAGE_ONLY", "").lower() in ("1", "true", "yes", "on")
+    cli_ctx.stage_only = cli_ctx.stage_only or stage_only or env_stage_only
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:
