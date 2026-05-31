@@ -369,6 +369,9 @@ class D365Backend:
     def patch(self, path: str, json_body: Any = None, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("PATCH", path, json_body=json_body, **kw)
 
+    def put(self, path: str, json_body: Any = None, **kw: Any) -> dict[str, Any] | str | None:
+        return self.request("PUT", path, json_body=json_body, **kw)
+
     def delete(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("DELETE", path, expect_json=False, **kw)
 

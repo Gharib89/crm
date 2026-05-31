@@ -3,6 +3,7 @@
 from __future__ import annotations
 import click
 from crm.core import metadata as meta_mod
+from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.utils.d365_backend import D365Error
@@ -189,6 +190,145 @@ def metadata_create_entity(
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning)
+
+
+@metadata_group.command("update-entity")
+@click.argument("logical_name")
+@click.option("--display", "display_name", default=None, help="New singular UI label.")
+@click.option("--display-collection", "display_collection_name", default=None,
+              help="New plural UI label.")
+@click.option("--description", default=None, help="New entity description.")
+@click.option("--ownership", type=click.Choice(["UserOwned", "OrganizationOwned"]),
+              default=None,
+              help="Note: Dataverse rejects ownership changes post-create.")
+@click.option("--has-activities/--no-has-activities", "has_activities", default=None,
+              help="Enable/disable activities.")
+@click.option("--has-notes/--no-has-notes", "has_notes", default=None,
+              help="Enable/disable notes.")
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after update. Default: publish.")
+@pass_ctx
+def metadata_update_entity(
+    ctx: CLIContext, logical_name, display_name, display_collection_name,
+    description, ownership, has_activities, has_notes, solution, publish,
+):
+    """Update an entity (table) definition (retrieve-merge-write)."""
+    try:
+        info = mu_mod.update_entity(
+            ctx.backend(),
+            logical_name,
+            display_name=display_name,
+            display_collection_name=display_collection_name,
+            description=description,
+            ownership=ownership,
+            has_activities=has_activities,
+            has_notes=has_notes,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata_group.command("update-attribute")
+@click.argument("entity")
+@click.argument("attribute")
+@click.option("--display", "display_name", default=None, help="New UI label.")
+@click.option("--description", default=None)
+@click.option("--required", "required",
+              type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
+              default=None)
+@click.option("--max-length", type=int, default=None, help="String/memo: max characters.")
+@click.option("--precision", type=int, default=None,
+              help="Decimal/double/money: precision (decimals).")
+@click.option("--min", "min_value", type=float, default=None, help="Numeric: minimum value.")
+@click.option("--max", "max_value", type=float, default=None, help="Numeric: maximum value.")
+@click.option("--format", "format_name", default=None,
+              help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after update. Default: publish.")
+@pass_ctx
+def metadata_update_attribute(
+    ctx: CLIContext, entity, attribute, display_name, description, required,
+    max_length, precision, min_value, max_value, format_name, solution, publish,
+):
+    """Update an attribute (column) definition (retrieve-merge-write).
+
+    Option-set option edits are NOT handled here — use `update-optionset`.
+    """
+    try:
+        info = mu_mod.update_attribute(
+            ctx.backend(),
+            entity,
+            attribute,
+            display_name=display_name,
+            description=description,
+            required=required,
+            max_length=max_length,
+            precision=precision,
+            min_value=min_value,
+            max_value=max_value,
+            format_name=format_name,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@metadata_group.command("update-relationship")
+@click.argument("schema_name")
+@click.option("--cascade-assign", type=_CASCADE, default=None)
+@click.option("--cascade-delete", type=_CASCADE, default=None)
+@click.option("--cascade-reparent", type=_CASCADE, default=None)
+@click.option("--cascade-share", type=_CASCADE, default=None)
+@click.option("--cascade-unshare", type=_CASCADE, default=None)
+@click.option("--cascade-merge", type=_CASCADE, default=None)
+@click.option("--menu-behavior", type=_MENU, default=None)
+@click.option("--menu-label", default=None)
+@click.option("--menu-order", type=int, default=None)
+@click.option("--solution", default=None,
+              help="Apply via MSCRM.SolutionUniqueName.")
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after update. Default: publish.")
+@pass_ctx
+def metadata_update_relationship(
+    ctx: CLIContext, schema_name, cascade_assign, cascade_delete, cascade_reparent,
+    cascade_share, cascade_unshare, cascade_merge, menu_behavior, menu_label,
+    menu_order, solution, publish,
+):
+    """Update a relationship definition (retrieve-merge-write)."""
+    cascade: dict[str, str] = {}
+    for member, value in (
+        ("Assign", cascade_assign), ("Delete", cascade_delete),
+        ("Reparent", cascade_reparent), ("Share", cascade_share),
+        ("Unshare", cascade_unshare), ("Merge", cascade_merge),
+    ):
+        if value is not None:
+            cascade[member] = value
+    try:
+        info = mu_mod.update_relationship(
+            ctx.backend(),
+            schema_name,
+            cascade=cascade or None,
+            menu_behavior=menu_behavior,
+            menu_label=menu_label,
+            menu_order=menu_order,
+            publish=publish,
+            solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
 
 
 @metadata_group.command("relationships")
