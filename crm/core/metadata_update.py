@@ -123,7 +123,6 @@ def _retrieve_merge_write(
     changes: dict[str, Any],
     solution: str | None,
     publish: bool,
-    current: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET the full definition at `path`, deep-merge `changes`, PUT it back.
 
@@ -131,12 +130,11 @@ def _retrieve_merge_write(
     on top — never the sparse `changes` alone — so omitted properties can never
     be dropped. Fails closed: a GET error propagates and no PUT is attempted.
 
-    `current` may be supplied by callers that have already fetched the full
-    typed definition (e.g. the attribute path, whose un-cast GET already returns
-    every property including `@odata.type`), avoiding a redundant second GET.
+    `path` must be the path that returns the *complete* definition. For typed
+    attributes that is the `@odata.type` cast path (the un-cast projection omits
+    type-specific properties); callers resolve the cast before calling here.
     """
-    if current is None:
-        current = _read(backend, path)
+    current = _read(backend, path)
 
     if backend.dry_run:
         merged = _deep_merge(current, changes)
@@ -320,10 +318,19 @@ def update_attribute(
 
     The attribute is retrieved and written through its `@odata.type` cast path
     (e.g. `.../Microsoft.Dynamics.CRM.StringAttributeMetadata`); a metadata PUT
-    of a typed attribute is rejected without the cast. The cast is derived from
-    the `@odata.type` returned by the un-cast GET, whose body already carries
-    the full typed definition and is reused as the merge base — so the PUT is
-    built from a single GET, not two.
+    of a typed attribute is rejected without the cast. Two GETs are required:
+
+    1. The un-cast GET (`base_path`) discovers the `@odata.type` cast, which is
+       all the base `AttributeMetadata` projection carries — type-specific
+       properties (`MaxLength`, `Precision`, `Format`, `MinValue`/`MaxValue`,
+       …) are *absent* from it.
+    2. The merge base is then read from the derived cast path, which returns the
+       full typed definition. Merging the sparse `changes` onto the cast body
+       (not the un-cast body) is what stops a full PUT from silently dropping
+       type-specific properties the caller did not touch.
+
+    `_retrieve_merge_write` performs the typed GET itself (no `current=`),
+    mirroring `update_relationship`, so the cast path is read exactly once.
     """
     if not entity or not attribute:
         raise D365Error("entity and attribute are required.")
@@ -368,7 +375,7 @@ def update_attribute(
 
     out = _retrieve_merge_write(
         backend, path=cast_path, changes=changes, solution=solution,
-        publish=publish, current=base,
+        publish=publish,
     )
     out.setdefault("entity", entity)
     out.setdefault("attribute", attribute)

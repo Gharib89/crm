@@ -152,6 +152,76 @@ class TestUpdateAttribute:
         assert put_req.headers.get("MSCRM.MergeLabels") == "true"
 
 
+# The un-cast (base AttributeMetadata projection) GET: Dataverse returns ONLY
+# base properties here — type-specific props (MaxLength, FormatName, …) are
+# absent. They are only present through the @odata.type cast path.
+_BASE_ONLY_STRING_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
+    "MetadataId": "22222222-2222-2222-2222-222222222222",
+    "SchemaName": "new_Code",
+    "LogicalName": "new_code",
+    "DisplayName": {"LocalizedLabels": [{"Label": "Code", "LanguageCode": 1033}]},
+    "Description": {"LocalizedLabels": [{"Label": "The code", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+
+class TestUpdateAttributeMergeBaseFromCastPath:
+    """The merge base must come from the typed cast GET, not the un-cast GET.
+
+    The un-cast projection omits type-specific properties (MaxLength here), so
+    using it as the merge base would drop them from the full PUT and reset them
+    server-side. These lock in the cast-path merge base.
+    """
+
+    def test_type_specific_prop_absent_from_uncast_survives_the_put(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_code')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            # Un-cast GET: NO MaxLength. Cast GET: full typed body WITH MaxLength.
+            base_get = m.get(base, json=_BASE_ONLY_STRING_ATTR)
+            cast_get = m.get(cast, json=_FULL_STRING_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_code",
+                                display_name="Phase")
+        # The cast path is read for the typed merge base...
+        assert base_get.call_count == 1
+        assert cast_get.call_count == 1
+        put_req = m.request_history[-1]
+        assert put_req.method == "PUT"
+        # ...and the PUT goes to the cast path.
+        assert put_req.url == cast
+        body = put_req.json()
+        # The type-specific MaxLength — present only in the cast body — is NOT
+        # dropped. (Under the un-cast merge base it would be missing entirely.)
+        assert body["MaxLength"] == 100
+        assert body["FormatName"] == {"Value": "Text"}
+        # The requested change still landed.
+        assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Phase"
+
+    def test_sparse_display_change_preserves_existing_max_length(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_code')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_BASE_ONLY_STRING_ATTR)
+            m.get(cast, json=_FULL_STRING_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(backend, "new_project", "new_code",
+                                display_name="Renamed")
+        body = m.request_history[-1].json()
+        assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Renamed"
+        # Untouched MaxLength is carried through from the typed read.
+        assert body["MaxLength"] == 100
+
+
 _FULL_DATETIME_ATTR = {
     "@odata.type": "#Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
     "MetadataId": "66666666-6666-6666-6666-666666666666",
@@ -504,10 +574,11 @@ class TestDryRun:
             put = m.put(cast, status_code=204)
             out = mu.update_attribute(dry_backend, "new_project", "new_code",
                                       required="ApplicationRequired")
-            # The un-cast base GET fires to learn @odata.type; its body is reused
-            # as the merge base, so the cast GET is NOT issued, and no PUT is sent.
+            # The un-cast base GET fires to learn @odata.type; the cast GET then
+            # fetches the full typed definition used as the merge base. No PUT is
+            # sent in dry-run.
             assert base_get.call_count == 1
-            assert cast_get.call_count == 0
+            assert cast_get.call_count == 1
             assert put.call_count == 0
         assert out["_dry_run"] is True
         assert out["method"] == "PUT"
