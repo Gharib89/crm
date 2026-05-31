@@ -216,9 +216,11 @@ class TestCompoundAndPathPrefix:
         "crm query accounts &&crm entity delete y",
         "crm query x||crm entity delete y",
         "crm query x;crm entity delete y",
-        # Command substitution.
+        # Command substitution — both `$(...)` and backtick forms.
         "$(crm entity delete x)",
         "echo $(crm metadata delete-entity new_widget)",
+        "echo `crm entity delete contacts abc`",
+        "`crm metadata delete-entity new_widget`",
     ])
     def test_glued_operator_and_command_substitution_blocked(self, cmd):
         r = _run(cmd)

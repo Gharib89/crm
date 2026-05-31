@@ -85,9 +85,10 @@ def _strip_global_options(tokens: list[str]) -> list[str]:
 # (`a|crm ...`, `&&crm ...`, `$(crm ...)`). shlex never emits a glued operator
 # as its own token, so token-level splitting would miss these. A newline (and
 # carriage return) separates commands exactly like `;`, so a destructive verb on
-# any line after the first must split into its own segment. Order matters: the
+# any line after the first must split into its own segment. Backtick command
+# substitution (`` `crm ...` ``) is split too, like `$(...)`. Order matters: the
 # two-char operators (`||`, `&&`, `$(`) must precede the single-char class.
-_SEGMENT_SPLIT = re.compile(r"\|\||&&|\$\(|[;|&()\n\r]")
+_SEGMENT_SPLIT = re.compile(r"\|\||&&|\$\(|[;|&()\n\r`]")
 
 # A leading shell variable-assignment prefix (`FOO=1 crm ...`) is valid syntax
 # that would otherwise make the assignment the first token and hide the crm verb.
