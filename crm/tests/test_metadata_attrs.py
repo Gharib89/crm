@@ -176,6 +176,24 @@ class TestAddAttributeNumeric:
         assert body["MinValue"] == 0
         assert body["MaxValue"] == 1000
 
+    def test_integer_min_max_coerced_to_int(self, backend):
+        # The CLI parses --min/--max as floats, so a bound of 0 arrives as 0.0 and
+        # would serialize to Edm.Decimal "0.0", which the server rejects for an
+        # Edm.Int32 column. Bounds must serialize as plain integers.
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_qty", "Integer")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="integer",
+                schema_name="new_Qty", display_name="Qty",
+                min_value=0.0, max_value=720.0,
+            )
+        body = _post_body(m)
+        assert isinstance(body["MinValue"], int)
+        assert isinstance(body["MaxValue"], int)
+        assert body["MinValue"] == 0
+        assert body["MaxValue"] == 720
+
     def test_bigint(self, backend):
         from crm.core import metadata_attrs as ma
         with requests_mock.Mocker() as m:
@@ -329,7 +347,13 @@ class TestAddAttributePicklist:
 
     def test_picklist_global_optionset_ref(self, backend):
         from crm.core import metadata_attrs as ma
+        os_id = "44444444-4444-4444-4444-444444444444"
         with requests_mock.Mocker() as m:
+            # Name -> MetadataId resolution (the bind needs the GUID, not the Name).
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_global_priority')"),
+                json={"MetadataId": os_id},
+            )
             _mock_post_and_readback(m, backend, "new_widget", "new_priority", "Picklist")
             ma.add_attribute(
                 backend, entity="new_widget", kind="picklist",
@@ -337,8 +361,13 @@ class TestAddAttributePicklist:
                 optionset_name="new_global_priority",
             )
         body = _post_body(m)
-        assert body["OptionSet"]["Name"] == "new_global_priority"
-        assert body["OptionSet"]["IsGlobal"] is True
+        # A global option set must bind via the GlobalOptionSet navigation property
+        # using the resolved MetadataId GUID; an inline OptionSet with IsGlobal=true
+        # is rejected on attribute create.
+        assert body["GlobalOptionSet@odata.bind"] == (
+            f"GlobalOptionSetDefinitions({os_id})"
+        )
+        assert "OptionSet" not in body
 
     def test_picklist_rejects_both_options_and_global(self, backend):
         from crm.core import metadata_attrs as ma

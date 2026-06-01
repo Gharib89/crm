@@ -21,7 +21,7 @@ _DATETIME_FORMATS = {"DateOnly", "DateAndTime"}
 
 _NUMERIC_KINDS = {"integer", "bigint", "decimal", "double", "money"}  # pyright: ignore[reportUnusedVariable]
 _LENGTH_KINDS = {"string", "memo"}  # pyright: ignore[reportUnusedVariable]
-_PICKLIST_KINDS = {"picklist", "multiselect"}  # pyright: ignore[reportUnusedVariable]
+_PICKLIST_KINDS = {"picklist", "multiselect"}
 
 
 def _require(kwargs: dict[str, Any], *names: str) -> None:
@@ -108,14 +108,32 @@ def _common_numeric(opts: dict[str, Any], odata_type: str) -> dict[str, Any]:
     return body
 
 
+def _coerce_int_bounds(body: dict[str, Any]) -> None:
+    """Force MinValue/MaxValue to Edm.Int32 integers.
+
+    The CLI parses ``--min``/``--max`` as floats, so a bound of ``0`` arrives as
+    ``0.0`` and serializes to JSON ``0.0`` (Edm.Decimal), which the server rejects
+    for an integer column ("Cannot convert the literal '0.0' to the expected type
+    'Edm.Int32'"). Integer/bigint bounds are whole numbers by definition.
+    """
+    for key in ("MinValue", "MaxValue"):
+        val = body.get(key)
+        if val is not None:
+            body[key] = int(val)
+
+
 def _int_attr(opts: dict[str, Any]) -> dict[str, Any]:
     _forbid(opts, "precision")
-    return _common_numeric(opts, "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+    body = _common_numeric(opts, "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+    _coerce_int_bounds(body)
+    return body
 
 
 def _bigint_attr(opts: dict[str, Any]) -> dict[str, Any]:
     _forbid(opts, "precision")
-    return _common_numeric(opts, "Microsoft.Dynamics.CRM.BigIntAttributeMetadata")
+    body = _common_numeric(opts, "Microsoft.Dynamics.CRM.BigIntAttributeMetadata")
+    _coerce_int_bounds(body)
+    return body
 
 
 def _numeric_with_precision(
@@ -191,7 +209,20 @@ def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
 def _build_options_payload(
     options: list[tuple[int | None, str]] | None,
     optionset_name: str | None,
+    optionset_metadata_id: str | None = None,
 ) -> dict[str, Any]:
+    """Return the body fragment that attaches options to a picklist/multiselect.
+
+    A *global* option set is attached through the ``GlobalOptionSet`` single-valued
+    navigation property via ``@odata.bind``. On-prem 9.x requires the ``MetadataId``
+    GUID as the bind key — the ``Name`` alternate key is rejected there ("Guid
+    should contain 32 digits...") even though it works for GET — so the caller
+    resolves the id first and passes it as ``optionset_metadata_id``; the ``Name``
+    key is only used as an offline fallback. The server also rejects an inline
+    ``OptionSet`` with ``IsGlobal=true`` on attribute create ("Only Local option
+    set can be created through the attribute create."). An inline (local) option
+    set is embedded under the ``OptionSet`` property.
+    """
     has_inline = bool(options)
     has_global = bool(optionset_name)
     if has_inline and has_global:
@@ -203,7 +234,8 @@ def _build_options_payload(
             "either optionset_name or options is required for picklist/multiselect."
         )
     if has_global:
-        return {"Name": optionset_name, "IsGlobal": True, "OptionSetType": "Picklist"}
+        key = optionset_metadata_id or f"Name='{optionset_name}'"
+        return {"GlobalOptionSet@odata.bind": f"GlobalOptionSetDefinitions({key})"}
     seen: set[int] = set()
     option_list: list[dict[str, Any]] = []
     assert options is not None  # has_inline ensures non-empty
@@ -218,7 +250,11 @@ def _build_options_payload(
         if value is not None:
             opt["Value"] = value
         option_list.append(opt)
-    return {"Options": option_list, "IsGlobal": False, "OptionSetType": "Picklist"}
+    return {
+        "OptionSet": {
+            "Options": option_list, "IsGlobal": False, "OptionSetType": "Picklist",
+        }
+    }
 
 
 def _picklist_attr(opts: dict[str, Any]) -> dict[str, Any]:
@@ -232,9 +268,10 @@ def _picklist_attr(opts: dict[str, Any]) -> dict[str, Any]:
         required=opts.get("required", "None"),
     )
     body["@odata.type"] = "Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
-    body["OptionSet"] = _build_options_payload(
+    body.update(_build_options_payload(
         opts.get("options"), opts.get("optionset_name"),
-    )
+        opts.get("optionset_metadata_id"),
+    ))
     if opts.get("default_value") is not None:
         body["DefaultFormValue"] = int(opts["default_value"])
     return body
@@ -251,9 +288,10 @@ def _multiselect_attr(opts: dict[str, Any]) -> dict[str, Any]:
         required=opts.get("required", "None"),
     )
     body["@odata.type"] = "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
-    body["OptionSet"] = _build_options_payload(
+    body.update(_build_options_payload(
         opts.get("options"), opts.get("optionset_name"),
-    )
+        opts.get("optionset_metadata_id"),
+    ))
     return body
 
 
@@ -311,6 +349,24 @@ def _parse_attribute_id(entity_id_url: str | None) -> str | None:
         return None
     match = re.search(r"Attributes\(([0-9a-fA-F-]{36})\)", entity_id_url)
     return match.group(1) if match else None
+
+
+def _resolve_global_optionset_id(backend: D365Backend, name: str) -> str:
+    """Return the MetadataId GUID of a global option set, looked up by Name.
+
+    Needed because the ``GlobalOptionSet`` @odata.bind on attribute create only
+    accepts the MetadataId key on on-prem 9.x, not the Name alternate key.
+    """
+    rb = as_dict(backend.get(
+        f"GlobalOptionSetDefinitions(Name='{name}')",
+        params={"$select": "MetadataId"},
+    ))
+    metadata_id = rb.get("MetadataId")
+    if not metadata_id:
+        raise D365Error(
+            f"Could not resolve MetadataId for global option set {name!r}."
+        )
+    return str(metadata_id)
 
 
 def add_attribute(
@@ -398,6 +454,13 @@ def add_attribute(
         "target_entity": target_entity,
         "max_size_kb": max_size_kb,
     }
+    # Resolve the global option set's MetadataId only when it is the sole source;
+    # if inline options are also given, let the builder raise the mutual-exclusivity
+    # error instead of making a network call first.
+    if kind in _PICKLIST_KINDS and optionset_name and not options:
+        opts["optionset_metadata_id"] = _resolve_global_optionset_id(
+            backend, optionset_name
+        )
     body = builder(opts)
 
     exists = target_exists(
