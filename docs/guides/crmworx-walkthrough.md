@@ -11,7 +11,8 @@ The build order is: **option sets → entities → attributes → relationships 
 ## Prerequisites
 
 - A reachable D365 CE on-prem server and NTLM credentials (via `.env`: `CRM_BASE_URL`,
-  `CRM_USERNAME`, `CRM_PASSWORD`, `CRM_AUTH=ntlm`, `CRM_API_VERSION`).
+  `CRM_USERNAME`, `CRM_PASSWORD`, `CRM_AUTH=ntlm`, `CRM_API_VERSION`). The password is
+  read from `D365_PASSWORD`, with `CRM_PASSWORD` accepted as an alias — both names work.
 - **A `CRMWorx` *unmanaged* solution and a publisher with prefix `cwx` must already
   exist on the server.** The CLI cannot create either today — it only lists, exports,
   imports, and publishes solutions (filed as

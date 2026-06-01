@@ -194,6 +194,17 @@ class TestAddAttributeNumeric:
         assert body["MinValue"] == 0
         assert body["MaxValue"] == 720
 
+    def test_integer_fractional_bound_rejected(self, backend):
+        # A genuinely fractional bound (e.g. 0.9) is a user error: rejecting it is
+        # correct, whereas truncating to 0 would silently change the requested range.
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="whole number"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="integer",
+                schema_name="new_Qty", display_name="Qty",
+                min_value=0.0, max_value=720.9,
+            )
+
     def test_bigint(self, backend):
         from crm.core import metadata_attrs as ma
         with requests_mock.Mocker() as m:

@@ -114,12 +114,19 @@ def _coerce_int_bounds(body: dict[str, Any]) -> None:
     The CLI parses ``--min``/``--max`` as floats, so a bound of ``0`` arrives as
     ``0.0`` and serializes to JSON ``0.0`` (Edm.Decimal), which the server rejects
     for an integer column ("Cannot convert the literal '0.0' to the expected type
-    'Edm.Int32'"). Integer/bigint bounds are whole numbers by definition.
+    'Edm.Int32'"). Integer/bigint bounds are whole numbers by definition, so a
+    fractional bound (e.g. ``0.9``) is a user error — reject it rather than
+    silently truncating to ``0``.
     """
     for key in ("MinValue", "MaxValue"):
         val = body.get(key)
-        if val is not None:
-            body[key] = int(val)
+        if val is None:
+            continue
+        if isinstance(val, float) and not val.is_integer():
+            raise D365Error(
+                f"{key} for an integer attribute must be a whole number, got {val}."
+            )
+        body[key] = int(val)
 
 
 def _int_attr(opts: dict[str, Any]) -> dict[str, Any]:
