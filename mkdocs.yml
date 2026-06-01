@@ -1,0 +1,55 @@
+site_name: crm — D365 CE on-prem CLI
+site_description: CLI + agent guide for Dynamics 365 CE on-premises customizations
+repo_url: https://github.com/Gharib89/crm
+repo_name: Gharib89/crm
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: default
+      primary: deep orange
+      accent: amber
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - tables
+  - mkdocs-click
+
+exclude_docs: |
+  index.html
+  adr/
+  agents/
+  research/
+  superpowers/
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install: getting-started/install.md
+      - Configure: getting-started/configure.md
+  - Guides:
+      - CRMWorx walkthrough: guides/crmworx-walkthrough.md
+  - How-to:
+      - connection: how-to/connection.md
+      - entity: how-to/entity.md
+      - query: how-to/query.md
+      - metadata: how-to/metadata.md
+      - solution: how-to/solution.md
+      - data: how-to/data.md
+      - action: how-to/action.md
+  - Reference:
+      - CLI: reference/cli.md
+  - Contributing:
+      - Skill & CLI sync: contributing/skill-and-cli.md
