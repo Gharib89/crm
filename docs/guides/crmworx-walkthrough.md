@@ -568,3 +568,10 @@ crm --json metadata delete-optionset cwx_slatier --yes
 After teardown, `crm --json metadata entities --custom-only | grep -c cwx_` returns `0`.
 The entire guide then replays from clean by re-running §2 onward — every create is
 idempotent, so a partial replay is safe to resume.
+
+This teardown + replay was run once against the live server to validate it: the
+deletes dropped both tables and all four option sets (entities → `0`), then the full
+§2–§3 build was re-applied, leaving CRMWorx deployed with fresh metadata ids. One note —
+`delete-entity` has no `--if-exists skip`, so deleting an already-removed table returns
+an error (`EntityMetadata ... does not exist`) rather than a no-op; delete in the
+documented order and it won't recur.
