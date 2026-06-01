@@ -480,7 +480,56 @@ crm --json action function RetrieveCurrentOrganization --params '{"AccessType":"
 
 ## 5. Package the solution
 
-_Filled in by the live run._
+### Idempotency
+
+Every metadata create uses `--if-exists skip`, so re-running the whole build is a safe
+no-op. Re-running any create reports a skip rather than erroring or duplicating:
+
+```bash
+crm --json metadata create-optionset --name cwx_priority --display "CRMWorx Priority" \
+  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical --if-exists skip
+crm --json metadata create-entity --schema-name cwx_SLA --display "SLA Policy" ... --if-exists skip
+```
+
+```json
+{ "ok": true, "data": { "skipped": true, "exists": true } }
+```
+
+### Export
+
+Export the unmanaged solution to a zip (committed sample:
+[`docs/artifacts/crmworx.zip`](../artifacts/crmworx.zip)):
+
+```bash
+crm solution export CRMWorx -o docs/artifacts/crmworx.zip
+```
+
+```text
+output: docs/artifacts/crmworx.zip
+bytes: 83633
+managed: False
+solution: CRMWorx
+action: ExportSolution
+```
+
+Verify the export contains the model. `solution components` returns component
+**type + objectid (GUID)** rows — componenttype `9` is an option set, `1` is an
+entity. CRMWorx contains all four option sets and both custom entities (plus the N:N
+intersect entity):
+
+```bash
+crm --json solution components CRMWorx
+# -> 8 components: 4 option sets (type 9) + 4 entities (type 1)
+#    option sets  = cwx_priority, cwx_severity, cwx_ticketcategory, cwx_slatier
+#    entities     = cwx_sla, cwx_ticket, cwx_ticket_systemuser (intersect), +1
+```
+
+!!! note "Solution-export defect fixed during this step"
+    `solution export` only called `ExportSolutionAsync`, which **is not enabled on
+    this on-prem 9.1 org** ("ExportSolutionAsync is not enabled for this org"). It now
+    falls back to the synchronous `ExportSolution` action (which returns the zip bytes
+    inline) when the async action is unavailable (commit `a87b8f2`). The response
+    `action` field shows which path ran.
 
 ## 6. Teardown (optional, for a clean replay)
 
