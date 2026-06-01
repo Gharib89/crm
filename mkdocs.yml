@@ -49,6 +49,10 @@ nav:
       - solution: how-to/solution.md
       - data: how-to/data.md
       - action: how-to/action.md
+      - async: how-to/async.md
+      - session: how-to/session.md
+      - skill: how-to/skill.md
+      - workflow: how-to/workflow.md
   - Reference:
       - CLI: reference/cli.md
   - Contributing:
