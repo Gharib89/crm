@@ -213,6 +213,79 @@ cwx_sla
 cwx_ticket
 ```
 
+### 2.3 Attributes (all kinds)
+
+Add columns to both tables. The `cwx_sla` table gets two integer bounds, a global
+picklist, and a boolean:
+
+```bash
+crm --json metadata add-attribute cwx_sla --kind integer \
+  --schema-name cwx_ResponseHours --display "Response Hours" --min 0 --max 720 --if-exists skip
+crm --json metadata add-attribute cwx_sla --kind integer \
+  --schema-name cwx_ResolutionHours --display "Resolution Hours" --min 0 --max 2160 --if-exists skip
+crm --json metadata add-attribute cwx_sla --kind picklist \
+  --schema-name cwx_Tier --display "Tier" --optionset-name cwx_slatier --if-exists skip
+crm --json metadata add-attribute cwx_sla --kind boolean \
+  --schema-name cwx_Active --display "Active" --true-label Yes --false-label No --if-exists skip
+```
+
+The `cwx_ticket` table gets a memo, three global picklists, and three datetimes:
+
+```bash
+crm --json metadata add-attribute cwx_ticket --kind memo \
+  --schema-name cwx_Description --display "Description" --max-length 4000 --if-exists skip
+crm --json metadata add-attribute cwx_ticket --kind picklist \
+  --schema-name cwx_Priority --display "Priority" --optionset-name cwx_priority --if-exists skip
+crm --json metadata add-attribute cwx_ticket --kind picklist \
+  --schema-name cwx_Severity --display "Severity" --optionset-name cwx_severity --if-exists skip
+crm --json metadata add-attribute cwx_ticket --kind picklist \
+  --schema-name cwx_Category --display "Category" --optionset-name cwx_ticketcategory --if-exists skip
+crm --json metadata add-attribute cwx_ticket --kind datetime \
+  --schema-name cwx_OpenedOn --display "Opened On" --if-exists skip
+crm --json metadata add-attribute cwx_ticket --kind datetime \
+  --schema-name cwx_ResolvedOn --display "Resolved On" --if-exists skip
+crm --json metadata add-attribute cwx_ticket --kind datetime \
+  --schema-name cwx_DueBy --display "Due By" --if-exists skip
+```
+
+Each returns the created column with its resolved logical name and type:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "created": true,
+    "entity": "cwx_ticket",
+    "schema_name": "cwx_Priority",
+    "logical_name": "cwx_priority",
+    "attribute_type": "Picklist",
+    "solution": "CRMWorx",
+    "published": true
+  }
+}
+```
+
+A picklist that references a global option set binds to it through the
+`GlobalOptionSet` navigation property. Confirm the binding by expanding it from the
+metadata endpoint:
+
+```text
+attr: cwx_priority -> GlobalOptionSet.Name: cwx_priority
+```
+
+!!! note "Two CLI defects fixed during this step"
+    Building these columns against the live 9.1 server surfaced two `add-attribute`
+    bugs, fixed inline (commit `cf7d41d`):
+
+    - **Integer bounds** were serialized as floats (`--min 0` → `0.0`), which the
+      server rejected for an `Edm.Int32` column. Integer/bigint bounds are now coerced
+      to integers.
+    - **Global picklists** were sent as an inline option set with `IsGlobal=true`,
+      which the server rejects on attribute create. They now bind via
+      `GlobalOptionSet@odata.bind`; on-prem 9.1 requires the option set's `MetadataId`
+      GUID for the bind (the `Name` alternate key is rejected), so the CLI resolves
+      `Name → MetadataId` first.
+
 ## 3. Seed data
 
 _Filled in by the live run._
