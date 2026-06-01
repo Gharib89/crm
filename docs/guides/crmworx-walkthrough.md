@@ -531,6 +531,40 @@ crm --json solution components CRMWorx
     inline) when the async action is unavailable (commit `a87b8f2`). The response
     `action` field shows which path ran.
 
-## 6. Teardown (optional, for a clean replay)
+## Capability coverage
 
-_Filled in by the live run._
+Every `crm` command group is exercised by this walkthrough:
+
+| Group | Exercised by |
+| --- | --- |
+| connection | §1 — `whoami`, `connect`, `profiles`, `status` |
+| session | `session info` (active profile, current entity set, last query) |
+| metadata | §2 — `create-optionset`, `create-entity`, `add-attribute`, `create-one-to-many`, `create-many-to-many`, `relationships`, `list-optionsets`, `entities` |
+| entity | §3 — `create`, `update`, `upsert` (lookups via `@odata.bind`) |
+| query | §4 — `odata` + `fetchxml` |
+| data | §4 — `export` (CSV) |
+| action | §4 — `function RetrieveCurrentOrganization` |
+| solution | §5 — `publish-all`, `export`, `components`, `list`, `info` |
+
+## 6. Teardown (optional — full reset for a clean replay)
+
+> **Destructive.** Each command requires `--yes`; the `destructive_op_gate` PreToolUse
+> hook blocks them otherwise. Deleting an entity drops the table **and every row in
+> it**. Run these only to reset the org for a clean replay — CRMWorx is otherwise left
+> deployed.
+
+Reverse order — records are removed with their tables, then relationships and
+attributes go with the entities, leaving only the global option sets to delete last:
+
+```bash
+crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships
+crm --json metadata delete-entity cwx_sla --yes
+crm --json metadata delete-optionset cwx_priority --yes
+crm --json metadata delete-optionset cwx_severity --yes
+crm --json metadata delete-optionset cwx_ticketcategory --yes
+crm --json metadata delete-optionset cwx_slatier --yes
+```
+
+After teardown, `crm --json metadata entities --custom-only | grep -c cwx_` returns `0`.
+The entire guide then replays from clean by re-running §2 onward — every create is
+idempotent, so a partial replay is safe to resume.
