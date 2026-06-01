@@ -1,0 +1,25 @@
+name: docs
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'crm/**'
+      - '.github/workflows/docs.yml'
+permissions:
+  contents: write
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install docs deps
+        run: pip install -e .[docs]
+      - name: Build (strict)
+        run: mkdocs build --strict
+      - name: Deploy to gh-pages
+        run: mkdocs gh-deploy --force
