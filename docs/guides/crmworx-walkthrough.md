@@ -360,7 +360,65 @@ cwx_ticket_systemuser
 
 ## 3. Seed data
 
-_Filled in by the live run._
+Records go to the **entity-set (plural) name** — `cwx_slas`, `cwx_tickets`, `accounts`
+— not the logical name. First two SLA policies; each `create` returns the full row,
+including its `cwx_slaid` GUID:
+
+```bash
+crm --json entity create cwx_slas --data '{"cwx_name":"Gold 4h/24h","cwx_responsehours":4,"cwx_resolutionhours":24,"cwx_tier":3,"cwx_active":true}'
+crm --json entity create cwx_slas --data '{"cwx_name":"Bronze 24h/120h","cwx_responsehours":24,"cwx_resolutionhours":120,"cwx_tier":1,"cwx_active":true}'
+```
+
+A customer account:
+
+```bash
+crm --json entity create accounts --data '{"name":"Contoso IT Dept"}'
+```
+
+Now a ticket that **binds both lookups** with `@odata.bind`, using the SLA and account
+GUIDs from above. The bind target is the *navigation property name*, which is the
+PascalCase lookup schema name — **`cwx_SLA`** and **`cwx_CustomerId`**, not the
+lowercase logical names. If you guess wrong, read the real name from the relationship:
+
+```bash
+crm --json query odata \
+  "RelationshipDefinitions(SchemaName='cwx_account_cwx_ticket')/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata" \
+  --select ReferencingAttribute,ReferencingEntityNavigationPropertyName
+# -> ReferencingAttribute: cwx_customerid, NavigationPropertyName: cwx_CustomerId
+```
+
+```bash
+crm --json entity create cwx_tickets --data '{
+  "cwx_name":"Laptop won'\''t boot",
+  "cwx_description":"Dell 5420 no POST after update",
+  "cwx_priority":3, "cwx_severity":2, "cwx_category":1,
+  "cwx_CustomerId@odata.bind":"/accounts(c2c130c3-c05d-f111-b65d-00155d467b90)",
+  "cwx_SLA@odata.bind":"/cwx_slas(00d955b7-c05d-f111-b65d-00155d467b90)"
+}'
+```
+
+The response echoes the bound foreign keys:
+
+```json
+{ "ok": true, "data": {
+    "cwx_ticketid": "a41cfedb-...",
+    "cwx_name": "Laptop won't boot",
+    "_cwx_sla_value": "00d955b7-...",
+    "_cwx_customerid_value": "c2c130c3-..."
+} }
+```
+
+Modify a record with `update` (PATCH) and `upsert` (PATCH with create-if-missing). With
+no alternate key configured on the ticket, both target the record by id:
+
+```bash
+crm --json entity update cwx_tickets a41cfedb-c05d-f111-b65d-00155d467b90 \
+  --data '{"cwx_resolvedon":"2026-06-01T12:00:00Z"}'
+crm --json entity upsert cwx_tickets c8c8f8e4-c05d-f111-b65d-00155d467b90 \
+  --data '{"cwx_resolvedon":"2026-06-01T15:30:00Z"}'
+```
+
+Both return `{"ok": true}`.
 
 ## 4. Read & verify
 
