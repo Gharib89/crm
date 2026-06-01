@@ -22,10 +22,20 @@ _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 
 
 def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:
-    """Return one-to-many and many-to-many relationships for an entity."""
+    """Return the relationships for an entity.
+
+    Covers all three collections: `OneToMany` (entity is the "1"/referenced side),
+    `ManyToOne` (entity is the "N"/referencing side — i.e. its own lookups), and
+    `ManyToMany`. Omitting ManyToOne would hide an entity's own lookup columns.
+    """
+    rel_select = "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"
     one_to_many = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/OneToManyRelationships",
-        params={"$select": "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"},
+        params={"$select": rel_select},
+    ))
+    many_to_one = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
+        params={"$select": rel_select},
     ))
     many_to_many = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/ManyToManyRelationships",
@@ -33,6 +43,7 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
     ))
     return {
         "OneToMany": one_to_many.get("value", []),
+        "ManyToOne": many_to_one.get("value", []),
         "ManyToMany": many_to_many.get("value", []),
     }
 

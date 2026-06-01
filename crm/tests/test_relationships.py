@@ -151,11 +151,16 @@ class TestListRelationshipsMoved:
                 json={"value": [{"SchemaName": "one"}]},
             )
             m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')/ManyToOneRelationships"),
+                json={"value": [{"SchemaName": "n_one"}]},
+            )
+            m.get(
                 backend.url_for("EntityDefinitions(LogicalName='account')/ManyToManyRelationships"),
                 json={"value": [{"SchemaName": "many"}]},
             )
             result = rel.list_relationships(backend, "account")
         assert result["OneToMany"][0]["SchemaName"] == "one"
+        assert result["ManyToOne"][0]["SchemaName"] == "n_one"
         assert result["ManyToMany"][0]["SchemaName"] == "many"
 
 
