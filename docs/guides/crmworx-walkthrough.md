@@ -94,7 +94,77 @@ with `--require-solution` / `CRM_REQUIRE_SOLUTION`).
 
 ## 2. Metadata build (option sets → entities → attributes → relationships)
 
-_Filled in by the live run._
+### 2.1 Global option sets
+
+CRMWorx uses four global (reusable) option sets. Preview the request first with
+`--dry-run` to confirm the shape and that the `CRMWorx` solution is targeted — note the
+`MSCRM.SolutionUniqueName: CRMWorx` header and the `GlobalOptionSetDefinitions` endpoint:
+
+```bash
+crm --json --dry-run metadata create-optionset \
+  --name cwx_priority --display "CRMWorx Priority" \
+  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical \
+  --if-exists skip
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "_dry_run": true,
+    "method": "POST",
+    "url": ".../api/data/v9.1/GlobalOptionSetDefinitions",
+    "headers": { "MSCRM.SolutionUniqueName": "CRMWorx" },
+    "body": {
+      "@odata.type": "Microsoft.Dynamics.CRM.OptionSetMetadata",
+      "Name": "cwx_priority", "IsGlobal": true, "OptionSetType": "Picklist",
+      "Options": [ { "Value": 1, "Label": { "...": "Low" } }, "...etc" ]
+    }
+  }
+}
+```
+
+Now create all four. `--if-exists skip` makes each create idempotent (proven in §5):
+
+```bash
+crm --json metadata create-optionset --name cwx_priority --display "CRMWorx Priority" \
+  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical --if-exists skip
+crm --json metadata create-optionset --name cwx_severity --display "CRMWorx Severity" \
+  --option 1:Minor --option 2:Major --option 3:Critical --if-exists skip
+crm --json metadata create-optionset --name cwx_ticketcategory --display "CRMWorx Category" \
+  --option 1:Hardware --option 2:Software --option 3:Network --option 4:Access --if-exists skip
+crm --json metadata create-optionset --name cwx_slatier --display "CRMWorx SLA Tier" \
+  --option 1:Bronze --option 2:Silver --option 3:Gold --if-exists skip
+```
+
+Each returns `created: true` with the new metadata id, the target solution, and
+`published: true`:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "created": true,
+    "name": "cwx_priority",
+    "metadata_id_url": ".../GlobalOptionSetDefinitions(a2ca6b21-...)",
+    "solution": "CRMWorx",
+    "published": true
+  }
+}
+```
+
+Verify all four landed:
+
+```bash
+crm --json metadata list-optionsets --custom-only | grep -oE 'cwx_[a-z]+' | sort -u
+```
+
+```text
+cwx_priority
+cwx_severity
+cwx_slatier
+cwx_ticketcategory
+```
 
 ## 3. Seed data
 
