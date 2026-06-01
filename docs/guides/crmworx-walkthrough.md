@@ -166,6 +166,53 @@ cwx_slatier
 cwx_ticketcategory
 ```
 
+### 2.2 Custom entities
+
+Two tables: **SLA Policy** (organization-owned reference data) and **Support Ticket**
+(user-owned, note- and activity-enabled). The schema name is given in PascalCase with
+the `cwx_` prefix; the server derives the lowercase logical name and the entity-set
+(plural) name used by the Web API:
+
+```bash
+crm --json metadata create-entity \
+  --schema-name cwx_SLA --display "SLA Policy" --display-collection "SLA Policies" \
+  --primary-attr cwx_Name --primary-label "Policy Name" \
+  --ownership OrganizationOwned --has-notes --if-exists skip
+
+crm --json metadata create-entity \
+  --schema-name cwx_Ticket --display "Support Ticket" --display-collection "Support Tickets" \
+  --primary-attr cwx_Name --primary-label "Ticket Title" \
+  --ownership UserOwned --has-notes --has-activities --if-exists skip
+```
+
+```json
+{
+  "ok": true,
+  "data": {
+    "created": true,
+    "schema_name": "cwx_SLA",
+    "logical_name": "cwx_sla",
+    "entity_set_name": "cwx_slas",
+    "primary_attribute": "cwx_name",
+    "solution": "CRMWorx",
+    "published": true
+  }
+}
+```
+
+**Note the `entity_set_name`** in each response — `cwx_slas` and `cwx_tickets`. These
+plural names are what you pass to `entity`/`query` commands later (§3–§4), not the
+logical name. Verify both tables exist:
+
+```bash
+crm --json metadata entities --custom-only | grep -oE 'cwx_(sla|ticket)\b' | sort -u
+```
+
+```text
+cwx_sla
+cwx_ticket
+```
+
 ## 3. Seed data
 
 _Filled in by the live run._
