@@ -523,7 +523,7 @@ def metadata_add_attribute(
 @click.option("--cascade-unshare", type=_CASCADE, default="NoCascade")
 @click.option("--cascade-merge", type=_CASCADE, default="NoCascade")
 @click.option("--menu-label", default=None)
-@click.option("--menu-behavior", type=_MENU, default="UseLabel")
+@click.option("--menu-behavior", type=_MENU, default="UseCollectionName")
 @click.option("--menu-order", type=int, default=10000)
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
