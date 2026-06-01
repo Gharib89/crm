@@ -286,6 +286,78 @@ attr: cwx_priority -> GlobalOptionSet.Name: cwx_priority
       GUID for the bind (the `Name` alternate key is rejected), so the CLI resolves
       `Name → MetadataId` first.
 
+### 2.4 Relationships (1:N + 1:N + N:N)
+
+Three relationships wire the model together: SLA→Ticket and Account→Ticket (each a
+1:N that creates a lookup column on the ticket), and Ticket↔SystemUser (an N:N
+"watchers" link with an intersect table).
+
+```bash
+# SLA -> Ticket (creates the cwx_sla lookup on the ticket)
+crm --json metadata create-one-to-many \
+  --schema-name cwx_sla_cwx_ticket \
+  --referenced-entity cwx_sla --referencing-entity cwx_ticket \
+  --lookup-schema cwx_SLA --lookup-display "SLA Policy" --if-exists skip
+
+# Account -> Ticket (creates the cwx_customerid lookup on the ticket)
+crm --json metadata create-one-to-many \
+  --schema-name cwx_account_cwx_ticket \
+  --referenced-entity account --referencing-entity cwx_ticket \
+  --lookup-schema cwx_CustomerId --lookup-display "Customer" --if-exists skip
+
+# Ticket <-> SystemUser (N:N watchers)
+crm --json metadata create-many-to-many \
+  --schema-name cwx_ticket_systemuser \
+  --entity1 cwx_ticket --entity2 systemuser \
+  --intersect-entity cwx_ticket_systemuser --if-exists skip
+```
+
+A 1:N response reports the created relationship and the lookup column the server
+generated on the referencing entity:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "created": true,
+    "kind": "OneToMany",
+    "schema_name": "cwx_sla_cwx_ticket",
+    "referencing_attribute": "cwx_sla",
+    "solution": "CRMWorx"
+  }
+}
+```
+
+Verify all three (note `metadata relationships` lists an entity's one-to-many,
+many-to-one, *and* many-to-many links) and publish:
+
+```bash
+crm --json metadata relationships cwx_ticket \
+  | grep -oE 'cwx_(sla_cwx_ticket|account_cwx_ticket|ticket_systemuser)' | sort -u
+crm --json solution publish-all
+```
+
+```text
+cwx_account_cwx_ticket
+cwx_sla_cwx_ticket
+cwx_ticket_systemuser
+```
+
+!!! note "Three more CLI defects fixed during this step"
+    Creating relationships against the live server exposed (commits `c62d57a`,
+    `980ab95`):
+
+    - **Wrong endpoint** — `create-one-to-many`/`create-many-to-many` POSTed to
+      `CreateOneToManyRequest`/`CreateManyToManyRequest`, which are SDK message names,
+      not Web API segments ("Resource not found for the segment ..."). They now POST
+      to the `RelationshipDefinitions` entity set with an `@odata.type` discriminator
+      (the 1:N lookup is a `Lookup` deep insert).
+    - **Invalid default menu** — the 1:N associated-menu defaulted to `UseLabel` with
+      no label, which the server rejects. Default is now `UseCollectionName`.
+    - **Incomplete read-back / listing** — `ReferencingAttribute` came back `null`
+      (the read-back didn't cast to the relationship subtype), and `metadata
+      relationships` omitted the many-to-one side. Both fixed.
+
 ## 3. Seed data
 
 _Filled in by the live run._
