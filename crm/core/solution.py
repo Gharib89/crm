@@ -43,6 +43,50 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str
     return result.get("value", [])
 
 
+def _async_export_unavailable(exc: D365Error) -> bool:
+    """True when the org lacks the ExportSolutionAsync action (older on-prem)."""
+    msg = str(exc).lower()
+    return "exportsolutionasync" in msg and (
+        "not enabled" in msg
+        or "not supported" in msg
+        or "resource not found" in msg
+    )
+
+
+def _write_export_file(output_path: str | Path, encoded: str) -> tuple[Path, int]:
+    data = base64.b64decode(encoded)
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    return out, len(data)
+
+
+def _export_solution_sync(
+    backend: D365Backend,
+    body: dict[str, Any],
+    unique_name: str,
+    output_path: str | Path,
+    *,
+    managed: bool,
+    started: float,
+) -> dict[str, Any]:
+    """Synchronous fallback: ExportSolution returns the zip bytes inline."""
+    import time as _time
+    resp = as_dict(backend.post("ExportSolution", json_body=body))
+    encoded = resp.get("ExportSolutionFile")
+    if not encoded:
+        raise D365Error("ExportSolution returned no ExportSolutionFile payload.")
+    out, n = _write_export_file(output_path, encoded)
+    return {
+        "output": str(out),
+        "bytes": n,
+        "managed": managed,
+        "solution": unique_name,
+        "action": "ExportSolution",
+        "duration_ms": int((_time.monotonic() - started) * 1000),
+    }
+
+
 def export_solution(
     backend: D365Backend,
     unique_name: str,
@@ -84,7 +128,17 @@ def export_solution(
     }
 
     started = _time.monotonic()
-    resp = as_dict(backend.post("ExportSolutionAsync", json_body=body))
+    try:
+        resp = as_dict(backend.post("ExportSolutionAsync", json_body=body))
+    except D365Error as exc:
+        # Older on-prem orgs don't enable the async export action; fall back to the
+        # synchronous ExportSolution, which returns the zip bytes inline.
+        if _async_export_unavailable(exc):
+            return _export_solution_sync(
+                backend, body, unique_name, output_path,
+                managed=managed, started=started,
+            )
+        raise
     if "_dry_run" in resp:
         return {**resp, "action": "ExportSolutionAsync"}
 
@@ -106,20 +160,18 @@ def export_solution(
         raise D365Error(
             "DownloadSolutionExportData returned no ExportSolutionFile payload."
         )
-    data = base64.b64decode(encoded)
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(data)
+    out, _bytes = _write_export_file(output_path, encoded)
 
     duration_ms = int((_time.monotonic() - started) * 1000)
     return {
         "output": str(out),
-        "bytes": len(data),
+        "bytes": _bytes,
         "managed": managed,
         "solution": unique_name,
         "async_operation_id": async_op_id,
         "export_job_id": export_job_id,
         "duration_ms": duration_ms,
+        "action": "ExportSolutionAsync",
     }
 
 

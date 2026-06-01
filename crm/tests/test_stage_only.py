@@ -218,11 +218,14 @@ def _setup_one_to_many(m, backend):
         status_code=404,
     )
     m.post(
-        backend.url_for("CreateOneToManyRequest"),
+        backend.url_for("RelationshipDefinitions"),
         status_code=204,
         headers={"OData-EntityId": rel_url},
     )
-    m.get(rel_url, json={"SchemaName": "new_a_new_b", "ReferencingAttribute": "new_aid"})
+    m.get(
+        rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+        json={"SchemaName": "new_a_new_b", "ReferencingAttribute": "new_aid"},
+    )
     return [
         "--json", "metadata", "create-one-to-many",
         "--schema-name", "new_a_new_b",
@@ -238,11 +241,14 @@ def _setup_many_to_many(m, backend):
         status_code=404,
     )
     m.post(
-        backend.url_for("CreateManyToManyRequest"),
+        backend.url_for("RelationshipDefinitions"),
         status_code=204,
         headers={"OData-EntityId": rel_url},
     )
-    m.get(rel_url, json={"SchemaName": "new_a_new_b", "IntersectEntityName": "new_a_new_b"})
+    m.get(
+        rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+        json={"SchemaName": "new_a_new_b", "IntersectEntityName": "new_a_new_b"},
+    )
     return [
         "--json", "metadata", "create-many-to-many",
         "--schema-name", "new_a_new_b",

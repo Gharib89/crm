@@ -1,10 +1,11 @@
 """Relationship metadata (1:N + N:N) — create + list helpers.
 
-`create_one_to_many` and `create_many_to_many` use the dedicated
-`CreateOneToManyRequest` / `CreateManyToManyRequest` unbound actions
-rather than POSTing directly to `/RelationshipDefinitions`; the actions
-also create the lookup attribute (1:N) or intersect entity (N:N)
-atomically.
+`create_one_to_many` and `create_many_to_many` POST to the
+`/RelationshipDefinitions` entity set with the `@odata.type` discriminator
+(`OneToManyRelationshipMetadata` / `ManyToManyRelationshipMetadata`). The
+lookup attribute (1:N, via a `Lookup` deep insert) and the intersect entity
+(N:N) are created in the same operation. (`CreateOneToManyRequest` /
+`CreateManyToManyRequest` are SDK message names, not Web API segments.)
 """
 
 from __future__ import annotations
@@ -21,10 +22,20 @@ _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 
 
 def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:
-    """Return one-to-many and many-to-many relationships for an entity."""
+    """Return the relationships for an entity.
+
+    Covers all three collections: `OneToMany` (entity is the "1"/referenced side),
+    `ManyToOne` (entity is the "N"/referencing side — i.e. its own lookups), and
+    `ManyToMany`. Omitting ManyToOne would hide an entity's own lookup columns.
+    """
+    rel_select = "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"
     one_to_many = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/OneToManyRelationships",
-        params={"$select": "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"},
+        params={"$select": rel_select},
+    ))
+    many_to_one = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
+        params={"$select": rel_select},
     ))
     many_to_many = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/ManyToManyRelationships",
@@ -32,6 +43,7 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
     ))
     return {
         "OneToMany": one_to_many.get("value", []),
+        "ManyToOne": many_to_one.get("value", []),
         "ManyToMany": many_to_many.get("value", []),
     }
 
@@ -60,7 +72,7 @@ def create_one_to_many(
     cascade_unshare: str = "NoCascade",
     cascade_merge: str = "NoCascade",
     menu_label: str | None = None,
-    menu_behavior: str = "UseLabel",
+    menu_behavior: str = "UseCollectionName",
     menu_order: int = 10000,
     publish: bool = False,
     solution: str | None = None,
@@ -68,8 +80,8 @@ def create_one_to_many(
 ) -> dict[str, Any]:
     """Create a 1:N relationship + lookup attribute atomically.
 
-    Calls `POST /CreateOneToManyRequest`. Read-back populates
-    `schema_name` and `referencing_attribute` from the server.
+    `POST /RelationshipDefinitions` with a `Lookup` deep insert. Read-back
+    populates `schema_name` and `referencing_attribute` from the server.
     """
     if "_" not in schema_name:
         raise D365Error(
@@ -90,6 +102,11 @@ def create_one_to_many(
             raise D365Error(f"{name} must be one of {sorted(_VALID_CASCADE)}.")
     if menu_behavior not in _VALID_MENU_BEHAVIOR:
         raise D365Error(f"menu_behavior must be one of {sorted(_VALID_MENU_BEHAVIOR)}.")
+    if menu_behavior == "UseLabel" and not menu_label:
+        raise D365Error(
+            "menu_behavior 'UseLabel' requires --menu-label; the server rejects a "
+            "custom-label associated menu without a label."
+        )
 
     exists = target_exists(
         backend, f"RelationshipDefinitions(SchemaName='{schema_name}')"
@@ -124,29 +141,27 @@ def create_one_to_many(
     if menu_label:
         menu_config["Label"] = label(menu_label)
     body: dict[str, Any] = {
-        "OneToManyRelationship": {
-            "@odata.type": "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-            "SchemaName": schema_name,
-            "ReferencedEntity": referenced_entity,
-            "ReferencingEntity": referencing_entity,
-            "AssociatedMenuConfiguration": menu_config,
-            "CascadeConfiguration": {
-                "Assign": cascade_assign,
-                "Delete": cascade_delete,
-                "Reparent": cascade_reparent,
-                "Share": cascade_share,
-                "Unshare": cascade_unshare,
-                "Merge": cascade_merge,
-            },
+        "@odata.type": "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+        "SchemaName": schema_name,
+        "ReferencedEntity": referenced_entity,
+        "ReferencingEntity": referencing_entity,
+        "AssociatedMenuConfiguration": menu_config,
+        "CascadeConfiguration": {
+            "Assign": cascade_assign,
+            "Delete": cascade_delete,
+            "Reparent": cascade_reparent,
+            "Share": cascade_share,
+            "Unshare": cascade_unshare,
+            "Merge": cascade_merge,
         },
+        # The lookup attribute is created in the same operation as a deep insert
+        # on the Lookup single-valued navigation property.
         "Lookup": lookup_payload,
     }
-    if solution:
-        body["SolutionUniqueName"] = solution
 
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "CreateOneToManyRequest",
+        "RelationshipDefinitions",
         json_body=body,
         extra_headers=headers,
     ))
@@ -166,8 +181,11 @@ def create_one_to_many(
         )
     else:
         try:
+            # Cast to the 1:N subtype — ReferencingAttribute is not on the
+            # RelationshipMetadataBase type returned by the uncast endpoint.
             rb = as_dict(backend.get(
-                f"RelationshipDefinitions({relationship_id})",
+                f"RelationshipDefinitions({relationship_id})"
+                "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
                 params={"$select": "SchemaName,ReferencingAttribute"},
             ))
             schema_readback = rb.get("SchemaName")
@@ -209,7 +227,7 @@ def create_many_to_many(
     solution: str | None = None,
     if_exists: str = "error",
 ) -> dict[str, Any]:
-    """Create an N:N relationship via `CreateManyToManyRequest`.
+    """Create an N:N relationship via `POST /RelationshipDefinitions`.
 
     Server creates the intersect entity (`intersect_entity` is its logical name).
     """
@@ -259,22 +277,18 @@ def create_many_to_many(
     if entity2_menu_label:
         entity2_menu["Label"] = label(entity2_menu_label)
     body: dict[str, Any] = {
-        "ManyToManyRelationship": {
-            "@odata.type": "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-            "SchemaName": schema_name,
-            "Entity1LogicalName": entity1_logical,
-            "Entity2LogicalName": entity2_logical,
-            "Entity1AssociatedMenuConfiguration": entity1_menu,
-            "Entity2AssociatedMenuConfiguration": entity2_menu,
-        },
-        "IntersectEntitySchemaName": intersect_entity,
+        "@odata.type": "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+        "SchemaName": schema_name,
+        "Entity1LogicalName": entity1_logical,
+        "Entity2LogicalName": entity2_logical,
+        "IntersectEntityName": intersect_entity,
+        "Entity1AssociatedMenuConfiguration": entity1_menu,
+        "Entity2AssociatedMenuConfiguration": entity2_menu,
     }
-    if solution:
-        body["SolutionUniqueName"] = solution
 
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "CreateManyToManyRequest",
+        "RelationshipDefinitions",
         json_body=body,
         extra_headers=headers,
     ))
@@ -294,8 +308,11 @@ def create_many_to_many(
         )
     else:
         try:
+            # Cast to the N:N subtype — IntersectEntityName is not on the
+            # RelationshipMetadataBase type returned by the uncast endpoint.
             rb = as_dict(backend.get(
-                f"RelationshipDefinitions({relationship_id})",
+                f"RelationshipDefinitions({relationship_id})"
+                "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
                 params={"$select": "SchemaName,IntersectEntityName"},
             ))
             schema_readback = rb.get("SchemaName")

@@ -40,12 +40,12 @@ class TestCreateOneToMany:
                 json={"error": {"code": "0x", "message": "not found"}},
             )
             m.post(
-                backend.url_for("CreateOneToManyRequest"),
+                backend.url_for("RelationshipDefinitions"),
                 status_code=204,
                 headers={"OData-EntityId": rel_url},
             )
             m.get(
-                rel_url,
+                rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
                 json={"SchemaName": "new_account_new_project",
                       "ReferencingAttribute": "new_accountid"},
             )
@@ -62,11 +62,30 @@ class TestCreateOneToMany:
         assert info["schema_name"] == "new_account_new_project"
         assert info["referencing_attribute"] == "new_accountid"
         assert info["relationship_id"] == _REL_ID
-        # Verify default cascade
+        # POST goes to RelationshipDefinitions with the metadata inline and the
+        # lookup as a Lookup deep insert; verify the type discriminator and cascade.
         body = next(r for r in m.request_history if r.method == "POST").json()
-        cc = body["OneToManyRelationship"]["CascadeConfiguration"]
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        assert body["Lookup"]["SchemaName"] == "new_AccountId"
+        # Default associated-menu behavior uses the collection name (valid without a
+        # custom label); UseLabel without a label is rejected by the server.
+        assert body["AssociatedMenuConfiguration"]["Behavior"] == "UseCollectionName"
+        cc = body["CascadeConfiguration"]
         assert cc["Delete"] == "RemoveLink"
         assert cc["Assign"] == "NoCascade"
+
+    def test_use_label_without_label_rejected(self, backend):
+        from crm.core import relationships as rel
+        with pytest.raises(D365Error, match="UseLabel"):
+            rel.create_one_to_many(
+                backend,
+                schema_name="new_account_new_project",
+                referenced_entity="account",
+                referencing_entity="new_project",
+                lookup_schema="new_AccountId",
+                lookup_display="Account",
+                menu_behavior="UseLabel",
+            )
 
     def test_rejects_schema_without_prefix(self, backend):
         from crm.core import relationships as rel
@@ -103,11 +122,14 @@ class TestCreateOneToMany:
                 json={"error": {"code": "0x", "message": "not found"}},
             )
             m.post(
-                backend.url_for("CreateOneToManyRequest"),
+                backend.url_for("RelationshipDefinitions"),
                 status_code=204,
                 headers={"OData-EntityId": rel_url},
             )
-            m.get(rel_url, status_code=500, json={"error": {"message": "boom"}})
+            m.get(
+                rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                status_code=500, json={"error": {"message": "boom"}},
+            )
             info = rel.create_one_to_many(
                 backend,
                 schema_name="new_a_b",
@@ -129,11 +151,16 @@ class TestListRelationshipsMoved:
                 json={"value": [{"SchemaName": "one"}]},
             )
             m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')/ManyToOneRelationships"),
+                json={"value": [{"SchemaName": "n_one"}]},
+            )
+            m.get(
                 backend.url_for("EntityDefinitions(LogicalName='account')/ManyToManyRelationships"),
                 json={"value": [{"SchemaName": "many"}]},
             )
             result = rel.list_relationships(backend, "account")
         assert result["OneToMany"][0]["SchemaName"] == "one"
+        assert result["ManyToOne"][0]["SchemaName"] == "n_one"
         assert result["ManyToMany"][0]["SchemaName"] == "many"
 
 
@@ -148,12 +175,12 @@ class TestCreateManyToMany:
                 json={"error": {"code": "0x", "message": "not found"}},
             )
             m.post(
-                backend.url_for("CreateManyToManyRequest"),
+                backend.url_for("RelationshipDefinitions"),
                 status_code=204,
                 headers={"OData-EntityId": rel_url},
             )
             m.get(
-                rel_url,
+                rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
                 json={"SchemaName": "new_account_project",
                       "IntersectEntityName": "new_account_project"},
             )
@@ -168,8 +195,9 @@ class TestCreateManyToMany:
         assert info["kind"] == "ManyToMany"
         assert info["intersect_entity"] == "new_account_project"
         body = next(r for r in m.request_history if r.method == "POST").json()
-        assert body["IntersectEntitySchemaName"] == "new_account_project"
-        assert body["ManyToManyRelationship"]["Entity1LogicalName"] == "account"
+        assert body["@odata.type"] == "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
+        assert body["IntersectEntityName"] == "new_account_project"
+        assert body["Entity1LogicalName"] == "account"
 
     def test_rejects_self_relationship(self, backend):
         from crm.core import relationships as rel

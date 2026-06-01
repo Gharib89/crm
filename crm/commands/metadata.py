@@ -343,7 +343,7 @@ def metadata_update_relationship(
 @click.argument("logical_name")
 @pass_ctx
 def metadata_relationships(ctx: CLIContext, logical_name):
-    """Show one-to-many + many-to-many relationships."""
+    """Show one-to-many, many-to-one, and many-to-many relationships."""
     try:
         info = rel_mod.list_relationships(ctx.backend(), logical_name)
     except D365Error as exc:
@@ -351,6 +351,7 @@ def metadata_relationships(ctx: CLIContext, logical_name):
         return
     ctx.emit(True, data=info, meta={
         "one_to_many": len(info.get("OneToMany", [])),
+        "many_to_one": len(info.get("ManyToOne", [])),
         "many_to_many": len(info.get("ManyToMany", [])),
     })
 
@@ -523,7 +524,7 @@ def metadata_add_attribute(
 @click.option("--cascade-unshare", type=_CASCADE, default="NoCascade")
 @click.option("--cascade-merge", type=_CASCADE, default="NoCascade")
 @click.option("--menu-label", default=None)
-@click.option("--menu-behavior", type=_MENU, default="UseLabel")
+@click.option("--menu-behavior", type=_MENU, default="UseCollectionName")
 @click.option("--menu-order", type=int, default=10000)
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
