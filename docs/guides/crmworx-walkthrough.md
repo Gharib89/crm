@@ -422,7 +422,61 @@ Both return `{"ok": true}`.
 
 ## 4. Read & verify
 
-_Filled in by the live run._
+Four read paths. An **OData** query with a filter and projection:
+
+```bash
+crm --json query odata cwx_tickets \
+  --filter "cwx_priority eq 3" --select cwx_name,cwx_severity --top 10
+```
+
+```json
+{ "ok": true, "data": { "value": [
+  { "cwx_name": "Laptop won't boot", "cwx_severity": 2 }
+] } }
+```
+
+A **FetchXML** query (server-side XML query language) returning all tickets ordered by
+name:
+
+```bash
+crm --json query fetchxml cwx_tickets --xml '
+<fetch top="20">
+  <entity name="cwx_ticket">
+    <attribute name="cwx_name"/>
+    <attribute name="cwx_priority"/>
+    <order attribute="cwx_name"/>
+  </entity>
+</fetch>'
+```
+
+Returns both tickets (`Laptop won't boot` pri=3, `VPN drops every 10 min` pri=2).
+
+A bulk **CSV export** to a file (the committed sample is
+[`docs/artifacts/crmworx-tickets.csv`](../artifacts/crmworx-tickets.csv)):
+
+```bash
+crm data export cwx_tickets -o docs/artifacts/crmworx-tickets.csv \
+  --select cwx_name,cwx_priority,cwx_severity,cwx_category
+```
+
+```text
+output: docs/artifacts/crmworx-tickets.csv
+format: csv
+count: 2
+```
+
+And an **action/function** call — `RetrieveCurrentOrganization`:
+
+```bash
+crm --json action function RetrieveCurrentOrganization --params '{"AccessType":"Default"}'
+```
+
+```json
+{ "ok": true, "data": { "Detail": {
+  "FriendlyName": "MOCE",
+  "OrganizationVersion": "9.1.44.15"
+} } }
+```
 
 ## 5. Package the solution
 
