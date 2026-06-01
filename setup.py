@@ -22,6 +22,7 @@ setup(
     extras_require={
         "dev": ["pytest>=7.0", "requests_mock>=1.10", "pyinstaller>=6.0", "pyright>=1.1.380"],
         "kerberos": ["requests_negotiate_sspi"],
+        "docs": ["mkdocs>=1.6", "mkdocs-material>=9.5", "mkdocs-click>=0.8"],
     },
     entry_points={
         "console_scripts": [
