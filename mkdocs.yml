@@ -49,6 +49,8 @@ nav:
       - solution: how-to/solution.md
       - data: how-to/data.md
       - action: how-to/action.md
+      - view: how-to/view.md
+      - app: how-to/app.md
       - async: how-to/async.md
       - session: how-to/session.md
       - skill: how-to/skill.md
