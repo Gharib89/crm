@@ -600,6 +600,44 @@ class TestConnectionDotenv:
         assert profile.domain == "contoso"
         assert profile.username == "admin"
 
+    def test_crm_dotenv_authoritative_missing_file_loads_nothing(self, tmp_path, monkeypatch):
+        # A real ./.env exists in cwd, but an explicit CRM_DOTENV points at a
+        # missing file. Authoritative semantics: load nothing, do NOT fall back
+        # to ./.env (this is the bug in issue #36).
+        (tmp_path / ".env").write_text("CRM_BASE_URL=http://leak.local/org\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CRM_BASE_URL", raising=False)
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))  # never created
+        from crm.core import connection as conn_mod_local
+        assert conn_mod_local.load_dotenv() is None
+        import os
+        assert "CRM_BASE_URL" not in os.environ  # ./.env must not have leaked in
+
+    def test_crm_dotenv_authoritative_existing_file_loads_only_it(self, tmp_path, monkeypatch):
+        # CRM_DOTENV points at an existing file: load exactly it, ignoring the
+        # ./.env that would otherwise be auto-discovered in cwd.
+        (tmp_path / ".env").write_text("CRM_BASE_URL=http://leak.local/org\n", encoding="utf-8")
+        explicit = tmp_path / "explicit.env"
+        explicit.write_text("CRM_BASE_URL=http://explicit.local/org\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CRM_BASE_URL", raising=False)
+        monkeypatch.setenv("CRM_DOTENV", str(explicit))
+        from crm.core import connection as conn_mod_local
+        assert conn_mod_local.load_dotenv() == explicit
+        import os
+        assert os.environ["CRM_BASE_URL"] == "http://explicit.local/org"
+
+    def test_dotenv_autodiscovers_cwd_when_override_unset(self, tmp_path, monkeypatch):
+        # With CRM_DOTENV unset, auto-discovery of ./.env in cwd is unchanged.
+        (tmp_path / ".env").write_text("CRM_BASE_URL=http://found.local/org\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("CRM_DOTENV", raising=False)
+        monkeypatch.delenv("CRM_BASE_URL", raising=False)
+        from crm.core import connection as conn_mod_local
+        assert conn_mod_local.load_dotenv() == tmp_path / ".env"
+        import os
+        assert os.environ["CRM_BASE_URL"] == "http://found.local/org"
+
     def test_dotenv_preserves_inner_quotes(self, tmp_path, monkeypatch):
         for k in ("KEY_WITH_QUOTE", "D365_URL", "CRM_BASE_URL"):
             monkeypatch.delenv(k, raising=False)

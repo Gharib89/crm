@@ -69,21 +69,20 @@ def _env(name: str, default: str = "") -> str:
 def load_dotenv(path: str | os.PathLike[str] | None = None, *, override: bool = False) -> Path | None:
     """Load KEY=VALUE pairs from a `.env` file into os.environ.
 
-    Lookup order when path is None:
-        1. CRM_DOTENV env var
-        2. ./.env in cwd
-        3. ../.env (one level up)
+    Lookup when path is None:
+        - If CRM_DOTENV is set, it is authoritative: load exactly that file,
+          or load nothing (return None) if it does not exist. No fallback.
+        - Otherwise auto-discover ./.env in cwd, then ../.env (one level up).
 
     Returns the resolved path actually loaded, or None if no file was found.
     """
     if path is None:
-        candidates: list[Path] = []
         env_override = os.environ.get("CRM_DOTENV")
         if env_override:
-            candidates.append(Path(env_override))
-        cwd = Path.cwd()
-        candidates.append(cwd / ".env")
-        candidates.append(cwd.parent / ".env")
+            candidates: list[Path] = [Path(env_override)]
+        else:
+            cwd = Path.cwd()
+            candidates = [cwd / ".env", cwd.parent / ".env"]
         chosen = next((p for p in candidates if p.is_file()), None)
         if chosen is None:
             return None
