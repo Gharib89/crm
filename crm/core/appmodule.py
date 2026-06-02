@@ -51,6 +51,8 @@ def create_app(
     if_exists: str = "error",
 ) -> dict[str, Any]:
     """Create a model-driven app module. Returns `{created, appmoduleid, ...}`."""
+    if not name:
+        raise D365Error("name is required.")
     if not unique_name or "_" not in unique_name:
         raise D365Error("unique_name must include a publisher prefix, e.g. 'cwx_crmworx'.")
     if if_exists not in ("error", "skip"):
@@ -81,6 +83,7 @@ def create_app(
     result = as_dict(backend.post("appmodules", json_body=body, extra_headers=headers))
     if result.get("_dry_run"):
         result["_exists"] = bool(existing)
+        result["would_skip"] = bool(existing) and if_exists == "skip"
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""
@@ -126,8 +129,12 @@ def add_app_components(
             )
         pk, otype = _COMPONENT_REFS[kind]
         refs.append({pk: guid, "@odata.type": f"Microsoft.Dynamics.CRM.{otype}"})
-    backend.post("AddAppComponents",
-                 json_body={"AppId": app_id, "Components": refs})
+    result = as_dict(backend.post(
+        "AddAppComponents", json_body={"AppId": app_id, "Components": refs}))
+    if result.get("_dry_run"):
+        result["app_id"] = app_id
+        result["components"] = len(refs)
+        return result
     return {"added": len(refs), "app_id": app_id}
 
 

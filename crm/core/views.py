@@ -77,7 +77,8 @@ def create_view(
     existing = as_dict(backend.get(
         "savedqueries",
         params={
-            "$filter": f"name eq '{name_lit}' and returnedtypecode eq '{entity}'",
+            "$filter": (f"name eq '{name_lit}' and returnedtypecode eq '{entity}' "
+                        "and querytype eq 0"),
             "$select": "savedqueryid,name",
         },
     )).get("value", [])
@@ -101,6 +102,7 @@ def create_view(
                                   extra_headers=headers))
     if result.get("_dry_run"):
         result["_exists"] = bool(existing)
+        result["would_skip"] = bool(existing) and if_exists == "skip"
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""

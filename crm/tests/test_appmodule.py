@@ -28,6 +28,7 @@ def backend(profile):
 
 _APP_ID = "77777777-7777-7777-7777-777777777777"
 _DEFAULT_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
+_SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
 
 
 def _posts(m):
@@ -95,6 +96,70 @@ class TestAddComponents:
         with pytest.raises(D365Error, match="unknown component kind"):
             appmodule.add_app_components(backend, app_id=_APP_ID,
                                          components=[("widget", "xxxx")])
+
+    def test_add_components_dry_run_previews(self, profile):
+        from crm.core import appmodule
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        out = appmodule.add_app_components(
+            dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")])
+        # dry-run surfaces the preview instead of a fake "added" count
+        assert out["_dry_run"] is True
+        assert out["components"] == 2
+        assert out["app_id"] == _APP_ID
+        assert "added" not in out
+
+
+class TestSetSitemap:
+    def test_set_sitemap_posts_and_reads_id(self, backend):
+        from crm.core import appmodule
+        sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("sitemaps"), status_code=204,
+                   headers={"OData-EntityId": sm_url})
+            out = appmodule.set_sitemap(
+                backend, sitemap_name="CRMWorx SiteMap",
+                sitemap_xml="<SiteMap><Area Id='cwx' /></SiteMap>",
+                unique_name="cwx_crmworx", solution="cwx_sol",
+            )
+        assert out["created"] is True
+        assert out["sitemapid"] == _SITEMAP_ID
+        post = _posts(m)[0]
+        body = post.json()
+        assert body["sitemapname"] == "CRMWorx SiteMap"
+        assert body["sitemapxml"].startswith("<SiteMap")
+        assert body["sitemapnameunique"] == "cwx_crmworx"
+        # solution routes through the MSCRM.SolutionUniqueName header
+        assert post.headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
+
+    def test_set_sitemap_rejects_empty_xml(self, backend):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="must not be empty"):
+            appmodule.set_sitemap(backend, sitemap_name="x", sitemap_xml="   ")
+
+    def test_app_set_sitemap_command_wires_core(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_set_sitemap(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "sitemapid": _SITEMAP_ID,
+                    "sitemapname": kw["sitemap_name"]}
+
+        monkeypatch.setattr("crm.core.appmodule.set_sitemap", fake_set_sitemap)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("sm.xml", "w", encoding="utf-8") as fh:
+                fh.write("<SiteMap><Area Id='cwx' /></SiteMap>")
+            result = runner.invoke(cli, [
+                "--json", "app", "set-sitemap", "CRMWorx SiteMap",
+                "--xml-file", "sm.xml", "--unique-name", "cwx_crmworx",
+            ])
+        assert result.exit_code == 0, result.output
+        assert captured["sitemap_name"] == "CRMWorx SiteMap"
+        assert captured["unique_name"] == "cwx_crmworx"
+        assert captured["sitemap_xml"].startswith("<SiteMap")
 
 
 class TestAppCommands:
