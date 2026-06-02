@@ -719,6 +719,54 @@ crm --json solution publish-all
     attempt — no manual-portal fallback was needed. Read-back confirms `cwx_priority`
     and `cwx_customerid` are present in the stored FormXml.
 
+## 8. Charts
+
+A chart is a **`savedqueryvisualization`** row with two XML columns: `datadescription`
+(an aggregate FetchXML wrapped in `<datadefinition>` — the *what*) and
+`presentationdescription` (a `<Chart>` serialization of the .NET Chart control — the
+*how*). The `presentationdescription` has no schema; copy a canonical single-series
+shape from MS Learn (`Sample charts`, op-9-1) and only swap the `ChartType`.
+
+**Tickets by Priority** — group `cwx_ticket` by `cwx_priority`, count `cwx_ticketid`:
+
+```xml
+<datadefinition>
+  <fetchcollection>
+    <fetch mapping="logical" aggregate="true">
+      <entity name="cwx_ticket">
+        <attribute groupby="true" alias="groupby_column" name="cwx_priority" />
+        <attribute alias="aggregate_column" name="cwx_ticketid" aggregate="count" />
+      </entity>
+    </fetch>
+  </fetchcollection>
+  <categorycollection>
+    <category>
+      <measurecollection><measure alias="aggregate_column" /></measurecollection>
+    </category>
+  </categorycollection>
+</datadefinition>
+```
+
+The `presentationdescription` is the canonical `ChartType="Column"` block from the MS
+Learn samples verbatim (series style + `<ChartAreas>` axes + `<Titles>`). Guard,
+preview, create, publish, read back:
+
+```bash
+crm --json query odata savedqueryvisualizations \
+  --filter "name eq 'Tickets by Priority' and primaryentitytypecode eq 'cwx_ticket'" --select name,savedqueryvisualizationid
+crm --json --dry-run entity create savedqueryvisualizations --data-file /tmp/cwx_chart_priority.json
+crm --json entity create savedqueryvisualizations --data-file /tmp/cwx_chart_priority.json
+crm --json solution publish-all
+crm --json query odata savedqueryvisualizations --filter "primaryentitytypecode eq 'cwx_ticket'" --select name,savedqueryvisualizationid
+```
+
+```text
+Tickets by Priority | b7510172-705e-f111-b65d-00155d467b90
+```
+
+The server accepted the chart on the first attempt. Keep that
+`savedqueryvisualizationid` — the dashboard in §9 binds it.
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
