@@ -1,8 +1,15 @@
 """Guard the CLI fast path: `crm --version` must not import command modules or
 the D365 backend stack. Run in a subprocess so sys.modules starts clean."""
+# pyright: basic
+
+import ast
+import importlib
 import json
 import subprocess
 import sys
+from pathlib import Path
+
+import click
 
 # Command modules that must load only when their subcommand is invoked.
 LAZY_MODULES = {
@@ -42,3 +49,42 @@ def test_lazy_group_still_resolves_a_subcommand():
     result = CliRunner().invoke(cli, ["entity", "--help"])
     assert result.exit_code == 0, result.output
     assert "Usage: crm entity" in result.output
+
+
+# repo root: this file is crm/tests/test_lazy_imports.py
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_every_lazy_command_target_resolves():
+    """Each _lazy_commands "module:attr" target must import and expose a Click command."""
+    from crm.cli import _LazyJsonAwareGroup
+    for name, target in _LazyJsonAwareGroup._lazy_commands.items():
+        module_name, attr = target.split(":")
+        module = importlib.import_module(module_name)
+        obj = getattr(module, attr, None)
+        assert isinstance(obj, click.Command), (
+            f"_lazy_commands[{name!r}] -> {target!r} did not resolve to a Click command"
+        )
+
+
+def test_lazy_command_modules_are_bundled_in_pyinstaller_spec():
+    """Every crm.commands.* module reached via the lazy loader must also be listed in
+    crm.spec hiddenimports, or the frozen onedir binary will crash when that subcommand
+    is invoked (PyInstaller can't follow the runtime importlib.import_module call)."""
+    from crm.cli import _LazyJsonAwareGroup
+    lazy_modules = {
+        target.split(":")[0]
+        for target in _LazyJsonAwareGroup._lazy_commands.values()
+    }
+    spec_src = (_REPO_ROOT / "crm.spec").read_text(encoding="utf-8")
+    spec_strings = {
+        node.value
+        for node in ast.walk(ast.parse(spec_src))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    bundled = {s for s in spec_strings if s.startswith("crm.commands.")}
+    missing = lazy_modules - bundled
+    assert not missing, (
+        f"crm.spec hiddenimports is missing lazily-loaded modules {sorted(missing)}; "
+        f"add them or the frozen binary crashes when those commands run"
+    )
