@@ -142,3 +142,18 @@ class TestViewCommand:
         assert captured["columns"] == [("cwx_name", 220), ("cwx_priority", 120)]
         assert captured["order_by"] == "cwx_name"
         assert captured["filter_active"] is True
+
+    def test_view_create_strips_column_whitespace(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.views.create_view",
+            lambda backend, **kw: captured.update(kw) or {"created": True, "name": kw["name"]})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+            "--column", " cwx_name : 220 ", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["columns"] == [("cwx_name", 220)]

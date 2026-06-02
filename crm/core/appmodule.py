@@ -15,6 +15,7 @@ Shapes verified live against D365 CE on-prem 9.1 (walkthrough §11):
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -94,8 +95,8 @@ def create_app(
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""
-    app_id = (entity_id_url.split("appmodules(")[-1].rstrip(")")
-              if "appmodules(" in entity_id_url else None)
+    m = re.search(r"appmodules\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    app_id = m.group(1) if m else None
     out: dict[str, Any] = {
         "created": True, "name": name, "uniquename": unique_name,
         "appmoduleid": app_id, "solution": solution,
@@ -173,7 +174,7 @@ def set_sitemap(
     if result.get("_dry_run"):
         return result
     entity_id_url = result.get("_entity_id_url") or ""
-    smid = (entity_id_url.split("sitemaps(")[-1].rstrip(")")
-            if "sitemaps(" in entity_id_url else None)
+    m = re.search(r"sitemaps\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    smid = m.group(1) if m else None
     return {"created": True, "sitemapid": smid, "sitemapname": sitemap_name,
             "solution": solution}

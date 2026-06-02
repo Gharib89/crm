@@ -232,3 +232,17 @@ class TestAppCommands:
         ])
         assert result.exit_code == 0, result.output
         assert captured["components"] == [("view", "bbbb"), ("chart", "cccc")]
+
+    def test_app_add_components_strips_whitespace(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.appmodule.add_app_components",
+            lambda backend, **kw: captured.update(kw) or {"added": len(kw["components"])})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "app", "add-components", _APP_ID, "--component", " view : bbbb ",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["components"] == [("view", "bbbb")]

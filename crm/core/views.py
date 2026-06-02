@@ -7,6 +7,7 @@ create is non-fatal, matching the metadata-write precedent.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from xml.sax.saxutils import quoteattr
 
@@ -64,7 +65,11 @@ def create_view(
     solution: str | None = None,
     if_exists: str = "error",
 ) -> dict[str, Any]:
-    """Create a public system view (savedquery). Returns `{created, savedqueryid, ...}`."""
+    """Create a public system view (savedquery). Returns `{created, savedqueryid, ...}`.
+
+    Assumes the entity's primary-id attribute is ``<entity>id`` (always true for
+    custom tables, which is what this command targets).
+    """
     if not name:
         raise D365Error("name is required.")
     if not columns:
@@ -118,7 +123,8 @@ def create_view(
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""
-    sqid = entity_id_url.split("savedqueries(")[-1].rstrip(")") if "savedqueries(" in entity_id_url else None
+    m = re.search(r"savedqueries\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    sqid = m.group(1) if m else None
     out: dict[str, Any] = {
         "created": True, "name": name, "entity": entity,
         "savedqueryid": sqid, "solution": solution,

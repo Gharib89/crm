@@ -17,14 +17,20 @@ def view_group():
 
 
 def _parse_column(raw: str) -> tuple[str, int]:
-    """Parse 'logicalname:width' (width optional, default 100)."""
-    if ":" in raw:
-        name, _, w = raw.partition(":")
-        try:
-            return name, int(w)
-        except ValueError:
-            raise click.BadParameter(f"column width must be an int: {raw!r}")
-    return raw, 100
+    """Parse 'logicalname[:width]' (width optional, default 100)."""
+    name, sep, w = raw.partition(":")
+    name = name.strip()
+    if not name:
+        raise click.BadParameter(f"column name must not be empty: {raw!r}")
+    if not sep:
+        return name, 100
+    try:
+        width = int(w.strip())
+    except ValueError:
+        raise click.BadParameter(f"column width must be an int: {raw!r}")
+    if width <= 0:
+        raise click.BadParameter(f"column width must be positive: {raw!r}")
+    return name, width
 
 
 @view_group.command("create")

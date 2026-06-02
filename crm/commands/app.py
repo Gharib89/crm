@@ -54,6 +54,7 @@ def app_add_components(ctx: CLIContext, app_id, components):
     parsed: list[tuple[str, str]] = []
     for raw in components:
         kind, _, guid = raw.partition(":")
+        kind, guid = kind.strip(), guid.strip()
         if not guid:
             raise click.BadParameter(f"--component must be 'kind:guid': {raw!r}")
         parsed.append((kind, guid))
