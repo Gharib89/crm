@@ -15,7 +15,7 @@ Reports the active profile, the current entity set, and the last query run this 
 ```bash
 crm --json session history
 ```
-Prints the most recent commands with timestamps; `session info` shows the log file location.
+In `--json` mode (as above), it emits the full `history` array — raw command strings, no timestamps; text mode prints just the last 50.
 
 ## Clear the local session state
 
