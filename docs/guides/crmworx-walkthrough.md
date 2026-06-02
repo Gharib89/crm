@@ -532,6 +532,116 @@ crm --json solution components CRMWorx
     inline) when the async action is unavailable (commit `a87b8f2`). The response
     `action` field shows which path ran.
 
+## 6. Views
+
+A model-driven view is a **`savedquery`** row: `returnedtypecode` (the entity logical
+name), `querytype` (`0` = public view), and two XML columns — `layoutxml` (grid columns
++ widths) and `fetchxml` (the query: columns, sort, filter). The grid's `object="<n>"`
+attribute is the entity **ObjectTypeCode**, an org-specific integer — capture it live
+rather than guessing (custom-entity OTCs on on-prem are typically ≥ 10000):
+
+```bash
+crm --json metadata entity cwx_ticket   # -> data.ObjectTypeCode = 10127
+crm --json metadata entity cwx_sla       # -> data.ObjectTypeCode = 10126
+```
+
+!!! note "Column logical names ≠ option-set names"
+    The picklist/lookup *columns* are `cwx_priority`, `cwx_severity`, `cwx_category`,
+    `cwx_tier`, and the SLA lookup `cwx_sla` — **not** the global option-set names
+    (`cwx_ticketcategory`, `cwx_slatier`). Confirm column logical names with
+    `crm --json metadata attributes <entity>` before referencing them in FetchXml;
+    the option set a picklist *binds to* can have a different name from the column.
+
+Both XML blocks contain double quotes, so pass the record as a **JSON file**
+(`--data-file`) rather than fighting shell quoting on `--data`. The LayoutXml + FetchXml
+the server accepted for **Active Tickets** (newline-formatted here; stored single-line
+in the JSON):
+
+```xml
+<grid name="resultset" object="10127" jump="cwx_name" select="1" icon="1" preview="1">
+  <row name="result" id="cwx_ticketid">
+    <cell name="cwx_name" width="220" />
+    <cell name="cwx_priority" width="120" />
+    <cell name="cwx_severity" width="120" />
+    <cell name="cwx_customerid" width="180" />
+    <cell name="createdon" width="140" />
+    <cell name="statuscode" width="120" />
+  </row>
+</grid>
+```
+
+```xml
+<fetch version="1.0" output-format="xml-platform" mapping="logical">
+  <entity name="cwx_ticket">
+    <attribute name="cwx_ticketid" />
+    <attribute name="cwx_name" />
+    <attribute name="cwx_priority" />
+    <attribute name="cwx_severity" />
+    <attribute name="cwx_customerid" />
+    <attribute name="createdon" />
+    <attribute name="statuscode" />
+    <order attribute="cwx_name" descending="false" />
+    <filter type="and">
+      <condition attribute="statecode" operator="eq" value="0" />
+    </filter>
+  </entity>
+</fetch>
+```
+
+`/tmp/cwx_view_active_tickets.json` wraps those two blocks as escaped single-line strings:
+
+```json
+{
+  "name": "Active Tickets",
+  "returnedtypecode": "cwx_ticket",
+  "querytype": 0,
+  "isdefault": false,
+  "layoutxml": "<grid name=\"resultset\" object=\"10127\" ...></grid>",
+  "fetchxml":  "<fetch ...><entity name=\"cwx_ticket\">...</entity></fetch>"
+}
+```
+
+Preview the POST, guard against a duplicate (`savedquery` has no alternate key, so
+filter by name + entity), then create:
+
+```bash
+crm --json --dry-run entity create savedqueries --data-file /tmp/cwx_view_active_tickets.json
+crm --json query odata savedqueries \
+  --filter "name eq 'Active Tickets' and returnedtypecode eq 'cwx_ticket'" --select name,savedqueryid
+crm --json entity create savedqueries --data-file /tmp/cwx_view_active_tickets.json
+```
+
+```json
+{ "ok": true, "data": { "savedqueryid": "72313649-6f5e-f111-b65d-00155d467b90", "...": "..." } }
+```
+
+Two more views follow the same guard → create flow — **Tickets by Priority** (cwx_ticket;
+LayoutXml leads with `cwx_priority`, FetchXml ordered by `cwx_priority`) and **Active SLAs**
+(`returnedtypecode": "cwx_sla"`, `object="10126"`; cells `cwx_name`, `cwx_tier`,
+`cwx_responsehours`, `cwx_resolutionhours`):
+
+```text
+Active Tickets       72313649-6f5e-f111-b65d-00155d467b90
+Tickets by Priority  74313649-6f5e-f111-b65d-00155d467b90
+Active SLAs          76313649-6f5e-f111-b65d-00155d467b90
+```
+
+Publish so the views surface in the app, then read them back (the build's three plus the
+two auto-generated defaults D365 created with the entity):
+
+```bash
+crm --json solution publish-all
+crm --json query odata savedqueries \
+  --filter "returnedtypecode eq 'cwx_ticket' and querytype eq 0" --select name,savedqueryid
+```
+
+```text
+Active Tickets             72313649-6f5e-f111-b65d-00155d467b90
+Tickets by Priority        74313649-6f5e-f111-b65d-00155d467b90
+Active Support Tickets     055e2e32-dc59-4190-a9ff-0a8c1d88cf7f   (auto-generated default)
+Inactive Support Tickets   9665360a-d424-4fd5-8a16-7a979e9988a4   (auto-generated default)
+```
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
@@ -547,7 +657,7 @@ Every `crm` command group is exercised by this walkthrough:
 | action | §4 — `function RetrieveCurrentOrganization` |
 | solution | §5 — `publish-all`, `export`, `components`, `list`, `info` |
 
-## 6. Teardown (optional — full reset for a clean replay)
+## Teardown (optional — full reset for a clean replay)
 
 > **Destructive.** Each command requires `--yes`; the `destructive_op_gate` PreToolUse
 > hook blocks them otherwise. Deleting an entity drops the table **and every row in
