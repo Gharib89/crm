@@ -82,7 +82,9 @@ State directory: `~/.crm/` (override with `CRM_HOME`).
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`            | Schema introspection + option set values      |
-| `solution`   | `list`, `info`, `components`, `export`, `import`, `publish-all`, `publish`              | Solution lifecycle + publish customizations    |
+| `solution`   | `create-publisher`, `create`, `list`, `info`, `components`, `export`, `import`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
+| `view`       | `create`                                                                                | System views (savedquery)                      |
+| `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
 | `data`       | `export`                                                                                | Bulk CSV/JSON dataset export                   |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
@@ -290,6 +292,63 @@ hard-blocks any of these Bash invocations (exit 2, reason on stderr) unless the
 `--yes` token is present — so the gate holds even if a prompt instruction is
 ignored. The hook matches by verb name, so not-yet-shipped delete verbs are
 gated the moment they ship.
+
+## Solution scaffolding — publisher + solution
+
+```bash
+# Publisher: --prefix is 2–8 alphanumeric, letter-first, not 'mscrm';
+# --option-value-prefix is an integer 10000–99999.
+crm --json solution create-publisher --name crmworx --display CRMWorx \
+    --prefix cwx --option-value-prefix 30000 --if-exists skip
+
+# Solution: --publisher XOR --publisher-id (mutually exclusive).
+crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
+```
+
+With a named profile active, both verbs auto-wire `publisher_prefix` (from
+`create-publisher`) and `default_solution` (from `create`) back into it, so
+later `metadata create-*` commands target that prefix/solution by default. Pass
+`--no-set-default` to opt out. See `docs/adr/0002-create-verbs-auto-wire-profile.md`.
+
+## Views — `view create` (savedquery)
+
+```bash
+# --otc is the entity ObjectTypeCode (from `metadata entity <name>`); --column
+# is repeatable 'logical[:width]' (order preserved); --order sets ascending sort
+# attribute; --filter-active scopes to statecode=0; --if-exists [error|skip].
+crm --json view create cwx_ticket --name "Active Tickets" --otc 10127 \
+    --column "cwx_name:220" --column "cwx_priority:120" \
+    --filter-active --if-exists skip
+```
+
+The LayoutXml `object` attribute is the entity ObjectTypeCode (OTC) — get it from `metadata entity <name>`.
+
+## Model-driven apps — `app` (appmodule)
+
+```bash
+# create: --unique-name is publisher-prefixed, e.g. 'cwx_crmworx'.
+crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
+
+# add-components: APP_ID positional + repeatable --component 'kind:guid'.
+# kind ∈ view|chart|form|dashboard|sitemap|bpf (NOT 'entity' — tables surface
+# via the sitemap's Entity= subareas, not AddAppComponents).
+crm --json app add-components <appmoduleid> \
+    --component view:<savedqueryid> --component chart:<savedqueryvisualizationid>
+
+# set-sitemap: SITEMAP_NAME positional is the sitemap's descriptive name
+# (stored as sitemapname); --unique-name is the app's uniquename and sets
+# sitemapnameunique to auto-associate the sitemap with that app.
+crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml --unique-name cwx_crmworx
+```
+
+## Agent guidance — record-create payloads (`@odata.bind`)
+
+When constructing `entity create` payloads, lookup fields require an `@odata.bind`
+suffix on the **navigation-property name** (the PascalCase schema name, e.g.
+`cwx_CustomerId@odata.bind`), **not** the lowercase logical attribute.
+A picklist bound to a global option set binds through `GlobalOptionSet@odata.bind`,
+and on-prem 9.1 requires the option set's `MetadataId` GUID there (the `Name`
+alternate key is rejected).
 
 ## Errors & recovery
 
