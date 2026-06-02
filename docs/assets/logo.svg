@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40" role="img" aria-label="ITWorx">
-  <style>
-    .wm { font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; font-weight: 700; }
-  </style>
-  <text x="0" y="29" class="wm" font-size="30" letter-spacing="0.5" fill="#ffffff">IT</text>
-  <text x="34" y="29" class="wm" font-size="30" letter-spacing="0.5" fill="#ffffff">Worx</text>
-  <rect x="34" y="33" width="76" height="3.5" rx="1.75" fill="#1C8EF9"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 48" role="img" aria-label="crm">
+  <!-- ITWorx-style red aperture mark -->
+  <circle cx="24" cy="24" r="17" fill="#C83428"/>
+  <path d="M24 24 L24 7 A17 17 0 0 0 9.3 32.5 Z" fill="#ffffff" opacity="0.92"/>
+  <circle cx="24" cy="24" r="4.5" fill="#ffffff"/>
+  <!-- wordmark -->
+  <text x="50" y="33" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
+        font-weight="700" font-size="30" letter-spacing="0.5" fill="#ffffff">crm</text>
 </svg>

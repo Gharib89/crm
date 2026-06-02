@@ -1,48 +1,51 @@
 /* ITWorx brand palette for Material for MkDocs.
  *
- * Colors approximate ITWorx's deep-blue corporate identity (itworx.com):
- * a dark navy header with a bright azure accent. To match the official
- * brand guide exactly, replace the hex values below.
+ * Colors sampled from itworx.com: a royal indigo-blue identity with a
+ * red logo accent.
+ *   royal blue (hero) ....... #353A9C
+ *   deep indigo (wordmark) .. #181D81
+ *   indigo (buttons) ........ #171D8F
+ *   logo red ................ #C83428
  */
 
 :root {
-  --itworx-navy:        #0E2A47;  /* primary: header / sidebar */
-  --itworx-navy-light:  #1B3A63;
-  --itworx-navy-dark:   #081A2E;
-  --itworx-blue:        #1C8EF9;  /* accent: links, hover, focus */
-  --itworx-blue-light:  #4FA8FF;
+  --itworx-indigo:        #1B1F8F;  /* primary: header / sidebar */
+  --itworx-indigo-royal:  #353A9C;  /* lighter royal blue (hero)  */
+  --itworx-indigo-dark:   #12156B;
+  --itworx-red:           #C83428;  /* accent: logo pop, hover    */
+  --itworx-red-light:     #E0594D;
 }
 
 /* ---- Light scheme ------------------------------------------------------ */
 [data-md-color-primary="custom"] {
-  --md-primary-fg-color:        var(--itworx-navy);
-  --md-primary-fg-color--light: var(--itworx-navy-light);
-  --md-primary-fg-color--dark:  var(--itworx-navy-dark);
+  --md-primary-fg-color:        var(--itworx-indigo);
+  --md-primary-fg-color--light: var(--itworx-indigo-royal);
+  --md-primary-fg-color--dark:  var(--itworx-indigo-dark);
   --md-primary-bg-color:        #ffffff;
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
 }
 
 [data-md-color-accent="custom"] {
-  --md-accent-fg-color:         var(--itworx-blue);
-  --md-accent-fg-color--transparent: rgba(28, 142, 249, 0.1);
+  --md-accent-fg-color:              var(--itworx-red);
+  --md-accent-fg-color--transparent: rgba(200, 52, 40, 0.1);
 }
 
-/* Use the brand blue for body links in the light scheme for stronger contrast
- * than the dark navy primary. */
+/* Royal indigo for body links in the light scheme (more readable than the
+ * red accent, which is reserved for hover/active states). */
 [data-md-color-scheme="default"] {
-  --md-typeset-a-color: var(--itworx-blue);
+  --md-typeset-a-color: var(--itworx-indigo-royal);
 }
 
 /* ---- Dark scheme (slate) ---------------------------------------------- */
 [data-md-color-scheme="slate"] {
-  --md-hue: 215;                       /* tint slate surfaces toward navy */
-  --md-typeset-a-color: var(--itworx-blue-light);
+  --md-hue: 232;                        /* tint slate surfaces toward indigo */
+  --md-typeset-a-color: #8e92e8;
 }
 
 [data-md-color-scheme="slate"][data-md-color-primary="custom"] {
-  --md-primary-fg-color: var(--itworx-navy-dark);
+  --md-primary-fg-color: var(--itworx-indigo-dark);
 }
 
 [data-md-color-scheme="slate"][data-md-color-accent="custom"] {
-  --md-accent-fg-color: var(--itworx-blue-light);
+  --md-accent-fg-color: var(--itworx-red-light);
 }

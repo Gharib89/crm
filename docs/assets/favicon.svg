@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ITWorx">
-  <rect width="64" height="64" rx="12" fill="#0E2A47"/>
-  <rect x="14" y="42" width="36" height="5" rx="2.5" fill="#1C8EF9"/>
-  <text x="32" y="38" text-anchor="middle"
-        font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif"
-        font-weight="700" font-size="26" letter-spacing="0.5" fill="#ffffff">IT</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="crm">
+  <rect width="64" height="64" rx="12" fill="#1B1F8F"/>
+  <!-- ITWorx-style red aperture mark -->
+  <circle cx="32" cy="30" r="16" fill="#C83428"/>
+  <path d="M32 30 L32 14 A16 16 0 0 0 18.1 38 Z" fill="#ffffff" opacity="0.92"/>
+  <circle cx="32" cy="30" r="4.2" fill="#ffffff"/>
 </svg>
