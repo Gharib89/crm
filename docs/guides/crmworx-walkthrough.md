@@ -962,17 +962,34 @@ The app launches at:
 http://internalcrm.moce.local/MOCE/main.aspx?appid=79bdfbec-725e-f111-b65d-00155d467b90
 ```
 
-!!! note "Browser screenshots: blocked by in-browser NTLM"
-    A headless-browser capture of the running app was attempted via Playwright. The browser
-    reached the server (DNS + network were fine) but the navigation failed with
-    `net::ERR_INVALID_AUTH_CREDENTIALS` — the on-prem org requires **NTLM** auth and the
-    automated browser context had no credentials to negotiate it. No screenshots were
-    captured; the server-side read-back below is the proof instead. (Opening the URL in a
-    normal signed-in browser session renders the app — the failure is specific to
-    unauthenticated automation.)
+The running app, captured live (headless Chromium over NTLM):
 
-The read-back is the definitive CLI proof that the app and its components exist on the
-server:
+![CRMWorx SLA Overview dashboard — the Tickets-by-Priority chart and Active Tickets list, both reading the §6 view](images/crmworx-dashboard.png)
+
+The dashboard (§9) renders both components: the "Tickets by Priority" chart (§8) and the
+"Active Tickets" list (§6), with the CRMWorx sitemap (§11) in the left nav — SLA Overview,
+Tickets, SLAs.
+
+![Active Tickets view — the §6 savedquery with its custom columns](images/crmworx-tickets-list.png)
+
+The **Tickets** area shows the §6 "Active Tickets" view with exactly the columns its
+LayoutXml defined (Ticket Title, Priority, Severity, Customer, Created On, Status Reason).
+
+![Support Ticket form — the §7 augmented main form with all five custom fields](images/crmworx-ticket-form.png)
+
+Opening a ticket shows the §7 clone-and-augmented main form: every injected field is
+present and populated — Priority, Severity, Category, the SLA lookup, and Customer.
+
+!!! note "NTLM in headless automation"
+    A first navigation attempt failed with `net::ERR_INVALID_AUTH_CREDENTIALS`: Playwright
+    suppresses the native NTLM prompt, so the browser needs the credentials supplied
+    *programmatically*. These shots were taken by launching Chromium with
+    `--auth-server-allowlist=*moce.local` and an `http_credentials` context — the documented
+    way to negotiate NTLM headless. Credentials were read from `.env` at run time and never
+    appear in the capture.
+
+The server-side read-back corroborates that the app and its components exist on the server
+regardless of the browser:
 
 ```bash
 crm --json query odata appmodules --filter "uniquename eq 'cwx_crmworx'" --select name,appmoduleid,uniquename
