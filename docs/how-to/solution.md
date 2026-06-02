@@ -24,7 +24,7 @@ Returns component **type + objectid** rows (componenttype `9` = option set, `1` 
 ```bash
 crm solution export CRMWorx -o docs/artifacts/crmworx.zip
 ```
-Reports the output path, byte count, `managed: False`, and the `action` that ran (falls back to synchronous `ExportSolution` when `ExportSolutionAsync` is disabled on-prem). (No `--json` here — this writes a binary zip, not a JSON result.)
+Reports the output path, byte count, `managed: False`, and the `action` that ran (falls back to synchronous `ExportSolution` when `ExportSolutionAsync` is disabled on-prem). The zip is always written to `-o/--output`; adding `--json` only changes the printed result envelope.
 
 ## Publish all customizations
 

@@ -19,7 +19,7 @@ crm --json connection connect \
   --default-solution CRMWorx --publisher-prefix cwx \
   --profile-name crmworx
 ```
-Saves the profile and runs a WhoAmI check; the password is read from `D365_PASSWORD`, never passed on the command line — set it via `.env` or a shell export; see the [CLI reference](../reference/cli.md).
+Saves the profile and runs a WhoAmI check. `--password` is accepted, but prefer `D365_PASSWORD` (via `.env` or a shell export) so the secret stays out of shell history; see the [CLI reference](../reference/cli.md).
 
 ## Inspect saved profiles and the active session
 
