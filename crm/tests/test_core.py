@@ -805,7 +805,7 @@ class TestReplBackendCache:
         ctx.password = "pw"
         # Stub credential resolution to avoid env/profile loading.
         monkeypatch.setattr(
-            "crm.cli.conn_mod.resolve_credentials",
+            "crm.core.connection.resolve_credentials",
             lambda profile_name=None, password_override=None:
                 ResolvedCredentials(profile=profile, password="pw"),
         )
@@ -828,7 +828,7 @@ class TestReplBackendCache:
         ctx = CLIContext()
         ctx.password = "pw"
         monkeypatch.setattr(
-            "crm.cli.conn_mod.resolve_credentials",
+            "crm.core.connection.resolve_credentials",
             lambda profile_name=None, password_override=None:
                 ResolvedCredentials(profile=profile, password="pw"),
         )

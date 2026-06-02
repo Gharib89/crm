@@ -12,16 +12,15 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 
 from crm import __version__
-from crm.core import (
-    connection as conn_mod,
-)
 from crm.core.logging_setup import setup_logging
-from crm.utils.d365_backend import D365Backend
+
+if TYPE_CHECKING:
+    from crm.utils.d365_backend import D365Backend
 from crm.utils.repl_skin import ReplSkin
 from crm.commands._helpers import _sanitize, _short_repr
 
@@ -89,7 +88,10 @@ class CLIContext:
             for k, v in meta.items():
                 self.skin.status(k, str(v))
 
-    def backend(self) -> D365Backend:
+    def backend(self) -> "D365Backend":
+        from crm.core import connection as conn_mod
+        from crm.utils.d365_backend import D365Backend
+
         key = (self.profile_name, self.password, self.dry_run, self.auth_scheme)
         if self._backend is None or self._backend_key != key:
             resolved = conn_mod.resolve_credentials(
@@ -193,10 +195,69 @@ class _JsonAwareGroup(click.Group):
         return rv
 
 
+class _LazyJsonAwareGroup(_JsonAwareGroup):
+    """Root group that imports a subcommand's module only when that subcommand is
+    invoked, so `crm --version` and direct command invocations avoid importing all
+    command modules (and their requests/NTLM/prompt_toolkit deps). `crm --help`
+    still imports every module to render short help — an accepted trade-off."""
+
+    # Click command name -> "module:attribute". This map is the sole command
+    # registry — a new top-level command must be added here to be exposed.
+    _lazy_commands = {
+        "action": "crm.commands.action:action_group",
+        "app": "crm.commands.app:app_group",
+        "async": "crm.commands.async_ops:async_group",
+        "batch": "crm.commands.batch:batch_cmd",
+        "connection": "crm.commands.connection:connection_group",
+        "data": "crm.commands.data:data_group",
+        "entity": "crm.commands.entity:entity_group",
+        "init": "crm.commands.init:init_cmd",
+        "metadata": "crm.commands.metadata:metadata_group",
+        "query": "crm.commands.query:query_group",
+        "repl": "crm.commands.repl:repl",
+        "service-document": "crm.commands.batch:service_document_cmd",
+        "session": "crm.commands.session:session_group",
+        "skill": "crm.commands.skill:skill_group",
+        "solution": "crm.commands.solution:solution_group",
+        "view": "crm.commands.view:view_group",
+        "workflow": "crm.commands.workflow:workflow_group",
+    }
+
+    def list_commands(self, ctx):
+        return sorted({*self._lazy_commands, *super().list_commands(ctx)})
+
+    def get_command(self, ctx, cmd_name):
+        eager = super().get_command(ctx, cmd_name)
+        if eager is not None:
+            return eager
+        target = self._lazy_commands.get(cmd_name)
+        if target is None:
+            return None
+        import importlib
+        module_name, attr = target.split(":")
+        # Surface lazy-load failures as a clean ClickException (rendered as
+        # "Error: ..." with no traceback) rather than dumping a raw ImportError
+        # to the user — especially confusing in a frozen build. A broken entry
+        # here is a packaging/wiring bug; the sync test in test_lazy_imports.py
+        # guards it at CI time, so this path should never fire in practice.
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as exc:
+            raise click.ClickException(
+                f"failed to import {module_name!r} for command {cmd_name!r}: {exc}"
+            ) from exc
+        command = getattr(module, attr, None)
+        if not isinstance(command, click.Command):
+            raise click.ClickException(
+                f"{target!r} did not resolve to a Click command for {cmd_name!r}"
+            )
+        return command
+
+
 # ── Root group ──────────────────────────────────────────────────────────
 
 
-@click.group(cls=_JsonAwareGroup, invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(cls=_LazyJsonAwareGroup, name="crm", invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True, help="Preview HTTP request without issuing it.")
 @click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
@@ -266,43 +327,6 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         from crm.commands.repl import repl
         ctx.invoke(repl)
 
-
-# ── Wire up command modules ─────────────────────────────────────────────
-
-from crm.commands.connection import connection_group  # noqa: E402
-from crm.commands.entity import entity_group  # noqa: E402
-from crm.commands.query import query_group  # noqa: E402
-from crm.commands.metadata import metadata_group  # noqa: E402
-from crm.commands.solution import solution_group  # noqa: E402
-from crm.commands.data import data_group  # noqa: E402
-from crm.commands.action import action_group  # noqa: E402
-from crm.commands.async_ops import async_group  # noqa: E402
-from crm.commands.workflow import workflow_group  # noqa: E402
-from crm.commands.skill import skill_group  # noqa: E402
-from crm.commands.session import session_group  # noqa: E402
-from crm.commands.batch import batch_cmd, service_document_cmd  # noqa: E402
-from crm.commands.repl import repl  # noqa: E402
-from crm.commands.init import init_cmd  # noqa: E402
-from crm.commands.view import view_group  # noqa: E402
-from crm.commands.app import app_group  # noqa: E402
-
-cli.add_command(connection_group)
-cli.add_command(entity_group)
-cli.add_command(query_group)
-cli.add_command(metadata_group)
-cli.add_command(solution_group)
-cli.add_command(data_group)
-cli.add_command(action_group)
-cli.add_command(async_group)
-cli.add_command(workflow_group)
-cli.add_command(skill_group)
-cli.add_command(session_group)
-cli.add_command(batch_cmd)
-cli.add_command(service_document_cmd)
-cli.add_command(repl)
-cli.add_command(init_cmd)
-cli.add_command(view_group)
-cli.add_command(app_group)
 
 if __name__ == "__main__":
     cli()

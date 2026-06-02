@@ -14,10 +14,8 @@ jobs:
         include:
           - os: ubuntu-22.04
             artifact_name: crm-linux-x86_64
-            binary_path: dist/crm
           - os: windows-latest
-            artifact_name: crm-windows-x86_64.exe
-            binary_path: dist/crm.exe
+            artifact_name: crm-windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -43,28 +41,22 @@ jobs:
       - name: Smoke test (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
-          ./dist/crm --version
-          ./dist/crm --help
+          ./dist/crm/crm --version
+          ./dist/crm/crm --help
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         run: |
-          .\dist\crm.exe --version
-          .\dist\crm.exe --help
+          .\dist\crm\crm.exe --version
+          .\dist\crm\crm.exe --help
 
-      - name: Rename artifact
-        shell: bash
-        run: |
-          mkdir -p out
-          cp "${{ matrix.binary_path }}" "out/${{ matrix.artifact_name }}"
-
-      # PR builds gate on tests/pyright/build/smoke above; the binary itself is
+      # PR builds gate on tests/pyright/build/smoke above; the onedir bundle is
       # only worth persisting for main. Skipping PR uploads + short retention
       # keeps Actions artifact storage from filling the quota.
       - uses: actions/upload-artifact@v7
         if: github.event_name == 'push'
         with:
           name: ${{ matrix.artifact_name }}
-          path: out/${{ matrix.artifact_name }}
+          path: dist/crm
           if-no-files-found: error
           retention-days: 7
