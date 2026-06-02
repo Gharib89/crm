@@ -89,3 +89,33 @@ class TestCreateView:
         with pytest.raises(D365Error, match="at least one column"):
             views.create_view(backend, entity="cwx_ticket", object_type_code=10042,
                               name="X", columns=[])
+
+
+class TestViewCommand:
+    def test_view_create_command_wires_core(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_create_view(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "savedqueryid": _VIEW_ID, "name": kw["name"]}
+
+        monkeypatch.setattr("crm.core.views.create_view", fake_create_view)
+        # Avoid a real backend/publish:
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
+
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "view", "create", "cwx_ticket",
+            "--name", "Active Tickets", "--otc", "10042",
+            "--column", "cwx_name:220", "--column", "cwx_priority:120",
+            "--order", "cwx_name", "--filter-active", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["entity"] == "cwx_ticket"
+        assert captured["object_type_code"] == 10042
+        assert captured["columns"] == [("cwx_name", 220), ("cwx_priority", 120)]
+        assert captured["order_by"] == "cwx_name"
+        assert captured["filter_active"] is True
