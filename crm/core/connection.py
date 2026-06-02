@@ -1,7 +1,7 @@
 """High-level connection management: build profiles, resolve creds, test reachability.
 
 Env vars (canonical D365_* and CRM_* aliases for compatibility with existing
-Moce-style PowerShell tooling):
+Contoso-style PowerShell tooling):
 
     D365_URL          | CRM_BASE_URL          required
     D365_USERNAME     | CRM_USERNAME          required (DOMAIN\\user accepted)

@@ -3197,7 +3197,7 @@ Find the existing `@pytest.mark.live` class structure in `crm/tests/test_full_e2
 ```python
 @pytest.mark.live
 class TestSpecDMetadataWriteLive:
-    """End-to-end metadata-write smoke against a real MOCE server.
+    """End-to-end metadata-write smoke against a real Contoso server.
 
     Gated by D365_LIVE=1 + a provisioned profile. Each run creates a
     uniquely-named ephemeral entity, exercises every new write verb
@@ -3235,7 +3235,7 @@ class TestSpecDMetadataWriteLive:
             ("boolean", {}),
             ("datetime", {}),
             ("picklist", {"options": [(1, "A"), (2, "B")]}),
-            # multiselect/image/file may be feature-gated on some MOCE builds —
+            # multiselect/image/file may be feature-gated on some Contoso builds —
             # skip on 4xx with a clear xfail rather than failing the whole class.
         ]
         for kind, extra in kinds_payload:
@@ -3356,7 +3356,7 @@ Closes #6.
 - [ ] `pytest crm/tests/ -v` (all non-live tests pass)
 - [ ] `pyright` (0 errors)
 - [ ] `python -m crm metadata --help` lists the new commands
-- [ ] Manual smoke against MOCE: create-entity → add-attribute (each kind) → create-one-to-many → create-many-to-many → optionset lifecycle → delete-entity cleanup
+- [ ] Manual smoke against Contoso: create-entity → add-attribute (each kind) → create-one-to-many → create-many-to-many → optionset lifecycle → delete-entity cleanup
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF

@@ -127,18 +127,18 @@ operations missing from the first cut. All have dedicated unit tests.
 | `metadata picklist`                     | Cast to `Microsoft.Dynamics.CRM.PicklistAttributeMetadata` + `$expand=OptionSet`                                       |
 | `solution publish-all` / `publish`      | `PublishAllXml` / `PublishXml` actions                                                                                 |
 | `service-document`                      | `GET /api/data/v9.x/` — root service document, all entity sets                                                         |
-| `.env` autoload + `CRM_*` env aliases   | Matches Moce-style PowerShell tooling (`CRM_BASE_URL`, `CRM_USERNAME`, ...)                                            |
+| `.env` autoload + `CRM_*` env aliases   | Matches Contoso-style PowerShell tooling (`CRM_BASE_URL`, `CRM_USERNAME`, ...)                                            |
 | `DOMAIN\\user` parsing                  | Splits backslash-form usernames into `domain` + `username` for NTLM                                                    |
 
 ## Test Results
 
-### Live run against MOCE org (2026-05-16, D365 v9.1.44.15 on `internalcrm.moce.local`)
+### Live run against Contoso org (2026-05-16, D365 v9.1.44.15 on `internalcrm.contoso.local`)
 
 Run command:
 ```bash
 PATH="$PWD/.venv/bin:$PATH" \
-  D365_URL="http://internalcrm.moce.local/MOCE" \
-  D365_USERNAME="moce\crmadmin" \
+  D365_URL="http://internalcrm.contoso.local/Contoso" \
+  D365_USERNAME="contoso\crmadmin" \
   D365_PASSWORD=*** \
   D365_AUTH=ntlm D365_API_VERSION=v9.1 \
   CRM_FORCE_INSTALLED=1 \
@@ -147,7 +147,7 @@ PATH="$PWD/.venv/bin:$PATH" \
 
 Result: **45 passed in 5.41s** (37 unit + 8 E2E live).
 
-All E2E paths exercised against the live MOCE org:
+All E2E paths exercised against the live Contoso org:
 - `WhoAmI()` → real UserId / BusinessUnitId / OrganizationId
 - `EntityDefinitions` → 1300+ entities incl. `account`
 - contact create → get → update → delete round-trip
@@ -214,7 +214,7 @@ and `TestConnectionDotenv`.)
 
 ## Summary Statistics
 
-| Metric                          | Offline run     | Live run (MOCE) |
+| Metric                          | Offline run     | Live run (Contoso) |
 |---------------------------------|-----------------|-----------------|
 | Total tests collected           | 45              | 45              |
 | Tests run                       | 39              | 45              |
@@ -258,7 +258,7 @@ These are wired in the test file and will run automatically once `D365_URL` /
 ## Manual smoke test — Spec B async solution flow
 
 Pre-req: `D365_URL` / `D365_USERNAME` / `D365_PASSWORD` set against a
-MOCE 9.1.44.15 (or any on-prem 9.x) target.
+Contoso 9.1.44.15 (or any on-prem 9.x) target.
 
 1. Pick a managed solution on the server (e.g. `MySolution`).
 2. Export it:

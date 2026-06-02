@@ -475,7 +475,7 @@ crm --json action function RetrieveCurrentOrganization --params '{"AccessType":"
 
 ```json
 { "ok": true, "data": { "Detail": {
-  "FriendlyName": "MOCE",
+  "FriendlyName": "Contoso",
   "OrganizationVersion": "9.1.44.15"
 } } }
 ```
@@ -960,7 +960,7 @@ RetrieveAppComponents -> 8 items (3 view, 1 chart, 3 form/dashboard, 1 sitemap)
 The app launches at:
 
 ```text
-http://internalcrm.moce.local/MOCE/main.aspx?appid=79bdfbec-725e-f111-b65d-00155d467b90
+http://internalcrm.contoso.local/Contoso/main.aspx?appid=79bdfbec-725e-f111-b65d-00155d467b90
 ```
 
 The running app, captured live (headless Chromium over NTLM):
@@ -985,7 +985,7 @@ present and populated — Priority, Severity, Category, the SLA lookup, and Cust
     A first navigation attempt failed with `net::ERR_INVALID_AUTH_CREDENTIALS`: Playwright
     suppresses the native NTLM prompt, so the browser needs the credentials supplied
     *programmatically*. These shots were taken by launching Chromium with
-    `--auth-server-allowlist=*moce.local` and an `http_credentials` context — the documented
+    `--auth-server-allowlist=*contoso.local` and an `http_credentials` context — the documented
     way to negotiate NTLM headless. Credentials were read from `.env` at run time and never
     appear in the capture.
 

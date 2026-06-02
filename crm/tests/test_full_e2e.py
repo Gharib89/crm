@@ -276,7 +276,7 @@ class TestAddAttributeBooleanDefaultParsing:
 
 @pytest.mark.skipif(not _have_live_env(), reason="Live env required")
 class TestSpecDMetadataWriteLive:
-    """End-to-end metadata-write smoke against a real MOCE server.
+    """End-to-end metadata-write smoke against a real Contoso server.
 
     Gated by D365_URL/USERNAME/PASSWORD. Each run creates a uniquely-named
     ephemeral entity, exercises every new write verb against it, then
@@ -314,7 +314,7 @@ class TestSpecDMetadataWriteLive:
             ("boolean", {}),
             ("datetime", {}),
             ("picklist", {"options": [(1, "A"), (2, "B")]}),
-            # multiselect/image/file may be feature-gated on some MOCE builds —
+            # multiselect/image/file may be feature-gated on some Contoso builds —
             # skip on 4xx with a clear xfail rather than failing the whole class.
         ]
         for kind, extra in kinds_payload:
