@@ -404,7 +404,7 @@ Pure-Python, no live server. Tests for:
 - Return a completed `asyncoperations` row on the first poll.
 - Return `{"ExportSolutionFile": "<b64>"}` from `DownloadSolutionExportData`.
 
-No live-server (E2E) tests are added in this spec. `ImportSolutionAsync` / `ExportSolutionAsync` / `DownloadSolutionExportData` are part of the on-prem Web API surface in Dynamics 365 CE 9.x (per `https://learn.microsoft.com/en-us/dynamics365/customer-engagement/web-api/importsolutionasync`). PR3 of this spec adds a manual smoke-test note to `crm/tests/TEST.md` for running `crm solution export` + `crm solution import` against the MOCE 9.1.44.15 test box.
+No live-server (E2E) tests are added in this spec. `ImportSolutionAsync` / `ExportSolutionAsync` / `DownloadSolutionExportData` are part of the on-prem Web API surface in Dynamics 365 CE 9.x (per `https://learn.microsoft.com/en-us/dynamics365/customer-engagement/web-api/importsolutionasync`). PR3 of this spec adds a manual smoke-test note to `crm/tests/TEST.md` for running `crm solution export` + `crm solution import` against the Contoso 9.1.44.15 test box.
 
 ### 9.3 Pyright
 

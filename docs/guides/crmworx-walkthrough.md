@@ -6,7 +6,8 @@ command and its captured output from a live run against a Dynamics 365 CE on-pre
 v9.1 server (credentials redacted).
 
 The build order is: **option sets → entities → attributes → relationships → seed data
-→ read/verify → package → (optional teardown)**.
+→ read/verify → package → views → forms → charts → dashboard → BPF → sitemap & app
+→ launch → (optional teardown)**.
 
 ## Prerequisites
 
@@ -474,7 +475,7 @@ crm --json action function RetrieveCurrentOrganization --params '{"AccessType":"
 
 ```json
 { "ok": true, "data": { "Detail": {
-  "FriendlyName": "MOCE",
+  "FriendlyName": "Contoso",
   "OrganizationVersion": "9.1.44.15"
 } } }
 ```
@@ -532,6 +533,515 @@ crm --json solution components CRMWorx
     inline) when the async action is unavailable (commit `a87b8f2`). The response
     `action` field shows which path ran.
 
+## 6. Views
+
+A model-driven view is a **`savedquery`** row: `returnedtypecode` (the entity logical
+name), `querytype` (`0` = public view), and two XML columns — `layoutxml` (grid columns
++ widths) and `fetchxml` (the query: columns, sort, filter). The grid's `object="<n>"`
+attribute is the entity **ObjectTypeCode**, an org-specific integer — capture it live
+rather than guessing (custom-entity OTCs on on-prem are typically ≥ 10000):
+
+```bash
+crm --json metadata entity cwx_ticket   # -> data.ObjectTypeCode = 10127
+crm --json metadata entity cwx_sla       # -> data.ObjectTypeCode = 10126
+```
+
+!!! note "Column logical names ≠ option-set names"
+    The picklist/lookup *columns* are `cwx_priority`, `cwx_severity`, `cwx_category`,
+    `cwx_tier`, and the SLA lookup `cwx_sla` — **not** the global option-set names
+    (`cwx_ticketcategory`, `cwx_slatier`). Confirm column logical names with
+    `crm --json metadata attributes <entity>` before referencing them in FetchXml;
+    the option set a picklist *binds to* can have a different name from the column.
+
+Both XML blocks contain double quotes, so pass the record as a **JSON file**
+(`--data-file`) rather than fighting shell quoting on `--data`. The LayoutXml + FetchXml
+the server accepted for **Active Tickets** (newline-formatted here; stored single-line
+in the JSON):
+
+```xml
+<grid name="resultset" object="10127" jump="cwx_name" select="1" icon="1" preview="1">
+  <row name="result" id="cwx_ticketid">
+    <cell name="cwx_name" width="220" />
+    <cell name="cwx_priority" width="120" />
+    <cell name="cwx_severity" width="120" />
+    <cell name="cwx_customerid" width="180" />
+    <cell name="createdon" width="140" />
+    <cell name="statuscode" width="120" />
+  </row>
+</grid>
+```
+
+```xml
+<fetch version="1.0" output-format="xml-platform" mapping="logical">
+  <entity name="cwx_ticket">
+    <attribute name="cwx_ticketid" />
+    <attribute name="cwx_name" />
+    <attribute name="cwx_priority" />
+    <attribute name="cwx_severity" />
+    <attribute name="cwx_customerid" />
+    <attribute name="createdon" />
+    <attribute name="statuscode" />
+    <order attribute="cwx_name" descending="false" />
+    <filter type="and">
+      <condition attribute="statecode" operator="eq" value="0" />
+    </filter>
+  </entity>
+</fetch>
+```
+
+`/tmp/cwx_view_active_tickets.json` wraps those two blocks as escaped single-line strings:
+
+```json
+{
+  "name": "Active Tickets",
+  "returnedtypecode": "cwx_ticket",
+  "querytype": 0,
+  "isdefault": false,
+  "layoutxml": "<grid name=\"resultset\" object=\"10127\" ...></grid>",
+  "fetchxml":  "<fetch ...><entity name=\"cwx_ticket\">...</entity></fetch>"
+}
+```
+
+Preview the POST, guard against a duplicate (`savedquery` has no alternate key, so
+filter by name + entity), then create:
+
+```bash
+crm --json --dry-run entity create savedqueries --data-file /tmp/cwx_view_active_tickets.json
+crm --json query odata savedqueries \
+  --filter "name eq 'Active Tickets' and returnedtypecode eq 'cwx_ticket'" --select name,savedqueryid
+crm --json entity create savedqueries --data-file /tmp/cwx_view_active_tickets.json
+```
+
+```json
+{ "ok": true, "data": { "savedqueryid": "72313649-6f5e-f111-b65d-00155d467b90", "...": "..." } }
+```
+
+Two more views follow the same guard → create flow — **Tickets by Priority** (cwx_ticket;
+LayoutXml leads with `cwx_priority`, FetchXml ordered by `cwx_priority`) and **Active SLAs**
+(`"returnedtypecode": "cwx_sla"`, `object="10126"`; cells `cwx_name`, `cwx_tier`,
+`cwx_responsehours`, `cwx_resolutionhours`):
+
+```text
+Active Tickets       72313649-6f5e-f111-b65d-00155d467b90
+Tickets by Priority  74313649-6f5e-f111-b65d-00155d467b90
+Active SLAs          76313649-6f5e-f111-b65d-00155d467b90
+```
+
+Publish so the views surface in the app, then read them back (the build's three plus the
+two auto-generated defaults D365 created with the entity):
+
+```bash
+crm --json solution publish-all
+crm --json query odata savedqueries \
+  --filter "returnedtypecode eq 'cwx_ticket' and querytype eq 0" --select name,savedqueryid
+```
+
+```text
+Active Tickets             72313649-6f5e-f111-b65d-00155d467b90
+Tickets by Priority        74313649-6f5e-f111-b65d-00155d467b90
+Active Support Tickets     055e2e32-dc59-4190-a9ff-0a8c1d88cf7f   (auto-generated default)
+Inactive Support Tickets   9665360a-d424-4fd5-8a16-7a979e9988a4   (auto-generated default)
+```
+
+## 7. Forms
+
+Forms are also `systemform` rows: `objecttypecode` (entity logical name), `type`
+(`2` = main, `7` = quickCreate), and a `formxml` layout. Authoring main FormXml from
+scratch has a high 9.1 rejection rate, so **clone-and-augment** the auto-generated main
+form instead — fetch it, inject controls for the custom columns, PATCH it back.
+
+### Main form (clone-and-augment)
+
+Fetch the auto-generated "Information" form and note its `formid` + FormXml length:
+
+```bash
+crm --json query odata systemforms \
+  --filter "objecttypecode eq 'cwx_ticket' and type eq 2" --select name,formid,formxml
+# -> Information | 8f0db50d-b90c-4b4d-9ecb-f16f9e7db491 | formxml 1625 chars
+```
+
+The auto form has one tab/two columns: `cwx_name` + `ownerid` on the left, the notes
+control on the right. Keep all of it intact and add one `<row>` per missing custom
+column to the first section, copying the existing `<cell>`/`<control>` shape and swapping
+`datafieldname` + `classid`. The control `classid` is per **AttributeType** (read it from
+`crm --json metadata attributes cwx_ticket`):
+
+| AttributeType | Control `classid` |
+| --- | --- |
+| String | `{4273EDBD-AC1D-40d3-9FB2-095C621B552D}` |
+| Picklist | `{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}` |
+| Lookup | `{270BD3DB-D9AF-4782-9025-509E298DEC0A}` |
+
+Each added row (every `<cell>` needs a unique GUID `id`):
+
+```xml
+<row>
+  <cell id="{c0ffee00-…}">
+    <labels><label description="Priority" languagecode="1033" /></labels>
+    <control id="cwx_priority" classid="{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}"
+             datafieldname="cwx_priority" />
+  </cell>
+</row>
+```
+
+Five rows added — `cwx_priority`, `cwx_severity`, `cwx_category` (Picklist), `cwx_sla`,
+`cwx_customerid` (Lookup) — taking the FormXml 1625 → 2834 chars. Preview, PATCH, publish:
+
+```bash
+crm --json --dry-run entity update systemforms 8f0db50d-… --data-file /tmp/cwx_ticket_mainform_patch.json
+crm --json entity update systemforms 8f0db50d-… --data-file /tmp/cwx_ticket_mainform_patch.json
+crm --json solution publish-all
+```
+
+Read back proves the five columns are now on the form:
+
+```bash
+crm --json query odata systemforms --filter "formid eq 8f0db50d-…" --select formxml
+# cwx_priority True | cwx_severity True | cwx_category True | cwx_sla True | cwx_customerid True
+```
+
+### Quick-create form (`type=7`)
+
+A quick-create form is authored from scratch (it's small): a single 100%-width column with
+`cwx_name`, `cwx_priority`, `cwx_customerid`. Guard, create, publish, read back:
+
+```bash
+crm --json query odata systemforms --filter "objecttypecode eq 'cwx_ticket' and type eq 7" --select name,formid
+crm --json entity create systemforms --data-file /tmp/cwx_ticket_qc_form.json
+crm --json solution publish-all
+```
+
+```json
+{ "ok": true, "data": { "formid": "94d4181e-705e-f111-b65d-00155d467b90", "...": "..." } }
+```
+
+!!! success "Quick-create via the Web API works on 9.1"
+    On-prem 9.1's Web API accepted the `systemforms` POST with `type=7` on the first
+    attempt — no manual-portal fallback was needed. Read-back confirms `cwx_priority`
+    and `cwx_customerid` are present in the stored FormXml.
+
+## 8. Charts
+
+A chart is a **`savedqueryvisualization`** row with two XML columns: `datadescription`
+(an aggregate FetchXML wrapped in `<datadefinition>` — the *what*) and
+`presentationdescription` (a `<Chart>` serialization of the .NET Chart control — the
+*how*). The `presentationdescription` has no schema; copy a canonical single-series
+shape from MS Learn (`Sample charts`, op-9-1) and only swap the `ChartType`.
+
+**Tickets by Priority** — group `cwx_ticket` by `cwx_priority`, count `cwx_ticketid`:
+
+```xml
+<datadefinition>
+  <fetchcollection>
+    <fetch mapping="logical" aggregate="true">
+      <entity name="cwx_ticket">
+        <attribute groupby="true" alias="groupby_column" name="cwx_priority" />
+        <attribute alias="aggregate_column" name="cwx_ticketid" aggregate="count" />
+      </entity>
+    </fetch>
+  </fetchcollection>
+  <categorycollection>
+    <category>
+      <measurecollection><measure alias="aggregate_column" /></measurecollection>
+    </category>
+  </categorycollection>
+</datadefinition>
+```
+
+The `presentationdescription` is the canonical `ChartType="Column"` block from the MS
+Learn samples verbatim (series style + `<ChartAreas>` axes + `<Titles>`). Guard,
+preview, create, publish, read back:
+
+```bash
+crm --json query odata savedqueryvisualizations \
+  --filter "name eq 'Tickets by Priority' and primaryentitytypecode eq 'cwx_ticket'" --select name,savedqueryvisualizationid
+crm --json --dry-run entity create savedqueryvisualizations --data-file /tmp/cwx_chart_priority.json
+crm --json entity create savedqueryvisualizations --data-file /tmp/cwx_chart_priority.json
+crm --json solution publish-all
+crm --json query odata savedqueryvisualizations --filter "primaryentitytypecode eq 'cwx_ticket'" --select name,savedqueryvisualizationid
+```
+
+```text
+Tickets by Priority | b7510172-705e-f111-b65d-00155d467b90
+```
+
+The server accepted the chart on the first attempt. Keep that
+`savedqueryvisualizationid` — the dashboard in §9 binds it.
+
+## 9. Dashboard
+
+A dashboard is a `systemform` with `type` = `0`. Its `formxml` lays out a grid of
+components; every chart/grid component uses the same control `classid`
+`{E7A81278-8635-4d9e-8D4D-59480B391C5B}` and is configured purely through `<parameters>`.
+The load-bearing parameters are `<ChartGridMode>` (`Chart` vs `Grid`), `<VisualizationId>`
+(the §8 chart GUID), and `<ViewId>` (the §6 view GUID that supplies the data).
+
+**CRMWorx SLA Overview** — a single tab, one section, two side-by-side cells: the
+"Tickets by Priority" chart and a list, both reading the "Active Tickets" view:
+
+```xml
+<cell colspan="1" rowspan="12" showlabel="false" id="{…}" auto="false">
+  <control id="Chart1" classid="{E7A81278-8635-4d9e-8D4D-59480B391C5B}">
+    <parameters>
+      <TargetEntityType>cwx_ticket</TargetEntityType>
+      <ChartGridMode>Chart</ChartGridMode>
+      <ViewId>{72313649-6f5e-f111-b65d-00155d467b90}</ViewId>          <!-- Active Tickets -->
+      <IsUserView>false</IsUserView>
+      <VisualizationId>{b7510172-705e-f111-b65d-00155d467b90}</VisualizationId>  <!-- chart -->
+      <IsUserChart>false</IsUserChart>
+      <EnableChartPicker>false</EnableChartPicker>
+    </parameters>
+  </control>
+</cell>
+```
+
+Guard, create, publish, read back:
+
+```bash
+crm --json query odata systemforms --filter "name eq 'CRMWorx SLA Overview' and type eq 0" --select name,formid
+crm --json entity create systemforms --data-file /tmp/cwx_dashboard.json
+crm --json solution publish-all
+crm --json query odata systemforms --filter "type eq 0 and name eq 'CRMWorx SLA Overview'" --select name,formid,formxml
+```
+
+```text
+CRMWorx SLA Overview | e29005b6-705e-f111-b65d-00155d467b90
+binds chart b7510172: True | binds view 72313649: True
+```
+
+Created on the first attempt. Keep the dashboard `formid` — the model-driven app in §11
+adds it as a component.
+
+## 10. Business process flow (documented manual fallback)
+
+A BPF is a `workflows` row with `category` = `4` (BusinessProcessFlow), `type` = `1`
+(Definition), `primaryentity` = `cwx_ticket`, and a `clientdata` JSON describing the
+stages. This is the one artifact in this guide that **could not be built through the Web
+API on 9.1** within a sane time-box — documented here honestly rather than faked.
+
+### The CLI attempt (and its exact failure)
+
+```bash
+crm --json entity create workflows --data-file /tmp/cwx_bpf.json
+# body: { "name":"Ticket Resolution", "uniquename":"cwx_ticketresolution",
+#         "category":4, "type":1, "primaryentity":"cwx_ticket", "languagecode":1033 }
+```
+
+```json
+{ "ok": false, "error": "An unexpected error occurred.",
+  "meta": { "status": 500, "code": "0x80040216" } }
+```
+
+### Why it's blocked on 9.1
+
+1. **`cwx_ticket.IsBusinessProcessEnabled` is `false`**, and MS Learn states *"Enabling a
+   table for business process flow is a one-way process. You can't reverse it."* This guide
+   does not force an irreversible metadata mutation over the API.
+2. **`clientdata` has no documented hand-authorable schema.** Reverse-engineering an
+   existing on-org BPF shows it is a ~6.8 KB serialization of internal
+   `Microsoft.Crm.Workflow.ObjectModel` classes
+   (`WorkflowStep → EntityStep → StageStep → StepStep → ControlStep`) whose IDs must align
+   with platform-generated `processstage` rows.
+3. **MS Learn documents only the visual designer + a GET to retrieve** the definition — no
+   supported "create a BPF via Web API POST" path for on-prem 9.1.
+
+### Manual-portal fallback (the supported path)
+
+Settings → **Processes** → **New** → Category **Business Process Flow** → Entity
+**`cwx_ticket`** → add stages **New → In Progress → Resolved** → **Activate**. Creating the
+BPF through the designer also performs the irreversible `IsBusinessProcessEnabled` flip on
+`cwx_ticket` for you.
+
+!!! warning "BPF was not created via the CLI"
+    Every other artifact in this guide was built live through `crm`. The BPF is the lone
+    exception on 9.1: it requires the portal designer (or a managed-solution import). This
+    is tracked in [issue #37](https://github.com/Gharib89/crm/issues/37) (*"BPF creation via
+    Web API on D365 CE on-prem 9.1"*); if a supported API recipe surfaces, a future `crm bpf`
+    command can emit it. The app in §11 therefore binds the views, forms, chart and dashboard
+    — not a BPF.
+
+## 11. Sitemap & model-driven app
+
+The capstone: an `appmodules` row (the app), a `sitemaps` row (its navigation), and the
+`AddAppComponents` action to bind everything built so far. Three on-prem-9.1 quirks were
+discovered live and each matters.
+
+### App module
+
+`appmodules` requires a non-null `webresourceid` (the tile icon). The platform ships a
+default icon (`953b9fac-1e5e-e611-80d6-00155ded156f`,
+`msdyn_/Images/AppModule_Default_Icon.png`); CRMWorx instead uses its own `cwx_` SVG web
+resource so the app is self-contained:
+
+```bash
+# 1. create + publish a cwx_ icon web resource (type 11 = SVG)
+crm --json entity create webresourceset --data-file /tmp/cwx_webresource.json   # -> 9188010c-…
+crm --json solution publish-all
+```
+
+!!! warning "appmodule create: use `--no-return`"
+    The default `Prefer: return=representation` makes the POST read the new row straight
+    back — but an **unpublished** appmodule isn't yet readable, so the whole call reports
+    `appmodule With Id = … Does Not Exist` *after* having created the row (which then
+    collides on the next attempt). Create with `--no-return` and read the id back with the
+    `RetrieveUnpublishedMultiple` function instead.
+
+```bash
+crm --json entity create appmodules --no-return --data-file /tmp/cwx_app.json
+crm --json query odata "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()" --select name,uniquename,appmoduleid
+# -> CRMWorx | cwx_crmworx | 79bdfbec-725e-f111-b65d-00155d467b90
+```
+
+`/tmp/cwx_app.json`: `{ "name":"CRMWorx", "uniquename":"cwx_crmworx", "clienttype":4,
+"navigationtype":0, "webresourceid":"9188010c-…" }` (`clienttype` 4 = Unified Interface,
+confirmed against the org's existing apps).
+
+### Sitemap
+
+A `sitemaps` row whose `sitemapnameunique` equals the app's `uniquename` auto-associates
+with the app. SiteMapXml: one Area → one Group → three SubAreas (the dashboard, then the
+two tables by `Entity=`):
+
+```xml
+<SiteMap>
+  <Area Id="cwx_area_service" Title="CRMWorx" ShowGroups="true">
+    <Group Id="cwx_group_main" Title="CRMWorx">
+      <SubArea Id="cwx_sa_dashboard" Title="SLA Overview" DefaultDashboard="e29005b6-…" />
+      <SubArea Id="cwx_sa_tickets" Entity="cwx_ticket" Title="Tickets" />
+      <SubArea Id="cwx_sa_slas" Entity="cwx_sla" Title="SLAs" />
+    </Group>
+  </Area>
+</SiteMap>
+```
+
+```bash
+crm --json entity create sitemaps --no-return --data-file /tmp/cwx_sitemap.json   # -> 2ef3183b-…
+```
+
+### Bind components
+
+!!! note "AddAppComponents takes **typed entity references**, not `{Type, Id}`"
+    On 9.1 the `Components` array is a collection of entity references — each element is the
+    component's primary-key field plus its `@odata.type`, e.g.
+    `{ "savedqueryid":"…", "@odata.type":"Microsoft.Dynamics.CRM.savedquery" }`. The
+    `componenttype` integers (entity 1, view 26, chart 59, form 60, sitemap 62) are the
+    *read-side* `appmodulecomponent.componenttype` values, **not** the action payload shape.
+
+```bash
+crm --json action invoke AddAppComponents --body-file /tmp/cwx_addcomponents.json
+```
+
+The body binds 8 components: the sitemap, the 3 views, the augmented main form +
+quick-create + dashboard (all `systemform`), and the chart. Then publish, validate, and
+read the components back. `ValidateApp` / `RetrieveAppComponents` are **functions** whose
+`AppModuleId` is an `Edm.Guid` — pass it **unquoted** by calling the function on the URL
+path (the CLI's `--params` would quote it as a string and the server rejects that):
+
+```bash
+crm --json solution publish-all
+crm --json query odata "ValidateApp(AppModuleId=79bdfbec-…)"
+crm --json query odata "RetrieveAppComponents(AppModuleId=79bdfbec-…)"
+```
+
+```text
+ValidationSuccess = True        # app is valid
+RetrieveAppComponents -> 8 items (3 view, 1 chart, 3 form/dashboard, 1 sitemap)
+```
+
+!!! note "Tables surface through the sitemap, not AddAppComponents"
+    `AddAppComponents` only accepts record-backed components (its `Components` parameter is
+    a `crmbaseentity` collection), so `cwx_ticket` / `cwx_sla` *table metadata* can't be
+    bound through it. The two tables reach the app via the sitemap's `Entity=` subareas;
+    `ValidateApp` notes this as a non-blocking warning and still returns
+    `ValidationSuccess = True`.
+
+## 12. Launch & verify
+
+The app launches at:
+
+```text
+http://internalcrm.contoso.local/Contoso/main.aspx?appid=79bdfbec-725e-f111-b65d-00155d467b90
+```
+
+The running app, captured live (headless Chromium over NTLM):
+
+![CRMWorx SLA Overview dashboard — the Tickets-by-Priority chart and Active Tickets list, both reading the §6 view](images/crmworx-dashboard.png)
+
+The dashboard (§9) renders both components: the "Tickets by Priority" chart (§8) and the
+"Active Tickets" list (§6), with the CRMWorx sitemap (§11) in the left nav — SLA Overview,
+Tickets, SLAs.
+
+![Active Tickets view — the §6 savedquery with its custom columns](images/crmworx-tickets-list.png)
+
+The **Tickets** area shows the §6 "Active Tickets" view with exactly the columns its
+LayoutXml defined (Ticket Title, Priority, Severity, Customer, Created On, Status Reason).
+
+![Support Ticket form — the §7 augmented main form with all five custom fields](images/crmworx-ticket-form.png)
+
+Opening a ticket shows the §7 clone-and-augmented main form: every injected field is
+present and populated — Priority, Severity, Category, the SLA lookup, and Customer.
+
+!!! note "NTLM in headless automation"
+    A first navigation attempt failed with `net::ERR_INVALID_AUTH_CREDENTIALS`: Playwright
+    suppresses the native NTLM prompt, so the browser needs the credentials supplied
+    *programmatically*. These shots were taken by launching Chromium with
+    `--auth-server-allowlist=*contoso.local` and an `http_credentials` context — the documented
+    way to negotiate NTLM headless. Credentials were read from `.env` at run time and never
+    appear in the capture.
+
+The server-side read-back corroborates that the app and its components exist on the server
+regardless of the browser:
+
+```bash
+crm --json query odata appmodules --filter "uniquename eq 'cwx_crmworx'" --select name,appmoduleid,uniquename
+crm --json query odata "RetrieveAppComponents(AppModuleId=79bdfbec-…)"
+crm --json query odata "ValidateApp(AppModuleId=79bdfbec-…)"
+```
+
+```text
+CRMWorx | 79bdfbec-725e-f111-b65d-00155d467b90 | cwx_crmworx
+RetrieveAppComponents -> 8 components
+ValidateApp           -> ValidationSuccess = True
+```
+
+## 13. Promoted commands
+
+The high-reuse, small-predictable-XML pieces — public views and the model-driven
+app/sitemap — are promoted from raw `entity create` calls into first-class command groups
+(`crm view`, `crm app`), each backed by `requests_mock` unit tests. Their generators emit
+exactly the shapes the live server accepted in §6 and §11.
+
+**`crm view create`** rebuilds the "Active SLAs" view (here under a `(cmd)` suffix so it
+sits alongside the §6 original) — it generates the LayoutXml + FetchXml, guards on
+name+entity, creates, and publishes:
+
+```bash
+crm --json view create cwx_sla --name "Active SLAs (cmd)" --otc 10126 \
+  --column "cwx_name:240" --column "cwx_tier:140" --filter-active --if-exists skip
+```
+
+```json
+{ "ok": true, "data": { "created": true,
+  "savedqueryid": "467f3c88-785e-f111-b65d-00155d467b90", "published": true } }
+```
+
+**`crm app create`** is idempotent — run against the app from §11 it reports a skip via the
+same existence guard, no duplicate:
+
+```bash
+crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
+```
+
+```json
+{ "ok": true, "data": { "skipped": true,
+  "appmoduleid": "79bdfbec-725e-f111-b65d-00155d467b90" } }
+```
+
+`crm app add-components` and `crm app set-sitemap` round out the group, emitting the
+typed-entity-reference `AddAppComponents` body and the `sitemapnameunique`-linked sitemap
+that §11 proved on 9.1. `crm app create` always sets the required `webresourceid` to the
+platform default icon.
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
@@ -541,24 +1051,37 @@ Every `crm` command group is exercised by this walkthrough:
 | connection | §1 — `whoami`, `connect`, `profiles`, `status` |
 | session | `session info` (active profile, current entity set, last query) |
 | metadata | §2 — `create-optionset`, `create-entity`, `add-attribute`, `create-one-to-many`, `create-many-to-many`, `relationships`, `list-optionsets`, `entities` |
-| entity | §3 — `create`, `update`, `upsert` (lookups via `@odata.bind`) |
-| query | §4 — `odata` + `fetchxml` |
+| entity | §3 — `create`, `update`, `upsert` (lookups via `@odata.bind`); §6–§11 — `create`/`update` on `savedqueries`, `systemforms`, `savedqueryvisualizations`, `webresourceset`, `appmodules`, `sitemaps` (`--no-return` for appmodule/sitemap) |
+| query | §4 — `odata` + `fetchxml`; §6–§12 — `odata` over interface tables + `RetrieveUnpublishedMultiple` / `ValidateApp` / `RetrieveAppComponents` functions |
 | data | §4 — `export` (CSV) |
-| action | §4 — `function RetrieveCurrentOrganization` |
-| solution | §5 — `publish-all`, `export`, `components`, `list`, `info` |
+| action | §4 — `function RetrieveCurrentOrganization`; §11 — `invoke AddAppComponents` |
+| solution | §5–§11 — `publish-all`, `export`, `components`, `list`, `info` |
+| (interface) | §6 views · §7 forms · §8 charts · §9 dashboard · §10 BPF (manual fallback, [#37](https://github.com/Gharib89/crm/issues/37)) · §11 sitemap + model-driven app · §12 launch |
+| view | §13 — `crm view create` (promoted savedquery generator) |
+| app | §13 — `crm app create` / `add-components` / `set-sitemap` (promoted appmodule + sitemap) |
 
-## 6. Teardown (optional — full reset for a clean replay)
+## Teardown (optional — full reset for a clean replay)
 
 > **Destructive.** Each command requires `--yes`; the `destructive_op_gate` PreToolUse
 > hook blocks them otherwise. Deleting an entity drops the table **and every row in
 > it**. Run these only to reset the org for a clean replay — CRMWorx is otherwise left
 > deployed.
 
-Reverse order — records are removed with their tables, then relationships and
-attributes go with the entities, leaving only the global option sets to delete last:
+Reverse order — interface artifacts first, then records-with-their-tables, then
+relationships and attributes go with the entities, leaving only the global option sets to
+delete last. The **app module, global sitemap, and icon web resource are independent** —
+they do **not** cascade when the entities are dropped, so delete them explicitly. Views,
+forms, the chart and the dashboard **do** cascade with their owning entity, so they need no
+separate delete.
 
 ```bash
-crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships
+# Interface teardown (before dropping the tables) — these don't cascade with the entity
+crm --json entity delete appmodules 79bdfbec-725e-f111-b65d-00155d467b90 --yes   # the model-driven app
+crm --json entity delete sitemaps   2ef3183b-735e-f111-b65d-00155d467b90 --yes   # the app sitemap
+crm --json entity delete webresourceset 9188010c-725e-f111-b65d-00155d467b90 --yes  # the cwx_ app icon
+# (views/forms/chart/dashboard are deleted automatically with their owning entity below)
+
+crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships + its views/forms/chart/dashboard
 crm --json metadata delete-entity cwx_sla --yes
 crm --json metadata delete-optionset cwx_priority --yes
 crm --json metadata delete-optionset cwx_severity --yes

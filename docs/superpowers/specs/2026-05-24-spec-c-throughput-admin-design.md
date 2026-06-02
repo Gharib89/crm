@@ -22,7 +22,7 @@
 
 ### Non-goals
 
-- `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple`: Dataverse cloud messages (rolled out ~2022); not in MOCE 9.1.x on-prem Web API per the v9.0 changelog. Deferred to a future spec contingent on target-server upgrade.
+- `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple`: Dataverse cloud messages (rolled out ~2022); not in Contoso 9.1.x on-prem Web API per the v9.0 changelog. Deferred to a future spec contingent on target-server upgrade.
 - `CallerObjectId` impersonation header: requires Microsoft Entra ID object identifier; on-prem AD users do not have one. Out of scope.
 - Auto-read-then-write ETag wrapping: explicit `--if-match` only this spec; transparent optimistic-locking is a future feature.
 - Spec D (metadata write API) and Spec E (DX polish) unchanged.
@@ -412,7 +412,7 @@ Pure-Python, no live server.
 
 ### 7.4 E2E note
 
-No live tests added in this spec. A smoke-test entry is added to `crm/tests/TEST.md` for running `crm batch sample.json` and `crm async list` against the MOCE 9.1.44.15 test box.
+No live tests added in this spec. A smoke-test entry is added to `crm/tests/TEST.md` for running `crm batch sample.json` and `crm async list` against the Contoso 9.1.44.15 test box.
 
 ### 7.5 Pyright
 
@@ -433,7 +433,7 @@ Merge order: PR1 → PR2. PR2 rebases on PR1.
 
 ## 9. Out of scope (deferred)
 
-- **`CreateMultiple` / `UpdateMultiple` / `UpsertMultiple`** — Dataverse cloud messages (rolled out ~2022); MOCE 9.1.x lacks the SDK message. Revisit after the target server upgrades.
+- **`CreateMultiple` / `UpdateMultiple` / `UpsertMultiple`** — Dataverse cloud messages (rolled out ~2022); Contoso 9.1.x lacks the SDK message. Revisit after the target server upgrades.
 - **`CallerObjectId` impersonation** — requires Microsoft Entra ID object identifier; not applicable to on-prem AD users. `MSCRMCallerID` (this spec) is the on-prem-correct header.
 - **Auto-read-then-write ETag wrapper** — explicit `--if-match` only this spec. Transparent optimistic locking is a future feature.
 - **Spec D** — Metadata write API: add-attribute, create-relationship (1:N + N:N), global option set CRUD, delete-entity.

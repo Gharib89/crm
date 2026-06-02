@@ -585,9 +585,9 @@ class TestConnectionDotenv:
             monkeypatch.delenv(k, raising=False)
         env_file = tmp_path / ".env"
         env_file.write_text(
-            "CRM_BASE_URL=http://crm.x.local/MOCE\n"
+            "CRM_BASE_URL=http://crm.x.local/Contoso\n"
             "CRM_API_VERSION=v9.1\n"
-            "CRM_USERNAME=moce\\admin\n"
+            "CRM_USERNAME=contoso\\admin\n"
             "CRM_PASSWORD=pw\n"
             "CRM_AUTH=ntlm\n"
         )
@@ -595,9 +595,9 @@ class TestConnectionDotenv:
         loaded = conn_mod_local.load_dotenv(env_file)
         assert loaded == env_file
         profile = conn_mod_local.profile_from_env()
-        assert profile.url == "http://crm.x.local/MOCE"
+        assert profile.url == "http://crm.x.local/Contoso"
         assert profile.api_version == "v9.1"
-        assert profile.domain == "moce"
+        assert profile.domain == "contoso"
         assert profile.username == "admin"
 
     def test_dotenv_preserves_inner_quotes(self, tmp_path, monkeypatch):

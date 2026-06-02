@@ -283,6 +283,8 @@ from crm.commands.session import session_group  # noqa: E402
 from crm.commands.batch import batch_cmd, service_document_cmd  # noqa: E402
 from crm.commands.repl import repl  # noqa: E402
 from crm.commands.init import init_cmd  # noqa: E402
+from crm.commands.view import view_group  # noqa: E402
+from crm.commands.app import app_group  # noqa: E402
 
 cli.add_command(connection_group)
 cli.add_command(entity_group)
@@ -299,6 +301,8 @@ cli.add_command(batch_cmd)
 cli.add_command(service_document_cmd)
 cli.add_command(repl)
 cli.add_command(init_cmd)
+cli.add_command(view_group)
+cli.add_command(app_group)
 
 if __name__ == "__main__":
     cli()

@@ -272,7 +272,7 @@
 <header class="mast">
   <div class="edition">Vol. 1 · 2026.05 · Field Manual</div>
   <div class="logo"><em>crm</em> · d365</div>
-  <div class="right">v0.2 · MOCE&nbsp;<b>9.1.44.15</b> · 52/52&nbsp;<b>green</b></div>
+  <div class="right">v0.2 · Contoso&nbsp;<b>9.1.44.15</b> · 52/52&nbsp;<b>green</b></div>
 </header>
 
 <div class="band">
@@ -297,7 +297,7 @@
     <div class="row"><b>Dry-run</b><span class="ok">--dry-run</span></div>
     <div class="row"><b>Sessions</b><span class="ok">multi-profile</span></div>
     <div class="row"><b>REPL</b><span class="ok">cli ... repl</span></div>
-    <div class="row"><b>Tested</b><span class="note">live MOCE org</span></div>
+    <div class="row"><b>Tested</b><span class="note">live Contoso org</span></div>
     <div class="row"><b>Verified</b><span class="note">2026-05-17</span></div>
   </aside>
 </section>
@@ -472,7 +472,7 @@ $ crm entity delete contacts <span class="p">&lt;guid&gt;</span> --yes
   <section>
     <div class="section-head">
       <h2><span class="num">§03</span>Recipes from the field</h2>
-      <div class="meta">tried on MOCE 9.1.44.15</div>
+      <div class="meta">tried on Contoso 9.1.44.15</div>
     </div>
 
     <div class="workflow">
@@ -548,7 +548,7 @@ crm action invoke ExecuteWorkflow \
           <tr>
             <td class="area"><span class="pill">P0</span>Delete / update entity</td>
             <td class="what">Drop a custom table, rename labels, toggle <code>HasActivities</code>/<code>HasNotes</code> after creation.</td>
-            <td class="how">Raw <code>DELETE /EntityDefinitions(LogicalName='x')</code> or <code>PATCH</code>. CLI verb missing — <em>cleanup of test tables on MOCE today required manual auth</em>.</td>
+            <td class="how">Raw <code>DELETE /EntityDefinitions(LogicalName='x')</code> or <code>PATCH</code>. CLI verb missing — <em>cleanup of test tables on Contoso today required manual auth</em>.</td>
           </tr>
 
           <tr>
@@ -651,7 +651,7 @@ crm action invoke ExecuteWorkflow \
         </p>
         <h3 style="margin-top:24px"><span class="stamp">02</span>Backslashes never sourced</h3>
         <p>
-          <code>set -a; . ./.env</code> mangled <code>moce\crmadmin</code> into <code>mocecrmadmin</code>.
+          <code>set -a; . ./.env</code> mangled <code>contoso\crmadmin</code> into <code>contosocrmadmin</code>.
           The CLI's own <code>load_dotenv</code> reads the file directly so the domain backslash survives.
         </p>
         <h3 style="margin-top:24px"><span class="stamp">03</span><code>$top</code> client-side</h3>
@@ -674,7 +674,7 @@ crm action invoke ExecuteWorkflow \
         </p>
         <h3 style="margin-top:24px"><span class="stamp">06</span>Tests are not optional</h3>
         <p>
-          47/47 green: 39 unit + 8 live E2E against MOCE 9.1.44.15. <code>CRM_FORCE_INSTALLED=1</code>
+          47/47 green: 39 unit + 8 live E2E against Contoso 9.1.44.15. <code>CRM_FORCE_INSTALLED=1</code>
           requires the binary on PATH so CI never falls back to <code>python -m</code>.
         </p>
       </div>
@@ -694,7 +694,7 @@ crm action invoke ExecuteWorkflow \
     </ul>
   </div>
   <div>
-    <h5>Endpoints proven on MOCE</h5>
+    <h5>Endpoints proven on Contoso</h5>
     <ul>
       <li>WhoAmI · EntityDefinitions · contacts CRUD</li>
       <li>FetchXML · saved/user query · solutions</li>

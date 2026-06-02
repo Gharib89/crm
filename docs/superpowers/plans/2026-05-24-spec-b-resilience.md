@@ -994,7 +994,7 @@ Refs Spec B (`docs/superpowers/specs/2026-05-24-spec-b-resilience-design.md`) §
 - [ ] `pytest crm/tests/test_resilience.py -v` — 49 new unit tests pass
 - [ ] `pytest crm/tests/ -v` — full suite green, no regressions
 - [ ] `pyright crm/utils/d365_backend.py` — 0 errors
-- [ ] Manual smoke against MOCE 9.1.44.15: `crm whoami` succeeds; `CRM_VERBOSE=1 crm whoami` prints one `[crm] ratelimit ...` stderr line
+- [ ] Manual smoke against Contoso 9.1.44.15: `crm whoami` succeeds; `CRM_VERBOSE=1 crm whoami` prints one `[crm] ratelimit ...` stderr line
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -1918,7 +1918,7 @@ At the bottom of `crm/tests/TEST.md` (or in an existing "manual smoke" section i
 ## Manual smoke test — Spec B async solution flow
 
 Pre-req: `D365_URL` / `D365_USERNAME` / `D365_PASSWORD` set against a
-MOCE 9.1.44.15 (or any on-prem 9.x) target.
+Contoso 9.1.44.15 (or any on-prem 9.x) target.
 
 1. Pick a managed solution on the server (e.g. `MySolution`).
 2. Export it:
@@ -1993,7 +1993,7 @@ Refs Spec B §5, §6, §8 + Spec B PR sequencing §10.
 
 - [ ] `pytest crm/tests/ -v` — full suite green, including 7 new solution tests
 - [ ] `pyright crm/core/solution.py crm/utils/d365_backend.py` — 0 errors
-- [ ] Manual smoke on MOCE 9.1.44.15 per `crm/tests/TEST.md` (export + import a real solution; verify stderr progress lines and JSON envelope fields)
+- [ ] Manual smoke on Contoso 9.1.44.15 per `crm/tests/TEST.md` (export + import a real solution; verify stderr progress lines and JSON envelope fields)
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF

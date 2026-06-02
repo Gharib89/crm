@@ -31,7 +31,7 @@
 | `crm/utils/d365_backend.py` | Typed admin-header kwargs on `request` + verbs, `etag=` kwarg, header assembly, env defaults, `_resolve_caller_id` / `_resolve_bool_env`, `batch()` method, private multipart helpers, error-mapping for 412 / 403. |
 | `crm/utils/d365_types.py` | `BatchOperation`, `BatchResult`, `AsyncOperationRow` TypedDicts. |
 | `crm/cli.py` | Admin-header flags (`--as-user`, `--suppress-dup-detection`, `--bypass-plugins`) on every write verb; `--if-match` on `entity update` / `entity delete`; new `crm batch` command; new `crm async` group; `solution job-status` / `solution job-cancel` aliases. |
-| `crm/tests/TEST.md` | New entries for `test_admin_headers.py`, `test_batch.py`, `test_async_ops.py`; smoke-test note for `crm batch` + `crm async list` against MOCE. |
+| `crm/tests/TEST.md` | New entries for `test_admin_headers.py`, `test_batch.py`, `test_async_ops.py`; smoke-test note for `crm batch` + `crm async list` against Contoso. |
 | `setup.py` | Bump version from `0.3.0` to `0.4.0` in PR2. |
 | `CHANGELOG.md` | Append `0.4.0` section in PR2. |
 
@@ -2721,7 +2721,7 @@ for the full design.
 
 ### Deferred
 
-- `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple` — Dataverse cloud only; not present on MOCE 9.1.x on-prem.
+- `CreateMultiple` / `UpdateMultiple` / `UpsertMultiple` — Dataverse cloud only; not present on Contoso 9.1.x on-prem.
 - `CallerObjectId` impersonation header — requires Microsoft Entra ID; on-prem AD users use `MSCRMCallerID`.
 - Server-side `$batch` size limits (typical Dataverse: 100 changesets per batch; 1000 ops per changeset) are not enforced client-side; the server's `MaxBatchSize` / `MaxChangesetSize` error surfaces verbatim.
 
@@ -2733,7 +2733,7 @@ for the full design.
 
 - [ ] **Step 3: Add a smoke-test note to `crm/tests/TEST.md` (if it exists)**
 
-Append a section noting that `crm batch sample.json` and `crm async list --top 5` should be smoke-tested against MOCE 9.1.44.15 once the PR2 build is available. Skip if no `TEST.md`.
+Append a section noting that `crm batch sample.json` and `crm async list --top 5` should be smoke-tested against Contoso 9.1.44.15 once the PR2 build is available. Skip if no `TEST.md`.
 
 - [ ] **Step 4: Run the whole test suite + pyright**
 
@@ -2768,7 +2768,7 @@ Spec: `docs/superpowers/specs/2026-05-24-spec-c-throughput-admin-design.md`. Bui
 ## Test plan
 - [ ] `pytest crm/tests -v` → green
 - [ ] `pyright` → exit 0
-- [ ] `python -m crm batch sample.json` smoke-test against MOCE 9.1.44.15
+- [ ] `python -m crm batch sample.json` smoke-test against Contoso 9.1.44.15
 - [ ] `python -m crm async list --top 5` smoke-test
 EOF
 )"
