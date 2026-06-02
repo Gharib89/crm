@@ -1,7 +1,7 @@
 # Design: Fast-loading `crm` CLI + script-based install via Cloudflare R2
 
 **Date:** 2026-06-02
-**Status:** Approved (brainstorming)
+**Status:** Approved
 **Owner:** Ahmed Gharib
 **Approach:** A — PyInstaller `--onedir` + lazy imports + R2-hosted install script
 **Supersedes (delivery only):** `2026-05-18-pyinstaller-binaries-design.md` keeps the `--onefile` outputs; this design replaces the runtime/distribution model.

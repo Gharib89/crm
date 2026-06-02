@@ -14,7 +14,7 @@ param([switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
 
-$BaseUrl    = 'https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev'   # set during R2 setup (Task 0/7)
+$BaseUrl    = 'https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev'   # Cloudflare R2 public base URL
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\crm'
 
 function Remove-FromUserPath([string]$dir) {

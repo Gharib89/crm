@@ -1,5 +1,5 @@
 # crm.spec — PyInstaller spec for the crm CLI.
-# Builds a onedir bundle: dist/crm/ containing the `crm` launcher and
+# Builds the onedir bundle dist/crm/, containing the `crm` launcher and
 # _internal/ (CPython runtime, dependencies, crm package data).
 #
 # Build:  pyinstaller crm.spec

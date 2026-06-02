@@ -67,22 +67,34 @@ def test_every_lazy_command_target_resolves():
         )
 
 
+def _spec_hiddenimports():
+    """Extract the literal `hiddenimports` list from the `Analysis(...)` call in
+    crm.spec via AST — NOT a loose string scan, so a `crm.commands.*` string that
+    appears elsewhere in the spec can't masquerade as a bundled module."""
+    spec_src = (_REPO_ROOT / "crm.spec").read_text(encoding="utf-8")
+    for node in ast.walk(ast.parse(spec_src)):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "Analysis"):
+            for kw in node.keywords:
+                if kw.arg == "hiddenimports" and isinstance(kw.value, ast.List):
+                    return {
+                        el.value for el in kw.value.elts
+                        if isinstance(el, ast.Constant) and isinstance(el.value, str)
+                    }
+    raise AssertionError("could not find Analysis(hiddenimports=[...]) in crm.spec")
+
+
 def test_lazy_command_modules_are_bundled_in_pyinstaller_spec():
     """Every crm.commands.* module reached via the lazy loader must also be listed in
-    crm.spec hiddenimports, or the frozen onedir binary will crash when that subcommand
-    is invoked (PyInstaller can't follow the runtime importlib.import_module call)."""
+    crm.spec's Analysis(hiddenimports=...), or the frozen onedir binary will crash when
+    that subcommand is invoked (PyInstaller can't follow the runtime import_module call)."""
     from crm.cli import _LazyJsonAwareGroup
     lazy_modules = {
         target.split(":")[0]
         for target in _LazyJsonAwareGroup._lazy_commands.values()
     }
-    spec_src = (_REPO_ROOT / "crm.spec").read_text(encoding="utf-8")
-    spec_strings = {
-        node.value
-        for node in ast.walk(ast.parse(spec_src))
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-    }
-    bundled = {s for s in spec_strings if s.startswith("crm.commands.")}
+    bundled = _spec_hiddenimports()
     missing = lazy_modules - bundled
     assert not missing, (
         f"crm.spec hiddenimports is missing lazily-loaded modules {sorted(missing)}; "

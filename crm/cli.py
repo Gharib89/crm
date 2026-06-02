@@ -235,13 +235,23 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
             return None
         import importlib
         module_name, attr = target.split(":")
+        # Surface lazy-load failures as a clean ClickException (rendered as
+        # "Error: ..." with no traceback) rather than dumping a raw ImportError
+        # to the user — especially confusing in a frozen build. A broken entry
+        # here is a packaging/wiring bug; the sync test in test_lazy_imports.py
+        # guards it at CI time, so this path should never fire in practice.
         try:
             module = importlib.import_module(module_name)
         except ImportError as exc:
-            raise ImportError(
-                f"crm: failed to import {module_name!r} for command {cmd_name!r}"
+            raise click.ClickException(
+                f"failed to import {module_name!r} for command {cmd_name!r}: {exc}"
             ) from exc
-        return getattr(module, attr)
+        command = getattr(module, attr, None)
+        if not isinstance(command, click.Command):
+            raise click.ClickException(
+                f"{target!r} did not resolve to a Click command for {cmd_name!r}"
+            )
+        return command
 
 
 # ── Root group ──────────────────────────────────────────────────────────
