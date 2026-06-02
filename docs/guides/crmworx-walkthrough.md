@@ -954,6 +954,38 @@ RetrieveAppComponents -> 8 items (3 view, 1 chart, 3 form/dashboard, 1 sitemap)
     `ValidateApp` notes this as a non-blocking warning and still returns
     `ValidationSuccess = True`.
 
+## 12. Launch & verify
+
+The app launches at:
+
+```text
+http://internalcrm.moce.local/MOCE/main.aspx?appid=79bdfbec-725e-f111-b65d-00155d467b90
+```
+
+!!! note "Browser screenshots: blocked by in-browser NTLM"
+    A headless-browser capture of the running app was attempted via Playwright. The browser
+    reached the server (DNS + network were fine) but the navigation failed with
+    `net::ERR_INVALID_AUTH_CREDENTIALS` — the on-prem org requires **NTLM** auth and the
+    automated browser context had no credentials to negotiate it. No screenshots were
+    captured; the server-side read-back below is the proof instead. (Opening the URL in a
+    normal signed-in browser session renders the app — the failure is specific to
+    unauthenticated automation.)
+
+The read-back is the definitive CLI proof that the app and its components exist on the
+server:
+
+```bash
+crm --json query odata appmodules --filter "uniquename eq 'cwx_crmworx'" --select name,appmoduleid,uniquename
+crm --json query odata "RetrieveAppComponents(AppModuleId=79bdfbec-…)"
+crm --json query odata "ValidateApp(AppModuleId=79bdfbec-…)"
+```
+
+```text
+CRMWorx | 79bdfbec-725e-f111-b65d-00155d467b90 | cwx_crmworx
+RetrieveAppComponents -> 8 components
+ValidateApp           -> ValidationSuccess = True
+```
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
