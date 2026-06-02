@@ -26,11 +26,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            artifact_name: crm-linux-x86_64
-            binary_path: dist/crm
+            archive_name: crm-linux-x86_64.tar.gz
           - os: windows-latest
-            artifact_name: crm-windows-x86_64.exe
-            binary_path: dist/crm.exe
+            archive_name: crm-windows-x86_64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -50,45 +48,74 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller crm.spec
 
-      - name: Smoke test (Linux/macOS)
+      - name: Smoke test (Linux)
         if: runner.os != 'Windows'
         run: |
-          ./dist/crm --version
-          ./dist/crm --help
+          ./dist/crm/crm --version
+          ./dist/crm/crm --help
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
         run: |
-          .\dist\crm.exe --version
-          .\dist\crm.exe --help
+          .\dist\crm\crm.exe --version
+          .\dist\crm\crm.exe --help
 
-      - name: Rename artifact
-        shell: bash
-        run: |
-          mkdir -p out
-          cp "${{ matrix.binary_path }}" "out/${{ matrix.artifact_name }}"
+      - name: Archive (Linux)
+        if: runner.os != 'Windows'
+        run: tar -czf "${{ matrix.archive_name }}" -C dist/crm .
+
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/crm/* -DestinationPath "${{ matrix.archive_name }}" -Force
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact_name }}
-          path: out/${{ matrix.artifact_name }}
+          name: ${{ matrix.archive_name }}
+          path: ${{ matrix.archive_name }}
           if-no-files-found: error
 
   publish:
     needs: build
     runs-on: ubuntu-22.04
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
+
       - name: List artifacts
         run: ls -la artifacts
+
+      - name: Publish to Cloudflare R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          bucket=crm-cli-releases
+          for f in crm-linux-x86_64.tar.gz crm-windows-x86_64.zip; do
+            case "$f" in
+              *.zip) ct=application/zip ;;
+              *)     ct=application/gzip ;;
+            esac
+            npx --yes wrangler@4.97.0 r2 object put "$bucket/${TAG}/$f" \
+              --file="artifacts/$f" --content-type="$ct" --remote
+            npx --yes wrangler@4.97.0 r2 object put "$bucket/latest/$f" \
+              --file="artifacts/$f" --content-type="$ct" --remote
+          done
+          npx --yes wrangler@4.97.0 r2 object put "$bucket/install.ps1" \
+            --file=scripts/install.ps1 --content-type="text/plain; charset=utf-8" --remote
+          npx --yes wrangler@4.97.0 r2 object put "$bucket/install.sh" \
+            --file=scripts/install.sh --content-type="text/plain; charset=utf-8" --remote
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/crm-linux-x86_64
-            artifacts/crm-windows-x86_64.exe
+            artifacts/crm-linux-x86_64.tar.gz
+            artifacts/crm-windows-x86_64.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
