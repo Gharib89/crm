@@ -6,7 +6,8 @@ command and its captured output from a live run against a Dynamics 365 CE on-pre
 v9.1 server (credentials redacted).
 
 The build order is: **option sets → entities → attributes → relationships → seed data
-→ read/verify → package → (optional teardown)**.
+→ read/verify → package → views → forms → charts → dashboard → BPF → sitemap & app
+→ launch → (optional teardown)**.
 
 ## Prerequisites
 
@@ -1012,11 +1013,12 @@ Every `crm` command group is exercised by this walkthrough:
 | connection | §1 — `whoami`, `connect`, `profiles`, `status` |
 | session | `session info` (active profile, current entity set, last query) |
 | metadata | §2 — `create-optionset`, `create-entity`, `add-attribute`, `create-one-to-many`, `create-many-to-many`, `relationships`, `list-optionsets`, `entities` |
-| entity | §3 — `create`, `update`, `upsert` (lookups via `@odata.bind`) |
-| query | §4 — `odata` + `fetchxml` |
+| entity | §3 — `create`, `update`, `upsert` (lookups via `@odata.bind`); §6–§11 — `create`/`update` on `savedqueries`, `systemforms`, `savedqueryvisualizations`, `webresourceset`, `appmodules`, `sitemaps` (`--no-return` for appmodule/sitemap) |
+| query | §4 — `odata` + `fetchxml`; §6–§12 — `odata` over interface tables + `RetrieveUnpublishedMultiple` / `ValidateApp` / `RetrieveAppComponents` functions |
 | data | §4 — `export` (CSV) |
-| action | §4 — `function RetrieveCurrentOrganization` |
-| solution | §5 — `publish-all`, `export`, `components`, `list`, `info` |
+| action | §4 — `function RetrieveCurrentOrganization`; §11 — `invoke AddAppComponents` |
+| solution | §5–§11 — `publish-all`, `export`, `components`, `list`, `info` |
+| (interface) | §6 views · §7 forms · §8 charts · §9 dashboard · §10 BPF (manual fallback, [#37](https://github.com/Gharib89/crm/issues/37)) · §11 sitemap + model-driven app · §12 launch |
 
 ## Teardown (optional — full reset for a clean replay)
 
@@ -1025,11 +1027,21 @@ Every `crm` command group is exercised by this walkthrough:
 > it**. Run these only to reset the org for a clean replay — CRMWorx is otherwise left
 > deployed.
 
-Reverse order — records are removed with their tables, then relationships and
-attributes go with the entities, leaving only the global option sets to delete last:
+Reverse order — interface artifacts first, then records-with-their-tables, then
+relationships and attributes go with the entities, leaving only the global option sets to
+delete last. The **app module, global sitemap, and icon web resource are independent** —
+they do **not** cascade when the entities are dropped, so delete them explicitly. Views,
+forms, the chart and the dashboard **do** cascade with their owning entity, so they need no
+separate delete.
 
 ```bash
-crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships
+# Interface teardown (before dropping the tables) — these don't cascade with the entity
+crm --json entity delete appmodules 79bdfbec-725e-f111-b65d-00155d467b90 --yes   # the model-driven app
+crm --json entity delete sitemaps   2ef3183b-735e-f111-b65d-00155d467b90 --yes   # the app sitemap
+crm --json entity delete webresourceset 9188010c-725e-f111-b65d-00155d467b90 --yes  # the cwx_ app icon
+# (views/forms/chart/dashboard are deleted automatically with their owning entity below)
+
+crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships + its views/forms/chart/dashboard
 crm --json metadata delete-entity cwx_sla --yes
 crm --json metadata delete-optionset cwx_priority --yes
 crm --json metadata delete-optionset cwx_severity --yes
