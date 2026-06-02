@@ -4,6 +4,7 @@ site_url: https://crm-cli-docs.pages.dev/
 repo_url: https://github.com/Gharib89/crm
 repo_name: Gharib89/crm
 docs_dir: docs
+copyright: Made by Ahmed Gharib
 
 theme:
   name: material
