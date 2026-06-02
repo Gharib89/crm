@@ -52,4 +52,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4.97.0'
-          command: pages deploy site --project-name=crm-docs
+          command: pages deploy site --project-name=crm-cli-docs
