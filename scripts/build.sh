@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a single-file crm binary on Linux/macOS.
+# Build the crm onedir bundle on Linux/macOS.
 # Usage: ./scripts/build.sh
 set -euo pipefail
 
@@ -20,5 +20,5 @@ rm -rf build dist
 pyinstaller crm.spec
 
 echo
-echo "Built: $REPO_ROOT/dist/crm"
-"$REPO_ROOT/dist/crm" --version
+echo "Built: $REPO_ROOT/dist/crm/  (onedir bundle; launcher: dist/crm/crm)"
+"$REPO_ROOT/dist/crm/crm" --version

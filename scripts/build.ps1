@@ -1,4 +1,4 @@
-# Build a single-file crm.exe on Windows.
+# Build the crm onedir bundle on Windows.
 # Usage:  pwsh -File scripts/build.ps1
 #         or:  .\scripts\build.ps1
 $ErrorActionPreference = 'Stop'
@@ -20,5 +20,5 @@ if (Test-Path dist)  { Remove-Item -Recurse -Force dist }
 pyinstaller crm.spec
 
 Write-Host ""
-Write-Host "Built: $RepoRoot\dist\crm.exe"
-& "$RepoRoot\dist\crm.exe" --version
+Write-Host "Built: $RepoRoot\dist\crm\  (onedir bundle; launcher: dist\crm\crm.exe)"
+& "$RepoRoot\dist\crm\crm.exe" --version
