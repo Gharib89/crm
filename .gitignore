@@ -9,3 +9,4 @@ build/
 dist/
 *.spec.bak
 site/
+.playwright-mcp/
