@@ -1,0 +1,48 @@
+/* ITWorx brand palette for Material for MkDocs.
+ *
+ * Colors approximate ITWorx's deep-blue corporate identity (itworx.com):
+ * a dark navy header with a bright azure accent. To match the official
+ * brand guide exactly, replace the hex values below.
+ */
+
+:root {
+  --itworx-navy:        #0E2A47;  /* primary: header / sidebar */
+  --itworx-navy-light:  #1B3A63;
+  --itworx-navy-dark:   #081A2E;
+  --itworx-blue:        #1C8EF9;  /* accent: links, hover, focus */
+  --itworx-blue-light:  #4FA8FF;
+}
+
+/* ---- Light scheme ------------------------------------------------------ */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color:        var(--itworx-navy);
+  --md-primary-fg-color--light: var(--itworx-navy-light);
+  --md-primary-fg-color--dark:  var(--itworx-navy-dark);
+  --md-primary-bg-color:        #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color:         var(--itworx-blue);
+  --md-accent-fg-color--transparent: rgba(28, 142, 249, 0.1);
+}
+
+/* Use the brand blue for body links in the light scheme for stronger contrast
+ * than the dark navy primary. */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: var(--itworx-blue);
+}
+
+/* ---- Dark scheme (slate) ---------------------------------------------- */
+[data-md-color-scheme="slate"] {
+  --md-hue: 215;                       /* tint slate surfaces toward navy */
+  --md-typeset-a-color: var(--itworx-blue-light);
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--itworx-navy-dark);
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--itworx-blue-light);
+}
