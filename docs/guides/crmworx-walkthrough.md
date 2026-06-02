@@ -642,6 +642,83 @@ Active Support Tickets     055e2e32-dc59-4190-a9ff-0a8c1d88cf7f   (auto-generate
 Inactive Support Tickets   9665360a-d424-4fd5-8a16-7a979e9988a4   (auto-generated default)
 ```
 
+## 7. Forms
+
+Forms are also `systemform` rows: `objecttypecode` (entity logical name), `type`
+(`2` = main, `7` = quickCreate), and a `formxml` layout. Authoring main FormXml from
+scratch has a high 9.1 rejection rate, so **clone-and-augment** the auto-generated main
+form instead — fetch it, inject controls for the custom columns, PATCH it back.
+
+### Main form (clone-and-augment)
+
+Fetch the auto-generated "Information" form and note its `formid` + FormXml length:
+
+```bash
+crm --json query odata systemforms \
+  --filter "objecttypecode eq 'cwx_ticket' and type eq 2" --select name,formid,formxml
+# -> Information | 8f0db50d-b90c-4b4d-9ecb-f16f9e7db491 | formxml 1625 chars
+```
+
+The auto form has one tab/two columns: `cwx_name` + `ownerid` on the left, the notes
+control on the right. Keep all of it intact and add one `<row>` per missing custom
+column to the first section, copying the existing `<cell>`/`<control>` shape and swapping
+`datafieldname` + `classid`. The control `classid` is per **AttributeType** (read it from
+`crm --json metadata attributes cwx_ticket`):
+
+| AttributeType | Control `classid` |
+| --- | --- |
+| String | `{4273EDBD-AC1D-40d3-9FB2-095C621B552D}` |
+| Picklist | `{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}` |
+| Lookup | `{270BD3DB-D9AF-4782-9025-509E298DEC0A}` |
+
+Each added row (every `<cell>` needs a unique GUID `id`):
+
+```xml
+<row>
+  <cell id="{c0ffee00-…}">
+    <labels><label description="Priority" languagecode="1033" /></labels>
+    <control id="cwx_priority" classid="{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}"
+             datafieldname="cwx_priority" />
+  </cell>
+</row>
+```
+
+Five rows added — `cwx_priority`, `cwx_severity`, `cwx_category` (Picklist), `cwx_sla`,
+`cwx_customerid` (Lookup) — taking the FormXml 1625 → 2834 chars. Preview, PATCH, publish:
+
+```bash
+crm --json --dry-run entity update systemforms 8f0db50d-… --data-file /tmp/cwx_ticket_mainform_patch.json
+crm --json entity update systemforms 8f0db50d-… --data-file /tmp/cwx_ticket_mainform_patch.json
+crm --json solution publish-all
+```
+
+Read back proves the five columns are now on the form:
+
+```bash
+crm --json query odata systemforms --filter "formid eq 8f0db50d-…" --select formxml
+# cwx_priority True | cwx_severity True | cwx_category True | cwx_sla True | cwx_customerid True
+```
+
+### Quick-create form (`type=7`)
+
+A quick-create form is authored from scratch (it's small): a single 100%-width column with
+`cwx_name`, `cwx_priority`, `cwx_customerid`. Guard, create, publish, read back:
+
+```bash
+crm --json query odata systemforms --filter "objecttypecode eq 'cwx_ticket' and type eq 7" --select name,formid
+crm --json entity create systemforms --data-file /tmp/cwx_ticket_qc_form.json
+crm --json solution publish-all
+```
+
+```json
+{ "ok": true, "data": { "formid": "94d4181e-705e-f111-b65d-00155d467b90", "...": "..." } }
+```
+
+!!! success "Quick-create via the Web API works on 9.1"
+    On-prem 9.1's Web API accepted the `systemforms` POST with `type=7` on the first
+    attempt — no manual-portal fallback was needed. Read-back confirms `cwx_priority`
+    and `cwx_customerid` are present in the stored FormXml.
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
