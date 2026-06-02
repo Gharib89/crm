@@ -1,0 +1,2848 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="CLI + agent guide for Dynamics 365 CE on-premises customizations">
+      
+      
+      
+      
+        <link rel="prev" href="../../getting-started/configure/">
+      
+      
+        <link rel="next" href="../../how-to/connection/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>CRMWorx walkthrough - crm — D365 CE on-prem CLI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#crmworx-walkthrough" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="crm — D365 CE on-prem CLI" class="md-header__button md-logo" aria-label="crm — D365 CE on-prem CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            crm — D365 CE on-prem CLI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CRMWorx walkthrough
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="amber"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Gharib89/crm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gharib89/crm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="crm — D365 CE on-prem CLI" class="md-nav__button md-logo" aria-label="crm — D365 CE on-prem CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    crm — D365 CE on-prem CLI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Gharib89/crm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gharib89/crm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/configure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRMWorx walkthrough
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRMWorx walkthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-pre-flight-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Pre-flight &amp; connection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-metadata-build-option-sets-entities-attributes-relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Metadata build (option sets → entities → attributes → relationships)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Metadata build (option sets → entities → attributes → relationships)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-global-option-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Global option sets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-custom-entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Custom entities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-attributes-all-kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Attributes (all kinds)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-relationships-1n-1n-nn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Relationships (1:N + 1:N + N:N)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-seed-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Seed data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-read-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Read &amp; verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-package-the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Package the solution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Package the solution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Views
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Forms
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Forms">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#main-form-clone-and-augment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Main form (clone-and-augment)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quick-create-form-type7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick-create form (type=7)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-charts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Charts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-business-process-flow-documented-manual-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Business process flow (documented manual fallback)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Business process flow (documented manual fallback)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-cli-attempt-and-its-exact-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The CLI attempt (and its exact failure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-its-blocked-on-91" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why it's blocked on 9.1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-portal-fallback-the-supported-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual-portal fallback (the supported path)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-sitemap-model-driven-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Sitemap &amp; model-driven app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Sitemap &amp; model-driven app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#app-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sitemap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sitemap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bind-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bind components
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-launch-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Launch &amp; verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-promoted-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Promoted commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capability-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#teardown-optional-full-reset-for-a-clean-replay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Teardown (optional — full reset for a clean replay)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    How-to
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/connection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    connection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/entity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    entity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/solution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/action/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    action
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/view/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    view
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/app/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    app
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    async
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/skill/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skill
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/skill-and-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skill & CLI sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-pre-flight-connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Pre-flight &amp; connection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-metadata-build-option-sets-entities-attributes-relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Metadata build (option sets → entities → attributes → relationships)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Metadata build (option sets → entities → attributes → relationships)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-global-option-sets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 Global option sets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-custom-entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Custom entities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-attributes-all-kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Attributes (all kinds)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-relationships-1n-1n-nn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 Relationships (1:N + 1:N + N:N)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-seed-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Seed data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-read-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Read &amp; verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-package-the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Package the solution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Package the solution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Views
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Forms
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Forms">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#main-form-clone-and-augment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Main form (clone-and-augment)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quick-create-form-type7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick-create form (type=7)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-charts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Charts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Dashboard
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-business-process-flow-documented-manual-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Business process flow (documented manual fallback)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Business process flow (documented manual fallback)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-cli-attempt-and-its-exact-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The CLI attempt (and its exact failure)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-its-blocked-on-91" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why it's blocked on 9.1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-portal-fallback-the-supported-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual-portal fallback (the supported path)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-sitemap-model-driven-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Sitemap &amp; model-driven app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Sitemap &amp; model-driven app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#app-module" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App module
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sitemap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sitemap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bind-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bind components
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-launch-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Launch &amp; verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-promoted-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Promoted commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capability-coverage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#teardown-optional-full-reset-for-a-clean-replay" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Teardown (optional — full reset for a clean replay)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="crmworx-walkthrough">CRMWorx walkthrough</h1>
+<p>This guide builds <strong>CRMWorx</strong> — an IT-company ticketing platform with SLA — end to
+end using the <code>crm</code> CLI, demonstrating every command group. Each step shows the real
+command and its captured output from a live run against a Dynamics 365 CE on-premises
+v9.1 server (credentials redacted).</p>
+<p>The build order is: <strong>option sets → entities → attributes → relationships → seed data
+→ read/verify → package → views → forms → charts → dashboard → BPF → sitemap &amp; app
+→ launch → (optional teardown)</strong>.</p>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>A reachable D365 CE on-prem server and NTLM credentials (via <code>.env</code>: <code>CRM_BASE_URL</code>,
+  <code>CRM_USERNAME</code>, <code>CRM_PASSWORD</code>, <code>CRM_AUTH=ntlm</code>, <code>CRM_API_VERSION</code>). The password is
+  read from <code>D365_PASSWORD</code>, with <code>CRM_PASSWORD</code> accepted as an alias — both names work.</li>
+<li><strong>A <code>CRMWorx</code> <em>unmanaged</em> solution and a publisher with prefix <code>cwx</code>.</strong> Create both
+  from the CLI — no web UI (<a href="https://github.com/Gharib89/crm/issues/34">#34</a>).
+  <code>--if-exists skip</code> makes re-runs a no-op:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>create-publisher<span class="w"> </span>--name<span class="w"> </span>crmworx<span class="w"> </span>--display<span class="w"> </span>CRMWorx<span class="w"> </span>--prefix<span class="w"> </span>cwx<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--option-value-prefix<span class="w"> </span><span class="m">30000</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>CRMWorx<span class="w"> </span>--publisher<span class="w"> </span>crmworx<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<p>With a named profile active, these auto-wire <code>publisher_prefix=cwx</code> and
+  <code>default_solution=CRMWorx</code> into it, so the metadata commands below target the
+  <code>cwx</code> publisher and <code>CRMWorx</code> solution by default (pass <code>--no-set-default</code> to opt out).</p>
+<h2 id="1-pre-flight-connection">1. Pre-flight &amp; connection</h2>
+<p>Confirm reachability and identity. A non-zero exit (e.g. <code>401</code>) means the
+<code>DOMAIN\username</code> credentials are wrong — fix them before continuing.</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>connection<span class="w"> </span>whoami
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;@odata.context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.../api/data/v9.1/$metadata#Microsoft.Dynamics.CRM.WhoAmIResponse&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;BusinessUnitId&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;078a426a-8339-f111-b65d-00155d467b90&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;UserId&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;f890426a-8339-f111-b65d-00155d467b90&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;OrganizationId&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;b948cd5f-8339-f111-b65d-00155d467b90&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Save a <strong>targeting profile</strong> so every mutating metadata command lands in the <code>CRMWorx</code>
+solution and uses the <code>cwx</code> schema-name prefix by default. <code>connect</code> saves the profile
+and validates the credentials with a WhoAmI call (the password is read from the
+<code>D365_PASSWORD</code> environment variable, never passed on the command line):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>connection<span class="w"> </span>connect<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--url<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CRM_BASE_URL</span><span class="s2">&quot;</span><span class="w"> </span>--username<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$CRM_USERNAME</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--api-version<span class="w"> </span>v9.1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--default-solution<span class="w"> </span>CRMWorx<span class="w"> </span>--publisher-prefix<span class="w"> </span>cwx<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--profile-name<span class="w"> </span>crmworx
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;user_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;f890426a-8339-f111-b65d-00155d467b90&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;api_base&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://&lt;server&gt;/&lt;org&gt;/api/data/v9.1/&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;api_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v9.1&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;meta&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;profile&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;crmworx&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Verify the active profile resolves the solution and prefix:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>connection<span class="w"> </span>profiles
+crm<span class="w"> </span>--json<span class="w"> </span>connection<span class="w"> </span>status
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;meta&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;profiles&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;crmworx&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;default_solution&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CRMWorx&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;publisher_prefix&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx&quot;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>connection status</code> confirms <code>active_profile: crmworx</code> with <code>default_solution: CRMWorx</code>
+and <code>publisher_prefix: cwx</code>. From here, <code>metadata create-*</code> commands target <code>CRMWorx</code>
+automatically (override per-command with <code>--solution</code>, or hard-fail when none resolves
+with <code>--require-solution</code> / <code>CRM_REQUIRE_SOLUTION</code>).</p>
+<h2 id="2-metadata-build-option-sets-entities-attributes-relationships">2. Metadata build (option sets → entities → attributes → relationships)</h2>
+<h3 id="21-global-option-sets">2.1 Global option sets</h3>
+<p>CRMWorx uses four global (reusable) option sets. Preview the request first with
+<code>--dry-run</code> to confirm the shape and that the <code>CRMWorx</code> solution is targeted — note the
+<code>MSCRM.SolutionUniqueName: CRMWorx</code> header and the <code>GlobalOptionSetDefinitions</code> endpoint:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>--dry-run<span class="w"> </span>metadata<span class="w"> </span>create-optionset<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span>cwx_priority<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;CRMWorx Priority&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--option<span class="w"> </span><span class="m">1</span>:Low<span class="w"> </span>--option<span class="w"> </span><span class="m">2</span>:Normal<span class="w"> </span>--option<span class="w"> </span><span class="m">3</span>:High<span class="w"> </span>--option<span class="w"> </span><span class="m">4</span>:Critical<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;_dry_run&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.../api/data/v9.1/GlobalOptionSetDefinitions&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;headers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;MSCRM.SolutionUniqueName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CRMWorx&quot;</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;body&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;@odata.type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Microsoft.Dynamics.CRM.OptionSetMetadata&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_priority&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;IsGlobal&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;OptionSetType&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Picklist&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;Options&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;Value&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;Label&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Low&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="s2">&quot;...etc&quot;</span><span class="w"> </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Now create all four. <code>--if-exists skip</code> makes each create idempotent (proven in §5):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-optionset<span class="w"> </span>--name<span class="w"> </span>cwx_priority<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;CRMWorx Priority&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--option<span class="w"> </span><span class="m">1</span>:Low<span class="w"> </span>--option<span class="w"> </span><span class="m">2</span>:Normal<span class="w"> </span>--option<span class="w"> </span><span class="m">3</span>:High<span class="w"> </span>--option<span class="w"> </span><span class="m">4</span>:Critical<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-optionset<span class="w"> </span>--name<span class="w"> </span>cwx_severity<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;CRMWorx Severity&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--option<span class="w"> </span><span class="m">1</span>:Minor<span class="w"> </span>--option<span class="w"> </span><span class="m">2</span>:Major<span class="w"> </span>--option<span class="w"> </span><span class="m">3</span>:Critical<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-optionset<span class="w"> </span>--name<span class="w"> </span>cwx_ticketcategory<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;CRMWorx Category&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--option<span class="w"> </span><span class="m">1</span>:Hardware<span class="w"> </span>--option<span class="w"> </span><span class="m">2</span>:Software<span class="w"> </span>--option<span class="w"> </span><span class="m">3</span>:Network<span class="w"> </span>--option<span class="w"> </span><span class="m">4</span>:Access<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-optionset<span class="w"> </span>--name<span class="w"> </span>cwx_slatier<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;CRMWorx SLA Tier&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--option<span class="w"> </span><span class="m">1</span>:Bronze<span class="w"> </span>--option<span class="w"> </span><span class="m">2</span>:Silver<span class="w"> </span>--option<span class="w"> </span><span class="m">3</span>:Gold<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<p>Each returns <code>created: true</code> with the new metadata id, the target solution, and
+<code>published: true</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;created&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_priority&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;metadata_id_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.../GlobalOptionSetDefinitions(a2ca6b21-...)&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;solution&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CRMWorx&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;published&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Verify all four landed:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>list-optionsets<span class="w"> </span>--custom-only<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-oE<span class="w"> </span><span class="s1">&#39;cwx_[a-z]+&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-u
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>cwx_priority
+cwx_severity
+cwx_slatier
+cwx_ticketcategory
+</code></pre></div>
+<h3 id="22-custom-entities">2.2 Custom entities</h3>
+<p>Two tables: <strong>SLA Policy</strong> (organization-owned reference data) and <strong>Support Ticket</strong>
+(user-owned, note- and activity-enabled). The schema name is given in PascalCase with
+the <code>cwx_</code> prefix; the server derives the lowercase logical name and the entity-set
+(plural) name used by the Web API:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-entity<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_SLA<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;SLA Policy&quot;</span><span class="w"> </span>--display-collection<span class="w"> </span><span class="s2">&quot;SLA Policies&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--primary-attr<span class="w"> </span>cwx_Name<span class="w"> </span>--primary-label<span class="w"> </span><span class="s2">&quot;Policy Name&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--ownership<span class="w"> </span>OrganizationOwned<span class="w"> </span>--has-notes<span class="w"> </span>--if-exists<span class="w"> </span>skip
+
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-entity<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_Ticket<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Support Ticket&quot;</span><span class="w"> </span>--display-collection<span class="w"> </span><span class="s2">&quot;Support Tickets&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--primary-attr<span class="w"> </span>cwx_Name<span class="w"> </span>--primary-label<span class="w"> </span><span class="s2">&quot;Ticket Title&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--ownership<span class="w"> </span>UserOwned<span class="w"> </span>--has-notes<span class="w"> </span>--has-activities<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;created&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;schema_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_SLA&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;logical_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_sla&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;entity_set_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_slas&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;primary_attribute&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_name&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;solution&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CRMWorx&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;published&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><strong>Note the <code>entity_set_name</code></strong> in each response — <code>cwx_slas</code> and <code>cwx_tickets</code>. These
+plural names are what you pass to <code>entity</code>/<code>query</code> commands later (§3–§4), not the
+logical name. Verify both tables exist:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>entities<span class="w"> </span>--custom-only<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-oE<span class="w"> </span><span class="s1">&#39;cwx_(sla|ticket)\b&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-u
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>cwx_sla
+cwx_ticket
+</code></pre></div>
+<h3 id="23-attributes-all-kinds">2.3 Attributes (all kinds)</h3>
+<p>Add columns to both tables. The <code>cwx_sla</code> table gets two integer bounds, a global
+picklist, and a boolean:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_sla<span class="w"> </span>--kind<span class="w"> </span>integer<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_ResponseHours<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Response Hours&quot;</span><span class="w"> </span>--min<span class="w"> </span><span class="m">0</span><span class="w"> </span>--max<span class="w"> </span><span class="m">720</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_sla<span class="w"> </span>--kind<span class="w"> </span>integer<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_ResolutionHours<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Resolution Hours&quot;</span><span class="w"> </span>--min<span class="w"> </span><span class="m">0</span><span class="w"> </span>--max<span class="w"> </span><span class="m">2160</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_sla<span class="w"> </span>--kind<span class="w"> </span>picklist<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_Tier<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Tier&quot;</span><span class="w"> </span>--optionset-name<span class="w"> </span>cwx_slatier<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_sla<span class="w"> </span>--kind<span class="w"> </span>boolean<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_Active<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Active&quot;</span><span class="w"> </span>--true-label<span class="w"> </span>Yes<span class="w"> </span>--false-label<span class="w"> </span>No<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<p>The <code>cwx_ticket</code> table gets a memo, three global picklists, and three datetimes:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_ticket<span class="w"> </span>--kind<span class="w"> </span>memo<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_Description<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Description&quot;</span><span class="w"> </span>--max-length<span class="w"> </span><span class="m">4000</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_ticket<span class="w"> </span>--kind<span class="w"> </span>picklist<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_Priority<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Priority&quot;</span><span class="w"> </span>--optionset-name<span class="w"> </span>cwx_priority<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_ticket<span class="w"> </span>--kind<span class="w"> </span>picklist<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_Severity<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Severity&quot;</span><span class="w"> </span>--optionset-name<span class="w"> </span>cwx_severity<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_ticket<span class="w"> </span>--kind<span class="w"> </span>picklist<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_Category<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Category&quot;</span><span class="w"> </span>--optionset-name<span class="w"> </span>cwx_ticketcategory<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_ticket<span class="w"> </span>--kind<span class="w"> </span>datetime<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_OpenedOn<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Opened On&quot;</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_ticket<span class="w"> </span>--kind<span class="w"> </span>datetime<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_ResolvedOn<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Resolved On&quot;</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>add-attribute<span class="w"> </span>cwx_ticket<span class="w"> </span>--kind<span class="w"> </span>datetime<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_DueBy<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;Due By&quot;</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<p>Each returns the created column with its resolved logical name and type:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;created&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;entity&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_ticket&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;schema_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_Priority&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;logical_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_priority&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;attribute_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Picklist&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;solution&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CRMWorx&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;published&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>A picklist that references a global option set binds to it through the
+<code>GlobalOptionSet</code> navigation property. Confirm the binding by expanding it from the
+metadata endpoint:</p>
+<div class="highlight"><pre><span></span><code>attr: cwx_priority -&gt; GlobalOptionSet.Name: cwx_priority
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Two CLI defects fixed during this step</p>
+<p>Building these columns against the live 9.1 server surfaced two <code>add-attribute</code>
+bugs, fixed inline (commit <code>cf7d41d</code>):</p>
+<ul>
+<li><strong>Integer bounds</strong> were serialized as floats (<code>--min 0</code> → <code>0.0</code>), which the
+  server rejected for an <code>Edm.Int32</code> column. Integer/bigint bounds are now coerced
+  to integers.</li>
+<li><strong>Global picklists</strong> were sent as an inline option set with <code>IsGlobal=true</code>,
+  which the server rejects on attribute create. They now bind via
+  <code>GlobalOptionSet@odata.bind</code>; on-prem 9.1 requires the option set's <code>MetadataId</code>
+  GUID for the bind (the <code>Name</code> alternate key is rejected), so the CLI resolves
+  <code>Name → MetadataId</code> first.</li>
+</ul>
+</div>
+<h3 id="24-relationships-1n-1n-nn">2.4 Relationships (1:N + 1:N + N:N)</h3>
+<p>Three relationships wire the model together: SLA→Ticket and Account→Ticket (each a
+1:N that creates a lookup column on the ticket), and Ticket↔SystemUser (an N:N
+"watchers" link with an intersect table).</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># SLA -&gt; Ticket (creates the cwx_sla lookup on the ticket)</span>
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-one-to-many<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_sla_cwx_ticket<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--referenced-entity<span class="w"> </span>cwx_sla<span class="w"> </span>--referencing-entity<span class="w"> </span>cwx_ticket<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lookup-schema<span class="w"> </span>cwx_SLA<span class="w"> </span>--lookup-display<span class="w"> </span><span class="s2">&quot;SLA Policy&quot;</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+
+<span class="c1"># Account -&gt; Ticket (creates the cwx_customerid lookup on the ticket)</span>
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-one-to-many<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_account_cwx_ticket<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--referenced-entity<span class="w"> </span>account<span class="w"> </span>--referencing-entity<span class="w"> </span>cwx_ticket<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--lookup-schema<span class="w"> </span>cwx_CustomerId<span class="w"> </span>--lookup-display<span class="w"> </span><span class="s2">&quot;Customer&quot;</span><span class="w"> </span>--if-exists<span class="w"> </span>skip
+
+<span class="c1"># Ticket &lt;-&gt; SystemUser (N:N watchers)</span>
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-many-to-many<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--schema-name<span class="w"> </span>cwx_ticket_systemuser<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--entity1<span class="w"> </span>cwx_ticket<span class="w"> </span>--entity2<span class="w"> </span>systemuser<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--intersect-entity<span class="w"> </span>cwx_ticket_systemuser<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<p>A 1:N response reports the created relationship and the lookup column the server
+generated on the referencing entity:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;created&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;OneToMany&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;schema_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_sla_cwx_ticket&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;referencing_attribute&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_sla&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;solution&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CRMWorx&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Verify all three (note <code>metadata relationships</code> lists an entity's one-to-many,
+many-to-one, <em>and</em> many-to-many links) and publish:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>relationships<span class="w"> </span>cwx_ticket<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-oE<span class="w"> </span><span class="s1">&#39;cwx_(sla_cwx_ticket|account_cwx_ticket|ticket_systemuser)&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort<span class="w"> </span>-u
+crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>cwx_account_cwx_ticket
+cwx_sla_cwx_ticket
+cwx_ticket_systemuser
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Three more CLI defects fixed during this step</p>
+<p>Creating relationships against the live server exposed (commits <code>c62d57a</code>,
+<code>980ab95</code>):</p>
+<ul>
+<li><strong>Wrong endpoint</strong> — <code>create-one-to-many</code>/<code>create-many-to-many</code> POSTed to
+  <code>CreateOneToManyRequest</code>/<code>CreateManyToManyRequest</code>, which are SDK message names,
+  not Web API segments ("Resource not found for the segment ..."). They now POST
+  to the <code>RelationshipDefinitions</code> entity set with an <code>@odata.type</code> discriminator
+  (the 1:N lookup is a <code>Lookup</code> deep insert).</li>
+<li><strong>Invalid default menu</strong> — the 1:N associated-menu defaulted to <code>UseLabel</code> with
+  no label, which the server rejects. Default is now <code>UseCollectionName</code>.</li>
+<li><strong>Incomplete read-back / listing</strong> — <code>ReferencingAttribute</code> came back <code>null</code>
+  (the read-back didn't cast to the relationship subtype), and <code>metadata
+  relationships</code> omitted the many-to-one side. Both fixed.</li>
+</ul>
+</div>
+<h2 id="3-seed-data">3. Seed data</h2>
+<p>Records go to the <strong>entity-set (plural) name</strong> — <code>cwx_slas</code>, <code>cwx_tickets</code>, <code>accounts</code>
+— not the logical name. First two SLA policies; each <code>create</code> returns the full row,
+including its <code>cwx_slaid</code> GUID:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>cwx_slas<span class="w"> </span>--data<span class="w"> </span><span class="s1">&#39;{&quot;cwx_name&quot;:&quot;Gold 4h/24h&quot;,&quot;cwx_responsehours&quot;:4,&quot;cwx_resolutionhours&quot;:24,&quot;cwx_tier&quot;:3,&quot;cwx_active&quot;:true}&#39;</span>
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>cwx_slas<span class="w"> </span>--data<span class="w"> </span><span class="s1">&#39;{&quot;cwx_name&quot;:&quot;Bronze 24h/120h&quot;,&quot;cwx_responsehours&quot;:24,&quot;cwx_resolutionhours&quot;:120,&quot;cwx_tier&quot;:1,&quot;cwx_active&quot;:true}&#39;</span>
+</code></pre></div>
+<p>A customer account:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>accounts<span class="w"> </span>--data<span class="w"> </span><span class="s1">&#39;{&quot;name&quot;:&quot;Contoso IT Dept&quot;}&#39;</span>
+</code></pre></div>
+<p>Now a ticket that <strong>binds both lookups</strong> with <code>@odata.bind</code>, using the SLA and account
+GUIDs from above. The bind target is the <em>navigation property name</em>, which is the
+PascalCase lookup schema name — <strong><code>cwx_SLA</code></strong> and <strong><code>cwx_CustomerId</code></strong>, not the
+lowercase logical names. If you guess wrong, read the real name from the relationship:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;RelationshipDefinitions(SchemaName=&#39;cwx_account_cwx_ticket&#39;)/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--select<span class="w"> </span>ReferencingAttribute,ReferencingEntityNavigationPropertyName
+<span class="c1"># -&gt; ReferencingAttribute: cwx_customerid, NavigationPropertyName: cwx_CustomerId</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>cwx_tickets<span class="w"> </span>--data<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">  &quot;cwx_name&quot;:&quot;Laptop won&#39;</span><span class="se">\&#39;</span><span class="s1">&#39;t boot&quot;,</span>
+<span class="s1">  &quot;cwx_description&quot;:&quot;Dell 5420 no POST after update&quot;,</span>
+<span class="s1">  &quot;cwx_priority&quot;:3, &quot;cwx_severity&quot;:2, &quot;cwx_category&quot;:1,</span>
+<span class="s1">  &quot;cwx_CustomerId@odata.bind&quot;:&quot;/accounts(c2c130c3-c05d-f111-b65d-00155d467b90)&quot;,</span>
+<span class="s1">  &quot;cwx_SLA@odata.bind&quot;:&quot;/cwx_slas(00d955b7-c05d-f111-b65d-00155d467b90)&quot;</span>
+<span class="s1">}&#39;</span>
+</code></pre></div>
+<p>The response echoes the bound foreign keys:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;cwx_ticketid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;a41cfedb-...&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;cwx_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Laptop won&#39;t boot&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;_cwx_sla_value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;00d955b7-...&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;_cwx_customerid_value&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;c2c130c3-...&quot;</span>
+<span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Modify a record with <code>update</code> (PATCH) and <code>upsert</code> (PATCH with create-if-missing). With
+no alternate key configured on the ticket, both target the record by id:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>update<span class="w"> </span>cwx_tickets<span class="w"> </span>a41cfedb-c05d-f111-b65d-00155d467b90<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--data<span class="w"> </span><span class="s1">&#39;{&quot;cwx_resolvedon&quot;:&quot;2026-06-01T12:00:00Z&quot;}&#39;</span>
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>upsert<span class="w"> </span>cwx_tickets<span class="w"> </span>c8c8f8e4-c05d-f111-b65d-00155d467b90<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--data<span class="w"> </span><span class="s1">&#39;{&quot;cwx_resolvedon&quot;:&quot;2026-06-01T15:30:00Z&quot;}&#39;</span>
+</code></pre></div>
+<p>Both return <code>{"ok": true}</code>.</p>
+<h2 id="4-read-verify">4. Read &amp; verify</h2>
+<p>Four read paths. An <strong>OData</strong> query with a filter and projection:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>cwx_tickets<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--filter<span class="w"> </span><span class="s2">&quot;cwx_priority eq 3&quot;</span><span class="w"> </span>--select<span class="w"> </span>cwx_name,cwx_severity<span class="w"> </span>--top<span class="w"> </span><span class="m">10</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;value&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;cwx_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Laptop won&#39;t boot&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;cwx_severity&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span>
+<span class="p">]</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>A <strong>FetchXML</strong> query (server-side XML query language) returning all tickets ordered by
+name:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>fetchxml<span class="w"> </span>cwx_tickets<span class="w"> </span>--xml<span class="w"> </span><span class="s1">&#39;</span>
+<span class="s1">&lt;fetch top=&quot;20&quot;&gt;</span>
+<span class="s1">  &lt;entity name=&quot;cwx_ticket&quot;&gt;</span>
+<span class="s1">    &lt;attribute name=&quot;cwx_name&quot;/&gt;</span>
+<span class="s1">    &lt;attribute name=&quot;cwx_priority&quot;/&gt;</span>
+<span class="s1">    &lt;order attribute=&quot;cwx_name&quot;/&gt;</span>
+<span class="s1">  &lt;/entity&gt;</span>
+<span class="s1">&lt;/fetch&gt;&#39;</span>
+</code></pre></div>
+<p>Returns both tickets (<code>Laptop won't boot</code> pri=3, <code>VPN drops every 10 min</code> pri=2).</p>
+<p>A bulk <strong>CSV export</strong> to a file (the committed sample is
+<a href="../../artifacts/crmworx-tickets.csv"><code>docs/artifacts/crmworx-tickets.csv</code></a>):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>data<span class="w"> </span><span class="nb">export</span><span class="w"> </span>cwx_tickets<span class="w"> </span>-o<span class="w"> </span>docs/artifacts/crmworx-tickets.csv<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--select<span class="w"> </span>cwx_name,cwx_priority,cwx_severity,cwx_category
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>output: docs/artifacts/crmworx-tickets.csv
+format: csv
+count: 2
+</code></pre></div>
+<p>And an <strong>action/function</strong> call — <code>RetrieveCurrentOrganization</code>:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>action<span class="w"> </span><span class="k">function</span><span class="w"> </span>RetrieveCurrentOrganization<span class="w"> </span>--params<span class="w"> </span><span class="s1">&#39;{&quot;AccessType&quot;:&quot;Default&quot;}&#39;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;Detail&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;FriendlyName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Contoso&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;OrganizationVersion&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;9.1.44.15&quot;</span>
+<span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<h2 id="5-package-the-solution">5. Package the solution</h2>
+<h3 id="idempotency">Idempotency</h3>
+<p>Every metadata create uses <code>--if-exists skip</code>, so re-running the whole build is a safe
+no-op. Re-running any create reports a skip rather than erroring or duplicating:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-optionset<span class="w"> </span>--name<span class="w"> </span>cwx_priority<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;CRMWorx Priority&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--option<span class="w"> </span><span class="m">1</span>:Low<span class="w"> </span>--option<span class="w"> </span><span class="m">2</span>:Normal<span class="w"> </span>--option<span class="w"> </span><span class="m">3</span>:High<span class="w"> </span>--option<span class="w"> </span><span class="m">4</span>:Critical<span class="w"> </span>--if-exists<span class="w"> </span>skip
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>create-entity<span class="w"> </span>--schema-name<span class="w"> </span>cwx_SLA<span class="w"> </span>--display<span class="w"> </span><span class="s2">&quot;SLA Policy&quot;</span><span class="w"> </span>...<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;skipped&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;exists&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<h3 id="export">Export</h3>
+<p>Export the unmanaged solution to a zip (committed sample:
+<a href="../../artifacts/crmworx.zip"><code>docs/artifacts/crmworx.zip</code></a>):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>solution<span class="w"> </span><span class="nb">export</span><span class="w"> </span>CRMWorx<span class="w"> </span>-o<span class="w"> </span>docs/artifacts/crmworx.zip
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>output: docs/artifacts/crmworx.zip
+bytes: 83633
+managed: False
+solution: CRMWorx
+action: ExportSolution
+</code></pre></div>
+<p>Verify the export contains the model. <code>solution components</code> returns component
+<strong>type + objectid (GUID)</strong> rows — componenttype <code>9</code> is an option set, <code>1</code> is an
+entity. CRMWorx contains all four option sets and both custom entities (plus the N:N
+intersect entity):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>components<span class="w"> </span>CRMWorx
+<span class="c1"># -&gt; 8 components: 4 option sets (type 9) + 4 entities (type 1)</span>
+<span class="c1">#    option sets  = cwx_priority, cwx_severity, cwx_ticketcategory, cwx_slatier</span>
+<span class="c1">#    entities     = cwx_sla, cwx_ticket, cwx_ticket_systemuser (intersect), +1</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Solution-export defect fixed during this step</p>
+<p><code>solution export</code> only called <code>ExportSolutionAsync</code>, which <strong>is not enabled on
+this on-prem 9.1 org</strong> ("ExportSolutionAsync is not enabled for this org"). It now
+falls back to the synchronous <code>ExportSolution</code> action (which returns the zip bytes
+inline) when the async action is unavailable (commit <code>a87b8f2</code>). The response
+<code>action</code> field shows which path ran.</p>
+</div>
+<h2 id="6-views">6. Views</h2>
+<p>A model-driven view is a <strong><code>savedquery</code></strong> row: <code>returnedtypecode</code> (the entity logical
+name), <code>querytype</code> (<code>0</code> = public view), and two XML columns — <code>layoutxml</code> (grid columns
++ widths) and <code>fetchxml</code> (the query: columns, sort, filter). The grid's <code>object="&lt;n&gt;"</code>
+attribute is the entity <strong>ObjectTypeCode</strong>, an org-specific integer — capture it live
+rather than guessing (custom-entity OTCs on on-prem are typically ≥ 10000):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>entity<span class="w"> </span>cwx_ticket<span class="w">   </span><span class="c1"># -&gt; data.ObjectTypeCode = 10127</span>
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>entity<span class="w"> </span>cwx_sla<span class="w">       </span><span class="c1"># -&gt; data.ObjectTypeCode = 10126</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Column logical names ≠ option-set names</p>
+<p>The picklist/lookup <em>columns</em> are <code>cwx_priority</code>, <code>cwx_severity</code>, <code>cwx_category</code>,
+<code>cwx_tier</code>, and the SLA lookup <code>cwx_sla</code> — <strong>not</strong> the global option-set names
+(<code>cwx_ticketcategory</code>, <code>cwx_slatier</code>). Confirm column logical names with
+<code>crm --json metadata attributes &lt;entity&gt;</code> before referencing them in FetchXml;
+the option set a picklist <em>binds to</em> can have a different name from the column.</p>
+</div>
+<p>Both XML blocks contain double quotes, so pass the record as a <strong>JSON file</strong>
+(<code>--data-file</code>) rather than fighting shell quoting on <code>--data</code>. The LayoutXml + FetchXml
+the server accepted for <strong>Active Tickets</strong> (newline-formatted here; stored single-line
+in the JSON):</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;grid</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;resultset&quot;</span><span class="w"> </span><span class="na">object=</span><span class="s">&quot;10127&quot;</span><span class="w"> </span><span class="na">jump=</span><span class="s">&quot;cwx_name&quot;</span><span class="w"> </span><span class="na">select=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">icon=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">preview=</span><span class="s">&quot;1&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;row</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;result&quot;</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;cwx_ticketid&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_name&quot;</span><span class="w"> </span><span class="na">width=</span><span class="s">&quot;220&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_priority&quot;</span><span class="w"> </span><span class="na">width=</span><span class="s">&quot;120&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_severity&quot;</span><span class="w"> </span><span class="na">width=</span><span class="s">&quot;120&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_customerid&quot;</span><span class="w"> </span><span class="na">width=</span><span class="s">&quot;180&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;createdon&quot;</span><span class="w"> </span><span class="na">width=</span><span class="s">&quot;140&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;statuscode&quot;</span><span class="w"> </span><span class="na">width=</span><span class="s">&quot;120&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/row&gt;</span>
+<span class="nt">&lt;/grid&gt;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;fetch</span><span class="w"> </span><span class="na">version=</span><span class="s">&quot;1.0&quot;</span><span class="w"> </span><span class="na">output-format=</span><span class="s">&quot;xml-platform&quot;</span><span class="w"> </span><span class="na">mapping=</span><span class="s">&quot;logical&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;entity</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_ticket&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_ticketid&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_name&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_priority&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_severity&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_customerid&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;createdon&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;statuscode&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;order</span><span class="w"> </span><span class="na">attribute=</span><span class="s">&quot;cwx_name&quot;</span><span class="w"> </span><span class="na">descending=</span><span class="s">&quot;false&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;filter</span><span class="w"> </span><span class="na">type=</span><span class="s">&quot;and&quot;</span><span class="nt">&gt;</span>
+<span class="w">      </span><span class="nt">&lt;condition</span><span class="w"> </span><span class="na">attribute=</span><span class="s">&quot;statecode&quot;</span><span class="w"> </span><span class="na">operator=</span><span class="s">&quot;eq&quot;</span><span class="w"> </span><span class="na">value=</span><span class="s">&quot;0&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/filter&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/entity&gt;</span>
+<span class="nt">&lt;/fetch&gt;</span>
+</code></pre></div>
+<p><code>/tmp/cwx_view_active_tickets.json</code> wraps those two blocks as escaped single-line strings:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Active Tickets&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;returnedtypecode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;cwx_ticket&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;querytype&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;isdefault&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;layoutxml&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;grid name=\&quot;resultset\&quot; object=\&quot;10127\&quot; ...&gt;&lt;/grid&gt;&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;fetchxml&quot;</span><span class="p">:</span><span class="w">  </span><span class="s2">&quot;&lt;fetch ...&gt;&lt;entity name=\&quot;cwx_ticket\&quot;&gt;...&lt;/entity&gt;&lt;/fetch&gt;&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Preview the POST, guard against a duplicate (<code>savedquery</code> has no alternate key, so
+filter by name + entity), then create:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>--dry-run<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>savedqueries<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_view_active_tickets.json
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>savedqueries<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--filter<span class="w"> </span><span class="s2">&quot;name eq &#39;Active Tickets&#39; and returnedtypecode eq &#39;cwx_ticket&#39;&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,savedqueryid
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>savedqueries<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_view_active_tickets.json
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;savedqueryid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;72313649-6f5e-f111-b65d-00155d467b90&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Two more views follow the same guard → create flow — <strong>Tickets by Priority</strong> (cwx_ticket;
+LayoutXml leads with <code>cwx_priority</code>, FetchXml ordered by <code>cwx_priority</code>) and <strong>Active SLAs</strong>
+(<code>"returnedtypecode": "cwx_sla"</code>, <code>object="10126"</code>; cells <code>cwx_name</code>, <code>cwx_tier</code>,
+<code>cwx_responsehours</code>, <code>cwx_resolutionhours</code>):</p>
+<div class="highlight"><pre><span></span><code>Active Tickets       72313649-6f5e-f111-b65d-00155d467b90
+Tickets by Priority  74313649-6f5e-f111-b65d-00155d467b90
+Active SLAs          76313649-6f5e-f111-b65d-00155d467b90
+</code></pre></div>
+<p>Publish so the views surface in the app, then read them back (the build's three plus the
+two auto-generated defaults D365 created with the entity):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>savedqueries<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--filter<span class="w"> </span><span class="s2">&quot;returnedtypecode eq &#39;cwx_ticket&#39; and querytype eq 0&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,savedqueryid
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Active Tickets             72313649-6f5e-f111-b65d-00155d467b90
+Tickets by Priority        74313649-6f5e-f111-b65d-00155d467b90
+Active Support Tickets     055e2e32-dc59-4190-a9ff-0a8c1d88cf7f   (auto-generated default)
+Inactive Support Tickets   9665360a-d424-4fd5-8a16-7a979e9988a4   (auto-generated default)
+</code></pre></div>
+<h2 id="7-forms">7. Forms</h2>
+<p>Forms are also <code>systemform</code> rows: <code>objecttypecode</code> (entity logical name), <code>type</code>
+(<code>2</code> = main, <code>7</code> = quickCreate), and a <code>formxml</code> layout. Authoring main FormXml from
+scratch has a high 9.1 rejection rate, so <strong>clone-and-augment</strong> the auto-generated main
+form instead — fetch it, inject controls for the custom columns, PATCH it back.</p>
+<h3 id="main-form-clone-and-augment">Main form (clone-and-augment)</h3>
+<p>Fetch the auto-generated "Information" form and note its <code>formid</code> + FormXml length:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>systemforms<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--filter<span class="w"> </span><span class="s2">&quot;objecttypecode eq &#39;cwx_ticket&#39; and type eq 2&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,formid,formxml
+<span class="c1"># -&gt; Information | 8f0db50d-b90c-4b4d-9ecb-f16f9e7db491 | formxml 1625 chars</span>
+</code></pre></div>
+<p>The auto form has one tab/two columns: <code>cwx_name</code> + <code>ownerid</code> on the left, the notes
+control on the right. Keep all of it intact and add one <code>&lt;row&gt;</code> per missing custom
+column to the first section, copying the existing <code>&lt;cell&gt;</code>/<code>&lt;control&gt;</code> shape and swapping
+<code>datafieldname</code> + <code>classid</code>. The control <code>classid</code> is per <strong>AttributeType</strong> (read it from
+<code>crm --json metadata attributes cwx_ticket</code>):</p>
+<table>
+<thead>
+<tr>
+<th>AttributeType</th>
+<th>Control <code>classid</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>String</td>
+<td><code>{4273EDBD-AC1D-40d3-9FB2-095C621B552D}</code></td>
+</tr>
+<tr>
+<td>Picklist</td>
+<td><code>{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}</code></td>
+</tr>
+<tr>
+<td>Lookup</td>
+<td><code>{270BD3DB-D9AF-4782-9025-509E298DEC0A}</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each added row (every <code>&lt;cell&gt;</code> needs a unique GUID <code>id</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;row&gt;</span>
+<span class="w">  </span><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;{c0ffee00-…}&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;labels&gt;&lt;label</span><span class="w"> </span><span class="na">description=</span><span class="s">&quot;Priority&quot;</span><span class="w"> </span><span class="na">languagecode=</span><span class="s">&quot;1033&quot;</span><span class="w"> </span><span class="nt">/&gt;&lt;/labels&gt;</span>
+<span class="w">    </span><span class="nt">&lt;control</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;cwx_priority&quot;</span><span class="w"> </span><span class="na">classid=</span><span class="s">&quot;{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}&quot;</span>
+<span class="w">             </span><span class="na">datafieldname=</span><span class="s">&quot;cwx_priority&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/cell&gt;</span>
+<span class="nt">&lt;/row&gt;</span>
+</code></pre></div>
+<p>Five rows added — <code>cwx_priority</code>, <code>cwx_severity</code>, <code>cwx_category</code> (Picklist), <code>cwx_sla</code>,
+<code>cwx_customerid</code> (Lookup) — taking the FormXml 1625 → 2834 chars. Preview, PATCH, publish:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>--dry-run<span class="w"> </span>entity<span class="w"> </span>update<span class="w"> </span>systemforms<span class="w"> </span>8f0db50d-…<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_ticket_mainform_patch.json
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>update<span class="w"> </span>systemforms<span class="w"> </span>8f0db50d-…<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_ticket_mainform_patch.json
+crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+</code></pre></div>
+<p>Read back proves the five columns are now on the form:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>systemforms<span class="w"> </span>--filter<span class="w"> </span><span class="s2">&quot;formid eq 8f0db50d-…&quot;</span><span class="w"> </span>--select<span class="w"> </span>formxml
+<span class="c1"># cwx_priority True | cwx_severity True | cwx_category True | cwx_sla True | cwx_customerid True</span>
+</code></pre></div>
+<h3 id="quick-create-form-type7">Quick-create form (<code>type=7</code>)</h3>
+<p>A quick-create form is authored from scratch (it's small): a single 100%-width column with
+<code>cwx_name</code>, <code>cwx_priority</code>, <code>cwx_customerid</code>. Guard, create, publish, read back:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>systemforms<span class="w"> </span>--filter<span class="w"> </span><span class="s2">&quot;objecttypecode eq &#39;cwx_ticket&#39; and type eq 7&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,formid
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>systemforms<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_ticket_qc_form.json
+crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;formid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;94d4181e-705e-f111-b65d-00155d467b90&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<div class="admonition success">
+<p class="admonition-title">Quick-create via the Web API works on 9.1</p>
+<p>On-prem 9.1's Web API accepted the <code>systemforms</code> POST with <code>type=7</code> on the first
+attempt — no manual-portal fallback was needed. Read-back confirms <code>cwx_priority</code>
+and <code>cwx_customerid</code> are present in the stored FormXml.</p>
+</div>
+<h2 id="8-charts">8. Charts</h2>
+<p>A chart is a <strong><code>savedqueryvisualization</code></strong> row with two XML columns: <code>datadescription</code>
+(an aggregate FetchXML wrapped in <code>&lt;datadefinition&gt;</code> — the <em>what</em>) and
+<code>presentationdescription</code> (a <code>&lt;Chart&gt;</code> serialization of the .NET Chart control — the
+<em>how</em>). The <code>presentationdescription</code> has no schema; copy a canonical single-series
+shape from MS Learn (<code>Sample charts</code>, op-9-1) and only swap the <code>ChartType</code>.</p>
+<p><strong>Tickets by Priority</strong> — group <code>cwx_ticket</code> by <code>cwx_priority</code>, count <code>cwx_ticketid</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;datadefinition&gt;</span>
+<span class="w">  </span><span class="nt">&lt;fetchcollection&gt;</span>
+<span class="w">    </span><span class="nt">&lt;fetch</span><span class="w"> </span><span class="na">mapping=</span><span class="s">&quot;logical&quot;</span><span class="w"> </span><span class="na">aggregate=</span><span class="s">&quot;true&quot;</span><span class="nt">&gt;</span>
+<span class="w">      </span><span class="nt">&lt;entity</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_ticket&quot;</span><span class="nt">&gt;</span>
+<span class="w">        </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">groupby=</span><span class="s">&quot;true&quot;</span><span class="w"> </span><span class="na">alias=</span><span class="s">&quot;groupby_column&quot;</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_priority&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;attribute</span><span class="w"> </span><span class="na">alias=</span><span class="s">&quot;aggregate_column&quot;</span><span class="w"> </span><span class="na">name=</span><span class="s">&quot;cwx_ticketid&quot;</span><span class="w"> </span><span class="na">aggregate=</span><span class="s">&quot;count&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">      </span><span class="nt">&lt;/entity&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/fetch&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/fetchcollection&gt;</span>
+<span class="w">  </span><span class="nt">&lt;categorycollection&gt;</span>
+<span class="w">    </span><span class="nt">&lt;category&gt;</span>
+<span class="w">      </span><span class="nt">&lt;measurecollection&gt;&lt;measure</span><span class="w"> </span><span class="na">alias=</span><span class="s">&quot;aggregate_column&quot;</span><span class="w"> </span><span class="nt">/&gt;&lt;/measurecollection&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/category&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/categorycollection&gt;</span>
+<span class="nt">&lt;/datadefinition&gt;</span>
+</code></pre></div>
+<p>The <code>presentationdescription</code> is the canonical <code>ChartType="Column"</code> block from the MS
+Learn samples verbatim (series style + <code>&lt;ChartAreas&gt;</code> axes + <code>&lt;Titles&gt;</code>). Guard,
+preview, create, publish, read back:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>savedqueryvisualizations<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--filter<span class="w"> </span><span class="s2">&quot;name eq &#39;Tickets by Priority&#39; and primaryentitytypecode eq &#39;cwx_ticket&#39;&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,savedqueryvisualizationid
+crm<span class="w"> </span>--json<span class="w"> </span>--dry-run<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>savedqueryvisualizations<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_chart_priority.json
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>savedqueryvisualizations<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_chart_priority.json
+crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>savedqueryvisualizations<span class="w"> </span>--filter<span class="w"> </span><span class="s2">&quot;primaryentitytypecode eq &#39;cwx_ticket&#39;&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,savedqueryvisualizationid
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Tickets by Priority | b7510172-705e-f111-b65d-00155d467b90
+</code></pre></div>
+<p>The server accepted the chart on the first attempt. Keep that
+<code>savedqueryvisualizationid</code> — the dashboard in §9 binds it.</p>
+<h2 id="9-dashboard">9. Dashboard</h2>
+<p>A dashboard is a <code>systemform</code> with <code>type</code> = <code>0</code>. Its <code>formxml</code> lays out a grid of
+components; every chart/grid component uses the same control <code>classid</code>
+<code>{E7A81278-8635-4d9e-8D4D-59480B391C5B}</code> and is configured purely through <code>&lt;parameters&gt;</code>.
+The load-bearing parameters are <code>&lt;ChartGridMode&gt;</code> (<code>Chart</code> vs <code>Grid</code>), <code>&lt;VisualizationId&gt;</code>
+(the §8 chart GUID), and <code>&lt;ViewId&gt;</code> (the §6 view GUID that supplies the data).</p>
+<p><strong>CRMWorx SLA Overview</strong> — a single tab, one section, two side-by-side cells: the
+"Tickets by Priority" chart and a list, both reading the "Active Tickets" view:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;cell</span><span class="w"> </span><span class="na">colspan=</span><span class="s">&quot;1&quot;</span><span class="w"> </span><span class="na">rowspan=</span><span class="s">&quot;12&quot;</span><span class="w"> </span><span class="na">showlabel=</span><span class="s">&quot;false&quot;</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;{…}&quot;</span><span class="w"> </span><span class="na">auto=</span><span class="s">&quot;false&quot;</span><span class="nt">&gt;</span>
+<span class="w">  </span><span class="nt">&lt;control</span><span class="w"> </span><span class="na">id=</span><span class="s">&quot;Chart1&quot;</span><span class="w"> </span><span class="na">classid=</span><span class="s">&quot;{E7A81278-8635-4d9e-8D4D-59480B391C5B}&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;parameters&gt;</span>
+<span class="w">      </span><span class="nt">&lt;TargetEntityType&gt;</span>cwx_ticket<span class="nt">&lt;/TargetEntityType&gt;</span>
+<span class="w">      </span><span class="nt">&lt;ChartGridMode&gt;</span>Chart<span class="nt">&lt;/ChartGridMode&gt;</span>
+<span class="w">      </span><span class="nt">&lt;ViewId&gt;</span>{72313649-6f5e-f111-b65d-00155d467b90}<span class="nt">&lt;/ViewId&gt;</span><span class="w">          </span><span class="cm">&lt;!-- Active Tickets --&gt;</span>
+<span class="w">      </span><span class="nt">&lt;IsUserView&gt;</span>false<span class="nt">&lt;/IsUserView&gt;</span>
+<span class="w">      </span><span class="nt">&lt;VisualizationId&gt;</span>{b7510172-705e-f111-b65d-00155d467b90}<span class="nt">&lt;/VisualizationId&gt;</span><span class="w">  </span><span class="cm">&lt;!-- chart --&gt;</span>
+<span class="w">      </span><span class="nt">&lt;IsUserChart&gt;</span>false<span class="nt">&lt;/IsUserChart&gt;</span>
+<span class="w">      </span><span class="nt">&lt;EnableChartPicker&gt;</span>false<span class="nt">&lt;/EnableChartPicker&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/parameters&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/control&gt;</span>
+<span class="nt">&lt;/cell&gt;</span>
+</code></pre></div>
+<p>Guard, create, publish, read back:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>systemforms<span class="w"> </span>--filter<span class="w"> </span><span class="s2">&quot;name eq &#39;CRMWorx SLA Overview&#39; and type eq 0&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,formid
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>systemforms<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_dashboard.json
+crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>systemforms<span class="w"> </span>--filter<span class="w"> </span><span class="s2">&quot;type eq 0 and name eq &#39;CRMWorx SLA Overview&#39;&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,formid,formxml
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>CRMWorx SLA Overview | e29005b6-705e-f111-b65d-00155d467b90
+binds chart b7510172: True | binds view 72313649: True
+</code></pre></div>
+<p>Created on the first attempt. Keep the dashboard <code>formid</code> — the model-driven app in §11
+adds it as a component.</p>
+<h2 id="10-business-process-flow-documented-manual-fallback">10. Business process flow (documented manual fallback)</h2>
+<p>A BPF is a <code>workflows</code> row with <code>category</code> = <code>4</code> (BusinessProcessFlow), <code>type</code> = <code>1</code>
+(Definition), <code>primaryentity</code> = <code>cwx_ticket</code>, and a <code>clientdata</code> JSON describing the
+stages. This is the one artifact in this guide that <strong>could not be built through the Web
+API on 9.1</strong> within a sane time-box — documented here honestly rather than faked.</p>
+<h3 id="the-cli-attempt-and-its-exact-failure">The CLI attempt (and its exact failure)</h3>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>workflows<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_bpf.json
+<span class="c1"># body: { &quot;name&quot;:&quot;Ticket Resolution&quot;, &quot;uniquename&quot;:&quot;cwx_ticketresolution&quot;,</span>
+<span class="c1">#         &quot;category&quot;:4, &quot;type&quot;:1, &quot;primaryentity&quot;:&quot;cwx_ticket&quot;, &quot;languagecode&quot;:1033 }</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;An unexpected error occurred.&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;meta&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0x80040216&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<h3 id="why-its-blocked-on-91">Why it's blocked on 9.1</h3>
+<ol>
+<li><strong><code>cwx_ticket.IsBusinessProcessEnabled</code> is <code>false</code></strong>, and MS Learn states <em>"Enabling a
+   table for business process flow is a one-way process. You can't reverse it."</em> This guide
+   does not force an irreversible metadata mutation over the API.</li>
+<li><strong><code>clientdata</code> has no documented hand-authorable schema.</strong> Reverse-engineering an
+   existing on-org BPF shows it is a ~6.8 KB serialization of internal
+   <code>Microsoft.Crm.Workflow.ObjectModel</code> classes
+   (<code>WorkflowStep → EntityStep → StageStep → StepStep → ControlStep</code>) whose IDs must align
+   with platform-generated <code>processstage</code> rows.</li>
+<li><strong>MS Learn documents only the visual designer + a GET to retrieve</strong> the definition — no
+   supported "create a BPF via Web API POST" path for on-prem 9.1.</li>
+</ol>
+<h3 id="manual-portal-fallback-the-supported-path">Manual-portal fallback (the supported path)</h3>
+<p>Settings → <strong>Processes</strong> → <strong>New</strong> → Category <strong>Business Process Flow</strong> → Entity
+<strong><code>cwx_ticket</code></strong> → add stages <strong>New → In Progress → Resolved</strong> → <strong>Activate</strong>. Creating the
+BPF through the designer also performs the irreversible <code>IsBusinessProcessEnabled</code> flip on
+<code>cwx_ticket</code> for you.</p>
+<div class="admonition warning">
+<p class="admonition-title">BPF was not created via the CLI</p>
+<p>Every other artifact in this guide was built live through <code>crm</code>. The BPF is the lone
+exception on 9.1: it requires the portal designer (or a managed-solution import). This
+is tracked in <a href="https://github.com/Gharib89/crm/issues/37">issue #37</a> (<em>"BPF creation via
+Web API on D365 CE on-prem 9.1"</em>); if a supported API recipe surfaces, a future <code>crm bpf</code>
+command can emit it. The app in §11 therefore binds the views, forms, chart and dashboard
+— not a BPF.</p>
+</div>
+<h2 id="11-sitemap-model-driven-app">11. Sitemap &amp; model-driven app</h2>
+<p>The capstone: an <code>appmodules</code> row (the app), a <code>sitemaps</code> row (its navigation), and the
+<code>AddAppComponents</code> action to bind everything built so far. Three on-prem-9.1 quirks were
+discovered live and each matters.</p>
+<h3 id="app-module">App module</h3>
+<p><code>appmodules</code> requires a non-null <code>webresourceid</code> (the tile icon). The platform ships a
+default icon (<code>953b9fac-1e5e-e611-80d6-00155ded156f</code>,
+<code>msdyn_/Images/AppModule_Default_Icon.png</code>); CRMWorx instead uses its own <code>cwx_</code> SVG web
+resource so the app is self-contained:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 1. create + publish a cwx_ icon web resource (type 11 = SVG)</span>
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>webresourceset<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_webresource.json<span class="w">   </span><span class="c1"># -&gt; 9188010c-…</span>
+crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+</code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">appmodule create: use <code>--no-return</code></p>
+<p>The default <code>Prefer: return=representation</code> makes the POST read the new row straight
+back — but an <strong>unpublished</strong> appmodule isn't yet readable, so the whole call reports
+<code>appmodule With Id = … Does Not Exist</code> <em>after</em> having created the row (which then
+collides on the next attempt). Create with <code>--no-return</code> and read the id back with the
+<code>RetrieveUnpublishedMultiple</code> function instead.</p>
+</div>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>appmodules<span class="w"> </span>--no-return<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_app.json
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span><span class="s2">&quot;appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,uniquename,appmoduleid
+<span class="c1"># -&gt; CRMWorx | cwx_crmworx | 79bdfbec-725e-f111-b65d-00155d467b90</span>
+</code></pre></div>
+<p><code>/tmp/cwx_app.json</code>: <code>{ "name":"CRMWorx", "uniquename":"cwx_crmworx", "clienttype":4,
+"navigationtype":0, "webresourceid":"9188010c-…" }</code> (<code>clienttype</code> 4 = Unified Interface,
+confirmed against the org's existing apps).</p>
+<h3 id="sitemap">Sitemap</h3>
+<p>A <code>sitemaps</code> row whose <code>sitemapnameunique</code> equals the app's <code>uniquename</code> auto-associates
+with the app. SiteMapXml: one Area → one Group → three SubAreas (the dashboard, then the
+two tables by <code>Entity=</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;SiteMap&gt;</span>
+<span class="w">  </span><span class="nt">&lt;Area</span><span class="w"> </span><span class="na">Id=</span><span class="s">&quot;cwx_area_service&quot;</span><span class="w"> </span><span class="na">Title=</span><span class="s">&quot;CRMWorx&quot;</span><span class="w"> </span><span class="na">ShowGroups=</span><span class="s">&quot;true&quot;</span><span class="nt">&gt;</span>
+<span class="w">    </span><span class="nt">&lt;Group</span><span class="w"> </span><span class="na">Id=</span><span class="s">&quot;cwx_group_main&quot;</span><span class="w"> </span><span class="na">Title=</span><span class="s">&quot;CRMWorx&quot;</span><span class="nt">&gt;</span>
+<span class="w">      </span><span class="nt">&lt;SubArea</span><span class="w"> </span><span class="na">Id=</span><span class="s">&quot;cwx_sa_dashboard&quot;</span><span class="w"> </span><span class="na">Title=</span><span class="s">&quot;SLA Overview&quot;</span><span class="w"> </span><span class="na">DefaultDashboard=</span><span class="s">&quot;e29005b6-…&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">      </span><span class="nt">&lt;SubArea</span><span class="w"> </span><span class="na">Id=</span><span class="s">&quot;cwx_sa_tickets&quot;</span><span class="w"> </span><span class="na">Entity=</span><span class="s">&quot;cwx_ticket&quot;</span><span class="w"> </span><span class="na">Title=</span><span class="s">&quot;Tickets&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">      </span><span class="nt">&lt;SubArea</span><span class="w"> </span><span class="na">Id=</span><span class="s">&quot;cwx_sa_slas&quot;</span><span class="w"> </span><span class="na">Entity=</span><span class="s">&quot;cwx_sla&quot;</span><span class="w"> </span><span class="na">Title=</span><span class="s">&quot;SLAs&quot;</span><span class="w"> </span><span class="nt">/&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/Group&gt;</span>
+<span class="w">  </span><span class="nt">&lt;/Area&gt;</span>
+<span class="nt">&lt;/SiteMap&gt;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>create<span class="w"> </span>sitemaps<span class="w"> </span>--no-return<span class="w"> </span>--data-file<span class="w"> </span>/tmp/cwx_sitemap.json<span class="w">   </span><span class="c1"># -&gt; 2ef3183b-…</span>
+</code></pre></div>
+<h3 id="bind-components">Bind components</h3>
+<div class="admonition note">
+<p class="admonition-title">AddAppComponents takes <strong>typed entity references</strong>, not <code>{Type, Id}</code></p>
+<p>On 9.1 the <code>Components</code> array is a collection of entity references — each element is the
+component's primary-key field plus its <code>@odata.type</code>, e.g.
+<code>{ "savedqueryid":"…", "@odata.type":"Microsoft.Dynamics.CRM.savedquery" }</code>. The
+<code>componenttype</code> integers (entity 1, view 26, chart 59, form 60, sitemap 62) are the
+<em>read-side</em> <code>appmodulecomponent.componenttype</code> values, <strong>not</strong> the action payload shape.</p>
+</div>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>action<span class="w"> </span>invoke<span class="w"> </span>AddAppComponents<span class="w"> </span>--body-file<span class="w"> </span>/tmp/cwx_addcomponents.json
+</code></pre></div>
+<p>The body binds 8 components: the sitemap, the 3 views, the augmented main form +
+quick-create + dashboard (all <code>systemform</code>), and the chart. Then publish, validate, and
+read the components back. <code>ValidateApp</code> / <code>RetrieveAppComponents</code> are <strong>functions</strong> whose
+<code>AppModuleId</code> is an <code>Edm.Guid</code> — pass it <strong>unquoted</strong> by calling the function on the URL
+path (the CLI's <code>--params</code> would quote it as a string and the server rejects that):</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>solution<span class="w"> </span>publish-all
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span><span class="s2">&quot;ValidateApp(AppModuleId=79bdfbec-…)&quot;</span>
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span><span class="s2">&quot;RetrieveAppComponents(AppModuleId=79bdfbec-…)&quot;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>ValidationSuccess = True        # app is valid
+RetrieveAppComponents -&gt; 8 items (3 view, 1 chart, 3 form/dashboard, 1 sitemap)
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Tables surface through the sitemap, not AddAppComponents</p>
+<p><code>AddAppComponents</code> only accepts record-backed components (its <code>Components</code> parameter is
+a <code>crmbaseentity</code> collection), so <code>cwx_ticket</code> / <code>cwx_sla</code> <em>table metadata</em> can't be
+bound through it. The two tables reach the app via the sitemap's <code>Entity=</code> subareas;
+<code>ValidateApp</code> notes this as a non-blocking warning and still returns
+<code>ValidationSuccess = True</code>.</p>
+</div>
+<h2 id="12-launch-verify">12. Launch &amp; verify</h2>
+<p>The app launches at:</p>
+<div class="highlight"><pre><span></span><code>http://internalcrm.contoso.local/Contoso/main.aspx?appid=79bdfbec-725e-f111-b65d-00155d467b90
+</code></pre></div>
+<p>The running app, captured live (headless Chromium over NTLM):</p>
+<p><img alt="CRMWorx SLA Overview dashboard — the Tickets-by-Priority chart and Active Tickets list, both reading the §6 view" src="../images/crmworx-dashboard.png" /></p>
+<p>The dashboard (§9) renders both components: the "Tickets by Priority" chart (§8) and the
+"Active Tickets" list (§6), with the CRMWorx sitemap (§11) in the left nav — SLA Overview,
+Tickets, SLAs.</p>
+<p><img alt="Active Tickets view — the §6 savedquery with its custom columns" src="../images/crmworx-tickets-list.png" /></p>
+<p>The <strong>Tickets</strong> area shows the §6 "Active Tickets" view with exactly the columns its
+LayoutXml defined (Ticket Title, Priority, Severity, Customer, Created On, Status Reason).</p>
+<p><img alt="Support Ticket form — the §7 augmented main form with all five custom fields" src="../images/crmworx-ticket-form.png" /></p>
+<p>Opening a ticket shows the §7 clone-and-augmented main form: every injected field is
+present and populated — Priority, Severity, Category, the SLA lookup, and Customer.</p>
+<div class="admonition note">
+<p class="admonition-title">NTLM in headless automation</p>
+<p>A first navigation attempt failed with <code>net::ERR_INVALID_AUTH_CREDENTIALS</code>: Playwright
+suppresses the native NTLM prompt, so the browser needs the credentials supplied
+<em>programmatically</em>. These shots were taken by launching Chromium with
+<code>--auth-server-allowlist=*contoso.local</code> and an <code>http_credentials</code> context — the documented
+way to negotiate NTLM headless. Credentials were read from <code>.env</code> at run time and never
+appear in the capture.</p>
+</div>
+<p>The server-side read-back corroborates that the app and its components exist on the server
+regardless of the browser:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span>appmodules<span class="w"> </span>--filter<span class="w"> </span><span class="s2">&quot;uniquename eq &#39;cwx_crmworx&#39;&quot;</span><span class="w"> </span>--select<span class="w"> </span>name,appmoduleid,uniquename
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span><span class="s2">&quot;RetrieveAppComponents(AppModuleId=79bdfbec-…)&quot;</span>
+crm<span class="w"> </span>--json<span class="w"> </span>query<span class="w"> </span>odata<span class="w"> </span><span class="s2">&quot;ValidateApp(AppModuleId=79bdfbec-…)&quot;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>CRMWorx | 79bdfbec-725e-f111-b65d-00155d467b90 | cwx_crmworx
+RetrieveAppComponents -&gt; 8 components
+ValidateApp           -&gt; ValidationSuccess = True
+</code></pre></div>
+<h2 id="13-promoted-commands">13. Promoted commands</h2>
+<p>The high-reuse, small-predictable-XML pieces — public views and the model-driven
+app/sitemap — are promoted from raw <code>entity create</code> calls into first-class command groups
+(<code>crm view</code>, <code>crm app</code>), each backed by <code>requests_mock</code> unit tests. Their generators emit
+exactly the shapes the live server accepted in §6 and §11.</p>
+<p><strong><code>crm view create</code></strong> rebuilds the "Active SLAs" view (here under a <code>(cmd)</code> suffix so it
+sits alongside the §6 original) — it generates the LayoutXml + FetchXml, guards on
+name+entity, creates, and publishes:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>view<span class="w"> </span>create<span class="w"> </span>cwx_sla<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;Active SLAs (cmd)&quot;</span><span class="w"> </span>--otc<span class="w"> </span><span class="m">10126</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--column<span class="w"> </span><span class="s2">&quot;cwx_name:240&quot;</span><span class="w"> </span>--column<span class="w"> </span><span class="s2">&quot;cwx_tier:140&quot;</span><span class="w"> </span>--filter-active<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;created&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;savedqueryid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;467f3c88-785e-f111-b65d-00155d467b90&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;published&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p><strong><code>crm app create</code></strong> is idempotent — run against the app from §11 it reports a skip via the
+same existence guard, no duplicate:</p>
+<div class="highlight"><pre><span></span><code>crm<span class="w"> </span>--json<span class="w"> </span>app<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>CRMWorx<span class="w"> </span>--unique-name<span class="w"> </span>cwx_crmworx<span class="w"> </span>--if-exists<span class="w"> </span>skip
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;ok&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;skipped&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;appmoduleid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;79bdfbec-725e-f111-b65d-00155d467b90&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p><code>crm app add-components</code> and <code>crm app set-sitemap</code> round out the group, emitting the
+typed-entity-reference <code>AddAppComponents</code> body and the <code>sitemapnameunique</code>-linked sitemap
+that §11 proved on 9.1. <code>crm app create</code> always sets the required <code>webresourceid</code> to the
+platform default icon.</p>
+<h2 id="capability-coverage">Capability coverage</h2>
+<p>Every <code>crm</code> command group is exercised by this walkthrough:</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>Exercised by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>connection</td>
+<td>§1 — <code>whoami</code>, <code>connect</code>, <code>profiles</code>, <code>status</code></td>
+</tr>
+<tr>
+<td>session</td>
+<td><code>session info</code> (active profile, current entity set, last query)</td>
+</tr>
+<tr>
+<td>metadata</td>
+<td>§2 — <code>create-optionset</code>, <code>create-entity</code>, <code>add-attribute</code>, <code>create-one-to-many</code>, <code>create-many-to-many</code>, <code>relationships</code>, <code>list-optionsets</code>, <code>entities</code></td>
+</tr>
+<tr>
+<td>entity</td>
+<td>§3 — <code>create</code>, <code>update</code>, <code>upsert</code> (lookups via <code>@odata.bind</code>); §6–§11 — <code>create</code>/<code>update</code> on <code>savedqueries</code>, <code>systemforms</code>, <code>savedqueryvisualizations</code>, <code>webresourceset</code>, <code>appmodules</code>, <code>sitemaps</code> (<code>--no-return</code> for appmodule/sitemap)</td>
+</tr>
+<tr>
+<td>query</td>
+<td>§4 — <code>odata</code> + <code>fetchxml</code>; §6–§12 — <code>odata</code> over interface tables + <code>RetrieveUnpublishedMultiple</code> / <code>ValidateApp</code> / <code>RetrieveAppComponents</code> functions</td>
+</tr>
+<tr>
+<td>data</td>
+<td>§4 — <code>export</code> (CSV)</td>
+</tr>
+<tr>
+<td>action</td>
+<td>§4 — <code>function RetrieveCurrentOrganization</code>; §11 — <code>invoke AddAppComponents</code></td>
+</tr>
+<tr>
+<td>solution</td>
+<td>§5–§11 — <code>publish-all</code>, <code>export</code>, <code>components</code>, <code>list</code>, <code>info</code></td>
+</tr>
+<tr>
+<td>(interface)</td>
+<td>§6 views · §7 forms · §8 charts · §9 dashboard · §10 BPF (manual fallback, <a href="https://github.com/Gharib89/crm/issues/37">#37</a>) · §11 sitemap + model-driven app · §12 launch</td>
+</tr>
+<tr>
+<td>view</td>
+<td>§13 — <code>crm view create</code> (promoted savedquery generator)</td>
+</tr>
+<tr>
+<td>app</td>
+<td>§13 — <code>crm app create</code> / <code>add-components</code> / <code>set-sitemap</code> (promoted appmodule + sitemap)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="teardown-optional-full-reset-for-a-clean-replay">Teardown (optional — full reset for a clean replay)</h2>
+<blockquote>
+<p><strong>Destructive.</strong> Each command requires <code>--yes</code>; the <code>destructive_op_gate</code> PreToolUse
+hook blocks them otherwise. Deleting an entity drops the table <strong>and every row in
+it</strong>. Run these only to reset the org for a clean replay — CRMWorx is otherwise left
+deployed.</p>
+</blockquote>
+<p>Reverse order — interface artifacts first, then records-with-their-tables, then
+relationships and attributes go with the entities, leaving only the global option sets to
+delete last. The <strong>app module, global sitemap, and icon web resource are independent</strong> —
+they do <strong>not</strong> cascade when the entities are dropped, so delete them explicitly. Views,
+forms, the chart and the dashboard <strong>do</strong> cascade with their owning entity, so they need no
+separate delete.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Interface teardown (before dropping the tables) — these don&#39;t cascade with the entity</span>
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>delete<span class="w"> </span>appmodules<span class="w"> </span>79bdfbec-725e-f111-b65d-00155d467b90<span class="w"> </span>--yes<span class="w">   </span><span class="c1"># the model-driven app</span>
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>delete<span class="w"> </span>sitemaps<span class="w">   </span>2ef3183b-735e-f111-b65d-00155d467b90<span class="w"> </span>--yes<span class="w">   </span><span class="c1"># the app sitemap</span>
+crm<span class="w"> </span>--json<span class="w"> </span>entity<span class="w"> </span>delete<span class="w"> </span>webresourceset<span class="w"> </span>9188010c-725e-f111-b65d-00155d467b90<span class="w"> </span>--yes<span class="w">  </span><span class="c1"># the cwx_ app icon</span>
+<span class="c1"># (views/forms/chart/dashboard are deleted automatically with their owning entity below)</span>
+
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>delete-entity<span class="w"> </span>cwx_ticket<span class="w"> </span>--yes<span class="w">   </span><span class="c1"># drops the table + all rows + its relationships + its views/forms/chart/dashboard</span>
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>delete-entity<span class="w"> </span>cwx_sla<span class="w"> </span>--yes
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>delete-optionset<span class="w"> </span>cwx_priority<span class="w"> </span>--yes
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>delete-optionset<span class="w"> </span>cwx_severity<span class="w"> </span>--yes
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>delete-optionset<span class="w"> </span>cwx_ticketcategory<span class="w"> </span>--yes
+crm<span class="w"> </span>--json<span class="w"> </span>metadata<span class="w"> </span>delete-optionset<span class="w"> </span>cwx_slatier<span class="w"> </span>--yes
+</code></pre></div>
+<p>After teardown, <code>crm --json metadata entities --custom-only | grep -c cwx_</code> returns <code>0</code>.
+The entire guide then replays from clean by re-running §2 onward — every create is
+idempotent, so a partial replay is safe to resume.</p>
+<p>This teardown + replay was run once against the live server to validate it: the
+deletes dropped both tables and all four option sets (entities → <code>0</code>), then the full
+§2–§3 build was re-applied, leaving CRMWorx deployed with fresh metadata ids. One note —
+<code>delete-entity</code> has no <code>--if-exists skip</code>, so deleting an already-removed table returns
+an error (<code>EntityMetadata ... does not exist</code>) rather than a no-op; delete in the
+documented order and it won't recur.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

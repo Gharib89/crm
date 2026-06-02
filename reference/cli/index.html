@@ -1,0 +1,4527 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="CLI + agent guide for Dynamics 365 CE on-premises customizations">
+      
+      
+      
+      
+        <link rel="prev" href="../../how-to/workflow/">
+      
+      
+        <link rel="next" href="../../contributing/skill-and-cli/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>CLI - crm — D365 CE on-prem CLI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cli-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="crm — D365 CE on-prem CLI" class="md-header__button md-logo" aria-label="crm — D365 CE on-prem CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            crm — D365 CE on-prem CLI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CLI
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="deep-orange" data-md-color-accent="amber"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Gharib89/crm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gharib89/crm
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="crm — D365 CE on-prem CLI" class="md-nav__button md-logo" aria-label="crm — D365 CE on-prem CLI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    crm — D365 CE on-prem CLI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Gharib89/crm" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Gharib89/crm
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/configure/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/crmworx-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CRMWorx walkthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    How-to
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/connection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    connection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/entity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    entity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/query/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    query
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/solution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    solution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    data
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/action/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    action
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/view/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    view
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/app/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    app
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/async/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    async
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/skill/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    skill
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#crm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        crm
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="crm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        action
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="action">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        function
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invoke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        invoke
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#add-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add-components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-sitemap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        set-sitemap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="async">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cancel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        batch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        connection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="connection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#connect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        connect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disconnect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        disconnect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        profiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whoami" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        whoami
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="entity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#associate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        associate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear-lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disassociate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        disassociate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        set-lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upsert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        upsert
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#add-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add-attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-many-to-many" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-many-to-many
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-one-to-many" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-one-to-many
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete-entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entity_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list-actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list-functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-optionsets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list-optionsets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#picklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        picklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        relationships
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-relationship" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-relationship
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        query
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="query">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetchxml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetchxml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#odata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        odata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#saved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        saved
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        user
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#repl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        repl
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#service-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        service-document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        session
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="session">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clear" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        history
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        skill
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="skill">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        uninstall
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        solution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="solution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-publisher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-publisher
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        import
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#info_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        info
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        job-cancel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        job-status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#publish-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publish-all
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        view
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="view">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#activate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        activate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deactivate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        deactivate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/skill-and-cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Skill & CLI sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#crm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        crm
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="crm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        action
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="action">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        function
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#invoke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        invoke
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        app
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="app">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#add-components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add-components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-sitemap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        set-sitemap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="async">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cancel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        batch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        connection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="connection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#connect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        connect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disconnect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        disconnect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        profiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whoami" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        whoami
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="entity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#associate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        associate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear-lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disassociate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        disassociate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-lookup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        set-lookup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upsert" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        upsert
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="metadata">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#add-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add-attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-many-to-many" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-many-to-many
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-one-to-many" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-one-to-many
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete-entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delete-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        delete-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entity_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list-actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-functions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list-functions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-optionsets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list-optionsets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#picklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        picklist
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#relationships" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        relationships
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-entity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-entity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-optionset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-optionset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-relationship" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        update-relationship
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        query
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="query">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        count
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetchxml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetchxml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#odata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        odata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#saved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        saved
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#user" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        user
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#repl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        repl
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#service-document" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        service-document
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        session
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="session">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#clear" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        history
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#info" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        info
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skill" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        skill
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="skill">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        uninstall
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        solution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="solution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        components
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-publisher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create-publisher
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#export_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        import
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#info_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        info
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        job-cancel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#job-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        job-status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#publish-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publish-all
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        view
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="view">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        create
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#activate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        activate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deactivate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        deactivate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cli-reference">CLI reference</h1>
+<p>This page is generated from the <code>crm</code> command tree.</p>
+<h2 id="crm">crm</h2>
+<p>Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --json                          Emit machine-readable JSON output.
+  --dry-run                       Preview HTTP request without issuing it.
+  --profile TEXT                  Connection profile name (from
+                                  ~/.crm/profiles).
+  --password TEXT                 Override password (otherwise read from
+                                  D365_PASSWORD).
+  --log-level [debug|info|warning|error]
+                                  Log level (env: CRM_LOG_LEVEL). Default:
+                                  warning.
+  --verbose                       Alias for --log-level debug.
+  --log-format [text|json-line]   Log output format (env: CRM_LOG_FORMAT).
+                                  Default: text.
+  --auth-scheme [ntlm|kerberos|negotiate]
+                                  HTTP auth scheme (env: CRM_AUTH_SCHEME).
+                                  Default: ntlm.
+  --stage-only                    Stage metadata changes without publishing
+                                  (env: CRM_STAGE_ONLY). Forces every
+                                  create/update command to --no-publish.
+  --session TEXT                  Session name.
+  --version                       Show the version and exit.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h3 id="action">action</h3>
+<p>Invoke OData functions and actions (unbound or bound).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm action [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="function">function</h4>
+<p>Call an unbound OData function. Params encoded inline per OData v4.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm action function [OPTIONS] NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --params TEXT  JSON dict of function parameters.
+  -h, --help     Show this message and exit.
+</code></pre></div>
+<h4 id="invoke">invoke</h4>
+<p>POST an OData action — unbound by default, bound when --bind-set/--bind-id given.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm action invoke [OPTIONS] NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --body TEXT       JSON body for the action.
+  --body-file FILE
+  --bind-set TEXT   Entity set name to bind the action to (e.g. &#39;workflows&#39;).
+                    Requires --bind-id.
+  --bind-id TEXT    Record id to bind the action to. Requires --bind-set.
+  --cast TEXT       Namespace for the action when bound. Override only for
+                    custom namespaces.  [default: Microsoft.Dynamics.CRM]
+  -h, --help        Show this message and exit.
+</code></pre></div>
+<h3 id="app">app</h3>
+<p>Create and manage model-driven apps (appmodule).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm app [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="add-components">add-components</h4>
+<p>Bind components to an app (AddAppComponents).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm app add-components [OPTIONS] APP_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --component TEXT  Repeatable &#39;kind:guid&#39; (kind:
+                    view|chart|form|dashboard|sitemap|bpf).  [required]
+  -h, --help        Show this message and exit.
+</code></pre></div>
+<h4 id="create">create</h4>
+<p>Create a model-driven app.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm app create [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --name TEXT               App display name.  [required]
+  --unique-name TEXT        Publisher-prefixed unique name, e.g.
+                            &#39;cwx_crmworx&#39;.  [required]
+  --description TEXT
+  --if-exists [error|skip]
+  --solution TEXT           Target solution uniquename
+                            (MSCRM.SolutionUniqueName). Defaults to the
+                            profile&#39;s default_solution.
+  --require-solution        Fail if no solution resolves (also via
+                            CRM_REQUIRE_SOLUTION).
+  --publish / --no-publish
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="set-sitemap">set-sitemap</h4>
+<p>Create a sitemap from a SiteMapXml file.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm app set-sitemap [OPTIONS] SITEMAP_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --xml-file FILE     Path to a file containing the SiteMapXml.  [required]
+  --unique-name TEXT  App uniquename to link the sitemap to (sets
+                      sitemapnameunique).
+  --solution TEXT     Target solution uniquename (MSCRM.SolutionUniqueName).
+                      Defaults to the profile&#39;s default_solution.
+  --require-solution  Fail if no solution resolves (also via
+                      CRM_REQUIRE_SOLUTION).
+  -h, --help          Show this message and exit.
+</code></pre></div>
+<h3 id="async">async</h3>
+<p>List, inspect, and cancel asynchronous operations.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm async [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="cancel">cancel</h4>
+<p>Cancel a pending or suspended asyncoperation.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm async cancel [OPTIONS] ASYNC_OPERATION_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --yes       Skip interactive confirmation.
+  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="get">get</h4>
+<p>Get one asyncoperation row.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm async get [OPTIONS] ASYNC_OPERATION_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="list">list</h4>
+<p>List asyncoperation rows.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm async list [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --state TEXT         ready | suspended | locked | completed | &lt;int&gt;
+  --message TEXT       Filter by messagename (e.g. ImportSolution).
+  --owner TEXT         Filter by systemuser GUID.
+  --top INTEGER        Page size per call (default 50).
+  --all                Follow @odata.nextLink until exhausted (caps at --max-
+                       pages).
+  --max-pages INTEGER  Safety cap on pagination depth when --all is set
+                       (default 20).
+  -h, --help           Show this message and exit.
+</code></pre></div>
+<h3 id="batch">batch</h3>
+<p>Execute a $batch from a JSON file.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm batch [OPTIONS] FILE_PATH
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --no-transaction     Send each op as a top-level operation; no changeset
+                       wrapping.
+  --continue-on-error  Send Prefer: odata.continue-on-error (requires --no-
+                       transaction).
+  --output FILE        Write BatchResult[] JSON to this path.
+  --timeout INTEGER    Override request timeout (seconds) for the batch call.
+  -h, --help           Show this message and exit.
+</code></pre></div>
+<h3 id="connection">connection</h3>
+<p>Manage server connection profiles and authentication.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm connection [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="connect">connect</h4>
+<p>Save a connection profile and test the credentials with WhoAmI.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm connection connect [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --url TEXT               Server URL, e.g. https://crm.contoso.local/contoso
+                           [required]
+  --username TEXT          [required]
+  --domain TEXT            AD domain (optional for on-prem with UPN).
+  --password TEXT          Password (else read from D365_PASSWORD).
+  --profile-name TEXT      Save under this profile name.
+  --api-version TEXT
+  --no-verify-ssl          Skip SSL certificate verification.
+  --default-solution TEXT  Default solution uniquename for mutating metadata
+                           commands.
+  --publisher-prefix TEXT  Default schema-name prefix for create commands,
+                           e.g. &#39;new&#39;.
+  -h, --help               Show this message and exit.
+</code></pre></div>
+<h4 id="disconnect">disconnect</h4>
+<p>Clear the active profile from the session.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm connection disconnect [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="profiles">profiles</h4>
+<p>List saved profiles.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm connection profiles [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="status">status</h4>
+<p>Show the active session + profile (no network call).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm connection status [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="test">test</h4>
+<p>Reachability check: WhoAmI + report API base.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm connection test [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="whoami">whoami</h4>
+<p>Issue WhoAmI() against the server.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm connection whoami [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h3 id="data">data</h3>
+<p>Bulk CSV/JSON dataset export.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm data [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="export">export</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm data export [OPTIONS] ENTITY_SET
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -o, --output FILE      [required]
+  --select TEXT
+  --filter TEXT          OData $filter.
+  --page-size INTEGER
+  --max-records INTEGER
+  --format [csv|json]
+  -h, --help             Show this message and exit.
+</code></pre></div>
+<h3 id="entity">entity</h3>
+<p>Record CRUD against entity sets (accounts, contacts, ...).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="associate">associate</h4>
+<p>Associate two records via a collection-valued nav property (1:N from one-side or N:N).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity associate [OPTIONS] TARGET_SET TARGET_ID NAV RELATED_SET RELATED_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="clear-lookup">clear-lookup</h4>
+<p>Clear a single-valued lookup via DELETE /$ref.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity clear-lookup [OPTIONS] ENTITY_SET RECORD_ID NAV
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="create_1">create</h4>
+<p>POST a new record.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity create [OPTIONS] ENTITY_SET
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --data TEXT               JSON object as string.
+  --data-file FILE          Path to a JSON file with the record body.
+  --no-return               Don&#39;t request the record back; just GUID.
+  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="delete">delete</h4>
+<p>DELETE a record.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity delete [OPTIONS] ENTITY_SET RECORD_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --if-match ETAG           Optimistic concurrency etag.
+  --yes                     Skip interactive confirmation.
+  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="disassociate">disassociate</h4>
+<p>Disassociate two records. Omit --related-* for single-valued lookups.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity disassociate [OPTIONS] TARGET_SET TARGET_ID NAV
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --related-set TEXT        Required for collection-valued nav properties.
+  --related-id TEXT         Required for collection-valued nav properties.
+  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="get_1">get</h4>
+<p>GET <entity-set> <guid>.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity get [OPTIONS] ENTITY_SET RECORD_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --select TEXT                   Repeatable; column names.
+  --expand TEXT                   Repeatable; navigation properties.
+  --annotations / --no-annotations
+                                  Include formatted values.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="set-lookup">set-lookup</h4>
+<p>Set a single-valued lookup via @odata.bind PATCH.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity set-lookup [OPTIONS] ENTITY_SET RECORD_ID NAV RELATED_SET
+                      RELATED_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="update">update</h4>
+<p>PATCH an existing record.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity update [OPTIONS] ENTITY_SET RECORD_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --data TEXT               JSON object as string.
+  --data-file FILE
+  --allow-create            Permit upsert (skip If-Match header).
+  --return-record           Ask server to return the updated row.
+  --if-match ETAG           Optimistic concurrency etag. Example (POSIX):
+                            --if-match &#39;W/&quot;123&quot;&#39;. Use --if-match &quot;*&quot; to
+                            require any current version.
+  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="upsert">upsert</h4>
+<p>PATCH with create-if-missing semantics.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm entity upsert [OPTIONS] ENTITY_SET RECORD_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --data TEXT               JSON object as string.
+  --data-file FILE
+  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h3 id="init">init</h3>
+<p>Bootstrap a crm workspace.</p>
+<p>With --template: writes .env.example to the current directory.
+Without args: interactive wizard to create a connection profile.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm init [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --template  Write .env.example to the current directory and exit.
+  -h, --help  Show this message and exit.
+</code></pre></div>
+<h3 id="metadata">metadata</h3>
+<p>Browse entity / attribute / relationship metadata.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="add-attribute">add-attribute</h4>
+<p>Add an attribute (column) to an existing entity.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata add-attribute [OPTIONS] ENTITY
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --kind [string|memo|integer|bigint|decimal|double|money|boolean|datetime|picklist|multiselect|lookup|image|file]
+                                  Attribute kind.  [required]
+  --schema-name TEXT              PascalCase with publisher prefix, e.g.
+                                  &#39;new_Amount&#39;. Defaults to
+                                  &lt;publisher_prefix&gt;_&lt;Display&gt; from the
+                                  profile.
+  --display TEXT                  UI label.  [required]
+  --description TEXT
+  --required [None|Recommended|ApplicationRequired]
+  --max-length INTEGER            String/memo: max characters.
+  --format TEXT                   String: Text|Email|Url|Phone|TextArea.
+                                  Datetime: DateOnly|DateAndTime.
+  --min FLOAT                     Numeric kinds: minimum value.
+  --max FLOAT                     Numeric kinds: maximum value.
+  --precision INTEGER             Decimal/double/money: precision (decimals).
+  --true-label TEXT               Boolean: label for true.
+  --false-label TEXT              Boolean: label for false.
+  --default-value TEXT            Boolean: &#39;true&#39;/&#39;false&#39;. Picklist: int
+                                  option value.
+  --optionset-name TEXT           Picklist/multiselect: reference an existing
+                                  global option set.
+  --option TEXT                   Picklist/multiselect: inline option as
+                                  &#39;value:label&#39; or &#39;:label&#39; (auto value).
+                                  Repeatable.
+  --target-entity TEXT            Lookup: referenced entity logical name.
+  --relationship-schema TEXT      Lookup: override auto-generated relationship
+                                  name.
+  --max-size-kb INTEGER           File: max attachment size in KB. Default
+                                  32768.
+  --solution TEXT                 Target solution uniquename
+                                  (MSCRM.SolutionUniqueName). Defaults to the
+                                  profile&#39;s default_solution.
+  --require-solution              Fail if no solution resolves (also via
+                                  CRM_REQUIRE_SOLUTION).
+  --if-exists [error|skip]        If the attribute already exists: error
+                                  (default) or skip (no-op success).
+  --publish / --no-publish        Run PublishAllXml after creation. Default:
+                                  publish.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="attribute">attribute</h4>
+<p>Show a single attribute definition.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata attribute [OPTIONS] LOGICAL_NAME ATTRIBUTE_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="attributes">attributes</h4>
+<p>List attributes for an entity.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata attributes [OPTIONS] LOGICAL_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="create-entity">create-entity</h4>
+<p>Create a new custom entity (table).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata create-entity [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --schema-name TEXT              PascalCase with publisher prefix, e.g.
+                                  &#39;new_Project&#39;. Defaults to
+                                  &lt;publisher_prefix&gt;_&lt;Display&gt; from the
+                                  profile.
+  --display TEXT                  Singular UI label, e.g. &#39;Project&#39;.
+                                  [required]
+  --display-collection TEXT       Plural UI label. Defaults to &lt;display&gt;+&#39;s&#39;.
+  --primary-attr TEXT             Schema name of the primary name attribute
+                                  (default &#39;&lt;prefix&gt;_Name&#39;).
+  --primary-label TEXT            UI label for primary attribute. Default
+                                  &#39;Name&#39;.
+  --primary-max-length INTEGER    Max length for primary name string column.
+                                  Default 200.
+  --description TEXT
+  --ownership [UserOwned|OrganizationOwned]
+  --has-activities
+  --has-notes
+  --is-activity                   Create as an activity entity.
+  --solution TEXT                 Target solution uniquename
+                                  (MSCRM.SolutionUniqueName). Defaults to the
+                                  profile&#39;s default_solution.
+  --require-solution              Fail if no solution resolves (also via
+                                  CRM_REQUIRE_SOLUTION).
+  --if-exists [error|skip]        If the entity already exists: error
+                                  (default) or skip (no-op success).
+  --publish / --no-publish        Run PublishAllXml after creation. Default:
+                                  publish.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="create-many-to-many">create-many-to-many</h4>
+<p>Create an N:N relationship via the dedicated action.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata create-many-to-many [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --schema-name TEXT              [required]
+  --entity1 TEXT                  [required]
+  --entity2 TEXT                  [required]
+  --intersect-entity TEXT         [required]
+  --entity1-menu-label TEXT
+  --entity1-menu-behavior [UseLabel|UseCollectionName|DoNotDisplay]
+  --entity1-menu-order INTEGER
+  --entity2-menu-label TEXT
+  --entity2-menu-behavior [UseLabel|UseCollectionName|DoNotDisplay]
+  --entity2-menu-order INTEGER
+  --solution TEXT                 Target solution uniquename
+                                  (MSCRM.SolutionUniqueName). Defaults to the
+                                  profile&#39;s default_solution.
+  --require-solution              Fail if no solution resolves (also via
+                                  CRM_REQUIRE_SOLUTION).
+  --if-exists [error|skip]        If the relationship already exists: error
+                                  (default) or skip (no-op success).
+  --publish / --no-publish
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="create-one-to-many">create-one-to-many</h4>
+<p>Create a 1:N relationship and its lookup attribute atomically.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata create-one-to-many [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --schema-name TEXT              Relationship schema name with publisher
+                                  prefix.  [required]
+  --referenced-entity TEXT        &quot;1&quot; side logical name (e.g. account).
+                                  [required]
+  --referencing-entity TEXT       &quot;N&quot; side logical name (e.g. new_project).
+                                  [required]
+  --lookup-schema TEXT            Lookup attribute schema name on referencing
+                                  entity.  [required]
+  --lookup-display TEXT           UI label for the lookup attribute.
+                                  [required]
+  --lookup-required [None|Recommended|ApplicationRequired]
+  --lookup-description TEXT
+  --cascade-assign [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-delete [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-reparent [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-share [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-unshare [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-merge [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --menu-label TEXT
+  --menu-behavior [UseLabel|UseCollectionName|DoNotDisplay]
+  --menu-order INTEGER
+  --solution TEXT                 Target solution uniquename
+                                  (MSCRM.SolutionUniqueName). Defaults to the
+                                  profile&#39;s default_solution.
+  --require-solution              Fail if no solution resolves (also via
+                                  CRM_REQUIRE_SOLUTION).
+  --if-exists [error|skip]        If the relationship already exists: error
+                                  (default) or skip (no-op success).
+  --publish / --no-publish
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="create-optionset">create-optionset</h4>
+<p>Create a global option set.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata create-optionset [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --name TEXT               Fully prefixed option set name, e.g.
+                            &#39;new_priority&#39;. Defaults to
+                            &lt;publisher_prefix&gt;_&lt;display&gt; from the profile.
+  --display TEXT            [required]
+  --description TEXT
+  --option TEXT             Option as &#39;value:label&#39; or &#39;:label&#39; (auto value).
+                            Repeatable.
+  --solution TEXT           Target solution uniquename
+                            (MSCRM.SolutionUniqueName). Defaults to the
+                            profile&#39;s default_solution.
+  --require-solution        Fail if no solution resolves (also via
+                            CRM_REQUIRE_SOLUTION).
+  --if-exists [error|skip]  If the option set already exists: error (default)
+                            or skip (no-op success).
+  --publish / --no-publish
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="delete-entity">delete-entity</h4>
+<p>Permanently delete a custom entity (table) and ALL its rows.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata delete-entity [OPTIONS] LOGICAL_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --yes               Skip interactive confirmation.
+  --solution TEXT     Target solution uniquename (MSCRM.SolutionUniqueName).
+                      Defaults to the profile&#39;s default_solution.
+  --require-solution  Fail if no solution resolves (also via
+                      CRM_REQUIRE_SOLUTION).
+  -h, --help          Show this message and exit.
+</code></pre></div>
+<h4 id="delete-optionset">delete-optionset</h4>
+<p>Delete a custom global option set.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata delete-optionset [OPTIONS] NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --yes               Skip interactive confirmation.
+  --solution TEXT     Target solution uniquename (MSCRM.SolutionUniqueName).
+                      Defaults to the profile&#39;s default_solution.
+  --require-solution  Fail if no solution resolves (also via
+                      CRM_REQUIRE_SOLUTION).
+  -h, --help          Show this message and exit.
+</code></pre></div>
+<h4 id="entities">entities</h4>
+<p>List entity definitions.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata entities [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --custom-only
+  --top INTEGER
+  -h, --help     Show this message and exit.
+</code></pre></div>
+<h4 id="entity_1">entity</h4>
+<p>Show full entity definition.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata entity [OPTIONS] LOGICAL_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="get-optionset">get-optionset</h4>
+<p>Retrieve a global option set with options expanded.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata get-optionset [OPTIONS] NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="list-actions">list-actions</h4>
+<p>List OData actions advertised by the service ($metadata).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata list-actions [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="list-functions">list-functions</h4>
+<p>List OData functions advertised by the service ($metadata).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata list-functions [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="list-optionsets">list-optionsets</h4>
+<p>List global option set definitions.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata list-optionsets [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --custom-only
+  --top INTEGER
+  -h, --help     Show this message and exit.
+</code></pre></div>
+<h4 id="picklist">picklist</h4>
+<p>Retrieve option set values for a picklist / state / status attribute.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata picklist [OPTIONS] LOGICAL_NAME ATTRIBUTE
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --no-global  Skip GlobalOptionSet expansion.
+  -h, --help   Show this message and exit.
+</code></pre></div>
+<h4 id="relationships">relationships</h4>
+<p>Show one-to-many, many-to-one, and many-to-many relationships.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata relationships [OPTIONS] LOGICAL_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="update-attribute">update-attribute</h4>
+<p>Update an attribute (column) definition (retrieve-merge-write).</p>
+<p>Option-set option edits are NOT handled here — use <code>update-optionset</code>.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata update-attribute [OPTIONS] ENTITY ATTRIBUTE
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --display TEXT                  New UI label.
+  --description TEXT
+  --required [None|Recommended|ApplicationRequired]
+  --max-length INTEGER            String/memo: max characters.
+  --precision INTEGER             Decimal/double/money: precision (decimals).
+  --min FLOAT                     Numeric: minimum value.
+  --max FLOAT                     Numeric: maximum value.
+  --format TEXT                   String: Text|Email|Url|Phone|TextArea.
+                                  Datetime: DateOnly|DateAndTime.
+  --solution TEXT                 Apply via MSCRM.SolutionUniqueName.
+  --publish / --no-publish        Run PublishAllXml after update. Default:
+                                  publish.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="update-entity">update-entity</h4>
+<p>Update an entity (table) definition (retrieve-merge-write).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata update-entity [OPTIONS] LOGICAL_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --display TEXT                  New singular UI label.
+  --display-collection TEXT       New plural UI label.
+  --description TEXT              New entity description.
+  --ownership [UserOwned|OrganizationOwned]
+                                  Note: Dataverse rejects ownership changes
+                                  post-create.
+  --has-activities / --no-has-activities
+                                  Enable/disable activities.
+  --has-notes / --no-has-notes    Enable/disable notes.
+  --solution TEXT                 Apply via MSCRM.SolutionUniqueName.
+  --publish / --no-publish        Run PublishAllXml after update. Default:
+                                  publish.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="update-optionset">update-optionset</h4>
+<p>Granular update: insert/update/delete/reorder options.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata update-optionset [OPTIONS] NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --insert-option TEXT      Insert option &#39;value:label&#39; or &#39;:label&#39;.
+                            Repeatable.
+  --update-option TEXT      Update existing option &#39;value:new_label&#39;.
+                            Repeatable.
+  --delete-option INTEGER   Delete option by value. Repeatable.
+  --reorder TEXT            Comma-separated full ordered list of values, e.g.
+                            &#39;1,2,7,4&#39;.
+  --solution TEXT           Target solution uniquename
+                            (MSCRM.SolutionUniqueName). Defaults to the
+                            profile&#39;s default_solution.
+  --require-solution        Fail if no solution resolves (also via
+                            CRM_REQUIRE_SOLUTION).
+  --publish / --no-publish
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="update-relationship">update-relationship</h4>
+<p>Update a relationship definition (retrieve-merge-write).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm metadata update-relationship [OPTIONS] SCHEMA_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --cascade-assign [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-delete [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-reparent [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-share [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-unshare [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --cascade-merge [NoCascade|Cascade|Active|UserOwned|RemoveLink|Restrict]
+  --menu-behavior [UseLabel|UseCollectionName|DoNotDisplay]
+  --menu-label TEXT
+  --menu-order INTEGER
+  --solution TEXT                 Apply via MSCRM.SolutionUniqueName.
+  --publish / --no-publish        Run PublishAllXml after update. Default:
+                                  publish.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h3 id="query">query</h3>
+<p>Run OData and FetchXML queries.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm query [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="count">count</h4>
+<p>Count rows for an entity via RetrieveTotalRecordCount (cached server-side).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm query count [OPTIONS] ENTITY
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="fetchxml">fetchxml</h4>
+<p>Run a FetchXML query.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm query fetchxml [OPTIONS] ENTITY_SET
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --xml TEXT                      Inline FetchXML string.
+  --file FILE                     Path to a FetchXML file.
+  --annotations / --no-annotations
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="odata">odata</h4>
+<p>OData v4 query over an entity set.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm query odata [OPTIONS] ENTITY_SET
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --select TEXT
+  --filter TEXT                   OData $filter expression.
+  --top INTEGER
+  --orderby TEXT
+  --expand TEXT
+  --count                         Also request $count.
+  --page-size INTEGER
+  --annotations / --no-annotations
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="saved">saved</h4>
+<p>Execute a system view (savedquery) by GUID. Use <code>--json query odata savedqueries</code> to discover IDs.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm query saved [OPTIONS] ENTITY_SET SAVEDQUERY_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --annotations / --no-annotations
+  --page-size INTEGER
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="user">user</h4>
+<p>Execute a saved view (userquery) by GUID.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm query user [OPTIONS] ENTITY_SET USERQUERY_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --annotations / --no-annotations
+  --page-size INTEGER
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h3 id="repl">repl</h3>
+<p>Interactive REPL (default when no subcommand is provided).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm repl [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h3 id="service-document">service-document</h3>
+<p>GET the root service document — lists every entity set the server exposes.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm service-document [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h3 id="session">session</h3>
+<p>Local session state.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm session [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="clear">clear</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm session clear [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="history">history</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm session history [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="info">info</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm session info [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h3 id="skill">skill</h3>
+<p>Install the bundled agent skill (SKILL.md) for Copilot / Claude / Cursor.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm skill [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="install">install</h4>
+<p>Copy the bundled SKILL.md into the agent's skill directory.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm skill install [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --target [claude|copilot|cursor]
+                                  Where to install the skill. Ignored if
+                                  --dest is given.  [default: copilot]
+  --dest DIRECTORY                Custom destination directory (overrides
+                                  --target).
+  --force                         Overwrite an existing SKILL.md at the
+                                  destination.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="path">path</h4>
+<p>Show the path of the bundled SKILL.md inside the installed package.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm skill path [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="uninstall">uninstall</h4>
+<p>Remove the installed SKILL.md (and its directory if empty).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm skill uninstall [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --target [claude|copilot|cursor]
+                                  [default: copilot]
+  --dest DIRECTORY
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h3 id="solution">solution</h3>
+<p>Solution lifecycle (create-publisher / create / list / info / components / export / import).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="components">components</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution components [OPTIONS] UNIQUE_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="create_2">create</h4>
+<p>Create an unmanaged solution bound to a publisher (solutions).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution create [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --name TEXT                     Solution unique name, e.g. &#39;CRMWorx&#39;.
+                                  [required]
+  --display TEXT                  Friendly name (defaults to --name).
+  --version TEXT                  Solution version (default 1.0.0.0).
+  --publisher TEXT                Publisher unique name (mutually exclusive
+                                  with --publisher-id).
+  --publisher-id TEXT             Publisher GUID (mutually exclusive with
+                                  --publisher).
+  --if-exists [error|skip]
+  --set-default / --no-set-default
+                                  Write default_solution back to the active
+                                  named profile (default on).
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="create-publisher">create-publisher</h4>
+<p>Create a solution publisher (publishers).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution create-publisher [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --name TEXT                     Publisher unique name, e.g. &#39;crmworx&#39;.
+                                  [required]
+  --display TEXT                  Friendly name (defaults to --name).
+  --prefix TEXT                   Customization prefix: 2-8 alphanumeric,
+                                  starts with a letter, not &#39;mscrm&#39;. e.g.
+                                  &#39;cwx&#39;.  [required]
+  --option-value-prefix INTEGER   Option-value prefix (integer 10000-99999).
+                                  [required]
+  --if-exists [error|skip]
+  --set-default / --no-set-default
+                                  Write publisher_prefix back to the active
+                                  named profile (default on).
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="export_1">export</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution export [OPTIONS] UNIQUE_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -o, --output FILE               [required]
+  --managed
+  --export-setting [autonumbering|calendar|customizations|email-tracking|general|isv-config|marketing|outlook-sync|relationship-roles|sales]
+                                  Repeatable; include a named export setting
+                                  in the solution payload.
+  --timeout INTEGER               Async operation timeout in seconds.
+                                  Overrides profile.async_timeout.
+  --no-retry                      Disable the 429/5xx retry loop for this
+                                  invocation.
+  -h, --help                      Show this message and exit.
+</code></pre></div>
+<h4 id="import">import</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution import [OPTIONS] ZIP_PATH
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --no-publish
+  --no-overwrite
+  --timeout INTEGER  Async operation timeout in seconds. Overrides
+                     profile.async_timeout.
+  --no-retry         Disable the 429/5xx retry loop for this invocation.
+  -q, --quiet        Suppress per-tick import-progress lines on stderr.
+  -h, --help         Show this message and exit.
+</code></pre></div>
+<h4 id="info_1">info</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution info [OPTIONS] UNIQUE_NAME
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="job-cancel">job-cancel</h4>
+<p>Alias for <code>crm async cancel &lt;id&gt;</code>.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution job-cancel [OPTIONS] ASYNC_OPERATION_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --yes       Skip interactive confirmation.
+  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="job-status">job-status</h4>
+<p>Alias for <code>crm async get &lt;id&gt;</code> — inspect a solution import/export job.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution job-status [OPTIONS] ASYNC_OPERATION_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="list_1">list</h4>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution list [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --managed / --unmanaged  Filter by managed flag.
+  -h, --help               Show this message and exit.
+</code></pre></div>
+<h4 id="publish">publish</h4>
+<p>Call PublishXml with a Publish Request Schema XML payload.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution publish [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --xml TEXT       Inline Publish Request Schema XML.
+  --xml-file FILE  Path to a Publish Request Schema XML file.
+  -h, --help       Show this message and exit.
+</code></pre></div>
+<h4 id="publish-all">publish-all</h4>
+<p>Call PublishAllXml — publish every unpublished customization.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm solution publish-all [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h3 id="view">view</h3>
+<p>Create and manage system views (savedquery).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm view [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="create_3">create</h4>
+<p>Create a public system view on ENTITY.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm view create [OPTIONS] ENTITY
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --name TEXT               View display name.  [required]
+  --otc INTEGER             Entity ObjectTypeCode (from `metadata entity
+                            &lt;name&gt;`).  [required]
+  --column TEXT             Repeatable &#39;logicalname[:width]&#39;. Order preserved.
+                            [required]
+  --order TEXT              Attribute to sort by (ascending).
+  --filter-active           Filter to statecode=0 (active) rows.
+  --default                 Mark as the default view.
+  --if-exists [error|skip]
+  --solution TEXT           Target solution uniquename
+                            (MSCRM.SolutionUniqueName). Defaults to the
+                            profile&#39;s default_solution.
+  --require-solution        Fail if no solution resolves (also via
+                            CRM_REQUIRE_SOLUTION).
+  --publish / --no-publish  Run PublishAllXml after creation. Default:
+                            publish.
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h3 id="workflow">workflow</h3>
+<p>List, activate, and trigger D365 workflows.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm workflow [OPTIONS] COMMAND [ARGS]...
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  -h, --help  Show this message and exit.
+</code></pre></div>
+<h4 id="activate">activate</h4>
+<p>Activate a workflow (statecode=1, statuscode=2).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm workflow activate [OPTIONS] WORKFLOW_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="deactivate">deactivate</h4>
+<p>Deactivate a workflow (statecode=0, statuscode=1).</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm workflow deactivate [OPTIONS] WORKFLOW_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+<h4 id="list_2">list</h4>
+<p>List workflow definitions.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm workflow list [OPTIONS]
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --category INTEGER   Filter by category (0=Workflow, 4=BPF, 5=Modern Flow).
+  --entity TEXT        Filter by primary entity logical name.
+  --activated / --all  Restrict to activated workflows. Default returns all
+                       states.
+  --on-demand          Only on-demand workflows.
+  -h, --help           Show this message and exit.
+</code></pre></div>
+<h4 id="run">run</h4>
+<p>Trigger an on-demand workflow against a target record via ExecuteWorkflow.</p>
+<p><strong>Usage:</strong></p>
+<div class="highlight"><pre><span></span><code>crm workflow run [OPTIONS] WORKFLOW_ID
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<div class="highlight"><pre><span></span><code>  --target TEXT             GUID of the record to run the workflow against.
+                            [required]
+  --as-user GUID            Impersonate systemuser by GUID via MSCRMCallerID
+                            header.
+  --suppress-dup-detection  Send MSCRM.SuppressDuplicateDetection: true.
+  --bypass-plugins          Send MSCRM.BypassCustomPluginExecution: true
+                            (requires prvBypassCustomPluginExecution).
+  -h, --help                Show this message and exit.
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
