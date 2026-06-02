@@ -5,6 +5,26 @@ All notable changes to `crm` are documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.7.0 — Fast startup + R2 install
+
+**Performance**
+- CLI subcommands and the D365 backend stack now load lazily: `crm --version` and
+  direct command invocations no longer import every command module (and their
+  requests/NTLM/prompt_toolkit dependencies), cutting cold startup substantially.
+  `crm --help` still loads all modules (accepted trade-off).
+
+**Changed**
+- PyInstaller builds switched from `--onefile` to `--onedir` (`dist/crm/`),
+  eliminating per-launch self-extraction overhead.
+- Install is now a one-line script served from a public Cloudflare R2 bucket
+  (`irm …/install.ps1 | iex` on Windows, `curl …/install.sh | sh` on Linux),
+  replacing the private-repo GitHub release URL that 404'd for users.
+
+**Added**
+- `scripts/install.ps1` (Windows) and `scripts/install.sh` (Linux): download the
+  prebuilt onedir bundle from R2, install to a user dir, wire up PATH / a symlink,
+  and support uninstall.
+
 ## 0.6.0 — Spec E: DX Polish
 
 **Refactor**
