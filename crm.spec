@@ -1,9 +1,9 @@
 # crm.spec — PyInstaller spec for the crm CLI.
-# Builds a single-file executable that bundles the CPython runtime, all
-# Python dependencies, and the crm package data (skills/*.md).
+# Builds a onedir bundle: dist/crm/ containing the `crm` launcher and
+# _internal/ (CPython runtime, dependencies, crm package data).
 #
 # Build:  pyinstaller crm.spec
-# Output: dist/crm  (Linux/macOS)  or  dist/crm.exe  (Windows)
+# Output: dist/crm/  (directory bundle)
 
 # -*- mode: python ; coding: utf-8 -*-
 
@@ -19,6 +19,29 @@ a = Analysis(
     hiddenimports=[
         'requests_ntlm',
         'prompt_toolkit',
+        # The crm.commands.* modules below are resolved at runtime via
+        # importlib.import_module() in _LazyJsonAwareGroup.get_command (crm/cli.py),
+        # which PyInstaller's static analysis cannot follow. List every module that
+        # appears in _LazyJsonAwareGroup._lazy_commands here, or that command will be
+        # missing from the frozen bundle and crash on invocation. Keep the two in sync.
+        # (crm.commands._helpers is statically imported by cli.py and listed for clarity.)
+        'crm.commands._helpers',
+        'crm.commands.action',
+        'crm.commands.app',
+        'crm.commands.async_ops',
+        'crm.commands.batch',
+        'crm.commands.connection',
+        'crm.commands.data',
+        'crm.commands.entity',
+        'crm.commands.init',
+        'crm.commands.metadata',
+        'crm.commands.query',
+        'crm.commands.repl',
+        'crm.commands.session',
+        'crm.commands.skill',
+        'crm.commands.solution',
+        'crm.commands.view',
+        'crm.commands.workflow',
     ],
     hookspath=[],
     hooksconfig={},
@@ -35,21 +58,28 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='crm',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='crm',
 )
