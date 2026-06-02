@@ -57,6 +57,39 @@ class TestCreateApp:
         # appmodule create on 9.1 rejects a null webresourceid → the default icon is set
         assert body["webresourceid"] == _DEFAULT_ICON
 
+    def test_create_app_dry_run_probes_for_real_and_reports_would_skip(self, profile):
+        from crm.core import appmodule
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(dry.url_for("appmodules"),
+                  json={"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]})
+            out = appmodule.create_app(dry, name="CRMWorx",
+                                       unique_name="cwx_crmworx", if_exists="skip")
+        assert out["_dry_run"] is True
+        assert out["_exists"] is True
+        assert out["would_skip"] is True
+        assert any(r.method == "GET" for r in m.request_history)
+        assert not any(r.method == "POST" for r in m.request_history)
+
+    def test_create_app_publishes_before_readback(self, backend):
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": []})  # guard
+            app_url = backend.url_for(f"appmodules({_APP_ID})")
+            m.post(backend.url_for("appmodules"), status_code=204,
+                   headers={"OData-EntityId": app_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            m.get(app_url, json={"appmoduleid": _APP_ID, "name": "CRMWorx"})
+            appmodule.create_app(backend, name="CRMWorx",
+                                 unique_name="cwx_crmworx", publish=True)
+        # PublishAllXml must precede the read-back GET of the new appmodule
+        kinds = [(r.method, r.url) for r in m.request_history]
+        publish_i = next(i for i, (mth, u) in enumerate(kinds)
+                         if mth == "POST" and "PublishAllXml" in u)
+        readback_i = next(i for i, (mth, u) in enumerate(kinds)
+                          if mth == "GET" and f"appmodules({_APP_ID})" in u)
+        assert publish_i < readback_i
+
     def test_create_app_skips_when_exists(self, backend):
         from crm.core import appmodule
         with requests_mock.Mocker() as m:

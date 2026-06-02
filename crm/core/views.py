@@ -69,19 +69,31 @@ def create_view(
         raise D365Error("name is required.")
     if not columns:
         raise D365Error("at least one column is required.")
+    for col_name, width in columns:
+        if not col_name:
+            raise D365Error("column names must be non-empty.")
+        if width <= 0:
+            raise D365Error(f"column width must be positive: {col_name!r}={width}.")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
     # Existence guard — savedqueries has no alternate key, so query by name+type.
+    # Force a real read even in dry-run: the GET never mutates, and an accurate
+    # preview (_exists/would_skip) needs the live answer (cf. metadata.target_exists).
     name_lit = name.replace("'", "''")
-    existing = as_dict(backend.get(
-        "savedqueries",
-        params={
-            "$filter": (f"name eq '{name_lit}' and returnedtypecode eq '{entity}' "
-                        "and querytype eq 0"),
-            "$select": "savedqueryid,name",
-        },
-    )).get("value", [])
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        existing = as_dict(backend.get(
+            "savedqueries",
+            params={
+                "$filter": (f"name eq '{name_lit}' and returnedtypecode eq '{entity}' "
+                            "and querytype eq 0"),
+                "$select": "savedqueryid,name",
+            },
+        )).get("value", [])
+    finally:
+        backend.dry_run = was_dry
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"View {name!r} on {entity} already exists.",

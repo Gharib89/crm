@@ -55,12 +55,8 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
             ctx.backend(), entity=entity, object_type_code=object_type_code,
             name=name, columns=parsed, order_by=order_by,
             filter_active=filter_active, is_default=is_default,
-            solution=solution, if_exists=if_exists,
+            solution=solution, if_exists=if_exists, publish=publish,
         )
-        if publish and not info.get("_dry_run") and not info.get("skipped"):
-            from crm.core import solution as sol_mod
-            sol_mod.publish_all(ctx.backend())
-            info["published"] = True
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

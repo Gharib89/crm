@@ -90,6 +90,29 @@ class TestCreateView:
             views.create_view(backend, entity="cwx_ticket", object_type_code=10042,
                               name="X", columns=[])
 
+    def test_rejects_nonpositive_width(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error, match="width must be positive"):
+            views.create_view(backend, entity="cwx_ticket", object_type_code=10042,
+                              name="X", columns=[("cwx_name", 0)])
+
+    def test_dry_run_probes_for_real_and_reports_would_skip(self, profile):
+        from crm.core import views
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            # the existence probe must issue a real GET despite dry-run
+            m.get(dry.url_for("savedqueries"),
+                  json={"value": [{"savedqueryid": _VIEW_ID, "name": "Active Tickets"}]})
+            out = views.create_view(
+                dry, entity="cwx_ticket", object_type_code=10042,
+                name="Active Tickets", columns=[("cwx_name", 220)], if_exists="skip",
+            )
+        assert out["_dry_run"] is True
+        assert out["_exists"] is True
+        assert out["would_skip"] is True
+        assert any(r.method == "GET" for r in m.request_history)
+        assert not any(r.method == "POST" for r in m.request_history)
+
 
 class TestViewCommand:
     def test_view_create_command_wires_core(self, monkeypatch):

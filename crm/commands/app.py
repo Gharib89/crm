@@ -35,11 +35,8 @@ def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
         info = app_mod.create_app(
             ctx.backend(), name=name, unique_name=unique_name,
             description=description, solution=solution, if_exists=if_exists,
+            publish=publish,
         )
-        if publish and not info.get("_dry_run") and not info.get("skipped"):
-            from crm.core import solution as sol_mod
-            sol_mod.publish_all(ctx.backend())
-            info["published"] = True
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
