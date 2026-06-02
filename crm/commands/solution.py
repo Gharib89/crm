@@ -5,19 +5,39 @@ from pathlib import Path
 import click
 from crm.core import async_ops as async_ops_mod
 from crm.core import solution as sol_mod
+from crm.core import session as session_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
     _confirm_destructive,
     _no_retry_scope,
+    _active_profile,
     _EXPORT_SETTING_KEYS,
 )
 
 
 @click.group("solution")
 def solution_group():
-    """Solution lifecycle (list / info / components / export / import)."""
+    """Solution lifecycle (create-publisher / create / list / info / components / export / import)."""
+
+
+def _autowire_profile(ctx: CLIContext, field: str, value: str, result: dict) -> None:
+    """Write `field=value` back to the active NAMED profile after a successful create.
+
+    Command-layer only (the core create functions stay pure). No-op under --dry-run
+    or when no named profile is active (env/dotenv connection). Records the outcome
+    in `result` so it surfaces in the emitted envelope.
+    """
+    if ctx.dry_run or result.get("_dry_run"):
+        return
+    profile = _active_profile(ctx)
+    if profile is None:
+        result["profile_update"] = "skipped: no named profile"
+        return
+    setattr(profile, field, value)
+    session_mod.save_profile(profile)
+    result["profile_updated"] = {"profile": profile.name, field: value}
 
 
 @solution_group.command("list")
@@ -59,6 +79,68 @@ def solution_components_cmd(ctx: CLIContext, unique_name):
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=items, meta={"count": len(items)})
+
+
+@solution_group.command("create-publisher")
+@click.option("--name", required=True, help="Publisher unique name, e.g. 'crmworx'.")
+@click.option("--display", "display", default=None,
+              help="Friendly name (defaults to --name).")
+@click.option("--prefix", required=True,
+              help="Customization prefix: 2-8 alphanumeric, starts with a letter, "
+                   "not 'mscrm'. e.g. 'cwx'.")
+@click.option("--option-value-prefix", "option_value_prefix", type=int, required=True,
+              help="Option-value prefix (integer 10000-99999).")
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
+@click.option("--set-default/--no-set-default", default=True,
+              help="Write publisher_prefix back to the active named profile (default on).")
+@pass_ctx
+def solution_create_publisher(ctx: CLIContext, name, display, prefix,
+                              option_value_prefix, if_exists, set_default):
+    """Create a solution publisher (publishers)."""
+    try:
+        info = sol_mod.create_publisher(
+            ctx.backend(), name=name, friendly_name=display, prefix=prefix,
+            option_value_prefix=option_value_prefix, if_exists=if_exists,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if set_default:
+        _autowire_profile(ctx, "publisher_prefix", prefix, info)
+    ctx.emit(True, data=info)
+
+
+@solution_group.command("create")
+@click.option("--name", required=True, help="Solution unique name, e.g. 'CRMWorx'.")
+@click.option("--display", "display", default=None,
+              help="Friendly name (defaults to --name).")
+@click.option("--version", default="1.0.0.0", help="Solution version (default 1.0.0.0).")
+@click.option("--publisher", "publisher", default=None,
+              help="Publisher unique name (mutually exclusive with --publisher-id).")
+@click.option("--publisher-id", "publisher_id", default=None,
+              help="Publisher GUID (mutually exclusive with --publisher).")
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
+@click.option("--set-default/--no-set-default", default=True,
+              help="Write default_solution back to the active named profile (default on).")
+@pass_ctx
+def solution_create(ctx: CLIContext, name, display, version, publisher,
+                    publisher_id, if_exists, set_default):
+    """Create an unmanaged solution bound to a publisher (solutions)."""
+    if bool(publisher) == bool(publisher_id):
+        ctx.emit(False, error="Provide exactly one of --publisher or --publisher-id.")
+        return
+    try:
+        info = sol_mod.create_solution(
+            ctx.backend(), name=name, friendly_name=display, version=version,
+            publisher_unique_name=publisher, publisher_id=publisher_id,
+            if_exists=if_exists,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if set_default:
+        _autowire_profile(ctx, "default_solution", name, info)
+    ctx.emit(True, data=info)
 
 
 @solution_group.command("export")
