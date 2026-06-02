@@ -811,6 +811,54 @@ binds chart b7510172: True | binds view 72313649: True
 Created on the first attempt. Keep the dashboard `formid` — the model-driven app in §11
 adds it as a component.
 
+## 10. Business process flow (documented manual fallback)
+
+A BPF is a `workflows` row with `category` = `4` (BusinessProcessFlow), `type` = `1`
+(Definition), `primaryentity` = `cwx_ticket`, and a `clientdata` JSON describing the
+stages. This is the one artifact in this guide that **could not be built through the Web
+API on 9.1** within a sane time-box — documented here honestly rather than faked.
+
+### The CLI attempt (and its exact failure)
+
+```bash
+crm --json entity create workflows --data-file /tmp/cwx_bpf.json
+# body: { "name":"Ticket Resolution", "uniquename":"cwx_ticketresolution",
+#         "category":4, "type":1, "primaryentity":"cwx_ticket", "languagecode":1033 }
+```
+
+```json
+{ "ok": false, "error": "An unexpected error occurred.",
+  "meta": { "status": 500, "code": "0x80040216" } }
+```
+
+### Why it's blocked on 9.1
+
+1. **`cwx_ticket.IsBusinessProcessEnabled` is `false`**, and MS Learn states *"Enabling a
+   table for business process flow is a one-way process. You can't reverse it."* This guide
+   does not force an irreversible metadata mutation over the API.
+2. **`clientdata` has no documented hand-authorable schema.** Reverse-engineering an
+   existing on-org BPF shows it is a ~6.8 KB serialization of internal
+   `Microsoft.Crm.Workflow.ObjectModel` classes
+   (`WorkflowStep → EntityStep → StageStep → StepStep → ControlStep`) whose IDs must align
+   with platform-generated `processstage` rows.
+3. **MS Learn documents only the visual designer + a GET to retrieve** the definition — no
+   supported "create a BPF via Web API POST" path for on-prem 9.1.
+
+### Manual-portal fallback (the supported path)
+
+Settings → **Processes** → **New** → Category **Business Process Flow** → Entity
+**`cwx_ticket`** → add stages **New → In Progress → Resolved** → **Activate**. Creating the
+BPF through the designer also performs the irreversible `IsBusinessProcessEnabled` flip on
+`cwx_ticket` for you.
+
+!!! warning "BPF was not created via the CLI"
+    Every other artifact in this guide was built live through `crm`. The BPF is the lone
+    exception on 9.1: it requires the portal designer (or a managed-solution import). This
+    is tracked in [issue #37](https://github.com/Gharib89/crm/issues/37) (*"BPF creation via
+    Web API on D365 CE on-prem 9.1"*); if a supported API recipe surfaces, a future `crm bpf`
+    command can emit it. The app in §11 therefore binds the views, forms, chart and dashboard
+    — not a BPF.
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
