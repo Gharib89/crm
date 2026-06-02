@@ -35,8 +35,6 @@ jobs:
     if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -46,5 +44,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[docs]"
-      - name: Deploy to gh-pages
-        run: mkdocs gh-deploy --force
+      - name: Build site
+        run: mkdocs build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.97.0'
+          command: pages deploy site --project-name=crm-docs
