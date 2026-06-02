@@ -8,9 +8,9 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
 from crm.core import session as session_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Error
 if TYPE_CHECKING:
     from crm.cli import CLIContext
+    from crm.utils.d365_backend import ConnectionProfile, D365Error
 
 
 def _sanitize(obj: Any) -> Any:

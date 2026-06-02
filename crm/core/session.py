@@ -14,9 +14,10 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from crm.utils.d365_backend import ConnectionProfile
+if TYPE_CHECKING:
+    from crm.utils.d365_backend import ConnectionProfile
 
 
 DEFAULT_HOME = Path.home() / ".crm"
@@ -43,6 +44,7 @@ def save_profile(profile: ConnectionProfile) -> Path:
 
 
 def load_profile(name: str) -> ConnectionProfile:
+    from crm.utils.d365_backend import ConnectionProfile
     p = profile_path(name)
     if not p.is_file():
         raise FileNotFoundError(f"Profile not found: {name} (looked at {p})")
