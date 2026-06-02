@@ -20,7 +20,7 @@
 - Create: `docs/how-to/view.md`, `docs/how-to/app.md` (the interface command groups)
 - Modify: `mkdocs.yml` (add the two new how-to pages to the `How-to` nav)
 - Modify: `docs/contributing/skill-and-cli.md`
-- Modify: `crm/skills/SKILL.md` (document the new `crm view` / `crm app` commands — see Task 2)
+- Modify: `crm/skills/SKILL.md` (document the new `crm view` / `crm app` / `solution create-publisher` / `solution create` commands — see Task 2)
 - Modify (resync target): `~/.claude/skills/crm/SKILL.md`
 
 ### Task 1: Fill the seven how-to pages from the walkthrough
@@ -66,8 +66,10 @@ crm --json metadata create-one-to-many --schema-name cwx_sla_cwx_ticket \
 ```
 
 Do the equivalent for the other six groups (connection: whoami/connect/profiles;
-entity: create/update/lookup-bind; query: odata/fetchxml; solution: components/export/
-publish-all; data: export; action: function). `session` has no dedicated page — fold
+entity: create/update/lookup-bind; query: odata/fetchxml; solution: lead with
+`create-publisher` + `create` — the zero-web-UI CRMWorx prerequisite (#34), then
+components/export/publish-all; data: export; action: function). `session` has no
+dedicated page — fold
 `session info`/`history` into the connection page or the walkthrough coverage table.
 
 - [ ] **Step 2: Write the two new interface how-to pages**
@@ -168,6 +170,12 @@ are **new CLI surface** the agent skill must describe. Add a short section to
 `--column logical:width`, `--filter-active`) and `app create` / `app add-components`
 (appmodule; component kinds entity|view|chart|form|dashboard|bpf|sitemap) — mirror the
 terseness of the existing command entries.
+
+Likewise add the new `solution` verbs (issue #34, now on `main`): `solution
+create-publisher` (publishers; `--prefix` 2-8 alnum / letter-first / not `mscrm`,
+`--option-value-prefix` 10000-99999) and `solution create` (`--publisher` xor
+`--publisher-id`; both auto-wire `publisher_prefix` / `default_solution` into a named
+profile, `--no-set-default` to opt out — see [ADR-0002](../../adr/0002-create-verbs-auto-wire-profile.md)).
 
 Also, if Plan 2 or the interface run surfaced behavior not in `crm/skills/SKILL.md`
 (e.g. a corrected `@odata.bind` property-name pattern, the `GlobalOptionSet@odata.bind`

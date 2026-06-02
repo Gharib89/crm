@@ -14,15 +14,19 @@ The build order is: **option sets → entities → attributes → relationships 
 - A reachable D365 CE on-prem server and NTLM credentials (via `.env`: `CRM_BASE_URL`,
   `CRM_USERNAME`, `CRM_PASSWORD`, `CRM_AUTH=ntlm`, `CRM_API_VERSION`). The password is
   read from `D365_PASSWORD`, with `CRM_PASSWORD` accepted as an alias — both names work.
-- **A `CRMWorx` *unmanaged* solution and a publisher with prefix `cwx` must already
-  exist on the server.** The CLI cannot create either today — it only lists, exports,
-  imports, and publishes solutions (filed as
-  [#34](https://github.com/Gharib89/crm/issues/34)). Create both once in the D365 web
-  UI before running this guide:
-    1. **Settings → Customizations → Publishers → New** — Display Name `CRMWorx`,
-       Prefix `cwx`, save.
-    2. **Settings → Solutions → New** — Display Name `CRMWorx`, Name `CRMWorx`,
-       Publisher = the `cwx` publisher, Version `1.0.0.0`, save.
+- **A `CRMWorx` *unmanaged* solution and a publisher with prefix `cwx`.** Create both
+  from the CLI — no web UI ([#34](https://github.com/Gharib89/crm/issues/34)).
+  `--if-exists skip` makes re-runs a no-op:
+
+  ```bash
+  crm --json solution create-publisher --name crmworx --display CRMWorx --prefix cwx \
+    --option-value-prefix 30000 --if-exists skip
+  crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
+  ```
+
+  With a named profile active, these auto-wire `publisher_prefix=cwx` and
+  `default_solution=CRMWorx` into it, so the metadata commands below target the
+  `cwx` publisher and `CRMWorx` solution by default (pass `--no-set-default` to opt out).
 
 ## 1. Pre-flight & connection
 
