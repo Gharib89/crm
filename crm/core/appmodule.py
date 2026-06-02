@@ -112,6 +112,9 @@ def create_app(
             out["name"] = rb.get("name", name)
         except D365Error as exc:
             out["app_lookup_error"] = f"Read-back failed: {exc}"
+    else:
+        out["app_lookup_error"] = (
+            f"Could not parse appmoduleid from response: {entity_id_url!r}")
     return out
 
 
@@ -176,5 +179,9 @@ def set_sitemap(
     entity_id_url = result.get("_entity_id_url") or ""
     m = re.search(r"sitemaps\(([0-9a-fA-F-]{36})\)", entity_id_url)
     smid = m.group(1) if m else None
-    return {"created": True, "sitemapid": smid, "sitemapname": sitemap_name,
-            "solution": solution}
+    out: dict[str, Any] = {"created": True, "sitemapid": smid,
+                           "sitemapname": sitemap_name, "solution": solution}
+    if not smid:
+        out["sitemap_lookup_error"] = (
+            f"Could not parse sitemapid from response: {entity_id_url!r}")
+    return out

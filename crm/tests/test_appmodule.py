@@ -90,6 +90,18 @@ class TestCreateApp:
                           if mth == "GET" and f"appmodules({_APP_ID})" in u)
         assert publish_i < readback_i
 
+    def test_create_app_unparseable_id_sets_lookup_error(self, backend):
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": []})
+            m.post(backend.url_for("appmodules"), status_code=204,
+                   headers={"OData-EntityId": "https://x/appmodules(bogus)"})
+            out = appmodule.create_app(backend, name="CRMWorx",
+                                       unique_name="cwx_crmworx")
+        assert out["created"] is True
+        assert out["appmoduleid"] is None
+        assert "app_lookup_error" in out
+
     def test_create_app_skips_when_exists(self, backend):
         from crm.core import appmodule
         with requests_mock.Mocker() as m:
@@ -163,6 +175,17 @@ class TestSetSitemap:
         assert body["sitemapnameunique"] == "cwx_crmworx"
         # solution routes through the MSCRM.SolutionUniqueName header
         assert post.headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
+
+    def test_set_sitemap_unparseable_id_sets_lookup_error(self, backend):
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("sitemaps"), status_code=204,
+                   headers={"OData-EntityId": "https://x/sitemaps(bogus)"})
+            out = appmodule.set_sitemap(backend, sitemap_name="X",
+                                        sitemap_xml="<SiteMap/>")
+        assert out["created"] is True
+        assert out["sitemapid"] is None
+        assert "sitemap_lookup_error" in out
 
     def test_set_sitemap_rejects_empty_xml(self, backend):
         from crm.core import appmodule

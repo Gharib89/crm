@@ -90,6 +90,20 @@ class TestCreateView:
             views.create_view(backend, entity="cwx_ticket", object_type_code=10042,
                               name="X", columns=[])
 
+    def test_unparseable_id_sets_lookup_error(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": "https://x/savedqueries(bogus)"})
+            out = views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="X", columns=[("cwx_name", 100)],
+            )
+        assert out["created"] is True
+        assert out["savedqueryid"] is None
+        assert "view_lookup_error" in out
+
     def test_rejects_nonpositive_width(self, backend):
         from crm.core import views
         with pytest.raises(D365Error, match="width must be positive"):

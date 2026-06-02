@@ -618,7 +618,7 @@ crm --json entity create savedqueries --data-file /tmp/cwx_view_active_tickets.j
 
 Two more views follow the same guard → create flow — **Tickets by Priority** (cwx_ticket;
 LayoutXml leads with `cwx_priority`, FetchXml ordered by `cwx_priority`) and **Active SLAs**
-(`returnedtypecode": "cwx_sla"`, `object="10126"`; cells `cwx_name`, `cwx_tier`,
+(`"returnedtypecode": "cwx_sla"`, `object="10126"`; cells `cwx_name`, `cwx_tier`,
 `cwx_responsehours`, `cwx_resolutionhours`):
 
 ```text

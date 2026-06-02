@@ -136,5 +136,8 @@ def create_view(
             out["name"] = rb.get("name", name)
         except D365Error as exc:
             out["view_lookup_error"] = f"Read-back failed: {exc}"
+    else:
+        out["view_lookup_error"] = (
+            f"Could not parse savedqueryid from response: {entity_id_url!r}")
     maybe_publish(backend, out, publish)
     return out
