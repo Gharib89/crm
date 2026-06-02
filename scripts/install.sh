@@ -4,7 +4,7 @@
 # Run with --uninstall to remove the install.
 set -eu
 
-BASE_URL="https://pub-REPLACE_ME.r2.dev"   # set during R2 setup (Task 0/7)
+BASE_URL="https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev"   # set during R2 setup (Task 0/7)
 INSTALL_DIR="${HOME}/.local/share/crm"
 BIN_DIR="${HOME}/.local/bin"
 BIN_LINK="${BIN_DIR}/crm"

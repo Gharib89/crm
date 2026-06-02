@@ -14,7 +14,7 @@ param([switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
 
-$BaseUrl    = 'https://pub-REPLACE_ME.r2.dev'   # set during R2 setup (Task 0/7)
+$BaseUrl    = 'https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev'   # set during R2 setup (Task 0/7)
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\crm'
 
 function Remove-FromUserPath([string]$dir) {

@@ -8,13 +8,13 @@ The canonical install instructions live in the project
 **Windows (PowerShell):**
 
 ```powershell
-irm https://pub-REPLACE_ME.r2.dev/install.ps1 | iex
+irm https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.ps1 | iex
 ```
 
 **Linux:**
 
 ```bash
-curl -fsSL https://pub-REPLACE_ME.r2.dev/install.sh | sh
+curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
 ```
 
 Pin a version by setting `CRM_VERSION` (e.g. `v0.6.0`). The binary is unsigned;

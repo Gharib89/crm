@@ -37,7 +37,7 @@ a one-liner — no GitHub account or Python needed.
 **Windows (PowerShell):**
 
 ```powershell
-irm https://pub-REPLACE_ME.r2.dev/install.ps1 | iex
+irm https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\Programs\crm` and adds it to your user PATH. Open a
@@ -48,7 +48,7 @@ SmartScreen may warn on first run. To uninstall, download `install.ps1` and run
 **Linux:**
 
 ```bash
-curl -fsSL https://pub-REPLACE_ME.r2.dev/install.sh | sh
+curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
 ```
 
 Installs to `~/.local/share/crm` and links `~/.local/bin/crm`. Ensure
