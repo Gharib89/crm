@@ -1,6 +1,6 @@
 site_name: crm — D365 CE on-prem CLI
 site_description: CLI + agent guide for Dynamics 365 CE on-premises customizations
-site_url: https://crm-docs.pages.dev/
+site_url: https://crm-cli-docs.pages.dev/
 repo_url: https://github.com/Gharib89/crm
 repo_name: Gharib89/crm
 docs_dir: docs
