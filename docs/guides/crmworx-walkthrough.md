@@ -767,6 +767,50 @@ Tickets by Priority | b7510172-705e-f111-b65d-00155d467b90
 The server accepted the chart on the first attempt. Keep that
 `savedqueryvisualizationid` — the dashboard in §9 binds it.
 
+## 9. Dashboard
+
+A dashboard is a `systemform` with `type` = `0`. Its `formxml` lays out a grid of
+components; every chart/grid component uses the same control `classid`
+`{E7A81278-8635-4d9e-8D4D-59480B391C5B}` and is configured purely through `<parameters>`.
+The load-bearing parameters are `<ChartGridMode>` (`Chart` vs `Grid`), `<VisualizationId>`
+(the §8 chart GUID), and `<ViewId>` (the §6 view GUID that supplies the data).
+
+**CRMWorx SLA Overview** — a single tab, one section, two side-by-side cells: the
+"Tickets by Priority" chart and a list, both reading the "Active Tickets" view:
+
+```xml
+<cell colspan="1" rowspan="12" showlabel="false" id="{…}" auto="false">
+  <control id="Chart1" classid="{E7A81278-8635-4d9e-8D4D-59480B391C5B}">
+    <parameters>
+      <TargetEntityType>cwx_ticket</TargetEntityType>
+      <ChartGridMode>Chart</ChartGridMode>
+      <ViewId>{72313649-6f5e-f111-b65d-00155d467b90}</ViewId>          <!-- Active Tickets -->
+      <IsUserView>false</IsUserView>
+      <VisualizationId>{b7510172-705e-f111-b65d-00155d467b90}</VisualizationId>  <!-- chart -->
+      <IsUserChart>false</IsUserChart>
+      <EnableChartPicker>false</EnableChartPicker>
+    </parameters>
+  </control>
+</cell>
+```
+
+Guard, create, publish, read back:
+
+```bash
+crm --json query odata systemforms --filter "name eq 'CRMWorx SLA Overview' and type eq 0" --select name,formid
+crm --json entity create systemforms --data-file /tmp/cwx_dashboard.json
+crm --json solution publish-all
+crm --json query odata systemforms --filter "type eq 0 and name eq 'CRMWorx SLA Overview'" --select name,formid,formxml
+```
+
+```text
+CRMWorx SLA Overview | e29005b6-705e-f111-b65d-00155d467b90
+binds chart b7510172: True | binds view 72313649: True
+```
+
+Created on the first attempt. Keep the dashboard `formid` — the model-driven app in §11
+adds it as a component.
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
