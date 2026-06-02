@@ -8,16 +8,20 @@
 
 **Tech Stack:** MkDocs, the `crm skill` command, diff/patch.
 
-**Prerequisites:** Plans 1 and 2 complete (scaffold + transcribed walkthrough exist).
+**Prerequisites:** Plans 1 and 2 complete (scaffold + transcribed walkthrough exist), **and the CRMWorx interface plan** (`2026-06-01-crmworx-interface.md`) complete — its §6–§13 interface sections and the new `crm view` / `crm app` command groups must already exist on `main`.
+
+**Execution order:** This plan runs **last** in the CRMWorx series: Plan 1 (scaffold) → Plan 2 (live-run walkthrough) → interface plan (interface build + `view`/`app` commands) → **Plan 3 (this — distill how-tos + sync skill)**. Plan 3 reads the *finished* walkthrough and syncs `SKILL.md` to the *full* command set, so running it before the interface work would leave its output immediately stale (missing view/app how-tos + SKILL coverage) and force a re-run.
 
 ---
 
 ## File structure
 
 - Modify: `docs/how-to/{connection,entity,query,metadata,solution,data,action}.md`
+- Create: `docs/how-to/view.md`, `docs/how-to/app.md` (the interface command groups)
+- Modify: `mkdocs.yml` (add the two new how-to pages to the `How-to` nav)
 - Modify: `docs/contributing/skill-and-cli.md`
+- Modify: `crm/skills/SKILL.md` (document the new `crm view` / `crm app` commands — see Task 2)
 - Modify (resync target): `~/.claude/skills/crm/SKILL.md`
-- Possibly modify: `crm/skills/SKILL.md` (only if the run exposed undocumented behavior)
 
 ### Task 1: Fill the seven how-to pages from the walkthrough
 
@@ -66,16 +70,79 @@ entity: create/update/lookup-bind; query: odata/fetchxml; solution: components/e
 publish-all; data: export; action: function). `session` has no dedicated page — fold
 `session info`/`history` into the connection page or the walkthrough coverage table.
 
-- [ ] **Step 2: Build strict**
+- [ ] **Step 2: Write the two new interface how-to pages**
+
+The interface plan added the `crm view` and `crm app` command groups (walkthrough §13)
+and the live primitive-driven interface build (§6–§12). Create two new pages, drawing
+commands verbatim from those sections.
+
+`docs/how-to/view.md`:
+
+```markdown
+# How-to: view
+
+Create system views (savedquery). Taken from the CRMWorx interface build (§6, §13).
+
+## Create an active-records public view
+
+```bash
+crm --json view create cwx_ticket --name "Active Tickets" --otc <OTC> \
+  --column "cwx_name:220" --column "cwx_priority:120" --column "cwx_customerid:180" \
+  --order cwx_name --filter-active --if-exists skip
+```
+Get `<OTC>` (ObjectTypeCode) from `crm --json metadata entity cwx_ticket`. `--filter-active`
+restricts to `statecode=0`; `--if-exists skip` makes re-runs a no-op.
+```
+
+`docs/how-to/app.md`:
+
+```markdown
+# How-to: app
+
+Create model-driven apps (appmodule) and bind components. From the CRMWorx build (§11, §13).
+
+## Create the app
+
+```bash
+crm --json app create --name CRMWorx --unique-name cwx_crmworx \
+  --description "CRMWorx IT ticketing" --if-exists skip
+```
+
+## Bind entities, views, forms, charts, dashboards
+
+```bash
+crm --json app add-components <appmoduleid> \
+  --component entity:<cwx_ticket-guid> --component view:<savedqueryid> \
+  --component chart:<savedqueryvisualizationid> --component form:<formid>
+```
+`<appmoduleid>` comes from `app create`. Component kinds: entity|view|chart|form|dashboard|bpf|sitemap.
+
+## Attach a sitemap
+
+```bash
+crm --json app set-sitemap "CRMWorx Sitemap" --xml-file sitemap.xml
+```
+```
+
+- [ ] **Step 3: Add the two pages to the mkdocs nav**
+
+In `mkdocs.yml`, under the `How-to:` nav block, add (after `action: how-to/action.md`):
+```yaml
+      - view: how-to/view.md
+      - app: how-to/app.md
+```
+(`mkdocs build --strict` warns about any docs page absent from the nav, so this is required.)
+
+- [ ] **Step 4: Build strict**
 
 Run: `mkdocs build --strict`
 Expected: no warnings.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add docs/how-to/
-git commit -m "docs: fill how-to recipes from the CRMWorx run"
+git add docs/how-to/ mkdocs.yml
+git commit -m "docs: fill how-to recipes from the CRMWorx run (incl. view/app)"
 ```
 
 ### Task 2: Reconcile the agent-skill drift
@@ -93,11 +160,18 @@ Expected: the active copy is missing the "Destructive operations — `--yes` con
 contract" section (and possibly run-exposed updates). Confirm the source-of-truth copy
 is the more complete one.
 
-- [ ] **Step 2: If the run exposed undocumented behavior, update the source of truth first**
+- [ ] **Step 2: Document the new commands + any run-exposed behavior in the source of truth**
 
-Only if Plan 2 surfaced behavior not in `crm/skills/SKILL.md` (e.g. a corrected
-`@odata.bind` property name pattern, or a metadata create quirk), add a short note to
-`crm/skills/SKILL.md`. Otherwise skip this step.
+The interface plan's Phase B added the `crm view` and `crm app` command groups — these
+are **new CLI surface** the agent skill must describe. Add a short section to
+`crm/skills/SKILL.md` covering `view create` (savedquery; needs `--otc`, repeatable
+`--column logical:width`, `--filter-active`) and `app create` / `app add-components`
+(appmodule; component kinds entity|view|chart|form|dashboard|bpf|sitemap) — mirror the
+terseness of the existing command entries.
+
+Also, if Plan 2 or the interface run surfaced behavior not in `crm/skills/SKILL.md`
+(e.g. a corrected `@odata.bind` property-name pattern, the `GlobalOptionSet@odata.bind`
+MetadataId requirement, or the LayoutXml `object="<OTC>"` quirk), add a one-line note.
 
 - [ ] **Step 3: Reinstall the skill to the active Claude location**
 
@@ -182,8 +256,8 @@ Expected: `0` warnings; final line `Documentation built in ...`.
 
 - [ ] **Step 2: Confirm every nav page resolves**
 
-Run: `for f in index getting-started/install getting-started/configure guides/crmworx-walkthrough how-to/connection how-to/entity how-to/query how-to/metadata how-to/solution how-to/data how-to/action reference/cli contributing/skill-and-cli; do test -e "site/$f/index.html" -o -e "site/$f.html" && echo "ok $f" || echo "MISSING $f"; done`
-Expected: every line starts with `ok`.
+Run: `for f in index getting-started/install getting-started/configure guides/crmworx-walkthrough how-to/connection how-to/entity how-to/query how-to/metadata how-to/solution how-to/data how-to/action how-to/view how-to/app reference/cli contributing/skill-and-cli; do test -e "site/$f/index.html" -o -e "site/$f.html" && echo "ok $f" || echo "MISSING $f"; done`
+Expected: every line starts with `ok` (includes the new `how-to/view` + `how-to/app` interface pages).
 
 - [ ] **Step 3: Confirm coverage table lists all groups + no stub markers remain**
 
