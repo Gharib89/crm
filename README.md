@@ -29,37 +29,34 @@ to talk to. E2E tests fail loudly if credentials are missing.
 
 ## Install
 
-### Option 1: Prebuilt binary (no Python required)
+### Option 1: Install script (no Python required)
 
-Download the latest release for your platform from
-<https://github.com/Gharib89/crm/releases/latest>:
+The prebuilt `crm` binary bundles CPython and all dependencies. Install it with
+a one-liner — no GitHub account or Python needed.
 
-- Linux x86_64: `crm-linux-x86_64`
-- Windows x86_64: `crm-windows-x86_64.exe`
+**Windows (PowerShell):**
+
+```powershell
+irm https://pub-REPLACE_ME.r2.dev/install.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\Programs\crm` and adds it to your user PATH. Open a
+new shell, then run `crm --version`. The binary is unsigned, so Windows
+SmartScreen may warn on first run. To uninstall, download `install.ps1` and run
+`.\install.ps1 -Uninstall`.
 
 **Linux:**
 
 ```bash
-curl -L -o crm https://github.com/Gharib89/crm/releases/latest/download/crm-linux-x86_64
-chmod +x crm
-sudo mv crm /usr/local/bin/
-crm --version
+curl -fsSL https://pub-REPLACE_ME.r2.dev/install.sh | sh
 ```
 
-**Windows (PowerShell):**
+Installs to `~/.local/share/crm` and links `~/.local/bin/crm`. Ensure
+`~/.local/bin` is on your PATH. Built on Ubuntu 22.04, so it runs on any Linux
+with glibc ≥ 2.35. To uninstall, download `install.sh` and run
+`sh install.sh --uninstall`.
 
-The downloaded `.exe` will be marked as coming from the internet and may
-trigger a SmartScreen warning on first run. Unblock it once:
-
-```powershell
-Unblock-File .\crm-windows-x86_64.exe
-Rename-Item .\crm-windows-x86_64.exe crm.exe
-# Move crm.exe somewhere on your PATH
-.\crm.exe --version
-```
-
-Glibc compatibility: the Linux binary is built on Ubuntu 22.04 (glibc 2.35)
-and runs on any Linux distribution with glibc ≥ 2.35.
+Pin a version by setting `CRM_VERSION` (e.g. `v0.6.0`) before running.
 
 ### Option 2: From source (development)
 
