@@ -1,0 +1,51 @@
+/* ITWorx brand palette for Material for MkDocs.
+ *
+ * Colors sampled from itworx.com: a royal indigo-blue identity with a
+ * red logo accent.
+ *   royal blue (hero) ....... #353A9C
+ *   deep indigo (wordmark) .. #181D81
+ *   indigo (buttons) ........ #171D8F
+ *   logo red ................ #C83428
+ */
+
+:root {
+  --itworx-indigo:        #1B1F8F;  /* primary: header / sidebar */
+  --itworx-indigo-royal:  #353A9C;  /* lighter royal blue (hero)  */
+  --itworx-indigo-dark:   #12156B;
+  --itworx-red:           #C83428;  /* accent: logo pop, hover    */
+  --itworx-red-light:     #E0594D;
+}
+
+/* ---- Light scheme ------------------------------------------------------ */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color:        var(--itworx-indigo);
+  --md-primary-fg-color--light: var(--itworx-indigo-royal);
+  --md-primary-fg-color--dark:  var(--itworx-indigo-dark);
+  --md-primary-bg-color:        #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color:              var(--itworx-red);
+  --md-accent-fg-color--transparent: rgba(200, 52, 40, 0.1);
+}
+
+/* Royal indigo for body links in the light scheme (more readable than the
+ * red accent, which is reserved for hover/active states). */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: var(--itworx-indigo-royal);
+}
+
+/* ---- Dark scheme (slate) ---------------------------------------------- */
+[data-md-color-scheme="slate"] {
+  --md-hue: 232;                        /* tint slate surfaces toward indigo */
+  --md-typeset-a-color: #8e92e8;
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: var(--itworx-indigo-dark);
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: var(--itworx-red-light);
+}

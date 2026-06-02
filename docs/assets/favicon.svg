@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="crm">
+  <rect width="64" height="64" rx="12" fill="#1B1F8F"/>
+  <!-- ITWorx-style red aperture mark -->
+  <circle cx="32" cy="30" r="16" fill="#C83428"/>
+  <path d="M32 30 L32 14 A16 16 0 0 0 18.1 38 Z" fill="#ffffff" opacity="0.92"/>
+  <circle cx="32" cy="30" r="4.2" fill="#ffffff"/>
+</svg>
