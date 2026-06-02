@@ -52,6 +52,14 @@ Three independent problems, addressed by three independent changes:
 
 5. **`.github/workflows/release.yml`** — build `--onedir`, zip/tar per-OS, add a `publish-r2` job that uploads artifacts + install scripts to R2. Update smoke-test paths.
 
+6. **Docs** — update install instructions to the R2 script flow in both places that currently document it:
+   - **`README.md`** "## Install" — currently tells users to `curl -L https://github.com/Gharib89/crm/releases/latest/download/…` and Unblock the `.exe`. That GitHub URL **does not work anonymously** (private repo) — it is already broken. Replace with the R2 one-liners as the primary path; keep the "from source" `pip install -e .` path; keep the SmartScreen/`Unblock-File` note (binary is still unsigned).
+   - **`docs/getting-started/install.md`** — the mkdocs page (publishes to the Pages site). Currently links to the private releases page. Replace the "Prebuilt binary" section with the R2 one-liners; keep "From source".
+   - New primary instructions:
+     - Windows: `irm https://pub-<hash>.r2.dev/install.ps1 | iex`
+     - Linux: `curl -fsSL https://pub-<hash>.r2.dev/install.sh | sh`
+   - Optional: a manual-download fallback (direct R2 zip/tar URLs) for users who don't want to pipe a script.
+
 ### Data flow
 
 **Build (CI):** source → `pyinstaller crm.spec` → `dist/crm/` (onedir) → archived per-OS (`crm-windows-x86_64.zip`, `crm-linux-x86_64.tar.gz`) → attached to a (private) GitHub Release **and** uploaded to R2.
@@ -137,6 +145,7 @@ npx wrangler@4.97.0 r2 object put crm-cli-releases/${TAG}/crm-windows-x86_64.zip
 - **CI smoke (updated paths):** `dist/crm/crm --version` and `dist/crm/crm --help` exit 0 on both OSes. Add a loose wall-clock guard: `--version` < 250ms (generous for CI runners; catches a regression back to onefile extraction).
 - **Lazy-import regression test:** a unit test that invokes `crm --version` via Click's `CliRunner` (or a subprocess) and asserts `crm.commands.entity` (and the rest) are **not** in `sys.modules` afterward.
 - **Manual release smoke:** clean Win11 VM → `irm …/install.ps1 | iex` → new shell → `crm whoami` against a real D365 endpoint. Repeat the upgrade path (run installer twice).
+- **Docs:** `mkdocs build --strict` (already gated in `docs.yml`) must pass after the install-page edits; verify the R2 one-liners render and links resolve.
 
 ## Risks and mitigations
 
