@@ -859,6 +859,101 @@ BPF through the designer also performs the irreversible `IsBusinessProcessEnable
     command can emit it. The app in §11 therefore binds the views, forms, chart and dashboard
     — not a BPF.
 
+## 11. Sitemap & model-driven app
+
+The capstone: an `appmodules` row (the app), a `sitemaps` row (its navigation), and the
+`AddAppComponents` action to bind everything built so far. Three on-prem-9.1 quirks were
+discovered live and each matters.
+
+### App module
+
+`appmodules` requires a non-null `webresourceid` (the tile icon). The platform ships a
+default icon (`953b9fac-1e5e-e611-80d6-00155ded156f`,
+`msdyn_/Images/AppModule_Default_Icon.png`); CRMWorx instead uses its own `cwx_` SVG web
+resource so the app is self-contained:
+
+```bash
+# 1. create + publish a cwx_ icon web resource (type 11 = SVG)
+crm --json entity create webresourceset --data-file /tmp/cwx_webresource.json   # -> 9188010c-…
+crm --json solution publish-all
+```
+
+!!! warning "appmodule create: use `--no-return`"
+    The default `Prefer: return=representation` makes the POST read the new row straight
+    back — but an **unpublished** appmodule isn't yet readable, so the whole call reports
+    `appmodule With Id = … Does Not Exist` *after* having created the row (which then
+    collides on the next attempt). Create with `--no-return` and read the id back with the
+    `RetrieveUnpublishedMultiple` function instead.
+
+```bash
+crm --json entity create appmodules --no-return --data-file /tmp/cwx_app.json
+crm --json query odata "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()" --select name,uniquename,appmoduleid
+# -> CRMWorx | cwx_crmworx | 79bdfbec-725e-f111-b65d-00155d467b90
+```
+
+`/tmp/cwx_app.json`: `{ "name":"CRMWorx", "uniquename":"cwx_crmworx", "clienttype":4,
+"navigationtype":0, "webresourceid":"9188010c-…" }` (`clienttype` 4 = Unified Interface,
+confirmed against the org's existing apps).
+
+### Sitemap
+
+A `sitemaps` row whose `sitemapnameunique` equals the app's `uniquename` auto-associates
+with the app. SiteMapXml: one Area → one Group → three SubAreas (the dashboard, then the
+two tables by `Entity=`):
+
+```xml
+<SiteMap>
+  <Area Id="cwx_area_service" Title="CRMWorx" ShowGroups="true">
+    <Group Id="cwx_group_main" Title="CRMWorx">
+      <SubArea Id="cwx_sa_dashboard" Title="SLA Overview" DefaultDashboard="e29005b6-…" />
+      <SubArea Id="cwx_sa_tickets" Entity="cwx_ticket" Title="Tickets" />
+      <SubArea Id="cwx_sa_slas" Entity="cwx_sla" Title="SLAs" />
+    </Group>
+  </Area>
+</SiteMap>
+```
+
+```bash
+crm --json entity create sitemaps --no-return --data-file /tmp/cwx_sitemap.json   # -> 2ef3183b-…
+```
+
+### Bind components
+
+!!! note "AddAppComponents takes **typed entity references**, not `{Type, Id}`"
+    On 9.1 the `Components` array is a collection of entity references — each element is the
+    component's primary-key field plus its `@odata.type`, e.g.
+    `{ "savedqueryid":"…", "@odata.type":"Microsoft.Dynamics.CRM.savedquery" }`. The
+    `componenttype` integers (entity 1, view 26, chart 59, form 60, sitemap 62) are the
+    *read-side* `appmodulecomponent.componenttype` values, **not** the action payload shape.
+
+```bash
+crm --json action invoke AddAppComponents --body-file /tmp/cwx_addcomponents.json
+```
+
+The body binds 8 components: the sitemap, the 3 views, the augmented main form +
+quick-create + dashboard (all `systemform`), and the chart. Then publish, validate, and
+read the components back. `ValidateApp` / `RetrieveAppComponents` are **functions** whose
+`AppModuleId` is an `Edm.Guid` — pass it **unquoted** by calling the function on the URL
+path (the CLI's `--params` would quote it as a string and the server rejects that):
+
+```bash
+crm --json solution publish-all
+crm --json query odata "ValidateApp(AppModuleId=79bdfbec-…)"
+crm --json query odata "RetrieveAppComponents(AppModuleId=79bdfbec-…)"
+```
+
+```text
+ValidationSuccess = True        # app is valid
+RetrieveAppComponents -> 8 items (3 view, 1 chart, 3 form/dashboard, 1 sitemap)
+```
+
+!!! note "Tables surface through the sitemap, not AddAppComponents"
+    `AddAppComponents` only accepts record-backed components (its `Components` parameter is
+    a `crmbaseentity` collection), so `cwx_ticket` / `cwx_sla` *table metadata* can't be
+    bound through it. The two tables reach the app via the sitemap's `Entity=` subareas;
+    `ValidateApp` notes this as a non-blocking warning and still returns
+    `ValidationSuccess = True`.
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
