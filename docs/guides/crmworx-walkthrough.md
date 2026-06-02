@@ -1039,8 +1039,8 @@ crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
 
 `crm app add-components` and `crm app set-sitemap` round out the group, emitting the
 typed-entity-reference `AddAppComponents` body and the `sitemapnameunique`-linked sitemap
-that §11 proved on 9.1. `crm app create` always sets the required `webresourceid` (the
-platform default icon unless overridden).
+that §11 proved on 9.1. `crm app create` always sets the required `webresourceid` to the
+platform default icon.
 
 ## Capability coverage
 
