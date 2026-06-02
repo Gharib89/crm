@@ -1004,6 +1004,44 @@ RetrieveAppComponents -> 8 components
 ValidateApp           -> ValidationSuccess = True
 ```
 
+## 13. Promoted commands
+
+The high-reuse, small-predictable-XML pieces — public views and the model-driven
+app/sitemap — are promoted from raw `entity create` calls into first-class command groups
+(`crm view`, `crm app`), each backed by `requests_mock` unit tests. Their generators emit
+exactly the shapes the live server accepted in §6 and §11.
+
+**`crm view create`** rebuilds the "Active SLAs" view (here under a `(cmd)` suffix so it
+sits alongside the §6 original) — it generates the LayoutXml + FetchXml, guards on
+name+entity, creates, and publishes:
+
+```bash
+crm --json view create cwx_sla --name "Active SLAs (cmd)" --otc 10126 \
+  --column "cwx_name:240" --column "cwx_tier:140" --filter-active --if-exists skip
+```
+
+```json
+{ "ok": true, "data": { "created": true,
+  "savedqueryid": "467f3c88-785e-f111-b65d-00155d467b90", "published": true } }
+```
+
+**`crm app create`** is idempotent — run against the app from §11 it reports a skip via the
+same existence guard, no duplicate:
+
+```bash
+crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
+```
+
+```json
+{ "ok": true, "data": { "skipped": true,
+  "appmoduleid": "79bdfbec-725e-f111-b65d-00155d467b90" } }
+```
+
+`crm app add-components` and `crm app set-sitemap` round out the group, emitting the
+typed-entity-reference `AddAppComponents` body and the `sitemapnameunique`-linked sitemap
+that §11 proved on 9.1. `crm app create` always sets the required `webresourceid` (the
+platform default icon unless overridden).
+
 ## Capability coverage
 
 Every `crm` command group is exercised by this walkthrough:
@@ -1019,6 +1057,8 @@ Every `crm` command group is exercised by this walkthrough:
 | action | §4 — `function RetrieveCurrentOrganization`; §11 — `invoke AddAppComponents` |
 | solution | §5–§11 — `publish-all`, `export`, `components`, `list`, `info` |
 | (interface) | §6 views · §7 forms · §8 charts · §9 dashboard · §10 BPF (manual fallback, [#37](https://github.com/Gharib89/crm/issues/37)) · §11 sitemap + model-driven app · §12 launch |
+| view | §13 — `crm view create` (promoted savedquery generator) |
+| app | §13 — `crm app create` / `add-components` / `set-sitemap` (promoted appmodule + sitemap) |
 
 ## Teardown (optional — full reset for a clean replay)
 
