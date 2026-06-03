@@ -11,3 +11,4 @@ dist/
 site/
 .playwright-mcp/
 .wrangler/
+.claude/scheduled_tasks.lock
