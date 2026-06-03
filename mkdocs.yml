@@ -82,6 +82,7 @@ nav:
   - Home: index.md
   - Getting started:
       - Install: getting-started/install.md
+      - Initialize: getting-started/initialize.md
       - Configure: getting-started/configure.md
   - Guides:
       - CRMWorx walkthrough: guides/crmworx-walkthrough.md
