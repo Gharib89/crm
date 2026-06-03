@@ -1,8 +1,9 @@
-# crm — Dynamics 365 CE on-prem CLI
+# crm — Dynamics 365 CE CLI
 
-A stateful CLI for **Microsoft Dynamics 365 Customer Engagement (on-premises) 9.x**,
-wrapping the Dataverse Web API (OData v4) over NTLM. Built for shell scripting and
-AI agents: `--json` everywhere, `--dry-run` to preview mutations.
+A stateful CLI for **Microsoft Dynamics 365 Customer Engagement 9.x**, wrapping the
+Dataverse Web API (OData v4). Authenticates with NTLM for on-premises or OAuth 2.0
+client-credentials for Dataverse online. Built for shell scripting and AI agents:
+`--json` everywhere, `--dry-run` to preview mutations.
 
 ## Where to go next
 

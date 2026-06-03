@@ -24,6 +24,7 @@ from typing import Any, Callable, Sequence, cast
 import logging as _logging
 
 import requests
+from requests.auth import AuthBase
 
 from crm.utils.d365_types import BatchOperation, BatchResult
 
@@ -61,7 +62,9 @@ class ConnectionProfile:
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
-    auth_scheme: str = "ntlm"      # ntlm | kerberos | negotiate
+    auth_scheme: str = "ntlm"      # ntlm | kerberos | negotiate | oauth
+    tenant_id: str | None = None   # oauth: AAD tenant (non-secret)
+    client_id: str | None = None   # oauth: app-registration id (non-secret)
     default_solution: str | None = None  # uniquename for MSCRM.SolutionUniqueName
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
     timeout: int = 120
@@ -74,9 +77,9 @@ class ConnectionProfile:
     async_timeout: int = 1800
 
     def __post_init__(self) -> None:
-        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate"):
+        if self.auth_scheme not in ("ntlm", "kerberos", "negotiate", "oauth"):
             raise D365Error(
-                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate, "
+                f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate|oauth, "
                 f"got {self.auth_scheme!r}"
             )
         for _field, _value in (
@@ -112,6 +115,8 @@ class ConnectionProfile:
             "api_version": self.api_version,
             "verify_ssl": self.verify_ssl,
             "auth_scheme": self.auth_scheme,
+            "tenant_id": self.tenant_id,
+            "client_id": self.client_id,
             "default_solution": self.default_solution,
             "publisher_prefix": self.publisher_prefix,
             "timeout": self.timeout,
@@ -134,6 +139,8 @@ class ConnectionProfile:
             api_version=d.get("api_version", "v9.2"),
             verify_ssl=d.get("verify_ssl", True),
             auth_scheme=d.get("auth_scheme", "ntlm"),
+            tenant_id=d.get("tenant_id"),
+            client_id=d.get("client_id"),
             default_solution=d.get("default_solution"),
             publisher_prefix=d.get("publisher_prefix"),
             timeout=d.get("timeout", 120),
@@ -162,6 +169,109 @@ _DEFAULT_HEADERS: dict[str, str] = {
 }
 
 
+def _oauth_cache_path() -> str | None:
+    """Path to the persistent msal token cache.
+
+    Returns None only when the CRM_HOME directory can't be created. An
+    existing-but-unwritable dir still yields a path here; the actual write is
+    best-effort (see `_OAuthBearerAuth._persist_cache`) and falls back to an
+    in-memory cache for this run if it fails.
+    """
+    root = _os.path.expanduser(
+        _os.environ.get("CRM_HOME") or _os.path.join(_os.path.expanduser("~"), ".crm")
+    )
+    try:
+        _os.makedirs(root, exist_ok=True)
+    except OSError:
+        return None
+    return _os.path.join(root, "msal_token_cache.json")
+
+
+class _OAuthBearerAuth(AuthBase):
+    """Injects an AAD bearer token (client-credentials) on every request.
+
+    Token acquisition is delegated to msal, which serves a valid token from
+    its cache and only round-trips to AAD when none is available. The cache is
+    persisted to disk (0600) so the token survives across `crm` invocations.
+    """
+
+    def __init__(self, msal_mod: Any, client_id: str, authority: str, secret: str,
+                 scope: str, cache: Any = None, cache_path: str | None = None) -> None:
+        self._msal = msal_mod
+        self._client_id = client_id
+        self._authority = authority
+        self._secret = secret
+        self._scope = scope
+        self._cache = cache
+        self._cache_path = cache_path
+        self._app: Any = None
+
+    def _ensure_app(self) -> Any:
+        # Built lazily on first request: msal validates the authority over the
+        # network at construction, so this must not run when the backend is built.
+        if self._app is None:
+            try:
+                self._app = self._msal.ConfidentialClientApplication(
+                    self._client_id,
+                    authority=self._authority,
+                    client_credential=self._secret,
+                    token_cache=self._cache,
+                )
+            except Exception as exc:
+                raise D365Error(
+                    f"OAuth setup failed: {exc}\n"
+                    "Verify D365_TENANT_ID and that the org URL is a reachable "
+                    "public-cloud Dataverse host.",
+                    status=401,
+                ) from exc
+        return self._app
+
+    def __call__(self, request: requests.PreparedRequest) -> requests.PreparedRequest:
+        app = self._ensure_app()
+        try:
+            result: dict[str, Any] = app.acquire_token_for_client(scopes=[self._scope])
+        except Exception as exc:
+            raise D365Error(f"OAuth token acquisition failed: {exc}", status=401) from exc
+        token = result.get("access_token")
+        if not token:
+            err = result.get("error", "unknown_error")
+            desc = result.get("error_description", "")
+            # No automatic refresh-retry: a rejected credential is operational.
+            raise D365Error(
+                f"OAuth token acquisition failed ({err}). {desc}\n"
+                "Check the app registration (client id/secret, tenant) and that "
+                "an application user for this app exists in Dynamics with the "
+                "right security role.",
+                status=401,
+            )
+        request.headers["Authorization"] = f"Bearer {token}"
+        self._persist_cache()
+        return request
+
+    def _persist_cache(self) -> None:
+        cache = self._cache
+        path = self._cache_path
+        if cache is None or path is None or not getattr(cache, "has_state_changed", False):
+            return
+        # Write to a pid-unique temp file then atomically replace, so concurrent
+        # `crm` invocations sharing CRM_HOME can't leave a torn cache file.
+        tmp = f"{path}.{_os.getpid()}.tmp"
+        try:
+            fd = _os.open(tmp, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+            try:
+                _os.write(fd, cache.serialize().encode("utf-8"))
+            finally:
+                _os.close(fd)
+            _os.chmod(tmp, 0o600)  # enforce 0600 regardless of umask
+            _os.replace(tmp, path)
+        except OSError:
+            try:
+                _os.unlink(tmp)
+            except OSError:
+                pass
+            # best-effort: the in-memory token is still valid this run
+
+
 class D365Backend:
     """HTTP client for the D365 on-prem 9.x Web API.
 
@@ -172,7 +282,7 @@ class D365Backend:
                  dry_run: bool = False):
         if not profile.url:
             raise D365Error("Profile is missing the server URL.")
-        if not profile.username:
+        if profile.auth_scheme != "oauth" and not profile.username:
             raise D365Error("Profile is missing the username.")
 
         self.profile = profile
@@ -210,9 +320,52 @@ class D365Backend:
                     "Install it: pip install crm[kerberos]"
                 ) from exc
             return HttpNegotiateAuth()  # type: ignore[no-any-return]
+        if scheme == "oauth":
+            return self._make_oauth_auth(password)
         raise D365Error(
-            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate"
+            f"Unknown auth_scheme {scheme!r}; expected ntlm|kerberos|negotiate|oauth"
         )
+
+    def _make_oauth_auth(self, secret: str) -> AuthBase:
+        """Build a bearer-token auth via OAuth 2.0 client-credentials.
+
+        msal is lazy-imported (startup perf) though it is a base dependency.
+        Scope is derived from the org host; authority is the public cloud.
+        """
+        try:
+            import msal  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise D365Error(
+                "OAuth auth requires 'msal'. Install it: pip install msal"
+            ) from exc
+        _msal: Any = msal  # msal ships no type stubs; launder member access to Any
+
+        if not secret:
+            raise D365Error(
+                "OAuth requires a client secret (set D365_CLIENT_SECRET or pass --password)."
+            )
+        tenant = self.profile.tenant_id
+        client = self.profile.client_id
+        if not tenant or not client:
+            raise D365Error(
+                "OAuth requires tenant_id and client_id on the profile "
+                "(set D365_TENANT_ID and D365_CLIENT_ID)."
+            )
+
+        host = urllib.parse.urlparse(self.profile.url).netloc
+        scope = f"https://{host}/.default"
+        authority = f"https://login.microsoftonline.com/{tenant}"
+
+        cache: Any = _msal.SerializableTokenCache()
+        cache_path = _oauth_cache_path()
+        if cache_path is not None and _os.path.exists(cache_path):
+            try:
+                with open(cache_path, encoding="utf-8") as fh:
+                    cache.deserialize(fh.read())
+            except (OSError, ValueError):
+                pass  # corrupt/unreadable cache → start fresh, overwrite on next save
+
+        return _OAuthBearerAuth(_msal, client, authority, secret, scope, cache, cache_path)
 
     # ── URL helpers ─────────────────────────────────────────────────────
 

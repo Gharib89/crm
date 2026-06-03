@@ -22,7 +22,7 @@ optimized for AI agents or shell scripting. This harness gives you:
 |--------------------------|--------------------|----------------------------------------|
 | Python                   | ≥ 3.9              |                                        |
 | Dynamics 365 CE on-prem  | 9.0 / 9.1 / 9.2    | Reachable from your machine over HTTPS |
-| Auth                     | NTLM (Windows Integrated) | OAuth/IFD is out of scope here. |
+| Auth                     | NTLM (on-prem) · OAuth (online) | NTLM = Windows Integrated; OAuth = client-credentials for Dataverse cloud. |
 
 The D365 server is a **hard runtime dependency** — without it the CLI has nothing
 to talk to. E2E tests fail loudly if credentials are missing.
@@ -73,14 +73,33 @@ crm --version
 
 Credentials come from environment variables (preferred) or a saved profile.
 
+**On-prem (NTLM, default):**
+
 ```bash
 export D365_URL="https://crm.contoso.local/contoso"
 export D365_USERNAME="alice"
 export D365_PASSWORD="..."        # never persisted to disk
 export D365_DOMAIN="CONTOSO"      # optional if username is a UPN
-export D365_AUTH="ntlm"           # only supported mode
+export D365_AUTH="ntlm"           # default
 export D365_API_VERSION="v9.2"    # optional; default v9.2
 ```
+
+**Online / Dataverse cloud (OAuth 2.0 client-credentials):**
+
+```bash
+export D365_URL="https://contoso.crm.dynamics.com"
+export D365_AUTH="oauth"
+export D365_TENANT_ID="<aad-tenant-id>"
+export D365_CLIENT_ID="<app-registration-id>"
+export D365_CLIENT_SECRET="..."   # never persisted to disk
+```
+
+The app registration needs an **application user** in Dynamics with a suitable
+security role. The token scope (`https://<host>/.default`) and authority
+(`https://login.microsoftonline.com/<tenant>`) are derived automatically; the
+bearer token is cached at `~/.crm/msal_token_cache.json` (mode `0600`) and reused
+across invocations until it expires. Username/password/domain are not used in
+this mode.
 
 Or save a reusable profile (no password):
 
@@ -199,7 +218,8 @@ See `D365.md` in the project root for the full SOP.
 
 ## Limits / Out of Scope
 
-- OAuth, IFD (claims), and certificate auth — only NTLM is supported here.
+- IFD (claims) auth, certificate credentials, and OAuth flows other than
+  client-credentials (device-code, interactive, ROPC) — on-prem uses NTLM,
+  cloud uses OAuth 2.0 client-credentials (secret) against the public cloud only.
 - Plugin / workflow source code deployment — use solution import for that.
 - Audit log / report execution — out of scope; can be added as an extension.
-- D365 online (Dataverse cloud) — works in theory but auth differs and is unconfigured.

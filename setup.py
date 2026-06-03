@@ -18,6 +18,7 @@ setup(
         "requests>=2.28",
         "requests_ntlm>=1.2",
         "prompt_toolkit>=3.0",
+        "msal>=1.20",
     ],
     extras_require={
         "dev": ["pytest>=7.0", "requests_mock>=1.10", "pyinstaller>=6.0", "pyright>=1.1.380"],

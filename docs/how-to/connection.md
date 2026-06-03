@@ -8,7 +8,26 @@ Connect and verify identity, taken from the CRMWorx build (§1). See the
 ```bash
 crm --json connection whoami
 ```
-Returns `UserId` / `BusinessUnitId` / `OrganizationId`; a non-zero exit (e.g. `401`) means the `DOMAIN\username` credentials are wrong.
+Returns `UserId` / `BusinessUnitId` / `OrganizationId`; a non-zero exit (e.g. `401`) means the credentials are wrong — for NTLM the `DOMAIN\username`/password, for OAuth (`D365_AUTH=oauth`, online) the app-registration client id/secret/tenant or a missing application user in Dynamics.
+
+### OAuth (online) smoke check
+
+Verify a Dataverse cloud org over bearer auth (no NTLM):
+
+```bash
+export D365_URL="https://<org>.crm.dynamics.com"
+export D365_AUTH="oauth"
+export D365_TENANT_ID="<aad-tenant-id>"
+export D365_CLIENT_ID="<app-registration-id>"
+export D365_CLIENT_SECRET="<secret>"
+
+crm --json connection whoami            # expect UserId/OrganizationId, exit 0
+ls -l ~/.crm/msal_token_cache.json      # token cached at 0600 after first call
+crm --json connection whoami            # second call reuses the cached token
+```
+
+A `401` here points at the app registration (client id/secret/tenant) or a
+missing application user with a security role — there is no automatic retry.
 
 ## Save a targeting profile (validates credentials)
 

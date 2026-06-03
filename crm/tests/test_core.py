@@ -80,10 +80,11 @@ class TestConnectionEnv:
         with pytest.raises(D365Error, match="D365_URL"):
             conn_mod.profile_from_env()
 
-    def test_profile_from_env_rejects_non_ntlm_auth(self, monkeypatch):
+    def test_profile_from_env_rejects_unsupported_auth(self, monkeypatch):
+        # ntlm and oauth are env-settable; anything else is rejected.
         monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
         monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
-        monkeypatch.setenv(conn_mod.ENV_AUTH, "oauth")
+        monkeypatch.setenv(conn_mod.ENV_AUTH, "saml")
         with pytest.raises(D365Error, match="ntlm"):
             conn_mod.profile_from_env()
 

@@ -20,8 +20,16 @@ shape, and on-disk session/profile serialization.
 ### `connection.py`
 - `test_profile_from_env_happy_path` — env vars compile into a `ConnectionProfile`.
 - `test_profile_from_env_missing_url` — raises `D365Error` mentioning `D365_URL`.
-- `test_profile_from_env_rejects_non_ntlm_auth` — `D365_AUTH=oauth` rejected.
+- `test_profile_from_env_rejects_unsupported_auth` — env `D365_AUTH` other than `ntlm`/`oauth` rejected.
 - `test_resolve_credentials_requires_password` — raises on missing password.
+
+### `test_oauth_auth.py` — OAuth client-credentials (issue #49)
+- Profile accepts `auth_scheme="oauth"` + `tenant_id`/`client_id` (round-trip through dict; secret never stored).
+- `profile_from_env` with `D365_AUTH=oauth` builds an oauth profile with no username; missing `D365_TENANT_ID`/`D365_CLIENT_ID` each name the var.
+- `resolve_credentials` flows `D365_CLIENT_SECRET` as the secret; missing names the var.
+- `_make_auth` oauth branch returns a bearer `AuthBase` (msal mocked); msal-absent raises naming `msal`; scope/authority derived from URL + tenant; header injected.
+- Acquire failure raises `D365Error` with app-registration guidance and does not retry.
+- Token cache written `0600` under `CRM_HOME`, reloaded on next construct, in-memory fallback when unwritable.
 
 ### `d365_backend.py`
 - `test_url_for_relative_path` — joins against `api_base`.
@@ -171,7 +179,7 @@ collected 35 items
 
 test_core.py::TestConnectionEnv::test_profile_from_env_happy_path PASSED
 test_core.py::TestConnectionEnv::test_profile_from_env_missing_url PASSED
-test_core.py::TestConnectionEnv::test_profile_from_env_rejects_non_ntlm_auth PASSED
+test_core.py::TestConnectionEnv::test_profile_from_env_rejects_unsupported_auth PASSED
 test_core.py::TestConnectionEnv::test_resolve_credentials_requires_password PASSED
 test_core.py::TestD365Backend::test_url_for_relative_path PASSED
 test_core.py::TestD365Backend::test_url_for_absolute_path_passthrough PASSED
