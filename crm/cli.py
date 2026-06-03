@@ -273,9 +273,10 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
               default=None,
               help="Log output format (env: CRM_LOG_FORMAT). Default: text.")
 @click.option("--auth-scheme",
-              type=click.Choice(["ntlm", "kerberos", "negotiate"]),
+              type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
               default=None,
-              help="HTTP auth scheme (env: CRM_AUTH_SCHEME). Default: ntlm.")
+              help="HTTP auth scheme (env: CRM_AUTH_SCHEME). "
+                   "ntlm/kerberos/negotiate = on-prem; oauth = cloud. Default: ntlm.")
 @click.option("--stage-only", "stage_only", is_flag=True,
               help="Stage metadata changes without publishing (env: CRM_STAGE_ONLY). "
                    "Forces every create/update command to --no-publish.")

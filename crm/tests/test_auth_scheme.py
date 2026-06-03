@@ -5,8 +5,12 @@ from __future__ import annotations
 import sys
 
 import pytest
+from click.testing import CliRunner
 
+from crm.cli import cli
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+
+_BAD_CHOICE = "Invalid value for '--auth-scheme'"
 
 
 def _profile(scheme: str = "ntlm") -> ConnectionProfile:
@@ -56,3 +60,17 @@ class TestAuthSelection:
     def test_unknown_scheme_raises(self):
         with pytest.raises(D365Error, match="auth_scheme"):
             D365Backend(_profile("oauth2"), password="pw")
+
+
+class TestAuthSchemeFlag:
+    """The global --auth-scheme flag must accept every backend-valid scheme."""
+
+    @pytest.mark.parametrize("scheme", ["ntlm", "kerberos", "negotiate", "oauth"])
+    def test_flag_accepts_valid_scheme(self, scheme):
+        result = CliRunner().invoke(cli, ["--auth-scheme", scheme, "session", "info"])
+        assert _BAD_CHOICE not in result.output
+
+    def test_flag_rejects_unknown_scheme(self):
+        result = CliRunner().invoke(cli, ["--auth-scheme", "bogus", "session", "info"])
+        assert result.exit_code == 2
+        assert _BAD_CHOICE in result.output
