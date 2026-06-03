@@ -24,6 +24,8 @@ class TestTemplateMode:
         assert "CRM_USERNAME=" in content
         assert "CRM_PASSWORD=" in content
         assert "CRM_AUTH=ntlm" in content
+        # kerberos/negotiate hint distinguishes the env selector from the CLI override
+        assert "CRM_AUTH_SCHEME" in content
         assert "CRM_LOG_LEVEL=" in content
 
     def test_template_includes_oauth_block(self, tmp_path, monkeypatch):

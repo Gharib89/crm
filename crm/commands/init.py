@@ -19,7 +19,9 @@ CRM_URL=https://your-crm.corp/
 CRM_USERNAME=DOMAIN\\user
 CRM_PASSWORD=
 CRM_DOMAIN=CORP
-CRM_AUTH=ntlm          # ntlm | oauth
+CRM_AUTH=ntlm          # env-profile auth selector: ntlm | oauth
+# kerberos / negotiate are CLI-only — pass --auth-scheme or set CRM_AUTH_SCHEME
+# (a different knob from CRM_AUTH, which the env loader reads).
 
 # ── Online / Dataverse cloud (OAuth client-credentials) ──
 # CRM_URL=https://your-org.crm.dynamics.com
