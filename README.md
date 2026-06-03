@@ -1,8 +1,8 @@
 # crm
 
-Stateful CRM CLI for **Microsoft Dynamics 365 Customer Engagement on-premises,
-version 9.x**. Wraps the real Dataverse Web API (OData v4) over HTTPS with NTLM
-(Windows Integrated) authentication.
+Stateful CRM CLI for **Microsoft Dynamics 365 Customer Engagement** — on-premises
+v9.x (NTLM) or Dataverse online (OAuth). Wraps the real Dataverse Web API (OData
+v4) over HTTPS; the same commands run against both targets.
 
 ## Why
 
@@ -81,7 +81,7 @@ export D365_USERNAME="alice"
 export D365_PASSWORD="..."        # never persisted to disk
 export D365_DOMAIN="CONTOSO"      # optional if username is a UPN
 export D365_AUTH="ntlm"           # default
-export D365_API_VERSION="v9.2"    # optional; default v9.2
+export D365_API_VERSION="v9.1"    # on-prem caps at v9.1 (v9.2 → HTTP 501); online uses v9.2
 ```
 
 **Online / Dataverse cloud (OAuth 2.0 client-credentials):**
@@ -100,6 +100,12 @@ security role. The token scope (`https://<host>/.default`) and authority
 bearer token is cached at `~/.crm/msal_token_cache.json` (mode `0600`) and reused
 across invocations until it expires. Username/password/domain are not used in
 this mode.
+
+> **Pin your profile when both credential sets are present.** If your environment
+> defines both `CRM_*`/NTLM and `D365_*`/OAuth variables, a bare `crm` command lets
+> the `D365_*` vars override the active profile and silently connect to cloud.
+> Always pass `--profile <name>` and confirm the real target with
+> `crm --json connection whoami` (check the `@odata.context` host).
 
 Or save a reusable profile (no password):
 

@@ -42,7 +42,7 @@ export D365_USERNAME="alice"
 export D365_PASSWORD="..."             # never persisted to disk
 export D365_DOMAIN="CONTOSO"           # optional if username is a UPN
 export D365_AUTH="ntlm"
-export D365_API_VERSION="v9.2"         # default; v9.0 / v9.1 / v9.2 all valid
+export D365_API_VERSION="v9.2"         # online: v9.2 · on-prem caps at v9.1 (v9.2 → HTTP 501)
 
 # Or the CRM_* aliases (same effect)
 export CRM_BASE_URL="http://internalcrm.example.local/ORG"
@@ -92,6 +92,24 @@ crm connection connect \
 ```
 
 State directory: `~/.crm/` (override with `CRM_HOME`).
+
+## On-prem vs cloud
+
+Same Dataverse Web API; **only auth + API version differ** — the same commands run
+against both targets.
+
+| | On-prem (NTLM) | Cloud / online (OAuth) |
+|---|---|---|
+| `D365_AUTH` | `ntlm` (also `kerberos` / `negotiate`) | `oauth` |
+| API version | **v9.1 max** (`v9.2` → HTTP 501) | `v9.2` |
+| `CreateMultiple` / `UpdateMultiple` / `DeleteMultiple` | not available | available |
+| Solution import (sync + `ImportSolutionAsync` / `StageSolution`) | available | available |
+
+**Pin your profile when both credential sets are present.** If the environment
+defines both `CRM_*`/NTLM and `D365_*`/OAuth variables, a bare `crm` command lets
+the `D365_*` vars override the active profile and silently connect to cloud. Always
+pass `--profile <name>` and confirm the real target with
+`crm --json connection whoami` (check the `@odata.context` host).
 
 ## Command Groups
 
