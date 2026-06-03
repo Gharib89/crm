@@ -39,6 +39,9 @@ ENV_PASSWORD = "D365_PASSWORD"
 ENV_API_VERSION = "D365_API_VERSION"
 ENV_VERIFY_SSL = "D365_VERIFY_SSL"
 ENV_AUTH = "D365_AUTH"
+ENV_TENANT_ID = "D365_TENANT_ID"
+ENV_CLIENT_ID = "D365_CLIENT_ID"
+ENV_CLIENT_SECRET = "D365_CLIENT_SECRET"
 
 _ENV_ALIASES = {
     ENV_URL: ("CRM_BASE_URL", "CRM_URL"),
@@ -48,6 +51,9 @@ _ENV_ALIASES = {
     ENV_API_VERSION: ("CRM_API_VERSION",),
     ENV_VERIFY_SSL: ("CRM_VERIFY_SSL",),
     ENV_AUTH: ("CRM_AUTH",),
+    ENV_TENANT_ID: ("CRM_TENANT_ID",),
+    ENV_CLIENT_ID: ("CRM_CLIENT_ID",),
+    ENV_CLIENT_SECRET: ("CRM_CLIENT_SECRET",),
 }
 
 
@@ -151,20 +157,44 @@ def profile_from_env(name: str = "env") -> ConnectionProfile:
             "Required: D365_URL/CRM_BASE_URL=https://<host>/<org>, "
             "D365_USERNAME/CRM_USERNAME=<user>, D365_PASSWORD/CRM_PASSWORD=<pw>."
         )
-    raw_user = _env(ENV_USERNAME).strip()
-    if not raw_user:
-        raise D365Error(f"Environment variable {ENV_USERNAME} (or alias CRM_USERNAME) is not set.")
 
     auth = _env(ENV_AUTH, "ntlm").strip().lower()
-    if auth != "ntlm":
-        raise D365Error(
-            f"Only auth=ntlm is supported in this harness (got {auth!r}). "
-            "Set D365_AUTH=ntlm (or CRM_AUTH=ntlm)."
-        )
-
     verify_ssl = _env(ENV_VERIFY_SSL, "1").strip().lower() not in (
         "0", "false", "no", "off",
     )
+    api_version = _env(ENV_API_VERSION, "v9.2").strip() or "v9.2"
+
+    if auth == "oauth":
+        # Cloud / Dataverse online: client-credentials. No on-prem
+        # username/password/domain — those are not required in this mode.
+        tenant_id = _env(ENV_TENANT_ID).strip()
+        if not tenant_id:
+            raise D365Error(f"Environment variable {ENV_TENANT_ID} (or alias CRM_TENANT_ID) is not set.")
+        client_id = _env(ENV_CLIENT_ID).strip()
+        if not client_id:
+            raise D365Error(f"Environment variable {ENV_CLIENT_ID} (or alias CRM_CLIENT_ID) is not set.")
+        return ConnectionProfile(
+            name=name,
+            url=url,
+            domain="",
+            username="",
+            api_version=api_version,
+            verify_ssl=verify_ssl,
+            auth_scheme="oauth",
+            tenant_id=tenant_id,
+            client_id=client_id,
+        )
+
+    if auth != "ntlm":
+        raise D365Error(
+            f"Only auth=ntlm or auth=oauth is supported via environment "
+            f"(got {auth!r}). Set D365_AUTH=ntlm or D365_AUTH=oauth "
+            "(or the CRM_AUTH alias)."
+        )
+
+    raw_user = _env(ENV_USERNAME).strip()
+    if not raw_user:
+        raise D365Error(f"Environment variable {ENV_USERNAME} (or alias CRM_USERNAME) is not set.")
 
     explicit_domain = _env(ENV_DOMAIN).strip()
     domain, username = _split_domain_user(raw_user, explicit_domain)
@@ -174,7 +204,7 @@ def profile_from_env(name: str = "env") -> ConnectionProfile:
         url=url,
         domain=domain,
         username=username,
-        api_version=_env(ENV_API_VERSION, "v9.2").strip() or "v9.2",
+        api_version=api_version,
         verify_ssl=verify_ssl,
     )
 
@@ -188,12 +218,26 @@ def resolve_credentials(
     Resolution order:
     1. If profile_name is given, load it from disk; password from env or override.
     2. Else build a profile entirely from env (and .env autoload).
+
+    The "password" is scheme-dependent: the NTLM password for ntlm, or the
+    OAuth client secret (D365_CLIENT_SECRET) for oauth. Either way it is the
+    one secret the backend needs and is never stored on the profile.
     """
     load_dotenv()
     if profile_name:
         profile = session_mod.load_profile(profile_name)
     else:
         profile = profile_from_env()
+
+    if profile.auth_scheme == "oauth":
+        secret = password_override or _env(ENV_CLIENT_SECRET)
+        if not secret:
+            raise D365Error(
+                f"No client secret supplied. Set {ENV_CLIENT_SECRET} "
+                "(or CRM_CLIENT_SECRET) in the environment, in a .env file, "
+                "or pass --password."
+            )
+        return ResolvedCredentials(profile=profile, password=secret)
 
     password = password_override or _env(ENV_PASSWORD)
     if not password:

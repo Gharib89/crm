@@ -19,6 +19,9 @@ a = Analysis(
     hiddenimports=[
         'requests_ntlm',
         'prompt_toolkit',
+        # msal is lazy-imported inside D365Backend._make_oauth_auth (oauth scheme);
+        # list it so the frozen bundle ships it despite no module-level reference.
+        'msal',
         # The crm.commands.* modules below are resolved at runtime via
         # importlib.import_module() in _LazyJsonAwareGroup.get_command (crm/cli.py),
         # which PyInstaller's static analysis cannot follow. List every module that

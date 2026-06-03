@@ -31,7 +31,8 @@ Python ≥ 3.9. Depends on `requests`, `requests_ntlm`, `click`, `prompt_toolkit
 
 ## Configure
 
-The CLI authenticates with **NTLM (Windows Integrated)**. Set env vars (canonical
+The CLI authenticates with **NTLM (Windows Integrated)** for on-prem, or
+**OAuth 2.0 client-credentials** for Dataverse online. Set env vars (canonical
 `D365_*` form **or** `CRM_*` aliases — both work, matching common on-prem tooling):
 
 ```bash
@@ -50,6 +51,24 @@ export CRM_PASSWORD="..."
 export CRM_API_VERSION="v9.1"
 export CRM_AUTH="ntlm"
 ```
+
+For **Dataverse online**, set `D365_AUTH=oauth` and supply the app-registration
+credentials instead of username/password/domain:
+
+```bash
+export D365_URL="https://contoso.crm.dynamics.com"
+export D365_AUTH="oauth"
+export D365_TENANT_ID="<aad-tenant-id>"
+export D365_CLIENT_ID="<app-registration-id>"
+export D365_CLIENT_SECRET="..."        # never persisted to disk
+```
+
+Scope (`https://<host>/.default`) and authority
+(`https://login.microsoftonline.com/<tenant>`) are derived automatically; the
+public cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json`
+(`0600`) and reused across invocations until expiry. The app registration needs
+an **application user** with a security role in Dynamics. `CRM_*` aliases
+(`CRM_TENANT_ID`, `CRM_CLIENT_ID`, `CRM_CLIENT_SECRET`) work here too.
 
 A `.env` file in the current directory (or its parent, or the path in
 `CRM_DOTENV`) is auto-loaded on every command. Real env vars take
@@ -355,17 +374,22 @@ alternate key is rejected).
 - `D365Error` is the wrapper for any HTTP / API failure. In `--json` mode it
   becomes `{"ok": false, "error": "...", "meta": {"status": N, "code": "0x..."}}`.
 - `404` with code `0x80040217` → record doesn't exist (or wrong entity set / GUID).
-- `401` → auth failed; verify `D365_DOMAIN\D365_USERNAME` and password.
+- `401` → auth failed. NTLM: verify `D365_DOMAIN\D365_USERNAME` and password.
+  OAuth: verify the app-registration (client id/secret, tenant) and that an
+  application user for the app exists in Dynamics with a security role.
 - `403` → user lacks the privilege for that operation in CRM security model.
 - `400` with `OptimisticConcurrencyVersionMismatch` → another user changed the record;
   retrieve fresh and retry.
 
 ## Hard constraints
 
-- **NTLM only.** OAuth/IFD/Claims is out of scope for this harness.
-- **D365 CE on-prem 9.x only.** Online (Dataverse cloud) auth differs; not configured here.
+- **NTLM (on-prem) or OAuth client-credentials (online).** IFD/Claims, certificate
+  credentials, and other OAuth flows (device-code, interactive, ROPC) are out of
+  scope; OAuth targets the public cloud only.
+- **D365 CE on-prem 9.x or Dataverse online.** Same Web API; only auth differs.
 - **Real server required.** No local mocking. E2E tests fail loudly when `D365_URL` is unset.
-- **Passwords are never persisted.** They live in `D365_PASSWORD` or `--password` only.
+- **Secrets are never persisted.** The NTLM password / OAuth client secret live in
+  `D365_PASSWORD` / `D365_CLIENT_SECRET` or `--password` only — never on a saved profile.
 
 ## Related files
 
