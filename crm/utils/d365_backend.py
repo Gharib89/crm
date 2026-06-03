@@ -170,7 +170,13 @@ _DEFAULT_HEADERS: dict[str, str] = {
 
 
 def _oauth_cache_path() -> str | None:
-    """Persistent msal token-cache path, or None if CRM_HOME is unwritable."""
+    """Path to the persistent msal token cache.
+
+    Returns None only when the CRM_HOME directory can't be created. An
+    existing-but-unwritable dir still yields a path here; the actual write is
+    best-effort (see `_OAuthBearerAuth._persist_cache`) and falls back to an
+    in-memory cache for this run if it fails.
+    """
     root = _os.path.expanduser(
         _os.environ.get("CRM_HOME") or _os.path.join(_os.path.expanduser("~"), ".crm")
     )
