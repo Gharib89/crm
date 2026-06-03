@@ -154,8 +154,9 @@ def profile_from_env(name: str = "env") -> ConnectionProfile:
     if not url:
         raise D365Error(
             f"Environment variable {ENV_URL} (or alias CRM_BASE_URL) is not set. "
-            "Required: D365_URL/CRM_BASE_URL=https://<host>/<org>, "
-            "D365_USERNAME/CRM_USERNAME=<user>, D365_PASSWORD/CRM_PASSWORD=<pw>."
+            "Required: D365_URL/CRM_BASE_URL=https://<host>/<org>. Then for NTLM "
+            "set D365_USERNAME/D365_PASSWORD; for OAuth set D365_AUTH=oauth with "
+            "D365_TENANT_ID/D365_CLIENT_ID/D365_CLIENT_SECRET."
         )
 
     auth = _env(ENV_AUTH, "ntlm").strip().lower()

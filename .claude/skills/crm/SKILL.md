@@ -388,8 +388,10 @@ alternate key is rejected).
   scope; OAuth targets the public cloud only.
 - **D365 CE on-prem 9.x or Dataverse online.** Same Web API; only auth differs.
 - **Real server required.** No local mocking. E2E tests fail loudly when `D365_URL` is unset.
-- **Secrets are never persisted.** The NTLM password / OAuth client secret live in
-  `D365_PASSWORD` / `D365_CLIENT_SECRET` or `--password` only — never on a saved profile.
+- **Credentials are never persisted; the OAuth bearer token is.** The NTLM password
+  / OAuth client secret live in `D365_PASSWORD` / `D365_CLIENT_SECRET` or `--password`
+  only — never on a saved profile. The OAuth **bearer token** (a secret until it
+  expires) IS cached on disk at `~/.crm/msal_token_cache.json` (`0600`).
 
 ## Related files
 

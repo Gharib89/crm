@@ -1,4 +1,4 @@
-# crm — Dynamics 365 CE on-prem CLI
+# crm — Dynamics 365 CE CLI
 
 A stateful CLI for **Microsoft Dynamics 365 Customer Engagement 9.x**, wrapping the
 Dataverse Web API (OData v4). Authenticates with NTLM for on-premises or OAuth 2.0

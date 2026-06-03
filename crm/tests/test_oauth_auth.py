@@ -8,15 +8,22 @@ from __future__ import annotations
 
 import sys
 import types
+from typing import Any
 
 import pytest
 import requests
+from requests.auth import AuthBase
+
+
+def _auth_of(backend: Any) -> Any:
+    """The session's auth handler, as Any (Session.auth is a union type)."""
+    return backend._session.auth
 
 
 def _fake_msal(token_result):
     """A stand-in `msal` module. Returns (module, captured-kwargs dict)."""
     captured = {}
-    mod = types.ModuleType("msal")
+    mod: Any = types.ModuleType("msal")
 
     class SerializableTokenCache:
         def __init__(self):
@@ -122,7 +129,15 @@ class TestMakeOAuthAuth:
         mod, _ = _fake_msal({"access_token": "TOK"})
         monkeypatch.setitem(sys.modules, "msal", mod)
         b = D365Backend(_oauth_profile(), password="secret")
-        assert isinstance(b._session.auth, requests.auth.AuthBase)
+        assert isinstance(_auth_of(b), AuthBase)
+
+    def test_empty_secret_raises_naming_secret(self, monkeypatch):
+        from crm.utils.d365_backend import D365Backend, D365Error
+
+        mod, _ = _fake_msal({"access_token": "TOK"})
+        monkeypatch.setitem(sys.modules, "msal", mod)
+        with pytest.raises(D365Error, match="client secret"):
+            D365Backend(_oauth_profile(), password="")
 
     def test_raises_when_msal_missing(self, monkeypatch):
         from crm.utils.d365_backend import D365Backend, D365Error
@@ -138,7 +153,7 @@ class TestMakeOAuthAuth:
         monkeypatch.setitem(sys.modules, "msal", mod)
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/api/data/v9.2/").prepare()
-        b._session.auth(req)
+        _auth_of(b)(req)
         assert req.headers["Authorization"] == "Bearer TOK123"
 
     def test_scope_and_authority_derived_from_url_and_tenant(self, monkeypatch):
@@ -148,7 +163,7 @@ class TestMakeOAuthAuth:
         monkeypatch.setitem(sys.modules, "msal", mod)
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
-        b._session.auth(req)
+        _auth_of(b)(req)
         assert cap["authority"] == "https://login.microsoftonline.com/tid"
         assert cap["client_id"] == "cid"
         assert cap["client_credential"] == "secret"
@@ -183,7 +198,7 @@ class TestLazyAppConstruction:
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
         with pytest.raises(D365Error, match="(?i)oauth setup failed"):
-            b._session.auth(req)
+            _auth_of(b)(req)
 
 
 class TestBearerFailure:
@@ -198,7 +213,7 @@ class TestBearerFailure:
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
         with pytest.raises(D365Error, match="(?i)app reg|application user"):
-            b._session.auth(req)
+            _auth_of(b)(req)
 
     def test_acquire_failure_does_not_retry(self, monkeypatch):
         from crm.utils.d365_backend import D365Backend, D365Error
@@ -216,7 +231,7 @@ class TestBearerFailure:
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
         with pytest.raises(D365Error):
-            b._session.auth(req)
+            _auth_of(b)(req)
         assert calls["n"] == 1  # no automatic refresh-retry
 
 
@@ -232,11 +247,12 @@ class TestTokenCache:
         monkeypatch.setitem(sys.modules, "msal", mod)
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
-        b._session.auth(req)
+        _auth_of(b)(req)
         cache_file = home / "msal_token_cache.json"
         assert cache_file.exists()
-        assert stat.S_IMODE(os.stat(cache_file).st_mode) == 0o600
-        assert cache_file.read_text() == '{"token": "x"}'
+        if os.name != "nt":  # POSIX mode bits aren't enforced on Windows
+            assert stat.S_IMODE(os.stat(cache_file).st_mode) == 0o600
+        assert cache_file.read_text(encoding="utf-8") == '{"token": "x"}'
 
     def test_cache_reloaded_on_next_construct(self, monkeypatch, tmp_path):
         from crm.utils.d365_backend import D365Backend
@@ -247,14 +263,14 @@ class TestTokenCache:
         monkeypatch.setitem(sys.modules, "msal", mod1)
         b1 = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
-        b1._session.auth(req)  # persists '{"token": "x"}'
+        _auth_of(b1)(req)  # persists '{"token": "x"}'
 
         mod2, _ = _fake_msal({"access_token": "TOK"})
         monkeypatch.setitem(sys.modules, "msal", mod2)
         b2 = D365Backend(_oauth_profile(), password="secret")  # second invocation
         # The cache is seeded from disk at construction, so a still-valid token is
         # reused with no AAD round-trip.
-        assert b2._session.auth._cache.serialize() == '{"token": "x"}'
+        assert _auth_of(b2)._cache.serialize() == '{"token": "x"}'
 
     def test_in_memory_fallback_when_home_unwritable(self, monkeypatch, tmp_path):
         from crm.utils.d365_backend import D365Backend
@@ -266,7 +282,7 @@ class TestTokenCache:
         monkeypatch.setitem(sys.modules, "msal", mod)
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
-        b._session.auth(req)  # must not raise despite unwritable cache path
+        _auth_of(b)(req)  # must not raise despite unwritable cache path
         assert req.headers["Authorization"] == "Bearer TOK"
         assert not (blocker / "sub").exists()
 

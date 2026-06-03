@@ -247,15 +247,23 @@ class _OAuthBearerAuth(AuthBase):
         path = self._cache_path
         if cache is None or path is None or not getattr(cache, "has_state_changed", False):
             return
+        # Write to a pid-unique temp file then atomically replace, so concurrent
+        # `crm` invocations sharing CRM_HOME can't leave a torn cache file.
+        tmp = f"{path}.{_os.getpid()}.tmp"
         try:
-            fd = _os.open(path, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+            fd = _os.open(tmp, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
             try:
                 _os.write(fd, cache.serialize().encode("utf-8"))
             finally:
                 _os.close(fd)
-            _os.chmod(path, 0o600)  # enforce 0600 even if the file pre-existed
+            _os.chmod(tmp, 0o600)  # enforce 0600 regardless of umask
+            _os.replace(tmp, path)
         except OSError:
-            pass  # best-effort: the in-memory token is still valid this run
+            try:
+                _os.unlink(tmp)
+            except OSError:
+                pass
+            # best-effort: the in-memory token is still valid this run
 
 
 class D365Backend:
@@ -326,6 +334,10 @@ class D365Backend:
             ) from exc
         _msal: Any = msal  # msal ships no type stubs; launder member access to Any
 
+        if not secret:
+            raise D365Error(
+                "OAuth requires a client secret (set D365_CLIENT_SECRET or pass --password)."
+            )
         tenant = self.profile.tenant_id
         client = self.profile.client_id
         if not tenant or not client:
