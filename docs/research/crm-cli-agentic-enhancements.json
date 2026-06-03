@@ -1,0 +1,1168 @@
+{
+  "synthesis": {
+    "executiveSummary": "crm is a Python Click CLI that drives a Dynamics 365 CE on-premises (v9.x) server over the Dataverse Web API (OData v4) with NTLM auth, and it is already the only viable agentic bridge to on-prem: it ships a stable {ok,data,error,meta} JSON envelope, a committed 0/1/2 exit-code contract, --dry-run request previews, --stage-only batch-then-publish, a two-layer destructive-op gate, and a bundled SKILL.md so a Claude Code or Copilot agent can shell out and parse stdout. The single biggest leverage area is the agent OUTPUT CONTRACT plus DISCOVERY: small, surgical envelope and introspection changes (normalize meta.dry_run, add a machine-readable error taxonomy, expose a describe --json command tree, add meta.warnings[]) materially de-risk autonomous loops at S effort, and they unblock everything else. The second thrust is closing the ALM authoring loop for agents: a one-shot metadata describe write-readiness brief, declarative apply -f spec, delete-attribute/delete-relationship to match the create verbs, ImportJob per-component verification, solution version bump, and SolutionPackager extract/pack for source-control diff. MCP work (a thin crm mcp serve plus a portable destructive gate) is real and is the only way to give Copilot schema'd tools, but it reverses a documented \"drop MCP\" decision and should be gated behind an explicit Copilot-parity commitment. The recommended sequencing: ship the cheap contract/discovery wins now, then the high-impact author/verify ALM primitives, then the connection-bound and MCP investments.",
+    "currentState": {
+      "summary": "crm is a single-package Python Click CLI targeting D365 CE on-prem v9.x exclusively (NTLM only; OAuth/IFD/Claims out of scope), talking to the Dataverse Web API through crm/utils/d365_backend.py with a mockable backend. It already implements the core agent-safety guardrails (JSON envelope, exit-code contract, dry-run, stage-only, destructive gate, lazy command loading) and a broad customization surface (entity/attribute/optionset/relationship CRUD, views, apps, sitemaps, publisher/solution create, solution import/export/publish). The gaps cluster in three areas: agent output-contract/discovery ergonomics, ALM authoring completeness (deletes, version bump, component add/remove, web resources, plugins, sitemap builder), and the absence of any MCP surface or declarative apply model.",
+      "strengths": [
+        "Stable {ok,data,error,meta} JSON envelope on every command via a single CLIContext.emit chokepoint (cli.py:47-61), recursively sanitized to be JSON-serializable",
+        "Committed 0/1/2 exit-code contract (ADR 0001): emit(ok=false) raises Exit(1) so failures never silently exit 0; usage errors stay 2 and are JSON-wrapped under --json",
+        "--dry-run previews the exact HTTP request without issuing it (d365_backend.py:305-313), with zero side effects guaranteed by ADR 0002",
+        "--stage-only forces batch-then-publish-once, sticky in the REPL, with staged:true recorded in meta",
+        "Two-layer destructive gate: in-band --yes/_confirm_destructive plus a deterministic Claude Code PreToolUse hook that hard-blocks ungated destructive Bash calls and resists shell evasion",
+        "Lazy command loading keeps cold start fast for one-shot agent invocations; _lazy_commands is the single registration point",
+        "Broad on-prem-correct customization surface: 14 attribute kinds, retrieve-merge-write metadata PUT with MergeLabels, global optionset @odata.bind MetadataId resolution, 1:N/N:N relationships, public views, model-driven apps, solution import/export with ImportJob polling",
+        "Bundled installable SKILL.md instructing agents to pass --json, branch on exit code, dry-run before mutations, and pass --yes non-interactively",
+        "Zero-touch profile auto-wiring (ADR 0002) writes publisher_prefix/default_solution back into the active profile; passwords never persisted"
+      ],
+      "gaps": [
+        "No machine-readable command/capability discovery: no describe --json, no --help --json; the _lazy_commands registry is private and SKILL.md prose drifts (already 15 commands stale)",
+        "Dry-run signal is an undocumented _dry_run sentinel buried in data with no stable meta.dry_run flag; shape varies per command and batch/poll paths carry no sentinel at all",
+        "Error envelope carries only raw meta.status/meta.code; no enumerable failure category or retryable hint, so every agent re-encodes the same hex-to-meaning playbook from prose",
+        "No structured warnings channel: singular meta.warning clobbers; optionset partial-failure context (completed_steps/stage) is dropped at the command boundary",
+        "Bare crm with no subcommand drops into the interactive REPL with no CRM_NO_REPL/non-TTY guard, so an agent omitting a verb hangs or misreads exit 0",
+        "ALM authoring asymmetry: can create attributes/relationships but cannot delete them; no solution version bump, no AddSolutionComponent/RemoveSolutionComponent, no web resource or plugin registration, no structured sitemap builder",
+        "No declarative desired-state apply and no spec export; every authoring action is a separate imperative subprocess the agent must order correctly",
+        "solution import overwrites unmanaged customizations by default and is not in the destructive gate; ImportJob results are not parsed into per-component pass/fail",
+        "No bulk data import (inverse of data export), no MCP server, no persistent metadata cache, no connection doctor preflight"
+      ]
+    },
+    "architectureMermaid": "flowchart TD\n  Agent[\"Coding agent Claude Code or Copilot\"]\n  Repl[\"Interactive REPL\"]\n  Skill[\"Bundled SKILL.md prose\"]\n  Hook[\"Claude Code PreToolUse gate\"]\n  Cli[\"Click CLI root group lazy commands\"]\n  Emit[\"CLIContext.emit JSON envelope\"]\n  Core[\"crm.core pure functions\"]\n  Backend[\"d365_backend NTLM transport\"]\n  Webapi[\"Dataverse Web API OData v4\"]\n  D365[\"D365 CE on-prem v9.x\"]\n  CoreTools[\"CoreTools SolutionPackager CrmSvcUtil\"]\n\n  Agent -->|shell out --json| Cli\n  Agent -.reads.-> Skill\n  Agent -.gated by.-> Hook\n  Hook --> Cli\n  Repl --> Cli\n  Cli --> Emit\n  Cli --> Core\n  Core --> Backend\n  Backend -->|HTTPS NTLM| Webapi\n  Webapi --> D365\n  Emit -->|stdout| Agent\n  Agent -->|spawns process| CoreTools\n  CoreTools -.solution zip.-> Cli",
+    "targetMermaid": "flowchart TD\n  Agent[\"Coding agent orchestrator\"]\n  Mcp[\"Optional crm mcp serve schema tools\"]\n  Describe[\"describe --json capability manifest\"]\n  Cli[\"Click CLI lazy commands\"]\n  Apply[\"apply -f spec desired state\"]\n  Doctor[\"connection doctor preflight\"]\n  Emit[\"emit envelope meta.dry_run category warnings\"]\n  Core[\"crm.core retrieve-merge-write guard\"]\n  Verify[\"verify assert and metadata describe\"]\n  Backend[\"d365_backend NTLM transport\"]\n  Webapi[\"Dataverse Web API OData v4\"]\n  D365[\"D365 CE on-prem v9.x\"]\n  CoreTools[\"CoreTools extract pack codegen\"]\n  ImportRes[\"ImportJob per-component result\"]\n\n  Agent -->|MCP or shell| Mcp\n  Agent -->|shell --json| Cli\n  Agent -.discovers.-> Describe\n  Mcp --> Cli\n  Describe --> Cli\n  Cli --> Apply\n  Cli --> Doctor\n  Apply --> Core\n  Cli --> Core\n  Core --> Backend\n  Backend -->|HTTPS NTLM| Webapi\n  Webapi --> D365\n  Core --> Emit\n  Emit -->|envelope| Agent\n  Cli --> Verify\n  Verify --> Backend\n  Agent -->|extract pack| CoreTools\n  CoreTools -->|zip| Cli\n  Cli -->|import| ImportRes\n  ImportRes -->|component pass fail| Agent",
+    "roadmapMermaid": "flowchart LR\n  subgraph NOW[\"Now high impact low effort\"]\n    N1[\"meta.dry_run normalize\"]\n    N2[\"error taxonomy category retryable\"]\n    N3[\"describe --json command tree\"]\n    N4[\"meta.warnings array partial-failure\"]\n    N5[\"CRM_NO_REPL non-interactive guard\"]\n    N6[\"solution set-version\"]\n    N7[\"gate solution import overwrite\"]\n  end\n  subgraph NEXT[\"Next high impact medium effort\"]\n    X1[\"metadata describe write-readiness\"]\n    X2[\"apply -f desired state\"]\n    X3[\"delete-attribute delete-relationship\"]\n    X4[\"ImportJob per-component result\"]\n    X5[\"solution add remove component\"]\n    X6[\"CoreTools extract pack\"]\n    X7[\"entity create validate\"]\n    X8[\"connection doctor\"]\n    X9[\"data import bulk\"]\n  end\n  subgraph LATER[\"Later gated or lower leverage\"]\n    L1[\"crm mcp serve Copilot parity\"]\n    L2[\"portable destructive gate\"]\n    L3[\"web resource group\"]\n    L4[\"plugin register-assembly step\"]\n    L5[\"sitemap builder\"]\n    L6[\"persistent metadata cache\"]\n    L7[\"export-spec round-trip\"]\n    L8[\"mutation audit journal\"]\n  end\n  NOW --> NEXT --> LATER",
+    "recommendations": [
+      {
+        "id": "R1",
+        "title": "Normalize the dry-run signal to a stable meta.dry_run flag",
+        "category": "Output contract & agent ergonomics",
+        "priority": 1,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "A dry-run returns a raw {_dry_run, method, url, params, headers, body} dict as data with no top-level or meta-level signal; the shape varies per command (metadata update adds diff/path, create ops add _exists/would_skip) and batch/poll previews carry no _dry_run key at all. An agent must sniff a magic key inside data, and docs/index.html:649 already advertises meta.dry_run as a feature that does not exist.",
+        "proposal": "In CLIContext.emit (cli.py:47), when self.json_mode and self.dry_run, set meta['dry_run']=True before building the envelope, merging into existing meta (e.g. {'staged':True}) without clobbering. Key it off the invocation-level ctx.dry_run flag (cli.py:310), NOT off sniffing data, so batch (list-shaped) and poll previews are covered uniformly and forced-real existence-probe GETs do not false-positive. Keep the in-data _dry_run sentinel for back-compat (ADR 0002 guards read it pre-emit). Scope to JSON mode. Document meta.dry_run in SKILL.md as the canonical signal. Add tests: meta.dry_run on an entity-create dry-run and on a batch dry-run.",
+        "rationale": "Single-line change at the one emit chokepoint that uniformly normalizes every command, fixes a live documentation lie, and is the prerequisite an MCP layer would model dry_run on. ADR 0001 explicitly endorses cross-cutting signals in meta.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\cli.py:47-61",
+          "D:\\projects\\crm\\crm\\cli.py:310",
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:305-313",
+          "D:\\projects\\crm\\crm\\core\\metadata.py:250-253"
+        ],
+        "citations": [
+          "docs/adr/0001-cli-exit-code-contract.md",
+          "docs/index.html:649",
+          "crm/skills/SKILL.md:113-118"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R2",
+        "title": "Add a machine-readable error taxonomy: meta.category + meta.retryable",
+        "category": "Output contract & agent ergonomics",
+        "priority": 2,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "_handle_d365_error (_helpers.py:31-35) emits only meta={status, code}; code is the raw server hex (e.g. 0x80040217) plus two fragile hand-synthesized strings (412->PreconditionFailed, 403->MissingPrivilege keyed on a message substring). There is no enumerable failure category an agent can switch on and no retryable hint. The recovery playbook lives only as prose (SKILL.md:357-361), forcing every agent to re-encode the same hex-to-meaning mapping; the transport-failure path raises with status=None AND code=None, indistinguishable from anything else.",
+        "proposal": "Add a pure classify_d365_error(status, code, message)->(category, retryable) helper near D365Error in d365_backend.py and have _handle_d365_error additively set meta.category and meta.retryable (keep status/code). Closed enum: not_found, auth_failed, forbidden, concurrency_conflict, duplicate_detected, validation, throttled, server_error, transport_error. Map status-first: None->transport_error(retryable), 401->auth_failed, 403->forbidden (subsuming the fragile MissingPrivilege synthesis), 404/0x80040217->not_found, 412->concurrency_conflict(retryable), 429->throttled(retryable), 0x80040237/DuplicateRecord->duplicate_detected, 5xx->server_error(retryable), other 400->validation. retryable=true only for transient classes; frame it as a post-exhaustion class hint (the backend already auto-retries transient failures), with concurrency_conflict meaning refetch-then-retry. Replace the prose list in BOTH SKILL.md copies with the enum table. Add a mapping test.",
+        "rationale": "ADR 0001 chose flat exit codes precisely because failure-class granularity should live in the envelope, yet the envelope has no class field. This closes a self-inflicted gap at S effort, is more robust than the existing substring synthesis, and gives the only machine signal on the status-less transport path.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:31-35",
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:580-605",
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:38-46"
+        ],
+        "citations": [
+          "docs/adr/0001-cli-exit-code-contract.md:23-27",
+          "CONTEXT.md:45",
+          "crm/skills/SKILL.md:357-361"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R3",
+        "title": "Add crm describe --json: machine-readable command/option/choice discovery",
+        "category": "Discovery & self-description",
+        "priority": 3,
+        "impact": "High",
+        "effort": "S",
+        "problem": "There is no machine-readable capability discovery. crm --help (and crm --json --help) emit only plain Click prose; the _lazy_commands registry is private; SKILL.md's command table is hand-maintained prose and is already drifted (lists 6 metadata subcommands where 21 exist). An agent cannot enumerate commands, options, arguments, Choice values, or defaults programmatically and cannot self-correct a bad flag without trial-and-error against exit 2.",
+        "proposal": "Add a top-level describe command (register 'describe' in cli.py:206 _lazy_commands) that walks the live Click tree from the root group via get_command/list_commands, recursing into subgroups (tree is 2 levels deep), and under --json emits {commands:[{name, path, help, is_group, args, params:[{name, type-as-stable-string, required, is_flag, multiple, choices, default, envvar}]}]}. Emit the ROOT global options (--json, --dry-run, --profile, --auth-scheme, --log-level, --stage-only, --session) too since they are sticky. Read Choice.choices verbatim (ownership UserOwned|OrganizationOwned, the 14 attribute kinds, if-exists error|skip, cascade behaviors). Flag/exclude the interactive repl leaf. Do NOT depend on mkdocs-click at runtime (docs-only extra) — walk the live objects. Frame describing the full tree as inheriting --help's existing import cost (not a new perf promise); optionally support describe <group> for a single-module lazy win. Add a test asserting known choices appear and the count matches len(_lazy_commands).",
+        "rationale": "Pure offline Click introspection with zero D365/NTLM dependency — a real differentiator since every other command needs a live server. It is the single biggest discovery gap, hardens against SKILL.md drift, and becomes the schema source for any future MCP server's tool definitions. Verified to enumerate ~70 commands and surface the target Choice enums with no connection.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\cli.py:198-254",
+          "D:\\projects\\crm\\crm\\cli.py:206-224",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:349-353"
+        ],
+        "citations": [
+          "docs/research/ai-agent-tooling-onprem.md:75-76",
+          "crm/skills/SKILL.md:79-91"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R4",
+        "title": "Add a structured warnings channel: meta.warnings[] and surface dropped partial-failure context",
+        "category": "Output contract & agent ergonomics",
+        "priority": 4,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "Non-fatal advisories are lossy. The only structured path is _emit_with_warning setting a singular meta['warning'] (a second advisory clobbers the first), wired only to solution resolution. Seven distinct *_lookup_error read-back keys ride in ad-hoc data slots. Worst: update_optionset attaches completed_steps/stage to the raised D365Error (optionsets.py:176-225), but _handle_d365_error forwards only status/code, so on a partial optionset failure an agent has NO machine-readable record of what already landed on a non-transactional, no-rollback sequence.",
+        "proposal": "Add a meta.warnings:string[] channel. (1) Let emit accept an optional warnings list merged into meta. (2) Rework _emit_with_warning to append rather than set the scalar, and scan the result dict for any *_lookup_error suffix to append (leaving keys in data for back-compat). (3) HIGH-VALUE: extend _handle_d365_error so when exc.completed_steps/exc.stage are set it adds them as meta.completed_steps/meta.failed_stage, guarded on is-not-None so all other call sites keep emitting identical {status,code}. (4) Document meta.warnings in SKILL.md as the one place to scan for staged-but-not-published / created-but-read-back-failed / partial-optionset advisories. Add tests: two warnings do not clobber; partial-optionset failure surfaces completed_steps in the envelope (a command-level test, since the existing test only checks the core exception attributes).",
+        "rationale": "The partial-failure sub-change recovers currently-dropped context on the single deliberate non-atomic multi-write in the codebase, letting an agent drive a deterministic compensating loop without re-querying. Pure client-side envelope shaping, on-prem-safe. Effort is M because it touches emit + two helpers + docs + new tests.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:31-35",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:175-189",
+          "D:\\projects\\crm\\crm\\cli.py:47-61",
+          "D:\\projects\\crm\\crm\\core\\optionsets.py:176-225"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:353-361"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R5",
+        "title": "Add a non-interactive REPL guard (CRM_NO_REPL / non-TTY / --json) so agents fail fast",
+        "category": "Discovery & self-description",
+        "priority": 5,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "A bare crm with no subcommand unconditionally invokes the interactive REPL (cli.py:326-328, invoke_without_command=True). An agent that omits the verb — or whose argv is mangled — either hangs on an open-but-silent stdin or, on EOF stdin, exits 0 (the REPL goodbye), misreading a usage error as success and violating ADR 0001. Even bare crm --json falls into the REPL today. The CLI provides no guard; SKILL.md only warns in prose.",
+        "proposal": "At cli.py:326, before invoking the REPL, when invoked_subcommand is None: if json_mode (already a bound callback param) OR CRM_NO_REPL is truthy OR not sys.stdin.isatty(), emit the standard usage signal and exit 2 — under json_mode call _emit_usage_envelope(\"no subcommand given; run crm --help to list commands\") then raise Exit(2); otherwise click.echo the error to stderr and raise Exit(2). Point the message at crm --help (which exists today), not a describe command unless R3 ships first. Explicit crm repl is unaffected (it only fires when invoked_subcommand is None). This is a proactive isatty probe, intentionally stronger than the EOF-driven _confirm_destructive. Add tests for the --json and CRM_NO_REPL branches (CliRunner reports isatty False), and a monkeypatched-TTY test asserting the REPL still launches for an interactive human.",
+        "rationale": "Closes a real hang/wrong-exit-code failure mode on the discovery surface using existing plumbing (_emit_usage_envelope, Exit(2)). Pure CLI-entry guard, orthogonal to NTLM/on-prem. A backstop for misuse rather than a daily-path fix, hence Medium.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\cli.py:326-328",
+          "D:\\projects\\crm\\crm\\cli.py:124"
+        ],
+        "citations": [
+          "docs/adr/0001-cli-exit-code-contract.md",
+          "crm/skills/SKILL.md:120-121"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R6",
+        "title": "Add solution set-version (and friendlyname/description) before export",
+        "category": "Customization & ALM tooling",
+        "priority": 6,
+        "impact": "High",
+        "effort": "S",
+        "problem": "Publisher and solution are create-only (solution.py). There is no way to bump a solution's version or change friendlyname/description before solution export — yet a version bump is a mandatory step before shipping a new build, so an agent running AUTHOR->PACKAGE->DEPLOY each cycle must drop to the UI mid-pipeline.",
+        "proposal": "Add update_solution(backend, unique_name, *, version=None, friendly_name=None, description=None) next to create_solution. Resolve solutionid via solution_info() (also reading ismanaged/parentsolutionid to fail fast on a patch target — the server rejects with CannotUpdateSolutionPatch). Build a payload of only supplied fields and delegate to entity.update(backend, 'solutions', solutionid, payload, prevent_create=True) so If-Match:* and --dry-run plumbing is reused verbatim (no new HTTP path). Validate version client-side as 4-part dotted numeric. Raise if all kwargs None. CLI: crm solution set-version <unique_name> --version X.Y.Z.B [--friendly-name] [--description]. Tests: each field, all-None raises, invalid version raises pre-HTTP, patch-target fails fast.",
+        "rationale": "solutions is a regular Dataverse data row (PATCH, not metadata PUT) — the safe carve-out — so this is low-risk and S effort, reusing existing entity.update. It is the missing mandatory step in the agent-run ALM loop and pairs directly with export_solution.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\solution.py:118-187",
+          "D:\\projects\\crm\\crm\\core\\solution.py:201-209",
+          "D:\\projects\\crm\\crm\\commands\\solution.py:113-143",
+          "D:\\projects\\crm\\crm\\core\\entity.py:112-143"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:111-120"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R7",
+        "title": "Gate solution import --overwrite-unmanaged-customizations as destructive",
+        "category": "Safety & verification loops",
+        "priority": 7,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "solution import overwrites unmanaged customizations by default (solution.py:356-364, overwrite_unmanaged_customizations=True) and publishes workflows by default, so it can silently clobber hand-made changes on the target org. Yet it is in neither destructive layer: the PreToolUse hook's DESTRUCTIVE map has only {job-cancel} under solution, and the command has no --yes confirm.",
+        "proposal": "Treat overwrite-import as destructive across both layers, mirroring entity delete. (1) Add --yes to solution import and, when overwrite is ON (not no_overwrite), gate on _confirm_destructive with wording that names the actual risk (overwrite of unmanaged customizations), bailing to {ok:false,error:'aborted by user'}. (2) Add 'import' to DESTRUCTIVE['solution'] in destructive_op_gate.py (the hook matches by verb name; existing _strip_global_options/_split_segments handle path/flag variants). (3) Add the SKILL.md destructive-table row in both copies. (4) Add gate block/allow tests and a CLI non-TTY-abort + --yes-skips test. Document the tradeoff: the verb-only gate also blocks a safe --no-overwrite import without --yes — accept it (any import mutates the org) rather than teaching the hook to parse flags. Do NOT change the default import semantics.",
+        "rationale": "Standard ImportSolutionAsync params on on-prem v9.x, no cloud dependency. Closes the exact friction-free destructive path the gate exists to prevent, reusing the established entity-delete pattern at S effort.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\solution.py:356-364",
+          "D:\\projects\\crm\\.claude\\hooks\\destructive_op_gate.py:26-36",
+          "D:\\projects\\crm\\crm\\commands\\solution.py:241-265",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:38-54"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:280-294"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R8",
+        "title": "Add metadata describe <entity>: one-shot write-readiness brief",
+        "category": "Discovery & self-description",
+        "priority": 8,
+        "impact": "High",
+        "effort": "M",
+        "problem": "To write a valid record an agent must chain 4+ GETs and stitch them: entity_info (set/primary), list_attributes (which lacks RequiredLevel on every read path), picklist_options per picklist, and list_relationships (which omits the navigation-property name). The single hardest fact for a create payload — the @odata.bind nav-property key — is not exposed by any read command and lives only as SKILL.md prose.",
+        "proposal": "Add crm metadata describe <logical_name> (read-only) returning one consolidated brief: entity_set_name, primary_id, primary_name, and writable_attributes[] with logical_name, attribute_type, required_level, and for lookups bind_key (the ReferencedEntityNavigationPropertyName from ManyToOneRelationships, joined on ReferencingAttribute) plus targets[] (logical name joined to EntitySetName via list_entity_definitions so the agent gets a usable bind VALUE), and for picklist/state/status inline options:[{value,label}]. For picklists bound to a GLOBAL option set, also emit the option set MetadataId GUID (on-prem 9.1 requires the GUID, not Name, in GlobalOptionSet@odata.bind). Self-derive bind_key from relationship metadata (do NOT depend on disc-2 enrichments — they do not exist). Add RequiredLevel + the cast read where needed. Tests mirror the mocked-backend pattern in test_metadata_update.py.",
+        "rationale": "This is the canonical learn-before-write primitive and removes the multi-round-trip stitching plus the prose-only @odata.bind guidance an agent currently interprets. Pure read-only GETs, dry-run-irrelevant, on-prem-safe. Effort M for the joins (attributes<->relationships, target<->entity-set) and global-optionset GUID resolution.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\metadata.py:42-95",
+          "D:\\projects\\crm\\crm\\core\\relationships.py:24-48",
+          "D:\\projects\\crm\\crm\\commands\\metadata.py:56",
+          "D:\\projects\\crm\\crm\\core\\metadata_attrs.py:216-227"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:344-352"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R9",
+        "title": "Add metadata delete-attribute and delete-relationship to close the create-without-remove asymmetry",
+        "category": "Customization & ALM tooling",
+        "priority": 9,
+        "impact": "High",
+        "effort": "M",
+        "problem": "The CLI creates attributes (add-attribute, 14 kinds) and relationships (create-one-to-many/create-many-to-many) but cannot delete either. An attribute or relationship created in error by an agent has no in-CLI remediation path. The destructive infra is already built and waiting: SKILL.md lists delete-attribute/delete-relationship as (when shipped) and the PreToolUse hook pre-emptively gates them by name.",
+        "proposal": "Add delete_relationship to crm/core/relationships.py (next to create siblings) and delete_attribute to crm/core/metadata_attrs.py (next to add_attribute) — locate each beside its create sibling per the match-create-entity convention, NOT both in metadata.py. delete_attribute: GET .../Attributes(LogicalName='a') with $select=IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf; refuse managed/non-custom/primary/sub-attribute; then backend.delete with MSCRM.SolutionUniqueName when --solution. delete_relationship: GET RelationshipDefinitions(SchemaName='z') $select=IsCustomRelationship,IsManaged; refuse managed/non-custom; delete with solution header. CLI: metadata delete-attribute <entity> <attribute> and metadata delete-relationship <schema-name>, mirroring delete-entity (--yes, _solution_option, _confirm_destructive, _handle_d365_error). Let the server enforce remaining dependency 4xx. Tests mirror test_optionsets.py delete cases (managed->refuse, primary->refuse, custom->deletes). Flip SKILL.md from (when shipped) to live syntax.",
+        "rationale": "Pure Web API metadata DELETE (no retrieve-merge-write, no cloud dependency), the endpoints are already exercised read-only in-repo, and the gate tests already exist. This is the single missing remediation path for an agent iterating on a custom table.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\metadata.py:300-336",
+          "D:\\projects\\crm\\crm\\core\\relationships.py:24-58",
+          "D:\\projects\\crm\\crm\\core\\metadata_attrs.py:379",
+          "D:\\projects\\crm\\crm\\commands\\metadata.py:359-388"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:284-294"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R10",
+        "title": "Parse ImportJob results into a per-component pass/fail envelope",
+        "category": "Customization & ALM tooling",
+        "priority": 10,
+        "impact": "High",
+        "effort": "M",
+        "problem": "After solution import the result carries only {status:'succeeded', progress, timestamps} (solution.py:435-443). Dataverse can return statuscode 30 while individual components fail or warn — the truth lives in the importjob data XML (//solutionManifest/result/@result), which the CLI discards. An agent driving the DEPLOY-then-VERIFY pipeline cannot distinguish a partially-failed import from a clean one. This is one of only two Microsoft-documented-for-on-prem agent-safety primitives.",
+        "proposal": "Build the structured per-component envelope from the importjob data column, NOT from RetrieveFormattedImportJobResults (which returns an Excel-format human report — the wrong shape to parse components from). (1) Change the final importjobs read to also $select=data, parse the XML with the existing xml.etree.ElementTree into top-level result success|warning|failure plus components:[{name,type,result,errorcode?,errortext?}]; when any component != success, surface a meta.warnings note so status:succeeded no longer masks partial failures. (2) Add crm solution import-result <import_job_id> that re-fetches importjobs(<id>)?$select=data and runs the same parser, letting an agent verify a prior import. (3) Treat RetrieveFormattedImportJobResults as optional behind --formatted, returning its string verbatim as a human attachment. Tests with mocked data XML for success / warning-with-failed-component / failure.",
+        "rationale": "Closes the step-5 DEPLOY-verify gap. Standard Web API GET, XML-parse infra already in-repo, no cloud-only dependency. importjob.data is populated regardless of the import message, so this stands independent of the orthogonal ImportSolutionAsync-on-prem caveat.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\solution.py:356-443",
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:478-550",
+          "D:\\projects\\crm\\crm\\commands\\solution.py:241-266"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:258-259,299",
+          "docs/research/ai-agent-tooling-onprem.md:131"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R11",
+        "title": "Add declarative desired-state apply: crm apply -f spec.yaml",
+        "category": "Authoring & scaffolding",
+        "priority": 11,
+        "impact": "High",
+        "effort": "M",
+        "problem": "Every authoring action is a separate imperative subprocess. To stand up one custom table an agent must issue create-entity, N add-attribute, create-optionset, create-one-to-many, view create, app commands — each with its own arg parsing, ordering, and failure handling. There is no single declarative artifact to author, diff, and re-run.",
+        "proposal": "Add a top-level apply command reading a YAML/JSON spec (solution, publisher, entities with attributes/optionsets/relationships/views). Orchestrate the EXISTING cores in dependency order (publisher->entity->optionsets->attributes->relationships->views), each with if_exists='skip' and the spec's solution, forcing ctx.stage_only and calling publish_all ONCE at the end. Emit {ok, data:{applied,skipped,planned,failed}, meta:{staged}}. Budget for the non-trivial parts the per-resource cores cannot handle alone: (1) a thin in-memory planned set so dry-run on a greenfield spec reports dependents as planned-create instead of erroring — a dependent add_attribute's existence GET, a lookup's referenced-entity check, and especially _resolve_global_optionset_id (which network-resolves BEFORE the dry-run short-circuit and would raise) cannot be naively forwarded dry_run; (2) explicit partial-failure semantics (metadata POSTs are non-transactional — recommend abort-and-report, documenting staged-but-unpublished residue); (3) up-front spec schema validation. Add e2e coverage: fresh apply, idempotent re-apply (all skipped), dry-run-on-greenfield.",
+        "rationale": "The research doc names terraform-style plan/apply as the target shape, and the repo already has every imperative primitive plus if_exists/solution/stage-only. Orchestrates existing cores only — no pac, no cloud MCP, no StageSolution. Effort is M (not S) because of the cross-resource dry-run dependency layer, YAML validation, ordering, and partial-failure semantics.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\cli.py:206",
+          "D:\\projects\\crm\\crm\\core\\metadata.py:137",
+          "D:\\projects\\crm\\crm\\core\\metadata_attrs.py:379",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:91-107"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:301-304"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R12",
+        "title": "Add solution add-component / remove-component (AddSolutionComponent / RemoveSolutionComponent)",
+        "category": "Customization & ALM tooling",
+        "priority": 12,
+        "impact": "High",
+        "effort": "M",
+        "problem": "Components only enter a solution at create-time via the MSCRM.SolutionUniqueName header. There is no way to add an EXISTING component (a table built earlier, a stock entity, a web resource) to a solution after the fact, nor to remove one; solution components is read-only. An agent assembling a solution from pre-existing artifacts — the common ALM case — has no verb.",
+        "proposal": "Add add_solution_component and remove_solution_component to crm/core/solution.py, each POSTing the unbound AddSolutionComponent / RemoveSolutionComponent action (ComponentId guid, ComponentType int, SolutionUniqueName, AddRequiredComponents, DoNotIncludeSubcomponents). Pre-flight solution_info() and refuse if ismanaged (AddSolutionComponent is unmanaged-only). Add a flat {name:int} component-type map (Entity=1, Attribute=2, Relationship=10, OptionSet=9, WebResource=61, etc.) in solution.py — a simpler shape than appmodule._COMPONENT_REFS, so borrow the friendly-name idea only. CLI: solution add-component --solution --type <int|name> --id <guid> [--no-add-required] [--no-subcomponents] and solution remove-component (--yes). remove-component gated TWICE: command-layer _confirm_destructive + --yes AND add 'remove-component' to DESTRUCTIVE['solution'] in the hook (it does NOT auto-match by name) plus the SKILL.md table. add-component is non-destructive. Tests mock both actions + a managed-refusal case.",
+        "rationale": "Stable OData v4 unbound actions across v9.0/9.1/9.2, unmanaged-only — actions not metadata PUTs, so retrieve-merge-write does not apply and there is no cloud/pac dependency. Closes a core ALM verb agents need for solution assembly.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\solution.py:212-221",
+          "D:\\projects\\crm\\crm\\commands\\solution.py:72-81",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:38-55",
+          "D:\\projects\\crm\\.claude\\hooks\\destructive_op_gate.py:26-36"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:255-257"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R13",
+        "title": "Add pre-write field validation for entity create/update against live metadata",
+        "category": "Safety & verification loops",
+        "priority": 13,
+        "impact": "High",
+        "effort": "M",
+        "problem": "entity create/update send the payload blind — no client-side check that columns exist or that @odata.bind navigation properties are real. A wrong attribute name returns an opaque server 400 the agent can only react to after the failed write. The metadata UPDATE path is carefully guarded; record CREATE has zero pre-flight.",
+        "proposal": "Add an opt-in --validate flag to entity create/update, composable with --dry-run so an agent runs --dry-run --validate as a pre-commit gate. Before the POST/PATCH: (1) resolve the entity-SET name to its LOGICAL name via list_entity_definitions (create is keyed by set, metadata by logical). (2) Build valid keys as the UNION of logical attribute names (list_attributes) AND navigation-property names from the ManyToOne relationship collection — which requires adding ReferencingEntityNavigationPropertyName to the $select at relationships.py:31. (3) For each payload key, strip the @odata.bind/@odata.type suffix and check membership; return {ok:false, meta:{unknown_fields, did_you_mean}} on a miss. Crucially the nav-name union prevents flagging valid <nav>@odata.bind keys as unknown. Scope v1 to FIELD-NAME validation; do NOT claim picklist-VALUE validation (needs per-field picklist_options GETs) — ship that later as an explicit per-field opt-in. Keep it opt-in (1-3 metadata GETs) and document the cost. Tests mock the three GETs.",
+        "rationale": "Converts an opaque server 400 into a pre-write field-level diagnostic, reusing pure-read introspection with one small $select addition — no new HTTP surface, no cloud dependency. Effort M because of the set->logical resolution + nav-name union + the relationships $select change.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\entity.py:45-67",
+          "D:\\projects\\crm\\crm\\core\\entity.py:62-106",
+          "D:\\projects\\crm\\crm\\core\\metadata.py:50",
+          "D:\\projects\\crm\\crm\\core\\relationships.py:31"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:344-351",
+          "docs/research/onprem-automation.md:111-120"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R14",
+        "title": "Bridge CoreTools SolutionPackager extract/pack for source-controllable solution diff",
+        "category": "Customization & ALM tooling",
+        "priority": 14,
+        "impact": "High",
+        "effort": "M",
+        "problem": "The recommended pipeline is AUTHOR(crm)->GENERATE(CrmSvcUtil)->PACKAGE(SolutionPackager)->DEPLOY(crm import)->VERIFY(crm). The CLI owns AUTHOR/DEPLOY/VERIFY but has no bridge to the confirmed on-prem actuators. Without extract, an exported solution zip is an opaque blob: an agent cannot diff what changed between two exports, commit a readable tree, or review a metadata change before re-import.",
+        "proposal": "Add crm solution extract / crm solution pack to the existing solution group as thin subprocess wrappers — do NOT reimplement packing or add an XML-diff engine (git diff on the extracted tree IS the diff). CRITICAL: extract/pack are OFFLINE local-file transforms over an already-exported zip — they must NOT go through ctx.backend()/connection bootstrap and must NOT require an active profile, which is what makes them on-prem-safe and CI-friendly. extract: SolutionPackager.exe /action:Extract /zipfile /folder /packagetype:Unmanaged (--package-type for Managed/Both); pack is the reverse, emitting a zip for crm solution import. Resolve the exe via --solutionpackager-path -> CRM_SOLUTIONPACKAGER env -> shutil.which; on absence fail with an actionable error naming the Microsoft.CrmSdk.CoreTools NuGet (no bundling/auto-download). subprocess.run check=False; emit {action, exit_code, folder, zipfile, stdout_tail} with timeout + decoded-output in a small crm/core/coretools.py helper. DEFER gen-types (CrmSvcUtil) — it serves C# codegen, needs a live connection, and is not the diff loop. Tests use a fake SolutionPackager stub asserting argv passthrough, exit-code propagation, and absent-binary error.",
+        "rationale": "SolutionPackager is the confirmed-by-doc on-prem PACKAGE actuator (pac is NOT on-prem); /action:Extract is an offline zip<->folder transform needing no Web API. Turns an opaque blob into a reviewable/committable tree — the documented source-control workflow and the real solution-diff value for an agent loop.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\solution.py:146-173",
+          "D:\\projects\\crm\\crm\\core\\solution.py:268-353",
+          "D:\\projects\\crm\\crm\\cli.py:206-224"
+        ],
+        "citations": [
+          "docs/research/ai-agent-tooling-onprem.md:105-135",
+          "docs/research/onprem-automation.md:143,271-279"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R15",
+        "title": "Add crm connection doctor: structured NTLM/SSL/version preflight diagnostic",
+        "category": "Connection & auth diagnostics",
+        "priority": 15,
+        "impact": "High",
+        "effort": "M",
+        "problem": "First-run and CI failures on-prem (wrong DOMAIN\\\\user format, NTLM 401, untrusted self-signed cert, wrong /api/data/v9.x path, host unreachable) surface as a raw transport exception or generic 401 with no signal about which layer failed. connection test only does WhoAmI and re-raises; the transport branch collapses every failure into a generic D365Error with status=None/code=None.",
+        "proposal": "Add crm connection doctor (alias crm doctor): an ordered, non-fatal probe chain emitting a structured checklist. Steps: (1) DNS/TCP reachability of the profile host; (2) TLS handshake + cert trust — catch SSLError SEPARATELY from ConnectionError, hint --no-verify-ssl; (3) service root/version reachable via GET <org>/api/data/<api_version>/ or the RetrieveVersion function (NOT a fabricated /api/data/version path); on 404 report the configured api_version is wrong and surface the server version — do NOT sweep v9.0/9.1/9.2 (behaviorally identical on-prem), just validate the configured one; (4) NTLM auth via WhoAmI — catch 401, hint DOMAIN\\\\username + D365_PASSWORD/CRM_PASSWORD; (5) opportunistically surface any Retry-After/x-ms-ratelimit headers via the existing _RATE_LIMIT_HEADER_MAP (best-effort; drop any sustained-throttling claim — one idle probe cannot measure it). Each step yields {check, ok, detail, hint}; overall ok = all passed. Implement as one core probe fn that issues requests directly and CLASSIFIES exceptions per layer (reuse the SSLError-vs-ConnectionError split from _is_transport_retryable) rather than going through request()'s retry-and-wrap path. Tests mock each layer's failure.",
+        "rationale": "The highest-frequency bootstrap blocker for an agent standing up a new environment, turned into a machine-triagable signal. Pure client-side diagnostics, fully on-prem/NTLM-safe. Effort M: a new core probe fn bypassing the retry-and-wrap path, ~5 ordered steps, a checklist envelope, and per-layer mocked tests.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\connection.py:217-227",
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:330",
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:643-673",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:31-35"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:281"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R16",
+        "title": "Add bulk data import (crm data import) routed through $batch",
+        "category": "Data movement & migration",
+        "priority": 16,
+        "impact": "High",
+        "effort": "M",
+        "problem": "The CLI ships data export but has no import path — the missing half of an advertised capability. An agent migrating/seeding records must hand-author a $batch JSON file per chunk, split changesets, map columns, and format @odata.bind lookups by hand.",
+        "proposal": "Add crm data import <entity-set> backed by a new crm/core/import_records.py, modeling the data export scaffold and routing all writes through backend.batch() (the only on-prem bulk path — CreateMultiple/UpsertMultiple are cloud-only). (1) FORMATS: JSONL first-class and fully typed (lookups carried verbatim as <Nav>@odata.bind); CSV best-effort (coerce obvious int/float/bool/empty->null, pass the rest as string) — defer metadata-driven typed coercion to keep it M; document JSONL as recommended for typed/lookup-heavy loads. (2) MODES: --mode create|upsert (upsert PATCH by GUID via --id-column; defer alternate-key upsert). (3) TRANSACTION CONTRACT: --chunk-size N, each chunk one transactional changeset by default; --continue-on-error must imply/require --no-transaction exactly like batch_cmd — do not silently combine the two. (4) DRY-RUN: leverage backend.batch's existing zero-write preview. (5) OUTPUT: render_batch_summary folded into {imported, failed, chunks}. (6) OUT OF SCOPE: content-id cross-references. Tests assert chunking, @odata.bind passthrough, JSONL typed values, CSV coercion, dry-run zero-write, and the continue-on-error/no-transaction guard.",
+        "rationale": "The most-used real data task with zero first-class tooling, and the documented but missing inverse of export. Pure Web API $batch (the right and only on-prem mechanism), reusing the export scaffold + dry-run + summary. Effort M for the create path; full typed-CSV coercion is what would push to L.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\data.py:11-41",
+          "D:\\projects\\crm\\crm\\core\\export.py",
+          "D:\\projects\\crm\\crm\\core\\batch.py:45,92"
+        ],
+        "citations": [
+          "CHANGELOG.md:101",
+          "crm/skills/SKILL.md:88"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R17",
+        "title": "Add metadata picklist option flattening: meta.options[] for picklist and get-optionset",
+        "category": "Discovery & self-description",
+        "priority": 17,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "In --json mode both metadata picklist and metadata get-optionset emit the raw nested Dataverse shape (OptionSet|GlobalOptionSet -> Options -> Label.UserLocalizedLabel.Label). An agent must dig through that for the single most-needed write input (valid picklist values). The human-mode path already flattens it but JSON callers do not get it.",
+        "proposal": "In --json mode only, add a flattened meta.options = [{value:int, label:str}] (leaving raw data untouched — no contract break) for BOTH commands. Two distinct flatten sites (different containers, so a small shared _flatten_options helper, not one reused path): picklist reads OptionSet.Options falling back to GlobalOptionSet.Options; get-optionset reads info['Options'] at root. DROP the title's accept-logical-or-schema-name and resolve-global-by-name clauses — picklist already takes logical names and get-optionset already resolves by name. Document the known boolean blind spot (TrueOption/FalseOption have no Options array, so meta.options is empty for booleans) in SKILL.md, or optionally special-case it. Tests assert meta.options for a local picklist, a global-bound picklist, and get-optionset.",
+        "rationale": "Removes the single deepest JSON dig for valid picklist values. Read-only metadata GET, on-prem-safe. A parsing convenience over an already-documented stable shape, hence Medium; S effort across two sites + helper + tests.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\metadata.py:105-133",
+          "D:\\projects\\crm\\crm\\commands\\metadata.py:644-654",
+          "D:\\projects\\crm\\crm\\core\\metadata.py:69-95"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:199-204"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R18",
+        "title": "Add option-level dry-run diff to update_optionset and fix its dry-run fidelity bug",
+        "category": "Safety & verification loops",
+        "priority": 18,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "A pre-commit diff exists only for metadata UPDATE (_shallow_diff). update_optionset — which inserts/updates/deletes/reorders option values non-transactionally with no rollback — has the WEAKEST preview: under dry-run it discards each action's preview and unconditionally returns {updated:True, completed_steps:[...]} as if the writes succeeded, so an agent sees a false success and no before/after. The highest-risk diffable op has the worst preview.",
+        "proposal": "(1) At the top of update_optionset's dry-run branch call get_optionset(name) to fetch live Options, mirroring metadata_update's _read helper which temporarily forces backend.dry_run=False around the GET so reads happen but writes stay suppressed. (2) Compute a dedicated _option_diff(current, insert, update, delete, reorder) -> {inserts, updates:[{value,old_label,new_label}], deletes:[{value,old_label}], reorder:{old,new}} — do NOT reuse _shallow_diff (shaped for PUT bodies; this is a 4-action POST sequence). (3) Fix the latent bug: branch on backend.dry_run and return {_dry_run:True, name, diff, actions:[bodies]} instead of a false updated:True. (4) The command layer already pipes the return through _emit_with_warning, so JSON consumers get the diff free. Add dry-run tests to TestUpdateOptionset asserting the GET-for-diff fires, no POST fires, and the diff classifies insert vs update vs delete.",
+        "rationale": "Gives an agent a before/after on the single non-transactional no-rollback path and fixes a real dry-run-fidelity bug found during verification. GET + local diff only — no pac, no cloud MCP. Effort M: new diff logic plus the dry-run early-return refactor and tests.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\metadata_update.py:84-116",
+          "D:\\projects\\crm\\crm\\core\\optionsets.py:47-54",
+          "D:\\projects\\crm\\crm\\core\\optionsets.py:151-234"
+        ],
+        "citations": [
+          "docs/superpowers/specs/2026-05-25-spec-d-metadata-write-design.md:560"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R19",
+        "title": "Add web resource create/update group and a real --icon-webresource for app create",
+        "category": "Code extensibility & deployment",
+        "priority": 19,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "There is no ergonomic web resource surface: app create references a hard-coded DEFAULT_APP_ICON GUID because none can be authored conveniently, and the pipeline's GENERATE step produces JS web resources that must be deployed. Reachability technically exists via generic entity create webresourceset, so the gap is ergonomic (file->base64, extension->type mapping, auto-publish), not capability.",
+        "proposal": "Add a thin webresource command group + crm/core/webresource.py with create/update/get/list. CREATE: POST to webresourceset with name, displayname, base64 content from --file, and webresourcetype resolved from extension (1=HTML, 3=JS, 5=PNG, 8=CSS, 11=SVG — common subset). UPDATE: a plain PATCH of content (and optional displayname) via the existing record path — do NOT use retrieve-merge-write (that is the metadata-PUT discipline; a webresourceset PATCH only writes sent fields). Resolve update/get records by name (webresourceset?$filter=name eq '...'). Honor --solution and default publish-after-write via maybe_publish. Then change app create to accept --icon-webresource (name or GUID) instead of silently defaulting, keeping DEFAULT_APP_ICON as fallback. Scope to JS/HTML/CSS/PNG/SVG. Frame the PR as an ergonomic wrapper over existing reachability. Tests mock backend, asserting base64/type/solution-header/publish.",
+        "rationale": "Standard webresourceset records over the existing NTLM backend — no cloud dependency. Value is file encoding + type mapping + auto-publish + a real app icon affordance. Medium because a generic-CRUD workaround exists today.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\appmodule.py:24-47",
+          "D:\\projects\\crm\\crm\\cli.py:206-224",
+          "D:\\projects\\crm\\crm\\commands\\entity.py:45-67"
+        ],
+        "citations": [
+          "docs/research/ai-agent-tooling-onprem.md:117",
+          "docs/research/onprem-automation.md:46"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R20",
+        "title": "Add structured sitemap builder: app build-sitemap from areas/groups/subareas",
+        "category": "Authoring & scaffolding",
+        "priority": 20,
+        "impact": "High",
+        "effort": "M",
+        "problem": "app set-sitemap only accepts a fully hand-authored SiteMapXml file. An agent must produce valid escaped SiteMap XML (correct Area/Group/SubArea nesting, Entity= bindings, unique Ids) blind — the most error-prone authoring step, and the only way tables reach a model-driven app (via sitemap Entity= subareas, not AddAppComponents).",
+        "proposal": "Add crm app build-sitemap generating valid SiteMapXml from structured input, mirroring views.create_view (build XML from tuples + quoteattr escaping), then POSTing via the existing set_sitemap or printing under --dry-run. Interface: repeatable --area 'id:Title', --group 'areaId/groupId:Title', --subarea 'areaId/groupId:entity=<logical>[:Title]' (or a small YAML block). Emit a SCHEMA-VALID document (op-9-1 SiteMap.xsd) — SiteMap root, Area/Group with Title/Description children, auto-allocated/validated unique Ids, quoteattr on every attribute, subareas binding tables via Entity=. Drop the create-only/write-only framing (SiteMapXml is valid for both create and update) — ground the rationale in the agent-authoring-blind failure mode. Note set_sitemap does NOT publish (unlike create_view): add --publish/--no-publish or document that the sitemap surfaces only after a publish/app-create-with-publish. Tests mirror TestSetSitemap asserting nesting/escaping/Id-uniqueness, the dry-run print path, and that the builder feeds the existing POST body unchanged.",
+        "rationale": "This is the single component an agent cannot bind any other way and the most error-prone step. Pure XML + existing POST, fully buildable on on-prem v9.1 (unlike BPF clientdata, SiteMap XML is deterministic-generatable). The repo's own interface-design spec already sketched this builder.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\appmodule.py:155-187",
+          "D:\\projects\\crm\\crm\\core\\views.py:12-51",
+          "D:\\projects\\crm\\crm\\commands\\app.py:70-92"
+        ],
+        "citations": [
+          "docs/superpowers/specs/2026-06-01-crmworx-interface-design.md:97"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R21",
+        "title": "Add plugin / SDK-message-step registration over the Web API",
+        "category": "Code extensibility & deployment",
+        "priority": 21,
+        "impact": "High",
+        "effort": "L",
+        "problem": "The Plugin Registration Tool is the pipeline's single GUI-first manual step. But plugin assemblies and SDK steps are ordinary records (pluginassembly, plugintype, sdkmessageprocessingstep, sdkmessageprocessingstepimage) writable over the on-prem Web API, so the manual break is unbuilt, not a platform constraint. No item addresses code-extensibility registration.",
+        "proposal": "Add a lazy plugin command group + crm/core/plugin.py, scoped v1 to: register-assembly <path.dll> (read DLL bytes, base64 into pluginassembly.Content, derive name/version/culture/publickeytoken with overrides, isolationmode sandbox|none default sandbox, sourcetype default Database — the on-prem full-trust path; --update PATCHes Content; do NOT POST plugintype rows — the platform auto-creates them via reflection); list-types [--assembly] (read the platform-generated plugintypes); register-step (POST sdkmessageprocessingstep resolving sdkmessageid by name and sdkmessagefilterid by primaryobjecttypecode, binding plugintypeid; message/entity/stage/mode/rank/filteringattributes options, using the existing @odata.bind convention); unregister-assembly / unregister-step (DELETE, --yes gated, auto-covered by the verb-name hook the moment they ship; unregister-assembly must delete dependent steps+images first). Defer SdkMessageProcessingStepImage to a fast-follow and the GUI-only profiler entirely. Tests mock POSTs/PATCH and the message/filter resolution GETs.",
+        "rationale": "All four tables are writable on the v9.0+ Web API with on-prem-specific isolationmode/sourcetype — no pac, no cloud-only StageSolution/MCP. Removes the pipeline's last semi-manual step. Effort L because base64+assembly-identity parsing, two-hop message/filter resolution, and delete-ordering dependencies are real logic beyond a thin wrapper.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\cli.py:206-224",
+          "D:\\projects\\crm\\crm\\commands\\metadata.py:359-388",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:38-55"
+        ],
+        "citations": [
+          "docs/research/ai-agent-tooling-onprem.md:126,149",
+          "docs/index.html:602-605"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R22",
+        "title": "Add proactive pre-delete dependency preview via RetrieveDependenciesForDelete",
+        "category": "Safety & verification loops",
+        "priority": 22,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "delete-entity/optionset (and the proposed delete-attribute/relationship) rely on the server returning a 4xx and surface only meta.status/code, so an agent gets delete failed with no machine-readable list of which components block the delete. On-prem dependency tracking is strict, so an autonomous cleanup loop stalls with no actionable next step.",
+        "proposal": "Add a read-only crm metadata dependencies <target> + a core dependencies() fn. Resolve target to (MetadataId, componenttype) using existing patterns (entity->EntityDefinitions MetadataId, type 1; attribute->Attributes MetadataId, type 2; optionset->GlobalOptionSetDefinitions MetadataId, type 9; relationship->RelationshipDefinitions MetadataId, type 3 or 10), reading MetadataId directly (ObjectId is the component MetadataId, not the solutioncomponent row id). GET RetrieveDependenciesForDelete(ObjectId=<guid>,ComponentType=<int>) via the existing inline-function encoding used in commands/action.py (no new backend plumbing), reusing the dry_run-off trick. Return {can_delete:bool, blockers:[{dependent_type, dependent_name, required_type, dependent_id}]}. Add --for delete|uninstall|dependents switching only the function name. Then an opt-in --check-dependencies on delete verbs folds the blocker set into the dry-run preview (default off, no extra round-trip otherwise). Tests assert the right MetadataId GET per kind, the exact function URL, and can_delete true/false.",
+        "rationale": "Confirmed op-9-1 Function (pure GET) with no mutation or cloud dependency. Caps at Medium because crm action function already reaches it raw today — the value is the logical-name->MetadataId resolver, structured blockers output, and the delete-dry-run fold.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\metadata.py:300-336",
+          "D:\\projects\\crm\\crm\\core\\metadata_attrs.py:362",
+          "D:\\projects\\crm\\crm\\core\\metadata_update.py:455",
+          "D:\\projects\\crm\\crm\\commands\\action.py:16-34"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:299"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R23",
+        "title": "Add solution components --diff for deployed-vs-expected drift detection",
+        "category": "Customization & ALM tooling",
+        "priority": 23,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "The pipeline's VERIFY step has no component-level tool. solution components is read-only with no comparison; an agent that ran several apply/import passes cannot assert a solution contains exactly N expected components without manually diffing JSON. No drift detection for the customization layer.",
+        "proposal": "Add crm solution components <name> --diff <expected.json> (keep the bare read unchanged; add a flag, no new top-level verb). Core: pure-Python diff_components(live, expected)->{matches:bool, missing, unexpected} keying each component on the TUPLE (componenttype, objectid, rootcomponentbehavior) — NOT objectid alone (componenttype is the semantic discriminator; rootcomponentbehavior distinguishes include-subcomponents vs shell-only). missing = expected - live, unexpected = live - expected, sorted deterministically. Reuse solution_components() verbatim for the live fetch. Command layer: load expected.json, emit the result, set a non-zero exit code when matches is false so an agent can branch on drift. Add --save <path> writing the current normalized inventory (same key shape, so save->diff round-trips). Tests: exact match, missing, unexpected, differing rootcomponentbehavior, save->reload->diff no drift.",
+        "rationale": "Closes a real agentic verification gap for unattended apply/import loops. Read-only, on-prem-safe, pure set logic over data already fetched. Medium (a convenience over data an agent could diff itself) and S effort (one helper + flag + JSON I/O + ~6 tests).",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\solution.py:72-81",
+          "D:\\projects\\crm\\crm\\core\\solution.py:212-221",
+          "D:\\projects\\crm\\crm\\utils\\d365_types.py:76-79"
+        ],
+        "citations": [],
+        "mermaid": null
+      },
+      {
+        "id": "R24",
+        "title": "Add security-role assignment and listing (assign-role / list-roles)",
+        "category": "Security & access ALM",
+        "priority": 24,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "The CLI has zero security surface, yet role assignment is a mandatory ALM step: a freshly imported app or custom table is invisible to users until a security role is assigned, so an agent automating deploy-then-make-usable cannot complete the loop. The capability exists via generic entity associate, but it is undiscoverable and ungated.",
+        "proposal": "Add a thin security command group as ergonomic sugar + a safety gate over the existing associate primitive (NOT new capability). READ verbs (reuse backend.get): list-roles [--business-unit <buid>] (GET roles?$select=name,businessunitid, filter on _businessunitid_value — roles are BU-scoped), list-user-roles <id> (systemusers(<id>)/systemuserroles_association), list-team-roles <id> (teams(<id>)/teamroles_association). WRITE verb (delegate to core/entity.py associate, no new core fn): assign-role --to-user|--to-team <id> <role-id> calling associate with the right N:N nav (systemuserroles_association/teamroles_association, target collection roles). Gate with _confirm_destructive + --yes (cumulative, not cleanly reversible) and add 'assign-role' to ROLE_VERBS ONLY (it matches group-agnostically — do NOT also add a DESTRUCTIVE['security'] entry). Add the missing ROLE_VERBS gate tests. Defer role creation and field-security profiles. SKILL.md: document the verbs and a 403 troubleshooting note (assigner lacks Read+Assign on Security Role, privilege-elevation guard, or BU mismatch). Tests mock backend.get and backend.post asserting the /$ref body.",
+        "rationale": "Correct built-in N:N nav properties on-prem v9.x, NTLM Web API safe, no cloud dependency. S effort: the HTTP primitive, confirm pattern, and lazy slot all exist — a thin wrapper + list verbs + one gate-set addition + docs/tests.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\entity.py:153-172",
+          "D:\\projects\\crm\\crm\\core\\entity.py:197-226",
+          "D:\\projects\\crm\\.claude\\hooks\\destructive_op_gate.py:39-44",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:38-54"
+        ],
+        "citations": [],
+        "mermaid": null
+      },
+      {
+        "id": "R25",
+        "title": "Add a client-side retry-suppression guard for non-idempotent POST creates",
+        "category": "Output contract & agent ergonomics",
+        "priority": 25,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "entity create has no idempotency guarantee. The transport retry loop auto-retries 429/5xx and transient transport errors regardless of HTTP method, so a POST create that succeeds server-side but loses its response to a transport failure can be silently re-issued, creating a DUPLICATE. For an agent looping on exit codes that may re-run a create after an ambiguous failure, there is no dedup guarantee (D365 on-prem 9.x has no server-honored client idempotency key).",
+        "proposal": "Make the automatic retry loop NOT auto-retry non-idempotent POST record-creates by default. Both changes are required to close the window: (1) gate the transport-exception branch (d365_backend.py:328-336) to skip retry when method=='POST' unless an explicit opt-in says the caller accepts re-send risk; (2) ALSO stop _is_response_retryable from auto-retrying POST on 429/503 for record creates — otherwise a 503-after-commit still duplicates. Preserve current POST-503/429 retry only for $batch (already documented as caller's responsibility). Add an opt-in --retry-on-ambiguous (default off). Document create-retry semantics in SKILL.md: a POST whose response is lost may have committed — re-running risks a duplicate; use entity upsert (by id) for idempotent writes. Soften upsert-by-alternate-key as a general fix (most entities have no alt key). Coordinate with issue #18.",
+        "rationale": "Closes a narrow but real footgun for looping agents. Client-side retry suppression (not a token), S effort for the gate + docs; the by-id upsert escape hatch already exists.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:315-359",
+          "D:\\projects\\crm\\crm\\utils\\d365_backend.py:623-647",
+          "D:\\projects\\crm\\crm\\commands\\entity.py:45-67"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:353"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R26",
+        "title": "Add token-efficient query output: --minimal annotation-strip projection",
+        "category": "Output contract & agent ergonomics",
+        "priority": 26,
+        "impact": "Medium",
+        "effort": "S",
+        "problem": "Query results emit the full server OData JSON as data (_emit_query_result), carrying verbose @-annotations (@odata.etag, *@OData.Community.Display.FormattedValue, *@Microsoft.Dynamics.CRM.lookuplogicalname) that bloat token count. The human-mode path trims to inferred columns but the JSON/agent path gets the firehose; query saved/user default annotations ON, so JSON callers get FormattedValue noise by default there.",
+        "proposal": "Add a --minimal flag that, in JSON mode, prunes verbose annotation keys from each record in the value array before emit: drop keys where k.startswith('@'). Keep _*_value lookup GUIDs (agents chain them into follow-up reads) and the primary id — so do NOT blindly reuse export.py's _ordered_keys, which also drops _*_value. Envelope-level @odata.count/@odata.nextLink need no handling (already hoisted into meta). Keep raw output the default (non-breaking). Wire into the four query verbs; optionally entity get in the same PR. Test that a record with @odata.etag + *@FormattedValue is reduced to business fields + _owner_value. Document one --minimal example in SKILL.md.",
+        "rationale": "Pure client-side post-processing of an already-returned dict — no cloud dependency, standard on-prem v9.x. Directly serves the token-efficient-output mandate; S effort (a per-record filter + flag + test).",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:259-288",
+          "D:\\projects\\crm\\crm\\commands\\query.py:22-118",
+          "D:\\projects\\crm\\crm\\core\\export.py:96"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:135"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R27",
+        "title": "Add field-comparison verify primitive (--expect attr=value)",
+        "category": "Safety & verification loops",
+        "priority": 27,
+        "impact": "Low",
+        "effort": "S",
+        "problem": "There is no value-comparison verification primitive. The EXISTS half is already shipped (crm --json entity get and metadata entity|attribute already exit 0/1 with the {ok:false,meta:{status:404}} envelope an agent branches on), so a new assert exists verb would be surface bloat. But no command GETs a value, compares it to an expected literal, and branches on exit code — and query --count exits 0 regardless of count.",
+        "proposal": "Drop the EXISTS verbs entirely. Ship ONLY the value-comparison predicate: add a repeatable --expect attr=value flag to the existing entity get and metadata attribute commands. On mismatch emit ok=false (exit 1) with meta={expected, actual, attr}; on match pass through ok=true. This reuses entity.retrieve / metadata.attribute_info verbatim, adds ~30 lines, needs no new registry entry, and keeps the create->publish->verify loop in one command family. Document the loop in SKILL.md (add-attribute && publish && metadata attribute --expect AttributeType=String || retry). Metadata-property comparison is the higher-value case since picklist/AttributeType props are awkward to project client-side.",
+        "rationale": "The genuine remaining gap after refuting the EXISTS half; a convenience over a one-line jq compare, hence Low. Read-only GETs over existing fns, no cloud dependency, S effort (1-2 field-compare verbs, not a 4-verb group).",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\entity.py",
+          "D:\\projects\\crm\\crm\\core\\metadata.py:300",
+          "D:\\projects\\crm\\crm\\commands\\query.py:121",
+          "D:\\projects\\crm\\crm\\skills\\SKILL.md:96-121"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:122-124",
+          "docs/adr/0001-cli-exit-code-contract.md"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R28",
+        "title": "Ship a thin stdio MCP server (crm mcp serve) for Copilot parity",
+        "category": "MCP & coding-agent integration",
+        "priority": 28,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "The only first-class agent integration is shell-out + the copied SKILL.md. The destructive PreToolUse gate is Claude-Code-only (.claude/settings.json); a Copilot CLI agent gets only a prose SKILL.md copy with NO schema and NO portable destructive gate — the weakest tier. Copilot CLI (GA Feb 2026) is a first-class MCP client (STDIO via /mcp add -> ~/.copilot/mcp-config.json), and the research keeps MCP as revisit-only-if-Copilot-side-integration-is-required.",
+        "proposal": "GATE this behind an explicit decision to commit to Copilot-MCP parity (it reverses the documented drop-MCP decision). If greenlit: add crm mcp serve as a lazy subcommand (register 'mcp' in cli.py:206; crm/commands/mcp.py wiring + crm/core/mcp_server.py stdio JSON-RPC loop). Make the server-side destructive gate the FIRST deliverable: every delete/cancel tool requires an explicit confirm arg, reusing the exact verb set from destructive_op_gate.py (see R29) so the two gates cannot drift. Map a CURATED read+write set (entity get/create/update/upsert/delete, query odata/fetchxml, metadata browse, solution import/export/publish-all) — NOT the full surface — each handler calling the SAME crm.core.* functions through a shared D365Backend and returning the existing _sanitize'd {ok,data,meta} dict. Keep it lazy-loaded. Budget for the real protocol work: initialize handshake, version/capability negotiation, tools/list, tools/call framing, plus a conformance test driving the server from a real MCP client — hand-roll under an optional extra OR add the official mcp SDK as extras_require, gating the import so base install stays dependency-clean.",
+        "rationale": "The only way to give Copilot discoverable schema'd tools AND a portable server-side destructive gate. Pure transport wrapper over the same NTLM Web API path — no cloud capability, ADR-0002 layering holds. Effort M (not S): the stdio protocol is feasible stdlib-only but not trivial and needs conformance tests.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\cli.py:206",
+          "D:\\projects\\crm\\crm\\commands\\entity.py:33-150",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:16-23",
+          "D:\\projects\\crm\\setup.py:22-26"
+        ],
+        "citations": [
+          "docs/research/ai-agent-tooling-onprem.md:49,80-81,137-139",
+          "docs/research/onprem-automation.md:235"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R29",
+        "title": "Extract the destructive-gate verb tables into a shared crm/core/destructive.py",
+        "category": "MCP & coding-agent integration",
+        "priority": 29,
+        "impact": "Low",
+        "effort": "S",
+        "problem": "The deterministic destructive-op classification (DESTRUCTIVE map + ROLE_VERBS) lives solely in the Claude-Code PreToolUse hook (.claude/hooks/destructive_op_gate.py). It protects only agents under Claude Code's hook system; a Copilot CLI or generic shell-out agent gets no deterministic block, only the in-band --yes/non-TTY layer (the weakest in the order-of-trust).",
+        "proposal": "Ship the decoupling half now (Effort S, the real gap): extract the verb-classification core into crm/core/destructive.py — the DESTRUCTIVE and ROLE_VERBS maps plus is_destructive(group, verb)->bool (dependency-free, no click/backend so the import stays cheap). Reduce the hook to a thin importer, keeping its Bash-string tokenizer (_split_segments/_strip_global_options) in the hook (Bash-specific). Mitigate the hook's no-crm-import startup-cost caveat by keeping crm/core/destructive.py import-light, or duplicate the ~15-line map and add a sync test asserting the two copies stay aligned. DEFER the MCP confirm-gate half until R28 is greenlit (then every destructive MCP tool requires confirm:true + a destructiveHint annotation, reusing is_destructive). Do NOT build the MCP half speculatively — the server itself was dropped.",
+        "rationale": "Creates a single source of truth usable by any future surface without betting on MCP. Pure-Python guard logic, no cloud dependency. Low impact today (MCP does not exist) but the extraction is cheap and de-risks R28.",
+        "codePointers": [
+          "D:\\projects\\crm\\.claude\\hooks\\destructive_op_gate.py:26-44",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:38-54",
+          "D:\\projects\\crm\\crm\\commands\\entity.py:127-150"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:220-221,235-236"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R30",
+        "title": "Add a persistent on-disk schema/metadata cache for one-shot agent calls",
+        "category": "Discovery & self-description",
+        "priority": 30,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "The only metadata cache is the in-memory REPL-session MetadataCache (repl.py:29-53). An agent driving the CLI as one-shot shell invocations (the documented primary architecture) gets zero caching: every metadata entities/describe re-fetches the full EntityDefinitions collection over NTLM, which does not support server-side $top so the whole list comes back each time. On-prem metadata throttling under NTLM is an open question, so repeated full pulls are slow and risky.",
+        "proposal": "Add an opt-in persistent read-only schema cache. (1) crm/core/metadata_cache.py stores under <CRM_HOME or ~/.crm>/cache/<profile>/entitydefs.json the {logical,set_name} list, embedding {url, api_version, cached_at} and treating a mismatch as a miss; reuse session._state_root() and _atomic_write_json. (2) Wire the read path into list_entity_definitions/list_entities and REPL entity-name completion, default behavior unchanged behind opt-in. (3) A global --cache-metadata (default OFF, byte-identical default), --refresh-metadata, meta.cache=hit|miss|refreshed, and crm metadata cache-clear. (4) INVALIDATION (mandatory, load-bearing): every metadata WRITE op (create/delete entity, everything in metadata_update.py, optionsets/relationships create/delete) must bust the cache file on success, plus a conservative TTL backstop (~15 min). Without this an autonomous agent reads its own stale schema mid-loop. (5) Stay read-only schema only, never records or secrets. Tests cover the TTL matrix and the invalidation wiring.",
+        "rationale": "Real latency/throttling win for metadata-heavy agent loops and de-risks the open NTLM throttling question. Read-only GET, no cloud dependency. Effort M because the invalidation wiring across ~5 write paths plus TTL is the real cost (the design team deferred this as a future spec).",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\repl.py:29-53",
+          "D:\\projects\\crm\\crm\\core\\metadata.py:15-26",
+          "D:\\projects\\crm\\crm\\core\\session.py:26-27"
+        ],
+        "citations": [
+          "docs/research/ai-agent-tooling-onprem.md:146-148",
+          "docs/superpowers/specs/2026-05-25-spec-e-dx-polish-design.md:260"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R31",
+        "title": "Add metadata attributes lookup-bind enrichment (--binds: nav-property key + Targets)",
+        "category": "Discovery & self-description",
+        "priority": 31,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "metadata attributes $selects only LogicalName/SchemaName/AttributeType/IsCustomAttribute — it never returns the navigation-property name nor the lookup's Targets. So an agent that wants to set a lookup must know the PascalCase nav-property from prose or guess; metadata relationships also omits the nav-property name. There is no programmatic path from I see a Lookup attribute to here is the exact Foo@odata.bind key and the entity set it points at.",
+        "proposal": "Surface the @odata.bind discovery data on the metadata read path, separating bind KEY from bind VALUE. (1) For a single Lookup attribute, follow-up GET against the LookupAttributeMetadata cast (.../Attributes(LogicalName='a')/Microsoft.Dynamics.CRM.LookupAttributeMetadata?$select=LogicalName,Targets) and attach Targets (logical names). (2) Resolve the bind KEY from the relationship, not by guessing: query ManyToOneRelationships CAST to OneToManyRelationshipMetadata (reuse the cast pattern at relationships.py:188) with $select=ReferencingAttribute,ReferencingEntityNavigationPropertyName and match on ReferencingAttribute. (3) Emit a compact bind_hint {key:'<nav>@odata.bind', targets:[{logical, set_name}]}, joining each target logical to its EntitySetName via list_entity_definitions (Targets is logical-names-only, so the join is required for a usable bind VALUE). For the bulk path do NOT N+1: add the nav-property to a single CAST ManyToOne query and merge into lookup rows (~2-3 extra GETs total). Gate behind --binds or apply only to Lookup rows. Test the cast URL and the {key,targets[].set_name} shape.",
+        "rationale": "MS docs confirm nav-property names can differ from schema name and from _<name>_value for polymorphic lookups, so an agent genuinely cannot reverse-engineer PascalCase — this is a real on-prem-accurate gap. Pure read GET. Overlaps heavily with R8 (metadata describe); ship whichever lands first and reuse. Effort M for the cast + entity-set join.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\metadata.py:50-57",
+          "D:\\projects\\crm\\crm\\core\\relationships.py:24-48",
+          "D:\\projects\\crm\\crm\\core\\metadata_attrs.py:216"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:344-352"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R32",
+        "title": "Add a local audit journal of agent-driven mutations under ~/.crm",
+        "category": "Safety & verification loops",
+        "priority": 32,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "There is no record of what an agent changed. Session state persists only current_entity_set/last_query/REPL history. An autonomous agent can run dozens of create/update/delete/publish/import ops in a loop; if a session goes wrong there is no on-disk trail to reconstruct what was done, no input to a manual undo, and nothing to attach to a PR as evidence.",
+        "proposal": "Add an append-only JSONL journal at ${CRM_HOME:-~/.crm}/audit/<session>.jsonl, wired in the COMMAND layer (NOT ctx.emit — emit lacks command/target/solution/http_status and cannot distinguish reads from writes). Add a _journal(ctx, command, target, result, *, solution=None, staged=None) helper next to _touch_session, called after each successful ctx.emit(True,...) on mutating verbs only (entity create/update/upsert/delete/associate/set-lookup, metadata create/update/delete, optionset/relationship writes, solution create/import/publish, action/workflow execute, batch). Each line: {ts, profile, command, target, solution, staged, dry_run, ok, result_id} with result_id derived defensively per command (record GUID, async op id, or null). Never write the request payload (keeps the journal small and avoids persisting record PII). Use an append path (open 'a', fsync), not _atomic_write_json. Add crm session audit [--tail N] [--session NAME]. Tag dry_run rows so a preview is not mistaken for a real change.",
+        "rationale": "Local JSONL, no cloud/pac dependency. Partial overlap with the existing ephemeral --log-format json-line HTTP log, but that is debug-gated and not a durable mutation record. Effort M (one helper + ~15-20 call sites + a subcommand + tests); Medium impact given the overlap.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\session.py:71-127",
+          "D:\\projects\\crm\\crm\\commands\\session.py",
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py"
+        ],
+        "citations": [],
+        "mermaid": null
+      },
+      {
+        "id": "R33",
+        "title": "Add metadata export-spec to round-trip a live entity into the apply spec",
+        "category": "Authoring & scaffolding",
+        "priority": 33,
+        "impact": "Medium",
+        "effort": "L",
+        "problem": "R11's apply consumes a spec, but an agent has no way to GENERATE one from an existing org — it must hand-write YAML from verbose browse output. Without an export path the desired-state loop is open: you can apply but not capture current state, snapshot, or seed a spec from a prototype table.",
+        "proposal": "GATE strictly on R11 — a skeleton has nothing to round-trip into until the apply schema exists; bundle/sequence accordingly. Then add metadata export-spec <logical_name> [--with-views] [--with-relationships] projecting a live entity into exactly the R11 schema. Account for lossy reads: (a) per-attribute attribute_info/picklist_options to capture kind-specific props (MaxLength, FormatName, Precision, RequiredLevel, optionset options) — list_attributes is insufficient; (b) widen/cast-read relationships to capture CascadeConfiguration + AssociatedMenuConfiguration; (c) for --with-views add a NEW savedqueries read core (none exists today — views.py has only create_view). Emit under the standard envelope to stdout or -o file. If R11 is deferred, downgrade this to a plain capture-current-state-to-structured-dump nice-to-have, not a plan/apply enabler.",
+        "rationale": "Closes the capture side of the plan/apply loop. Pure read GETs, on-prem-safe. Effort L: define the spec schema (blocked by R11), fix lossy projection with richer per-element reads, and add the missing view-read core. Medium impact — headline value is blocked on R11; standalone it is a useful dump.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\metadata.py:42-57",
+          "D:\\projects\\crm\\crm\\core\\relationships.py:24-48",
+          "D:\\projects\\crm\\crm\\commands\\metadata.py:56"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:301-304"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R34",
+        "title": "Add scaffold table one-shot (entity + attributes, two-phase if default view)",
+        "category": "Authoring & scaffolding",
+        "priority": 34,
+        "impact": "Medium",
+        "effort": "M",
+        "problem": "The common intent create a custom table with these columns currently requires 3-6 separate subprocess invocations with correct ordering, schema-name derivation, and stage/publish coordination. There is no single verb expressing the unit-of-work.",
+        "proposal": "Ship crm scaffold table <Display> --column 'Name:kind[:opts]'... as a thin convenience verb (crm/commands/scaffold.py, registered in _lazy_commands). It derives schema via _resolve_schema_name, calls create_entity, loops add_attribute per --column with if_exists='skip' and forced --no-publish, then ONE publish-all at the end. DROP --default-view from the single-staged-call design: ObjectTypeCode is server-assigned, not returned by create_entity, and create_view bakes it into layoutxml (no OTC exists in dry-run). Recommended: scope scaffold to entity+attributes only and keep it genuinely staged/dry-run-previewable; view creation stays a separate explicit view create --otc step. If --default-view is required, implement it as an explicit TWO-PHASE op (create+publish entity, read back ObjectTypeCode — extend create_entity's read-back $select to include it — then create the view), documenting that it forces a publish between phases and is not dry-run-previewable for the view portion. If R11 ships, fold scaffold into it as a one-entity in-memory spec so the OTC two-phase logic lives in one place.",
+        "rationale": "Fits the repo's simplicity/surgical philosophy and the validated stage-then-publish pattern; the entity+attributes half is accurate and on-prem-safe with no new HTTP path. Effort M because the honest default-view story is two-phase, not a single staged batch. Medium impact (convenience over composable verbs).",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\_helpers.py:192-223",
+          "D:\\projects\\crm\\crm\\core\\metadata.py:137",
+          "D:\\projects\\crm\\crm\\core\\views.py:54",
+          "D:\\projects\\crm\\crm\\cli.py:206"
+        ],
+        "citations": [
+          "crm/skills/SKILL.md:247-263"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R35",
+        "title": "Add solution import managed/unmanaged sniff (drop the dry-run envelope rewrite)",
+        "category": "Customization & ALM tooling",
+        "priority": 35,
+        "impact": "Low",
+        "effort": "M",
+        "problem": "solution import gives an agent no pre-flight signal of whether the supplied zip is managed or unmanaged, so it cannot tell which import semantics apply before the potentially long async op runs.",
+        "proposal": "Keep ONLY the local managed/unmanaged sniff; DROP the meta.dry_run/plan{} envelope rewrite for import (that would make import the only divergent command and break ~15 tests locked to the in-data _dry_run convention — if the leaked sentinel is a real problem, fix it system-wide in emit per R1, not here). Add a helper that opens the zip with stdlib zipfile, reads solution.xml, parses <Managed> (1=managed, 0=unmanaged), wrapped in try/except returning None on BadZipFile/missing/parse error (the existing dry-run test passes a garbage stub zip). Include managed:bool|None additively in BOTH the real import result and the dry-run return, keeping the _dry_run-in-data convention. Add tests: valid unmanaged zip->managed False, garbage stub->managed None. Acknowledge the orthogonal pre-existing caveat that ImportSolutionAsync on-prem availability is flagged unverified.",
+        "rationale": "A minor agent-ergonomics nicety; an agent can already inspect the zip itself. Local zipfile read, no network. Low impact; effort M once you account for graceful degradation on non-zip inputs and NOT breaking the test-locked convention.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\core\\solution.py:356-391",
+          "D:\\projects\\crm\\crm\\commands\\solution.py:241-265"
+        ],
+        "citations": [
+          "docs/research/onprem-automation.md:261-264"
+        ],
+        "mermaid": null
+      },
+      {
+        "id": "R36",
+        "title": "Add init --spec-template to emit a fillable apply-spec skeleton",
+        "category": "Authoring & scaffolding",
+        "priority": 36,
+        "impact": "Low",
+        "effort": "S",
+        "problem": "init --template only writes a connection .env.example. There is no authoring template — an agent that wants to scaffold metadata has no canonical, schema-correct starting artifact and must infer the apply-spec shape from prose.",
+        "proposal": "Defer and bundle into R11. A skeleton keyed to the apply-spec schema cannot be authored before R11 defines that schema. Re-scope as a STRICT successor: bundle a model.example.yaml emission into the R11 PR itself, generated from and in lockstep with the canonical schema, avoiding a second drifting artifact. Implement by mirroring init.py's _write_template (refuse-overwrite, ctx.emit). If R11 is NOT adopted, drop this entirely. For a cheaper agent-ergonomics win NOW independent of R11, instead add a worked end-to-end imperative scaffolding recipe to SKILL.md (publisher->solution->entity->attribute->optionset->view->publish-all with EXISTING verbs) — zero code, zero new schema.",
+        "rationale": "Genuine but non-independent gap; pure local file write, no D365 calls. Low impact, S effort once R11's schema exists; do not schedule standalone.",
+        "codePointers": [
+          "D:\\projects\\crm\\crm\\commands\\init.py:27-48"
+        ],
+        "citations": [],
+        "mermaid": null
+      }
+    ],
+    "impactEffortMatrix": [
+      {
+        "id": "R1",
+        "title": "Normalize meta.dry_run flag",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R2",
+        "title": "Error taxonomy meta.category + meta.retryable",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R3",
+        "title": "crm describe --json command discovery",
+        "impact": "High",
+        "effort": "S"
+      },
+      {
+        "id": "R4",
+        "title": "meta.warnings[] + partial-failure surfacing",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R5",
+        "title": "Non-interactive REPL guard",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R6",
+        "title": "solution set-version",
+        "impact": "High",
+        "effort": "S"
+      },
+      {
+        "id": "R7",
+        "title": "Gate solution import overwrite",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R8",
+        "title": "metadata describe write-readiness brief",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R9",
+        "title": "delete-attribute / delete-relationship",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R10",
+        "title": "ImportJob per-component result",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R11",
+        "title": "apply -f desired-state",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R12",
+        "title": "solution add/remove component",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R13",
+        "title": "entity create/update --validate",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R14",
+        "title": "CoreTools extract/pack",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R15",
+        "title": "connection doctor preflight",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R16",
+        "title": "data import bulk",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R17",
+        "title": "picklist option flattening meta.options",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R18",
+        "title": "optionset dry-run diff + fidelity fix",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R19",
+        "title": "web resource group + app icon",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R20",
+        "title": "sitemap builder",
+        "impact": "High",
+        "effort": "M"
+      },
+      {
+        "id": "R21",
+        "title": "plugin register-assembly/step",
+        "impact": "High",
+        "effort": "L"
+      },
+      {
+        "id": "R22",
+        "title": "pre-delete dependency preview",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R23",
+        "title": "solution components --diff",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R24",
+        "title": "security assign-role / list-roles",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R25",
+        "title": "POST create retry-suppression guard",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R26",
+        "title": "query --minimal projection",
+        "impact": "Medium",
+        "effort": "S"
+      },
+      {
+        "id": "R27",
+        "title": "field-comparison verify --expect",
+        "impact": "Low",
+        "effort": "S"
+      },
+      {
+        "id": "R28",
+        "title": "crm mcp serve",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R29",
+        "title": "shared destructive.py extraction",
+        "impact": "Low",
+        "effort": "S"
+      },
+      {
+        "id": "R30",
+        "title": "persistent metadata cache",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R31",
+        "title": "attributes --binds enrichment",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R32",
+        "title": "local mutation audit journal",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R33",
+        "title": "metadata export-spec",
+        "impact": "Medium",
+        "effort": "L"
+      },
+      {
+        "id": "R34",
+        "title": "scaffold table",
+        "impact": "Medium",
+        "effort": "M"
+      },
+      {
+        "id": "R35",
+        "title": "solution import managed sniff",
+        "impact": "Low",
+        "effort": "M"
+      },
+      {
+        "id": "R36",
+        "title": "init --spec-template",
+        "impact": "Low",
+        "effort": "S"
+      }
+    ],
+    "openQuestions": [
+      "Q3 (research, still open): does on-prem metadata Web API throttling/page-size/payload capping under NTLM apply at v9.0/9.1 (HTTP 429, x-ms-ratelimit, Retry-After)? Must be field-measured against the target server before tuning batch/concurrency or claiming the persistent cache (R30) de-risks throttling.",
+      "Is Copilot-side MCP integration a committed organizational requirement? R28/R29-MCP-half/the MCP resource and install items all gate on reversing the documented drop-MCP decision; without that commitment they should not be scheduled.",
+      "Is ImportSolutionAsync actually available/reliable on the target on-prem server, or must import move to synchronous ImportSolution (+ExecuteAsync)? The research flags ImportSolutionAsync/StageSolution as cloud-era constructs with unverified on-prem runtime; R10 (ImportJob parsing) stands regardless since importjob.data is populated either way.",
+      "For R11 apply, what is the canonical YAML/JSON spec schema (fields, publisher-prefix consistency rules), and what is the partial-failure policy mid-pass (abort-and-report vs continue) given metadata POSTs are non-transactional on-prem? This blocks R33 (export-spec) and R36 (spec-template).",
+      "Should the deterministic destructive gate stay verb-name-only (coarser: blocks even safe solution import --no-overwrite without --yes) or evolve to flag-awareness? The repo deliberately keeps the hook flag-blind for simplicity; R7's tradeoff needs a maintainer call.",
+      "Does the CoreTools NuGet remain the assumed distribution for SolutionPackager/CrmSvcUtil, and is auto-download explicitly off the table for R14 (the proposal assumes resolve-or-fail with an actionable error, no bundling)?",
+      "Behavioral differences between /api/data/v9.0, v9.1, v9.2 endpoints on the same on-prem server are unverified — R15 (doctor) deliberately validates only the configured version rather than sweeping; confirm that is acceptable.",
+      "For R30, is a 15-minute TTL backstop plus write-path invalidation sufficient, or does any out-of-band schema change (another tool, the UI) need to be tolerated by an even more conservative default?"
+    ],
+    "sources": [
+      "D:\\projects\\crm\\crm\\cli.py (CLIContext.emit:47-61, _lazy_commands:206-224, root callback + REPL fall-through:260-328)",
+      "D:\\projects\\crm\\crm\\commands\\_helpers.py (_handle_d365_error:31-35, _confirm_destructive:38-54, _emit_with_warning:175-189, _resolve_publish:91-107, _resolve_schema_name:192-223, _emit_query_result:259-288)",
+      "D:\\projects\\crm\\crm\\utils\\d365_backend.py (dry-run short-circuit:305-313, retry loop:315-359, response-retry method-awareness:623-647, error parse/status+code:580-605, rate-limit header map:650-673)",
+      "D:\\projects\\crm\\crm\\core\\optionsets.py (update_optionset + _attach_partial:151-234, get_optionset:47-54)",
+      "D:\\projects\\crm\\crm\\core\\metadata.py (entity_info/list_attributes/picklist_options:42-95, delete_entity:300-336, create_entity dry-run mutate:250-253, list_entity_definitions:395)",
+      "D:\\projects\\crm\\crm\\core\\relationships.py (list_relationships:24-48, ManyToOne $select:31, cast pattern:188), crm\\core\\metadata_attrs.py (add_attribute:379, global-optionset resolve:362-468)",
+      "D:\\projects\\crm\\crm\\core\\solution.py (create_solution:118-187, solution_info:201-209, solution_components:212-221, export/import:268-443)",
+      "D:\\projects\\crm\\crm\\core\\appmodule.py (DEFAULT_APP_ICON:24-47, set_sitemap:155-187, component refs:29-38), crm\\core\\views.py (create_view + XML build:12-54)",
+      "D:\\projects\\crm\\.claude\\hooks\\destructive_op_gate.py (DESTRUCTIVE map + ROLE_VERBS:22-44)",
+      "D:\\projects\\crm\\crm\\commands\\entity.py, metadata.py, solution.py, query.py, data.py, init.py, skill.py, repl.py (command-layer emit sites and registry usage)",
+      "D:\\projects\\crm\\docs\\adr\\0001-cli-exit-code-contract.md and 0002 (exit-code + ADR-0002 layering/dry-run-no-writes constraints)",
+      "D:\\projects\\crm\\crm\\skills\\SKILL.md and .claude\\skills\\crm\\SKILL.md (agent guidance, error playbook:353-361, @odata.bind:344-352, destructive table:280-294, command table:79-91)",
+      "D:\\projects\\crm\\docs\\research\\ai-agent-tooling-onprem.md (pipeline:105-135, Copilot MCP:49,80-81, drop-MCP/revisit:75-76,137-139, ImportJobId verify:131, Q3:146-148)",
+      "D:\\projects\\crm\\docs\\research\\onprem-automation.md (AddSolutionComponent:255-257, RetrieveFormattedImportJobResults/ImportJob:258-259,299, CoreTools/pac-not-on-prem:143,271-279, PUT-replace + PATCH carve-out:111-120, order-of-trust:220-221, terraform plan/apply:301-304, drop-MCP:235)",
+      "D:\\projects\\crm\\docs\\superpowers\\specs\\2026-05-25-spec-d-metadata-write-design.md and 2026-05-25-spec-e-dx-polish-design.md and 2026-06-01-crmworx-interface-design.md (deferred persistent cache:e260, $batch changeset:d560, sitemap spec sketch:97)",
+      "D:\\projects\\crm\\CHANGELOG.md (CreateMultiple/UpsertMultiple cloud-only on-prem note:101), docs\\index.html (meta.dry_run advertised:649, plugins P3 roadmap:602-605)",
+      "Microsoft Learn (view=op-9-1): Web API metadata DeleteAttribute/DeleteRelationship, LookupAttributeMetadata.Targets + OneToManyRelationshipMetadata.ReferencingEntityNavigationPropertyName, RetrieveDependenciesForDelete/RetrieveDependentComponents, RetrieveFormattedImportJobResults (Excel format), pluginassembly/sdkmessageprocessingstep schema, SiteMap.xsd, AddSolutionComponent, RetrieveVersion",
+      "crm\\tests\\ (test_exit_codes.py, test_metadata_update.py, test_optionsets.py, test_destructive_op_gate.py, test_lazy_imports.py, test_appmodule.py, test_batch.py, test_core.py — current contract assertions referenced by the proposals)"
+    ]
+  },
+  "verifiedCount": 46,
+  "refutedCount": 1,
+  "ground": [
+    {
+      "area": "agent ergonomics & output contract",
+      "capabilities": [
+        "Stable --json envelope on every command via CLIContext.emit (crm/cli.py:47-89): {ok, data?, error?, meta?}; success is {ok:true,...}, failure is {ok:false,error,meta}. data is recursively sanitized (bytes->utf-8) by _sanitize so output is always JSON-serializable.",
+        "Hard exit-code contract for loop-driving agents (ADR docs/adr/0001): 0=success, 1=operational failure (D365 server error, in-command validation, declined confirm), 2=Click usage error. emit(ok=false) raises click.exceptions.Exit(1) so failures never silently exit 0 (the historic bug the ADR fixed).",
+        "Usage errors are JSON-wrapped under --json without breaking the code contract: _JsonAwareGroup/_json_mode_active (crm/cli.py:124-195) intercept Click UsageError and render {ok:false,error} on stdout while preserving exit 2. argv is scanned (not parsed ctx) so the signal is reliable even before the root callback runs and in the REPL.",
+        "--dry-run previews the exact HTTP request without issuing it: backend short-circuits (d365_backend.py:305-313) returning {_dry_run:true, method, url, params, headers (Authorization stripped), body}. Safe mutation validation path documented for agents in SKILL.md.",
+        "--stage-only global flag (env CRM_STAGE_ONLY) forces every metadata create/update to --no-publish for batch-then-publish-once flows; sticky in the REPL (never silently cleared, crm/cli.py:319-323); combining with explicit --publish is rejected as a usage error; staged:true is recorded in meta (_resolve_publish in _helpers.py:91-107).",
+        "Two-layer destructive-op gate: (1) in-band --yes flag on every destructive verb (entity delete, async cancel, metadata delete-entity/-optionset, solution job-cancel) via _confirm_destructive, which on non-TTY EOF emits the documented {ok:false,error:'aborted by user'} (exit 1) instead of a bare Click Abort; (2) a deterministic stdlib-only Claude Code PreToolUse hook (.claude/hooks/destructive_op_gate.py wired in .claude/settings.json) that hard-blocks (exit 2 + stderr reason) any destructive crm Bash call lacking --yes, even if the model ignores the prompt.",
+        "PreToolUse hook is robust against shell evasion: splits compound commands on operators (&&, ||, |, ;, $(), backticks, newlines) even when glued to neighbors, strips leading FOO=1 env assignments, handles path-prefixed /usr/bin/crm, skips value-taking root options so a destructive verb can't hide after --profile, and refuses to count a --yes that is actually an option value. Matches by verb NAME so not-yet-shipped delete verbs (delete-attribute, delete-relationship, role/privilege verbs) are gated pre-emptively.",
+        "Bundled agent skill SKILL.md (crm/skills/) installable via `crm skill install --target copilot|claude|cursor` (or --dest) and `skill path`/`skill uninstall`; the skill explicitly instructs agents to always pass --json, check $? then read the envelope, use --dry-run before mutations, and pass --yes non-interactively.",
+        "Lazy command loading (_LazyJsonAwareGroup, crm/cli.py:198-254) imports a subcommand module only when invoked, so `crm --version` and direct one-shot commands avoid pulling requests/NTLM/prompt_toolkit — fast cold start for scripted single-shot agent calls.",
+        "Rich, machine-parseable error context: D365Error surfaces through _handle_d365_error as meta.status (HTTP) and meta.code (D365 hex code, e.g. 0x80040217); SKILL.md documents the recovery playbook (404/0x80040217 missing record, 401 auth, 403 privilege, 400 OptimisticConcurrency -> retry).",
+        "Query results carry consistent pagination/count meta (_emit_query_result in _helpers.py:259-276): entity_set, count, odata_count (@odata.count), next_link presence. Batch results carry a render_batch_summary in meta. service-document lists every entity set the agent can address.",
+        "Self-describing payload guidance for valid writes: `metadata picklist`/option-set introspection plus SKILL.md @odata.bind navigation-property guidance (PascalCase nav name, GlobalOptionSet@odata.bind needs MetadataId GUID on on-prem 9.1) so an agent can construct valid create payloads.",
+        "Zero-touch profile auto-wiring (ADR 0002): solution create-publisher/create write publisher_prefix/default_solution back into the active named profile so later metadata commands need no repeated --solution/prefix; guarded (--no-set-default, named-profile-only, never under --dry-run) and reported in the envelope (data.profile_updated).",
+        "Headless/non-interactive config: env-var or .env auto-load (D365_*/CRM_* aliases), `crm init --template` writes .env.example non-interactively, named profiles via `connection connect`, passwords never persisted (env/--password only). Impersonation and write-safety headers exposed as flags (--as-user, --suppress-dup-detection, --bypass-plugins).",
+        "Resilience knobs an agent can rely on: built-in transport retry with CRM_NO_RETRY scope helper, --no-transaction/--continue-on-error for $batch, optimistic concurrency via --if-match/etag, and --max-pages safety cap on --all pagination."
+      ],
+      "gaps": [
+        "No machine-readable command/capability discovery surface: there is no `--help --json`, no `crm describe`/`introspect`, and `crm --help` text is plain Click prose. An agent cannot enumerate commands, options, arguments, or the option-set/choices programmatically — it must rely on the bundled SKILL.md prose or out-of-band knowledge. The lazy-command registry (_lazy_commands) is the only structured list and isn't exposed.",
+        "No MCP server. The only first-class agent integration is shell invocation + the copied SKILL.md; there is no tool-call interface, so agents must shell out and parse stdout, and the destructive gate is Claude-Code-specific (a generic agent shelling out gets no PreToolUse protection — only the in-band --yes/non-TTY abort).",
+        "Inconsistent dry-run envelope shape: a dry-run returns a raw {_dry_run, method, url, headers, body} dict as `data` with no meta.dry_run flag and no normalization across commands; an agent must sniff the `_dry_run` key inside data rather than a stable top-level/meta signal. Multi-step ops (batch, paginated export, publish) don't all model dry-run.",
+        "Exit-code granularity is intentionally flat (ADR 0001): every operational failure is exit 1 regardless of class (auth 401 vs not-found 404 vs concurrency 412 vs declined-confirm). An agent must parse meta.status/meta.code to branch — fine for --json callers but offers no signal to non-JSON or exit-code-only loops.",
+        "No structured warnings/notices channel: solution-resolution warnings are stuffed into meta.warning only under --json (_emit_with_warning) and printed as skin text otherwise; there is no consistent meta.warnings[] array, so non-fatal advisories are easy for an agent to miss.",
+        "REPL is the default with a bare `crm` invocation (drops into interactive prompt). An agent that omits a subcommand hangs on the REPL prompt instead of getting a usage error — SKILL.md warns about this but the CLI itself provides no non-interactive guard / no `CRM_NO_REPL`-style escape.",
+        "No idempotency / request-id / correlation token surface for retried mutations: --if-match covers optimistic concurrency on update/delete, but creates have no client-supplied idempotency key, so an agent retrying a create after an ambiguous transport failure risks duplicates (only the env-default duplicate-detection toggle exists).",
+        "No streaming/progress for long-running ops (solution import, large data export, --all pagination): output is emitted once at completion, so an agent gets no incremental signal and must rely on the async list/get/cancel commands polled manually.",
+        "No shell-completion registration (no _CRM_COMPLETE / shell_complete), so neither humans nor completion-aware tooling can tab-discover entity sets, profiles, or option values."
+      ],
+      "constraints": [
+        "NTLM (Windows Integrated) only; OAuth/IFD/Claims/certificate auth explicitly out of scope (README, SKILL.md hard constraints).",
+        "Targets D365 CE on-premises 9.x only (v9.0/9.1/9.2); Dataverse online auth differs and is unconfigured.",
+        "Live D365 server is a hard runtime dependency — no local mocking; E2E tests fail loudly without D365_URL.",
+        "Exit codes 0/1/2 are now a committed public contract (ADR 0001): changing them is a breaking change; usage errors must stay 2 (never reclassified to 1), and failure-class detail must live in the JSON envelope, never in new exit codes.",
+        "Passwords are never persisted to disk — only via D365_PASSWORD/CRM_PASSWORD env or --password; profiles store no secret.",
+        "pyright strict on crm/core/* and crm/utils/d365_backend.py (basic elsewhere); core modules must stay pure D365 with a mockable backend and must not import session/config or touch ~/.crm (per ADR 0002 — config writes live only in the command layer).",
+        "--dry-run must have zero side effects, including no profile writes (ADR 0002 guards both ctx.dry_run and the result's _dry_run sentinel).",
+        "The PreToolUse destructive gate is a Claude-Code-specific mechanism (.claude/settings.json + stdlib hook, exit 2 blocks); it protects only agents running under Claude Code's hook system, not arbitrary shell-out agents.",
+        "The single source of truth for top-level command exposure is the _lazy_commands map in crm/cli.py — a new top-level command is invisible unless registered there.",
+        "Sticky REPL flags (profile/password/stage-only) are deliberately not cleared on a later bare line to preserve safety/connection state; agents reusing one REPL session inherit prior root-option state."
+      ]
+    },
+    {
+      "area": "customization & ALM",
+      "capabilities": [
+        "Entity (table) metadata CRUD — `metadata create-entity` (custom table with primary-name attr, ownership UserOwned/OrganizationOwned, has-activities/has-notes/is-activity, if-exists error|skip, read-back of EntitySetName), `metadata update-entity` (safe retrieve-merge-write of DisplayName/DisplayCollectionName/Description/OwnershipType/HasActivities/HasNotes via full-PUT with MSCRM.MergeLabels), `metadata delete-entity` (pre-flight refuses non-custom/managed; interactive confirm + --yes). Browsing: `metadata entities`, `metadata entity`. crm/core/metadata.py:137, metadata_update.py:187, metadata.py:300",
+        "Attribute (column) creation — `metadata add-attribute` supports 14 kinds: string, memo, integer, bigint, decimal, double, money, boolean, datetime, picklist, multiselect, lookup, image, file. Per-kind kwarg validation (precision ranges, format whitelists, int-bound coercion). Lookup short-circuits to create_one_to_many. Picklist/multiselect attach inline local options OR bind a global option set (resolves MetadataId for on-prem 9.x). crm/core/metadata_attrs.py:379",
+        "Attribute update — `metadata update-attribute` retrieve-merge-write through the @odata.type cast path (DisplayName/Description/RequiredLevel/MaxLength/Precision/Min/Max/Format), type-aware validation. crm/core/metadata_update.py:301. Browsing: `metadata attributes`, `metadata attribute`, `metadata picklist`.",
+        "Global option sets — full CRUD: `metadata list-optionsets`, `metadata get-optionset` (options expanded), `metadata create-optionset`, `metadata update-optionset` (granular insert/update/delete/reorder dispatching to InsertOptionValue/UpdateOptionValue/DeleteOptionValue/OrderOption in order, partial-failure surfaces completed_steps+stage, no rollback), `metadata delete-optionset` (refuses non-custom/managed; confirm + --yes). crm/core/optionsets.py",
+        "Relationships — `metadata create-one-to-many` (1:N + lookup attribute atomically via Lookup deep insert, full cascade config + associated-menu), `metadata create-many-to-many` (N:N, server-created intersect entity, per-side menus), `metadata update-relationship` (cascade + associated-menu retrieve-merge-write; rejects cascade/menu edits on N:N). Browsing: `metadata relationships` (OneToMany/ManyToOne/ManyToMany). crm/core/relationships.py, metadata_update.py:421",
+        "Views — `view create` builds LayoutXml + FetchXml and POSTs a public system view (savedquery, querytype 0) with ordered columns, optional active-state filter, is-default. Existence guard by name+returnedtypecode+querytype. crm/core/views.py:54",
+        "Model-driven apps — `app create` (appmodule row with default ship icon webresource, publish-before-readback workaround for on-prem 9.1), `app add-components` (AddAppComponents action binding typed refs: view|chart|form|dashboard|sitemap|bpf), `app set-sitemap` (sitemaps row from SiteMapXml file, auto-links via sitemapnameunique). crm/core/appmodule.py",
+        "Publisher + solution creation — `solution create-publisher` (validates customizationprefix 2-8 alnum not 'mscrm', optionvalueprefix 10000-99999; autowires publisher_prefix into active profile), `solution create` (unmanaged solution bound to publisher by uniquename or id; autowires default_solution). crm/core/solution.py:50,118",
+        "Solution export/import — `solution export` (ExportSolutionAsync + poll + DownloadSolutionExportData, with sync ExportSolution fallback for older on-prem; managed flag; repeatable --export-setting for autonumbering/calendar/customizations/email-tracking/general/isv-config/marketing/outlook-sync/relationship-roles/sales), `solution import` (ImportSolutionAsync + ImportJob polling with progress ticks, publish-workflows + overwrite-unmanaged toggles). crm/core/solution.py:268,356",
+        "Publishing — `solution publish-all` (PublishAllXml), `solution publish` (PublishXml with inline --xml or --xml-file Publish Request Schema). Plus implicit publish: every metadata/app/view/optionset create+update defaults to --publish (PublishAllXml) unless --no-publish. crm/core/solution.py:446,457",
+        "Solution browsing + job control — `solution list` (managed filter), `solution info`, `solution components` (componenttype/objectid/rootcomponentbehavior), `solution job-status` and `solution job-cancel` (aliases over async ops). crm/core/solution.py:190,201,212",
+        "Workflow/process ops (core surface) — list_workflows (filter by category/primaryentity/activated/on-demand, definition records only), set_workflow_state (activate/deactivate via statecode/statuscode PATCH), execute_workflow (ExecuteWorkflow bound action). crm/core/workflow.py — note these ARE surfaced via crm/commands/workflow.py (present in tree, outside the requested file set).",
+        "Staging / ALM safety model — global `--stage-only` flag forces every mutating command to --no-publish (changes land in the solution unpublished for a later batched publish; explicit --publish + --stage-only is rejected). `--solution`/`--require-solution` (or CRM_REQUIRE_SOLUTION) target MSCRM.SolutionUniqueName with precedence explicit > profile default_solution > none + warning. --if-exists error|skip idempotency on every create. Schema names auto-derived from profile publisher_prefix + PascalCase display token. Universal --dry-run preview path (forced-real existence GETs, merged-PUT body + diff preview). crm/commands/_helpers.py:91,147,192",
+        "OData surface introspection — `metadata list-actions` / `metadata list-functions` parse $metadata CSDL to enumerate service-declared actions/functions. crm/core/metadata.py:385,390"
+      ],
+      "gaps": [
+        "No forms (systemform) authoring — cannot create or edit main/quick-create/quick-view forms or form XML. Forms can only be *referenced by GUID* via `app add-components` (kind=form/dashboard); the GUID must be obtained out-of-band. No `form` command group exists.",
+        "No charts/visualizations (savedqueryvisualization) authoring — same as forms: bindable by GUID in `app add-components` (kind=chart) but not creatable/editable by the CLI.",
+        "No dashboard creation — dashboards are systemform records; bindable by GUID only, no authoring command.",
+        "No business process flow (BPF) authoring — `app add-components` can bind a BPF by workflowid (kind=bpf) but there is no command to create/configure a BPF.",
+        "No business rules / classic workflows / actions / modern-flow authoring — workflow.py only lists, activates/deactivates, and on-demand-executes existing workflows (categories enumerated as constants); no create/update of any process category.",
+        "Attribute deletion — no `delete-attribute`/`delete-column`; only entity and global-option-set deletion exist. An attribute (or lookup/relationship) created in error cannot be removed via the CLI.",
+        "Relationship deletion — no `delete-relationship`; create-one-to-many and create-many-to-many exist but no removal path (relationships also block entity deletes, with no CLI remedy).",
+        "View update/delete — `view create` only; no edit (columns/fetchxml/layoutxml) or delete of an existing savedquery. Only public views (querytype 0) are creatable; no user/personal views, lookup views, quick-find, or associated views.",
+        "App update/delete — `app create` only; no rename/edit/delete of an appmodule, and no `remove-components` to undo an AddAppComponents binding.",
+        "Sitemap is create-only and write-only — `app set-sitemap` POSTs a new sitemaps row from raw XML; no read/update of an existing sitemap and the operator must hand-author SiteMapXml (no subarea/group builder).",
+        "Publisher/solution: no update or delete — cannot bump solution version, change friendlyname/description, delete a solution, or delete/edit a publisher via the CLI (create-only).",
+        "No managed-solution uninstall/upgrade path — import handles ImportSolutionAsync but there is no StageAndUpgrade/ApplySolutionUpgrade/HoldingSolution flow nor a delete/uninstall command; the delete pre-flights even point users to 'uninstall the parent solution' with no CLI verb to do so.",
+        "No solution-component add/remove — cannot add an existing component to a solution (AddSolutionComponent) or remove one (RemoveSolutionComponent) after the fact; components only enter a solution at create-time via the MSCRM.SolutionUniqueName header. `solution components` is read-only.",
+        "No web resource / plugin / SDK message processing step management — cannot create or update web resources (icons reference a hard-coded default GUID), register plugin assemblies, or manage SDK steps.",
+        "No keys / alternate keys, no calculated/rollup field authoring — add-attribute covers base typed columns only; no EntityKey creation and no FormulaDefinition/rollup configuration.",
+        "No solution clone / patch (CloneAsPatch, CloneAsSolution) and no SetSolutionVersion.",
+        "No security-role / field-security-profile / column-level-security customization."
+      ],
+      "constraints": [
+        "Target is D365 CE on-premises v9.x (Dataverse Web API OData v4 over HTTPS + NTLM); on-prem-specific workarounds are baked in: global option set @odata.bind requires MetadataId GUID (Name key rejected on 9.x), appmodule must publish before read-back (9.1), and ExportSolutionAsync falls back to synchronous ExportSolution on older orgs. crm/core/metadata_attrs.py:361, appmodule.py:104, solution.py:224",
+        "Metadata updates have no PATCH — Dataverse replaces the whole definition on PUT. The CLI always GETs the full current definition, deep-merges a sparse changes dict, and PUTs the complete body with MSCRM.MergeLabels:true to avoid silently dropping omitted/localized properties. Typed attributes must be read/written through their @odata.type cast path. crm/core/metadata_update.py:1",
+        "Schema/logical-name rules enforced client-side before HTTP: schema names must include a publisher prefix and be PascalCase; logical name is the lowercased schema name. Names can be auto-derived from the active profile's publisher_prefix + PascalCase display token. crm/core/metadata.py:177, _helpers.py:192",
+        "Delete operations are guarded: refuse non-custom (IsCustomEntity/IsCustomOptionSet=False) or managed (IsManaged=True) targets client-side; the server still enforces dependency checks (workflows/forms/relationships) and returns 4xx. Destructive verbs require interactive confirm or --yes. crm/core/metadata.py:300, optionsets.py:237",
+        "Publish defaults ON for create/update commands (PublishAllXml after the write) but is globally suppressed by --stage-only so changes can be batched and published once; combining explicit --publish with --stage-only is a usage error. crm/commands/_helpers.py:91",
+        "Solution targeting is via the MSCRM.SolutionUniqueName request header at create-time only (precedence: --solution > profile default_solution > none-with-warning; --require-solution / CRM_REQUIRE_SOLUTION makes the absence a hard failure). There is no post-hoc add-to-solution. crm/commands/_helpers.py:147",
+        "Read-back after create is best-effort and non-fatal: a failed read-back (e.g. unparseable OData-EntityId, GET error) records a *_lookup_error in the result rather than failing the create. crm/core/metadata.py:259",
+        "Granular optionset updates are NOT transactional: insert→update→delete→reorder run sequentially and stop on first error, leaving prior steps applied (completed_steps + stage attached to the raised D365Error; no rollback). crm/core/optionsets.py:151",
+        "Async solution export/import block until completion or a timeout (profile.async_timeout, overridable per-invocation via --timeout); a per-invocation --no-retry disables the 429/5xx retry loop. crm/core/solution.py:268,356",
+        "N:N relationships cannot be self-referential (Entity1==Entity2 rejected) and have no CascadeConfiguration/AssociatedMenuConfiguration — cascade/menu updates are only valid for 1:N. crm/core/relationships.py:240, metadata_update.py:475",
+        "Views assume the primary-id attribute is `<entity>id` (true for custom tables, which is the intended target) and only create public views (querytype 0). crm/core/views.py:54",
+        "App component binding via AddAppComponents only accepts record-backed components (view/chart/form/dashboard/sitemap/bpf as typed entity references); tables are not crmbaseentity records and must reach the app through the sitemap's Entity= subareas instead. crm/core/appmodule.py:31"
+      ]
+    },
+    {
+      "area": "on-prem + AI-tooling constraints",
+      "capabilities": [
+        "Viable AI path = a generic coding agent (Claude Code or GitHub Copilot CLI/agent-mode) acting as ORCHESTRATOR — runs shell, edits files, spawns executables, and attaches arbitrary STDIO/HTTP/SSE MCP servers. This is the only architecture that reaches on-prem.",
+        "This repo's `crm` CLI + `crm` skill IS the bridge: real Dataverse Web API (OData v4) over HTTPS + NTLM, implemented in `crm/utils/d365_backend.py` (Python NetworkCredential + HttpClientHandler pattern). Supports record CRUD, OData/FetchXML queries, metadata browsing, and `solution import`/`solution export`.",
+        "The `crm` CLI already ships the core agent-safety guardrails (codebase audit 2026-05-30): `--json` deterministic output (`ctx.emit` envelope), `--dry-run` request preview, and `solution publish` / `publish-all` commands. These guardrails are DONE.",
+        "Solution import/export over Web API confirmed: `ImportSolution` (CustomizationFile base64, OverwriteUnmanagedCustomizations, PublishWorkflows, returns ImportJobId), `ExportSolution` (ExportSolutionFile inline base64), and `AddSolutionComponent` (unmanaged-only, 6 params) are real OData v4 actions in `Microsoft.Dynamics.CRM`, stable across v9.0/v9.1/v9.2. The `crm` CLI already ships the commands — no new CLI command needed.",
+        "Classic on-prem SDK actuators confirmed via `Microsoft.CrmSdk.CoreTools` NuGet (9.1.0.179, `bin\\coretools`): SolutionPackager.exe (pack/extract managed+unmanaged solutions for source control) and CrmSvcUtil.exe (early-bound codegen — the documented on-prem replacement for pac). Agent spawns these as ordinary processes.",
+        "On-prem customization surface is fully metadata-driven and Microsoft-supported: custom tables/columns/option sets, 1:N/N:1/N:N relationships, forms/views/charts/dashboards/apps/sitemaps, business process flows, classic workflows, actions, business rules. Code extensibility via plug-ins, custom workflow activities, Client API JS + web resources, webhooks, Azure extensions, async service.",
+        "On-prem-only capability: full-trust plug-ins running in the same app domain (not sandbox-only like cloud), with on-disk assembly storage at `<installdir>\\Server\\bin\\assembly`.",
+        "Two Microsoft-DOCUMENTED-for-on-prem agent-safety primitives exist: (1) solution-aware in-context create/update via the `MSCRM.SolutionUniqueName` request header (Microsoft explicitly prefers this over standalone AddSolutionComponentRequest) — validates issue #22; (2) `ImportJobId` + `RetrieveFormattedImportJobResults` / querying the ImportJob table for verifiable import outcomes.",
+        "Microsoft Learn MCP works on-prem as a docs-grounding aid (not an automation actuator). Playwright MCP is a viable last-resort fallback to drive the D365 web UI when no API path exists (brittle).",
+        "Recommended end-to-end pipeline: (1) AUTHOR via `crm` CLI Web API/NTLM, (2) GENERATE C#/JS + early-bound types via CrmSvcUtil.exe, (3) TEST via MSBuild + integration tests through `crm` CLI, (4) PACKAGE via SolutionPackager.exe, (5) DEPLOY via synchronous Web API ImportSolution (`crm solution import`), (6) VERIFY by re-querying via `crm` CLI."
+      ],
+      "gaps": [
+        "Q3 (STILL OPEN, 🔴, primary unanswered question): on-prem metadata Web API limits/throttling under NTLM at v9.0/v9.1 — whether page-size/payload caps, unsupported metadata ops, or cloud-style service-protection throttling (HTTP 429, x-ms-ratelimit, Retry-After) apply on-prem. No verified evidence either way. Working assumption: cloud 429 is a multi-tenant mechanism likely absent on-prem, but MUST be verified/field-measured against the actual target server before tuning batch size/concurrency.",
+        "Async solution staging on-prem unestablished: `StageSolution` -> `ImportSolutionAsync` -> poll asyncoperation is a cloud-era construct. The asyncoperation polling entity is DOC-ON-PREM, but StageSolution + ComponentParameters (env vars / connection refs) on-prem availability is NOT established. Until verified, use synchronous ImportSolution (+ ExecuteAsync).",
+        "PackageDeployer + Configuration Migration Tool + Plugin Registration Tool bundling in CoreTools NuGet is NOT confirmed (the claim that CoreTools bundles the full legacy set was refuted 0-3). Treat them as separate downloads. Configuration Migration on-prem exists but its packaging is uncertain.",
+        "Plugin Registration Tool is GUI-first → likely an unavoidable semi-manual pipeline step unless spkl / xrm-ci-framework fully scripts plugin-assembly registration for v9.x (unconfirmed).",
+        "No on-prem MCP server exists. Open question whether any OSS MCP does NTLM/IFD against the Web API — `oisee/odata_mcp_go` (generic OData v4 MCP) is a 🟡 candidate worth a spike (NTLM support unconfirmed); otherwise every team must wrap the `crm` CLI. An MCP wrapper of `crm` was considered and DROPPED (SKILL.md + --json already make it agent-usable); revisit only if Copilot-side MCP integration is required.",
+        "Copilot coding agent (cloud) cloud->on-prem-LAN network reach is untested (the two negatives — cloud-ephemeral, single-repo-locked — were REFUTED 0-3, so do not over-constrain, but practical LAN access is an open practical question).",
+        "Behavioral differences between /api/data/v9.0, /v9.1, /v9.2 endpoints on the same on-prem server are unverified.",
+        "Most Part-3 agentic-safety patterns (dry-run metadata diff, publish gating, retrieve-merge-write for PUT, destructive-op guards) are ENG-JUDGMENT, NOT Microsoft-documented — the agentic angle produced ZERO independently-verified claims. They are valid engineering hardening (issues #18-#21), not vendor-prescribed.",
+        "Open hardening issues tracked: #18 idempotent create (--if-exists skip|error), #19 --stage-only safe mode, #20 update-entity/attribute/relationship with retrieve-merge-write, #21 destructive-op PreToolUse hook + confirm coverage, #22 default solution + publisher prefix warning."
+      ],
+      "constraints": [
+        "NO turnkey AI path reaches on-prem v9.x. Every first-party + popular community Dataverse-AI tool is architecturally cloud-only (Entra ID auth, *.crm.dynamics.com URLs, Power Platform Admin Center / Managed Environments). None work on an IFD/NTLM box. Everything cloud-native is dead-on-arrival on-prem.",
+        "pac CLI is NOT supported on-prem (DEFINITIVE, verbatim op-9-1: 'the Power Platform CLI is not available for Dynamics 365 Customer Engagement (on-premises), you must use CrmSvcUtil.exe'). pac auth offers only Entra-ID/Azure cloud auth — no NTLM/AD/AD FS/IFD path. No Power Platform Build Tools on-prem. Deploy MUST go via Web API ImportSolution, never pac.",
+        "Cloud-only and explicitly UNAVAILABLE on-prem: Dataverse Skills plugin, Dataverse MCP server (URL hard-coded to https://{org}.crm.dynamics.com/api/mcp), pac built-in MCP, Copilot Studio / Copilot for Power Platform, mwhesse/dataverse-mcp (OAuth2 client-creds only). Also no maker portal, no admin center, no managed environments, no Solution Checker, no Power Automate cloud flows.",
+        "On-prem auth = EXACTLY THREE security models: (1) Claims-based, (2) Active Directory / NTLM (NetworkCredential + HttpClientHandler — what this repo uses), (3) OAuth 2.0 but IFD-only (requires AD FS 3.x+). Cloud Dataverse OAuth-via-Entra does NOT apply. Doc warning: do NOT use ServiceClient when using AD FS for on-prem auth.",
+        "Metadata UPDATE is PUT-replace, NEVER PATCH (the single most important safety fact). PUT replaces the ENTIRE definition; you must include all existing properties you don't intend to change. Any automated metadata update MUST retrieve-then-merge the full current definition first or it SILENTLY WIPES properties. Carve-outs: option-set options use dedicated UpdateOptionValue; business data rows do use PATCH normally.",
+        "Publish is a separate platform-enforced gate: after updating a table/column definition, changes are NOT applied until PublishXml / PublishAllXml Web API action is called — a natural stage-vs-production boundary.",
+        "Create-custom-table requires a StringAttributeMetadata primary-name attribute with IsPrimaryName: true in the POST body to EntityDefinitions.",
+        "Security privileges are CUMULATIVE (union of all roles) and effectively irreversible-by-accident — an over-broad role can't be 'un-unioned' by adding another. 8 record-level privileges x 5-tier access hierarchy (Global/Org > Deep > Local/BU > Basic/User > None). Treat role/privilege grants as irreversible-class ops.",
+        "AddSolutionComponent targets UNMANAGED solutions ONLY. Use synchronous ImportSolution on-prem (StageSolution/ImportSolutionAsync are cloud-era and not established on-prem).",
+        "Order of trust for guardrails (never let the weakest be the only layer): platform constraints (free, strongest) -> CLI validation/dry-run -> Claude Code PreToolUse hooks (deterministic block) -> prompt instructions (weakest). The platform's own constraints ARE the safety rails — encode them, don't invent new ones.",
+        "Business-rule scope gotcha: under Entity scope only Set Field Value, Set Default Value, Show Error Message run server-side; Lock/Unlock, Set Visibility, Set Business Required, Recommendation are model-driven-app only and silently ignored server-side.",
+        "Time-sensitivity: all 'online-only' verdicts are accurate as of 2026-06-03 only — MS AI tooling is brand-new (Dataverse Skills/MCP = 2026, pac built-in MCP = Dec 2025, Copilot CLI GA = Feb 2026); Microsoft may add on-prem support later, so re-check. Metadata facts are 🟡 cloud-pathed inferences (auth-independent OData v4 contract, only version path differs) — not direct op-9-1 statements.",
+        "Do NOT repeat these refuted myths: 'four clean classic process types' (refuted 0-3); 'OAuth is cloud-only/undocumented for on-prem' (refuted — it IS documented but gated to IFD+AD FS); 'Copilot coding agent is cloud-ephemeral-only' and 'locked to a single GitHub.com repo' (both refuted 0-3)."
+      ]
+    }
+  ],
+  "refuted": [
+    {
+      "title": "`solution scaffold` to source-control prep: write solution.xml/Other/Customizations skeleton for SolutionPackager",
+      "category": "Authoring & scaffolding",
+      "note": "The `solution scaffold` command does NOT exist in the repo (solution subcommands are: list, info, components, create-publisher, create, export, publish-all, publish, job-status, job-cancel, import — crm/commands/solution.py:43-265). SKILL.md:296 \"Solution scaffolding\" refers to live publisher+solution CREATION, not a folder layout. So this is non-existent, but it is NOT a genuine gap worth filling, because the proposal is technically misguided for D365 CE on-prem v9.x.\n\nThe core claim — that a hand-written minimal skeleton (Other/Solution.xml + empty Other/Customizations.xml + folder shell) is \"the exact directory SolutionPackager.exe expects to pack\" — is REFUTED by the authoritative op-9-1 docs the finding itself cites:\n\n1. SolutionPackager [s17] /folder arg: \"When packing, this folder must already exist and contain PREVIOUSLY EXTRACTED component files.\" Pack is the inverse of Extract; it reassembles a .zip from files SolutionPackager itself produced (incl. [Content_Types].xml, component subfolders, content hashes) — not a hand-fabricated stub.\n\n2. The op-9-1 \"Use source control with solution files\" doc states verbatim: \"manual editing of extracted component files and .zip files is not supported\" (except the narrow Customizations.xml sections in when-edit-customization-file). Generating Solution.xml/Customizations.xml from scratch is outside the supported surface.\n\n3. The documented \"Create a solution\" source-control procedure is: create in org -> EXPORT unmanaged solution -> SolutionPackager EXTRACT -> add files to source control. The folder skeleton is PRODUCED by export+extract, never hand-scaffolded. The grounding doc's own AUTHOR step says the agent \"EDITS solution XML + customizations\" (edits files that exist from an extract), not generates them.\n\nThe actual on-prem ALM facts (pac not available on-prem; SolutionPackager is THE source-control tool; synchronous ImportSolution) are accurate and well-grounded (onprem-automation.md:143,269-279; ai-agent-tooling-onprem.md:105-135). But the proposed solution misreads the SolutionPackager contract: the org-side half of the prep (export the .zip) is ALREADY shipped as `crm solution export`; the only remaining step is invoking SolutionPackager.exe /action:Extract against that .zip — a documented external one-liner, not a folder the CLI should fabricate. A scaffolded stub would not round-trip through pack and would mislead an agent into an unsupported workflow."
+    }
+  ]
+}
