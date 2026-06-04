@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm describe [GROUP]`: machine-readable command/option/choice discovery. Walks
+  the live Click tree (no live D365 connection, no mkdocs-click dependency) and in
+  `--json` mode emits `{ok, data:{root_options, commands:[{name, path, help,
+  is_group, args, params}]}}`. Each option carries `name, opts, type, required,
+  is_flag, multiple, choices, default, envvar`; `Choice` enums (ownership, the 14
+  attribute kinds, `if-exists`, cascade behaviors, …) are surfaced verbatim. Root
+  sticky globals (`--json`, `--dry-run`, `--profile`, `--auth-scheme`,
+  `--log-level`, `--stage-only`, `--session`, …) are listed under `root_options`.
+  The interactive `repl` leaf is excluded. `describe <group>` scopes to one
+  subtree, importing just that module (a lazy win over the full walk) (#63).
 - `crm apply -f spec.yaml`: declarative desired-state from a single YAML/JSON
   spec. Orchestrates the existing metadata cores in dependency order (publisher →
   solution → entities → option sets → attributes → relationships → views), each
