@@ -66,6 +66,7 @@ def create(
     *,
     return_record: bool = True,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -84,6 +85,7 @@ def create(
         json_body=payload,
         extra_headers=headers or None,
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -119,6 +121,7 @@ def update(
     return_record: bool = False,
     if_match: str | None = None,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -137,6 +140,7 @@ def update(
         extra_headers=headers or None,
         etag=effective_etag,
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -153,6 +157,7 @@ def upsert(
     payload: dict[str, Any],
     *,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -161,6 +166,7 @@ def upsert(
         _build_record_path(entity_set, record_id),
         json_body=payload,
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -177,6 +183,7 @@ def delete(
     *,
     if_match: str | None = None,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -185,6 +192,7 @@ def delete(
         _build_record_path(entity_set, record_id),
         etag=if_match,
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -203,6 +211,7 @@ def associate(
     related_id: str,
     *,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -220,6 +229,7 @@ def associate(
         path,
         json_body={"@odata.id": related_url},
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     ))
@@ -235,6 +245,7 @@ def disassociate(
     related_set: str | None = None,
     related_id: str | None = None,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -256,6 +267,7 @@ def disassociate(
     backend.delete(
         path,
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -271,6 +283,7 @@ def set_lookup(
     related_id: str,
     *,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -284,6 +297,7 @@ def set_lookup(
         backend, entity_set, record_id, payload,
         prevent_create=True,
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -296,6 +310,7 @@ def clear_lookup(
     navigation_property: str,
     *,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -304,6 +319,7 @@ def clear_lookup(
     backend.delete(
         f"{target_path}/{navigation_property}/$ref",
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )

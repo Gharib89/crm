@@ -45,12 +45,12 @@ def workflow_list(ctx: CLIContext, category, primary_entity, activated_only, on_
 @click.argument("workflow_id")
 @_admin_header_options
 @pass_ctx
-def workflow_activate(ctx: CLIContext, workflow_id, as_user, suppress_dup_detection, bypass_plugins):
+def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Activate a workflow (statecode=1, statuscode=2)."""
     try:
         info = workflow_mod.set_workflow_state(
             ctx.backend(), workflow_id, activate=True,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -62,12 +62,12 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, suppress_dup_detect
 @click.argument("workflow_id")
 @_admin_header_options
 @pass_ctx
-def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, suppress_dup_detection, bypass_plugins):
+def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Deactivate a workflow (statecode=0, statuscode=1)."""
     try:
         info = workflow_mod.set_workflow_state(
             ctx.backend(), workflow_id, activate=False,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -82,12 +82,12 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, suppress_dup_dete
 @_admin_header_options
 @pass_ctx
 def workflow_run(ctx: CLIContext, workflow_id, target_record_id,
-                 as_user, suppress_dup_detection, bypass_plugins):
+                 as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Trigger an on-demand workflow against a target record via ExecuteWorkflow."""
     try:
         info = workflow_mod.execute_workflow(
             ctx.backend(), workflow_id, target_record_id,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)

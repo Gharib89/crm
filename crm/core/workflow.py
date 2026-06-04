@@ -68,6 +68,7 @@ def set_workflow_state(
     *,
     activate: bool,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -81,6 +82,7 @@ def set_workflow_state(
         json_body=body,
         etag="*",
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
@@ -98,6 +100,7 @@ def execute_workflow(
     target_record_id: str,
     *,
     caller_id: str | None = None,
+    caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
@@ -115,6 +118,7 @@ def execute_workflow(
         path,
         json_body=body,
         caller_id=caller_id,
+        caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     ))

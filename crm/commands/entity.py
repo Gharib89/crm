@@ -51,14 +51,14 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
 @_admin_header_options
 @pass_ctx
 def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return,
-                  as_user, suppress_dup_detection, bypass_plugins):
+                  as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """POST a new record."""
     payload = _load_payload(data_json, data_file)
     try:
         result = entity_mod.create(
             ctx.backend(), entity_set, payload,
             return_record=not no_return,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -80,7 +80,7 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return,
 @_admin_header_options
 @pass_ctx
 def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, allow_create,
-                  return_record, if_match, as_user, suppress_dup_detection, bypass_plugins):
+                  return_record, if_match, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """PATCH an existing record."""
     if allow_create and if_match:
         raise click.UsageError(
@@ -94,7 +94,7 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
             prevent_create=not allow_create,
             return_record=return_record,
             if_match=if_match,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -110,13 +110,13 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
 @_admin_header_options
 @pass_ctx
 def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
-                  as_user, suppress_dup_detection, bypass_plugins):
+                  as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """PATCH with create-if-missing semantics."""
     payload = _load_payload(data_json, data_file)
     try:
         result = entity_mod.upsert(
             ctx.backend(), entity_set, record_id, payload,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -133,7 +133,7 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
 @_admin_header_options
 @pass_ctx
 def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
-                  as_user, suppress_dup_detection, bypass_plugins):
+                  as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """DELETE a record."""
     if not _confirm_destructive("record", f"{entity_set}({record_id})", yes):
         ctx.emit(False, error="aborted by user")
@@ -142,7 +142,7 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
         result = entity_mod.delete(
             ctx.backend(), entity_set, record_id,
             if_match=if_match,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -159,12 +159,12 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
 @_admin_header_options
 @pass_ctx
 def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id,
-                     as_user, suppress_dup_detection, bypass_plugins):
+                     as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Associate two records via a collection-valued nav property (1:N from one-side or N:N)."""
     try:
         result = entity_mod.associate(
             ctx.backend(), target_set, target_id, nav, related_set, related_id,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -181,13 +181,13 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
 @_admin_header_options
 @pass_ctx
 def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id,
-                        as_user, suppress_dup_detection, bypass_plugins):
+                        as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Disassociate two records. Omit --related-* for single-valued lookups."""
     try:
         result = entity_mod.disassociate(
             ctx.backend(), target_set, target_id, nav,
             related_set=related_set, related_id=related_id,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -204,12 +204,12 @@ def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set
 @_admin_header_options
 @pass_ctx
 def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, related_id,
-                      as_user, suppress_dup_detection, bypass_plugins):
+                      as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Set a single-valued lookup via @odata.bind PATCH."""
     try:
         result = entity_mod.set_lookup(
             ctx.backend(), entity_set, record_id, nav, related_set, related_id,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -224,12 +224,12 @@ def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, 
 @_admin_header_options
 @pass_ctx
 def entity_clear_lookup(ctx: CLIContext, entity_set, record_id, nav,
-                        as_user, suppress_dup_detection, bypass_plugins):
+                        as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Clear a single-valued lookup via DELETE /$ref."""
     try:
         result = entity_mod.clear_lookup(
             ctx.backend(), entity_set, record_id, nav,
-            **_admin_kwargs(as_user, suppress_dup_detection, bypass_plugins),
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
