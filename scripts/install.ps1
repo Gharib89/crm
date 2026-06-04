@@ -14,7 +14,7 @@ param([switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
 
-$BaseUrl    = if ($env:CRM_BASE_URL) { $env:CRM_BASE_URL } else { 'https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev' }  # Cloudflare R2 public base URL (CRM_BASE_URL overrides, for tests)
+$BaseUrl    = if ($env:CRM_INSTALL_BASE_URL) { $env:CRM_INSTALL_BASE_URL } else { 'https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev' }  # Cloudflare R2 public base URL (CRM_INSTALL_BASE_URL overrides, for tests; not the CLI's CRM_BASE_URL)
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\crm'
 
 function Remove-FromUserPath([string]$dir) {
@@ -48,13 +48,13 @@ if ($env:CRM_SHA256) {
         $sums = (Invoke-WebRequest -Uri "$BaseUrl/$version/SHA256SUMS" -UseBasicParsing).Content
     } catch {
         Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
-        throw "Could not fetch SHA256SUMS from $BaseUrl/$version/; set `$env:CRM_SHA256 to install without it."
+        throw "Could not fetch SHA256SUMS from $BaseUrl/$version/; set `$env:CRM_SHA256 to verify against a hash you supply instead."
     }
     $line     = ($sums -split "`n") | Where-Object { $_ -match "\s$([regex]::Escape($archive))\s*$" } | Select-Object -First 1
     $expected = ($line -split '\s+')[0]
     if (-not $expected) {
         Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
-        throw "SHA256SUMS has no entry for ${archive}; set `$env:CRM_SHA256 to install without it."
+        throw "SHA256SUMS has no entry for ${archive}; set `$env:CRM_SHA256 to verify against a hash you supply instead."
     }
 }
 $actual = (Get-FileHash -Algorithm SHA256 -Path $tmpZip).Hash

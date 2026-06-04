@@ -92,7 +92,7 @@ class _Server:
 def _run_install(base_url: str, home: Path, env_extra: dict[str, str]):
     env = dict(os.environ)
     env["HOME"] = str(home)
-    env["CRM_BASE_URL"] = base_url
+    env["CRM_INSTALL_BASE_URL"] = base_url
     env["CRM_VERSION"] = VERSION
     env.update(env_extra)
     return subprocess.run(

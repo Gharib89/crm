@@ -28,7 +28,7 @@ aborts the install. To pin a hash you obtained out-of-band, set `CRM_SHA256`
 (this also covers releases published before checksums existed):
 
 ```bash
-CRM_SHA256=<hash> curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
+curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | CRM_SHA256=<hash> sh
 ```
 
 ```powershell
