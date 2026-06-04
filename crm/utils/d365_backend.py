@@ -65,6 +65,12 @@ ErrorCategory = Literal[
     "transport_error",
 ]
 
+# Prefix of the message raised when a request never got an HTTP response
+# (connect/timeout/TLS). Used both at the raise sites in request()/batch() and by
+# classify_d365_error() to tell a real transport failure apart from a status-less
+# client-side validation D365Error (which must NOT be flagged retryable).
+_TRANSPORT_FAILURE_PREFIX = "HTTP transport failure"
+
 
 def classify_d365_error(
     status: int | None, code: str | None, message: str | None
@@ -79,9 +85,13 @@ def classify_d365_error(
     HTTP status alone misses (``0x80040217`` object-not-found, ``0x80040237``
     duplicate-detected) — these are honored regardless of the status they ride on.
     """
-    # No HTTP response at all (connect/timeout/TLS) — see request()'s transport path.
+    # No HTTP status: distinguish a real transport failure (connect/timeout/TLS,
+    # raised with the _TRANSPORT_FAILURE_PREFIX message) from a status-less
+    # client-side validation D365Error — the latter is a usage error, not retryable.
     if status is None:
-        return ("transport_error", True)
+        if message and message.startswith(_TRANSPORT_FAILURE_PREFIX):
+            return ("transport_error", True)
+        return ("validation", False)
 
     haystack = f"{code or ''} {message or ''}".lower()
     if "0x80040237" in haystack or "duplicaterecord" in haystack:
@@ -561,7 +571,7 @@ class D365Backend:
                 )
             except requests.RequestException as exc:
                 if attempt >= max_retries or not _is_transport_retryable(exc):
-                    raise D365Error(f"HTTP transport failure: {exc}") from exc
+                    raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
                 delay = _compute_delay(attempt, self.profile, retry_after=None)
                 _log_retry(method, url, attempt, delay,
                            effective_max=max_retries, reason=str(exc))
@@ -683,7 +693,7 @@ class D365Backend:
                     timeout=effective_timeout,
                 )
             except requests.RequestException as exc:
-                raise D365Error(f"HTTP transport failure on $batch: {exc}") from exc
+                raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX} on $batch: {exc}") from exc
 
             if resp.status_code in (429, 503) and attempt < max_attempts:
                 retry_after = _parse_retry_after(resp.headers.get("Retry-After"))

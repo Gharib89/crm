@@ -14,6 +14,11 @@ from crm.utils.d365_backend import D365Error, classify_d365_error
     [
         # Status-less transport path carries a machine signal.
         (None, None, "HTTP transport failure: Connection refused", ("transport_error", True)),
+        (None, None, "HTTP transport failure on $batch: timed out", ("transport_error", True)),
+        # Status-less client-side validation (many core helpers raise D365Error
+        # with no status) must NOT be mistaken for a retryable transport failure.
+        (None, None, "entity logical name is required", ("validation", False)),
+        (None, None, "--top must be >= 1", ("validation", False)),
         (401, None, "Unauthorized", ("auth_failed", False)),
         (403, "0x80040220", "Insufficient privileges", ("forbidden", False)),
         # not_found by status and by D365 code.
