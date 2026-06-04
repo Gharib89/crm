@@ -69,6 +69,16 @@ def _env(name: str, default: str = "") -> str:
     return default
 
 
+def env_api_version() -> str:
+    """The api_version explicitly set via D365_API_VERSION / CRM_API_VERSION, else ''.
+
+    Public so command modules can detect an env-pinned version (to decide whether
+    to negotiate) without reaching into the private _env() helper. Callers should
+    load_dotenv() first if a .env file may carry the value.
+    """
+    return _env(ENV_API_VERSION).strip()
+
+
 # ── .env autoload ───────────────────────────────────────────────────────
 
 

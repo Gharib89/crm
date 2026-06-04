@@ -112,7 +112,7 @@ def connection_test(ctx: CLIContext):
     # first so a version pinned only in the .env file is seen (it would
     # otherwise be read later, inside ctx.backend(), and missed here).
     conn_mod.load_dotenv()
-    negotiate = ctx.profile_name is None and not conn_mod._env(conn_mod.ENV_API_VERSION)
+    negotiate = ctx.profile_name is None and not conn_mod.env_api_version()
     try:
         info = conn_mod.test_connection(ctx.backend(), negotiate=negotiate)
     except D365Error as exc:
