@@ -43,7 +43,12 @@ else
 fi
 # Compare case-insensitively: sha256sum emits lowercase, but a pinned CRM_SHA256 may be uppercase.
 expected="$(printf '%s' "$expected" | tr 'A-Z' 'a-z')"
-actual="$(sha256sum "${TMP}/crm.tar.gz" | awk '{ print $1 }')"
+# Capture first (not `sha256sum | awk`) so a sha256sum failure isn't masked by the pipe.
+actual_line="$(sha256sum "${TMP}/crm.tar.gz")" || {
+    echo "Failed to compute SHA-256 of the downloaded archive." >&2
+    exit 1
+}
+actual="${actual_line%% *}"
 if [ "$expected" != "$actual" ]; then
     echo "Checksum mismatch for ${ARCHIVE}: expected ${expected:-<none>}, got ${actual}" >&2
     exit 1

@@ -158,6 +158,32 @@ def test_missing_sha256sums_aborts(tmp_path: Path):
     assert "CRM_SHA256" in result.stderr
 
 
+def test_sha256sum_failure_surfaces_clearly(tmp_path: Path):
+    """If sha256sum itself fails, surface that — not a misleading empty mismatch."""
+    archive = _make_archive()
+    sums = f"{_sha256(archive)}  {ARCHIVE_NAME}\n".encode()
+    files = {
+        f"/{VERSION}/{ARCHIVE_NAME}": archive,
+        f"/{VERSION}/SHA256SUMS": sums,
+    }
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    stub = stub_bin / "sha256sum"
+    stub.write_text("#!/bin/sh\nexit 1\n")
+    stub.chmod(0o755)
+
+    with _Server(files) as server:
+        result = _run_install(
+            server.base_url, home, {"PATH": f"{stub_bin}:{os.environ['PATH']}"}
+        )
+
+    assert result.returncode != 0
+    assert not (home / ".local" / "share" / "crm" / "crm").exists()
+    assert "compute" in result.stderr.lower()
+
+
 def test_crm_sha256_override_matches_installs(tmp_path: Path):
     """CRM_SHA256 set + correct -> installs without fetching SHA256SUMS."""
     archive = _make_archive()
