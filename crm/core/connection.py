@@ -293,7 +293,9 @@ def test_connection(backend: D365Backend, *, negotiate: bool = False) -> dict[st
             info = whoami(backend)
         except D365Error:
             backend.profile.api_version = _DEFAULT_API_VERSION
-            raise exc
+            # `from None`: surface the original 501 without chaining the v9.1
+            # failure as "During handling of the above exception...".
+            raise exc from None
     return {
         "ok": True,
         "user_id": info.get("UserId"),

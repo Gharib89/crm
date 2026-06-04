@@ -161,6 +161,8 @@ class TestApiVersionNegotiation:
         assert ex.value.status == 501
         assert "501 at v9.2" in str(ex.value)
         assert backend.profile.api_version == "v9.2"
+        # no "During handling of the above exception" chaining of the v9.1 500
+        assert ex.value.__suppress_context__ is True
 
 
 # ── d365_backend.py ─────────────────────────────────────────────────────
