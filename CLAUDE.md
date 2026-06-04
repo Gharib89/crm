@@ -24,7 +24,7 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 - **README.md** — user-facing capability or install change.
 - **CHANGELOG.md** — entry under `## [Unreleased]` (Keep a Changelog format).
 - **docs/** — matching `docs/how-to/<group>.md` and `docs/reference/cli.md`.
-- **SKILL ↔ CLI** — two `SKILL.md` copies are tracked; see `docs/contributing/skill-and-cli.md`.
+- **SKILL ↔ CLI** — `crm/skills/SKILL.md` is the single tracked agent skill (source of truth); `crm skill install` copies it into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). Never track an in-repo `.claude/skills/` copy. See `docs/contributing/skill-and-cli.md`.
 
 `.github/workflows/docs.yml` runs `mkdocs build --strict` on any `crm/**`, `setup.py`, `docs/**`, or `mkdocs.yml` change — **stale refs / broken links fail CI.**
 
