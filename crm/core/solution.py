@@ -248,6 +248,144 @@ def update_solution(
     return {"updated": True, "uniquename": unique_name, "solutionid": sol_id, **payload}
 
 
+# ── Solution components (#71) ────────────────────────────────────────────────
+#
+# Flat friendly-name → integer map for the `componenttype` global optionset
+# (values verified against the Dataverse SolutionComponent reference). Keys are
+# canonical lower-case, separator-free; `resolve_component_type` normalises input
+# so 'WebResource' / 'web resource' / 'web-resource' all map to 61. Note the
+# canonical split: 'relationship' is 3 (base relationship), 'entityrelationship'
+# is 10 — not interchangeable. Pass a raw int for any type not listed here.
+
+SOLUTION_COMPONENT_TYPES: dict[str, int] = {
+    "entity": 1,
+    "attribute": 2,
+    "relationship": 3,
+    "optionset": 9,
+    "entityrelationship": 10,
+    "entitykey": 14,
+    "role": 20,
+    "form": 24,
+    "savedquery": 26,
+    "workflow": 29,
+    "emailtemplate": 36,
+    "duplicaterule": 44,
+    "savedqueryvisualization": 59,
+    "systemform": 60,
+    "webresource": 61,
+    "sitemap": 62,
+    "connectionrole": 63,
+    "fieldsecurityprofile": 70,
+    "plugintype": 90,
+    "pluginassembly": 91,
+    "sdkmessageprocessingstep": 92,
+    "serviceendpoint": 95,
+}
+
+
+def resolve_component_type(value: str | int) -> int:
+    """Resolve a component-type `value` (int, numeric string, or friendly name)
+    to its `componenttype` integer. Names are matched case- and separator-
+    insensitively against SOLUTION_COMPONENT_TYPES. Raises D365Error on an
+    unknown name."""
+    if isinstance(value, int):
+        return value
+    text = value.strip()
+    if text.lstrip("-").isdigit():
+        return int(text)
+    key = re.sub(r"[\s_-]+", "", text).lower()
+    try:
+        return SOLUTION_COMPONENT_TYPES[key]
+    except KeyError:
+        known = ", ".join(sorted(SOLUTION_COMPONENT_TYPES))
+        raise D365Error(
+            f"unknown component type {value!r}; pass an integer or one of: {known}."
+        ) from None
+
+
+def _require_unmanaged_solution(
+    backend: D365Backend, solution: str, *, verb: str
+) -> None:
+    """Forced-real solution_info pre-flight (works under dry-run too); raise if the
+    target is managed. `verb` is the action phrase, e.g. 'added to'."""
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        info = solution_info(backend, solution)
+    finally:
+        backend.dry_run = was_dry
+    if info.get("ismanaged"):
+        raise D365Error(
+            f"Solution {solution!r} is managed; components can only be {verb} an "
+            "unmanaged solution.",
+            code="CannotModifyManagedSolution",
+        )
+
+
+def add_solution_component(
+    backend: D365Backend,
+    *,
+    solution: str,
+    component_id: str,
+    component_type: int,
+    add_required_components: bool = True,
+    do_not_include_subcomponents: bool = False,
+) -> dict[str, Any]:
+    """Add an existing component to an unmanaged solution via AddSolutionComponent.
+
+    Pre-flights solution_info (forced-real even under dry-run) and refuses a
+    managed target — AddSolutionComponent is unmanaged-only. Returns
+    `{added, solution, component_id, component_type}` on a real run.
+    """
+    _require_unmanaged_solution(backend, solution, verb="added to")
+
+    body: dict[str, Any] = {
+        "ComponentId": component_id,
+        "ComponentType": component_type,
+        "SolutionUniqueName": solution,
+        "AddRequiredComponents": add_required_components,
+        "DoNotIncludeSubcomponents": do_not_include_subcomponents,
+    }
+    result = as_dict(backend.post("AddSolutionComponent", json_body=body))
+    if result.get("_dry_run"):
+        result["solution"] = solution
+        result["component_id"] = component_id
+        result["component_type"] = component_type
+        return result
+    return {"added": True, "solution": solution, "component_id": component_id,
+            "component_type": component_type}
+
+
+def remove_solution_component(
+    backend: D365Backend,
+    *,
+    solution: str,
+    component_id: str,
+    component_type: int,
+) -> dict[str, Any]:
+    """Remove a component from an unmanaged solution via RemoveSolutionComponent.
+
+    Pre-flights solution_info (forced-real even under dry-run) and refuses a
+    managed target — a managed solution cannot be edited. Returns
+    `{removed, solution, component_id, component_type}` on a real run.
+    """
+    _require_unmanaged_solution(backend, solution, verb="removed from")
+
+    body: dict[str, Any] = {
+        "ComponentId": component_id,
+        "ComponentType": component_type,
+        "SolutionUniqueName": solution,
+    }
+    result = as_dict(backend.post("RemoveSolutionComponent", json_body=body))
+    if result.get("_dry_run"):
+        result["solution"] = solution
+        result["component_id"] = component_id
+        result["component_type"] = component_type
+        return result
+    return {"removed": True, "solution": solution, "component_id": component_id,
+            "component_type": component_type}
+
+
 def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list[dict[str, Any]]:
     params = {
         "$select": "uniquename,friendlyname,version,ismanaged,installedon,solutionid",

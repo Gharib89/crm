@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm solution add-component` and `crm solution remove-component` add or remove
+  an existing component to/from an unmanaged solution via the `AddSolutionComponent`
+  / `RemoveSolutionComponent` Web API actions. `--type` accepts a `componenttype`
+  integer or a friendly name (`entity`, `attribute`, `relationship`, `optionset`,
+  `webresource`, … — names are case- and separator-insensitive; pass a raw int for
+  any type not in the map). Both pre-flight `solution_info` and refuse a managed
+  target client-side. `add-component` is non-destructive and supports
+  `--no-add-required` (`AddRequiredComponents: false`) and `--no-subcomponents`
+  (`DoNotIncludeSubcomponents: true`). `remove-component` is gated as a destructive
+  operation: it prompts for confirmation (aborting cleanly in a non-TTY context
+  unless `--yes`), and the verb-name PreToolUse hook blocks it without `--yes` (#71).
 - `crm solution import` now parses the import job's `data` column into a
   solution-level `result` (`success`/`warning`/`failure`) plus a `components`
   list (`{name, type, result, errorcode?, errortext?}` per imported component).

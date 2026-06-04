@@ -92,6 +92,23 @@ class TestBlocksDestructive:
         r = _run("crm solution import pkg.zip --yes")
         assert r.returncode == 0
 
+    def test_block_solution_remove_component_no_yes(self):
+        r = _run("crm solution remove-component --solution CRMWorx --type 61 "
+                 "--id 33333333-3333-3333-3333-333333333333")
+        assert r.returncode == BLOCK
+        assert "remove-component" in r.stderr
+
+    def test_allow_solution_remove_component_with_yes(self):
+        r = _run("crm solution remove-component --solution CRMWorx --type 61 "
+                 "--id 33333333-3333-3333-3333-333333333333 --yes")
+        assert r.returncode == 0
+
+    def test_allow_solution_add_component(self):
+        # add-component is non-destructive: it must pass through without --yes.
+        r = _run("crm solution add-component --solution CRMWorx --type 61 "
+                 "--id 33333333-3333-3333-3333-333333333333")
+        assert r.returncode == 0
+
     def test_block_async_cancel_no_yes(self):
         r = _run("crm async cancel 33333333-3333-3333-3333-333333333333")
         assert r.returncode == BLOCK
