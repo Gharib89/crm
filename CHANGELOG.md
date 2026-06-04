@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `crm describe [GROUP]`: machine-readable command/option/choice discovery. Walks
   the live Click tree (no live D365 connection, no mkdocs-click dependency) and in
   `--json` mode emits `{ok, data:{root_options, commands:[{name, path, help,
-  is_group, args, params}]}}`. Each option carries `name, opts, type, required,
-  is_flag, multiple, choices, default, envvar`; `Choice` enums (ownership, the 14
+  is_group, args, params}]}}`. Each option carries `name, opts, secondary_opts,
+  type, required, is_flag, multiple, choices, default, envvar` (`secondary_opts`
+  holds the off-form of a flag-pair, e.g. `--no-publish`); `Choice` enums (ownership, the 14
   attribute kinds, `if-exists`, cascade behaviors, …) are surfaced verbatim. Root
   sticky globals (`--json`, `--dry-run`, `--profile`, `--auth-scheme`,
   `--log-level`, `--stage-only`, `--session`, …) are listed under `root_options`.

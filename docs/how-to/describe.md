@@ -24,6 +24,7 @@ crm --json describe
       {
         "name": "json_mode",
         "opts": ["--json"],
+        "secondary_opts": [],
         "type": "boolean",
         "required": false,
         "is_flag": true,
@@ -63,7 +64,8 @@ crm --json describe
 - `commands` — a flat list; groups and their subcommands both appear, each with
   its full `path` (e.g. `metadata add-attribute`). `is_group` marks group nodes.
 - `args` are positional; `params` are options. `Choice` enums are surfaced
-  verbatim, in declaration order.
+  verbatim, in declaration order. Boolean flag-pairs expose both forms — `opts`
+  holds the on-form (`--publish`), `secondary_opts` the off-form (`--no-publish`).
 - The interactive `repl` leaf is **excluded** — it is not meant to be driven
   programmatically.
 

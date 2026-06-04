@@ -26,6 +26,9 @@ def _serialize_option(opt: click.Option) -> dict:
     return {
         "name": opt.name,
         "opts": list(opt.opts),
+        # Off-form of a boolean flag-pair (--no-publish for --publish/--no-publish);
+        # empty for plain options. Without this the catalogue drops every --no-* flag.
+        "secondary_opts": list(opt.secondary_opts),
         "type": opt.type.name,
         "required": bool(opt.required),
         "is_flag": bool(opt.is_flag),
@@ -92,7 +95,9 @@ def describe_cmd(ctx: CLIContext, group: str | None):
         _serialize_option(p) for p in cli.params if isinstance(p, click.Option)
     ]
     if group:
-        cmd = cli.get_command(click_ctx, group)
+        # Excluded leaves (repl) are absent from the catalogue everywhere — naming
+        # one explicitly must not bypass the exclusion the full walk applies.
+        cmd = None if group in _EXCLUDED else cli.get_command(click_ctx, group)
         if cmd is None:
             ctx.emit(False, error=f"No such command {group!r}.")
             return  # unreachable: emit(False) raises Exit (narrows cmd for the checker)

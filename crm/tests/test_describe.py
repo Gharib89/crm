@@ -121,6 +121,25 @@ def test_describe_unknown_group_errors():
     assert json.loads(result.output)["ok"] is False
 
 
+def test_flag_pair_secondary_opts_are_captured():
+    """Boolean flag-pairs (e.g. --publish/--no-publish) must expose both forms,
+    or the catalogue silently drops every --no-* flag the CLI accepts."""
+    data = _describe()
+    secondaries = {
+        s for c in data["commands"] for p in c["params"] for s in p["secondary_opts"]
+    }
+    assert "--no-publish" in secondaries
+    assert "--no-annotations" in secondaries
+
+
+def test_describe_repl_excluded_even_when_named_explicitly():
+    """The repl leaf is excluded from the catalogue everywhere — naming it
+    explicitly must not bypass the exclusion."""
+    result = CliRunner().invoke(cli, ["--json", "describe", "repl"])
+    assert result.exit_code != 0
+    assert json.loads(result.output)["ok"] is False
+
+
 def test_describe_human_mode_lists_command_paths():
     result = CliRunner().invoke(cli, ["describe"])
     assert result.exit_code == 0, result.output
