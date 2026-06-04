@@ -14,7 +14,7 @@ param([switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
 
-$BaseUrl    = 'https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev'   # Cloudflare R2 public base URL
+$BaseUrl    = if ($env:CRM_INSTALL_BASE_URL) { $env:CRM_INSTALL_BASE_URL } else { 'https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev' }  # Cloudflare R2 public base URL (CRM_INSTALL_BASE_URL overrides, for tests; not the CLI's CRM_BASE_URL)
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\crm'
 
 function Remove-FromUserPath([string]$dir) {
@@ -32,11 +32,38 @@ if ($Uninstall) {
 }
 
 $version = if ($env:CRM_VERSION) { $env:CRM_VERSION } else { 'latest' }
-$zipUrl  = "$BaseUrl/$version/crm-windows-x86_64.zip"
+$archive = 'crm-windows-x86_64.zip'
+$zipUrl  = "$BaseUrl/$version/$archive"
 $tmpZip  = Join-Path $env:TEMP ("crm-" + [Guid]::NewGuid().ToString('N') + ".zip")
 
 Write-Host "Downloading $zipUrl ..."
 Invoke-WebRequest -Uri $zipUrl -OutFile $tmpZip -UseBasicParsing
+
+# Verify SHA-256 before extracting. Expected hash comes from the published
+# SHA256SUMS next to the archive in R2, or $env:CRM_SHA256 if the user pins one.
+if ($env:CRM_SHA256) {
+    $expected = $env:CRM_SHA256.Trim()   # a pasted hash may carry surrounding whitespace
+} else {
+    try {
+        $sums = (Invoke-WebRequest -Uri "$BaseUrl/$version/SHA256SUMS" -UseBasicParsing).Content
+    } catch {
+        Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
+        throw "Could not fetch SHA256SUMS from $BaseUrl/$version/; set `$env:CRM_SHA256 to verify against a hash you supply instead."
+    }
+    $line     = ($sums -split "`n") | Where-Object { $_ -match "\s$([regex]::Escape($archive))\s*$" } | Select-Object -First 1
+    $expected = ($line -split '\s+')[0]
+    if (-not $expected) {
+        Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
+        throw "SHA256SUMS has no entry for ${archive}; set `$env:CRM_SHA256 to verify against a hash you supply instead."
+    }
+}
+$actual = (Get-FileHash -Algorithm SHA256 -Path $tmpZip).Hash
+if ($expected -ne $actual) {   # -ne is case-insensitive: lowercase sums vs uppercase Get-FileHash
+    Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
+    $shown = if ($expected) { $expected } else { '<none>' }
+    throw "Checksum mismatch for ${archive}: expected $shown, got $actual"
+}
+Write-Host "Checksum verified ($actual)."
 
 if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null

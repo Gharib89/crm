@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- Installer SHA-256 integrity verification: `install.sh` / `install.ps1` verify the
+  downloaded archive against a published `SHA256SUMS` (uploaded per release to
+  `<tag>/` and `latest/` in R2) before extracting, and abort on a mismatch or if it
+  can't be fetched. `CRM_SHA256` / `$env:CRM_SHA256` pins a hash out-of-band (#46).
 - Cloud impersonation by Entra ID object id via the `CallerObjectId` header:
   new `--as-user-object-id <guid>` flag (alongside `--as-user`) and
   `CRM_AS_USER_OBJECT_ID` env default, on every command that already carries

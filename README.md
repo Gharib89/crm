@@ -58,6 +58,12 @@ with glibc ≥ 2.35. To uninstall, download `install.sh` and run
 
 Pin a version by setting `CRM_VERSION` (e.g. `v0.6.0`) before running.
 
+Both scripts verify the archive's SHA-256 against the published `SHA256SUMS`
+before extracting and abort on a mismatch or if it can't be fetched. To pin a
+hash from a trusted channel (or to install a release published before checksums
+existed), set `CRM_SHA256` (`$env:CRM_SHA256` on Windows). See
+[the install guide](docs/getting-started/install.md#integrity-verification).
+
 ### Option 2: From source (development)
 
 ```bash
