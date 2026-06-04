@@ -609,6 +609,55 @@ def test_apply_rejects_non_int_optionset_value(backend):
         assert m.request_history == []
 
 
+def test_apply_forwards_inline_picklist_options(backend):
+    """A picklist attribute with inline options must build a local set (no global resolve)."""
+    attr = {"kind": "picklist", "schema_name": "moce_Stage", "display_name": "Stage",
+            "options": [{"value": 1, "label": "New"}, {"value": 2, "label": "Done"}]}
+    entity = {**_ENTITY, "attributes": [attr]}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="moce_stage", schema="moce_Stage",
+                               attr_type="Picklist")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "attribute"]
+    # inline options => no global option set resolution GET
+    os_gets = [r for r in m.request_history if "GlobalOptionSetDefinitions(Name=" in r.url]
+    assert os_gets == []
+
+
+def test_apply_rejects_malformed_inline_attribute_options(backend):
+    attr = {"kind": "picklist", "schema_name": "moce_Stage", "display_name": "Stage",
+            "options": [{"value": 1}]}  # option missing label
+    spec = {"entities": [{"schema_name": "moce_Project", "display_name": "P",
+                          "attributes": [attr]}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="option"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_dry_run_solution_without_publisher_skips_when_exists(dry_backend):
+    spec = {"solution": _SOLUTION}  # no publisher block
+    with requests_mock.Mocker() as m:
+        m.get(dry_backend.url_for("solutions"),
+              json={"value": [{"solutionid": _GUID2, "uniquename": "MoceCore"}]})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["solution"]
+
+
+def test_apply_dry_run_solution_without_publisher_plans_when_absent(dry_backend):
+    spec = {"solution": _SOLUTION}
+    with requests_mock.Mocker() as m:
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert _kinds(res["planned"]) == ["solution"]
+
+
 def test_apply_validation_accepts_all_builder_attribute_kinds():
     """Validation accepts every kind metadata_attrs supports — no drift."""
     from crm.core import metadata_attrs

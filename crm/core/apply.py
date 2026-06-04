@@ -90,6 +90,17 @@ def _require_list(parent: dict[str, Any], key: str, label: str) -> None:
         raise D365Error(f"{label}: {key} must be a list.")
 
 
+def _validate_option(opt: Any, label: str) -> None:
+    """An option is a {label, value?} mapping with an integer value when present."""
+    if not isinstance(opt, dict):
+        raise D365Error(f"{label}: each option must be a mapping.")
+    od = cast("dict[str, Any]", opt)
+    if not od.get("label"):
+        raise D365Error(f"{label}: each option needs a label.")
+    if od.get("value") is not None and not isinstance(od["value"], int):
+        raise D365Error(f"{label}: option value must be an integer.")
+
+
 def _validate_column(col: Any, view_name: str) -> None:
     """A view column is a non-empty string or a {name[, width:int]} mapping."""
     if isinstance(col, str):
@@ -141,6 +152,10 @@ def validate_spec(spec: Any) -> None:
                     attr.get("optionset_name") or attr.get("options")):
                 raise D365Error(
                     f"{kind} attribute {name!r} requires optionset_name or options.")
+            if "options" in attr:
+                _require_list(attr, "options", f"attribute {name!r}")
+                for opt in cast("list[Any]", attr["options"] or []):
+                    _validate_option(opt, f"attribute {name!r}")
         for rel in _as_list(ent.get("relationships")):
             _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
                            "lookup_schema", "lookup_display"), "relationship")
@@ -154,14 +169,22 @@ def validate_spec(spec: Any) -> None:
         _require(os_spec, ("name", "display_name"), "optionset")
         _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
         for opt in cast("list[Any]", os_spec.get("options") or []):
-            if not isinstance(opt, dict):
-                raise D365Error(f"optionset {os_spec['name']!r}: each option must be a mapping.")
-            od = cast("dict[str, Any]", opt)
-            if not od.get("label"):
-                raise D365Error(f"optionset {os_spec['name']!r}: each option needs a label.")
-            if od.get("value") is not None and not isinstance(od["value"], int):
-                raise D365Error(
-                    f"optionset {os_spec['name']!r}: option value must be an integer.")
+            _validate_option(opt, f"optionset {os_spec['name']!r}")
+
+
+def _solution_exists(backend: D365Backend, name: str) -> bool:
+    """Forced-real existence check for a solution by uniquename (dry-run safe)."""
+    lit = name.replace("'", "''")
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rows = as_dict(backend.get(
+            "solutions",
+            params={"$filter": f"uniquename eq '{lit}'", "$select": "solutionid"},
+        )).get("value", [])
+    finally:
+        backend.dry_run = was_dry
+    return bool(rows)
 
 
 def _classify(
@@ -242,6 +265,12 @@ def apply_spec(
             entry = {"kind": "solution", "name": sol["unique_name"]}
             if pub and pub["unique_name"] in planned_names:
                 planned.append(entry)
+            elif not pub and backend.dry_run:
+                # No publisher to build the bind: create_solution resolves a publisher
+                # before its dry-run short-circuit and would raise even when the
+                # solution already exists. Probe existence directly instead.
+                (skipped if _solution_exists(backend, sol["unique_name"])
+                 else planned).append(entry)
             else:
                 result = _call(entry, lambda: sol_mod.create_solution(
                     backend,
@@ -303,20 +332,25 @@ def apply_spec(
                 if deps & planned_names:
                     planned.append(entry)
                     continue
-                result = _call(entry, lambda attr=attr, logical=logical: attrs_mod.add_attribute(
-                    backend,
-                    entity=logical,
-                    kind=attr["kind"],
-                    schema_name=attr["schema_name"],
-                    display_name=attr["display_name"],
-                    description=attr.get("description"),
-                    required=attr.get("required", "None"),
-                    max_length=attr.get("max_length"),
-                    optionset_name=attr.get("optionset_name"),
-                    target_entity=attr.get("target_entity"),
-                    solution=solution_name,
-                    if_exists="skip",
-                ), failed)
+                opts = [(o.get("value"), o["label"])
+                        for o in _as_list(attr.get("options"))] or None
+                result = _call(
+                    entry,
+                    lambda attr=attr, logical=logical, opts=opts: attrs_mod.add_attribute(
+                        backend,
+                        entity=logical,
+                        kind=attr["kind"],
+                        schema_name=attr["schema_name"],
+                        display_name=attr["display_name"],
+                        description=attr.get("description"),
+                        required=attr.get("required", "None"),
+                        max_length=attr.get("max_length"),
+                        optionset_name=attr.get("optionset_name"),
+                        options=opts,
+                        target_entity=attr.get("target_entity"),
+                        solution=solution_name,
+                        if_exists="skip",
+                    ), failed)
                 _classify(result, entry, applied, skipped, planned)
 
         # Phase: explicit relationships (both entities exist by now).
