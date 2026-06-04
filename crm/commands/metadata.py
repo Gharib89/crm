@@ -3,6 +3,7 @@
 from __future__ import annotations
 import click
 from crm.core import metadata as meta_mod
+from crm.core import metadata_attrs as ma_mod
 from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
@@ -496,7 +497,6 @@ def metadata_add_attribute(
                 ) from exc
 
     try:
-        from crm.core import metadata_attrs as ma_mod
         info = ma_mod.add_attribute(
             ctx.backend(),
             entity=entity,
@@ -526,6 +526,29 @@ def metadata_add_attribute(
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+
+
+@metadata_group.command("delete-attribute")
+@click.argument("entity")
+@click.argument("attribute")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_solution_option
+@pass_ctx
+def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, require_solution):
+    """Delete a custom attribute (column) from an entity."""
+    if not _confirm_destructive("attribute", f"{entity}.{attribute}", yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
+    try:
+        info = ma_mod.delete_attribute(
+            ctx.backend(), entity, attribute, solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    _emit_with_warning(ctx, info, warning)
 
 
 # Relationship-creation commands (create-one-to-many / create-many-to-many)
@@ -641,6 +664,28 @@ def metadata_create_many_to_many(
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+
+
+@metadata_group.command("delete-relationship")
+@click.argument("schema_name")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_solution_option
+@pass_ctx
+def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, require_solution):
+    """Delete a custom relationship (1:N or N:N) by schema name."""
+    if not _confirm_destructive("relationship", schema_name, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
+    try:
+        info = rel_mod.delete_relationship(
+            ctx.backend(), schema_name, solution=solution,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    _emit_with_warning(ctx, info, warning)
 
 
 @metadata_group.command("list-optionsets")

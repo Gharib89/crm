@@ -209,3 +209,47 @@ class TestCreateManyToMany:
                 entity2_logical="new_project",
                 intersect_entity="new_xy",
             )
+
+
+class TestDeleteRelationship:
+    def test_refuses_non_custom(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='account_contacts')"),
+                json={"SchemaName": "account_contacts",
+                      "IsCustomRelationship": False, "IsManaged": True},
+            )
+            with pytest.raises(D365Error, match="not a custom"):
+                rel.delete_relationship(backend, "account_contacts")
+
+    def test_refuses_managed(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='vendor_account_vendor')"),
+                json={"SchemaName": "vendor_account_vendor",
+                      "IsCustomRelationship": True, "IsManaged": True},
+            )
+            with pytest.raises(D365Error, match="managed"):
+                rel.delete_relationship(backend, "vendor_account_vendor")
+
+    def test_happy_path_deletes_with_solution_header(self, backend):
+        from crm.core import relationships as rel
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(path),
+                json={"SchemaName": "new_account_new_project",
+                      "IsCustomRelationship": True, "IsManaged": False},
+            )
+            m.delete(backend.url_for(path), status_code=204)
+            info = rel.delete_relationship(
+                backend, "new_account_new_project", solution="DevSolution",
+            )
+        assert info["deleted"] is True
+        assert info["schema_name"] == "new_account_new_project"
+        assert info["solution"] == "DevSolution"
+        delete_req = m.request_history[-1]
+        assert delete_req.method == "DELETE"
+        assert delete_req.headers.get("MSCRM.SolutionUniqueName") == "DevSolution"

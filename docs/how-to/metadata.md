@@ -66,3 +66,17 @@ crm --json metadata create-one-to-many --schema-name cwx_sla_cwx_ticket \
   --lookup-schema cwx_SLA --lookup-display "SLA Policy" --if-exists skip
 ```
 The response reports the `referencing_attribute` (the lookup column) the server generated on the N-side entity.
+
+## Delete a custom column
+
+```bash
+crm --json metadata delete-attribute cwx_ticket cwx_priority --yes
+```
+Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute targets before any DELETE. Pass `--solution` to scope the delete to a solution. The server rejects with a 4xx if the column is still referenced (forms, views, workflows) — remove those dependencies first. Destructive: needs `--yes` (or an interactive confirmation).
+
+## Delete a custom relationship
+
+```bash
+crm --json metadata delete-relationship cwx_sla_cwx_ticket --yes
+```
+Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an interactive confirmation).

@@ -538,3 +538,81 @@ class TestAddAttributeDryRun:
                 max_length=10,
             )
         assert info.get("_dry_run") is True
+
+
+class TestDeleteAttribute:
+    def _attr_url(self, backend, entity, attribute):
+        return backend.url_for(
+            f"EntityDefinitions(LogicalName='{entity}')"
+            f"/Attributes(LogicalName='{attribute}')"
+        )
+
+    def test_refuses_non_custom(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            m.get(
+                self._attr_url(backend, "account", "telephone1"),
+                json={"LogicalName": "telephone1", "IsCustomAttribute": False,
+                      "IsManaged": True, "IsPrimaryId": False,
+                      "IsPrimaryName": False, "AttributeOf": None},
+            )
+            with pytest.raises(D365Error, match="not a custom"):
+                ma.delete_attribute(backend, "account", "telephone1")
+
+    def test_refuses_managed(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            m.get(
+                self._attr_url(backend, "new_widget", "vendor_code"),
+                json={"LogicalName": "vendor_code", "IsCustomAttribute": True,
+                      "IsManaged": True, "IsPrimaryId": False,
+                      "IsPrimaryName": False, "AttributeOf": None},
+            )
+            with pytest.raises(D365Error, match="managed"):
+                ma.delete_attribute(backend, "new_widget", "vendor_code")
+
+    def test_refuses_primary(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            m.get(
+                self._attr_url(backend, "new_widget", "new_widgetid"),
+                json={"LogicalName": "new_widgetid", "IsCustomAttribute": True,
+                      "IsManaged": False, "IsPrimaryId": True,
+                      "IsPrimaryName": False, "AttributeOf": None},
+            )
+            with pytest.raises(D365Error, match="primary"):
+                ma.delete_attribute(backend, "new_widget", "new_widgetid")
+
+    def test_refuses_sub_attribute(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            m.get(
+                self._attr_url(backend, "new_widget", "new_price_base"),
+                json={"LogicalName": "new_price_base", "IsCustomAttribute": True,
+                      "IsManaged": False, "IsPrimaryId": False,
+                      "IsPrimaryName": False, "AttributeOf": "new_price"},
+            )
+            with pytest.raises(D365Error, match="sub-attribute"):
+                ma.delete_attribute(backend, "new_widget", "new_price_base")
+
+    def test_happy_path_deletes_with_solution_header(self, backend):
+        from crm.core import metadata_attrs as ma
+        url = self._attr_url(backend, "new_widget", "new_label")
+        with requests_mock.Mocker() as m:
+            m.get(
+                url,
+                json={"LogicalName": "new_label", "IsCustomAttribute": True,
+                      "IsManaged": False, "IsPrimaryId": False,
+                      "IsPrimaryName": False, "AttributeOf": None},
+            )
+            m.delete(url, status_code=204)
+            info = ma.delete_attribute(
+                backend, "new_widget", "new_label", solution="DevSolution",
+            )
+        assert info["deleted"] is True
+        assert info["entity"] == "new_widget"
+        assert info["attribute"] == "new_label"
+        assert info["solution"] == "DevSolution"
+        delete_req = m.request_history[-1]
+        assert delete_req.method == "DELETE"
+        assert delete_req.headers.get("MSCRM.SolutionUniqueName") == "DevSolution"
