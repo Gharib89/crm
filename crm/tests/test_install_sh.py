@@ -119,9 +119,12 @@ def test_happy_path_auto_verify_installs(tmp_path: Path):
         result = _run_install(server.base_url, home, {})
 
     assert result.returncode == 0, result.stderr
-    installed = home / ".local" / "share" / "crm" / "crm"
-    assert installed.exists()
-    assert (home / ".local" / "bin" / "crm").exists()
+    assert (home / ".local" / "share" / "crm" / "crm").exists()
+    link = home / ".local" / "bin" / "crm"
+    assert link.exists()
+    ran = subprocess.run([str(link), "--version"], capture_output=True, text=True, timeout=30)
+    assert ran.returncode == 0
+    assert "9.9.9" in ran.stdout
 
 
 def test_tampered_archive_aborts(tmp_path: Path):
