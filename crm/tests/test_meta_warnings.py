@@ -34,13 +34,21 @@ class TestEmitWarnings:
         env = _emit_envelope(ctx, capsys, data={"x": 1}, warnings=["a", "b"])
         assert env["meta"]["warnings"] == ["a", "b"]
 
-    def test_two_warnings_do_not_clobber_existing_meta_warnings(self, capsys):
+    def test_warnings_do_not_clobber_other_meta_keys(self, capsys):
         ctx = CLIContext()
         ctx.json_mode = True
         env = _emit_envelope(
-            ctx, capsys, data={"x": 1}, meta={"warnings": ["x"]}, warnings=["y"]
+            ctx, capsys, data={"x": 1}, meta={"staged": True}, warnings=["y"]
         )
-        assert env["meta"]["warnings"] == ["x", "y"]
+        assert env["meta"]["staged"] is True
+        assert env["meta"]["warnings"] == ["y"]
+
+    def test_does_not_mutate_caller_meta(self, capsys):
+        ctx = CLIContext()
+        ctx.json_mode = True
+        caller_meta = {"staged": True}
+        _emit_envelope(ctx, capsys, data={"x": 1}, meta=caller_meta, warnings=["y"])
+        assert "warnings" not in caller_meta
 
 
 class TestEmitWithWarningHelper:

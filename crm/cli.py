@@ -65,7 +65,7 @@ class CLIContext:
             if self.dry_run:
                 meta = {**(meta or {}), "dry_run": True}
             if warnings:
-                meta = {**(meta or {}), "warnings": [*(meta or {}).get("warnings", []), *warnings]}
+                meta = {**(meta or {}), "warnings": list(warnings)}
             if meta:
                 envelope["meta"] = meta
             click.echo(json.dumps(envelope, indent=2, default=str))
