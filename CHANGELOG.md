@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--log-level`, `--stage-only`, `--session`, …) are listed under `root_options`.
   The interactive `repl` leaf is excluded. `describe <group>` scopes to one
   subtree, importing just that module (a lazy win over the full walk) (#63).
+- Agent-readable docs surface: the docs site now publishes `llms.txt` (curated
+  index, per [llmstxt.org](https://llmstxt.org/)) and `llms-full.txt` (every page
+  concatenated into one fetch) at the site root, generated at build time by the
+  `mkdocs-llmstxt` plugin from the existing `docs/` tree. Any agent with web
+  access — not just skill-aware harnesses loading `crm/skills/SKILL.md` — can pull
+  the full CLI reference and how-tos from `<site>/llms-full.txt`. Adds a docs-only
+  dependency on `mkdocs-llmstxt`.
 - `crm apply -f spec.yaml`: declarative desired-state from a single YAML/JSON
   spec. Orchestrates the existing metadata cores in dependency order (publisher →
   solution → entities → option sets → attributes → relationships → views), each

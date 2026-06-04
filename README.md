@@ -16,6 +16,20 @@ optimized for AI agents or shell scripting. This harness gives you:
 - `--json` everywhere for agent consumption
 - `--dry-run` to preview the HTTP request before issuing it
 
+## Documentation
+
+Full docs (install, configure, per-group how-tos, generated CLI reference) live at
+[crm-cli-docs.pages.dev](https://crm-cli-docs.pages.dev/).
+
+Two surfaces feed AI agents:
+
+- **`crm/skills/SKILL.md`** — the agent skill loaded by skill-aware harnesses
+  (Claude Code, Copilot CLI, …) after `crm skill install`.
+- **`llms.txt` / `llms-full.txt`** — published at the docs-site root for *any*
+  web-fetch agent: [`/llms.txt`](https://crm-cli-docs.pages.dev/llms.txt) is a
+  curated index, [`/llms-full.txt`](https://crm-cli-docs.pages.dev/llms-full.txt)
+  is every page in one fetch.
+
 ## Requirements
 
 | Requirement              | Version            | Notes                                  |
