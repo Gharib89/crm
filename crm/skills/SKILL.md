@@ -339,10 +339,13 @@ crm --json service-document
 ## Destructive operations — `--yes` confirm contract
 
 These verbs permanently delete or cancel server-side state. Every one accepts a
-`--yes` flag to skip the interactive confirmation; without `--yes` in a non-TTY
-context they abort safely and emit `{"ok": false, "error": "aborted by user"}`
-(exit 1). Always pass `--yes` when invoking them non-interactively (e.g. from an
-agent), and only after you have confirmed intent.
+`--yes` flag to skip the interactive confirmation; whenever a confirmation would
+be shown, omitting `--yes` in a non-TTY context aborts safely and emits
+`{"ok": false, "error": "aborted by user"}` under `--json` (a human-formatted
+error otherwise), exit 1. (`solution import --no-overwrite` shows no in-band
+prompt, but the destructive-op gate still requires `--yes` for any import.)
+Always pass `--yes` when invoking them non-interactively (e.g. from an agent),
+and only after you have confirmed intent.
 
 | Command | What it destroys |
 | --- | --- |
