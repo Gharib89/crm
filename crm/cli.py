@@ -49,9 +49,14 @@ class CLIContext:
              warnings: list[str] | None = None) -> None:
         """Print either a JSON envelope or a human-friendly representation.
 
-        `warnings` is the structured advisory channel (#64): each entry is
-        appended to `meta.warnings` (never clobbering an existing list) in JSON
-        mode, or printed via skin.warning in human mode.
+        `warnings` is the structured advisory channel (#64): the caller passes
+        the complete advisory list in one call (e.g. `_emit_with_warning` rolls
+        the solution warning + any `*_lookup_error` keys together), and it is
+        published as the list-valued `meta.warnings` in JSON mode — a list, where
+        the old scalar `meta.warning` could only hold one — or printed via
+        skin.warning in human mode. The `warnings` param is the sole source of
+        `meta.warnings`; a fresh copy is stored so the caller's dict and list are
+        not mutated.
         """
         if self.json_mode:
             envelope: dict[str, Any] = {"ok": ok}
