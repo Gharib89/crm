@@ -29,6 +29,7 @@ setup(
             "mkdocs-material>=9.5",
             "mkdocs-click>=0.8",
             "mkdocs-include-markdown-plugin>=7",
+            "mkdocs-llmstxt>=0.2",
         ],
     },
     entry_points={

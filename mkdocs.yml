@@ -63,6 +63,23 @@ extra:
 plugins:
   - search
   - include-markdown
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: |
+        crm — a stateful CLI for Microsoft Dynamics 365 Customer Engagement.
+        Targets on-prem v9.x (NTLM) or Dataverse online (OAuth client-credentials)
+        over the Dataverse Web API (OData v4) / HTTPS. Covers record CRUD,
+        OData/FetchXML queries, metadata browsing and write, solution lifecycle,
+        declarative apply, and bulk CSV/JSON export. `--json` everywhere for agents.
+      sections:
+        Getting started:
+          - getting-started/install.md: Install (script or from source)
+          - getting-started/initialize.md: First-run setup
+          - getting-started/configure.md: Auth (NTLM / OAuth) and env vars
+        How-to:
+          - how-to/*.md
+        Reference:
+          - reference/cli.md: Full command tree
 
 markdown_extensions:
   - admonition
