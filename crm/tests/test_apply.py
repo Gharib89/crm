@@ -546,6 +546,51 @@ def test_apply_rejects_publisher_missing_prefix(backend):
         assert m.request_history == []
 
 
+def test_apply_rejects_non_list_attributes(backend):
+    spec = {"entities": [{"schema_name": "moce_Project", "display_name": "Project",
+                          "attributes": {}}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="attributes"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_malformed_view_column(backend):
+    spec = {"entities": [{
+        "schema_name": "moce_Project", "display_name": "Project",
+        "views": [{"name": "V", "columns": [{"width": 100}]}],  # column missing name
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="column"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_otc_real_error_is_reported_not_swallowed(backend):
+    """A non-404 error resolving ObjectTypeCode must surface, not silently plan the view."""
+    entity = {**_ENTITY, "views": [_VIEW]}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
+    ent_url = backend.url_for(f"EntityDefinitions({_ENT_ID})")
+    record = {"LogicalName": "moce_project", "SchemaName": "moce_Project",
+              "EntitySetName": "moce_projects"}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        # entity existence probe (404) creates it; the OTC resolve then 403s.
+        m.get(backend.url_for("EntityDefinitions(LogicalName='moce_project')"),
+              [{"status_code": 404},
+               {"status_code": 403, "json": {"error": {"message": "forbidden"}}}])
+        m.post(backend.url_for("EntityDefinitions"), status_code=204,
+               headers={"OData-EntityId": ent_url})
+        m.get(ent_url, json=record)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["failed"]) == ["view"]
+    assert "error" in res["failed"][0]
+    assert _publish_hits(m, backend) == []
+
+
 # ── e2e: full CLI invocations (acceptance scenarios) ────────────────────────
 
 

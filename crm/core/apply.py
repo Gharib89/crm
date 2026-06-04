@@ -62,7 +62,8 @@ def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
 
     A brand-new custom table's OTC is often unreadable until the apply's final
     publish, so the caller reports its views as planned-create and a second apply
-    lands them.
+    lands them. Only a 404 (entity not yet created) maps to None — any other error
+    (401/403/5xx) is re-raised so real failures are not silently masked.
     """
     was_dry = backend.dry_run
     backend.dry_run = False
@@ -70,8 +71,10 @@ def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
         rb = as_dict(backend.get(
             f"EntityDefinitions(LogicalName='{logical}')",
             params={"$select": "ObjectTypeCode"}))
-    except D365Error:
-        return None
+    except D365Error as exc:
+        if exc.status == 404:
+            return None
+        raise
     finally:
         backend.dry_run = was_dry
     otc = rb.get("ObjectTypeCode")
@@ -86,6 +89,28 @@ def _require(obj: Any, keys: tuple[str, ...], label: str) -> None:
     for key in keys:
         if not cobj.get(key):
             raise D365Error(f"{label}: missing required field {key!r}.")
+
+
+def _require_list(parent: dict[str, Any], key: str, label: str) -> None:
+    """If `key` is present on `parent`, require it to be a list."""
+    if key in parent and not isinstance(parent[key], list):
+        raise D365Error(f"{label}: {key} must be a list.")
+
+
+def _validate_column(col: Any, view_name: str) -> None:
+    """A view column is a non-empty string or a {name[, width:int]} mapping."""
+    if isinstance(col, str):
+        if not col:
+            raise D365Error(f"view {view_name!r}: column name must not be empty.")
+        return
+    if isinstance(col, dict):
+        cd = cast("dict[str, Any]", col)
+        if not isinstance(cd.get("name"), str) or not cd["name"]:
+            raise D365Error(f"view {view_name!r}: each column needs a non-empty string name.")
+        if "width" in cd and not isinstance(cd["width"], int):
+            raise D365Error(f"view {view_name!r}: column width must be an integer.")
+        return
+    raise D365Error(f"view {view_name!r}: column must be a string or a mapping.")
 
 
 def validate_spec(spec: Any) -> None:
@@ -106,6 +131,9 @@ def validate_spec(spec: Any) -> None:
         raise D365Error("spec is empty: nothing to apply.")
     for ent in _as_list(sp.get("entities")):
         _require(ent, ("schema_name", "display_name"), "entity")
+        elabel = f"entity {ent['schema_name']!r}"
+        for sub in ("attributes", "relationships", "views"):
+            _require_list(ent, sub, elabel)
         for attr in _as_list(ent.get("attributes")):
             _require(attr, ("kind", "schema_name", "display_name"), "attribute")
             kind, name = attr["kind"], attr["schema_name"]
@@ -122,8 +150,16 @@ def validate_spec(spec: Any) -> None:
                            "lookup_schema", "lookup_display"), "relationship")
         for view in _as_list(ent.get("views")):
             _require(view, ("name", "columns"), "view")
+            if not isinstance(view["columns"], list) or not view["columns"]:
+                raise D365Error(f"view {view['name']!r}: columns must be a non-empty list.")
+            for col in cast("list[Any]", view["columns"]):
+                _validate_column(col, view["name"])
     for os_spec in _as_list(sp.get("optionsets")):
         _require(os_spec, ("name", "display_name"), "optionset")
+        _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
+        for opt in cast("list[Any]", os_spec.get("options") or []):
+            if not isinstance(opt, dict) or not cast("dict[str, Any]", opt).get("label"):
+                raise D365Error(f"optionset {os_spec['name']!r}: each option needs a label.")
 
 
 def _classify(
@@ -308,7 +344,12 @@ def apply_spec(
             if not views:
                 continue
             logical_v: str = entity_logicals.get(ent["schema_name"]) or ent["schema_name"].lower()
-            otc = _resolve_otc(backend, logical_v)
+            try:
+                otc = _resolve_otc(backend, logical_v)
+            except D365Error as exc:
+                for view in views:
+                    failed.append({"kind": "view", "name": view["name"], "error": str(exc)})
+                raise _Aborted from exc
             for view in views:
                 entry = {"kind": "view", "name": view["name"]}
                 if otc is None:
