@@ -177,6 +177,9 @@ crm solution export MyCustomSolution -o /tmp/snap.zip
 # Bulk CSV
 crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue
+
+# Discover the CLI surface (no connection needed) — for agents and scripts
+crm --json describe
 ```
 
 ### Output modes

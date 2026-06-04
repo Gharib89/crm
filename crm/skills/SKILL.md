@@ -126,6 +126,7 @@ pass `--profile <name>` and confirm the real target with
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
 | _(top)_      | `apply -f spec.yaml`                                                                    | Declarative desired-state (publisher→…→views)  |
+| _(top)_      | `describe [group]`                                                                      | Machine-readable command/option/choice catalogue (no connection) |
 | _(top)_      | `service-document`                                                                      | List every entity set the server exposes       |
 
 `crm <group> --help` lists the per-command options.

@@ -39,6 +39,7 @@ a = Analysis(
         'crm.commands.batch',
         'crm.commands.connection',
         'crm.commands.data',
+        'crm.commands.describe',
         'crm.commands.entity',
         'crm.commands.init',
         'crm.commands.metadata',

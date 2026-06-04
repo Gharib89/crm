@@ -16,6 +16,7 @@ LAZY_MODULES = {
     "crm.commands.action", "crm.commands.app", "crm.commands.apply",
     "crm.commands.async_ops",
     "crm.commands.batch", "crm.commands.connection", "crm.commands.data",
+    "crm.commands.describe",
     "crm.commands.entity", "crm.commands.init", "crm.commands.metadata",
     "crm.commands.query", "crm.commands.repl", "crm.commands.session",
     "crm.commands.skill", "crm.commands.solution", "crm.commands.view",
