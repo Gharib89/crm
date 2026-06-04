@@ -266,6 +266,55 @@ class TestCallerObjectId:
                 backend.get("accounts", caller_object_id="not-a-guid")
             assert m.call_count == 0
 
+    def test_object_id_kwarg_wins_over_extra_headers(self, backend, profile):
+        guid = "99999999-8888-7777-6666-555555555555"
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            backend.get(
+                "accounts",
+                caller_object_id=guid,
+                extra_headers={"CallerObjectId": "ffffffff-ffff-ffff-ffff-ffffffffffff"},
+            )
+            assert m.last_request.headers["CallerObjectId"] == guid
+
+    def test_object_id_empty_pops_extra_headers_collision(self, monkeypatch, profile):
+        monkeypatch.delenv("CRM_AS_USER", raising=False)
+        monkeypatch.setenv("CRM_AS_USER_OBJECT_ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        b = D365Backend(profile, password="pw")
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            b.get("accounts",
+                  caller_object_id="",
+                  extra_headers={"CallerObjectId": "ffffffff-ffff-ffff-ffff-ffffffffffff"})
+            assert "CallerObjectId" not in m.last_request.headers
+
+    def test_object_id_supersedes_differently_cased_extra_header(self, backend, profile):
+        # HTTP header names are case-insensitive: a differently-cased
+        # CallerObjectId in extra_headers must not survive the resolved one.
+        guid = "99999999-8888-7777-6666-555555555555"
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            backend.get(
+                "accounts",
+                caller_object_id=guid,
+                extra_headers={"callerobjectid": "ffffffff-ffff-ffff-ffff-ffffffffffff"},
+            )
+            assert m.last_request.headers["CallerObjectId"] == guid
+
+    def test_systemuserid_drops_differently_cased_object_id_extra_header(self, backend, profile):
+        # never-both invariant must hold across header casing: emitting
+        # MSCRMCallerID drops any CallerObjectId variant from extra_headers.
+        guid = "11111111-2222-3333-4444-555555555555"
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}accounts", json={"value": []})
+            backend.get(
+                "accounts",
+                caller_id=guid,
+                extra_headers={"CALLEROBJECTID": "ffffffff-ffff-ffff-ffff-ffffffffffff"},
+            )
+            assert m.last_request.headers["MSCRMCallerID"] == guid
+            assert "CallerObjectId" not in m.last_request.headers
+
     def test_collision_both_kwargs_raises_before_http(self, backend):
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match="both"):

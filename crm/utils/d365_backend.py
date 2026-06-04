@@ -25,6 +25,7 @@ import logging as _logging
 
 import requests
 from requests.auth import AuthBase
+from requests.structures import CaseInsensitiveDict
 
 from crm.utils.d365_types import BatchOperation, BatchResult
 
@@ -414,7 +415,10 @@ class D365Backend:
         are exhausted.
         """
         url = self.url_for(path)
-        headers = dict(_DEFAULT_HEADERS)
+        # CaseInsensitiveDict so the never-both / per-call-disable pops below
+        # also drop differently-cased impersonation headers from extra_headers
+        # (HTTP header names are case-insensitive).
+        headers: CaseInsensitiveDict[str] = CaseInsensitiveDict(_DEFAULT_HEADERS)
         if extra_headers:
             headers.update(extra_headers)
 
