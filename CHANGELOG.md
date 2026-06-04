@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm apply -f spec.yaml`: declarative desired-state from a single YAML/JSON
+  spec. Orchestrates the existing metadata cores in dependency order (publisher →
+  solution → entities → option sets → attributes → relationships → views), each
+  with `if_exists=skip`, and runs `PublishAllXml` once at the end, so re-applying
+  an unchanged spec is a no-op. Emits `{ok, data:{applied, skipped, planned,
+  failed}, meta:{staged}}`. Honors `--dry-run` (greenfield specs report
+  dependents as planned-create instead of erroring) and `--stage-only` (create
+  without publishing). Metadata POSTs are non-transactional, so a failure
+  aborts-and-reports, leaving staged-but-unpublished residue. The spec is
+  validated up front. Adds a runtime dependency on PyYAML (#60).
 - Canonical `meta.dry_run` signal: in `--json` mode every dry-run invocation now
   carries `meta.dry_run: true` in the envelope. It is keyed off the invocation-level
   `--dry-run` flag (not by sniffing the data for the `_dry_run` sentinel), so

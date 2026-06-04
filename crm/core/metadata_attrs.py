@@ -350,6 +350,11 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "file": _file_attr,
 }
 
+# Every attribute kind add_attribute accepts: the builder-backed kinds plus the
+# special-cased "lookup". Exposed so callers (e.g. crm.core.apply) validate
+# against one source of truth and never drift.
+ATTRIBUTE_KINDS = frozenset(_BUILDERS) | {"lookup"}
+
 
 def _parse_attribute_id(entity_id_url: str | None) -> str | None:
     if not entity_id_url:

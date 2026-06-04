@@ -96,6 +96,7 @@ nav:
       - data: how-to/data.md
       - action: how-to/action.md
       - view: how-to/view.md
+      - apply: how-to/apply.md
       - app: how-to/app.md
       - async: how-to/async.md
       - session: how-to/session.md

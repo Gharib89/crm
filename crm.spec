@@ -22,6 +22,9 @@ a = Analysis(
         # msal is lazy-imported inside D365Backend._make_oauth_auth (oauth scheme);
         # list it so the frozen bundle ships it despite no module-level reference.
         'msal',
+        # yaml is lazy-imported inside crm.commands.apply (spec parsing); list it so
+        # the frozen bundle ships PyYAML despite no module-level reference.
+        'yaml',
         # The crm.commands.* modules below are resolved at runtime via
         # importlib.import_module() in _LazyJsonAwareGroup.get_command (crm/cli.py),
         # which PyInstaller's static analysis cannot follow. List every module that
@@ -31,6 +34,7 @@ a = Analysis(
         'crm.commands._helpers',
         'crm.commands.action',
         'crm.commands.app',
+        'crm.commands.apply',
         'crm.commands.async_ops',
         'crm.commands.batch',
         'crm.commands.connection',
