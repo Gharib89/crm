@@ -255,7 +255,7 @@ def resolve_credentials(
 # api_version negotiation (issue #51): the optimistic default is v9.2, which
 # cloud/Dataverse accepts. D365 CE on-premises v9.x caps at v9.1 and returns
 # HTTP 501 for /api/data/v9.2/, so a probe at the default downgrades one step.
-_DEFAULT_API_VERSION = "v9.2"
+DEFAULT_API_VERSION = "v9.2"  # public: also the omitted-flag default in connect
 _ONPREM_API_VERSION = "v9.1"
 _VERSION_UNSUPPORTED_STATUS = 501
 
@@ -285,14 +285,14 @@ def test_connection(backend: D365Backend, *, negotiate: bool = False) -> dict[st
         if not (
             negotiate
             and exc.status == _VERSION_UNSUPPORTED_STATUS
-            and backend.profile.api_version == _DEFAULT_API_VERSION
+            and backend.profile.api_version == DEFAULT_API_VERSION
         ):
             raise
         backend.profile.api_version = _ONPREM_API_VERSION
         try:
             info = whoami(backend)
         except D365Error:
-            backend.profile.api_version = _DEFAULT_API_VERSION
+            backend.profile.api_version = DEFAULT_API_VERSION
             # `from None`: surface the original 501 without chaining the v9.1
             # failure as "During handling of the above exception...".
             raise exc from None

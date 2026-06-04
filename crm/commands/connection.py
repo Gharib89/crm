@@ -42,7 +42,7 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
         url=url,
         domain=domain,
         username=username,
-        api_version=api_version or conn_mod._DEFAULT_API_VERSION,
+        api_version=api_version or conn_mod.DEFAULT_API_VERSION,
         verify_ssl=not no_verify_ssl,
         auth_scheme=ctx.auth_scheme or "ntlm",
         default_solution=default_solution,
@@ -108,7 +108,10 @@ def connection_whoami(ctx: CLIContext):
 def connection_test(ctx: CLIContext):
     """Reachability check: WhoAmI + report API base."""
     # An env-derived profile with no explicit D365_API_VERSION negotiates the
-    # version for this run; a loaded profile is respected as saved.
+    # version for this run; a loaded profile is respected as saved. Load .env
+    # first so a version pinned only in the .env file is seen (it would
+    # otherwise be read later, inside ctx.backend(), and missed here).
+    conn_mod.load_dotenv()
     negotiate = ctx.profile_name is None and not conn_mod._env(conn_mod.ENV_API_VERSION)
     try:
         info = conn_mod.test_connection(ctx.backend(), negotiate=negotiate)
