@@ -9,11 +9,26 @@ from __future__ import annotations
 
 import json
 
+import click
 from click.testing import CliRunner
 
 from crm.cli import cli
 
 _HELP_HINT = "crm --help"
+
+
+def _stub_repl(recorder: list[bool]) -> click.Command:
+    """A no-param `click.Command` standing in for the real REPL, so the launch
+    tests assert the guard hands off to the REPL without entering the interactive
+    prompt_toolkit loop (which raises NoConsoleScreenBufferError on Windows CI).
+    A Command — not a bare callable — mirrors the production `ctx.invoke(repl)`
+    path, where Click resolves params from the invoking context."""
+
+    @click.command("repl")
+    def _repl() -> None:
+        recorder.append(True)
+
+    return _repl
 
 
 def test_bare_json_exits_2_with_usage_envelope(monkeypatch):
@@ -54,13 +69,15 @@ def test_bare_crm_non_tty_exits_2(monkeypatch):
 
 
 def test_explicit_repl_still_launches(monkeypatch):
-    """Explicit `crm repl` is unaffected by the guard: it launches the REPL even
-    under a non-TTY stdin (CliRunner). EOF on empty input ends the loop cleanly."""
+    """Explicit `crm repl` is unaffected by the guard: the REPL command is invoked
+    even with CRM_NO_REPL set (which would suppress a *bare* crm) and a non-TTY
+    stdin. The REPL is stubbed so the test asserts the hand-off, not the loop."""
     monkeypatch.setenv("CRM_NO_REPL", "1")  # would suppress a *bare* crm; not `crm repl`
-    result = CliRunner().invoke(cli, ["repl"], input="")
+    launched: list[bool] = []
+    monkeypatch.setattr("crm.commands.repl.repl", _stub_repl(launched))
+    result = CliRunner().invoke(cli, ["repl"])
     assert result.exit_code == 0, result.output
-    assert "Session:" in result.output, "REPL banner/session line proves it launched"
-    assert "no subcommand given" not in result.output, "guard must not fire on explicit repl"
+    assert launched == [True], "explicit `crm repl` must invoke the REPL, not the guard"
 
 
 def test_bare_crm_interactive_tty_launches_repl(monkeypatch):
@@ -71,7 +88,7 @@ def test_bare_crm_interactive_tty_launches_repl(monkeypatch):
     monkeypatch.delenv("CRM_NO_REPL", raising=False)
     monkeypatch.setattr("crm.cli._stdin_is_tty", lambda: True)
     launched: list[bool] = []
-    monkeypatch.setattr("crm.commands.repl.repl", lambda: launched.append(True))
+    monkeypatch.setattr("crm.commands.repl.repl", _stub_repl(launched))
     result = CliRunner().invoke(cli, [])
     assert result.exit_code == 0, result.output
     assert launched == [True], "TTY bare `crm` must invoke the REPL, not the guard"
