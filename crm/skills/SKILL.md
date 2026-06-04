@@ -131,7 +131,7 @@ pass `--profile <name>` and confirm the real target with
 | `connection` | `connect`, `status`, `whoami`, `test`, `profiles`, `disconnect`                         | Profiles + auth probe                          |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
-| `metadata`   | `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`            | Schema introspection + option set values      |
+| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `export`, `import`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
@@ -269,6 +269,21 @@ crm --json action function RetrieveCurrentOrganization \
 crm --json metadata picklist account industrycode
 # returns {"OptionSet": {"Options": [{"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}}, ...]}}
 ```
+
+### 9a. Write-readiness brief — one call before writing a record
+
+```bash
+crm --json metadata describe new_project
+# data: { entity_set_name, primary_id, primary_name, writable_attributes: [
+#   { logical_name, attribute_type, required_level,
+#     # lookups:                bind_key:"new_AccountId@odata.bind", targets:[{logical,set_name}]
+#     # picklist/state/status:  options:[{value,label}]
+#     # global-bound picklist:  + global_optionset_id (GUID) } ] }
+```
+One read-only call that consolidates everything needed to build a valid create/update
+payload: the entity set name, primary id/name, every writable column with its required
+level, lookup `@odata.bind` keys + resolvable targets, and inline option values. Prefer
+this over chaining `attributes` + `picklist` + `relationships` by hand.
 
 ### 10. Associate / disassociate records
 
@@ -461,7 +476,9 @@ suffix on the **navigation-property name** (the PascalCase schema name, e.g.
 `cwx_CustomerId@odata.bind`), **not** the lowercase logical attribute.
 A picklist bound to a global option set binds through `GlobalOptionSet@odata.bind`,
 and on-prem 9.1 requires the option set's `MetadataId` GUID there (the `Name`
-alternate key is rejected).
+alternate key is rejected). `crm metadata describe <entity>` hands you the exact
+`bind_key` per lookup and the `global_optionset_id` per global-bound picklist, so you
+don't have to assemble them by hand.
 
 ## Errors & recovery
 

@@ -95,6 +95,182 @@ def picklist_options(
     ))
 
 
+def _label_text(label_obj: dict[str, Any]) -> str:
+    """Best-effort display label from a Dataverse Label payload."""
+    ull: dict[str, Any] = label_obj.get("UserLocalizedLabel") or {}
+    if ull.get("Label"):
+        return str(ull["Label"])
+    locs: list[dict[str, Any]] = label_obj.get("LocalizedLabels") or []
+    if locs:
+        return str(locs[0].get("Label") or "")
+    return ""
+
+
+def _options(option_set: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten an OptionSet's Options to `[{value, label}]`."""
+    rows: list[dict[str, Any]] = option_set.get("Options") or []
+    out: list[dict[str, Any]] = []
+    for o in rows:
+        lbl: dict[str, Any] = o.get("Label") or {}
+        out.append({"value": o.get("Value"), "label": _label_text(lbl)})
+    return out
+
+
+# (AttributeType, cast subtype, $expand) for each option-set-bearing kind. Only
+# Picklist can bind a GLOBAL option set, so it expands GlobalOptionSet too; State
+# / Status options are always local (and read-only server-side).
+_OPTION_SET_CASTS: tuple[tuple[str, str, str], ...] = (
+    ("Picklist", "PicklistAttributeMetadata", "OptionSet,GlobalOptionSet"),
+    ("State", "StateAttributeMetadata", "OptionSet"),
+    ("Status", "StatusAttributeMetadata", "OptionSet"),
+)
+
+
+def _enrich_options(
+    backend: D365Backend, logical_name: str, writable: list[dict[str, Any]]
+) -> None:
+    """Attach inline `options[]` to each writable picklist/state/status attribute.
+
+    The `Attributes` collection must be cast to the typed subtype to reach the
+    `OptionSet` / `GlobalOptionSet` navigation properties; each present kind is
+    fetched in one expanded GET. A picklist bound to a global option set has
+    `OptionSet` null and its options (plus the `MetadataId` GUID on-prem 9.1 needs
+    to bind on create) under `GlobalOptionSet`; everything else is the reverse.
+    Mutates `writable` in place. No-op for kinds the entity does not use.
+    """
+    present = {a["attribute_type"] for a in writable}
+    for attr_type, cast, expand in _OPTION_SET_CASTS:
+        if attr_type not in present:
+            continue
+        res = as_dict(backend.get(
+            f"EntityDefinitions(LogicalName='{logical_name}')/Attributes/"
+            f"Microsoft.Dynamics.CRM.{cast}",
+            params={"$select": "LogicalName", "$expand": expand},
+        ))
+        rows: list[dict[str, Any]] = res.get("value", [])
+        by_logical: dict[str, dict[str, Any]] = {}
+        for r in rows:
+            name = r.get("LogicalName")
+            if name:
+                by_logical[name] = r
+        for attr in writable:
+            if attr["attribute_type"] != attr_type:
+                continue
+            row = by_logical.get(attr["logical_name"])
+            if row is None:
+                continue
+            glob: dict[str, Any] = row.get("GlobalOptionSet") or {}
+            if glob:
+                attr["options"] = _options(glob)
+                if glob.get("MetadataId"):
+                    attr["global_optionset_id"] = glob["MetadataId"]
+            else:
+                local: dict[str, Any] = row.get("OptionSet") or {}
+                attr["options"] = _options(local)
+
+
+def _enrich_lookups(
+    backend: D365Backend, logical_name: str, writable: list[dict[str, Any]]
+) -> None:
+    """Attach `bind_key` + `targets[]` to each writable lookup attribute, in place.
+
+    The bind key is self-derived from `ManyToOne` relationship metadata: a 1:N
+    relationship's `ReferencedEntityNavigationPropertyName` is the navigation
+    property used in a `<Nav>@odata.bind` deep-link, joined to the lookup column
+    on `ReferencingAttribute`. Each target's `EntitySetName` is resolved so the
+    agent has a usable bind VALUE (`/<set_name>(<id>)`). No-op when the entity
+    has no lookup columns.
+    """
+    lookups = [a for a in writable if a["attribute_type"] == "Lookup"]
+    if not lookups:
+        return
+    m2o = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
+        params={"$select":
+                "ReferencingAttribute,ReferencedEntity,"
+                "ReferencedEntityNavigationPropertyName"},
+    ))
+    rels: list[dict[str, Any]] = m2o.get("value", [])
+    # ReferencingAttribute (lookup column) -> [(referenced_entity, nav_property)].
+    by_attr: dict[str, list[tuple[str, str]]] = {}
+    for r in rels:
+        ref_attr = r.get("ReferencingAttribute")
+        if not ref_attr:
+            continue
+        by_attr.setdefault(ref_attr, []).append((
+            r.get("ReferencedEntity") or "",
+            r.get("ReferencedEntityNavigationPropertyName") or "",
+        ))
+
+    set_names: dict[str, str] = {}
+
+    def _set_name(ref_logical: str) -> str:
+        if ref_logical not in set_names:
+            rb = as_dict(backend.get(
+                f"EntityDefinitions(LogicalName='{ref_logical}')",
+                params={"$select": "EntitySetName"},
+            ))
+            set_names[ref_logical] = rb.get("EntitySetName") or ""
+        return set_names[ref_logical]
+
+    for attr in lookups:
+        matched = by_attr.get(attr["logical_name"])
+        if not matched:
+            continue
+        attr["targets"] = [
+            {"logical": ref, "set_name": _set_name(ref)} for ref, _ in matched
+        ]
+        # For the common single-target lookup there is exactly one relationship;
+        # a polymorphic lookup surfaces the first navigation property here.
+        nav = matched[0][1]
+        if nav:
+            attr["bind_key"] = f"{nav}@odata.bind"
+
+
+def describe_entity(backend: D365Backend, logical_name: str) -> dict[str, Any]:
+    """One read-only write-readiness brief for `logical_name` (#68).
+
+    Consolidates the metadata an agent needs to construct a valid create/update
+    payload: the entity set name, primary id/name, and every *writable* attribute
+    (valid for create or update) with its required level. Pure GETs.
+    """
+    if not logical_name:
+        raise D365Error("logical_name is required.")
+    ent = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')",
+        params={"$select":
+                "LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute"},
+    ))
+    attrs = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
+        params={"$select":
+                "LogicalName,AttributeType,RequiredLevel,"
+                "IsValidForCreate,IsValidForUpdate"},
+    ))
+    value: list[dict[str, Any]] = attrs.get("value", [])
+    writable: list[dict[str, Any]] = []
+    for a in value:
+        if not (a.get("IsValidForCreate") or a.get("IsValidForUpdate")):
+            continue
+        required: dict[str, Any] = a.get("RequiredLevel") or {}
+        writable.append({
+            "logical_name": a.get("LogicalName"),
+            "attribute_type": a.get("AttributeType"),
+            "required_level": required.get("Value"),
+        })
+
+    _enrich_lookups(backend, logical_name, writable)
+    _enrich_options(backend, logical_name, writable)
+
+    return {
+        "logical_name": ent.get("LogicalName"),
+        "entity_set_name": ent.get("EntitySetName"),
+        "primary_id": ent.get("PrimaryIdAttribute"),
+        "primary_name": ent.get("PrimaryNameAttribute"),
+        "writable_attributes": writable,
+    }
+
+
 def label(text: str, lang: int = 1033) -> dict[str, Any]:
     """Build a Dataverse Label payload from a single string."""
     return {"LocalizedLabels": [{"Label": text, "LanguageCode": lang}]}

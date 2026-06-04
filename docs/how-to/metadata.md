@@ -3,6 +3,35 @@
 Recipes for schema work, taken from the CRMWorx build (§2). See the
 [CLI reference](../reference/cli.md) for every flag.
 
+## Describe an entity before writing to it
+
+```bash
+crm --json metadata describe cwx_ticket
+```
+One read-only call returns everything needed to build a valid create/update payload:
+
+```json
+{
+  "entity_set_name": "cwx_tickets",
+  "primary_id": "cwx_ticketid",
+  "primary_name": "cwx_name",
+  "writable_attributes": [
+    {"logical_name": "cwx_name", "attribute_type": "String", "required_level": "ApplicationRequired"},
+    {"logical_name": "cwx_slaid", "attribute_type": "Lookup", "required_level": "None",
+     "bind_key": "cwx_SLA@odata.bind", "targets": [{"logical": "cwx_sla", "set_name": "cwx_slas"}]},
+    {"logical_name": "cwx_priority", "attribute_type": "Picklist", "required_level": "None",
+     "options": [{"value": 1, "label": "Low"}, {"value": 2, "label": "High"}],
+     "global_optionset_id": "8e9f…"}
+  ]
+}
+```
+- **`bind_key`** is the `<Nav>@odata.bind` key for a lookup — use it directly in an `entity create` payload with a value of `/<set_name>(<guid>)`.
+- **`targets[].set_name`** is the entity set the lookup points at, so the bind value is ready to assemble.
+- **`options`** gives the inline `{value, label}` choices for picklist / state / status columns.
+- **`global_optionset_id`** appears only when a picklist is bound to a *global* option set; on-prem 9.1 needs that GUID to bind on create.
+
+Pure GETs — gated so only the attribute kinds the entity actually uses cost a round-trip.
+
 ## Create a global option set (idempotent)
 
 ```bash

@@ -223,7 +223,11 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state and command history                    |
 
-The `metadata` group covers both browsing and write verbs. New in 0.5.0:
+The `metadata` group covers both browsing and write verbs. `metadata describe
+<entity>` returns a one-shot, read-only write-readiness brief — entity set, primary
+id/name, writable columns + required levels, lookup `@odata.bind` keys + targets, and
+picklist/state/status options — everything needed to build a valid record payload in
+one call. Write verbs new in 0.5.0:
 
 - `metadata add-attribute <entity> --kind <k>` — add a column (14 kinds)
 - `metadata create-one-to-many` / `create-many-to-many` — relationships

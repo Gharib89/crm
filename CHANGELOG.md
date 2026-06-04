@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm metadata describe <entity>` returns a one-shot, read-only write-readiness
+  brief: the entity set name, primary id/name, and every writable attribute with
+  its required level. Lookups carry `bind_key` (`<Nav>@odata.bind`, self-derived
+  from `ManyToOne` relationship metadata) plus `targets[]` with both the logical
+  name and the `EntitySetName` so the bind VALUE is usable; picklist / state /
+  status attributes carry inline `{value, label}` options, and a picklist bound to
+  a global option set also carries its `global_optionset_id` GUID (which on-prem
+  9.1 needs to bind on create). Built from pure GETs, gated so only the attribute
+  kinds an entity actually uses cost a round-trip (#68).
 - `crm solution import` is now gated as a destructive operation: an overwrite
   import (the default) clobbers unmanaged customizations in the target org, so it
   prompts for confirmation and, in a non-TTY context, aborts cleanly (exit 1;

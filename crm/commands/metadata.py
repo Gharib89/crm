@@ -133,6 +133,29 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
              meta={"entity": logical_name, "attribute": attribute, "count": len(options)})
 
 
+@metadata_group.command("describe")
+@click.argument("logical_name")
+@pass_ctx
+def metadata_describe(ctx: CLIContext, logical_name):
+    """One-shot write-readiness brief for an entity.
+
+    Consolidates everything an agent needs to construct a valid create/update
+    payload in one read-only call: the entity set name, primary id/name, and each
+    writable attribute with its required level. Lookups carry `bind_key`
+    (`<Nav>@odata.bind`) plus `targets[]` (logical + set_name); picklist / state /
+    status attributes carry inline `{value, label}` options, and a picklist bound
+    to a global option set also carries its `global_optionset_id` GUID. Read-only.
+    """
+    try:
+        brief = meta_mod.describe_entity(ctx.backend(), logical_name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=brief, meta={
+        "writable_attributes": len(brief["writable_attributes"]),
+    })
+
+
 @metadata_group.command("create-entity")
 @click.option("--schema-name", default=None,
               help="PascalCase with publisher prefix, e.g. 'new_Project'. "
