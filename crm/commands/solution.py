@@ -270,7 +270,7 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
 @click.option("--quiet", "-q", is_flag=True,
               help="Suppress per-tick import-progress lines on stderr.")
 @click.option("--yes", is_flag=True,
-              help="Skip the overwrite confirmation prompt (required non-interactively).")
+              help="Skip the overwrite confirmation prompt.")
 @pass_ctx
 def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet, yes):
     # An overwrite import (the default) clobbers unmanaged customizations in the
