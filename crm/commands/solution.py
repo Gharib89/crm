@@ -143,6 +143,27 @@ def solution_create(ctx: CLIContext, name, display, version, publisher,
     ctx.emit(True, data=info)
 
 
+@solution_group.command("set-version")
+@click.argument("unique_name")
+@click.option("--version", default=None,
+              help="New 4-part dotted version, e.g. 2.0.0.0.")
+@click.option("--friendly-name", "friendly_name", default=None,
+              help="New friendly (display) name.")
+@click.option("--description", default=None, help="New description.")
+@pass_ctx
+def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, description):
+    """Update an unmanaged solution's version / friendly name / description in place."""
+    try:
+        info = sol_mod.update_solution(
+            ctx.backend(), unique_name,
+            version=version, friendly_name=friendly_name, description=description,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
 @solution_group.command("export")
 @click.argument("unique_name")
 @click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm solution set-version <unique_name>` updates an unmanaged solution's
+  `version` / `friendlyname` / `description` in place. At least one field is
+  required and `--version` is validated as 4-part dotted numeric before any HTTP;
+  managed solutions and patches are rejected client-side (the server returns
+  `CannotUpdateSolutionPatch` for a patch). Delegates to the shared record-update
+  path, so `If-Match:*` and `--dry-run` are reused with no new HTTP path (#66).
 - Non-interactive REPL guard: bare `crm` (no subcommand) now fails fast with
   exit 2 and a usage message pointing at `crm --help` whenever the caller is
   non-interactive — under `--json`, with `CRM_NO_REPL` set (`1`/`true`/`yes`/`on`),
