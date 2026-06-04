@@ -165,7 +165,7 @@ multi-stage optionset update fails mid-way the **error** envelope additionally c
 |------|---------|
 | 0 | success (`ok: true`) |
 | 1 | operational failure: server / validation / declined |
-| 2 | usage error: bad or unknown flag (not JSON-wrapped) |
+| 2 | usage error: bad/unknown flag, missing arg, or bare `crm` when non-interactive — under `--json` the standard `{ok:false,error}` envelope on stdout, else raw text on stderr |
 
 Non-zero = the operation did not take effect. Pass `--yes` to skip confirmations non-interactively.
 
@@ -179,8 +179,13 @@ detecting a preview (covers batch and poll list-shaped previews uniformly).
 crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
 ```
 
-REPL is the default when no subcommand is given. To stay in one-shot mode, always pass
-a subcommand (e.g. `connection status`, `entity get`, etc.).
+REPL is the default when no subcommand is given — but only on an interactive terminal.
+A non-interactive caller (`--json`, `CRM_NO_REPL=1`, or a non-TTY stdin, as agents and
+CI invoke it) gets a fail-fast **exit 2** with the usage message `no subcommand given;
+run crm --help to list commands` instead of a hung prompt — under `--json` as the
+standard `{ok:false,error}` envelope. Always pass a subcommand (e.g. `connection status`,
+`entity get`); set `CRM_NO_REPL=1` to harden against an accidental bare `crm`. Explicit
+`crm repl` always launches.
 
 ## Examples
 

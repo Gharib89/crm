@@ -148,6 +148,32 @@ def _emit_usage_envelope(message: str) -> None:
     click.echo(json.dumps({"ok": False, "error": message}, indent=2, default=str))
 
 
+def _suppress_bare_repl(json_mode: bool) -> bool:
+    """Whether bare `crm` (no subcommand) must fail fast instead of dropping into
+    the interactive REPL. True when the caller is clearly non-interactive: --json,
+    an explicit CRM_NO_REPL opt-out, or a non-TTY stdin (piped/redirected, as
+    agents and CI invoke it). A proactive isatty probe — intentionally stronger
+    than waiting for the REPL's EOF handler so a bare invocation never hangs."""
+    if json_mode:
+        return True
+    if os.environ.get("CRM_NO_REPL", "").lower() in ("1", "true", "yes", "on"):
+        return True
+    return not _stdin_is_tty()
+
+
+def _stdin_is_tty() -> bool:
+    """True only if stdin is an interactive terminal. A missing, closed, or
+    isatty-less stdin (frozen build, piped/redirected input) counts as
+    non-interactive — agents and CI never attach a TTY."""
+    stream = sys.stdin
+    if not hasattr(stream, "isatty"):
+        return False
+    try:
+        return stream.isatty()
+    except (ValueError, OSError):
+        return False
+
+
 def _json_mode_active(args: list[str] | None) -> bool:
     """Decide whether to emit JSON by scanning argv — the authoritative per-invocation
     signal. The root --json must precede the subcommand and is always present in argv
@@ -349,6 +375,13 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:
+        if _suppress_bare_repl(json_mode):
+            msg = "no subcommand given; run crm --help to list commands"
+            if json_mode:
+                _emit_usage_envelope(msg)
+            else:
+                click.echo(f"Error: {msg}", err=True)
+            raise click.exceptions.Exit(2)
         from crm.commands.repl import repl
         ctx.invoke(repl)
 
