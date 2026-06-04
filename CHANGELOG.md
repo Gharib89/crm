@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- Non-interactive REPL guard: bare `crm` (no subcommand) now fails fast with
+  exit 2 and a usage message pointing at `crm --help` whenever the caller is
+  non-interactive — under `--json`, with `CRM_NO_REPL` set (`1`/`true`/`yes`/`on`),
+  or when stdin is not a TTY (piped/redirected, as agents and CI invoke it). Under
+  `--json` the message is the standard `{ok:false,error}` envelope; otherwise it
+  goes to stderr. An interactive human and explicit `crm repl` still launch the
+  REPL. A proactive isatty probe so an agent invocation never hangs (#65).
 - Structured warnings channel: the JSON envelope now carries a `meta.warnings`
   array — the single place to scan for advisories (staged-but-unpublished,
   created-but-read-back-failed, partial-optionset). `*_lookup_error` read-back

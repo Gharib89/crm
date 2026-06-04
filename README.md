@@ -150,6 +150,11 @@ $ crm
 ◆ d365 [prod] ❯ quit
 ```
 
+Bare `crm` only opens the REPL on an interactive terminal. A non-interactive
+caller — `--json`, `CRM_NO_REPL=1`, or a piped/redirected stdin (agents, CI) —
+exits 2 with a usage message pointing at `crm --help` instead of hanging on a
+prompt. Explicit `crm repl` always launches.
+
 ### One-shot subcommands
 
 ```bash

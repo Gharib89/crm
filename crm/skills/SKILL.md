@@ -179,8 +179,13 @@ detecting a preview (covers batch and poll list-shaped previews uniformly).
 crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
 ```
 
-REPL is the default when no subcommand is given. To stay in one-shot mode, always pass
-a subcommand (e.g. `connection status`, `entity get`, etc.).
+REPL is the default when no subcommand is given — but only on an interactive terminal.
+A non-interactive caller (`--json`, `CRM_NO_REPL=1`, or a non-TTY stdin, as agents and
+CI invoke it) gets a fail-fast **exit 2** with the usage message `no subcommand given;
+run crm --help to list commands` instead of a hung prompt — under `--json` as the
+standard `{ok:false,error}` envelope. Always pass a subcommand (e.g. `connection status`,
+`entity get`); set `CRM_NO_REPL=1` to harden against an accidental bare `crm`. Explicit
+`crm repl` always launches.
 
 ## Examples
 
