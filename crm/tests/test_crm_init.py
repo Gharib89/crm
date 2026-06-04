@@ -84,22 +84,22 @@ class TestInteractiveWizard:
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
         runner = CliRunner()
         inputs = "\n".join([
-            "https://internalcrm.moce.local/MOCE",
+            "https://internalcrm.contoso.local/Contoso",
             "ntlm",
             "alice",
             "pw1234",
-            "MOCE",
+            "CONTOSO",
             "onprem",
             "y",
         ]) + "\n"
         with requests_mock.Mocker() as m:
             m.get(
-                "https://internalcrm.moce.local/MOCE/api/data/v9.2/WhoAmI",
+                "https://internalcrm.contoso.local/Contoso/api/data/v9.2/WhoAmI",
                 status_code=501,
                 json={"error": {"code": "0x0", "message": "Not Implemented"}},
             )
             m.get(
-                "https://internalcrm.moce.local/MOCE/api/data/v9.1/WhoAmI",
+                "https://internalcrm.contoso.local/Contoso/api/data/v9.1/WhoAmI",
                 json=_WHOAMI,
             )
             result = runner.invoke(cli, ["init"], input=inputs)

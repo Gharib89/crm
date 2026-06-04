@@ -412,20 +412,20 @@ the first publish assigns its ObjectTypeCode — re-apply to land them. Run
 `crm describe apply` for the full option catalogue.
 
 ```yaml
-publisher: {unique_name: mocepub, prefix: moce, option_value_prefix: 10000}
-solution:  {unique_name: MoceCore}
+publisher: {unique_name: contosopub, prefix: contoso, option_value_prefix: 10000}
+solution:  {unique_name: ContosoCore}
 optionsets:
-  - {name: moce_priority, display_name: Priority, options: [{value: 100000000, label: Low}]}
+  - {name: contoso_priority, display_name: Priority, options: [{value: 100000000, label: Low}]}
 entities:
-  - schema_name: moce_Project
+  - schema_name: contoso_Project
     display_name: Project
-    primary_attr: {schema_name: moce_Name, label: Name}
+    primary_attr: {schema_name: contoso_Name, label: Name}
     attributes:
-      - {kind: string,   schema_name: moce_Code,     display_name: Code, max_length: 100}
-      - {kind: picklist, schema_name: moce_Priority, display_name: Priority, optionset_name: moce_priority}
-      - {kind: lookup,   schema_name: moce_Owner,    display_name: Owner, target_entity: systemuser}
+      - {kind: string,   schema_name: contoso_Code,     display_name: Code, max_length: 100}
+      - {kind: picklist, schema_name: contoso_Priority, display_name: Priority, optionset_name: contoso_priority}
+      - {kind: lookup,   schema_name: contoso_Owner,    display_name: Owner, target_entity: systemuser}
     views:
-      - {name: Active Projects, columns: [moce_name, moce_code]}
+      - {name: Active Projects, columns: [contoso_name, contoso_code]}
 ```
 
 ## Agent guidance — record-create payloads (`@odata.bind`)

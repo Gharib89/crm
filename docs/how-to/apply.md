@@ -16,38 +16,38 @@ optional; provide only what you want to create.
 
 ```yaml
 publisher:
-  unique_name: mocepub          # required
-  friendly_name: MOCE Publisher
-  prefix: moce                  # required — 2-8 alphanumerics, customizationprefix
+  unique_name: contosopub          # required
+  friendly_name: Contoso Publisher
+  prefix: contoso                  # required — 2-8 alphanumerics, customizationprefix
   option_value_prefix: 10000    # required — 10000-99999
 solution:
-  unique_name: MoceCore         # required; created components land here
-  friendly_name: MOCE Core
+  unique_name: ContosoCore         # required; created components land here
+  friendly_name: Contoso Core
   version: 1.0.0.0
 optionsets:                     # global (org-level) option sets
-  - name: moce_priority         # required, must include the publisher prefix
+  - name: contoso_priority         # required, must include the publisher prefix
     display_name: Priority      # required
     options:
       - {value: 100000000, label: Low}
       - {value: 100000001, label: High}
 entities:
-  - schema_name: moce_Project   # required, PascalCase with prefix
+  - schema_name: contoso_Project   # required, PascalCase with prefix
     display_name: Project        # required
     display_collection_name: Projects
     ownership: UserOwned
-    primary_attr: {schema_name: moce_Name, label: Name}
+    primary_attr: {schema_name: contoso_Name, label: Name}
     attributes:
-      - {kind: string,   schema_name: moce_Code,     display_name: Code, max_length: 100}
-      - {kind: picklist, schema_name: moce_Priority, display_name: Priority, optionset_name: moce_priority}
-      - {kind: lookup,   schema_name: moce_Owner,    display_name: Owner, target_entity: systemuser}
+      - {kind: string,   schema_name: contoso_Code,     display_name: Code, max_length: 100}
+      - {kind: picklist, schema_name: contoso_Priority, display_name: Priority, optionset_name: contoso_priority}
+      - {kind: lookup,   schema_name: contoso_Owner,    display_name: Owner, target_entity: systemuser}
     relationships:
-      - schema_name: moce_project_task
-        referenced_entity: moce_project   # the "1" side
-        referencing_entity: moce_task     # the "many" side
-        lookup_schema: moce_ProjectId
+      - schema_name: contoso_project_task
+        referenced_entity: contoso_project   # the "1" side
+        referencing_entity: contoso_task     # the "many" side
+        lookup_schema: contoso_ProjectId
         lookup_display: Project
     views:
-      - {name: Active Projects, columns: [moce_name, moce_code]}
+      - {name: Active Projects, columns: [contoso_name, contoso_code]}
 ```
 
 `attributes[].kind` is any kind `metadata add-attribute` accepts (`string`,

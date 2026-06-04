@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-04
+
 **Added**
 - `crm describe [GROUP]`: machine-readable command/option/choice discovery. Walks
   the live Click tree (no live D365 connection, no mkdocs-click dependency) and in
@@ -65,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/adr/…`, `docs/how-to/apply.md`, the `.claude/hooks` gate) in favor of
   in-CLI discovery (`crm describe`, `crm <group> --help`); broadened the
   frontmatter description to cover both on-prem (NTLM) and Dataverse online (OAuth).
+- Docs examples and test fixtures now use a neutral `contoso` org/publisher prefix
+  (`contoso_`, host `internalcrm.contoso.local`) instead of an internal org name,
+  so the published docs and shipped `SKILL.md` carry no environment-specific names.
 
 ## [0.8.0] — 2026-06-04
 

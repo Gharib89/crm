@@ -55,7 +55,7 @@ def dry_backend() -> D365Backend:
 
 def _mock_publisher_create(m, backend, *, exists=False):
     """Mock publisher existence GET (collection $filter) + 204 create."""
-    rows = [{"publisherid": _GUID, "uniquename": "mocepub"}] if exists else []
+    rows = [{"publisherid": _GUID, "uniquename": "contosopub"}] if exists else []
     m.get(backend.url_for("publishers"), json={"value": rows})
     m.post(
         backend.url_for("publishers"),
@@ -66,7 +66,7 @@ def _mock_publisher_create(m, backend, *, exists=False):
 
 def _mock_solution_create(m, backend, *, exists=False):
     """Mock solution existence GET (collection $filter) + 204 create."""
-    rows = [{"solutionid": _GUID2, "uniquename": "MoceCore"}] if exists else []
+    rows = [{"solutionid": _GUID2, "uniquename": "ContosoCore"}] if exists else []
     m.get(backend.url_for("solutions"), json={"value": rows})
     m.post(
         backend.url_for("solutions"),
@@ -75,7 +75,7 @@ def _mock_solution_create(m, backend, *, exists=False):
     )
 
 
-def _mock_entity_create(m, backend, *, schema="moce_Project", logical="moce_project",
+def _mock_entity_create(m, backend, *, schema="contoso_Project", logical="contoso_project",
                         exists=False, otc: "int | None" = 10112):
     """Mock entity LogicalName GET + 204 create + readback.
 
@@ -93,7 +93,7 @@ def _mock_entity_create(m, backend, *, schema="moce_Project", logical="moce_proj
     m.get(ent_url, json=record)
 
 
-def _mock_optionset_create(m, backend, *, name="moce_priority", exists=False):
+def _mock_optionset_create(m, backend, *, name="contoso_priority", exists=False):
     """Mock global option set Name-keyed GET + 204 create + readback.
 
     The Name GET serves a sequence: first call is the create-time existence probe,
@@ -111,7 +111,7 @@ def _mock_optionset_create(m, backend, *, name="moce_priority", exists=False):
     m.get(os_url, json={"Name": name, "MetadataId": _OS_ID, "IsCustomOptionSet": True})
 
 
-def _mock_attribute_create(m, backend, *, entity="moce_project", logical, schema,
+def _mock_attribute_create(m, backend, *, entity="contoso_project", logical, schema,
                            attr_type="String", exists=False):
     """Mock a non-lookup attribute existence GET + 204 create + readback."""
     attr_url = backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})")
@@ -137,7 +137,7 @@ def _mock_one_to_many(m, backend, *, schema, exists=False):
     m.post(backend.url_for("RelationshipDefinitions"), status_code=204,
            headers={"OData-EntityId": rel_url})
     m.get(rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
-          json={"SchemaName": schema, "ReferencingAttribute": "moce_projectid"})
+          json={"SchemaName": schema, "ReferencingAttribute": "contoso_projectid"})
 
 
 def _mock_view_create(m, backend, *, name="Active Projects", sqid=_GUID, exists=False):
@@ -160,25 +160,25 @@ def _kinds(entries):
 
 
 _PUBLISHER = {
-    "unique_name": "mocepub",
-    "friendly_name": "MOCE Publisher",
-    "prefix": "moce",
+    "unique_name": "contosopub",
+    "friendly_name": "Contoso Publisher",
+    "prefix": "contoso",
     "option_value_prefix": 10000,
 }
 _SOLUTION = {
-    "unique_name": "MoceCore",
-    "friendly_name": "MOCE Core",
+    "unique_name": "ContosoCore",
+    "friendly_name": "Contoso Core",
     "version": "1.0.0.0",
 }
 _ENTITY = {
-    "schema_name": "moce_Project",
+    "schema_name": "contoso_Project",
     "display_name": "Project",
     "display_collection_name": "Projects",
     "ownership": "UserOwned",
-    "primary_attr": {"schema_name": "moce_Name", "label": "Name"},
+    "primary_attr": {"schema_name": "contoso_Name", "label": "Name"},
 }
 _OPTIONSET = {
-    "name": "moce_priority",
+    "name": "contoso_priority",
     "display_name": "Priority",
     "options": [
         {"value": 100000000, "label": "Low"},
@@ -186,20 +186,20 @@ _OPTIONSET = {
     ],
 }
 _ATTRS = [
-    {"kind": "string", "schema_name": "moce_Code", "display_name": "Code", "max_length": 100},
-    {"kind": "picklist", "schema_name": "moce_Priority", "display_name": "Priority",
-     "optionset_name": "moce_priority"},
-    {"kind": "lookup", "schema_name": "moce_Owner", "display_name": "Owner",
+    {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code", "max_length": 100},
+    {"kind": "picklist", "schema_name": "contoso_Priority", "display_name": "Priority",
+     "optionset_name": "contoso_priority"},
+    {"kind": "lookup", "schema_name": "contoso_Owner", "display_name": "Owner",
      "target_entity": "systemuser"},
 ]
 _RELATIONSHIP = {
-    "schema_name": "moce_project_task",
-    "referenced_entity": "moce_project",
-    "referencing_entity": "moce_task",
-    "lookup_schema": "moce_ProjectId",
+    "schema_name": "contoso_project_task",
+    "referenced_entity": "contoso_project",
+    "referencing_entity": "contoso_task",
+    "lookup_schema": "contoso_ProjectId",
     "lookup_display": "Project",
 }
-_VIEW = {"name": "Active Projects", "columns": ["moce_name", "moce_code"]}
+_VIEW = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"]}
 _FULL_SPEC = {
     "publisher": _PUBLISHER,
     "solution": _SOLUTION,
@@ -219,9 +219,9 @@ _FULL_KINDS = [
 def test_apply_publisher_only_is_applied(backend):
     spec = {
         "publisher": {
-            "unique_name": "mocepub",
-            "friendly_name": "MOCE Publisher",
-            "prefix": "moce",
+            "unique_name": "contosopub",
+            "friendly_name": "Contoso Publisher",
+            "prefix": "contoso",
             "option_value_prefix": 10000,
         }
     }
@@ -231,7 +231,7 @@ def test_apply_publisher_only_is_applied(backend):
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["applied"]) == ["publisher"]
-    assert res["applied"][0]["name"] == "mocepub"
+    assert res["applied"][0]["name"] == "contosopub"
     assert res["skipped"] == []
     assert res["planned"] == []
     assert res["failed"] == []
@@ -259,7 +259,7 @@ def test_apply_publisher_then_solution_created_in_order(backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == ["publisher", "solution"]
-    assert res["applied"][1]["name"] == "MoceCore"
+    assert res["applied"][1]["name"] == "ContosoCore"
     assert res["ok"] is True
 
 
@@ -275,7 +275,7 @@ def test_apply_creates_entity_after_publisher_solution(backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == ["publisher", "solution", "entity"]
-    assert res["applied"][2]["name"] == "moce_Project"
+    assert res["applied"][2]["name"] == "contoso_Project"
     assert res["ok"] is True
 
 
@@ -295,7 +295,7 @@ def test_apply_creates_global_optionset(backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "optionset"]
-    assert res["applied"][3]["name"] == "moce_priority"
+    assert res["applied"][3]["name"] == "contoso_priority"
     assert res["ok"] is True
 
 
@@ -313,11 +313,11 @@ def test_apply_creates_attributes_of_each_kind(backend):
         _mock_solution_create(m, backend)
         _mock_entity_create(m, backend)
         _mock_optionset_create(m, backend)
-        _mock_attribute_create(m, backend, logical="moce_code", schema="moce_Code",
+        _mock_attribute_create(m, backend, logical="contoso_code", schema="contoso_Code",
                                attr_type="String")
-        _mock_attribute_create(m, backend, logical="moce_priority", schema="moce_Priority",
+        _mock_attribute_create(m, backend, logical="contoso_priority", schema="contoso_Priority",
                                attr_type="Picklist")
-        _mock_one_to_many(m, backend, schema="moce_project_moce_owner")
+        _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == [
@@ -325,7 +325,7 @@ def test_apply_creates_attributes_of_each_kind(backend):
         "attribute", "attribute", "attribute",
     ]
     assert [e["name"] for e in res["applied"][4:]] == [
-        "moce_Code", "moce_Priority", "moce_Owner"]
+        "contoso_Code", "contoso_Priority", "contoso_Owner"]
     assert res["ok"] is True
 
 
@@ -339,11 +339,11 @@ def test_apply_creates_explicit_relationship(backend):
         _mock_publisher_create(m, backend)
         _mock_solution_create(m, backend)
         _mock_entity_create(m, backend)
-        _mock_one_to_many(m, backend, schema="moce_project_task")
+        _mock_one_to_many(m, backend, schema="contoso_project_task")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "relationship"]
-    assert res["applied"][3]["name"] == "moce_project_task"
+    assert res["applied"][3]["name"] == "contoso_project_task"
     assert res["ok"] is True
 
 
@@ -430,9 +430,9 @@ def test_apply_dry_run_greenfield_reports_dependents_planned(dry_backend):
     with requests_mock.Mocker() as m:
         # Only forced-real existence GETs fire under dry-run; everything is absent.
         m.get(backend.url_for("publishers"), json={"value": []})
-        m.get(backend.url_for("EntityDefinitions(LogicalName='moce_project')"),
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
               status_code=404)
-        m.get(backend.url_for("GlobalOptionSetDefinitions(Name='moce_priority')"),
+        m.get(backend.url_for("GlobalOptionSetDefinitions(Name='contoso_priority')"),
               status_code=404)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
@@ -460,12 +460,12 @@ def test_apply_idempotent_reapply_all_skipped(backend):
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_create(m, backend, exists=True)
         _mock_optionset_create(m, backend, exists=True)
-        _mock_attribute_create(m, backend, logical="moce_code", schema="moce_Code",
+        _mock_attribute_create(m, backend, logical="contoso_code", schema="contoso_Code",
                                attr_type="String", exists=True)
-        _mock_attribute_create(m, backend, logical="moce_priority", schema="moce_Priority",
+        _mock_attribute_create(m, backend, logical="contoso_priority", schema="contoso_Priority",
                                attr_type="Picklist", exists=True)
-        _mock_one_to_many(m, backend, schema="moce_project_moce_owner", exists=True)
-        _mock_one_to_many(m, backend, schema="moce_project_task", exists=True)
+        _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner", exists=True)
+        _mock_one_to_many(m, backend, schema="contoso_project_task", exists=True)
         _mock_view_create(m, backend, exists=True)
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
@@ -486,7 +486,7 @@ def test_apply_partial_failure_aborts_and_reports(backend):
         _mock_publisher_create(m, backend)
         _mock_solution_create(m, backend)
         # Entity create fails: existence probe says absent, then the POST 500s.
-        m.get(backend.url_for("EntityDefinitions(LogicalName='moce_project')"),
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
               status_code=404)
         m.post(backend.url_for("EntityDefinitions"), status_code=500,
                json={"error": {"message": "boom"}})
@@ -516,8 +516,8 @@ def test_apply_rejects_entity_missing_schema_name(backend):
 
 def test_apply_rejects_unknown_attribute_kind(backend):
     spec = {"entities": [{
-        "schema_name": "moce_Project", "display_name": "Project",
-        "attributes": [{"kind": "frobnicate", "schema_name": "moce_X",
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "frobnicate", "schema_name": "contoso_X",
                         "display_name": "X"}],
     }]}
     with requests_mock.Mocker() as m:
@@ -528,8 +528,8 @@ def test_apply_rejects_unknown_attribute_kind(backend):
 
 def test_apply_rejects_lookup_without_target_entity(backend):
     spec = {"entities": [{
-        "schema_name": "moce_Project", "display_name": "Project",
-        "attributes": [{"kind": "lookup", "schema_name": "moce_Owner",
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "lookup", "schema_name": "contoso_Owner",
                         "display_name": "Owner"}],
     }]}
     with requests_mock.Mocker() as m:
@@ -539,7 +539,7 @@ def test_apply_rejects_lookup_without_target_entity(backend):
 
 
 def test_apply_rejects_publisher_missing_prefix(backend):
-    spec = {"publisher": {"unique_name": "mocepub", "option_value_prefix": 10000}}
+    spec = {"publisher": {"unique_name": "contosopub", "option_value_prefix": 10000}}
     with requests_mock.Mocker() as m:
         with pytest.raises(D365Error, match="prefix"):
             apply_mod.apply_spec(backend, spec, stage_only=False)
@@ -547,7 +547,7 @@ def test_apply_rejects_publisher_missing_prefix(backend):
 
 
 def test_apply_rejects_non_list_attributes(backend):
-    spec = {"entities": [{"schema_name": "moce_Project", "display_name": "Project",
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "Project",
                           "attributes": {}}]}
     with requests_mock.Mocker() as m:
         with pytest.raises(D365Error, match="attributes"):
@@ -557,7 +557,7 @@ def test_apply_rejects_non_list_attributes(backend):
 
 def test_apply_rejects_malformed_view_column(backend):
     spec = {"entities": [{
-        "schema_name": "moce_Project", "display_name": "Project",
+        "schema_name": "contoso_Project", "display_name": "Project",
         "views": [{"name": "V", "columns": [{"width": 100}]}],  # column missing name
     }]}
     with requests_mock.Mocker() as m:
@@ -571,13 +571,13 @@ def test_apply_otc_real_error_is_reported_not_swallowed(backend):
     entity = {**_ENTITY, "views": [_VIEW]}
     spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
     ent_url = backend.url_for(f"EntityDefinitions({_ENT_ID})")
-    record = {"LogicalName": "moce_project", "SchemaName": "moce_Project",
-              "EntitySetName": "moce_projects"}
+    record = {"LogicalName": "contoso_project", "SchemaName": "contoso_Project",
+              "EntitySetName": "contoso_projects"}
     with requests_mock.Mocker() as m:
         _mock_publisher_create(m, backend)
         _mock_solution_create(m, backend)
         # entity existence probe (404) creates it; the OTC resolve then 403s.
-        m.get(backend.url_for("EntityDefinitions(LogicalName='moce_project')"),
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
               [{"status_code": 404},
                {"status_code": 403, "json": {"error": {"message": "forbidden"}}}])
         m.post(backend.url_for("EntityDefinitions"), status_code=204,
@@ -592,7 +592,7 @@ def test_apply_otc_real_error_is_reported_not_swallowed(backend):
 
 
 def test_apply_rejects_non_int_option_value_prefix(backend):
-    spec = {"publisher": {"unique_name": "mocepub", "prefix": "moce",
+    spec = {"publisher": {"unique_name": "contosopub", "prefix": "contoso",
                           "option_value_prefix": "10000"}}  # quoted in YAML
     with requests_mock.Mocker() as m:
         with pytest.raises(D365Error, match="option_value_prefix"):
@@ -601,7 +601,7 @@ def test_apply_rejects_non_int_option_value_prefix(backend):
 
 
 def test_apply_rejects_non_int_optionset_value(backend):
-    spec = {"optionsets": [{"name": "moce_p", "display_name": "P",
+    spec = {"optionsets": [{"name": "contoso_p", "display_name": "P",
                             "options": [{"value": "100000000", "label": "Low"}]}]}
     with requests_mock.Mocker() as m:
         with pytest.raises(D365Error, match="value"):
@@ -611,7 +611,7 @@ def test_apply_rejects_non_int_optionset_value(backend):
 
 def test_apply_forwards_inline_picklist_options(backend):
     """A picklist attribute with inline options must build a local set (no global resolve)."""
-    attr = {"kind": "picklist", "schema_name": "moce_Stage", "display_name": "Stage",
+    attr = {"kind": "picklist", "schema_name": "contoso_Stage", "display_name": "Stage",
             "options": [{"value": 1, "label": "New"}, {"value": 2, "label": "Done"}]}
     entity = {**_ENTITY, "attributes": [attr]}
     spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
@@ -619,7 +619,7 @@ def test_apply_forwards_inline_picklist_options(backend):
         _mock_publisher_create(m, backend)
         _mock_solution_create(m, backend)
         _mock_entity_create(m, backend)
-        _mock_attribute_create(m, backend, logical="moce_stage", schema="moce_Stage",
+        _mock_attribute_create(m, backend, logical="contoso_stage", schema="contoso_Stage",
                                attr_type="Picklist")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
@@ -630,9 +630,9 @@ def test_apply_forwards_inline_picklist_options(backend):
 
 
 def test_apply_rejects_malformed_inline_attribute_options(backend):
-    attr = {"kind": "picklist", "schema_name": "moce_Stage", "display_name": "Stage",
+    attr = {"kind": "picklist", "schema_name": "contoso_Stage", "display_name": "Stage",
             "options": [{"value": 1}]}  # option missing label
-    spec = {"entities": [{"schema_name": "moce_Project", "display_name": "P",
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
                           "attributes": [attr]}]}
     with requests_mock.Mocker() as m:
         with pytest.raises(D365Error, match="option"):
@@ -644,7 +644,7 @@ def test_apply_dry_run_solution_without_publisher_skips_when_exists(dry_backend)
     spec = {"solution": _SOLUTION}  # no publisher block
     with requests_mock.Mocker() as m:
         m.get(dry_backend.url_for("solutions"),
-              json={"value": [{"solutionid": _GUID2, "uniquename": "MoceCore"}]})
+              json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]})
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution"]
@@ -663,12 +663,12 @@ def test_apply_validation_accepts_all_builder_attribute_kinds():
     from crm.core import metadata_attrs
 
     for kind in metadata_attrs.ATTRIBUTE_KINDS:
-        attr = {"kind": kind, "schema_name": "moce_X", "display_name": "X"}
+        attr = {"kind": kind, "schema_name": "contoso_X", "display_name": "X"}
         if kind == "lookup":
             attr["target_entity"] = "systemuser"
         if kind in ("picklist", "multiselect"):
-            attr["optionset_name"] = "moce_p"
-        spec = {"entities": [{"schema_name": "moce_Project", "display_name": "P",
+            attr["optionset_name"] = "contoso_p"
+        spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
                               "attributes": [attr]}]}
         apply_mod.validate_spec(spec)  # must not raise
 
@@ -688,12 +688,12 @@ def _mock_full(m, backend, *, exists):
     _mock_solution_create(m, backend, exists=exists)
     _mock_entity_create(m, backend, exists=exists)
     _mock_optionset_create(m, backend, exists=exists)
-    _mock_attribute_create(m, backend, logical="moce_code", schema="moce_Code",
+    _mock_attribute_create(m, backend, logical="contoso_code", schema="contoso_Code",
                            attr_type="String", exists=exists)
-    _mock_attribute_create(m, backend, logical="moce_priority", schema="moce_Priority",
+    _mock_attribute_create(m, backend, logical="contoso_priority", schema="contoso_Priority",
                            attr_type="Picklist", exists=exists)
-    _mock_one_to_many(m, backend, schema="moce_project_moce_owner", exists=exists)
-    _mock_one_to_many(m, backend, schema="moce_project_task", exists=exists)
+    _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner", exists=exists)
+    _mock_one_to_many(m, backend, schema="contoso_project_task", exists=exists)
     _mock_view_create(m, backend, exists=exists)
     m.post(backend.url_for("PublishAllXml"), status_code=204)
 
@@ -731,9 +731,9 @@ def test_e2e_dry_run_greenfield_plans_dependents(dry_backend, monkeypatch, tmp_p
     spec_path = _write_spec(tmp_path)
     with requests_mock.Mocker() as m:
         m.get(dry_backend.url_for("publishers"), json={"value": []})
-        m.get(dry_backend.url_for("EntityDefinitions(LogicalName='moce_project')"),
+        m.get(dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
               status_code=404)
-        m.get(dry_backend.url_for("GlobalOptionSetDefinitions(Name='moce_priority')"),
+        m.get(dry_backend.url_for("GlobalOptionSetDefinitions(Name='contoso_priority')"),
               status_code=404)
         result = CliRunner().invoke(
             cli, ["--dry-run", "--json", "apply", "-f", str(spec_path)])

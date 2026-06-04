@@ -39,14 +39,14 @@ class TestConnectCommandNegotiation:
     def test_connect_onprem_persists_v91(self, tmp_path):
         # AC: connect against an on-prem org without --api-version yields a
         # working profile whose saved api_version is v9.1.
-        base = "https://internalcrm.moce.local/MOCE"
+        base = "https://internalcrm.contoso.local/Contoso"
         with requests_mock.Mocker() as m:
             m.get(f"{base}/api/data/v9.2/WhoAmI", status_code=501,
                   json={"error": {"code": "0x0", "message": "Not Implemented"}})
             m.get(f"{base}/api/data/v9.1/WhoAmI", json=_WHOAMI)
             result = CliRunner().invoke(cli, [
                 "connection", "connect", "--url", base,
-                "--username", "alice", "--domain", "MOCE",
+                "--username", "alice", "--domain", "CONTOSO",
                 "--password", "pw", "--profile-name", "onprem",
             ])
         assert result.exit_code == 0, result.output
@@ -68,7 +68,7 @@ class TestConnectCommandNegotiation:
 
     def test_connect_explicit_version_not_downgraded(self):
         # AC: an explicitly-requested version 501s through, never auto-downgraded.
-        base = "https://internalcrm.moce.local/MOCE"
+        base = "https://internalcrm.contoso.local/Contoso"
         with requests_mock.Mocker() as m:
             m.get(f"{base}/api/data/v9.2/WhoAmI", status_code=501,
                   json={"error": {"code": "0x0", "message": "Not Implemented"}})
@@ -85,14 +85,14 @@ class TestConnectCommandNegotiation:
         # must NOT negotiate/downgrade it, even on a 501. Regression for the
         # decide-before-dotenv-autoload bug (PR #57 review). The autouse
         # snapshot/restore fixture undoes the load_dotenv() env writes.
-        base = "https://internalcrm.moce.local/MOCE"
+        base = "https://internalcrm.contoso.local/Contoso"
         env_file = tmp_path / "pinned.env"
         env_file.write_text(
             "\n".join([
                 f"D365_URL={base}",
                 "D365_USERNAME=alice",
                 "D365_PASSWORD=pw",
-                "D365_DOMAIN=MOCE",
+                "D365_DOMAIN=CONTOSO",
                 "D365_AUTH=ntlm",
                 "D365_API_VERSION=v9.2",
             ]) + "\n",

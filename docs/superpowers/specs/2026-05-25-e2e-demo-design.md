@@ -1,7 +1,7 @@
 # E2E Demo + MkDocs Reference Site
 
 **Date:** 2026-05-25
-**Goal:** Execute a realistic IT-services customization scenario against the live MOCE
+**Goal:** Execute a realistic IT-services customization scenario against the live Contoso
 D365 CE on-prem server, capture real output at every step, and publish a complete
 MkDocs Material reference site (scenario walkthrough + full command reference).
 
@@ -13,7 +13,7 @@ Two deliverables:
 
 | # | Deliverable | Location |
 |---|-------------|----------|
-| 1 | Live scenario execution (6 phases) against `http://internalcrm.moce.local/MOCE` | terminal output captured per phase |
+| 1 | Live scenario execution (6 phases) against `http://internalcrm.contoso.local/Contoso` | terminal output captured per phase |
 | 2 | MkDocs Material site | `docs/` + `mkdocs.yml`; built to `site/` |
 
 The scenario is the narrative spine of the docs — every scenario command becomes a
@@ -25,8 +25,8 @@ live example on the corresponding doc page.
 
 | Setting | Value |
 |---------|-------|
-| `CRM_BASE_URL` | `http://internalcrm.moce.local/MOCE` |
-| `CRM_USERNAME` | `moce\crmadmin` |
+| `CRM_BASE_URL` | `http://internalcrm.contoso.local/Contoso` |
+| `CRM_USERNAME` | `contoso\crmadmin` |
 | `CRM_AUTH` | `ntlm` |
 | `CRM_API_VERSION` | `v9.1` |
 | `CRM_PASSWORD` | env var (never written to docs) |
@@ -35,9 +35,9 @@ No profile file needed — CLI resolves credentials from env vars directly.
 
 ---
 
-## 3. Scenario — MOCE-IT client request
+## 3. Scenario — Contoso-IT client request
 
-**Narrative:** MOCE-IT is an IT services company running D365 CE on-prem. They need
+**Narrative:** Contoso-IT is an IT services company running D365 CE on-prem. They need
 to track internal **IT Projects** and their associated **Service Tickets**. Each
 ticket has a priority tier and a status. Projects have a name, start date, and budget.
 Management wants to report on open tickets per project.
@@ -137,7 +137,7 @@ mkdocs.yml
 docs/
   index.md                  # overview, install, quick-start
   scenario/
-    index.md                # MOCE-IT narrative intro + entity diagram
+    index.md                # Contoso-IT narrative intro + entity diagram
     phase-0-connect.md
     phase-1-explore.md
     phase-2-schema.md
@@ -219,7 +219,7 @@ Each `scenario/phase-N-*.md` follows:
 ```
 # Phase N — <Title>
 
-> **Story beat:** one sentence connecting this phase to the MOCE-IT narrative.
+> **Story beat:** one sentence connecting this phase to the Contoso-IT narrative.
 
 ## Commands run
 
@@ -245,7 +245,7 @@ Step-by-step with command block + real captured output per command.
 
 ## 7. Success criteria (overall)
 
-- [ ] All 6 phases execute against MOCE without error
+- [ ] All 6 phases execute against Contoso without error
 - [ ] `mkdocs build` completes with zero warnings
 - [ ] Every CLI subcommand appears in at least one reference page
 - [ ] Every scenario command has real captured output embedded
@@ -255,8 +255,8 @@ Step-by-step with command block + real captured output per command.
 
 ## 8. Out of scope
 
-- `action invoke` / `action function` — no custom actions registered on MOCE; reference page only (no live example)
-- `workflow activate/run` — no workflows on MOCE by default; document the commands with synthetic example
+- `action invoke` / `action function` — no custom actions registered on Contoso; reference page only (no live example)
+- `workflow activate/run` — no workflows on Contoso by default; document the commands with synthetic example
 - `session` internals — document surface only
 - REPL tab completion — not capturable; note in reference page
 - Deploying to GitHub Pages (`mkdocs gh-deploy`) — out of scope for this spec
