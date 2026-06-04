@@ -218,7 +218,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `query`      | OData v4 and FetchXML queries                              |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
-| `solution`   | List / info / components / set-version / export / import solutions |
+| `solution`   | List / info / components / set-version / export / import / import-result solutions |
 | `data`       | Bulk CSV/JSON dataset export                               |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state and command history                    |

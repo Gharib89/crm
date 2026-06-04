@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -422,12 +423,17 @@ def import_solution(
     overwrite_unmanaged_customizations: bool = True,
     timeout: int | None = None,
     quiet: bool = False,
+    formatted: bool = False,
 ) -> dict[str, Any]:
     """Call ImportSolutionAsync and block on the resulting ImportJob.
 
     Returns a dict with import_job_id, async_operation_id, status='succeeded',
     progress percent, started_on / completed_on (from the importjobs row), and
-    total wall-clock duration in ms.
+    total wall-clock duration in ms. The final read also pulls the importjob
+    `data` column and parses it into a per-component `result` + `components`
+    envelope; any non-success component adds a `warnings` note so a partial
+    failure under an overall-succeeded async op is no longer hidden (#70). With
+    `formatted=True`, attaches the Excel-format report under `formatted_results`.
 
     Raises D365Error on file-not-found, async failure, or timeout.
     """
@@ -486,14 +492,15 @@ def import_solution(
             status=exc.status, code=exc.code, response_body=exc.response_body,
         ) from exc
 
-    # Final importjobs read for the canonical progress + timestamps.
+    # Final importjobs read for the canonical progress + timestamps + the per-
+    # component result envelope (data column).
     job_row = as_dict(backend.get(
         f"importjobs({import_job_id})",
-        params={"$select": "progress,startedon,completedon"},
+        params={"$select": "progress,startedon,completedon,data"},
     ))
     duration_ms = int((_time.monotonic() - started) * 1000)
     prog = job_row.get("progress")
-    return {
+    out: dict[str, Any] = {
         "import_job_id": import_job_id,
         "async_operation_id": async_op_id,
         "status": "succeeded",
@@ -502,6 +509,172 @@ def import_solution(
         "completed_on": job_row.get("completedon"),
         "duration_ms": duration_ms,
     }
+
+    # The import already succeeded (statuscode 30); parsing the post-hoc report
+    # is best-effort (missing/unparseable data → warning, never an error).
+    _attach_import_results(out, job_row.get("data"))
+
+    if formatted:
+        out["formatted_results"] = _formatted_import_results(backend, import_job_id)
+
+    return out
+
+
+# ── ImportJob result parsing (#70) ──────────────────────────────────────────
+#
+# The importjob `data` column holds an `<importexportxml>` document (structure
+# verified against the op-9-1 "Work with solutions" sample). The solution-level
+# outcome lives at //solutionManifest/result/@result; every imported component
+# (optionSet / entity / webResource / rootComponent / dependency / …) carries
+# its own <result> child with result/errorcode/errortext. We parse both so a
+# partial failure under an overall-succeeded async op can no longer hide.
+
+
+def _component_name(el: ET.Element) -> str:
+    """Best human label for a component element: LocalizedName, name, id, or
+    UniqueName — falling back to the element tag so the name is never null (some
+    components, e.g. <rootComponent>/<dependency>, carry no label of their own)."""
+    for attr in ("LocalizedName", "name", "id"):
+        v = el.get(attr)
+        if v:
+            return v
+    child = el.find("UniqueName")
+    if child is not None and child.text:
+        return child.text.strip()
+    return el.tag
+
+
+def parse_import_job_data(data_xml: str) -> dict[str, Any]:
+    """Parse an ImportJob `data` XML document into a structured result envelope.
+
+    Returns `{result, solution, components}` where `result` is the solution-level
+    outcome (success|warning|failure) read from //solutionManifest/result/@result,
+    `solution` the manifest UniqueName (or None), and `components` a list of
+    `{name, type, result[, errorcode][, errortext]}` — one per component element
+    that carries a `<result>` child. `errorcode`/`errortext` are included only
+    when meaningful (non-zero / non-empty). Raises D365Error on unparseable XML.
+    """
+    if not data_xml or not data_xml.strip():
+        raise D365Error("ImportJob data is empty; nothing to parse.")
+    try:
+        root = ET.fromstring(data_xml)
+    except ET.ParseError as exc:
+        raise D365Error(f"Could not parse ImportJob data XML: {exc}") from exc
+
+    manifest = root.find(".//solutionManifest")
+    overall = "unknown"
+    solution_name: str | None = None
+    if manifest is not None:
+        res = manifest.find("result")
+        if res is not None:
+            overall = res.get("result", "unknown")
+        uname = manifest.find("UniqueName")
+        if uname is not None and uname.text:
+            solution_name = uname.text.strip()
+
+    components: list[dict[str, Any]] = []
+    for el in root.iter():
+        if el.tag == "solutionManifest":
+            continue  # its <result> is the solution-level overall, not a component
+        res = el.find("result")
+        if res is None:
+            continue
+        comp: dict[str, Any] = {
+            "name": _component_name(el),
+            "type": el.tag,
+            "result": res.get("result", "unknown"),
+        }
+        errorcode = res.get("errorcode")
+        if errorcode and errorcode != "0":
+            comp["errorcode"] = errorcode
+        errortext = res.get("errortext")
+        if errortext:
+            comp["errortext"] = errortext
+        components.append(comp)
+
+    return {"result": overall, "solution": solution_name, "components": components}
+
+
+def _result_warnings(result: str, components: list[dict[str, Any]]) -> list[str]:
+    """Advisory notes for a parsed import result: the solution-level outcome if it
+    is not `success`, plus one note per non-success component. Empty when clean —
+    so a real partial failure surfaces even when the async op reported success."""
+    warnings: list[str] = []
+    if result != "success":
+        warnings.append(f"solution-level import result is {result!r}.")
+    for c in components:
+        r = c.get("result")
+        if not r or r == "success":
+            continue
+        label = c.get("name") or c.get("type") or "component"
+        msg = f"{c.get('type', 'component')} {label!r} import result is {r!r}"
+        detail = c.get("errortext")
+        if detail:
+            msg += f": {detail}"
+        warnings.append(msg + ".")
+    return warnings
+
+
+def _attach_import_results(out: dict[str, Any], data_xml: str | None) -> None:
+    """Parse the import `data` column into `out['result']`/`['components']`, adding
+    a `warnings` note for any non-success component. Best-effort: a missing or
+    unparseable data column degrades to a `warnings` note, never an error — so the
+    post-hoc report can't fail an import the server already completed, and an
+    absent result/components is never read as "checked and clean"."""
+    if not data_xml:
+        out["warnings"] = [
+            "import job data column was empty; per-component results not verified."
+        ]
+        return
+    try:
+        env = parse_import_job_data(data_xml)
+    except D365Error as exc:
+        out["warnings"] = [f"could not parse import result data: {exc}"]
+        return
+    out["result"] = env["result"]
+    out["components"] = env["components"]
+    warnings = _result_warnings(env["result"], env["components"])
+    if warnings:
+        out["warnings"] = warnings
+
+
+def _formatted_import_results(backend: D365Backend, import_job_id: str) -> str | None:
+    """Fetch the Excel-format RetrieveFormattedImportJobResults report (verbatim)."""
+    fr = as_dict(backend.get(
+        f"RetrieveFormattedImportJobResults(ImportJobId={import_job_id})"
+    ))
+    return fr.get("FormattedResults")
+
+
+def import_result(
+    backend: D365Backend,
+    import_job_id: str,
+    *,
+    formatted: bool = False,
+) -> dict[str, Any]:
+    """Re-fetch an ImportJob's `data` and parse it into the per-component envelope.
+
+    Returns `{import_job_id, solution, progress, started_on, completed_on}` plus
+    `result`/`components` when the data column could be parsed; otherwise a
+    `warnings` note explains why. Parsing is best-effort — a missing or unparseable
+    data column degrades to a warning, never an error. With `formatted=True`, also
+    attaches the Excel-format report verbatim under `formatted_results`.
+    """
+    job = as_dict(backend.get(
+        f"importjobs({import_job_id})",
+        params={"$select": "data,solutionname,progress,startedon,completedon"},
+    ))
+    out: dict[str, Any] = {
+        "import_job_id": import_job_id,
+        "solution": job.get("solutionname"),
+        "progress": job.get("progress"),
+        "started_on": job.get("startedon"),
+        "completed_on": job.get("completedon"),
+    }
+    _attach_import_results(out, job.get("data"))
+    if formatted:
+        out["formatted_results"] = _formatted_import_results(backend, import_job_id)
+    return out
 
 
 def publish_all(backend: D365Backend) -> dict[str, Any]:
