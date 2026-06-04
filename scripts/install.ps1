@@ -42,7 +42,7 @@ Invoke-WebRequest -Uri $zipUrl -OutFile $tmpZip -UseBasicParsing
 # Verify SHA-256 before extracting. Expected hash comes from the published
 # SHA256SUMS next to the archive in R2, or $env:CRM_SHA256 if the user pins one.
 if ($env:CRM_SHA256) {
-    $expected = $env:CRM_SHA256
+    $expected = $env:CRM_SHA256.Trim()   # a pasted hash may carry surrounding whitespace
 } else {
     try {
         $sums = (Invoke-WebRequest -Uri "$BaseUrl/$version/SHA256SUMS" -UseBasicParsing).Content

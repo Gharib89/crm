@@ -41,8 +41,9 @@ else
         exit 1
     fi
 fi
-# Compare case-insensitively: sha256sum emits lowercase, but a pinned CRM_SHA256 may be uppercase.
-expected="$(printf '%s' "$expected" | tr 'A-Z' 'a-z')"
+# Normalize: drop surrounding whitespace (a pasted CRM_SHA256 may carry it) and
+# lowercase, since sha256sum emits lowercase but a pinned hash may be uppercase.
+expected="$(printf '%s' "$expected" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
 # Capture first (not `sha256sum | awk`) so a sha256sum failure isn't masked by the pipe.
 actual_line="$(sha256sum "${TMP}/crm.tar.gz")" || {
     echo "Failed to compute SHA-256 of the downloaded archive." >&2

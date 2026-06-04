@@ -158,6 +158,20 @@ def test_missing_sha256sums_aborts(tmp_path: Path):
     assert "CRM_SHA256" in result.stderr
 
 
+def test_crm_sha256_with_surrounding_whitespace_matches(tmp_path: Path):
+    """A pasted CRM_SHA256 with trailing whitespace/newline must still match."""
+    archive = _make_archive()
+    files = {f"/{VERSION}/{ARCHIVE_NAME}": archive}
+    home = tmp_path / "home"
+    home.mkdir()
+
+    with _Server(files) as server:
+        result = _run_install(server.base_url, home, {"CRM_SHA256": f"  {_sha256(archive)}\n"})
+
+    assert result.returncode == 0, result.stderr
+    assert (home / ".local" / "share" / "crm" / "crm").exists()
+
+
 def test_sha256sum_failure_surfaces_clearly(tmp_path: Path):
     """If sha256sum itself fails, surface that — not a misleading empty mismatch."""
     archive = _make_archive()
