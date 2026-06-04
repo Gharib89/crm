@@ -69,6 +69,16 @@ class TestUpdateSolution:
                 sol_mod.update_solution(backend, "CRMWorx")
             assert m.request_history == []  # validation precedes any HTTP
 
+    def test_unique_name_single_quote_escaped_in_filter(self, backend):
+        from urllib.parse import unquote
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("solutions"), json={"value": [_unmanaged_row()]})
+            m.patch(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
+            sol_mod.update_solution(backend, "O'Brien", version="2.0.0.0")
+        get_url = unquote([r for r in m.request_history if r.method == "GET"][0].url)
+        # OData literal escaping: ' -> '' guards against $filter injection
+        assert "'O''Brien'" in get_url
+
     def test_friendly_name_and_description_only(self, backend):
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("solutions"), json={"value": [_unmanaged_row()]})

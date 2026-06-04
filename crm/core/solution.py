@@ -199,7 +199,9 @@ def update_solution(
 
     Resolves the solutionid via solution_info, builds a payload of only the
     supplied fields, and delegates to entity.update (If-Match:* + --dry-run reused;
-    no new HTTP path). Returns `{updated, uniquename, solutionid, <changed fields>}`.
+    no new HTTP path). Returns `{updated, uniquename, solutionid, <changed fields>}`
+    on a real run, or the entity.update `_dry_run` preview dict (plus uniquename /
+    solutionid) under --dry-run.
     """
     if version is None and friendly_name is None and description is None:
         raise D365Error("nothing to update: pass version, friendly_name, or description.")
@@ -259,7 +261,8 @@ def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list
 def solution_info(backend: D365Backend, unique_name: str) -> dict[str, Any]:
     if not unique_name:
         raise D365Error("solution unique name required.")
-    params = {"$filter": f"uniquename eq '{unique_name}'"}
+    un_lit = unique_name.replace("'", "''")  # escape the OData string literal
+    params = {"$filter": f"uniquename eq '{un_lit}'"}
     result = as_dict(backend.get("solutions", params=params))
     items = result.get("value", [])
     if not items:
