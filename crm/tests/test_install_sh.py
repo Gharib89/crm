@@ -26,8 +26,9 @@ ARCHIVE_NAME = "crm-linux-x86_64.tar.gz"
 VERSION = "v9.9.9"
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("curl") is None or shutil.which("sha256sum") is None,
-    reason="install.sh needs curl + sha256sum",
+    os.name != "posix"
+    or any(shutil.which(t) is None for t in ("sh", "curl", "sha256sum", "tar")),
+    reason="install.sh integration test needs a POSIX shell with curl/sha256sum/tar",
 )
 
 
@@ -169,6 +170,40 @@ def test_crm_sha256_override_matches_installs(tmp_path: Path):
 
     assert result.returncode == 0, result.stderr
     assert (home / ".local" / "share" / "crm" / "crm").exists()
+
+
+def test_crm_sha256_uppercase_matches_installs(tmp_path: Path):
+    """An uppercase CRM_SHA256 must not false-mismatch the lowercase digest."""
+    archive = _make_archive()
+    files = {f"/{VERSION}/{ARCHIVE_NAME}": archive}
+    home = tmp_path / "home"
+    home.mkdir()
+
+    with _Server(files) as server:
+        result = _run_install(server.base_url, home, {"CRM_SHA256": _sha256(archive).upper()})
+
+    assert result.returncode == 0, result.stderr
+    assert (home / ".local" / "share" / "crm" / "crm").exists()
+
+
+def test_sha256sums_without_archive_entry_aborts(tmp_path: Path):
+    """SHA256SUMS served but lists no line for our archive -> explicit abort."""
+    archive = _make_archive()
+    sums = f"{_sha256(archive)}  some-other-file.tar.gz\n".encode()
+    files = {
+        f"/{VERSION}/{ARCHIVE_NAME}": archive,
+        f"/{VERSION}/SHA256SUMS": sums,
+    }
+    home = tmp_path / "home"
+    home.mkdir()
+
+    with _Server(files) as server:
+        result = _run_install(server.base_url, home, {})
+
+    assert result.returncode != 0
+    assert not (home / ".local" / "share" / "crm" / "crm").exists()
+    assert ARCHIVE_NAME in result.stderr
+    assert "CRM_SHA256" in result.stderr
 
 
 def test_crm_sha256_override_mismatch_aborts(tmp_path: Path):

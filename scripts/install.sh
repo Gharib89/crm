@@ -34,8 +34,15 @@ else
         echo "Could not fetch SHA256SUMS from ${BASE_URL}/${VERSION}/; set CRM_SHA256 to install without it." >&2
         exit 1
     }
-    expected="$(printf '%s\n' "$sums" | awk -v f="$ARCHIVE" '$2 == f { print $1 }')"
+    # First matching line only; strip a trailing CR in case the file is CRLF.
+    expected="$(printf '%s\n' "$sums" | awk -v f="$ARCHIVE" '{ sub(/\r$/, "") } $2 == f { print $1; exit }')"
+    if [ -z "$expected" ]; then
+        echo "SHA256SUMS has no entry for ${ARCHIVE}; set CRM_SHA256 to install without it." >&2
+        exit 1
+    fi
 fi
+# Compare case-insensitively: sha256sum emits lowercase, but a pinned CRM_SHA256 may be uppercase.
+expected="$(printf '%s' "$expected" | tr 'A-Z' 'a-z')"
 actual="$(sha256sum "${TMP}/crm.tar.gz" | awk '{ print $1 }')"
 if [ "$expected" != "$actual" ]; then
     echo "Checksum mismatch for ${ARCHIVE}: expected ${expected:-<none>}, got ${actual}" >&2

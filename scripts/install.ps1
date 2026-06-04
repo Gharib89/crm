@@ -52,6 +52,10 @@ if ($env:CRM_SHA256) {
     }
     $line     = ($sums -split "`n") | Where-Object { $_ -match "\s$([regex]::Escape($archive))\s*$" } | Select-Object -First 1
     $expected = ($line -split '\s+')[0]
+    if (-not $expected) {
+        Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
+        throw "SHA256SUMS has no entry for ${archive}; set `$env:CRM_SHA256 to install without it."
+    }
 }
 $actual = (Get-FileHash -Algorithm SHA256 -Path $tmpZip).Hash
 if ($expected -ne $actual) {   # -ne is case-insensitive: lowercase sums vs uppercase Get-FileHash
