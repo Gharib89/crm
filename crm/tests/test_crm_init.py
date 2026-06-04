@@ -6,9 +6,12 @@ import json
 from pathlib import Path
 
 import pytest
+import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import cli
+
+_WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001"}
 
 
 class TestTemplateMode:
@@ -62,7 +65,9 @@ class TestInteractiveWizard:
             "myprofile",
             "y",
         ]) + "\n"
-        result = runner.invoke(cli, ["init"], input=inputs)
+        with requests_mock.Mocker() as m:
+            m.get("https://crm.contoso.local/contoso/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            result = runner.invoke(cli, ["init"], input=inputs)
         assert result.exit_code == 0, result.output
         profile_file = tmp_path / ".crm" / "profiles" / "myprofile.json"
         assert profile_file.exists()
@@ -71,6 +76,38 @@ class TestInteractiveWizard:
         assert data["username"] == "alice"
         assert data["domain"] == "CONTOSO"
         assert data["auth_scheme"] == "ntlm"
+        assert data["api_version"] == "v9.2"  # cloud-style server accepts v9.2
+
+    def test_wizard_onprem_negotiates_to_v91(self, tmp_path, monkeypatch):
+        # AC #51: an on-prem server 501s on v9.2 — the wizard probe must
+        # downgrade and persist v9.1 so the profile is usable as-is.
+        monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+        runner = CliRunner()
+        inputs = "\n".join([
+            "https://internalcrm.moce.local/MOCE",
+            "ntlm",
+            "alice",
+            "pw1234",
+            "MOCE",
+            "onprem",
+            "y",
+        ]) + "\n"
+        with requests_mock.Mocker() as m:
+            m.get(
+                "https://internalcrm.moce.local/MOCE/api/data/v9.2/WhoAmI",
+                status_code=501,
+                json={"error": {"code": "0x0", "message": "Not Implemented"}},
+            )
+            m.get(
+                "https://internalcrm.moce.local/MOCE/api/data/v9.1/WhoAmI",
+                json=_WHOAMI,
+            )
+            result = runner.invoke(cli, ["init"], input=inputs)
+        assert result.exit_code == 0, result.output
+        data = json.loads(
+            (tmp_path / ".crm" / "profiles" / "onprem.json").read_text(encoding="utf-8")
+        )
+        assert data["api_version"] == "v9.1"
 
     def test_wizard_writes_oauth_profile(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))

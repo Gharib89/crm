@@ -69,6 +69,16 @@ def _env(name: str, default: str = "") -> str:
     return default
 
 
+def env_api_version() -> str:
+    """The api_version explicitly set via D365_API_VERSION / CRM_API_VERSION, else ''.
+
+    Public so command modules can detect an env-pinned version (to decide whether
+    to negotiate) without reaching into the private _env() helper. Callers should
+    load_dotenv() first if a .env file may carry the value.
+    """
+    return _env(ENV_API_VERSION).strip()
+
+
 # ── .env autoload ───────────────────────────────────────────────────────
 
 
@@ -252,6 +262,13 @@ def resolve_credentials(
 
 # ── Live probes ─────────────────────────────────────────────────────────
 
+# api_version negotiation (issue #51): the optimistic default is v9.2, which
+# cloud/Dataverse accepts. D365 CE on-premises v9.x caps at v9.1 and returns
+# HTTP 501 for /api/data/v9.2/, so a probe at the default downgrades one step.
+DEFAULT_API_VERSION = "v9.2"  # public: also the omitted-flag default in connect
+_ONPREM_API_VERSION = "v9.1"
+_VERSION_UNSUPPORTED_STATUS = 501
+
 
 def whoami(backend: D365Backend) -> dict[str, Any]:
     """Call WhoAmI() — the canonical D365 identity probe."""
@@ -259,9 +276,36 @@ def whoami(backend: D365Backend) -> dict[str, Any]:
     return as_dict(backend.get("WhoAmI"))
 
 
-def test_connection(backend: D365Backend) -> dict[str, Any]:
-    """Lightweight reachability test: WhoAmI + report API base."""
-    info = whoami(backend)
+def test_connection(backend: D365Backend, *, negotiate: bool = False) -> dict[str, Any]:
+    """Lightweight reachability test: WhoAmI + report API base.
+
+    When ``negotiate`` is True and the backend is on the optimistic default
+    api_version (``v9.2``), a 501 from the server (on-prem caps at v9.1) triggers
+    one downgrade to v9.1 and a single re-probe. The backend's api_version is
+    mutated in place so the caller can persist the negotiated value (and so the
+    in-memory profile is correct for the rest of an env-derived run). If the
+    re-probe also fails, the original 501 is surfaced unchanged.
+
+    ``negotiate`` is left False for an explicitly-supplied version, which is then
+    respected as-is and never auto-downgraded — even if it 501s.
+    """
+    try:
+        info = whoami(backend)
+    except D365Error as exc:
+        if not (
+            negotiate
+            and exc.status == _VERSION_UNSUPPORTED_STATUS
+            and backend.profile.api_version == DEFAULT_API_VERSION
+        ):
+            raise
+        backend.profile.api_version = _ONPREM_API_VERSION
+        try:
+            info = whoami(backend)
+        except D365Error:
+            backend.profile.api_version = DEFAULT_API_VERSION
+            # `from None`: surface the original 501 without chaining the v9.1
+            # failure as "During handling of the above exception...".
+            raise exc from None
     return {
         "ok": True,
         "user_id": info.get("UserId"),

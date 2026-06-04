@@ -21,7 +21,9 @@ def connection_group():
 @click.option("--domain", default="", help="AD domain (optional for on-prem with UPN).")
 @click.option("--password", "password_opt", help="Password (else read from D365_PASSWORD).")
 @click.option("--profile-name", default="default", help="Save under this profile name.")
-@click.option("--api-version", default="v9.2")
+@click.option("--api-version", default=None,
+              help="Web API version. Omit to auto-negotiate (tries v9.2, "
+                   "downgrades to v9.1 when the server is on-prem and 501s).")
 @click.option("--no-verify-ssl", is_flag=True, help="Skip SSL certificate verification.")
 @click.option("--default-solution", default=None,
               help="Default solution uniquename for mutating metadata commands.")
@@ -32,12 +34,15 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
                        profile_name, api_version, no_verify_ssl,
                        default_solution, publisher_prefix):
     """Save a connection profile and test the credentials with WhoAmI."""
+    # An omitted --api-version is negotiated against the server (v9.2 → v9.1 on
+    # on-prem); an explicit value is pinned and never auto-downgraded.
+    negotiate = api_version is None
     profile = ConnectionProfile(
         name=profile_name,
         url=url,
         domain=domain,
         username=username,
-        api_version=api_version,
+        api_version=api_version or conn_mod.DEFAULT_API_VERSION,
         verify_ssl=not no_verify_ssl,
         auth_scheme=ctx.auth_scheme or "ntlm",
         default_solution=default_solution,
@@ -48,10 +53,16 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
     ctx.password = password_opt or os.environ.get(conn_mod.ENV_PASSWORD, "")
     ctx.invalidate_backend()
     try:
-        info = conn_mod.test_connection(ctx.backend())
+        info = conn_mod.test_connection(ctx.backend(), negotiate=negotiate)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+
+    # Persist the negotiated version so every later command uses the working one.
+    # (The trailing invalidate_backend() below picks up the re-saved profile.)
+    if info["api_version"] != profile.api_version:
+        profile.api_version = info["api_version"]
+        session_mod.save_profile(profile)
 
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = profile_name
@@ -96,8 +107,14 @@ def connection_whoami(ctx: CLIContext):
 @pass_ctx
 def connection_test(ctx: CLIContext):
     """Reachability check: WhoAmI + report API base."""
+    # An env-derived profile with no explicit D365_API_VERSION negotiates the
+    # version for this run; a loaded profile is respected as saved. Load .env
+    # first so a version pinned only in the .env file is seen (it would
+    # otherwise be read later, inside ctx.backend(), and missed here).
+    conn_mod.load_dotenv()
+    negotiate = ctx.profile_name is None and not conn_mod.env_api_version()
     try:
-        info = conn_mod.test_connection(ctx.backend())
+        info = conn_mod.test_connection(ctx.backend(), negotiate=negotiate)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
