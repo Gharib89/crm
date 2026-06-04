@@ -584,6 +584,9 @@ class TestConnectionDotenv:
         for k in ("D365_URL", "CRM_BASE_URL", "D365_USERNAME", "CRM_USERNAME",
                   "D365_PASSWORD", "CRM_PASSWORD", "D365_DOMAIN", "CRM_DOMAIN"):
             monkeypatch.delenv(k, raising=False)
+        # profile_from_env() re-discovers ./.env in cwd; chdir into tmp so it
+        # finds only the temp file below, not a developer's real repo .env.
+        monkeypatch.chdir(tmp_path)
         env_file = tmp_path / ".env"
         env_file.write_text(
             "CRM_BASE_URL=http://crm.x.local/Contoso\n"
