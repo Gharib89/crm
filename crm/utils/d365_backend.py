@@ -25,6 +25,7 @@ import logging as _logging
 
 import requests
 from requests.auth import AuthBase
+from requests.structures import CaseInsensitiveDict
 
 from crm.utils.d365_types import BatchOperation, BatchResult
 
@@ -292,6 +293,7 @@ class D365Backend:
         self._session.verify = profile.verify_ssl
         self._effective_retry_max = _resolve_retry_max(profile)
         self._default_caller_id: str | None = _resolve_caller_id()
+        self._default_caller_object_id: str | None = _resolve_caller_object_id()
         self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
         self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
 
@@ -387,6 +389,7 @@ class D365Backend:
         extra_headers: dict[str, str] | None = None,
         expect_json: bool = True,
         caller_id: str | None = None,
+        caller_object_id: str | None = None,
         suppress_duplicate_detection: bool | None = None,
         bypass_custom_plugin_execution: bool | None = None,
         etag: str | None = None,
@@ -402,11 +405,20 @@ class D365Backend:
           - ""  (empty str): disable impersonation for this call, even if CRM_AS_USER is set.
           - any other str:  use this GUID directly; must be a valid UUID.
 
+        caller_object_id is the symmetric tri-state for Entra-object-id
+        impersonation (CRM_AS_USER_OBJECT_ID env default), emitting the
+        CallerObjectId header instead of MSCRMCallerID. Header selection follows
+        which input you supply, not auth_scheme. caller_id and caller_object_id
+        are mutually exclusive once resolved: supplying both raises D365Error.
+
         Raises D365Error on transport failure or non-2xx response after retries
         are exhausted.
         """
         url = self.url_for(path)
-        headers = dict(_DEFAULT_HEADERS)
+        # CaseInsensitiveDict so the never-both / per-call-disable pops below
+        # also drop differently-cased impersonation headers from extra_headers
+        # (HTTP header names are case-insensitive).
+        headers: CaseInsensitiveDict[str] = CaseInsensitiveDict(_DEFAULT_HEADERS)
         if extra_headers:
             headers.update(extra_headers)
 
@@ -417,16 +429,34 @@ class D365Backend:
         else:
             effective_caller = caller_id
 
+        if caller_object_id is None:
+            effective_object_id = self._default_caller_object_id
+        elif caller_object_id == "":
+            effective_object_id = None
+        else:
+            effective_object_id = caller_object_id
+
+        # Impersonating two identities at once is nonsensical; the two inputs
+        # resolve to at most one of MSCRMCallerID / CallerObjectId, never both.
+        if effective_caller is not None and effective_object_id is not None:
+            raise D365Error(
+                "Cannot impersonate by both systemuserid (MSCRMCallerID) and "
+                "Entra object id (CallerObjectId) in the same request; supply "
+                "only one of caller_id / caller_object_id "
+                "(CRM_AS_USER / CRM_AS_USER_OBJECT_ID)."
+            )
+
         if effective_caller is not None:
-            try:
-                uuid.UUID(effective_caller)
-            except ValueError as exc:
-                raise D365Error(
-                    f"Invalid GUID for caller_id: {effective_caller!r}"
-                ) from exc
+            _validate_guid_arg(effective_caller, "caller_id")
             headers["MSCRMCallerID"] = effective_caller
+            headers.pop("CallerObjectId", None)
+        elif effective_object_id is not None:
+            _validate_guid_arg(effective_object_id, "caller_object_id")
+            headers["CallerObjectId"] = effective_object_id
+            headers.pop("MSCRMCallerID", None)
         else:
             headers.pop("MSCRMCallerID", None)
+            headers.pop("CallerObjectId", None)
 
         effective_suppress = (
             suppress_duplicate_detection
@@ -860,22 +890,38 @@ def _env_truthy(name: str) -> bool:
     return val is not None and val.strip().lower() in ("1", "true", "yes", "on")
 
 
-def _resolve_caller_id() -> str | None:
-    """Resolve CRM_AS_USER env into a validated GUID string or None.
+def _resolve_guid_env(name: str) -> str | None:
+    """Resolve an env var into a validated GUID string, or None when unset/blank.
 
-    Raises D365Error if the env value is present but not a valid GUID.
+    Raises D365Error if the value is present but not a valid GUID.
     """
-    raw = _os.environ.get("CRM_AS_USER")
+    raw = _os.environ.get(name)
     if raw is None or raw.strip() == "":
         return None
     value = raw.strip()
     try:
         uuid.UUID(value)
     except ValueError as exc:
-        raise D365Error(
-            f"CRM_AS_USER must be a GUID; got {value!r}"
-        ) from exc
+        raise D365Error(f"{name} must be a GUID; got {value!r}") from exc
     return value
+
+
+def _validate_guid_arg(value: str, label: str) -> None:
+    """Raise D365Error if value isn't a valid GUID, naming the offending arg."""
+    try:
+        uuid.UUID(value)
+    except ValueError as exc:
+        raise D365Error(f"Invalid GUID for {label}: {value!r}") from exc
+
+
+def _resolve_caller_id() -> str | None:
+    """Resolve CRM_AS_USER (systemuserid → MSCRMCallerID) into a GUID or None."""
+    return _resolve_guid_env("CRM_AS_USER")
+
+
+def _resolve_caller_object_id() -> str | None:
+    """Resolve CRM_AS_USER_OBJECT_ID (Entra object id → CallerObjectId) into a GUID or None."""
+    return _resolve_guid_env("CRM_AS_USER_OBJECT_ID")
 
 
 def _resolve_bool_env(name: str) -> bool:

@@ -21,4 +21,4 @@ Sets `statecode=1, statuscode=2`; `crm workflow deactivate` reverses it.
 ```bash
 crm --json workflow run <workflow-guid> --target <record-guid>
 ```
-Calls `ExecuteWorkflow` against the target record; `--as-user <guid>` impersonates a user via `MSCRMCallerID`.
+Calls `ExecuteWorkflow` against the target record; `--as-user <guid>` impersonates a systemuser via `MSCRMCallerID`, or `--as-user-object-id <guid>` impersonates an Entra ID user via `CallerObjectId` (cloud). The two are mutually exclusive.

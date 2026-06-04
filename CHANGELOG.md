@@ -5,6 +5,16 @@ All notable changes to `crm` are documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**Added**
+- Cloud impersonation by Entra ID object id via the `CallerObjectId` header:
+  new `--as-user-object-id <guid>` flag (alongside `--as-user`) and
+  `CRM_AS_USER_OBJECT_ID` env default, on every command that already carries
+  `--as-user`. Header selection is by which input you supply, independent of
+  `auth_scheme`; `--as-user` (`MSCRMCallerID`) and `--as-user-object-id`
+  (`CallerObjectId`) are mutually exclusive per request (#54).
+
 ## 0.7.0 — Fast startup + R2 install
 
 **Performance**
