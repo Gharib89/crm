@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without publishing). Metadata POSTs are non-transactional, so a failure
   aborts-and-reports, leaving staged-but-unpublished residue. The spec is
   validated up front. Adds a runtime dependency on PyYAML (#60).
+- Canonical `meta.dry_run` signal: in `--json` mode every dry-run invocation now
+  carries `meta.dry_run: true` in the envelope. It is keyed off the invocation-level
+  `--dry-run` flag (not by sniffing the data for the `_dry_run` sentinel), so
+  list-shaped batch previews and poll previews are covered uniformly and forced-real
+  existence-probe GETs do not false-positive. Existing `meta` keys (e.g. `staged`)
+  are preserved; the in-data `_dry_run` sentinel is retained for back-compat (#61).
 
 ## [0.8.0] — 2026-06-04
 
