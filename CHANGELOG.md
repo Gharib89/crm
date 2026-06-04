@@ -24,11 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `server_error`, `transport_error`) and `meta.retryable`, alongside the existing
   `meta.status` / `meta.code`. Classification is status-first, with two D365 error
   codes (`0x80040217` → `not_found`, `0x80040237` → `duplicate_detected`) honored
-  regardless of status; `retryable` is true only for the transient classes (a
-  post-exhaustion hint — the backend already auto-retries those — with
-  `concurrency_conflict` meaning refetch-then-retry). The status-less transport
-  path now carries a `transport_error` signal, and the fragile `MissingPrivilege`
-  message-substring synthesis is subsumed (403 → `forbidden`) (#62).
+  regardless of status; `retryable` is true only for the transient classes. The
+  backend auto-retries the `transport_error` / `throttled` (429) / `server_error`
+  (5xx) classes, so for those `retryable` is a post-exhaustion hint;
+  `concurrency_conflict` (412) is not auto-retried — the caller refetches a fresh
+  ETag and retries. The status-less transport path now carries a `transport_error`
+  signal, and the fragile `MissingPrivilege` message-substring synthesis is
+  subsumed (403 → `forbidden`) (#62).
 - Canonical `meta.dry_run` signal: in `--json` mode every dry-run invocation now
   carries `meta.dry_run: true` in the envelope. It is keyed off the invocation-level
   `--dry-run` flag (not by sniffing the data for the `_dry_run` sentinel), so

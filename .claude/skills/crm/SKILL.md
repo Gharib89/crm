@@ -435,9 +435,10 @@ alternate key is rejected).
 `{"ok": false, "error": "...", "meta": {"status": N, "code": "0x...", "category": "...", "retryable": bool}}`.
 
 `meta.category` is a closed enum; `meta.retryable` flags the transient classes. The
-backend already auto-retries the retryable classes, so `retryable: true` is a
-post-exhaustion hint — act on it only after the error surfaces. `concurrency_conflict`
-specifically means refetch-then-retry.
+backend auto-retries the `transport_error` / `throttled` (429) / `server_error` (5xx)
+classes, so for those `retryable: true` is a post-exhaustion hint — act on it only
+after the error surfaces. `concurrency_conflict` (412) is the exception: the backend
+does NOT auto-retry it; the caller must refetch a fresh ETag and retry.
 
 | `category` | trigger | `retryable` | recovery |
 |---|---|---|---|

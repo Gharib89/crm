@@ -78,8 +78,10 @@ def classify_d365_error(
     """Map a D365 failure to a closed-enum category and a retryable hint.
 
     Returns ``(category, retryable)`` where ``retryable`` is True only for the
-    transient classes (the backend already auto-retries those, so the flag is a
-    post-exhaustion hint; ``concurrency_conflict`` means refetch-then-retry).
+    transient classes. The backend auto-retries transport / ``throttled`` (429) /
+    ``server_error`` (5xx) failures, so for those ``retryable`` is a post-exhaustion
+    hint; ``concurrency_conflict`` (412) is retryable only after the caller refetches
+    a fresh ETag — the backend does not auto-retry it.
 
     Mapping is status-first, except two D365 error codes that carry meaning the
     HTTP status alone misses (``0x80040217`` object-not-found, ``0x80040237``
