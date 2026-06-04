@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-06-04
+
 **Added**
 - Installer SHA-256 integrity verification: `install.sh` / `install.ps1` verify the
   downloaded archive against a published `SHA256SUMS` (uploaded per release to
@@ -18,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--as-user`. Header selection is by which input you supply, independent of
   `auth_scheme`; `--as-user` (`MSCRMCallerID`) and `--as-user-object-id`
   (`CallerObjectId`) are mutually exclusive per request (#54).
+- CHANGELOG is now published on the docs site at `/changelog/`, rendered
+  from this file via `mkdocs-include-markdown-plugin`.
 
 ## 0.7.0 — Fast startup + R2 install
 
