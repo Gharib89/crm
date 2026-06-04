@@ -19,7 +19,7 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence, cast
+from typing import Any, Callable, Literal, Sequence, cast
 
 import logging as _logging
 
@@ -51,6 +51,67 @@ class D365Error(RuntimeError):
         # already landed on the server before this exception fired.
         self.completed_steps: list[str] | None = None
         self.stage: str | None = None
+
+
+ErrorCategory = Literal[
+    "not_found",
+    "auth_failed",
+    "forbidden",
+    "concurrency_conflict",
+    "duplicate_detected",
+    "validation",
+    "throttled",
+    "server_error",
+    "transport_error",
+]
+
+# Prefix of the message raised when a request never got an HTTP response
+# (connect/timeout/TLS). Used both at the raise sites in request()/batch() and by
+# classify_d365_error() to tell a real transport failure apart from a status-less
+# client-side validation D365Error (which must NOT be flagged retryable).
+_TRANSPORT_FAILURE_PREFIX = "HTTP transport failure"
+
+
+def classify_d365_error(
+    status: int | None, code: str | None, message: str | None
+) -> tuple[ErrorCategory, bool]:
+    """Map a D365 failure to a closed-enum category and a retryable hint.
+
+    Returns ``(category, retryable)`` where ``retryable`` is True only for the
+    transient classes (the backend already auto-retries those, so the flag is a
+    post-exhaustion hint; ``concurrency_conflict`` means refetch-then-retry).
+
+    Mapping is status-first, except two D365 error codes that carry meaning the
+    HTTP status alone misses (``0x80040217`` object-not-found, ``0x80040237``
+    duplicate-detected) — these are honored regardless of the status they ride on.
+    """
+    # No HTTP status: distinguish a real transport failure (connect/timeout/TLS,
+    # raised with the _TRANSPORT_FAILURE_PREFIX message) from a status-less
+    # client-side validation D365Error — the latter is a usage error, not retryable.
+    if status is None:
+        if message and message.startswith(_TRANSPORT_FAILURE_PREFIX):
+            return ("transport_error", True)
+        return ("validation", False)
+
+    haystack = f"{code or ''} {message or ''}".lower()
+    if "0x80040237" in haystack or "duplicaterecord" in haystack:
+        return ("duplicate_detected", False)
+    if "0x80040217" in haystack:
+        return ("not_found", False)
+
+    if status == 401:
+        return ("auth_failed", False)
+    if status == 403:
+        return ("forbidden", False)
+    if status == 404:
+        return ("not_found", False)
+    if status == 412:
+        return ("concurrency_conflict", True)
+    if status == 429:
+        return ("throttled", True)
+    if 500 <= status < 600:
+        return ("server_error", True)
+    return ("validation", False)
 
 
 @dataclass
@@ -510,7 +571,7 @@ class D365Backend:
                 )
             except requests.RequestException as exc:
                 if attempt >= max_retries or not _is_transport_retryable(exc):
-                    raise D365Error(f"HTTP transport failure: {exc}") from exc
+                    raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
                 delay = _compute_delay(attempt, self.profile, retry_after=None)
                 _log_retry(method, url, attempt, delay,
                            effective_max=max_retries, reason=str(exc))
@@ -632,7 +693,7 @@ class D365Backend:
                     timeout=effective_timeout,
                 )
             except requests.RequestException as exc:
-                raise D365Error(f"HTTP transport failure on $batch: {exc}") from exc
+                raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX} on $batch: {exc}") from exc
 
             if resp.status_code in (429, 503) and attempt < max_attempts:
                 retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
@@ -779,11 +840,6 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
 
     if resp.status_code == 412:
         code = "PreconditionFailed"
-    elif (
-        resp.status_code == 403
-        and "prvBypassCustomPluginExecution" in message
-    ):
-        code = "MissingPrivilege"
 
     raise D365Error(message, status=resp.status_code, code=code, response_body=body)
 

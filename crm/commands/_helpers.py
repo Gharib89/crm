@@ -29,9 +29,15 @@ def _short_repr(v: Any, limit: int = 80) -> str:
 
 
 def _handle_d365_error(ctx: "CLIContext", exc: D365Error) -> None:
+    # Local import: this only runs after the backend already raised a D365Error,
+    # so d365_backend is loaded — keeps it off the `crm --version` fast path.
+    from crm.utils.d365_backend import classify_d365_error
+    category, retryable = classify_d365_error(exc.status, exc.code, str(exc))
     ctx.emit(False, error=str(exc), meta={
         "status": exc.status,
         "code": exc.code,
+        "category": category,
+        "retryable": retryable,
     })
 
 

@@ -118,7 +118,7 @@ State directory: `~/.crm/` (override with `CRM_HOME`).
 
 ```json
 { "ok": true,  "data": ..., "meta": {...} }
-{ "ok": false, "error": "Record Not Found", "meta": {"status": 404, "code": "0x80040217"} }
+{ "ok": false, "error": "Record Not Found", "meta": {"status": 404, "code": "0x80040217", "category": "not_found", "retryable": false} }
 ```
 
 **Exit codes** — check `$?`, then read the envelope:
@@ -413,15 +413,25 @@ alternate key is rejected).
 
 ## Errors & recovery
 
-- `D365Error` is the wrapper for any HTTP / API failure. In `--json` mode it
-  becomes `{"ok": false, "error": "...", "meta": {"status": N, "code": "0x..."}}`.
-- `404` with code `0x80040217` → record doesn't exist (or wrong entity set / GUID).
-- `401` → auth failed. NTLM: verify `D365_DOMAIN\D365_USERNAME` and password.
-  OAuth: verify the app-registration (client id/secret, tenant) and that an
-  application user for the app exists in Dynamics with a security role.
-- `403` → user lacks the privilege for that operation in CRM security model.
-- `400` with `OptimisticConcurrencyVersionMismatch` → another user changed the record;
-  retrieve fresh and retry.
+`D365Error` wraps any HTTP / API failure. In `--json` mode it becomes
+`{"ok": false, "error": "...", "meta": {"status": N, "code": "0x...", "category": "...", "retryable": bool}}`.
+
+`meta.category` is a closed enum; `meta.retryable` flags the transient classes. The
+backend already auto-retries the retryable classes, so `retryable: true` is a
+post-exhaustion hint — act on it only after the error surfaces. `concurrency_conflict`
+specifically means refetch-then-retry.
+
+| `category` | trigger | `retryable` | recovery |
+|---|---|---|---|
+| `not_found` | 404 / code `0x80040217` | no | record doesn't exist, or wrong entity set / GUID |
+| `auth_failed` | 401 | no | NTLM: check `D365_DOMAIN\D365_USERNAME` + password. OAuth: app-registration (client id/secret, tenant) + an application user with a role |
+| `forbidden` | 403 | no | the user lacks the privilege for that operation in the CRM security model |
+| `concurrency_conflict` | 412 | yes | another change won the race — retrieve a fresh ETag and retry |
+| `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
+| `validation` | other 4xx (e.g. 400), or a status-less client-side error (bad CLI input, schema/spec validation) | no | fix the request: bad payload / CLI input, alternate key, or OData syntax |
+| `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` |
+| `server_error` | 5xx | yes | transient server fault |
+| `transport_error` | request never got a response (network / TLS / timeout); message starts `HTTP transport failure` | yes | network / TLS / timeout before any response reached the client |
 
 ## Hard constraints
 
