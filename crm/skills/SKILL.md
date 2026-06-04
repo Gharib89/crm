@@ -107,6 +107,7 @@ State directory: `~/.crm/` (override with `CRM_HOME`).
 | `data`       | `export`                                                                                | Bulk CSV/JSON dataset export                   |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
+| _(top)_      | `apply -f spec.yaml`                                                                    | Declarative desired-state (publisher→…→views)  |
 | _(top)_      | `service-document`                                                                      | List every entity set the server exposes       |
 
 `crm <group> --help` lists the per-command options.
@@ -358,6 +359,44 @@ crm --json app add-components <appmoduleid> \
 # (stored as sitemapname); --unique-name is the app's uniquename and sets
 # sitemapnameunique to auto-associate the sitemap with that app.
 crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml --unique-name cwx_crmworx
+```
+
+## Declarative apply — `apply -f spec.yaml`
+
+Stand up a whole table from one YAML/JSON spec instead of many imperative
+commands. `apply` runs the metadata cores in dependency order (publisher →
+solution → entities → option sets → attributes → relationships → views), each
+with `if_exists=skip`, and publishes **once** at the end — re-applying an
+unchanged spec is a no-op.
+
+```bash
+crm --json apply -f project.yaml              # create/skip, publish once
+crm --dry-run --json apply -f project.yaml    # plan: dependents reported "planned"
+crm --stage-only --json apply -f project.yaml # create without publishing
+```
+
+Emits `{ok, data:{applied, skipped, planned, failed}, meta:{staged}}`; each entry
+is `{kind, name}` (a failed entry adds `error`). Metadata POSTs are
+non-transactional, so a failure aborts-and-reports and leaves
+staged-but-unpublished residue. A new table's views may report `planned` until
+the first publish assigns its ObjectTypeCode — re-apply to land them. Full spec
+schema: `docs/how-to/apply.md`.
+
+```yaml
+publisher: {unique_name: mocepub, prefix: moce, option_value_prefix: 10000}
+solution:  {unique_name: MoceCore}
+optionsets:
+  - {name: moce_priority, display_name: Priority, options: [{value: 100000000, label: Low}]}
+entities:
+  - schema_name: moce_Project
+    display_name: Project
+    primary_attr: {schema_name: moce_Name, label: Name}
+    attributes:
+      - {kind: string,   schema_name: moce_Code,     display_name: Code, max_length: 100}
+      - {kind: picklist, schema_name: moce_Priority, display_name: Priority, optionset_name: moce_priority}
+      - {kind: lookup,   schema_name: moce_Owner,    display_name: Owner, target_entity: systemuser}
+    views:
+      - {name: Active Projects, columns: [moce_name, moce_code]}
 ```
 
 ## Agent guidance — record-create payloads (`@odata.bind`)

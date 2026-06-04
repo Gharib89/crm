@@ -187,6 +187,7 @@ Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code
 | `entity`     | Record CRUD (get/create/update/upsert/delete)              |
 | `query`      | OData v4 and FetchXML queries                              |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
+| `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
 | `solution`   | List / info / components / export / import solutions       |
 | `data`       | Bulk CSV/JSON dataset export                               |
 | `action`     | Call arbitrary OData functions and actions                 |
@@ -198,6 +199,12 @@ The `metadata` group covers both browsing and write verbs. New in 0.5.0:
 - `metadata create-one-to-many` / `create-many-to-many` — relationships
 - `metadata list-optionsets` / `get-optionset` / `create-optionset` / `update-optionset` / `delete-optionset` — global option sets
 - `metadata delete-entity <logical-name>` — drop a custom entity (gated)
+
+`crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
+columns, option sets, relationships, views) from one declarative spec, in
+dependency order, publishing once at the end — idempotent on re-apply, with
+`--dry-run` plan preview and `--stage-only` support. See
+[how-to/apply](docs/how-to/apply.md).
 
 Use `crm <group> --help` for command-level details.
 
