@@ -187,6 +187,64 @@ def create_solution(
     return out
 
 
+def update_solution(
+    backend: D365Backend,
+    unique_name: str,
+    *,
+    version: str | None = None,
+    friendly_name: str | None = None,
+    description: str | None = None,
+) -> dict[str, Any]:
+    """Update an unmanaged solution's version / friendlyname / description in place.
+
+    Resolves the solutionid via solution_info, builds a payload of only the
+    supplied fields, and delegates to entity.update (If-Match:* + --dry-run reused;
+    no new HTTP path). Returns `{updated, uniquename, solutionid, <changed fields>}`.
+    """
+    if version is None and friendly_name is None and description is None:
+        raise D365Error("nothing to update: pass version, friendly_name, or description.")
+    if version is not None and not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version):
+        raise D365Error(
+            f"version must be a 4-part dotted numeric (e.g. 1.0.0.0); got {version!r}."
+        )
+
+    # Force a real read even under dry-run: idempotent, and resolving the id +
+    # reading ismanaged/parentsolutionid must work in the preview too (cf. create_solution).
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        info = solution_info(backend, unique_name)
+    finally:
+        backend.dry_run = was_dry
+    sol_id = info["solutionid"]
+    # Fail fast before the PATCH: the server rejects a version/metadata change on a
+    # managed solution, and on a patch with CannotUpdateSolutionPatch.
+    if info.get("ismanaged"):
+        raise D365Error(
+            f"Solution {unique_name!r} is managed; its version/metadata cannot be updated.",
+            code="CannotUpdateManagedSolution",
+        )
+    if info.get("_parentsolutionid_value"):
+        raise D365Error(
+            f"Solution {unique_name!r} is a patch; the server rejects version/metadata "
+            "updates on a patch (CannotUpdateSolutionPatch).",
+            code="CannotUpdateSolutionPatch",
+        )
+
+    payload: dict[str, Any] = {}
+    if version is not None:
+        payload["version"] = version
+    if friendly_name is not None:
+        payload["friendlyname"] = friendly_name
+    if description is not None:
+        payload["description"] = description
+
+    result = entity.update(backend, "solutions", sol_id, payload)
+    if result.get("_dry_run"):
+        return {**result, "uniquename": unique_name, "solutionid": sol_id}
+    return {"updated": True, "uniquename": unique_name, "solutionid": sol_id, **payload}
+
+
 def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list[dict[str, Any]]:
     params = {
         "$select": "uniquename,friendlyname,version,ismanaged,installedon,solutionid",

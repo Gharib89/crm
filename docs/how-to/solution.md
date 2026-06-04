@@ -19,6 +19,14 @@ crm --json solution components CRMWorx
 ```
 Returns component **type + objectid** rows (componenttype `9` = option set, `1` = entity) — use it to verify the model landed.
 
+## Bump the version (or friendly name / description) before export
+
+```bash
+crm --json solution set-version CRMWorx --version 1.0.1.0
+crm --json solution set-version CRMWorx --friendly-name "CRM Worx" --description "RC build"
+```
+Updates an **unmanaged** solution in place over the shared record-update path (so `--dry-run` previews the PATCH). `--version` must be 4-part dotted numeric and is validated before any HTTP; at least one field is required. Managed solutions and patches are rejected client-side (the server returns `CannotUpdateSolutionPatch` for a patch) ([#66](https://github.com/Gharib89/crm/issues/66)).
+
 ## Export the unmanaged solution to a zip
 
 ```bash

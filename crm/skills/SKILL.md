@@ -132,7 +132,7 @@ pass `--profile <name>` and confirm the real target with
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`            | Schema introspection + option set values      |
-| `solution`   | `create-publisher`, `create`, `list`, `info`, `components`, `export`, `import`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
+| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `export`, `import`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
 | `data`       | `export`                                                                                | Bulk CSV/JSON dataset export                   |
@@ -370,6 +370,16 @@ With a named profile active, both verbs auto-wire `publisher_prefix` (from
 `create-publisher`) and `default_solution` (from `create`) back into it, so
 later `metadata create-*` commands target that prefix/solution by default. Pass
 `--no-set-default` to opt out.
+
+Bump the version (or friendly name / description) of an **unmanaged** solution
+before exporting — at least one field is required, `--version` is validated as
+4-part dotted numeric pre-HTTP, and managed solutions / patches are rejected
+client-side:
+
+```bash
+crm --json solution set-version CRMWorx --version 1.0.1.0
+crm --json solution set-version CRMWorx --friendly-name "CRM Worx" --description "RC build"
+```
 
 ## Views — `view create` (savedquery)
 
