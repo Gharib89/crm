@@ -446,10 +446,10 @@ specifically means refetch-then-retry.
 | `forbidden` | 403 | no | the user lacks the privilege for that operation in the CRM security model |
 | `concurrency_conflict` | 412 | yes | another change won the race — retrieve a fresh ETag and retry |
 | `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
-| `validation` | other 4xx (e.g. 400) | no | fix the request: bad payload, alternate key, or OData syntax |
+| `validation` | other 4xx (e.g. 400), or a status-less client-side error (bad CLI input, schema/spec validation) | no | fix the request: bad payload / CLI input, alternate key, or OData syntax |
 | `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` |
 | `server_error` | 5xx | yes | transient server fault |
-| `transport_error` | no HTTP response | yes | network / TLS / timeout before any response reached the client |
+| `transport_error` | request never got a response (network / TLS / timeout); message starts `HTTP transport failure` | yes | network / TLS / timeout before any response reached the client |
 
 ## Hard constraints
 
