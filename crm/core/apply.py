@@ -18,6 +18,7 @@ from typing import Any, cast
 
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
+from crm.core.metadata_attrs import ATTRIBUTE_KINDS
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.core import solution as sol_mod
@@ -29,14 +30,6 @@ Entry = dict[str, Any]
 
 class _Aborted(Exception):
     """Internal signal: a metadata POST failed; stop applying the rest of the spec."""
-
-
-# Mirrors crm.core.metadata_attrs._BUILDERS plus the lookup special-case. Keep in
-# sync if a new attribute kind is added there.
-_ATTRIBUTE_KINDS = frozenset({
-    "string", "memo", "integer", "bigint", "decimal", "double", "money",
-    "boolean", "datetime", "picklist", "multiselect", "image", "file", "lookup",
-})
 
 
 def _as_list(value: Any) -> list[dict[str, Any]]:
@@ -121,6 +114,9 @@ def validate_spec(spec: Any) -> None:
     sp = cast("dict[str, Any]", spec)
     if sp.get("publisher") is not None:
         _require(sp["publisher"], ("unique_name", "prefix", "option_value_prefix"), "publisher")
+        if not isinstance(sp["publisher"]["option_value_prefix"], int):
+            raise D365Error("publisher: option_value_prefix must be an integer "
+                            "(10000-99999), not a quoted string.")
     if sp.get("solution") is not None:
         _require(sp["solution"], ("unique_name",), "solution")
     for key in ("entities", "optionsets"):
@@ -137,7 +133,7 @@ def validate_spec(spec: Any) -> None:
         for attr in _as_list(ent.get("attributes")):
             _require(attr, ("kind", "schema_name", "display_name"), "attribute")
             kind, name = attr["kind"], attr["schema_name"]
-            if kind not in _ATTRIBUTE_KINDS:
+            if kind not in ATTRIBUTE_KINDS:
                 raise D365Error(f"attribute {name!r}: unknown kind {kind!r}.")
             if kind == "lookup" and not attr.get("target_entity"):
                 raise D365Error(f"lookup attribute {name!r} requires target_entity.")
@@ -158,8 +154,14 @@ def validate_spec(spec: Any) -> None:
         _require(os_spec, ("name", "display_name"), "optionset")
         _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
         for opt in cast("list[Any]", os_spec.get("options") or []):
-            if not isinstance(opt, dict) or not cast("dict[str, Any]", opt).get("label"):
+            if not isinstance(opt, dict):
+                raise D365Error(f"optionset {os_spec['name']!r}: each option must be a mapping.")
+            od = cast("dict[str, Any]", opt)
+            if not od.get("label"):
                 raise D365Error(f"optionset {os_spec['name']!r}: each option needs a label.")
+            if od.get("value") is not None and not isinstance(od["value"], int):
+                raise D365Error(
+                    f"optionset {os_spec['name']!r}: option value must be an integer.")
 
 
 def _classify(

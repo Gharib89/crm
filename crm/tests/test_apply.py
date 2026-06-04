@@ -591,6 +591,39 @@ def test_apply_otc_real_error_is_reported_not_swallowed(backend):
     assert _publish_hits(m, backend) == []
 
 
+def test_apply_rejects_non_int_option_value_prefix(backend):
+    spec = {"publisher": {"unique_name": "mocepub", "prefix": "moce",
+                          "option_value_prefix": "10000"}}  # quoted in YAML
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="option_value_prefix"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_non_int_optionset_value(backend):
+    spec = {"optionsets": [{"name": "moce_p", "display_name": "P",
+                            "options": [{"value": "100000000", "label": "Low"}]}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="value"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_validation_accepts_all_builder_attribute_kinds():
+    """Validation accepts every kind metadata_attrs supports — no drift."""
+    from crm.core import metadata_attrs
+
+    for kind in metadata_attrs.ATTRIBUTE_KINDS:
+        attr = {"kind": kind, "schema_name": "moce_X", "display_name": "X"}
+        if kind == "lookup":
+            attr["target_entity"] = "systemuser"
+        if kind in ("picklist", "multiselect"):
+            attr["optionset_name"] = "moce_p"
+        spec = {"entities": [{"schema_name": "moce_Project", "display_name": "P",
+                              "attributes": [attr]}]}
+        apply_mod.validate_spec(spec)  # must not raise
+
+
 # ── e2e: full CLI invocations (acceptance scenarios) ────────────────────────
 
 
