@@ -177,7 +177,10 @@ Every command supports `--json`:
 }
 ```
 
-Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code": "..."}}`.
+Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code": "...", "category": "not_found", "retryable": false}}`.
+`meta.category` is a closed enum (`not_found`, `auth_failed`, `forbidden`,
+`concurrency_conflict`, `duplicate_detected`, `validation`, `throttled`,
+`server_error`, `transport_error`) and `meta.retryable` flags the transient classes.
 
 ## Command Groups
 

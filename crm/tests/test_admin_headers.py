@@ -13,6 +13,7 @@ from crm.utils.d365_backend import (
     ConnectionProfile,
     D365Backend,
     D365Error,
+    classify_d365_error,
     _resolve_caller_id,
     _resolve_caller_object_id,
     _resolve_bool_env,
@@ -510,7 +511,10 @@ class TestErrorMapping:
             assert exc_info.value.status == 412
             assert exc_info.value.code == "PreconditionFailed"
 
-    def test_403_with_priv_bypass_maps_to_missing_privilege(self, backend, profile):
+    def test_403_priv_bypass_keeps_server_code_classifies_forbidden(self, backend, profile):
+        """The fragile MissingPrivilege substring synthesis is subsumed by the
+        taxonomy (#62): the server's own code is preserved and the 403
+        classifies as `forbidden` — no message-substring code rewriting."""
         body = {"error": {
             "code": "0x80040220",
             "message": "User does not have prvBypassCustomPluginExecution privilege",
@@ -521,7 +525,10 @@ class TestErrorMapping:
                 backend.post("accounts", json_body={"name": "a"},
                              bypass_custom_plugin_execution=True)
             assert exc_info.value.status == 403
-            assert exc_info.value.code == "MissingPrivilege"
+            assert exc_info.value.code == "0x80040220"
+            assert classify_d365_error(
+                exc_info.value.status, exc_info.value.code, str(exc_info.value)
+            ) == ("forbidden", False)
 
     def test_403_without_priv_keyword_keeps_server_code(self, backend, profile):
         body = {"error": {"code": "0x80040220", "message": "Insufficient privileges"}}

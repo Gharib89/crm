@@ -19,7 +19,7 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence, cast
+from typing import Any, Callable, Literal, Sequence, cast
 
 import logging as _logging
 
@@ -51,6 +51,57 @@ class D365Error(RuntimeError):
         # already landed on the server before this exception fired.
         self.completed_steps: list[str] | None = None
         self.stage: str | None = None
+
+
+ErrorCategory = Literal[
+    "not_found",
+    "auth_failed",
+    "forbidden",
+    "concurrency_conflict",
+    "duplicate_detected",
+    "validation",
+    "throttled",
+    "server_error",
+    "transport_error",
+]
+
+
+def classify_d365_error(
+    status: int | None, code: str | None, message: str | None
+) -> tuple[ErrorCategory, bool]:
+    """Map a D365 failure to a closed-enum category and a retryable hint.
+
+    Returns ``(category, retryable)`` where ``retryable`` is True only for the
+    transient classes (the backend already auto-retries those, so the flag is a
+    post-exhaustion hint; ``concurrency_conflict`` means refetch-then-retry).
+
+    Mapping is status-first, except two D365 error codes that carry meaning the
+    HTTP status alone misses (``0x80040217`` object-not-found, ``0x80040237``
+    duplicate-detected) — these are honored regardless of the status they ride on.
+    """
+    # No HTTP response at all (connect/timeout/TLS) — see request()'s transport path.
+    if status is None:
+        return ("transport_error", True)
+
+    haystack = f"{code or ''} {message or ''}".lower()
+    if "0x80040237" in haystack or "duplicaterecord" in haystack:
+        return ("duplicate_detected", False)
+    if "0x80040217" in haystack:
+        return ("not_found", False)
+
+    if status == 401:
+        return ("auth_failed", False)
+    if status == 403:
+        return ("forbidden", False)
+    if status == 404:
+        return ("not_found", False)
+    if status == 412:
+        return ("concurrency_conflict", True)
+    if status == 429:
+        return ("throttled", True)
+    if 500 <= status < 600:
+        return ("server_error", True)
+    return ("validation", False)
 
 
 @dataclass
@@ -779,11 +830,6 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
 
     if resp.status_code == 412:
         code = "PreconditionFailed"
-    elif (
-        resp.status_code == 403
-        and "prvBypassCustomPluginExecution" in message
-    ):
-        code = "MissingPrivilege"
 
     raise D365Error(message, status=resp.status_code, code=code, response_body=body)
 

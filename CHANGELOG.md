@@ -18,6 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without publishing). Metadata POSTs are non-transactional, so a failure
   aborts-and-reports, leaving staged-but-unpublished residue. The spec is
   validated up front. Adds a runtime dependency on PyYAML (#60).
+- Machine-readable error taxonomy: in `--json` mode the error envelope now carries
+  `meta.category` (a closed enum: `not_found`, `auth_failed`, `forbidden`,
+  `concurrency_conflict`, `duplicate_detected`, `validation`, `throttled`,
+  `server_error`, `transport_error`) and `meta.retryable`, alongside the existing
+  `meta.status` / `meta.code`. Classification is status-first, with two D365 error
+  codes (`0x80040217` → `not_found`, `0x80040237` → `duplicate_detected`) honored
+  regardless of status; `retryable` is true only for the transient classes (a
+  post-exhaustion hint — the backend already auto-retries those — with
+  `concurrency_conflict` meaning refetch-then-retry). The status-less transport
+  path now carries a `transport_error` signal, and the fragile `MissingPrivilege`
+  message-substring synthesis is subsumed (403 → `forbidden`) (#62).
 - Canonical `meta.dry_run` signal: in `--json` mode every dry-run invocation now
   carries `meta.dry_run: true` in the envelope. It is keyed off the invocation-level
   `--dry-run` flag (not by sniffing the data for the `_dry_run` sentinel), so
