@@ -269,8 +269,20 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
               help="Disable the 429/5xx retry loop for this invocation.")
 @click.option("--quiet", "-q", is_flag=True,
               help="Suppress per-tick import-progress lines on stderr.")
+@click.option("--yes", is_flag=True,
+              help="Skip the overwrite confirmation prompt (required non-interactively).")
 @pass_ctx
-def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet):
+def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet, yes):
+    # An overwrite import (the default) clobbers unmanaged customizations in the
+    # target org — gate it like a delete (#67). A `--no-overwrite` import is not
+    # prompted here (the PreToolUse hook still requires --yes for any import).
+    if not no_overwrite and not _confirm_destructive(
+        "solution", zip_path, yes,
+        message=(f"Importing {zip_path!r} will OVERWRITE unmanaged customizations "
+                 f"in the target org. Continue?"),
+    ):
+        ctx.emit(False, error="aborted by user")
+        return
     with _no_retry_scope(ctx, no_retry):
         try:
             info = sol_mod.import_solution(

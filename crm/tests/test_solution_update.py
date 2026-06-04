@@ -182,3 +182,58 @@ class TestSolutionSetVersionCommand:
         result = CliRunner().invoke(cli, ["--json", "solution", "set-version", "CRMWorx"])
         assert result.exit_code == 1, result.output
         assert json.loads(result.output)["ok"] is False
+
+
+# ── import confirmation gate (#67) ──────────────────────────────────────────
+
+
+class TestSolutionImportConfirm:
+    @pytest.fixture
+    def zip_path(self, tmp_path):
+        p = tmp_path / "pkg.zip"
+        p.write_bytes(b"PK\x03\x04")
+        return str(p)
+
+    def _stub_import(self, monkeypatch):
+        """Patch import_solution + backend; return the call-capture dict."""
+        captured = {}
+
+        def fake(backend, zip_path, **kw):
+            captured["zip_path"] = zip_path
+            captured.update(kw)
+            return {"imported": True}
+
+        monkeypatch.setattr("crm.core.solution.import_solution", fake)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        return captured
+
+    def test_default_overwrite_declined_aborts_exit_1(self, monkeypatch, zip_path):
+        captured = self._stub_import(monkeypatch)
+        # non-TTY stdin (EOF) → click.confirm aborts → documented envelope. The
+        # prompt text prefixes the JSON on stdout, so match by substring.
+        result = CliRunner().invoke(cli, ["--json", "solution", "import", zip_path])
+        assert result.exit_code == 1, result.output
+        assert '"error": "aborted by user"' in result.output
+        assert "OVERWRITE unmanaged customizations" in result.output
+        assert captured == {}  # import_solution never reached
+
+    def test_yes_skips_prompt_and_imports(self, monkeypatch, zip_path):
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--yes"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"] == {"imported": True}
+        # default semantics unchanged: overwrite stays ON
+        assert captured["zip_path"] == zip_path
+        assert captured["overwrite_unmanaged_customizations"] is True
+
+    def test_no_overwrite_does_not_prompt(self, monkeypatch, zip_path):
+        # A non-overwrite import does not clobber unmanaged customizations, so the
+        # in-band confirm is skipped even without --yes (the PreToolUse hook still
+        # gates it). It must import cleanly with overwrite OFF, no prompt emitted.
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--no-overwrite"])
+        assert result.exit_code == 0, result.output
+        assert "Continue?" not in result.output
+        assert captured["overwrite_unmanaged_customizations"] is False

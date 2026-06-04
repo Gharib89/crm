@@ -34,6 +34,13 @@ crm solution export CRMWorx -o docs/artifacts/crmworx.zip
 ```
 Reports the output path, byte count, `managed: False`, and the `action` that ran (falls back to synchronous `ExportSolution` when `ExportSolutionAsync` is disabled on-prem). On success the zip is written to `-o/--output`; adding `--json` only changes the printed result envelope.
 
+## Import a solution zip
+
+```bash
+crm solution import docs/artifacts/crmworx.zip --yes
+```
+By default an import **overwrites unmanaged customizations** in the target org, so it is gated as a destructive operation: without `--yes` it prompts for confirmation and, in a non-TTY context, aborts with `{"ok": false, "error": "aborted by user"}` (exit 1). Always pass `--yes` when invoking non-interactively (agents, CI). Add `--no-overwrite` to keep existing unmanaged customizations — that path skips the in-band prompt, but the [destructive-op gate](../reference/cli.md) still requires `--yes` for any import since it mutates the org ([#67](https://github.com/Gharib89/crm/issues/67)).
+
 ## Publish all customizations
 
 ```bash

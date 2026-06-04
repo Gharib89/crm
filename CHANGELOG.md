@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm solution import` is now gated as a destructive operation: an overwrite
+  import (the default) clobbers unmanaged customizations in the target org, so it
+  prompts for confirmation and aborts cleanly (`{"ok": false, "error": "aborted
+  by user"}`, exit 1) in a non-TTY context unless `--yes` is passed. The
+  PreToolUse destructive-op gate also blocks any `crm solution import` without
+  `--yes` (verb-only, so a `--no-overwrite` import is gated too — any import
+  mutates the org). Default import semantics are unchanged (#67).
 - `crm solution set-version <unique_name>` updates an unmanaged solution's
   `version` / `friendlyname` / `description` in place. At least one field is
   required and `--version` is validated as 4-part dotted numeric before any HTTP;

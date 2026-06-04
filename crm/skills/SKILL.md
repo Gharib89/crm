@@ -352,6 +352,7 @@ agent), and only after you have confirmed intent.
 | `crm metadata delete-relationship ...` | A relationship (when shipped) |
 | `crm entity delete <set> <guid>` | A single record |
 | `crm solution job-cancel <id>` | A running async job |
+| `crm solution import <zip>` | OVERWRITES unmanaged customizations in the target org (default; `--no-overwrite` skips the prompt but the gate still needs `--yes`) |
 | `crm async cancel <id>` | A pending/suspended async operation |
 
 ## Solution scaffolding — publisher + solution
