@@ -164,6 +164,62 @@ def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, d
     ctx.emit(True, data=info)
 
 
+@solution_group.command("add-component")
+@click.option("--solution", required=True, help="Target unmanaged solution unique name.")
+@click.option("--type", "type_", required=True,
+              help="Component type: integer or friendly name (e.g. 61 or webresource).")
+@click.option("--id", "component_id", required=True, metavar="GUID",
+              help="Component GUID (objectid) to add.")
+@click.option("--no-add-required", is_flag=True,
+              help="Do not also add required components (AddRequiredComponents: false).")
+@click.option("--no-subcomponents", is_flag=True,
+              help="Exclude subcomponents (DoNotIncludeSubcomponents: true).")
+@pass_ctx
+def solution_add_component(ctx: CLIContext, solution, type_, component_id,
+                           no_add_required, no_subcomponents):
+    """Add an existing component to an unmanaged solution (AddSolutionComponent)."""
+    try:
+        component_type = sol_mod.resolve_component_type(type_)
+        info = sol_mod.add_solution_component(
+            ctx.backend(), solution=solution, component_id=component_id,
+            component_type=component_type,
+            add_required_components=not no_add_required,
+            do_not_include_subcomponents=no_subcomponents,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@solution_group.command("remove-component")
+@click.option("--solution", required=True, help="Target unmanaged solution unique name.")
+@click.option("--type", "type_", required=True,
+              help="Component type: integer or friendly name (e.g. 61 or webresource).")
+@click.option("--id", "component_id", required=True, metavar="GUID",
+              help="Component GUID (objectid) to remove.")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@pass_ctx
+def solution_remove_component(ctx: CLIContext, solution, type_, component_id, yes):
+    """Remove a component from an unmanaged solution (RemoveSolutionComponent)."""
+    if not _confirm_destructive(
+        "component", f"{component_id} from solution {solution!r}", yes,
+        message=(f"Removing component {component_id} from solution {solution!r}. Continue?"),
+    ):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        component_type = sol_mod.resolve_component_type(type_)
+        info = sol_mod.remove_solution_component(
+            ctx.backend(), solution=solution, component_id=component_id,
+            component_type=component_type,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
 @solution_group.command("export")
 @click.argument("unique_name")
 @click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))

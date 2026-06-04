@@ -19,6 +19,21 @@ crm --json solution components CRMWorx
 ```
 Returns component **type + objectid** rows (componenttype `9` = option set, `1` = entity) — use it to verify the model landed.
 
+## Add or remove a component
+
+```bash
+# add an existing web resource (componenttype 61) to an unmanaged solution
+crm --json solution add-component --solution CRMWorx --type webresource --id <guid>
+
+# remove it again (destructive — prompts unless --yes)
+crm --json solution remove-component --solution CRMWorx --type 61 --id <guid> --yes
+```
+Wrap the `AddSolutionComponent` / `RemoveSolutionComponent` actions. `--type` takes a `componenttype` integer **or** a friendly name (`entity`, `attribute`, `relationship`, `optionset`, `webresource`, …; names are case- and separator-insensitive — `WebResource`, `web resource`, `web-resource` all resolve to `61`). Pass a raw integer for any type not in the name map. Both refuse a **managed** solution client-side (a managed solution can't be edited). Note the canonical split: `relationship` is `3` (base relationship) and `entityrelationship` is `10` — not interchangeable.
+
+`add-component` is non-destructive. `AddRequiredComponents` defaults on (`--no-add-required` turns it off) and subcomponents are included by default (`--no-subcomponents` sets `DoNotIncludeSubcomponents: true`).
+
+`remove-component` is **destructive**: it prompts for confirmation (aborting cleanly with `{"ok": false, "error": "aborted by user"}` in a non-TTY context) unless `--yes`, and the agent-side PreToolUse hook blocks it without `--yes` ([#71](https://github.com/Gharib89/crm/issues/71)).
+
 ## Bump the version (or friendly name / description) before export
 
 ```bash

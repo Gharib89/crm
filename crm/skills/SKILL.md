@@ -132,7 +132,7 @@ pass `--profile <name>` and confirm the real target with
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
-| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `export`, `import`, `import-result`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
+| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
 | `data`       | `export`                                                                                | Bulk CSV/JSON dataset export                   |
@@ -371,6 +371,7 @@ and only after you have confirmed intent.
 | `crm entity delete <set> <guid>` | A single record |
 | `crm solution job-cancel <id>` | A running async job |
 | `crm solution import <zip>` | OVERWRITES unmanaged customizations in the target org (default; `--no-overwrite` skips the prompt but the gate still needs `--yes`) |
+| `crm solution remove-component --solution <name> --type <int\|name> --id <guid>` | Removes a component from an unmanaged solution |
 | `crm async cancel <id>` | A pending/suspended async operation |
 
 ## Solution scaffolding — publisher + solution
@@ -398,6 +399,19 @@ client-side:
 ```bash
 crm --json solution set-version CRMWorx --version 1.0.1.0
 crm --json solution set-version CRMWorx --friendly-name "CRM Worx" --description "RC build"
+```
+
+Add or remove an existing component to/from an **unmanaged** solution
+(`AddSolutionComponent` / `RemoveSolutionComponent`). `--type` takes a
+`componenttype` integer or a friendly name (case- and separator-insensitive:
+`entity`=1, `attribute`=2, `relationship`=3, `optionset`=9, `entityrelationship`=10,
+`webresource`=61, …; raw int for anything else). Both refuse managed targets
+client-side. `remove-component` is destructive (`--yes` + the PreToolUse gate):
+
+```bash
+crm --json solution add-component --solution CRMWorx --type webresource --id <guid>
+crm --json solution add-component --solution CRMWorx --type 1 --id <guid> --no-add-required
+crm --json solution remove-component --solution CRMWorx --type 61 --id <guid> --yes
 ```
 
 ## Views — `view create` (savedquery)
