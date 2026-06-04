@@ -269,10 +269,13 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
               help="Disable the 429/5xx retry loop for this invocation.")
 @click.option("--quiet", "-q", is_flag=True,
               help="Suppress per-tick import-progress lines on stderr.")
+@click.option("--formatted", is_flag=True,
+              help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
+                   "report and attach it verbatim under formatted_results.")
 @click.option("--yes", is_flag=True,
               help="Skip the overwrite confirmation prompt.")
 @pass_ctx
-def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet, yes):
+def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet, formatted, yes):
     # An overwrite import (the default) clobbers unmanaged customizations in the
     # target org — gate it like a delete (#67). A `--no-overwrite` import is not
     # prompted here (the PreToolUse hook still requires --yes for any import).
@@ -291,8 +294,27 @@ def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, tim
                 overwrite_unmanaged_customizations=not no_overwrite,
                 timeout=timeout,
                 quiet=quiet,
+                formatted=formatted,
             )
         except D365Error as exc:
             _handle_d365_error(ctx, exc)
             return
-        ctx.emit(True, data=info)
+        warnings = info.pop("warnings", None)
+        ctx.emit(True, data=info, warnings=warnings)
+
+
+@solution_group.command("import-result")
+@click.argument("import_job_id")
+@click.option("--formatted", is_flag=True,
+              help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
+                   "report and attach it verbatim under formatted_results.")
+@pass_ctx
+def solution_import_result_cmd(ctx: CLIContext, import_job_id, formatted):
+    """Re-fetch a prior ImportJob and parse its per-component pass/fail results."""
+    try:
+        info = sol_mod.import_result(ctx.backend(), import_job_id, formatted=formatted)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    warnings = info.pop("warnings", None)
+    ctx.emit(True, data=info, warnings=warnings)

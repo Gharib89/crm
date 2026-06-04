@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm solution import` now parses the import job's `data` column into a
+  solution-level `result` (`success`/`warning`/`failure`) plus a `components`
+  list (`{name, type, result, errorcode?, errortext?}` per imported component).
+  Any non-success component adds a `meta.warnings` note, so a partial failure
+  under an overall-succeeded async op (`status: succeeded`) is no longer masked.
+  `crm solution import-result <import_job_id>` re-fetches a completed job and
+  runs the same parser to verify a prior import without re-importing. Both accept
+  `--formatted` to also attach the Excel-format `RetrieveFormattedImportJobResults`
+  report verbatim under `formatted_results` (opt-in, a separate round-trip) (#70).
 - `crm metadata delete-attribute <entity> <attribute>` and
   `crm metadata delete-relationship <schema-name>` delete a custom column or a
   custom relationship (1:N or N:N). Both pre-flight against the metadata to refuse

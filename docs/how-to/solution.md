@@ -41,6 +41,15 @@ crm solution import docs/artifacts/crmworx.zip --yes
 ```
 By default an import **overwrites unmanaged customizations** in the target org, so it is gated as a destructive operation: without `--yes` it prompts for confirmation and, in a non-TTY context, aborts cleanly (exit 1 — under `--json` the body is `{"ok": false, "error": "aborted by user"}`, otherwise a human-formatted error). Always pass `--yes` when invoking non-interactively (agents, CI). Add `--no-overwrite` to keep existing unmanaged customizations — that path skips the in-band prompt, but the [destructive-op gate](../reference/cli.md) still requires `--yes` for any import since it mutates the org ([#67](https://github.com/Gharib89/crm/issues/67)).
 
+On completion the result parses the import job's `data` column into a solution-level `result` (`success`/`warning`/`failure`) plus a `components` list — `{name, type, result, errorcode?, errortext?}` per imported component. **A component that failed under an overall-succeeded job is no longer hidden:** any non-success component adds a `meta.warnings` note, so `status: succeeded` can't mask a partial failure ([#70](https://github.com/Gharib89/crm/issues/70)). Add `--formatted` to also attach the Excel-format `RetrieveFormattedImportJobResults` report verbatim under `formatted_results` (opt-in — it is a separate round-trip).
+
+## Verify a prior import
+
+```bash
+crm --json solution import-result <import_job_id>
+```
+Re-fetches a completed import job by id and runs the same parser, returning the per-component pass/fail envelope (and the same `meta.warnings` on any non-success component) without re-importing. The `<import_job_id>` is the `import_job_id` reported by `solution import`. Add `--formatted` for the Excel-format report ([#70](https://github.com/Gharib89/crm/issues/70)).
+
 ## Publish all customizations
 
 ```bash

@@ -132,7 +132,7 @@ pass `--profile <name>` and confirm the real target with
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
-| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `export`, `import`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
+| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `export`, `import`, `import-result`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
 | `data`       | `export`                                                                                | Bulk CSV/JSON dataset export                   |
