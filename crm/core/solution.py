@@ -525,6 +525,12 @@ def import_solution(
             warnings = _result_warnings(env["result"], env["components"])
             if warnings:
                 out["warnings"] = warnings
+    else:
+        # No data column to parse: be explicit that per-component results were
+        # not checked, so an absent result/components isn't read as "all clean".
+        out["warnings"] = [
+            "import job data column was empty; per-component results not verified."
+        ]
 
     if formatted:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
@@ -542,8 +548,10 @@ def import_solution(
 # partial failure under an overall-succeeded async op can no longer hide.
 
 
-def _component_name(el: ET.Element) -> str | None:
-    """Best human label for a component element: LocalizedName, name, id, or UniqueName."""
+def _component_name(el: ET.Element) -> str:
+    """Best human label for a component element: LocalizedName, name, id, or
+    UniqueName — falling back to the element tag so the name is never null (some
+    components, e.g. <rootComponent>/<dependency>, carry no label of their own)."""
     for attr in ("LocalizedName", "name", "id"):
         v = el.get(attr)
         if v:
@@ -551,7 +559,7 @@ def _component_name(el: ET.Element) -> str | None:
     child = el.find("UniqueName")
     if child is not None and child.text:
         return child.text.strip()
-    return None
+    return el.tag
 
 
 def parse_import_job_data(data_xml: str) -> dict[str, Any]:

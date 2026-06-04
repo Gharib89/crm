@@ -95,6 +95,14 @@ def test_parse_captures_failed_component_detail():
     assert "errorcode" not in good and "errortext" not in good
 
 
+def test_parse_anonymous_component_name_falls_back_to_type():
+    # <rootComponent> carries no LocalizedName/name/id/UniqueName — name must
+    # still be a non-null label so the {name,type,result} contract holds.
+    env = sol.parse_import_job_data(_DATA_SUCCESS)
+    rc = next(c for c in env["components"] if c["type"] == "rootComponent")
+    assert rc["name"] == "rootComponent"
+
+
 def test_parse_overall_failure():
     xml = (
         '<importexportxml><solutionManifests>'
@@ -168,6 +176,27 @@ def test_import_solution_surfaces_partial_failure(backend, tmp_path, monkeypatch
     assert info["result"] == "success"            # manifest-level
     assert info["warnings"]                        # ...partial failure no longer hidden
     assert any("Account" in w for w in info["warnings"])
+
+
+def test_import_solution_warns_when_data_missing(backend, tmp_path, monkeypatch):
+    # No data column on the final read: per-component results can't be verified,
+    # so the import must say so rather than silently omit them (an absent
+    # result/components could be mistaken for "checked and clean").
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    zip_path = tmp_path / "in.zip"
+    zip_path.write_bytes(b"PK\x03\x04stub")
+    with requests_mock.Mocker() as m:
+        m.post(backend.url_for("ImportSolutionAsync"),
+               json={"AsyncOperationId": "55555555-5555-5555-5555-555555555555"})
+        m.get(re.compile(r"asyncoperations"),
+              json={"statecode": 3, "statuscode": 30, "message": "Done"})
+        m.get(re.compile(r"importjobs"), json={"progress": 100.0})  # no data
+        info = sol.import_solution(backend, zip_path, quiet=True)
+    assert info["status"] == "succeeded"
+    assert "result" not in info
+    assert info["warnings"]
+    assert any("not verified" in w for w in info["warnings"])
 
 
 # ── command layer ────────────────────────────────────────────────────────
