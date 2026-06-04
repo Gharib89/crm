@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Added**
+- Structured warnings channel: the JSON envelope now carries a `meta.warnings`
+  array — the single place to scan for advisories (staged-but-unpublished,
+  created-but-read-back-failed, partial-optionset). `*_lookup_error` read-back
+  keys are mirrored into it (and left in `data` for back-compat), and a
+  non-transactional optionset update that fails mid-stage surfaces
+  `meta.completed_steps` / `meta.failed_stage` on the error envelope so a partial
+  mutation is observable. Every other error site is unchanged (#64).
+
+**Changed**
+- **Breaking (envelope):** the singular `meta.warning` scalar is replaced by the
+  `meta.warnings` array, so multiple advisories no longer clobber each other (#64).
+
 ## [0.9.0] — 2026-06-04
 
 **Added**

@@ -45,8 +45,17 @@ class CLIContext:
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
 
     def emit(self, ok: bool, data: Any = None, *, error: str | None = None,
-             meta: dict | None = None, table: dict | None = None) -> None:
-        """Print either a JSON envelope or a human-friendly representation."""
+             meta: dict | None = None, table: dict | None = None,
+             warnings: list[str] | None = None) -> None:
+        """Print either a JSON envelope or a human-friendly representation.
+
+        `warnings` is the structured advisory channel (#64): each entry is
+        appended to `meta.warnings` (never clobbering any already there) in JSON
+        mode, or printed via skin.warning in human mode. A pre-existing
+        `meta["warnings"]` that is not a list is coerced to a single-item list
+        first, so a stray scalar can never split into characters or raise. A
+        fresh dict is built so the caller's `meta` is not mutated.
+        """
         if self.json_mode:
             envelope: dict[str, Any] = {"ok": ok}
             if data is not None:
@@ -58,6 +67,11 @@ class CLIContext:
             # Build a fresh dict so the caller's meta is not mutated.
             if self.dry_run:
                 meta = {**(meta or {}), "dry_run": True}
+            if warnings:
+                existing = (meta or {}).get("warnings") or []
+                if not isinstance(existing, list):
+                    existing = [existing]
+                meta = {**(meta or {}), "warnings": [*existing, *warnings]}
             if meta:
                 envelope["meta"] = meta
             click.echo(json.dumps(envelope, indent=2, default=str))
@@ -68,6 +82,9 @@ class CLIContext:
         if not ok:
             self.skin.error(error or "Operation failed.")
             raise click.exceptions.Exit(FAILURE_EXIT_CODE)
+
+        for w in warnings or []:
+            self.skin.warning(w)
 
         if table:
             headers = table.get("headers", [])

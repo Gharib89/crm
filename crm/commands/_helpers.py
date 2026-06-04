@@ -33,12 +33,20 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error) -> None:
     # so d365_backend is loaded — keeps it off the `crm --version` fast path.
     from crm.utils.d365_backend import classify_d365_error
     category, retryable = classify_d365_error(exc.status, exc.code, str(exc))
-    ctx.emit(False, error=str(exc), meta={
+    meta: dict[str, Any] = {
         "status": exc.status,
         "code": exc.code,
         "category": category,
         "retryable": retryable,
-    })
+    }
+    # Partial-failure context (#64): only the non-transactional optionset update
+    # path sets these. Guarded is-not-None so every other error site keeps
+    # emitting an identical {status, code, category, retryable} envelope.
+    if exc.completed_steps is not None:
+        meta["completed_steps"] = exc.completed_steps
+    if exc.stage is not None:
+        meta["failed_stage"] = exc.stage
+    ctx.emit(False, error=str(exc), meta=meta)
 
 
 def _confirm_destructive(thing: str, name: str, yes: bool) -> bool:
@@ -194,17 +202,21 @@ def _emit_with_warning(
     ctx: "CLIContext", data: Any, warning: str | None,
     *, meta: dict[str, Any] | None = None,
 ) -> None:
-    """Emit a successful result, surfacing a solution warning if present.
+    """Emit a successful result, surfacing advisories via the warnings channel.
 
-    In JSON mode the warning is stashed under the `meta` envelope (no envelope
-    contract change). In human mode it is printed via skin.warning.
+    Rolls the solution `warning` (if any) plus any `*_lookup_error` read-back
+    keys found in `data` into the structured `meta.warnings` array (#64) —
+    appending, never clobbering. The `*_lookup_error` keys stay in `data` for
+    back-compat. In human mode emit prints each via skin.warning.
     """
+    warnings: list[str] = []
     if warning:
-        if ctx.json_mode:
-            meta = {**(meta or {}), "warning": warning}
-        else:
-            ctx.skin.warning(warning)
-    ctx.emit(True, data=data, meta=meta)
+        warnings.append(warning)
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key.endswith("_lookup_error") and value:
+                warnings.append(str(value))
+    ctx.emit(True, data=data, meta=meta, warnings=warnings or None)
 
 
 def _resolve_schema_name(
