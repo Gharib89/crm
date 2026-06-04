@@ -150,6 +150,9 @@ Non-zero = the operation did not take effect. Pass `--yes` to skip confirmations
 Use `--dry-run` to preview the HTTP request (method/URL/headers/body) without issuing it.
 This is the safe way to validate a mutation before commit.
 
+In `--json` mode every dry-run carries `meta.dry_run: true` — the canonical signal for
+detecting a preview (covers batch and poll list-shaped previews uniformly).
+
 ```bash
 crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
 ```
