@@ -53,6 +53,11 @@ class CLIContext:
                 envelope["data"] = _sanitize(data)
             if error:
                 envelope["error"] = error
+            # Canonical dry-run signal (#61): keyed off the invocation flag, not
+            # data-sniffing, so list-shaped batch/poll previews are covered too.
+            # Build a fresh dict so the caller's meta is not mutated.
+            if self.dry_run:
+                meta = {**(meta or {}), "dry_run": True}
             if meta:
                 envelope["meta"] = meta
             click.echo(json.dumps(envelope, indent=2, default=str))
