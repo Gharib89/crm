@@ -83,6 +83,15 @@ class TestBlocksDestructive:
         r = _run("crm solution job-cancel 22222222-2222-2222-2222-222222222222 --yes")
         assert r.returncode == 0
 
+    def test_block_solution_import_no_yes(self):
+        r = _run("crm solution import pkg.zip")
+        assert r.returncode == BLOCK
+        assert "import" in r.stderr
+
+    def test_allow_solution_import_with_yes(self):
+        r = _run("crm solution import pkg.zip --yes")
+        assert r.returncode == 0
+
     def test_block_async_cancel_no_yes(self):
         r = _run("crm async cancel 33333333-3333-3333-3333-333333333333")
         assert r.returncode == BLOCK

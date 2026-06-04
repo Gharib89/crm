@@ -49,21 +49,26 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error) -> None:
     ctx.emit(False, error=str(exc), meta=meta)
 
 
-def _confirm_destructive(thing: str, name: str, yes: bool) -> bool:
+def _confirm_destructive(
+    thing: str, name: str, yes: bool, *, message: str | None = None
+) -> bool:
     """Return True to proceed, False to bail.
 
     `--yes` skips the prompt. On a true non-TTY (EOF) stdin, `click.confirm`
     raises `click.Abort`; we catch it and return False so the caller can emit
     the documented ``{"ok": false, "error": "aborted by user"}`` envelope
     (exit 1) instead of click's bare ``Aborted!`` with no JSON.
+
+    `message` overrides the default delete wording for non-delete destructive
+    ops (e.g. an overwrite-import that names the actual risk) — see #67.
     """
     if yes:
         return True
+    prompt = message or (
+        f"This will permanently delete {thing} {name!r} and all related data. Continue?"
+    )
     try:
-        return click.confirm(
-            f"This will permanently delete {thing} {name!r} and all related data. Continue?",
-            default=False,
-        )
+        return click.confirm(prompt, default=False)
     except click.Abort:
         return False
 
