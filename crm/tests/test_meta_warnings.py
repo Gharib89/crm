@@ -34,6 +34,24 @@ class TestEmitWarnings:
         env = _emit_envelope(ctx, capsys, data={"x": 1}, warnings=["a", "b"])
         assert env["meta"]["warnings"] == ["a", "b"]
 
+    def test_appends_to_existing_meta_warnings(self, capsys):
+        ctx = CLIContext()
+        ctx.json_mode = True
+        env = _emit_envelope(
+            ctx, capsys, data={"x": 1}, meta={"warnings": ["x"]}, warnings=["y"]
+        )
+        assert env["meta"]["warnings"] == ["x", "y"]
+
+    def test_non_list_existing_warning_is_coerced_not_split(self, capsys):
+        # A stray scalar under meta["warnings"] must become one warning, never
+        # split into characters or raise (Copilot, PR #98).
+        ctx = CLIContext()
+        ctx.json_mode = True
+        env = _emit_envelope(
+            ctx, capsys, data={"x": 1}, meta={"warnings": "oops"}, warnings=["y"]
+        )
+        assert env["meta"]["warnings"] == ["oops", "y"]
+
     def test_warnings_do_not_clobber_other_meta_keys(self, capsys):
         ctx = CLIContext()
         ctx.json_mode = True

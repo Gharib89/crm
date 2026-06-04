@@ -49,14 +49,12 @@ class CLIContext:
              warnings: list[str] | None = None) -> None:
         """Print either a JSON envelope or a human-friendly representation.
 
-        `warnings` is the structured advisory channel (#64): the caller passes
-        the complete advisory list in one call (e.g. `_emit_with_warning` rolls
-        the solution warning + any `*_lookup_error` keys together), and it is
-        published as the list-valued `meta.warnings` in JSON mode — a list, where
-        the old scalar `meta.warning` could only hold one — or printed via
-        skin.warning in human mode. The `warnings` param is the sole source of
-        `meta.warnings`; a fresh copy is stored so the caller's dict and list are
-        not mutated.
+        `warnings` is the structured advisory channel (#64): each entry is
+        appended to `meta.warnings` (never clobbering any already there) in JSON
+        mode, or printed via skin.warning in human mode. A pre-existing
+        `meta["warnings"]` that is not a list is coerced to a single-item list
+        first, so a stray scalar can never split into characters or raise. A
+        fresh dict is built so the caller's `meta` is not mutated.
         """
         if self.json_mode:
             envelope: dict[str, Any] = {"ok": ok}
@@ -70,7 +68,10 @@ class CLIContext:
             if self.dry_run:
                 meta = {**(meta or {}), "dry_run": True}
             if warnings:
-                meta = {**(meta or {}), "warnings": list(warnings)}
+                existing = (meta or {}).get("warnings") or []
+                if not isinstance(existing, list):
+                    existing = [existing]
+                meta = {**(meta or {}), "warnings": [*existing, *warnings]}
             if meta:
                 envelope["meta"] = meta
             click.echo(json.dumps(envelope, indent=2, default=str))
