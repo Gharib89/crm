@@ -79,4 +79,4 @@ Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute tar
 ```bash
 crm --json metadata delete-relationship cwx_sla_cwx_ticket --yes
 ```
-Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes`.
+Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an interactive confirmation).
