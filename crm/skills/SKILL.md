@@ -1,14 +1,14 @@
 ---
 name: crm
-description: Operate a Microsoft Dynamics 365 Customer Engagement on-premises (v9.x) server from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS with NTLM auth. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, and bulk CSV exports. Triggers on Dynamics 365, D365 CE, Dataverse on-prem, Web API, FetchXML, NTLM CRM.
+description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, and bulk CSV exports. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
 ---
 
 # crm
 
-A stateful CLI for **Microsoft Dynamics 365 Customer Engagement (on-premises),
-version 9.x**. Every command issues a real HTTP request to the Dataverse Web API
-at `<url>/api/data/v9.x/`. There is no local mocking — the live D365 server is
-a hard runtime dependency.
+A stateful CLI for **Microsoft Dynamics 365 Customer Engagement — on-premises
+9.x (NTLM) or Dataverse online (OAuth)**. Every command issues a real HTTP request
+to the Dataverse Web API at `<url>/api/data/v9.x/`. There is no local mocking — the
+live D365 server is a hard runtime dependency.
 
 ## When to use
 
@@ -21,13 +21,26 @@ a hard runtime dependency.
 
 ## Install
 
-```bash
-pip install -e .         # from source (repo root)
-which crm
-crm --version
+The prebuilt `crm` binary bundles CPython and every dependency — no Python install
+needed. One line per host:
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.ps1 | iex
 ```
 
-Python ≥ 3.9. Depends on `requests`, `requests_ntlm`, `click`, `prompt_toolkit`.
+**Linux:**
+
+```bash
+curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
+```
+
+Open a new shell so the updated PATH takes effect, then verify:
+
+```bash
+crm --version
+```
 
 ## Configure
 
@@ -329,12 +342,6 @@ agent), and only after you have confirmed intent.
 | `crm solution job-cancel <id>` | A running async job |
 | `crm async cancel <id>` | A pending/suspended async operation |
 
-A deterministic Claude Code PreToolUse hook (`.claude/hooks/destructive_op_gate.py`)
-hard-blocks any of these Bash invocations (exit 2, reason on stderr) unless the
-`--yes` token is present — so the gate holds even if a prompt instruction is
-ignored. The hook matches by verb name, so not-yet-shipped delete verbs are
-gated the moment they ship.
-
 ## Solution scaffolding — publisher + solution
 
 ```bash
@@ -350,7 +357,7 @@ crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
 With a named profile active, both verbs auto-wire `publisher_prefix` (from
 `create-publisher`) and `default_solution` (from `create`) back into it, so
 later `metadata create-*` commands target that prefix/solution by default. Pass
-`--no-set-default` to opt out. See `docs/adr/0002-create-verbs-auto-wire-profile.md`.
+`--no-set-default` to opt out.
 
 ## Views — `view create` (savedquery)
 
@@ -401,8 +408,8 @@ Emits `{ok, data:{applied, skipped, planned, failed}, meta:{staged}}`; each entr
 is `{kind, name}` (a failed entry adds `error`). Metadata POSTs are
 non-transactional, so a failure aborts-and-reports and leaves
 staged-but-unpublished residue. A new table's views may report `planned` until
-the first publish assigns its ObjectTypeCode — re-apply to land them. Full spec
-schema: `docs/how-to/apply.md`.
+the first publish assigns its ObjectTypeCode — re-apply to land them. Run
+`crm describe apply` for the full option catalogue.
 
 ```yaml
 publisher: {unique_name: mocepub, prefix: moce, option_value_prefix: 10000}
@@ -459,14 +466,14 @@ does NOT auto-retry it; the caller must refetch a fresh ETag and retry.
   credentials, and other OAuth flows (device-code, interactive, ROPC) are out of
   scope; OAuth targets the public cloud only.
 - **D365 CE on-prem 9.x or Dataverse online.** Same Web API; only auth differs.
-- **Real server required.** No local mocking. E2E tests fail loudly when `D365_URL` is unset.
+- **Real server required.** No local mocking; a live D365 server must be reachable.
 - **Credentials are never persisted; the OAuth bearer token is.** The NTLM password
   / OAuth client secret live in `D365_PASSWORD` / `D365_CLIENT_SECRET` or `--password`
   only — never on a saved profile. The OAuth **bearer token** (a secret until it
   expires) IS cached on disk at `~/.crm/msal_token_cache.json` (`0600`).
 
-## Related files
+## Command discovery
 
-- Full SOP: `D365.md`
-- Test plan + results: `crm/tests/TEST.md`
-- README with installation walkthrough: `README.md`
+- `crm describe` — machine-readable catalogue of every command, option, and choice (no connection needed).
+- `crm <group> --help` — per-command options.
+- `crm --json connection whoami` — confirm the live target before any mutation.

@@ -56,6 +56,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existence-probe GETs do not false-positive. Existing `meta` keys (e.g. `staged`)
   are preserved; the in-data `_dry_run` sentinel is retained for back-compat (#61).
 
+**Changed**
+- Bundled agent skill (`crm/skills/SKILL.md`) is now fully standalone — it reads
+  correctly once `crm skill install` drops it into a harness skill dir, with no
+  references to files that don't ship alongside it. Install section shows the
+  per-host one-liners (`install.ps1` / `install.sh`) instead of `pip install -e .`;
+  removed repo-only pointers (`D365.md`, `crm/tests/TEST.md`, `README.md`,
+  `docs/adr/…`, `docs/how-to/apply.md`, the `.claude/hooks` gate) in favor of
+  in-CLI discovery (`crm describe`, `crm <group> --help`); broadened the
+  frontmatter description to cover both on-prem (NTLM) and Dataverse online (OAuth).
+
 ## [0.8.0] — 2026-06-04
 
 **Added**
