@@ -98,6 +98,71 @@ class TestConnectionEnv:
             conn_mod.resolve_credentials()
 
 
+class TestApiVersionNegotiation:
+    """Issue #51: on-prem v9.x 501s on the v9.2 default — negotiate down to v9.1."""
+
+    _BASE = "https://crm.contoso.local/contoso"
+    _V92 = f"{_BASE}/api/data/v9.2/WhoAmI"
+    _V91 = f"{_BASE}/api/data/v9.1/WhoAmI"
+    _WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001"}
+
+    def _backend(self):
+        profile = ConnectionProfile(
+            name="neg", url=self._BASE, domain="CONTOSO",
+            username="alice", api_version="v9.2", verify_ssl=False,
+        )
+        return D365Backend(profile, password="pw")
+
+    def test_negotiate_downgrades_to_v91_on_501(self):
+        backend = self._backend()
+        with requests_mock.Mocker() as m:
+            m.get(self._V92, status_code=501,
+                  json={"error": {"code": "0x0", "message": "Not Implemented"}})
+            m.get(self._V91, json=self._WHOAMI)
+            info = conn_mod.test_connection(backend, negotiate=True)
+        assert info["api_version"] == "v9.1"
+        assert backend.profile.api_version == "v9.1"
+        # exactly one downgrade: v9.2 probe then v9.1 probe = 2 requests
+        assert len(m.request_history) == 2
+        assert "/v9.2/" in m.request_history[0].url
+        assert "/v9.1/" in m.request_history[1].url
+
+    def test_no_downgrade_or_extra_probe_when_v92_succeeds(self):
+        backend = self._backend()
+        with requests_mock.Mocker() as m:
+            m.get(self._V92, json=self._WHOAMI)
+            info = conn_mod.test_connection(backend, negotiate=True)
+        assert info["api_version"] == "v9.2"
+        assert backend.profile.api_version == "v9.2"
+        assert len(m.request_history) == 1  # no extra round-trip
+
+    def test_explicit_version_not_auto_downgraded(self):
+        # negotiate=False (explicit version): a 501 surfaces, no downgrade.
+        backend = self._backend()
+        with requests_mock.Mocker() as m:
+            m.get(self._V92, status_code=501,
+                  json={"error": {"code": "0x0", "message": "Not Implemented"}})
+            with pytest.raises(D365Error) as ex:
+                conn_mod.test_connection(backend, negotiate=False)
+        assert ex.value.status == 501
+        assert backend.profile.api_version == "v9.2"
+        assert len(m.request_history) == 1
+
+    def test_original_error_surfaced_when_downgrade_also_fails(self):
+        backend = self._backend()
+        with requests_mock.Mocker() as m:
+            m.get(self._V92, status_code=501,
+                  json={"error": {"code": "0x0", "message": "501 at v9.2"}})
+            m.get(self._V91, status_code=500,
+                  json={"error": {"code": "0x0", "message": "500 at v9.1"}})
+            with pytest.raises(D365Error) as ex:
+                conn_mod.test_connection(backend, negotiate=True)
+        # the ORIGINAL 501 is surfaced, not the v9.1 500; version restored
+        assert ex.value.status == 501
+        assert "501 at v9.2" in str(ex.value)
+        assert backend.profile.api_version == "v9.2"
+
+
 # ── d365_backend.py ─────────────────────────────────────────────────────
 
 

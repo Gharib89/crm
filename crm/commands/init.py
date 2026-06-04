@@ -7,8 +7,9 @@ from pathlib import Path
 import click
 
 from crm.cli import CLIContext, pass_ctx
+from crm.core import connection as conn_mod
 from crm.core import session as session_mod
-from crm.utils.d365_backend import ConnectionProfile
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 _ENV_TEMPLATE = """\
 # Dynamics 365 connection settings — copy to .env and fill in values.
@@ -105,11 +106,33 @@ def _run_wizard(ctx: CLIContext) -> None:
         auth_scheme=auth_scheme,
     )
     session_mod.save_profile(profile)
-    ctx.emit(True, data={
+    data = {
         "profile": profile_name,
         "saved": True,
         "password_set": bool(password),
-    })
+    }
+    # On-prem v9.x 501s on the v9.2 default — probe with the just-entered creds
+    # and persist the negotiated version so the profile is usable as-is (#51).
+    data.update(_negotiate_version(profile, password))
+    ctx.emit(True, data=data)
+
+
+def _negotiate_version(profile: ConnectionProfile, password: str) -> dict:
+    """Best-effort: probe the server and persist the negotiated api_version.
+
+    Returns a small status dict to fold into the wizard output. A probe failure
+    (server unreachable, wrong creds) is non-fatal — the profile keeps the
+    optimistic v9.2 default and the user can re-run after fixing credentials.
+    """
+    try:
+        info = conn_mod.test_connection(D365Backend(profile, password), negotiate=True)
+    except D365Error as exc:
+        return {"verified": False, "verify_error": str(exc)}
+    # test_connection downgrades profile.api_version in place on 501; the backend
+    # shares this very object, so persist the (possibly changed) value as-is.
+    profile.api_version = info["api_version"]
+    session_mod.save_profile(profile)
+    return {"verified": True, "api_version": profile.api_version}
 
 
 def _prompt_profile_name(ctx: CLIContext) -> str:
