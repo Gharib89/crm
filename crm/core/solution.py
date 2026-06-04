@@ -511,26 +511,8 @@ def import_solution(
     }
 
     # The import already succeeded (statuscode 30); parsing the post-hoc report
-    # is best-effort. A missing/unparseable data column degrades to a warning,
-    # never an error, so it can't fail an otherwise-good import.
-    data_xml = job_row.get("data")
-    if data_xml:
-        try:
-            env = parse_import_job_data(data_xml)
-        except D365Error as exc:
-            out["warnings"] = [f"could not parse import result data: {exc}"]
-        else:
-            out["result"] = env["result"]
-            out["components"] = env["components"]
-            warnings = _result_warnings(env["result"], env["components"])
-            if warnings:
-                out["warnings"] = warnings
-    else:
-        # No data column to parse: be explicit that per-component results were
-        # not checked, so an absent result/components isn't read as "all clean".
-        out["warnings"] = [
-            "import job data column was empty; per-component results not verified."
-        ]
+    # is best-effort (missing/unparseable data → warning, never an error).
+    _attach_import_results(out, job_row.get("data"))
 
     if formatted:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
@@ -633,6 +615,29 @@ def _result_warnings(result: str, components: list[dict[str, Any]]) -> list[str]
     return warnings
 
 
+def _attach_import_results(out: dict[str, Any], data_xml: str | None) -> None:
+    """Parse the import `data` column into `out['result']`/`['components']`, adding
+    a `warnings` note for any non-success component. Best-effort: a missing or
+    unparseable data column degrades to a `warnings` note, never an error — so the
+    post-hoc report can't fail an import the server already completed, and an
+    absent result/components is never read as "checked and clean"."""
+    if not data_xml:
+        out["warnings"] = [
+            "import job data column was empty; per-component results not verified."
+        ]
+        return
+    try:
+        env = parse_import_job_data(data_xml)
+    except D365Error as exc:
+        out["warnings"] = [f"could not parse import result data: {exc}"]
+        return
+    out["result"] = env["result"]
+    out["components"] = env["components"]
+    warnings = _result_warnings(env["result"], env["components"])
+    if warnings:
+        out["warnings"] = warnings
+
+
 def _formatted_import_results(backend: D365Backend, import_job_id: str) -> str | None:
     """Fetch the Excel-format RetrieveFormattedImportJobResults report (verbatim)."""
     fr = as_dict(backend.get(
@@ -649,33 +654,24 @@ def import_result(
 ) -> dict[str, Any]:
     """Re-fetch an ImportJob's `data` and parse it into the per-component envelope.
 
-    Returns `{import_job_id, solution, result, progress, started_on, completed_on,
-    components[, warnings]}`. `warnings` is present only when the import was not a
-    clean success. With `formatted=True`, also calls RetrieveFormattedImportJobResults
-    and attaches the Excel-format report verbatim under `formatted_results`.
+    Returns `{import_job_id, solution, progress, started_on, completed_on}` plus
+    `result`/`components` when the data column could be parsed; otherwise a
+    `warnings` note explains why. Parsing is best-effort — a missing or unparseable
+    data column degrades to a warning, never an error. With `formatted=True`, also
+    attaches the Excel-format report verbatim under `formatted_results`.
     """
     job = as_dict(backend.get(
         f"importjobs({import_job_id})",
         params={"$select": "data,solutionname,progress,startedon,completedon"},
     ))
-    data_xml = job.get("data")
-    if not data_xml:
-        raise D365Error(
-            f"ImportJob {import_job_id} has no data column; cannot parse results."
-        )
-    env = parse_import_job_data(data_xml)
     out: dict[str, Any] = {
         "import_job_id": import_job_id,
-        "solution": env["solution"] or job.get("solutionname"),
-        "result": env["result"],
+        "solution": job.get("solutionname"),
         "progress": job.get("progress"),
         "started_on": job.get("startedon"),
         "completed_on": job.get("completedon"),
-        "components": env["components"],
     }
-    warnings = _result_warnings(env["result"], env["components"])
-    if warnings:
-        out["warnings"] = warnings
+    _attach_import_results(out, job.get("data"))
     if formatted:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
     return out

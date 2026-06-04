@@ -148,6 +148,19 @@ def test_import_result_formatted_attaches_report_verbatim(backend):
     assert out["formatted_results"] == report
 
 
+def test_import_result_missing_data_warns_not_raises(backend):
+    # A job row with no data column: best-effort parsing degrades to a warning
+    # rather than erroring — same contract as import_solution.
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for(f"importjobs({_JOB_ID})"),
+              json={"solutionname": "s", "progress": 100.0})  # no data
+        out = sol.import_result(backend, _JOB_ID)
+    assert out["import_job_id"] == _JOB_ID
+    assert out["solution"] == "s"
+    assert "result" not in out
+    assert any("not verified" in w for w in out["warnings"])
+
+
 def test_import_result_without_formatted_omits_report(backend):
     # No mock for RetrieveFormattedImportJobResults — a call would 404 (NoMockAddress).
     with requests_mock.Mocker() as m:
