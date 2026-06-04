@@ -165,7 +165,7 @@ multi-stage optionset update fails mid-way the **error** envelope additionally c
 |------|---------|
 | 0 | success (`ok: true`) |
 | 1 | operational failure: server / validation / declined |
-| 2 | usage error: bad or unknown flag (not JSON-wrapped) |
+| 2 | usage error: bad/unknown flag, missing arg, or bare `crm` when non-interactive — under `--json` the standard `{ok:false,error}` envelope on stdout, else raw text on stderr |
 
 Non-zero = the operation did not take effect. Pass `--yes` to skip confirmations non-interactively.
 

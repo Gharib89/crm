@@ -37,35 +37,32 @@ def test_bare_json_exits_2_with_usage_envelope(monkeypatch):
     monkeypatch.delenv("CRM_NO_REPL", raising=False)
     result = CliRunner().invoke(cli, ["--json"])
     assert result.exit_code == 2, result.output
-    env = json.loads(result.output)
+    env = json.loads(result.stdout)
     assert env["ok"] is False
     assert _HELP_HINT in env["error"]
+    assert result.stderr == "", "json path must write the envelope to stdout, not stderr"
 
 
 def test_bare_crm_no_repl_env_exits_2_human(monkeypatch):
-    """Bare `crm` with CRM_NO_REPL truthy → exit 2, plain-text error on stderr
-    (no JSON envelope) pointing at `crm --help`."""
+    """Bare `crm` with CRM_NO_REPL truthy → exit 2, plain-text error on stderr,
+    nothing on stdout (no JSON envelope), pointing at `crm --help`. Click 8.2+
+    keeps stdout/stderr separate, so we assert each stream explicitly."""
     monkeypatch.setenv("CRM_NO_REPL", "1")
     result = CliRunner().invoke(cli, [])
-    assert result.exit_code == 2, result.output
-    assert _HELP_HINT in result.output
-    # Human path must NOT emit a JSON envelope.
-    try:
-        json.loads(result.output)
-        is_json = True
-    except (ValueError, json.JSONDecodeError):
-        is_json = False
-    assert not is_json, "human path must not emit a JSON envelope"
+    assert result.exit_code == 2
+    assert _HELP_HINT in result.stderr
+    assert result.stdout == "", "human path must write nothing to stdout (no envelope)"
 
 
 def test_bare_crm_non_tty_exits_2(monkeypatch):
     """Bare `crm` with a non-TTY stdin (no --json, no CRM_NO_REPL) → exit 2.
     CliRunner already supplies a non-interactive stdin, so the isatty probe alone
-    must suppress the REPL — it must never hang or exit 0."""
+    must suppress the REPL — error on stderr, stdout clean, never hang/exit 0."""
     monkeypatch.delenv("CRM_NO_REPL", raising=False)
     result = CliRunner().invoke(cli, [])
-    assert result.exit_code == 2, result.output
-    assert _HELP_HINT in result.output
+    assert result.exit_code == 2
+    assert _HELP_HINT in result.stderr
+    assert result.stdout == "", "human path must write nothing to stdout (no envelope)"
 
 
 def test_explicit_repl_still_launches(monkeypatch):
