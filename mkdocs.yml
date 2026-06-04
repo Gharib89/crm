@@ -62,6 +62,7 @@ extra:
 
 plugins:
   - search
+  - include-markdown
 
 markdown_extensions:
   - admonition
@@ -102,5 +103,6 @@ nav:
       - workflow: how-to/workflow.md
   - Reference:
       - CLI: reference/cli.md
+      - Changelog: changelog.md
   - Contributing:
       - Skill & CLI sync: contributing/skill-and-cli.md
