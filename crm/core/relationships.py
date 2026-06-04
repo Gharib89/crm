@@ -55,6 +55,38 @@ def _parse_relationship_id(entity_id_url: str | None) -> str | None:
     return match.group(1) if match else None
 
 
+def delete_relationship(
+    backend: D365Backend,
+    schema_name: str,
+    *,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Delete a custom relationship (1:N or N:N) by schema name.
+
+    Pre-flight: refuses if `IsCustomRelationship=False` or `IsManaged=True`.
+    Server enforces remaining-dependency checks and returns 4xx on conflict.
+    """
+    if not schema_name:
+        raise D365Error("schema_name is required.")
+    path = f"RelationshipDefinitions(SchemaName='{schema_name}')"
+    rb = as_dict(backend.get(
+        path, params={"$select": "IsCustomRelationship,IsManaged"},
+    ))
+    if rb.get("IsCustomRelationship") is False:
+        raise D365Error(
+            f"{schema_name!r} is not a custom relationship; refusing to delete.",
+            code="NotCustomRelationship",
+        )
+    if rb.get("IsManaged") is True:
+        raise D365Error(
+            f"{schema_name!r} is managed; uninstall the parent solution to remove it.",
+            code="ManagedRelationship",
+        )
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    backend.delete(path, extra_headers=headers)
+    return {"deleted": True, "schema_name": schema_name, "solution": solution}
+
+
 def create_one_to_many(
     backend: D365Backend,
     *,

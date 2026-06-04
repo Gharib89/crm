@@ -381,6 +381,60 @@ def _resolve_global_optionset_id(backend: D365Backend, name: str) -> str:
     return str(metadata_id)
 
 
+def delete_attribute(
+    backend: D365Backend,
+    entity: str,
+    attribute: str,
+    *,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Delete a custom attribute (column) from an entity.
+
+    Pre-flight: refuses managed, non-custom, primary (id/name), and
+    sub-attributes (`AttributeOf` set — e.g. a Money's _base or a
+    composite's parts, which the server deletes with their parent).
+    Server enforces remaining-dependency checks and returns 4xx on conflict.
+    """
+    if not entity or not attribute:
+        raise D365Error("entity and attribute are required.")
+    path = (
+        f"EntityDefinitions(LogicalName='{entity}')"
+        f"/Attributes(LogicalName='{attribute}')"
+    )
+    rb = as_dict(backend.get(path, params={
+        "$select": "IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf",
+    }))
+    if rb.get("IsCustomAttribute") is False:
+        raise D365Error(
+            f"{attribute!r} is not a custom attribute; refusing to delete.",
+            code="NotCustomAttribute",
+        )
+    if rb.get("IsManaged") is True:
+        raise D365Error(
+            f"{attribute!r} is managed; uninstall the parent solution to remove it.",
+            code="ManagedAttribute",
+        )
+    if rb.get("IsPrimaryId") is True or rb.get("IsPrimaryName") is True:
+        raise D365Error(
+            f"{attribute!r} is a primary attribute; refusing to delete.",
+            code="PrimaryAttribute",
+        )
+    if rb.get("AttributeOf"):
+        raise D365Error(
+            f"{attribute!r} is a sub-attribute of {rb['AttributeOf']!r}; "
+            "delete the parent attribute instead.",
+            code="SubAttribute",
+        )
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    backend.delete(path, extra_headers=headers)
+    return {
+        "deleted": True,
+        "entity": entity,
+        "attribute": attribute,
+        "solution": solution,
+    }
+
+
 def add_attribute(
     backend: D365Backend,
     *,

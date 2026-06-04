@@ -366,8 +366,8 @@ and only after you have confirmed intent.
 | --- | --- |
 | `crm metadata delete-entity <logical>` | A custom entity (table) and ALL its rows |
 | `crm metadata delete-optionset <name>` | A custom global option set |
-| `crm metadata delete-attribute ...` | A column (when shipped) |
-| `crm metadata delete-relationship ...` | A relationship (when shipped) |
+| `crm metadata delete-attribute <entity> <attribute>` | A custom column |
+| `crm metadata delete-relationship <schema-name>` | A custom relationship (1:N or N:N) |
 | `crm entity delete <set> <guid>` | A single record |
 | `crm solution job-cancel <id>` | A running async job |
 | `crm solution import <zip>` | OVERWRITES unmanaged customizations in the target org (default; `--no-overwrite` skips the prompt but the gate still needs `--yes`) |

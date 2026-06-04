@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm metadata delete-attribute <entity> <attribute>` and
+  `crm metadata delete-relationship <schema-name>` delete a custom column or a
+  custom relationship (1:N or N:N). Both pre-flight against the metadata to refuse
+  managed and non-custom targets client-side; `delete-attribute` additionally
+  refuses primary (id/name) and sub-attribute (`AttributeOf`-set) columns. Each
+  honors `--solution` (sent as `MSCRM.SolutionUniqueName`) and is gated as a
+  destructive operation (`--yes` + confirmation; the verb-name PreToolUse hook
+  also blocks them without `--yes`). Remaining-dependency conflicts are left to
+  the server's 4xx (#69).
 - `crm metadata describe <entity>` returns a one-shot, read-only write-readiness
   brief: the entity set name, primary id/name, and every writable attribute with
   its required level. Lookups carry `bind_key` (`<Nav>@odata.bind`, self-derived

@@ -233,6 +233,7 @@ one call. Write verbs new in 0.5.0:
 - `metadata create-one-to-many` / `create-many-to-many` — relationships
 - `metadata list-optionsets` / `get-optionset` / `create-optionset` / `update-optionset` / `delete-optionset` — global option sets
 - `metadata delete-entity <logical-name>` — drop a custom entity (gated)
+- `metadata delete-attribute <entity> <attribute>` / `delete-relationship <schema-name>` — drop a custom column or relationship (gated)
 
 `crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
 columns, option sets, relationships, views) from one declarative spec, in
