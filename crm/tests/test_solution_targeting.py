@@ -211,7 +211,7 @@ def test_create_entity_strict_no_solution_errors(monkeypatch, tmp_path):
 
 
 def test_add_attribute_no_solution_warns(monkeypatch, tmp_path):
-    """Non-strict + no resolvable solution -> exit 0 but meta.warning present."""
+    """Non-strict + no resolvable solution -> exit 0 but meta.warnings present."""
     _save_profile(monkeypatch, tmp_path, publisher_prefix="new")  # no default_solution
     monkeypatch.delenv("CRM_REQUIRE_SOLUTION", raising=False)
 
@@ -229,8 +229,8 @@ def test_add_attribute_no_solution_warns(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
-    assert "warning" in env.get("meta", {})
-    assert "solution" in env["meta"]["warning"].lower()
+    warnings = env.get("meta", {}).get("warnings", [])
+    assert any("solution" in w.lower() for w in warnings)
 
 
 def test_connection_status_surfaces_new_fields(monkeypatch, tmp_path):

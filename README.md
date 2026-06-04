@@ -199,6 +199,11 @@ Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code
 `concurrency_conflict`, `duplicate_detected`, `validation`, `throttled`,
 `server_error`, `transport_error`) and `meta.retryable` flags the transient classes.
 
+`meta.warnings` is an array of non-fatal advisories — the one place to scan for
+staged-but-unpublished changes, created-but-read-back-failed records, and
+partial-optionset failures (which also surface `meta.completed_steps` /
+`meta.failed_stage` on the error envelope).
+
 ## Command Groups
 
 | Group        | Purpose                                                    |

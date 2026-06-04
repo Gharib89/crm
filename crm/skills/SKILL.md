@@ -153,6 +153,13 @@ pass `--profile <name>` and confirm the real target with
 { "ok": false, "error": "Record Not Found", "meta": {"status": 404, "code": "0x80040217", "category": "not_found", "retryable": false} }
 ```
 
+**`meta.warnings`** is the one structured channel to scan for non-fatal advisories
+— it is an array (multiple warnings never clobber). Scan it for staged-but-unpublished
+changes, created-but-read-back-failed records (the `*_lookup_error` keys also kept in
+`data` for back-compat are mirrored here), and partial-optionset advisories. When a
+multi-stage optionset update fails mid-way the **error** envelope additionally carries
+`meta.completed_steps` (steps that already landed on the server) and `meta.failed_stage`.
+
 **Exit codes** — check `$?`, then read the envelope:
 | code | meaning |
 |------|---------|
@@ -441,6 +448,9 @@ alternate key is rejected).
 
 `D365Error` wraps any HTTP / API failure. In `--json` mode it becomes
 `{"ok": false, "error": "...", "meta": {"status": N, "code": "0x...", "category": "...", "retryable": bool}}`.
+A non-transactional optionset update that fails mid-stage adds `meta.completed_steps`
++ `meta.failed_stage` so the partial mutation is observable; all other failures carry
+only the four keys above.
 
 `meta.category` is a closed enum; `meta.retryable` flags the transient classes. The
 backend auto-retries the `transport_error` / `throttled` (429) / `server_error` (5xx)
