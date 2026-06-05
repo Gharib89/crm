@@ -135,7 +135,7 @@ pass `--profile <name>` and confirm the real target with
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
-| `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
+| `app`        | `create`, `add-components`, `set-sitemap`, `build-sitemap`                              | Model-driven apps (appmodule)                  |
 | `webresource`| `create`, `update`, `get`, `list`                                                       | Web resources (HTML/JS/CSS/images) + app icons |
 | `data`       | `export`, `import`                                                                      | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
@@ -486,6 +486,16 @@ crm --json app add-components <appmoduleid> \
 # (stored as sitemapname); --unique-name is the app's uniquename and sets
 # sitemapnameunique to auto-associate the sitemap with that app.
 crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml --unique-name cwx_crmworx
+
+# build-sitemap: generates the SiteMapXml for you, then creates it via the same
+# path as set-sitemap. Grammar: --area 'id[:Title]', --group 'areaId/groupId[:Title]',
+# --subarea 'areaId/groupId:entity=<logical>[:Title]' (binds a table via Entity=;
+# titles optional everywhere). SubArea Ids are auto-allocated; refs/dup Ids are validated.
+# crm --dry-run app build-sitemap ... prints the generated XML and does NOT POST.
+crm --json app build-sitemap "CRMWorx Sitemap" \
+    --area 'sales:Sales' --group 'sales/accounts:Customers' \
+    --subarea 'sales/accounts:entity=account:Accounts' \
+    --subarea 'sales/accounts:entity=contact' --unique-name cwx_crmworx
 ```
 
 ## Web resources — `webresource` (HTML/JS/CSS/images)

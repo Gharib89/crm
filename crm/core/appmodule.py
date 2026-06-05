@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from xml.sax.saxutils import quoteattr
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import maybe_publish
@@ -184,4 +185,120 @@ def set_sitemap(
     if not smid:
         out["sitemap_lookup_error"] = (
             f"Could not parse sitemapid from response: {entity_id_url!r}")
+    return out
+
+
+def build_sitemapxml(
+    areas: list[tuple[str, str]],
+    groups: list[tuple[str, str, str]],
+    subareas: list[tuple[str, str, str, str | None]],
+) -> str:
+    """Build a compact SiteMapXml from structured Area/Group/SubArea inputs.
+
+    `areas` = [(area_id, title)], `groups` = [(area_id, group_id, title)],
+    `subareas` = [(area_id, group_id, entity, title_or_None)]. SubArea Ids are
+    auto-allocated from the entity logical name (suffixed `_2`, `_3`, … to stay
+    unique across the whole document); a SubArea Title is emitted only when a
+    non-empty one is given, else the platform derives the label from the entity.
+    All attribute values are quoteattr-escaped. Raises D365Error on empty input,
+    duplicate Ids, or broken Area/Group references.
+    """
+    if not areas:
+        raise D365Error("a sitemap needs at least one area.")
+
+    # Strip identifier fields up front: whitespace-only Ids are then caught as
+    # empty and emitted Ids stay clean for programmatic callers (the CLI already
+    # strips; this mirrors set_sitemap's .strip() discipline). Titles keep their
+    # own blank-handling below.
+    areas = [(area_id.strip(), title) for area_id, title in areas]
+    groups = [(a.strip(), g.strip(), t) for a, g, t in groups]
+    subareas = [(a.strip(), g.strip(), e.strip(), t) for a, g, e, t in subareas]
+
+    area_ids: set[str] = set()
+    for area_id, _ in areas:
+        if not area_id:
+            raise D365Error("area_id must not be empty.")
+        if area_id in area_ids:
+            raise D365Error(f"duplicate area Id {area_id!r}.")
+        area_ids.add(area_id)
+
+    # group_id -> area_id, for both uniqueness and subarea referential checks.
+    group_area: dict[str, str] = {}
+    # area_id -> ordered list of (group_id, title)
+    groups_by_area: dict[str, list[tuple[str, str]]] = {a: [] for a, _ in areas}
+    for area_id, group_id, title in groups:
+        if not group_id:
+            raise D365Error("group_id must not be empty.")
+        if group_id in group_area:
+            raise D365Error(f"duplicate group Id {group_id!r}.")
+        if area_id not in area_ids:
+            raise D365Error(
+                f"group {group_id!r} references unknown area {area_id!r}.")
+        group_area[group_id] = area_id
+        groups_by_area[area_id].append((group_id, title))
+
+    # group_id -> ordered list of (sub_id, entity, title_or_None)
+    subs_by_group: dict[str, list[tuple[str, str, str | None]]] = {
+        g: [] for g in group_area
+    }
+    used_sub_ids: set[str] = set()
+    for area_id, group_id, entity, title in subareas:
+        if not entity:
+            raise D365Error("subarea entity must not be empty.")
+        if group_area.get(group_id) != area_id:
+            raise D365Error(
+                f"subarea on entity {entity!r} does not reference a defined "
+                f"group {group_id!r} in area {area_id!r}.")
+        sub_id = entity
+        n = 1
+        while sub_id in used_sub_ids:
+            n += 1
+            sub_id = f"{entity}_{n}"
+        used_sub_ids.add(sub_id)
+        subs_by_group[group_id].append((sub_id, entity, title))
+
+    parts: list[str] = ["<SiteMap>"]
+    for area_id, area_title in areas:
+        a_title = area_title if area_title.strip() else area_id
+        parts.append(f"<Area Id={quoteattr(area_id)} Title={quoteattr(a_title)}>")
+        for group_id, group_title in groups_by_area[area_id]:
+            g_title = group_title if group_title.strip() else group_id
+            parts.append(
+                f"<Group Id={quoteattr(group_id)} Title={quoteattr(g_title)}>")
+            for sub_id, entity, title in subs_by_group[group_id]:
+                attrs = f"Id={quoteattr(sub_id)} Entity={quoteattr(entity)}"
+                if title and title.strip():
+                    attrs += f" Title={quoteattr(title)}"
+                parts.append(f"<SubArea {attrs} />")
+            parts.append("</Group>")
+        parts.append("</Area>")
+    parts.append("</SiteMap>")
+    return "".join(parts)
+
+
+def build_sitemap(
+    backend: D365Backend,
+    *,
+    sitemap_name: str,
+    areas: list[tuple[str, str]],
+    groups: list[tuple[str, str, str]],
+    subareas: list[tuple[str, str, str, str | None]],
+    unique_name: str | None = None,
+    solution: str | None = None,
+    publish: bool = False,
+) -> dict[str, Any]:
+    """Build a SiteMapXml from structured inputs and create the sitemaps row.
+
+    Under dry-run, returns `{_dry_run, sitemapname, sitemapxml}` with the built
+    XML and does NOT POST. Otherwise delegates to `set_sitemap` so the POST body
+    is byte-identical to the existing set-sitemap path, then optionally publishes.
+    """
+    if not sitemap_name.strip():
+        raise D365Error("sitemap_name must not be empty.")
+    xml = build_sitemapxml(areas, groups, subareas)
+    if backend.dry_run:
+        return {"_dry_run": True, "sitemapname": sitemap_name, "sitemapxml": xml}
+    out = set_sitemap(backend, sitemap_name=sitemap_name, sitemap_xml=xml,
+                      unique_name=unique_name, solution=solution)
+    maybe_publish(backend, out, publish)
     return out
