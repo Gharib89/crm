@@ -374,12 +374,13 @@ def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
 
 
 @solution_group.command("extract")
-@click.option("--zipfile", required=True, type=click.Path(dir_okay=False),
+@click.option("--zipfile", required=True, type=click.Path(exists=True, dir_okay=False),
               help="Exported solution zip to unpack.")
 @click.option("--folder", required=True, type=click.Path(file_okay=False),
               help="Destination folder for the source-controllable tree.")
 @click.option("--package-type", "package_type",
-              type=click.Choice(["Unmanaged", "Managed", "Both"]), default="Unmanaged",
+              type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
+              default="Unmanaged",
               help="SolutionPackager /packagetype (default Unmanaged).")
 @click.option("--solutionpackager-path", "solutionpackager_path", default=None,
               type=click.Path(dir_okay=False),
@@ -407,10 +408,11 @@ def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
 @solution_group.command("pack")
 @click.option("--zipfile", required=True, type=click.Path(dir_okay=False),
               help="Destination solution zip to build.")
-@click.option("--folder", required=True, type=click.Path(file_okay=False),
+@click.option("--folder", required=True, type=click.Path(exists=True, file_okay=False),
               help="Source folder tree to pack.")
 @click.option("--package-type", "package_type",
-              type=click.Choice(["Unmanaged", "Managed", "Both"]), default="Unmanaged",
+              type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
+              default="Unmanaged",
               help="SolutionPackager /packagetype (default Unmanaged).")
 @click.option("--solutionpackager-path", "solutionpackager_path", default=None,
               type=click.Path(dir_okay=False),

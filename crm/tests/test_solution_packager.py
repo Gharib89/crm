@@ -166,6 +166,32 @@ def test_invalid_package_type_rejected_before_shelling_out(monkeypatch, exe):
         )
 
 
+# ── timeout guard + path expansion ────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("bad", [0, -5])
+def test_timeout_must_be_positive(monkeypatch, exe, bad):
+    def _boom(*a, **k):
+        raise AssertionError("subprocess.run must not be called on a bad timeout")
+
+    monkeypatch.setattr(sp.subprocess, "run", _boom)
+    with pytest.raises(D365Error, match="timeout must be a positive"):
+        sp.extract_solution(
+            zipfile="s.zip", folder="f", solutionpackager_path=exe, timeout=bad,
+        )
+
+
+def test_resolves_exe_expanding_env_vars_and_user(fake_run, monkeypatch, tmp_path):
+    real = tmp_path / "SolutionPackager.exe"
+    real.touch()
+    monkeypatch.setenv("CRM_SP_DIR", str(tmp_path))
+    sp.extract_solution(
+        zipfile="s.zip", folder="f",
+        solutionpackager_path="$CRM_SP_DIR/SolutionPackager.exe",
+    )
+    assert fake_run[-1][0][0] == str(real)
+
+
 # ── command wiring: `crm solution extract` / `pack` must run OFFLINE ───────────
 
 
@@ -173,8 +199,24 @@ def _backend_forbidden(self):
     raise AssertionError("extract/pack are offline; they must not open a backend")
 
 
+@pytest.fixture
+def real_zip(tmp_path):
+    """An existing zip path — extract's --zipfile is a validated input."""
+    z = tmp_path / "sol.zip"
+    z.write_bytes(b"PK\x03\x04")
+    return str(z)
+
+
+@pytest.fixture
+def real_folder(tmp_path):
+    """An existing folder — pack's --folder is a validated input."""
+    d = tmp_path / "src"
+    d.mkdir()
+    return str(d)
+
+
 class TestPackagerCommands:
-    def test_extract_command_runs_offline_and_wires_core(self, monkeypatch):
+    def test_extract_command_runs_offline_and_wires_core(self, monkeypatch, real_zip):
         captured = {}
         monkeypatch.setattr(
             "crm.core.solutionpackager.extract_solution",
@@ -184,22 +226,50 @@ class TestPackagerCommands:
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
         result = CliRunner().invoke(cli, [
             "--json", "solution", "extract",
-            "--zipfile", "sol.zip", "--folder", "src/sol",
+            "--zipfile", real_zip, "--folder", "src/sol",
             "--package-type", "Both",
-            "--solutionpackager-path", "/x/SolutionPackager.exe",
+            "--solutionpackager-path", real_zip,
             "--timeout", "30",
         ])
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
         assert envelope["data"]["action"] == "Extract"
-        assert captured["zipfile"] == "sol.zip"
+        assert captured["zipfile"] == real_zip
         assert captured["folder"] == "src/sol"
         assert captured["package_type"] == "Both"
-        assert captured["solutionpackager_path"] == "/x/SolutionPackager.exe"
+        assert captured["solutionpackager_path"] == real_zip
         assert captured["timeout"] == 30
 
-    def test_pack_command_runs_offline_and_wires_core(self, monkeypatch):
+    def test_extract_package_type_is_case_insensitive(self, monkeypatch, real_zip):
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.solutionpackager.extract_solution",
+            lambda **kw: captured.update(kw) or {"action": "Extract", "exit_code": 0},
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "extract",
+            "--zipfile", real_zip, "--folder", "src/sol",
+            "--package-type", "both",   # lower case must be accepted
+            "--solutionpackager-path", real_zip,
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["package_type"] == "Both"   # normalised to canonical casing
+
+    def test_extract_missing_zipfile_is_usage_error(self, monkeypatch, tmp_path):
+        def _no_call(**kw):
+            raise AssertionError("core must not run when --zipfile does not exist")
+
+        monkeypatch.setattr("crm.core.solutionpackager.extract_solution", _no_call)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "extract",
+            "--zipfile", str(tmp_path / "missing.zip"), "--folder", "src/sol",
+        ])
+        assert result.exit_code == 2, result.output   # Click usage error
+
+    def test_pack_command_runs_offline_and_wires_core(self, monkeypatch, real_folder):
         captured = {}
         monkeypatch.setattr(
             "crm.core.solutionpackager.pack_solution",
@@ -208,17 +278,29 @@ class TestPackagerCommands:
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
         result = CliRunner().invoke(cli, [
             "--json", "solution", "pack",
-            "--zipfile", "out.zip", "--folder", "src/sol",
+            "--zipfile", "out.zip", "--folder", real_folder,
         ])
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
         assert envelope["data"]["action"] == "Pack"
         assert captured["zipfile"] == "out.zip"
-        assert captured["folder"] == "src/sol"
+        assert captured["folder"] == real_folder
         assert captured["package_type"] == "Unmanaged"   # default
 
-    def test_command_propagates_nonzero_solutionpackager_exit(self, monkeypatch):
+    def test_pack_missing_folder_is_usage_error(self, monkeypatch, tmp_path):
+        def _no_call(**kw):
+            raise AssertionError("core must not run when --folder does not exist")
+
+        monkeypatch.setattr("crm.core.solutionpackager.pack_solution", _no_call)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "pack",
+            "--zipfile", "out.zip", "--folder", str(tmp_path / "nope"),
+        ])
+        assert result.exit_code == 2, result.output   # Click usage error
+
+    def test_command_propagates_nonzero_solutionpackager_exit(self, monkeypatch, real_folder):
         # A SolutionPackager failure must surface as a CLI failure (ADR 0001),
         # while still showing the exit code + stdout_tail for diagnosis.
         monkeypatch.setattr(
@@ -228,7 +310,7 @@ class TestPackagerCommands:
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
         result = CliRunner().invoke(cli, [
-            "--json", "solution", "pack", "--zipfile", "z", "--folder", "f",
+            "--json", "solution", "pack", "--zipfile", "z", "--folder", real_folder,
         ])
         assert result.exit_code == 1, result.output
         envelope = json.loads(result.output)
@@ -236,7 +318,7 @@ class TestPackagerCommands:
         assert envelope["data"]["exit_code"] == 2
         assert envelope["data"]["stdout_tail"] == "boom"
 
-    def test_extract_command_absent_binary_exits_1(self, monkeypatch):
+    def test_extract_command_absent_binary_exits_1(self, monkeypatch, real_zip):
         def _raise(**kw):
             raise D365Error("SolutionPackager executable not found on PATH. "
                             "Install it from the Microsoft.CrmSdk.CoreTools NuGet package.")
@@ -245,7 +327,7 @@ class TestPackagerCommands:
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
         result = CliRunner().invoke(cli, [
             "--json", "solution", "extract",
-            "--zipfile", "sol.zip", "--folder", "src/sol",
+            "--zipfile", real_zip, "--folder", "src/sol",
         ])
         assert result.exit_code == 1, result.output
         envelope = json.loads(result.output)

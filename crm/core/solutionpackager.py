@@ -53,6 +53,9 @@ def _resolve_solution_packager(path_override: str | None) -> str:
     absence on PATH, raises a D365Error naming the CoreTools NuGet."""
     candidate = path_override or os.environ.get("CRM_SOLUTIONPACKAGER")
     if candidate:
+        # Expand ~ and $VARS so a profile/.env value like "~/CoreTools/SolutionPackager.exe"
+        # resolves (the shell only expands these for values typed at the prompt).
+        candidate = os.path.expanduser(os.path.expandvars(candidate))
         if not Path(candidate).is_file():
             raise D365Error(f"SolutionPackager not found at {candidate!r}. {_NUGET_HINT}")
         return candidate
@@ -73,6 +76,10 @@ def _run_solution_packager(
 ) -> dict[str, Any]:
     """Shell out to SolutionPackager for `action` (Extract|Pack) and return the
     `{action, exit_code, folder, zipfile, stdout_tail}` envelope."""
+    if timeout is not None and timeout <= 0:
+        raise D365Error(
+            f"timeout must be a positive number of seconds; got {timeout}."
+        )
     pkg = _normalize_package_type(package_type)
     exe = _resolve_solution_packager(solutionpackager_path)
     argv = [
