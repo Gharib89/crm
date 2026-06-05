@@ -489,6 +489,24 @@ crm --json solution add-component --solution CRMWorx --type 1 --id <guid> --no-a
 crm --json solution remove-component --solution CRMWorx --type 61 --id <guid> --yes
 ```
 
+### Component drift detection — `components --save` / `--diff`
+
+Snapshot and compare solution contents for CI gates or agent branching:
+
+```bash
+# Capture the expected inventory (normalized bare JSON list)
+crm --json solution components CRMWorx --save components.json
+# -> {"ok": true, "data": {"saved": "components.json", "count": 42}}
+
+# Compare live against the snapshot — exit 0 = matches, exit 1 = drift
+crm --json solution components CRMWorx --diff components.json
+# on match:  {"ok": true,  "data": {"matches": true, "missing": [], "unexpected": []}, "meta": {"matches": true}}
+# on drift:  {"ok": false, "data": {"matches": false, "missing": [...], "unexpected": [...]},
+#             "error": "Drift detected: 1 missing, 0 unexpected component(s)."}
+```
+
+Each component entry: `{"componenttype": <int>, "objectid": "<guid-lowercase>", "rootcomponentbehavior": <int|null>}`. Components are keyed on the tuple `(componenttype, objectid, rootcomponentbehavior)` — `missing` = in expected not live; `unexpected` = in live not expected. **Exits 1 on drift.** The flags are mutually exclusive; bare `components <name>` lists components unchanged.
+
 ## Views — `view create` (savedquery)
 
 ```bash

@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to build the diff; no POSTs are issued.
 
 **Added**
+- `crm solution components <name> --save <path>` writes a normalized component
+  inventory (a bare JSON list, each entry `{"componenttype": int, "objectid": str,
+  "rootcomponentbehavior": int|null}`) to `<path>`, creating parent dirs as needed.
+  Emits `{"saved": "<path>", "count": N}`. `--diff <expected.json>` fetches live
+  components and compares them against the saved file; exits non-zero (1) on drift.
+  Components are keyed on the tuple `(componenttype, objectid, rootcomponentbehavior)`
+  after normalisation — `missing` = in expected but not live, `unexpected` = in live
+  but not expected. The two flags are mutually exclusive; bare `components <name>` is
+  unchanged. The round-trip `--save` then `--diff` against the same org reports no
+  drift (#82).
 - `crm metadata picklist` and `crm metadata get-optionset` now emit a flattened
   `meta.options` list (`[{value, label}]`) in `--json` mode, so agents need not
   dig through `Label.UserLocalizedLabel.Label`. The raw `data` is unchanged (no
