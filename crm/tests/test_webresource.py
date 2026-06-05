@@ -354,3 +354,147 @@ class TestResolveWebresourceId:
                   json={"value": [{"webresourceid": _WR_ID}]})
             out = webresource.resolve_webresource_id(dry, "new_icon.png")
         assert out == _WR_ID
+
+
+class TestWebresourceCommands:
+    def test_create_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_create(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "webresourceid": _WR_ID, "name": kw["name"]}
+
+        monkeypatch.setattr("crm.core.webresource.create_webresource", fake_create)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("foo.js", "w", encoding="utf-8") as fh:
+                fh.write("alert(1)")
+            result = runner.invoke(cli, [
+                "--json", "webresource", "create",
+                "--name", "cwx_/scripts/foo.js", "--file", "foo.js", "--no-publish",
+            ])
+        assert result.exit_code == 0, result.output
+        # real resolve_webresourcetype ran: .js -> 3
+        assert captured["webresourcetype"] == 3
+        assert captured["name"] == "cwx_/scripts/foo.js"
+        assert captured["content"] == b"alert(1)"
+        env = json.loads(result.output)
+        assert env["ok"] is True
+
+    def test_create_type_override_wins(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.webresource.create_webresource",
+            lambda backend, **kw: captured.update(kw)
+            or {"created": True, "webresourceid": _WR_ID, "name": kw["name"]})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("foo.js", "w", encoding="utf-8") as fh:
+                fh.write("x")
+            result = runner.invoke(cli, [
+                "--json", "webresource", "create",
+                "--name", "cwx_/foo.js", "--file", "foo.js",
+                "--type", "1", "--no-publish",
+            ])
+        assert result.exit_code == 0, result.output
+        # --type 1 overrides the inferred .js -> 3
+        assert captured["webresourcetype"] == 1
+
+    def test_create_unknown_extension_errors(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("foo.xyz", "w", encoding="utf-8") as fh:
+                fh.write("x")
+            result = runner.invoke(cli, [
+                "--json", "webresource", "create",
+                "--name", "cwx_/foo.xyz", "--file", "foo.xyz", "--no-publish",
+            ])
+        assert result.exit_code != 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "infer" in env["error"].lower()
+
+    def test_update_command_wires_core(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.webresource.update_webresource",
+            lambda backend, name, **kw: captured.update({"name": name, **kw})
+            or {"updated": True, "webresourceid": _WR_ID, "name": name})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("foo.js", "w", encoding="utf-8") as fh:
+                fh.write("updated()")
+            result = runner.invoke(cli, [
+                "--json", "webresource", "update", "cwx_/foo.js",
+                "--file", "foo.js", "--display-name", "Foo", "--no-publish",
+            ])
+        assert result.exit_code == 0, result.output
+        assert captured["name"] == "cwx_/foo.js"
+        assert captured["content"] == b"updated()"
+        assert captured["display_name"] == "Foo"
+
+    def test_get_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        row = {"webresourceid": _WR_ID, "name": "cwx_/foo.js",
+               "displayname": "Foo", "webresourcetype": 3, "ismanaged": False}
+        monkeypatch.setattr(
+            "crm.core.webresource.get_webresource",
+            lambda backend, name: row)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "get", "cwx_/foo.js",
+        ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["webresourceid"] == _WR_ID
+
+    def test_list_command_wires_core_json(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        items = [{"name": "a.js", "displayname": "A",
+                  "webresourcetype": 3, "ismanaged": False}]
+        monkeypatch.setattr(
+            "crm.core.webresource.list_webresources",
+            lambda backend, **kw: items)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "list",
+        ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["meta"]["count"] == 1
+        assert env["data"][0]["name"] == "a.js"
+
+    def test_list_command_table_path(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        items = [{"name": "a.js", "displayname": "A",
+                  "webresourcetype": 3, "ismanaged": False}]
+        monkeypatch.setattr(
+            "crm.core.webresource.list_webresources",
+            lambda backend, **kw: items)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, ["webresource", "list"])
+        assert result.exit_code == 0, result.output

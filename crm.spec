@@ -49,6 +49,7 @@ a = Analysis(
         'crm.commands.skill',
         'crm.commands.solution',
         'crm.commands.view',
+        'crm.commands.webresource',
         'crm.commands.workflow',
     ],
     hookspath=[],
