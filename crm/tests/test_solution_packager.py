@@ -12,6 +12,7 @@ resolution. Faking at the process boundary keeps the tests cross-platform
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -198,7 +199,9 @@ def test_resolves_exe_expanding_env_vars_and_user(fake_run, monkeypatch, tmp_pat
         zipfile="s.zip", folder="f",
         solutionpackager_path="$CRM_SP_DIR/SolutionPackager.exe",
     )
-    assert fake_run[-1][0][0] == str(real)
+    # Path compare: on Windows the literal "/" and the env value's "\" are
+    # equivalent separators, so a raw string compare would spuriously differ.
+    assert Path(fake_run[-1][0][0]) == real
 
 
 # ── command wiring: `crm solution extract` / `pack` must run OFFLINE ───────────
