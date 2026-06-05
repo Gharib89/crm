@@ -218,6 +218,31 @@ class TestRegisterAssemblyUpdate:
         # resolves by the explicit name, not the filename stem
         assert m.request_history[0].qs["$filter"] == ["name eq 'other.name'"]
 
+    def test_update_resolves_by_filename_stem_when_name_omitted(
+            self, backend, tmp_path):
+        from crm.core import plugin
+        path = _write_dll(tmp_path, "Contoso.Plugins.dll")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            m.patch(backend.url_for(f"pluginassemblies({_PA_ID})"), status_code=204)
+            plugin.register_assembly(backend, path=path, update=True)
+        # id resolution uses the filename stem as the assembly name
+        assert m.request_history[0].qs["$filter"] == ["name eq 'contoso.plugins'"]
+
+    def test_update_solution_header_routed(self, backend, tmp_path):
+        from crm.core import plugin
+        path = _write_dll(tmp_path)
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            m.patch(backend.url_for(f"pluginassemblies({_PA_ID})"), status_code=204)
+            out = plugin.register_assembly(
+                backend, path=path, update=True, solution="Foo")
+        # the PATCH carries MSCRM.SolutionUniqueName, mirroring webresource update
+        assert _patches(m)[0].headers["MSCRM.SolutionUniqueName"] == "Foo"
+        assert out["solution"] == "Foo"
+
     def test_update_name_not_found_raises(self, backend, tmp_path):
         from crm.core import plugin
         path = _write_dll(tmp_path)
@@ -297,6 +322,49 @@ class TestPluginCommands:
         assert captured["isolation_mode"] == "none"
         assert captured["description"] == "desc"
         assert captured["update"] is True
+
+    def test_update_with_identity_flag_warns(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr(
+            "crm.core.plugin.register_assembly",
+            lambda backend, **kw: {"updated": True, "pluginassemblyid": _PA_ID,
+                                   "name": "Contoso.Plugins"})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("a.dll", "wb") as fh:
+                fh.write(b"MZ")
+            result = runner.invoke(cli, [
+                "--json", "plugin", "register-assembly", "a.dll",
+                "--update", "--version", "2.0.0.0",
+            ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        warnings = env["meta"]["warnings"]
+        assert any("--version" in w and "content only" in w for w in warnings)
+
+    def test_update_without_identity_flags_no_warning(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr(
+            "crm.core.plugin.register_assembly",
+            lambda backend, **kw: {"updated": True, "pluginassemblyid": _PA_ID,
+                                   "name": "Contoso.Plugins"})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("a.dll", "wb") as fh:
+                fh.write(b"MZ")
+            result = runner.invoke(cli, [
+                "--json", "plugin", "register-assembly", "a.dll", "--update",
+            ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        # plain --update is the content-only happy path: no ignored-flags warning
+        assert env.get("meta", {}).get("warnings") is None
 
     def test_register_assembly_command_handles_d365_error(self, monkeypatch):
         import json

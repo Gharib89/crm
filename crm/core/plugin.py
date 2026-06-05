@@ -2,9 +2,10 @@
 
 register_assembly POSTs the `pluginassemblies` entity; the assembly file's
 bytes are base64-encoded into the `content` column. update is a plain PATCH of
-only the `content` field (no retrieve-merge-write), resolving the assembly id by
-name and forcing a real read even under dry-run so a PATCH preview targets the
-live id.
+only the `content` field (no retrieve-merge-write, but it does carry
+`MSCRM.SolutionUniqueName` when a solution is given), resolving the assembly id
+by name and forcing a real read even under dry-run so a PATCH preview targets
+the live id.
 
 Identity (name/version/culture/publickeytoken) is derived in pure Python —
 filename stem plus documented defaults, with per-call overrides — NOT by .NET
@@ -85,7 +86,8 @@ def register_assembly(
 
     if update:
         return _update_assembly_content(
-            backend, name=resolved_name, content_b64=content_b64)
+            backend, name=resolved_name, content_b64=content_b64,
+            solution=solution)
 
     iso_int = _ISOLATION_MODE[isolation_mode]
     body: dict[str, Any] = {
@@ -126,11 +128,18 @@ def register_assembly(
 
 def _update_assembly_content(
     backend: D365Backend, *, name: str, content_b64: str,
+    solution: str | None = None,
 ) -> dict[str, Any]:
-    """PATCH only the `content` of an existing assembly resolved by name."""
+    """PATCH only the `content` of an existing assembly resolved by name.
+
+    When `solution` is set, the PATCH carries `MSCRM.SolutionUniqueName` so the
+    update lands in that solution (mirrors webresource.update_webresource).
+    """
     pid = _resolve_id_by_name(backend, name)
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.patch(
-        f"pluginassemblies({pid})", json_body={"content": content_b64}))
+        f"pluginassemblies({pid})", json_body={"content": content_b64},
+        extra_headers=headers))
     if result.get("_dry_run"):
         return result
     return {
@@ -138,6 +147,7 @@ def _update_assembly_content(
         "name": name,
         "pluginassemblyid": pid,
         "fields": ["content"],
+        "solution": solution,
     }
 
 

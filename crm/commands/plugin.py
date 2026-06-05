@@ -40,6 +40,8 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
                           public_key_token, isolation_mode, description,
                           solution, update):
     """Register a plug-in assembly from a .dll file (uploads its bytes)."""
+    warning = _ignored_update_flags_warning(update, version, culture,
+                                             public_key_token, description)
     try:
         info = plugin_mod.register_assembly(
             ctx.backend(), path=path, name=name, version=version,
@@ -49,5 +51,34 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, None,
+    _emit_with_warning(ctx, info, warning,
                        meta={"staged": True} if ctx.stage_only else None)
+
+
+def _ignored_update_flags_warning(
+    update, version, culture, public_key_token, description,
+) -> str | None:
+    """Build a warning naming identity flags --update silently ignores.
+
+    --update re-uploads content only (and honors --solution); the identity
+    flags below are dropped. Returns None when not updating or none were passed.
+    """
+    if not update:
+        return None
+    ignored: list[str] = []
+    if version is not None:
+        ignored.append("--version")
+    if culture is not None:
+        ignored.append("--culture")
+    if public_key_token is not None:
+        ignored.append("--public-key-token")
+    if description is not None:
+        ignored.append("--description")
+    # --isolation-mode defaults to "sandbox", so None can't flag it; consult
+    # Click's parameter source to see whether the user actually passed it.
+    source = click.get_current_context().get_parameter_source("isolation_mode")
+    if source == click.core.ParameterSource.COMMANDLINE:
+        ignored.append("--isolation-mode")
+    if not ignored:
+        return None
+    return f"--update re-uploads content only; ignored: {', '.join(ignored)}"
