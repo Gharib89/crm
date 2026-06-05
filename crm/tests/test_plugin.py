@@ -653,6 +653,29 @@ class TestUnregisterStep:
         assert out["_dry_run"] is True
         assert not _deletes(m)
 
+    def test_brace_wrapped_guid_falls_through_to_name_resolution(self, backend):
+        # A wrapped value is NOT a bare GUID, so it must resolve by name (and,
+        # absent in the mock, raise) rather than build a malformed DELETE.
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingsteps"), json={"value": []})
+            with pytest.raises(D365Error, match="not found"):
+                plugin.unregister_step(backend, "{" + _DELETE_STEP_ID + "}")
+        resolve = next(r for r in m.request_history if r.method == "GET")
+        assert resolve.qs["$filter"] == [f"name eq '{{{_DELETE_STEP_ID}}}'"]
+        assert not _deletes(m)
+
+    def test_ambiguous_name_raises_no_delete(self, backend):
+        # Step names are not unique; refuse to delete the first of several.
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingsteps"),
+                  json={"value": [{"sdkmessageprocessingstepid": _STEP_A},
+                                  {"sdkmessageprocessingstepid": _STEP_B}]})
+            with pytest.raises(D365Error, match="Multiple plug-in steps match"):
+                plugin.unregister_step(backend, "Dupe")
+        assert not _deletes(m)
+
 
 class TestUnregisterAssembly:
     def test_deletes_dependent_steps_before_assembly(self, backend):

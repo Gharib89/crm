@@ -45,11 +45,14 @@ _DEFAULT_PUBLIC_KEY_TOKEN = "null"
 # sourcetype 0 = Database (default); the only mode v1 supports.
 _SOURCE_TYPE_DATABASE = 0
 
-# Match a bare GUID (optionally brace/paren wrapped) so unregister-* can accept
-# either a name or an id without an extra resolution GET when given an id.
+# Match a bare 8-4-4-4-12 GUID so unregister-* can accept either a name or an id
+# without an extra resolution GET when given an id. Deliberately rejects
+# brace/paren-wrapped forms: the matched value is used un-stripped to build the
+# entityset(<id>) URL, so a wrapped input must fall through to name-resolution
+# (and fail cleanly) rather than build a malformed DELETE.
 _GUID_RE = re.compile(
-    r"^[{(]?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[)}]?$"
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
 
 
@@ -351,6 +354,13 @@ def _resolve_step_id(backend: D365Backend, name: str) -> str:
     if not rows or not rows[0].get("sdkmessageprocessingstepid"):
         raise D365Error(
             f"Plug-in step not found: {name}", code="SdkStepNotFound")
+    if len(rows) > 1:
+        # The platform does not enforce unique step names; refuse to guess which
+        # one to delete. The caller must disambiguate with the step's GUID.
+        raise D365Error(
+            f"Multiple plug-in steps match name {name!r}; "
+            f"pass the step's GUID instead.",
+            code="AmbiguousStepName")
     return str(rows[0]["sdkmessageprocessingstepid"])
 
 
