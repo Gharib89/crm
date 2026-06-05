@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm entity create` and `crm entity update` accept an opt-in `--validate` flag
+  that field-name-checks the payload before the write. It runs 1-3 read-only
+  metadata GETs (resolve entity-set → logical name, the entity's attribute names,
+  and the ManyToOne navigation-property names), then flags any payload key absent
+  from the union with a `did_you_mean` suggestion. `<nav>@odata.bind` deep-link
+  keys validate against the nav-name union, so a bound lookup is not a false
+  positive. On a miss the write is blocked with
+  `{ok:false, meta:{unknown_fields, did_you_mean}}`. Composable with `--dry-run`
+  (the validation GETs run for real even under dry-run). Scope is field-NAME only;
+  option-set values are not checked (#72).
 - `crm solution add-component` and `crm solution remove-component` add or remove
   an existing component to/from an unmanaged solution via the `AddSolutionComponent`
   / `RemoveSolutionComponent` Web API actions. `--type` accepts a `componenttype`

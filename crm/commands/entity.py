@@ -20,6 +20,27 @@ def entity_group():
     """Record CRUD against entity sets (accounts, contacts, ...)."""
 
 
+def _validate_or_emit(ctx: CLIContext, entity_set, payload) -> bool:
+    """Run the pre-write field-name gate (#72). Return True to proceed.
+
+    On a validation miss, emits the `{ok:false, meta:{unknown_fields, did_you_mean}}`
+    failure envelope (which raises Exit per ADR 0001) and returns False so the
+    caller skips the write. A D365Error from the metadata probe is routed through
+    the standard error handler.
+    """
+    try:
+        verdict = entity_mod.validate_payload(ctx.backend(), entity_set, payload)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return False
+    if verdict["ok"]:
+        return True
+    meta = verdict["meta"]
+    unknown = ", ".join(meta["unknown_fields"])
+    ctx.emit(False, error=f"Unknown field(s) for {entity_set}: {unknown}", meta=meta)
+    return False
+
+
 @entity_group.command("get")
 @click.argument("entity_set")
 @click.argument("record_id")
@@ -48,12 +69,17 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a JSON file with the record body.")
 @click.option("--no-return", is_flag=True, help="Don't request the record back; just GUID.")
+@click.option("--validate", is_flag=True,
+              help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
+                   "fields with did-you-mean. Composable with --dry-run.")
 @_admin_header_options
 @pass_ctx
-def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return,
+def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, validate,
                   as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """POST a new record."""
     payload = _load_payload(data_json, data_file)
+    if validate and not _validate_or_emit(ctx, entity_set, payload):
+        return
     try:
         result = entity_mod.create(
             ctx.backend(), entity_set, payload,
@@ -77,10 +103,14 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return,
 @click.option("--if-match", "if_match", metavar="ETAG", default=None,
               help='Optimistic concurrency etag. Example (POSIX): --if-match \'W/"123"\'. '
                    'Use --if-match "*" to require any current version.')
+@click.option("--validate", is_flag=True,
+              help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
+                   "fields with did-you-mean. Composable with --dry-run.")
 @_admin_header_options
 @pass_ctx
 def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, allow_create,
-                  return_record, if_match, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+                  return_record, if_match, validate, as_user, as_user_object_id,
+                  suppress_dup_detection, bypass_plugins):
     """PATCH an existing record."""
     if allow_create and if_match:
         raise click.UsageError(
@@ -88,6 +118,8 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
             "upsert (no If-Match), while --if-match enforces optimistic concurrency."
         )
     payload = _load_payload(data_json, data_file)
+    if validate and not _validate_or_emit(ctx, entity_set, payload):
+        return
     try:
         result = entity_mod.update(
             ctx.backend(), entity_set, record_id, payload,

@@ -6,6 +6,7 @@ for formatting.
 
 from __future__ import annotations
 
+import difflib
 import re
 from typing import Any
 
@@ -54,6 +55,108 @@ def retrieve(
         extra_headers=headers,
     )
     return as_dict(result)
+
+
+# ── Validate ────────────────────────────────────────────────────────────
+
+
+def validate_payload(
+    backend: D365Backend,
+    entity_set: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Field-NAME pre-write validation for a create/update payload (#72).
+
+    Three pure GETs build the set of valid payload keys:
+      1. resolve the entity-SET name to its LOGICAL name;
+      2. the entity's logical attribute names;
+      3. the ManyToOne navigation-property names
+         (`ReferencingEntityNavigationPropertyName`) — these are the `<nav>` in a
+         `<nav>@odata.bind` deep-link, so a bound lookup is NOT a bogus field.
+
+    Valid keys are the UNION of (2) and (3). Each payload key is stripped of its
+    `@odata.bind` / `@odata.type` suffix before the membership check; control
+    annotations that strip to empty (e.g. a bare `@odata.type`) are ignored.
+
+    Returns `{"ok": True}` when every field is known, else
+    `{"ok": False, "meta": {"unknown_fields": [...], "did_you_mean": {...}}}`.
+    `did_you_mean` maps an unknown field to its closest valid key, when one is
+    close enough. Scope is FIELD-NAME only: option-set VALUES are not checked.
+
+    The probe is always real GETs even when the backend is in dry-run mode (it
+    never mutates) so `--validate --dry-run` composes — mirrors `target_exists`.
+    """
+    # Navigation-property names only matter for `<nav>@odata.bind` deep-links, so
+    # the ManyToOne GET is skipped for any payload without one (a plain-attribute
+    # body, or one carrying only control annotations like `@odata.etag`) — keeping
+    # the documented cost at 1-3 GETs rather than a flat 3.
+    needs_nav = any(key.endswith("@odata.bind") for key in payload)
+
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        # Double single quotes per OData literal escaping so an entity set with an
+        # apostrophe cannot break (or alter) the $filter expression.
+        safe_set = entity_set.replace("'", "''")
+        sets = as_dict(backend.get(
+            "EntityDefinitions",
+            params={
+                "$select": "LogicalName,EntitySetName",
+                "$filter": f"EntitySetName eq '{safe_set}'",
+            },
+        ))
+        matches: list[dict[str, Any]] = sets.get("value", [])
+        if not matches:
+            raise D365Error(f"Unknown entity set: {entity_set!r}")
+        logical_name = matches[0].get("LogicalName")
+        if not logical_name:
+            raise D365Error(f"Unknown entity set: {entity_set!r}")
+
+        attrs = as_dict(backend.get(
+            f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
+            params={"$select": "LogicalName"},
+        ))
+        nav_rows: list[dict[str, Any]] = []
+        if needs_nav:
+            m2o = as_dict(backend.get(
+                f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
+                params={"$select": "ReferencingEntityNavigationPropertyName"},
+            ))
+            nav_rows = m2o.get("value", [])
+    finally:
+        backend.dry_run = was_dry
+
+    valid: set[str] = {
+        a["LogicalName"] for a in attrs.get("value", []) if a.get("LogicalName")
+    }
+    valid |= {
+        r["ReferencingEntityNavigationPropertyName"]
+        for r in nav_rows
+        if r.get("ReferencingEntityNavigationPropertyName")
+    }
+    # Sorted so close-match tie-breaks (and thus did_you_mean) are deterministic;
+    # a set's iteration order is not stable across runs/builds.
+    valid_list = sorted(valid)
+
+    unknown: list[str] = []
+    did_you_mean: dict[str, str] = {}
+    for key in payload:
+        field = key.split("@", 1)[0]
+        # `field in unknown` de-dupes when a base key and its annotated form (e.g.
+        # `foo` and `foo@odata.bind`) both strip to the same unknown name.
+        if not field or field in valid or field in unknown:
+            continue
+        unknown.append(field)
+        close = difflib.get_close_matches(field, valid_list, n=1, cutoff=0.6)
+        if close:
+            did_you_mean[field] = close[0]
+
+    if not unknown:
+        return {"ok": True}
+    return {
+        "ok": False,
+        "meta": {"unknown_fields": unknown, "did_you_mean": did_you_mean},
+    }
 
 
 # ── Create ──────────────────────────────────────────────────────────────
