@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Fixed**
+- `crm metadata picklist` (human/table mode) now resolves option labels via the
+  full `UserLocalizedLabel` → `LocalizedLabels` fallback, matching `--json`
+  `meta.options`. Previously the table read `UserLocalizedLabel` only, so an
+  option whose label is carried solely via `LocalizedLabels` rendered blank (#76).
 - `crm metadata update-optionset --dry-run` previously returned `{"updated": true, ...}`,
   incorrectly signalling a completed write. Under dry-run it now returns
   `{"_dry_run": true, "name": ..., "diff": {...}, "actions": [...]}` (#77).

@@ -323,6 +323,36 @@ class TestPicklistMetaOptions:
         assert env["data"]["GlobalOptionSet"]["Options"] == raw["GlobalOptionSet"]["Options"]
 
 
+class TestPicklistTableLabels:
+    """`metadata picklist` human (table) mode resolves labels via the full fallback."""
+
+    def _picklist_url(self, backend) -> str:
+        return backend.url_for(
+            "EntityDefinitions(LogicalName='account')"
+            "/Attributes(LogicalName='industrycode')"
+            "/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+        )
+
+    def test_table_mode_uses_localizedlabels_fallback(self, monkeypatch, backend):
+        monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+        # Label carried ONLY via LocalizedLabels (no UserLocalizedLabel) — the
+        # table branch previously rendered this blank; it must now resolve it.
+        raw = {
+            "LogicalName": "industrycode",
+            "OptionSet": {"Options": [
+                {"Value": 5, "Label": {"LocalizedLabels": [{"Label": "Localized Only"}]}},
+            ]},
+            "GlobalOptionSet": None,
+        }
+        with requests_mock.Mocker() as m:
+            m.get(self._picklist_url(backend), json=raw)
+            result = CliRunner().invoke(
+                cli, ["metadata", "picklist", "account", "industrycode"]
+            )
+        assert result.exit_code == 0, result.output
+        assert "Localized Only" in result.output
+
+
 class TestGetOptionsetMetaOptions:
     """`metadata get-optionset` JSON mode flattens root Options (#76)."""
 

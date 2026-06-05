@@ -118,25 +118,20 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+    # Flatten once for both modes; local OptionSet wins, GlobalOptionSet is the
+    # fallback for a global-bound picklist. Labels use the robust `_label_text`
+    # path (UserLocalizedLabel → LocalizedLabels), so JSON and table agree.
+    flat = meta_mod.flatten_options(info.get("OptionSet") or {})
+    if not flat:
+        flat = meta_mod.flatten_options(info.get("GlobalOptionSet") or {})
     if ctx.json_mode:
-        # Flattened convenience list (#76); raw `data` left untouched. Container
-        # precedence mirrors the table branch: local OptionSet, then GlobalOptionSet.
-        flat = meta_mod.flatten_options(info.get("OptionSet") or {})
-        if not flat:
-            flat = meta_mod.flatten_options(info.get("GlobalOptionSet") or {})
+        # Raw `data` left untouched (#76); `meta.options` is the convenience list.
         ctx.emit(True, data=info, meta={"options": flat})
         return
-    options = (info.get("OptionSet") or {}).get("Options") or []
-    if not options:
-        options = (info.get("GlobalOptionSet") or {}).get("Options") or []
     headers = ["Value", "Label"]
-    rows = [
-        [str(o.get("Value")),
-         ((o.get("Label") or {}).get("UserLocalizedLabel") or {}).get("Label", "")]
-        for o in options
-    ]
+    rows = [[str(o["value"]), o["label"]] for o in flat]
     ctx.emit(True, table={"headers": headers, "rows": rows},
-             meta={"entity": logical_name, "attribute": attribute, "count": len(options)})
+             meta={"entity": logical_name, "attribute": attribute, "count": len(flat)})
 
 
 @metadata_group.command("describe")
