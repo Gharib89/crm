@@ -45,6 +45,19 @@ _DEFAULT_PUBLIC_KEY_TOKEN = "null"
 # sourcetype 0 = Database (default); the only mode v1 supports.
 _SOURCE_TYPE_DATABASE = 0
 
+# Match a bare GUID (optionally brace/paren wrapped) so unregister-* can accept
+# either a name or an id without an extra resolution GET when given an id.
+_GUID_RE = re.compile(
+    r"^[{(]?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[)}]?$"
+)
+
+
+def _looks_like_guid(value: str) -> bool:
+    """True if `value` is a bare GUID (so it can be used as an id directly)."""
+    return bool(_GUID_RE.match(value.strip()))
+
+
 # Step stage -> sdkmessageprocessingstep.stage option set (verified MS Learn):
 # prevalidation=10, preoperation=20, postoperation=40.
 _STAGE: dict[str, int] = {
@@ -262,6 +275,108 @@ def register_step(
             f"{entity_id_url!r}"
         )
     return out
+
+
+def unregister_step(backend: D365Backend, step: str) -> dict[str, Any]:
+    """Unregister (delete) an `sdkmessageprocessingstep` by name or id.
+
+    `step` is used directly when it looks like a GUID; otherwise it is resolved
+    by exact name (the lookup force-reads even under dry-run so a dry-run delete
+    still targets the live id). A name that matches no step raises D365Error.
+
+    Deleting the step cascades its registered entity images (sdkmessageprocessingstepimage)
+    automatically — no separate image delete is needed (MS Learn). Dry-run
+    passes through the backend's delete preview (no real DELETE).
+    """
+    step_id = step.strip() if _looks_like_guid(step) else _resolve_step_id(
+        backend, step)
+    result = as_dict(backend.delete(f"sdkmessageprocessingsteps({step_id})"))
+    if result.get("_dry_run"):
+        return result
+    return {"deleted": True, "sdkmessageprocessingstepid": step_id}
+
+
+def unregister_assembly(
+    backend: D365Backend, assembly: str,
+) -> dict[str, Any]:
+    """Unregister (delete) a plug-in assembly and its dependent steps.
+
+    `assembly` is used directly when it looks like a GUID; otherwise it is
+    resolved by exact name. Because the platform refuses to delete an assembly
+    while any sdkmessageprocessingstep still depends on it, this first collects
+    the dependent steps (assembly -> plugintypes -> steps) and DELETEs each one,
+    THEN DELETEs the assembly. Deleting a step cascades its entity images, and
+    deleting the assembly cascades its plugintypes — neither is deleted here
+    explicitly (MS Learn).
+
+    Under dry-run no real DELETE is issued: the resolution GETs still force-read
+    (mirrors the rest of this module) and a `_dry_run` preview naming the
+    assembly, the dependent step count, and the step ids is returned.
+
+    Raises D365Error when an assembly name resolves to nothing.
+    """
+    aid = assembly.strip() if _looks_like_guid(assembly) else (
+        _resolve_id_by_name(backend, assembly))
+    step_ids = _dependent_step_ids(backend, aid)
+
+    if backend.dry_run:
+        return {
+            "_dry_run": True,
+            "deleted": True,
+            "pluginassemblyid": aid,
+            "steps_deleted": len(step_ids),
+            "deleted_step_ids": step_ids,
+        }
+
+    # Dependent steps first (images cascade with each step), then the assembly
+    # (plugintypes cascade with it).
+    for sid in step_ids:
+        backend.delete(f"sdkmessageprocessingsteps({sid})")
+    backend.delete(f"pluginassemblies({aid})")
+    return {
+        "deleted": True,
+        "pluginassemblyid": aid,
+        "steps_deleted": len(step_ids),
+        "deleted_step_ids": step_ids,
+    }
+
+
+def _resolve_step_id(backend: D365Backend, name: str) -> str:
+    """Resolve an sdkmessageprocessingstep id by exact name (force-reads)."""
+    esc = name.replace("'", "''")
+    rows = _force_read_rows(
+        backend, "sdkmessageprocessingsteps",
+        {"$filter": f"name eq '{esc}'",
+         "$select": "sdkmessageprocessingstepid"})
+    if not rows or not rows[0].get("sdkmessageprocessingstepid"):
+        raise D365Error(
+            f"Plug-in step not found: {name}", code="SdkStepNotFound")
+    return str(rows[0]["sdkmessageprocessingstepid"])
+
+
+def _dependent_step_ids(backend: D365Backend, assembly_id: str) -> list[str]:
+    """Collect ids of every step that depends on `assembly_id`.
+
+    Walks the dependency chain assembly -> plugintypes -> steps. Both GETs
+    force-read so the set is correct even under dry-run.
+    """
+    type_rows = _force_read_rows(
+        backend, "plugintypes",
+        {"$filter": f"_pluginassemblyid_value eq {assembly_id}",
+         "$select": "plugintypeid"})
+    step_ids: list[str] = []
+    for tr in type_rows:
+        ptid = tr.get("plugintypeid")
+        if not ptid:
+            continue
+        step_rows = _force_read_rows(
+            backend, "sdkmessageprocessingsteps",
+            {"$filter": f"_plugintypeid_value eq {ptid}",
+             "$select": "sdkmessageprocessingstepid"})
+        step_ids.extend(
+            str(sr["sdkmessageprocessingstepid"]) for sr in step_rows
+            if sr.get("sdkmessageprocessingstepid"))
+    return step_ids
 
 
 def _force_read_rows(

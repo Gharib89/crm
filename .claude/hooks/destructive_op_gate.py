@@ -33,6 +33,7 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "entity": {"delete"},
     "solution": {"job-cancel", "import", "remove-component"},
     "async": {"cancel"},
+    "plugin": {"unregister-assembly", "unregister-step"},
 }
 
 # Future role/privilege mutation verbs, gated by name regardless of group.

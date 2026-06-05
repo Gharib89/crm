@@ -590,6 +590,251 @@ class TestRegisterStep:
         assert not _posts(m)
 
 
+_DELETE_STEP_ID = "66666666-6666-6666-6666-666666666666"
+_PTID_A = "77777777-7777-7777-7777-777777777777"
+_PTID_B = "88888888-8888-8888-8888-888888888888"
+_STEP_A = "99999999-9999-9999-9999-999999999999"
+_STEP_B = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+def _deletes(m):
+    return [r for r in m.request_history if r.method == "DELETE"]
+
+
+class TestUnregisterStep:
+    def test_resolves_by_name_then_deletes(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingsteps"),
+                  json={"value": [{"sdkmessageprocessingstepid": _DELETE_STEP_ID}]})
+            m.delete(
+                backend.url_for(f"sdkmessageprocessingsteps({_DELETE_STEP_ID})"),
+                status_code=204)
+            out = plugin.unregister_step(backend, "My Step")
+        assert out["deleted"] is True
+        assert out["sdkmessageprocessingstepid"] == _DELETE_STEP_ID
+        # resolved by exact name
+        resolve = next(r for r in m.request_history if r.method == "GET")
+        assert resolve.qs["$filter"] == ["name eq 'my step'"]
+        # the DELETE targets the resolved id
+        dels = _deletes(m)
+        assert len(dels) == 1
+        assert f"sdkmessageprocessingsteps({_DELETE_STEP_ID})" in dels[0].url
+
+    def test_guid_skips_resolve_get(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.delete(
+                backend.url_for(f"sdkmessageprocessingsteps({_DELETE_STEP_ID})"),
+                status_code=204)
+            out = plugin.unregister_step(backend, _DELETE_STEP_ID)
+        assert out["deleted"] is True
+        assert out["sdkmessageprocessingstepid"] == _DELETE_STEP_ID
+        # no resolution GET when a GUID is passed directly
+        assert not any(r.method == "GET" for r in m.request_history)
+        assert len(_deletes(m)) == 1
+
+    def test_not_found_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingsteps"), json={"value": []})
+            with pytest.raises(D365Error, match="not found"):
+                plugin.unregister_step(backend, "Nope")
+        assert not _deletes(m)
+
+    def test_dry_run_force_reads_id_no_delete(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            # name resolution force-reads even under dry-run
+            m.get(dry.url_for("sdkmessageprocessingsteps"),
+                  json={"value": [{"sdkmessageprocessingstepid": _DELETE_STEP_ID}]})
+            out = plugin.unregister_step(dry, "My Step")
+        assert out["_dry_run"] is True
+        assert not _deletes(m)
+
+
+class TestUnregisterAssembly:
+    def test_deletes_dependent_steps_before_assembly(self, backend):
+        from crm.core import plugin
+        aid = _PA_ID
+        with requests_mock.Mocker() as m:
+            # assembly name -> id
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": aid}]})
+            # plugintypes of the assembly
+            m.get(backend.url_for("plugintypes"),
+                  json={"value": [{"plugintypeid": _PTID_A},
+                                  {"plugintypeid": _PTID_B}]})
+            # steps per plugintype (requests_mock matches on the same url; we
+            # discriminate via the _plugintypeid_value filter at assertion time)
+            def steps_cb(request, context):
+                context.status_code = 200
+                filt = request.qs["$filter"][0]
+                if _PTID_A in filt:
+                    return {"value": [{"sdkmessageprocessingstepid": _STEP_A}]}
+                if _PTID_B in filt:
+                    return {"value": [{"sdkmessageprocessingstepid": _STEP_B}]}
+                return {"value": []}
+            m.get(backend.url_for("sdkmessageprocessingsteps"), json=steps_cb)
+            m.delete(
+                backend.url_for(f"sdkmessageprocessingsteps({_STEP_A})"),
+                status_code=204)
+            m.delete(
+                backend.url_for(f"sdkmessageprocessingsteps({_STEP_B})"),
+                status_code=204)
+            m.delete(backend.url_for(f"pluginassemblies({aid})"), status_code=204)
+            out = plugin.unregister_assembly(backend, "Contoso.Plugins")
+        assert out["deleted"] is True
+        assert out["pluginassemblyid"] == aid
+        assert out["steps_deleted"] == 2
+        assert set(out["deleted_step_ids"]) == {_STEP_A, _STEP_B}
+        # SEQUENCE: every step DELETE must precede the assembly DELETE
+        del_urls = [r.url for r in _deletes(m)]
+        assembly_idx = next(
+            i for i, u in enumerate(del_urls) if f"pluginassemblies({aid})" in u)
+        step_idxs = [
+            i for i, u in enumerate(del_urls)
+            if "sdkmessageprocessingsteps(" in u]
+        assert step_idxs, "expected step deletes"
+        assert max(step_idxs) < assembly_idx
+
+    def test_no_dependent_steps_just_deletes_assembly(self, backend):
+        from crm.core import plugin
+        aid = _PA_ID
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": aid}]})
+            m.get(backend.url_for("plugintypes"), json={"value": []})
+            m.delete(backend.url_for(f"pluginassemblies({aid})"), status_code=204)
+            out = plugin.unregister_assembly(backend, "Contoso.Plugins")
+        assert out["deleted"] is True
+        assert out["steps_deleted"] == 0
+        assert out["deleted_step_ids"] == []
+        dels = _deletes(m)
+        assert len(dels) == 1
+        assert f"pluginassemblies({aid})" in dels[0].url
+
+    def test_guid_skips_assembly_name_resolve(self, backend):
+        from crm.core import plugin
+        aid = _PA_ID
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("plugintypes"), json={"value": []})
+            m.delete(backend.url_for(f"pluginassemblies({aid})"), status_code=204)
+            out = plugin.unregister_assembly(backend, aid)
+        assert out["pluginassemblyid"] == aid
+        # no GET to pluginassemblies (name resolution) when a GUID is passed
+        assert not any(
+            r.url.split("?")[0].endswith("pluginassemblies")
+            for r in m.request_history if r.method == "GET")
+
+    def test_dry_run_issues_no_real_delete(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        aid = _PA_ID
+        with requests_mock.Mocker() as m:
+            # resolution GETs force-read even under dry-run
+            m.get(dry.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": aid}]})
+            m.get(dry.url_for("plugintypes"),
+                  json={"value": [{"plugintypeid": _PTID_A}]})
+            m.get(dry.url_for("sdkmessageprocessingsteps"),
+                  json={"value": [{"sdkmessageprocessingstepid": _STEP_A}]})
+            out = plugin.unregister_assembly(dry, "Contoso.Plugins")
+        assert not _deletes(m)
+        assert out.get("_dry_run") is True
+        assert out["pluginassemblyid"] == aid
+        assert out["steps_deleted"] == 1
+        assert out["deleted_step_ids"] == [_STEP_A]
+
+
+class TestUnregisterCommands:
+    def _runner(self):
+        from click.testing import CliRunner
+        return CliRunner()
+
+    def test_unregister_assembly_yes_skips_prompt(self, monkeypatch):
+        from crm.cli import cli
+        called = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.unregister_assembly",
+            lambda backend, assembly: called.setdefault("a", assembly)
+            or {"deleted": True, "pluginassemblyid": _PA_ID,
+                "steps_deleted": 0, "deleted_step_ids": []})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-assembly", "Contoso.Plugins", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert called["a"] == "Contoso.Plugins"
+
+    def test_unregister_assembly_no_yes_non_tty_aborts(self, monkeypatch):
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-assembly", "Contoso.Plugins",
+        ])
+        assert result.exit_code == 1
+        assert '"error": "aborted by user"' in result.output
+
+    def test_unregister_step_yes_skips_prompt(self, monkeypatch):
+        from crm.cli import cli
+        called = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.unregister_step",
+            lambda backend, step: called.setdefault("s", step)
+            or {"deleted": True, "sdkmessageprocessingstepid": _STEP_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-step", "My Step", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert called["s"] == "My Step"
+
+    def test_unregister_step_no_yes_non_tty_aborts(self, monkeypatch):
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-step", "My Step",
+        ])
+        assert result.exit_code == 1
+        assert '"error": "aborted by user"' in result.output
+
+    def test_unregister_assembly_handles_d365_error(self, monkeypatch):
+        import json
+        from crm.cli import cli
+
+        def boom(backend, assembly):
+            raise D365Error("boom", status=400)
+
+        monkeypatch.setattr("crm.core.plugin.unregister_assembly", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-assembly", "Contoso.Plugins", "--yes",
+        ])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "boom" in env["error"]
+
+    def test_unregister_step_handles_d365_error(self, monkeypatch):
+        import json
+        from crm.cli import cli
+
+        def boom(backend, step):
+            raise D365Error("boom", status=400)
+
+        monkeypatch.setattr("crm.core.plugin.unregister_step", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-step", "My Step", "--yes",
+        ])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "boom" in env["error"]
+
+
 class TestPluginCommands:
     def test_register_assembly_command_wires_core(self, monkeypatch):
         import json

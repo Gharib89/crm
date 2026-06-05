@@ -9,7 +9,8 @@ import click
 from crm.core import plugin as plugin_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error, _emit_with_warning
+from crm.commands._helpers import (
+    _handle_d365_error, _emit_with_warning, _confirm_destructive)
 
 
 @click.group("plugin")
@@ -117,6 +118,40 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
         return
     _emit_with_warning(ctx, info, None,
                        meta={"staged": True} if ctx.stage_only else None)
+
+
+@plugin_group.command("unregister-assembly")
+@click.argument("assembly")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@pass_ctx
+def unregister_assembly_cmd(ctx: CLIContext, assembly, yes):
+    """Unregister a plug-in assembly (NAME or GUID), deleting dependent steps first."""
+    if not _confirm_destructive("plug-in assembly", assembly, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = plugin_mod.unregister_assembly(ctx.backend(), assembly)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@plugin_group.command("unregister-step")
+@click.argument("step")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@pass_ctx
+def unregister_step_cmd(ctx: CLIContext, step, yes):
+    """Unregister a plug-in step (sdkmessageprocessingstep, NAME or GUID)."""
+    if not _confirm_destructive("plug-in step", step, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = plugin_mod.unregister_step(ctx.backend(), step)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
 
 
 def _ignored_update_flags_warning(
