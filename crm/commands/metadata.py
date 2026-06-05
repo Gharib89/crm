@@ -7,6 +7,7 @@ from crm.core import metadata_attrs as ma_mod
 from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
+from crm.core import dependencies as dep_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -155,6 +156,52 @@ def metadata_describe(ctx: CLIContext, logical_name):
     ctx.emit(True, data=brief, meta={
         "writable_attributes": len(brief["writable_attributes"]),
     })
+
+
+@metadata_group.command("dependencies")
+@click.argument("target")
+@click.option(
+    "--kind",
+    type=click.Choice(["entity", "attribute", "optionset", "relationship"]),
+    default="entity",
+    show_default=True,
+    help="Component kind of <target>. attribute uses dotted 'entity.attribute'.",
+)
+@click.option(
+    "--for", "for_",
+    type=click.Choice(["delete", "dependents"]),
+    default="delete",
+    show_default=True,
+    help=(
+        "delete = blockers preventing delete (RetrieveDependenciesForDelete); "
+        "dependents = components that depend on it (RetrieveDependentComponents)."
+    ),
+)
+@pass_ctx
+def metadata_dependencies(ctx: CLIContext, target, kind, for_):
+    """Show solution-component dependencies for a metadata target.
+
+    Read-only. Returns whether the component can be deleted plus the list of
+    blocking dependencies (type + id). Use before delete-* to preview blockers.
+    """
+    try:
+        info = dep_mod.retrieve_dependencies(ctx.backend(), kind, target, for_=for_)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    meta = {"can_delete": info["can_delete"], "blockers": len(info["blockers"])}
+    if ctx.json_mode:
+        ctx.emit(True, data=info, meta=meta)
+        return
+    if info["blockers"]:
+        headers = ["Dependent Type", "Dependent Id", "Required Type", "Dependency Type"]
+        rows = [
+            [b["dependent_type"], b["dependent_id"], b["required_type"], str(b["dependency_type"])]
+            for b in info["blockers"]
+        ]
+        ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+    else:
+        ctx.emit(True, data={"can_delete": info["can_delete"]}, meta=meta)
 
 
 @metadata_group.command("create-entity")
