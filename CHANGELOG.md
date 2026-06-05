@@ -194,6 +194,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `crm app create --icon-webresource <name|guid>` sets the app icon to a web
   resource: a GUID is used directly, a name is resolved to its id, and omitting
   the flag keeps the platform default icon (#78).
+- `crm metadata dependencies <target>` is a new read-only command that returns
+  `can_delete` (bool) plus a `blockers[]` list for any metadata component. `--kind`
+  selects the component type (`entity` / `attribute` / `optionset` / `relationship`;
+  default `entity`); attribute targets use dotted notation (`entity.attribute`).
+  `--for delete` (default) calls `RetrieveDependenciesForDelete` and lists what
+  would block deletion; `--for dependents` calls `RetrieveDependentComponents` and
+  lists what currently depends on the target (#81).
+- `--check-dependencies` flag (default off) on `metadata delete-entity`,
+  `delete-attribute`, `delete-relationship`, and `delete-optionset`: folds
+  `can_delete` and `blockers[]` into the result via a pre-delete
+  `RetrieveDependenciesForDelete` call. Pair with `--dry-run` for a non-destructive
+  dependency preview without issuing the DELETE (#81).
 
 **Changed**
 - **Breaking (envelope):** the singular `meta.warning` scalar is replaced by the

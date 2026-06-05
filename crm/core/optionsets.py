@@ -14,7 +14,7 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
-from crm.core import dependencies as _dependencies
+from crm.core import dependencies as dep_mod
 
 
 def _option_label(label_obj: dict[str, Any]) -> str | None:
@@ -384,7 +384,7 @@ def delete_optionset(
         )
     deps = None
     if check_dependencies:
-        deps = _dependencies.retrieve_dependencies(backend, "optionset", name, for_="delete")
+        deps = dep_mod.retrieve_dependencies(backend, "optionset", name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
     result: dict[str, Any] = {"deleted": True, "name": name, "solution": solution}

@@ -181,8 +181,8 @@ def metadata_describe(ctx: CLIContext, logical_name):
 def metadata_dependencies(ctx: CLIContext, target, kind, for_):
     """Show solution-component dependencies for a metadata target.
 
-    Read-only. Returns whether the component can be deleted plus the list of
-    blocking dependencies (type + id). Use before delete-* to preview blockers.
+    Read-only. --for delete returns components that block deletion (can_delete +
+    blockers[]); --for dependents returns components that depend on the target.
     """
     try:
         info = dep_mod.retrieve_dependencies(ctx.backend(), kind, target, for_=for_)

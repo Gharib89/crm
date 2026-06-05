@@ -133,7 +133,7 @@ pass `--profile <name>` and confirm the real target with
 | `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`               | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
-| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
+| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies` | Schema introspection + option set values + dependency preview |
 | `plugin`     | `register-assembly`, `list-types`, `register-step`, `unregister-assembly`, `unregister-step` | Plug-in assembly registration + step lifecycle |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
@@ -244,6 +244,31 @@ crm --json metadata entities --custom-only --top 20
 crm --json metadata attributes account
 crm --json metadata attribute account industrycode
 ```
+
+### 5a. Preview dependencies before deleting a metadata component
+
+```bash
+# Check what would block deleting an entity
+crm --json metadata dependencies cwx_ticket
+
+# Check what would block deleting a column (dotted entity.attribute)
+crm --json metadata dependencies cwx_ticket.cwx_priority --kind attribute
+
+# Check what depends on a global option set
+crm --json metadata dependencies cwx_status --kind optionset --for dependents
+```
+Returns `{can_delete, blockers[], metadata_id, component_type, kind, for}`. Each
+blocker has `dependent_type`, `dependent_id`, `required_type`, `dependency_type`.
+`--for delete` (default) uses `RetrieveDependenciesForDelete`; `--for dependents`
+uses `RetrieveDependentComponents`. Read-only.
+
+To fold dependency info directly into a delete result (non-destructive with `--dry-run`):
+
+```bash
+crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --check-dependencies
+```
+`--check-dependencies` is available on `delete-entity`, `delete-attribute`,
+`delete-relationship`, and `delete-optionset`. Default off (no extra round-trip).
 
 ### 6. Export a solution
 

@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
-from crm.core import dependencies as _dependencies
+from crm.core import dependencies as dep_mod
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 _STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
@@ -434,7 +434,7 @@ def delete_attribute(
         )
     deps = None
     if check_dependencies:
-        deps = _dependencies.retrieve_dependencies(
+        deps = dep_mod.retrieve_dependencies(
             backend, "attribute", f"{entity}.{attribute}", for_="delete"
         )
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None

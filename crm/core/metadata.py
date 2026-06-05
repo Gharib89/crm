@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core import dependencies as _dependencies
+from crm.core import dependencies as dep_mod
 
 
 def list_entities(
@@ -519,7 +519,7 @@ def delete_entity(
         )
     deps = None
     if check_dependencies:
-        deps = _dependencies.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
+        deps = dep_mod.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
     result: dict[str, Any] = {
