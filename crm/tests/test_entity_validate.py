@@ -126,14 +126,43 @@ class TestDidYouMean:
 
 
 class TestControlAnnotations:
-    def test_control_annotation_key_ignored(self, backend):
+    def test_control_annotation_key_ignored_and_skips_relationships(self, backend):
         from crm.core import entity as ent
         payload = {"@odata.etag": 'W/"123"', "name": "Contoso"}
         with requests_mock.Mocker() as m:
-            _mock_three(m, backend)
+            # A bare control annotation is not an @odata.bind, so the nav probe
+            # is skipped — only set→logical + attributes fire.
+            m.get(_sets_url(backend), json=_SETS)
+            m.get(_attrs_url(backend), json=_ATTRS)
             result = ent.validate_payload(backend, "accounts", payload)
+            paths = [r.path for r in m.request_history]
         # A bare control annotation strips to "" and is never treated as a field.
         assert result == {"ok": True}
+        assert not any("ManyToOneRelationships" in p for p in paths)
+
+
+class TestFilterEscaping:
+    def test_entity_set_with_apostrophe_is_escaped(self, backend):
+        from crm.core import entity as ent
+        with requests_mock.Mocker() as m:
+            m.get(_sets_url(backend), json={"value": []})
+            with pytest.raises(D365Error, match="Unknown entity set"):
+                ent.validate_payload(backend, "o'brien", {"name": "x"})
+            # OData literal escaping doubles the quote in the $filter expression.
+            qs = m.request_history[0].qs
+            assert qs["$filter"] == ["entitysetname eq 'o''brien'"]
+
+
+class TestDuplicateUnknown:
+    def test_base_and_annotated_unknown_dedup_to_one_entry(self, backend):
+        from crm.core import entity as ent
+        # `foo` and `foo@odata.bind` both strip to the same unknown field name.
+        payload = {"foo": 1, "foo@odata.bind": "/x(1)"}
+        with requests_mock.Mocker() as m:
+            _mock_three(m, backend)
+            result = ent.validate_payload(backend, "accounts", payload)
+        assert result["ok"] is False
+        assert result["meta"]["unknown_fields"] == ["foo"]
 
 
 class TestUnknownEntitySet:

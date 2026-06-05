@@ -86,19 +86,23 @@ def validate_payload(
     The probe is always real GETs even when the backend is in dry-run mode (it
     never mutates) so `--validate --dry-run` composes — mirrors `target_exists`.
     """
-    # Navigation-property names only matter for annotated (`<nav>@odata.bind`)
-    # keys, so the ManyToOne GET is skipped for a plain-attribute payload —
-    # keeping the documented cost at 1-3 GETs rather than a flat 3.
-    needs_nav = any("@" in key for key in payload)
+    # Navigation-property names only matter for `<nav>@odata.bind` deep-links, so
+    # the ManyToOne GET is skipped for any payload without one (a plain-attribute
+    # body, or one carrying only control annotations like `@odata.etag`) — keeping
+    # the documented cost at 1-3 GETs rather than a flat 3.
+    needs_nav = any(key.endswith("@odata.bind") for key in payload)
 
     was_dry = backend.dry_run
     backend.dry_run = False
     try:
+        # Double single quotes per OData literal escaping so an entity set with an
+        # apostrophe cannot break (or alter) the $filter expression.
+        safe_set = entity_set.replace("'", "''")
         sets = as_dict(backend.get(
             "EntityDefinitions",
             params={
                 "$select": "LogicalName,EntitySetName",
-                "$filter": f"EntitySetName eq '{entity_set}'",
+                "$filter": f"EntitySetName eq '{safe_set}'",
             },
         ))
         matches: list[dict[str, Any]] = sets.get("value", [])
@@ -130,15 +134,20 @@ def validate_payload(
         for r in nav_rows
         if r.get("ReferencingEntityNavigationPropertyName")
     }
+    # Sorted so close-match tie-breaks (and thus did_you_mean) are deterministic;
+    # a set's iteration order is not stable across runs/builds.
+    valid_list = sorted(valid)
 
     unknown: list[str] = []
     did_you_mean: dict[str, str] = {}
     for key in payload:
         field = key.split("@", 1)[0]
-        if not field or field in valid:
+        # `field in unknown` de-dupes when a base key and its annotated form (e.g.
+        # `foo` and `foo@odata.bind`) both strip to the same unknown name.
+        if not field or field in valid or field in unknown:
             continue
         unknown.append(field)
-        close = difflib.get_close_matches(field, valid, n=1, cutoff=0.6)
+        close = difflib.get_close_matches(field, valid_list, n=1, cutoff=0.6)
         if close:
             did_you_mean[field] = close[0]
 
