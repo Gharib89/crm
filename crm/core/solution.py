@@ -421,6 +421,82 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str
     return result.get("value", [])
 
 
+# ── Component normalisation / diff ──────────────────────────────────────────
+
+
+def normalize_components(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a new, sorted list with exactly the three canonical keys.
+
+    - ``componenttype``        → coerced to ``int``
+    - ``objectid``             → lowercased ``str`` (stable GUID matching);
+      a non-string ``objectid`` raises ``ValueError`` rather than being coerced,
+      so a malformed snapshot (e.g. ``{"objectid": null}``) fails fast instead
+      of silently becoming the literal string ``"none"``
+    - ``rootcomponentbehavior`` → ``int`` or ``None`` (missing/None preserved)
+
+    Input rows are not mutated.  The sort key is
+    ``(componenttype, objectid, rootcomponentbehavior_or_minus1)``
+    where ``None`` maps to ``-1`` for ordering only — the stored value stays
+    ``None``.
+    """
+    out: list[dict[str, Any]] = []
+    for row in items:
+        objectid = row["objectid"]
+        if not isinstance(objectid, str):
+            raise ValueError(
+                f"objectid must be a string, got {type(objectid).__name__}"
+            )
+        rcb_raw = row.get("rootcomponentbehavior")
+        rcb: int | None = None if rcb_raw is None else int(rcb_raw)
+        out.append({
+            "componenttype": int(row["componenttype"]),
+            "objectid": objectid.lower(),
+            "rootcomponentbehavior": rcb,
+        })
+    out.sort(key=lambda c: (
+        c["componenttype"],
+        c["objectid"],
+        c["rootcomponentbehavior"] if c["rootcomponentbehavior"] is not None else -1,
+    ))
+    return out
+
+
+def diff_components(
+    live: list[dict[str, Any]],
+    expected: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Compare two component lists and return a diff summary.
+
+    Each component is keyed on ``(componenttype, objectid, rootcomponentbehavior)``
+    after normalisation, so a same-ID component with a different
+    ``rootcomponentbehavior`` value counts as **both** missing and unexpected.
+
+    Returns::
+
+        {
+            "matches": bool,
+            "missing":    [...],   # in expected, not in live
+            "unexpected": [...],   # in live, not in expected
+        }
+    """
+    norm_live = normalize_components(live)
+    norm_expected = normalize_components(expected)
+
+    def _key(c: dict[str, Any]) -> tuple[int, str, int | None]:
+        return (c["componenttype"], c["objectid"], c["rootcomponentbehavior"])
+
+    live_keys = {_key(c): c for c in norm_live}
+    expected_keys = {_key(c): c for c in norm_expected}
+
+    missing    = [c for c in norm_expected if _key(c) not in live_keys]
+    unexpected = [c for c in norm_live    if _key(c) not in expected_keys]
+    return {
+        "matches": len(missing) == 0 and len(unexpected) == 0,
+        "missing": missing,
+        "unexpected": unexpected,
+    }
+
+
 def _async_export_unavailable(exc: D365Error) -> bool:
     """True when the org lacks the ExportSolutionAsync action (older on-prem)."""
     msg = str(exc).lower()

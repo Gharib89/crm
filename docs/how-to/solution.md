@@ -17,7 +17,23 @@ Create both from the CLI before any metadata work ([#34](https://github.com/Ghar
 ```bash
 crm --json solution components CRMWorx
 ```
-Returns component **type + objectid** rows (componenttype `9` = option set, `1` = entity) — use it to verify the model landed.
+Returns one row per component with **`componenttype`, `objectid`, and `rootcomponentbehavior`** (componenttype `9` = option set, `1` = entity) — use it to verify the model landed. Those three fields are the tuple key used by `--save`/`--diff` below.
+
+## Detect drift: save & diff a component inventory
+
+```bash
+# Capture the expected inventory once (normalized bare JSON list)
+crm --json solution components CRMWorx --save components.json
+
+# Later: compare live components against the saved snapshot
+crm --json solution components CRMWorx --diff components.json
+```
+
+`--save` writes a normalized JSON list to `<path>` (parent dirs created as needed) and emits `{"saved": "<path>", "count": N}`. Each entry carries exactly three keys: `{"componenttype": <int>, "objectid": "<guid-lowercase>", "rootcomponentbehavior": <int|null>}`.
+
+`--diff` fetches live components and compares them against the file, keying each component on the tuple `(componenttype, objectid, rootcomponentbehavior)`. The `data` field contains `{"matches": bool, "missing": [...], "unexpected": [...]}` — `missing` = in expected but not live, `unexpected` = in live but not expected. **Exits non-zero (1) on drift** so agents and CI can branch on `$?`; exit 0 means the live solution matches the snapshot exactly.
+
+The two flags are mutually exclusive; bare `components <name>` is unchanged. The round-trip `--save` then `--diff` against the same org reports no drift ([#82](https://github.com/Gharib89/crm/issues/82)).
 
 ## Add or remove a component
 
