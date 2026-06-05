@@ -160,6 +160,14 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+    # Dry-run's deliverable is the SiteMapXml itself. In human mode print it in
+    # full (and to stdout, so `> sitemap.xml` works) — the default emit path
+    # would truncate it via _short_repr. JSON mode already carries the full XML.
+    if info.get("_dry_run") and not ctx.json_mode:
+        if warning:
+            ctx.skin.warning(warning)
+        click.echo(info["sitemapxml"])
+        return
     _emit_with_warning(ctx, info, warning,
                        meta={"staged": True} if ctx.stage_only else None)
 

@@ -613,6 +613,38 @@ class TestAppCommands:
         assert "<SiteMap" in result.output
         assert "<SubArea" in result.output
 
+    def test_app_build_sitemap_dry_run_human_mode_prints_full_xml(self, monkeypatch):
+        # Human (non-JSON) mode must print the WHOLE SiteMapXml, not the
+        # _short_repr-truncated dict value — dry-run's deliverable is the XML.
+        from click.testing import CliRunner
+        from crm.cli import cli
+        from crm.core import appmodule
+
+        def fake_build_sitemap(backend, **kw):
+            xml = appmodule.build_sitemapxml(
+                kw["areas"], kw["groups"], kw["subareas"])
+            return {"_dry_run": True, "sitemapname": kw["sitemap_name"],
+                    "sitemapxml": xml}
+
+        monkeypatch.setattr("crm.core.appmodule.build_sitemap", fake_build_sitemap)
+
+        class _DryBackend:
+            dry_run = True
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: _DryBackend())
+        result = CliRunner().invoke(cli, [
+            "--dry-run", "app", "build-sitemap", "CRMWorx SiteMap",
+            "--area", "sales:Sales",
+            "--group", "sales/accts:Accounts",
+            "--subarea", "sales/accts:entity=account:Accounts",
+            "--subarea", "sales/accts:entity=contact:Contacts",
+        ])
+        assert result.exit_code == 0, result.output
+        # The closing tag (well past the 80-char _short_repr limit) proves the
+        # full document was printed, not a truncated preview.
+        assert "</SiteMap>" in result.output
+        assert "..." not in result.output
+
     def test_app_add_components_command(self, monkeypatch):
         from click.testing import CliRunner
         from crm.cli import cli
