@@ -43,6 +43,7 @@ a = Analysis(
         'crm.commands.entity',
         'crm.commands.init',
         'crm.commands.metadata',
+        'crm.commands.plugin',
         'crm.commands.query',
         'crm.commands.repl',
         'crm.commands.session',

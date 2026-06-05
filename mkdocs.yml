@@ -117,6 +117,7 @@ nav:
       - describe: how-to/describe.md
       - app: how-to/app.md
       - webresource: how-to/webresource.md
+      - plugin: how-to/plugin.md
       - async: how-to/async.md
       - session: how-to/session.md
       - skill: how-to/skill.md

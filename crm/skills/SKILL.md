@@ -1,6 +1,6 @@
 ---
 name: crm
-description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
+description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, plug-in assembly and step registration, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
 ---
 
 # crm
@@ -17,6 +17,7 @@ live D365 server is a hard runtime dependency.
 - Browse schema metadata (entity / attribute / relationship definitions).
 - Export/import D365 solutions (`.zip`).
 - Manage **web resources** (HTML/JS/CSS/images) and set model-driven app icons.
+- Register and manage **plug-in assemblies and processing steps**.
 - Pull bulk datasets to CSV/JSON for analysis, or import CSV/JSONL records in bulk.
 - Anything you'd otherwise script against the SOAP Organization Service.
 
@@ -133,6 +134,7 @@ pass `--profile <name>` and confirm the real target with
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
+| `plugin`     | `register-assembly`, `list-types`, `register-step`, `unregister-assembly`, `unregister-step` | Plug-in assembly registration + step lifecycle |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`, `build-sitemap`                              | Model-driven apps (appmodule)                  |
@@ -524,6 +526,58 @@ crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresourc
 
 Both `create` and `update` honor `--solution` (`MSCRM.SolutionUniqueName`) and
 publish after the write (`--no-publish` / global `--stage-only` suppress it).
+
+## Plug-ins — `plugin` (assembly + step lifecycle)
+
+```bash
+# register-assembly: .dll bytes are base64'd into `content`; --name defaults to
+# the filename stem; --version defaults to 1.0.0.0; --isolation-mode sandbox|none
+# (sandbox=2, none=1; default sandbox). --solution sends MSCRM.SolutionUniqueName.
+crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
+
+# --update: re-uploads content of an existing assembly by name; identity flags
+# (--name, --version, etc.) are ignored under --update and produce a warning.
+crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update
+
+# list-types: platform-generated rows in plugintypes (one per IPlugin class).
+# Columns: typename, friendlyname, plugintypeid. --assembly scopes to one assembly.
+crm --json plugin list-types --assembly Contoso.Plugins
+
+# register-step: --message and --plugin-type are required. Stage choices:
+# prevalidation (10), preoperation (20), postoperation (40); default postoperation.
+# Mode choices: sync (0), async (1); default sync. async forces postoperation.
+# --entity sets primaryobjecttypecode (omit = all entities).
+# --filtering-attributes (comma-separated) restricts an Update step.
+# Step name is auto-derived as '<typename>: <message> of <entity>'; pass --name
+# when the derived string would exceed the 256-char platform limit.
+crm --json plugin register-step \
+    --message Update \
+    --plugin-type Contoso.Plugins.AccountPostUpdate \
+    --entity account \
+    --stage postoperation \
+    --mode sync \
+    --filtering-attributes name,telephone1
+
+# unregister-step: by name or GUID; ambiguous name errors (use GUID).
+crm --json plugin unregister-step "Contoso.Plugins.AccountPostUpdate: Update of account" --yes
+
+# unregister-assembly: cascades — deletes dependent steps first, then the assembly.
+crm --json plugin unregister-assembly Contoso.Plugins --yes
+```
+
+Full registration workflow (upload → verify types → register step):
+
+```bash
+crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
+crm --json plugin list-types --assembly Contoso.Plugins
+crm --json plugin register-step \
+    --message Create \
+    --plugin-type Contoso.Plugins.AccountPreCreate \
+    --entity account --stage preoperation --mode sync
+```
+
+`--dry-run` skips all writes (resolution GETs still fire); `--json` envelope carries
+`meta.dry_run: true`.
 
 ## Declarative apply — `apply -f spec.yaml`
 

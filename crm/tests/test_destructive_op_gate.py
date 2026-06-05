@@ -118,6 +118,31 @@ class TestBlocksDestructive:
         r = _run("crm async cancel 33333333-3333-3333-3333-333333333333 --yes")
         assert r.returncode == 0
 
+    def test_block_plugin_unregister_assembly_no_yes(self):
+        r = _run("crm plugin unregister-assembly Contoso.Plugins")
+        assert r.returncode == BLOCK
+        assert "unregister-assembly" in r.stderr
+
+    def test_allow_plugin_unregister_assembly_with_yes(self):
+        r = _run("crm plugin unregister-assembly Contoso.Plugins --yes")
+        assert r.returncode == 0
+        assert r.stderr == ""
+
+    def test_block_plugin_unregister_step_no_yes(self):
+        r = _run("crm plugin unregister-step 'My Step'")
+        assert r.returncode == BLOCK
+        assert "unregister-step" in r.stderr
+
+    def test_allow_plugin_unregister_step_with_yes(self):
+        r = _run("crm plugin unregister-step 'My Step' --yes")
+        assert r.returncode == 0
+
+    def test_allow_plugin_register_assembly_passthrough(self):
+        # register-assembly is non-destructive: it must pass through without --yes.
+        r = _run("crm plugin register-assembly Contoso.Plugins.dll")
+        assert r.returncode == 0
+        assert r.stderr == ""
+
 
 class TestForwardLookingVerbs:
     def test_block_delete_attribute_not_yet_existing(self):
@@ -397,6 +422,54 @@ class TestCliConfirmParity:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = self._runner().invoke(
             crm_cli.cli, ["--json", "async", "cancel", _GUID],
+        )
+        assert result.exit_code == 1
+        assert '"error": "aborted by user"' in result.output
+
+    def test_plugin_unregister_assembly_yes_skips_prompt(self, monkeypatch):
+        from crm import cli as crm_cli
+        called = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.unregister_assembly",
+            lambda backend, assembly: called.setdefault("a", assembly)
+            or {"deleted": True})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(
+            crm_cli.cli,
+            ["--json", "plugin", "unregister-assembly", "Contoso.Plugins", "--yes"],
+        )
+        assert result.exit_code == 0, result.output
+        assert called["a"] == "Contoso.Plugins"
+
+    def test_plugin_unregister_assembly_no_yes_non_tty_aborts(self, monkeypatch):
+        from crm import cli as crm_cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(
+            crm_cli.cli, ["--json", "plugin", "unregister-assembly", "Contoso.Plugins"],
+        )
+        assert result.exit_code == 1
+        assert '"error": "aborted by user"' in result.output
+
+    def test_plugin_unregister_step_yes_skips_prompt(self, monkeypatch):
+        from crm import cli as crm_cli
+        called = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.unregister_step",
+            lambda backend, step: called.setdefault("s", step)
+            or {"deleted": True})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(
+            crm_cli.cli,
+            ["--json", "plugin", "unregister-step", "My Step", "--yes"],
+        )
+        assert result.exit_code == 0, result.output
+        assert called["s"] == "My Step"
+
+    def test_plugin_unregister_step_no_yes_non_tty_aborts(self, monkeypatch):
+        from crm import cli as crm_cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(
+            crm_cli.cli, ["--json", "plugin", "unregister-step", "My Step"],
         )
         assert result.exit_code == 1
         assert '"error": "aborted by user"' in result.output
