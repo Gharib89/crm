@@ -366,9 +366,13 @@ def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
     so the failure is diagnosable."""
     exit_code = info.get("exit_code")
     if exit_code:
-        ctx.emit(False, data=info,
-                 error=f"SolutionPackager {info.get('action')} failed "
-                       f"(exit {exit_code}); see stdout_tail.")
+        # Embed the tail in the error itself: human mode drops `data`, so a bare
+        # "see stdout_tail" would point at output the user can't see (#107 review).
+        tail = info.get("stdout_tail") or ""
+        msg = f"SolutionPackager {info.get('action')} failed (exit {exit_code})."
+        if tail:
+            msg += f"\n{tail}"
+        ctx.emit(False, data=info, error=msg)
         return
     ctx.emit(True, data=info)
 

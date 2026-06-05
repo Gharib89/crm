@@ -96,7 +96,13 @@ def _run_solution_packager(
     except subprocess.TimeoutExpired as exc:
         raise D365Error(
             f"SolutionPackager {action} timed out after {timeout}s; "
-            "raise --timeout or check the solution size."
+            "increase --timeout or check the solution size."
+        ) from exc
+    except OSError as exc:
+        # The path exists (is_file passed) but could not be executed — e.g. it is
+        # not the real binary (wrong format) or lacks execute permission.
+        raise D365Error(
+            f"Could not run SolutionPackager at {exe!r}: {exc}. {_NUGET_HINT}"
         ) from exc
     return {
         "action": action,

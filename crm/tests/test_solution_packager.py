@@ -181,6 +181,15 @@ def test_timeout_must_be_positive(monkeypatch, exe, bad):
         )
 
 
+def test_oserror_from_subprocess_becomes_d365error(monkeypatch, exe):
+    def _run(argv, **kw):
+        raise OSError(8, "Exec format error")  # e.g. path exists but isn't the binary
+
+    monkeypatch.setattr(sp.subprocess, "run", _run)
+    with pytest.raises(D365Error, match="Could not run SolutionPackager"):
+        sp.pack_solution(zipfile="s.zip", folder="f", solutionpackager_path=exe)
+
+
 def test_resolves_exe_expanding_env_vars_and_user(fake_run, monkeypatch, tmp_path):
     real = tmp_path / "SolutionPackager.exe"
     real.touch()
@@ -317,6 +326,20 @@ class TestPackagerCommands:
         assert envelope["ok"] is False
         assert envelope["data"]["exit_code"] == 2
         assert envelope["data"]["stdout_tail"] == "boom"
+
+    def test_failure_shows_stdout_tail_in_human_mode(self, monkeypatch, real_folder):
+        # No --json → human mode drops `data`; the tail must ride in the error text.
+        monkeypatch.setattr(
+            "crm.core.solutionpackager.pack_solution",
+            lambda **kw: {"action": "Pack", "exit_code": 9,
+                          "folder": "f", "zipfile": "z", "stdout_tail": "ERR boom detail"},
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
+        result = CliRunner().invoke(cli, [
+            "solution", "pack", "--zipfile", "z", "--folder", real_folder,
+        ])
+        assert result.exit_code == 1, result.output
+        assert "ERR boom detail" in result.output
 
     def test_extract_command_absent_binary_exits_1(self, monkeypatch, real_zip):
         def _raise(**kw):
