@@ -82,9 +82,24 @@ def solution_info_cmd(ctx: CLIContext, unique_name):
 @pass_ctx
 def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
     """List solution components; with --save write a normalized inventory, with --diff compare live vs expected (non-zero exit on drift)."""
+    # A caller mistake (invalid flag combination) is a usage error (exit 2,
+    # ADR 0001), not an operational failure — mirror entity update's pattern.
     if diff_path and save_path:
-        ctx.emit(False, error="--diff and --save are mutually exclusive.")
-        return
+        raise click.UsageError("--diff and --save are mutually exclusive.")
+
+    # Parse and validate the expected snapshot BEFORE any network call, so a
+    # malformed --diff file fails fast without touching the org.
+    expected: list | None = None
+    if diff_path:
+        try:
+            raw = json.loads(Path(diff_path).read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            ctx.emit(False, error=f"Could not parse {diff_path!r} as JSON: {exc}")
+            return
+        if not isinstance(raw, list):
+            ctx.emit(False, error=f"Expected a JSON list in {diff_path!r}, got {type(raw).__name__}.")
+            return
+        expected = raw
 
     try:
         items = sol_mod.solution_components(ctx.backend(), unique_name)
@@ -95,22 +110,18 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
     if save_path:
         normalized = sol_mod.normalize_components(items)
         out = Path(save_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {save_path}: {exc}")
+            return
         ctx.emit(True, data={"saved": str(out), "count": len(normalized)})
         return
 
     if diff_path:
         try:
-            raw = json.loads(Path(diff_path).read_text(encoding="utf-8"))
-            if not isinstance(raw, list):
-                ctx.emit(False, error=f"Expected a JSON list in {diff_path!r}, got {type(raw).__name__}.")
-                return
-        except json.JSONDecodeError as exc:
-            ctx.emit(False, error=f"Could not parse {diff_path!r} as JSON: {exc}")
-            return
-        try:
-            result = sol_mod.diff_components(items, raw)
+            result = sol_mod.diff_components(items, expected or [])
         except (KeyError, ValueError, TypeError, AttributeError) as exc:
             ctx.emit(False, error=f"Malformed component row in {diff_path!r}: {exc}")
             return

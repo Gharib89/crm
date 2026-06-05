@@ -278,7 +278,7 @@ class TestComponentsDiffSave:
         f = tmp_path / "f.json"
         f.write_text("[]", encoding="utf-8")
         result = self._invoke("--diff", str(f), "--save", str(tmp_path / "out.json"))
-        assert result.exit_code != 0, result.output
+        assert result.exit_code == 2, result.output   # usage error (ADR 0001), not exit 1
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "mutually exclusive" in data["error"].lower()
@@ -335,3 +335,15 @@ class TestComponentsDiffSave:
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "Malformed" in data["error"] or str(bad_file) in data["error"]
+
+    # 9. --save to an unwritable path (parent is a file) → exit 1, clean ok=False envelope
+    def test_save_oserror_clean_envelope(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        blocker = tmp_path / "blocker"          # a regular file, not a directory
+        blocker.write_text("x", encoding="utf-8")
+        target = blocker / "sub" / "out.json"   # mkdir(parents=True) under a file -> OSError
+        result = self._invoke("--save", str(target))
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert "Could not write" in data["error"]
