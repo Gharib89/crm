@@ -264,6 +264,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "entity": "crm.commands.entity:entity_group",
         "init": "crm.commands.init:init_cmd",
         "metadata": "crm.commands.metadata:metadata_group",
+        "plugin": "crm.commands.plugin:plugin_group",
         "query": "crm.commands.query:query_group",
         "repl": "crm.commands.repl:repl",
         "service-document": "crm.commands.batch:service_document_cmd",
