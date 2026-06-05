@@ -725,8 +725,10 @@ def metadata_get_optionset(ctx: CLIContext, name):
         _handle_d365_error(ctx, exc)
         return
     # Flattened convenience list (#76); raw `data` left untouched. Options live at
-    # the root for a global option set. `meta` is JSON-mode-only in `ctx.emit`.
-    ctx.emit(True, data=info, meta={"options": meta_mod.flatten_options(info)})
+    # the root for a global option set. `ctx.emit` prints `meta` in human mode too,
+    # so gate it on JSON mode to keep human output unchanged (#76).
+    meta = {"options": meta_mod.flatten_options(info)} if ctx.json_mode else None
+    ctx.emit(True, data=info, meta=meta)
 
 
 @metadata_group.command("create-optionset")

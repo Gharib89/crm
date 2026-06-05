@@ -356,3 +356,33 @@ class TestGetOptionsetMetaOptions:
         ]
         # Raw data is untouched.
         assert env["data"]["Options"] == raw["Options"]
+
+    def test_get_optionset_meta_options_human_mode_absent(self, monkeypatch, backend):
+        """Human mode (no --json) must NOT render the flattened meta options (#76).
+
+        `ctx.emit` prints `meta` in human mode too, so the flattened list is
+        gated on JSON mode. The flattened repr (`{'value': 1, 'label': 'Low'}`)
+        and the lowercase `options:` meta status line are produced ONLY by the
+        meta rendering — raw data uses capitalized `Value`/`Label` keys — so
+        their absence proves the regression can't return.
+        """
+        self._stub(monkeypatch, backend)
+        raw = {
+            "Name": "new_priority",
+            "Options": [
+                {"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Low"}]}},
+                {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "High"}]}},
+            ],
+        }
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json=raw,
+            )
+            result = CliRunner().invoke(
+                cli, ["metadata", "get-optionset", "new_priority"]
+            )
+        assert result.exit_code == 0, result.output
+        # The flattened-options repr is emitted only via the meta status line.
+        assert "{'value': 1, 'label': 'Low'}" not in result.output
+        assert "options:" not in result.output
