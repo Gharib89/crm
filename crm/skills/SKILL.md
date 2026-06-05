@@ -312,8 +312,13 @@ crm --json action function RetrieveCurrentOrganization \
 
 ```bash
 crm --json metadata picklist account industrycode
-# returns {"OptionSet": {"Options": [{"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}}, ...]}}
+# data: raw {"OptionSet": {"Options": [{"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}}, ...]}}
+# meta.options: flattened [{"value": 1, "label": "Accounting"}, ...] — same shape for `metadata get-optionset <name>`
 ```
+`meta.options` (JSON mode only) flattens the nested labels to `[{value, label}]` so you
+need not dig through `Label.UserLocalizedLabel.Label`; raw `data` is unchanged. Boolean
+attributes have no `Options` array (`TrueOption` / `FalseOption` instead), so `meta.options`
+is empty for them — read the raw `TrueOption` / `FalseOption` fields directly.
 
 ### 9a. Write-readiness brief — one call before writing a record
 

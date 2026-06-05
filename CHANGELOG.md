@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to build the diff; no POSTs are issued.
 
 **Added**
+- `crm metadata picklist` and `crm metadata get-optionset` now emit a flattened
+  `meta.options` list (`[{value, label}]`) in `--json` mode, so agents need not
+  dig through `Label.UserLocalizedLabel.Label`. The raw `data` is unchanged (no
+  contract break). Labels resolve via `UserLocalizedLabel` then `LocalizedLabels`.
+  Boolean attributes have no `Options` array (`TrueOption` / `FalseOption`
+  instead), so `meta.options` is empty for them — read those raw fields directly (#76).
 - `crm plugin` command group: register and manage Dynamics 365 plug-in assemblies
   and processing steps via the `pluginassemblies` / `plugintypes` /
   `sdkmessageprocessingsteps` Web API entity sets.

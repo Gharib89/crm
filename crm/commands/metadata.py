@@ -119,7 +119,12 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
         _handle_d365_error(ctx, exc)
         return
     if ctx.json_mode:
-        ctx.emit(True, data=info)
+        # Flattened convenience list (#76); raw `data` left untouched. Container
+        # precedence mirrors the table branch: local OptionSet, then GlobalOptionSet.
+        flat = meta_mod.flatten_options(info.get("OptionSet") or {})
+        if not flat:
+            flat = meta_mod.flatten_options(info.get("GlobalOptionSet") or {})
+        ctx.emit(True, data=info, meta={"options": flat})
         return
     options = (info.get("OptionSet") or {}).get("Options") or []
     if not options:
@@ -719,7 +724,11 @@ def metadata_get_optionset(ctx: CLIContext, name):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    # Flattened convenience list (#76); raw `data` left untouched. Options live at
+    # the root for a global option set. `ctx.emit` prints `meta` in human mode too,
+    # so gate it on JSON mode to keep human output unchanged (#76).
+    meta = {"options": meta_mod.flatten_options(info)} if ctx.json_mode else None
+    ctx.emit(True, data=info, meta=meta)
 
 
 @metadata_group.command("create-optionset")

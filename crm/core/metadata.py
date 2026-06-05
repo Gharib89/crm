@@ -106,9 +106,16 @@ def _label_text(label_obj: dict[str, Any]) -> str:
     return ""
 
 
-def _options(option_set: dict[str, Any]) -> list[dict[str, Any]]:
-    """Flatten an OptionSet's Options to `[{value, label}]`."""
-    rows: list[dict[str, Any]] = option_set.get("Options") or []
+def flatten_options(container: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten a container's `Options` to `[{value, label}]`.
+
+    `container` is any dict carrying an `Options` array — a picklist's
+    `OptionSet` / `GlobalOptionSet`, or a global option set with `Options` at
+    its root. Labels use the robust `_label_text` fallback. A Boolean attribute
+    has no `Options` array (it casts to `TrueOption` / `FalseOption`), so this
+    returns `[]` for booleans — read those raw fields instead.
+    """
+    rows: list[dict[str, Any]] = container.get("Options") or []
     out: list[dict[str, Any]] = []
     for o in rows:
         lbl: dict[str, Any] = o.get("Label") or {}
@@ -161,12 +168,12 @@ def _enrich_options(
                 continue
             glob: dict[str, Any] = row.get("GlobalOptionSet") or {}
             if glob:
-                attr["options"] = _options(glob)
+                attr["options"] = flatten_options(glob)
                 if glob.get("MetadataId"):
                     attr["global_optionset_id"] = glob["MetadataId"]
             else:
                 local: dict[str, Any] = row.get("OptionSet") or {}
-                attr["options"] = _options(local)
+                attr["options"] = flatten_options(local)
 
 
 def _enrich_lookups(
