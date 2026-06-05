@@ -347,3 +347,14 @@ class TestComponentsDiffSave:
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "Could not write" in data["error"]
+
+    # 10. --diff with a non-UTF8 file → exit 1, clean ok=False envelope (read, not parse)
+    def test_diff_non_utf8_file_clean_envelope(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        bad_file = tmp_path / "bad4.json"
+        bad_file.write_bytes(b"\xff\xfe\x00bad")   # invalid UTF-8 -> UnicodeDecodeError
+        result = self._invoke("--diff", str(bad_file))
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert "Could not read" in data["error"]

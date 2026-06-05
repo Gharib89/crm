@@ -17,7 +17,7 @@ Create both from the CLI before any metadata work ([#34](https://github.com/Ghar
 ```bash
 crm --json solution components CRMWorx
 ```
-Returns component **type + objectid** rows (componenttype `9` = option set, `1` = entity) — use it to verify the model landed.
+Returns one row per component with **`componenttype`, `objectid`, and `rootcomponentbehavior`** (componenttype `9` = option set, `1` = entity) — use it to verify the model landed. Those three fields are the tuple key used by `--save`/`--diff` below.
 
 ## Detect drift: save & diff a component inventory
 

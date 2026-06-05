@@ -92,7 +92,12 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
     expected: list | None = None
     if diff_path:
         try:
-            raw = json.loads(Path(diff_path).read_text(encoding="utf-8"))
+            text = Path(diff_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            ctx.emit(False, error=f"Could not read {diff_path!r}: {exc}")
+            return
+        try:
+            raw = json.loads(text)
         except json.JSONDecodeError as exc:
             ctx.emit(False, error=f"Could not parse {diff_path!r} as JSON: {exc}")
             return
