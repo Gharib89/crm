@@ -7,6 +7,8 @@ takes typed entity references, and `appmodules` rejects a null `webresourceid`.
 # pyright: basic
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 import requests_mock
 
@@ -216,6 +218,230 @@ class TestSetSitemap:
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
         assert captured["unique_name"] == "cwx_crmworx"
         assert captured["sitemap_xml"].startswith("<SiteMap")
+
+
+class TestBuildSitemapXml:
+    def test_nests_areas_groups_subareas_in_order(self):
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("area1", "Sales"), ("area2", "Service")],
+            groups=[("area1", "g1", "Accounts"), ("area2", "g2", "Cases")],
+            subareas=[
+                ("area1", "g1", "account", "Accounts"),
+                ("area2", "g2", "incident", "Cases"),
+            ],
+        )
+        assert xml == (
+            '<SiteMap>'
+            '<Area Id="area1" Title="Sales">'
+            '<Group Id="g1" Title="Accounts">'
+            '<SubArea Id="account" Entity="account" Title="Accounts" />'
+            '</Group></Area>'
+            '<Area Id="area2" Title="Service">'
+            '<Group Id="g2" Title="Cases">'
+            '<SubArea Id="incident" Entity="incident" Title="Cases" />'
+            '</Group></Area>'
+            '</SiteMap>'
+        )
+
+    def test_subarea_omits_title_when_none(self):
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("a", "A")], groups=[("a", "g", "G")],
+            subareas=[("a", "g", "account", None)],
+        )
+        assert '<SubArea Id="account" Entity="account" />' in xml
+        assert 'SubArea Id="account" Entity="account" Title=' not in xml
+
+    def test_subarea_omits_title_when_empty(self):
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("a", "A")], groups=[("a", "g", "G")],
+            subareas=[("a", "g", "account", "   ")],
+        )
+        assert '<SubArea Id="account" Entity="account" />' in xml
+
+    def test_empty_area_group_title_defaults_to_id(self):
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("area1", "  ")], groups=[("area1", "grp1", "")],
+            subareas=[],
+        )
+        assert '<Area Id="area1" Title="area1">' in xml
+        assert '<Group Id="grp1" Title="grp1">' in xml
+
+    def test_attribute_values_are_quoteattr_escaped(self):
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("a", 'Tom & "Jerry" <x>')],
+            groups=[("a", "g", "G")],
+            subareas=[("a", "g", "account", 'Acc & "B" <c>')],
+        )
+        # quoteattr escapes & and <; double quotes inside force single-quote wrapping
+        assert "&amp;" in xml
+        assert "&lt;" in xml
+        assert 'Title=\'Tom &amp; "Jerry" &lt;x&gt;\'' in xml
+        assert 'Title=\'Acc &amp; "B" &lt;c&gt;\'' in xml
+
+    def test_duplicate_subarea_entity_gets_distinct_ids(self):
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("a", "A")], groups=[("a", "g", "G")],
+            subareas=[
+                ("a", "g", "account", None),
+                ("a", "g", "account", None),
+                ("a", "g", "account", None),
+            ],
+        )
+        assert '<SubArea Id="account" Entity="account" />' in xml
+        assert '<SubArea Id="account_2" Entity="account" />' in xml
+        assert '<SubArea Id="account_3" Entity="account" />' in xml
+
+    def test_subarea_ids_unique_across_whole_document(self):
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("a1", "A1"), ("a2", "A2")],
+            groups=[("a1", "g1", "G1"), ("a2", "g2", "G2")],
+            subareas=[
+                ("a1", "g1", "account", None),
+                ("a2", "g2", "account", None),
+            ],
+        )
+        assert '<SubArea Id="account" Entity="account" />' in xml
+        assert '<SubArea Id="account_2" Entity="account" />' in xml
+
+    def test_empty_areas_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="at least one area"):
+            appmodule.build_sitemapxml(areas=[], groups=[], subareas=[])
+
+    def test_duplicate_area_id_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="duplicate area"):
+            appmodule.build_sitemapxml(
+                areas=[("a", "A"), ("a", "B")], groups=[], subareas=[])
+
+    def test_duplicate_group_id_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="duplicate group"):
+            appmodule.build_sitemapxml(
+                areas=[("a", "A")],
+                groups=[("a", "g", "G1"), ("a", "g", "G2")],
+                subareas=[],
+            )
+
+    def test_group_unknown_area_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="unknown area"):
+            appmodule.build_sitemapxml(
+                areas=[("a", "A")], groups=[("nope", "g", "G")], subareas=[])
+
+    def test_subarea_unknown_group_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="does not reference"):
+            appmodule.build_sitemapxml(
+                areas=[("a", "A")], groups=[("a", "g", "G")],
+                subareas=[("a", "nope", "account", None)],
+            )
+
+    def test_subarea_group_in_wrong_area_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="does not reference"):
+            appmodule.build_sitemapxml(
+                areas=[("a1", "A1"), ("a2", "A2")],
+                groups=[("a1", "g1", "G1")],
+                subareas=[("a2", "g1", "account", None)],
+            )
+
+    def test_empty_entity_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="entity"):
+            appmodule.build_sitemapxml(
+                areas=[("a", "A")], groups=[("a", "g", "G")],
+                subareas=[("a", "g", "", None)],
+            )
+
+    def test_empty_area_id_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="area"):
+            appmodule.build_sitemapxml(
+                areas=[("", "A")], groups=[], subareas=[])
+
+    def test_empty_group_id_raises(self):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="group"):
+            appmodule.build_sitemapxml(
+                areas=[("a", "A")], groups=[("a", "", "G")], subareas=[])
+
+
+class TestBuildSitemap:
+    def _args(self) -> dict[str, Any]:
+        return dict(
+            sitemap_name="CRMWorx SiteMap",
+            areas=[("a", "Sales")],
+            groups=[("a", "g", "Accounts")],
+            subareas=[("a", "g", "account", "Accounts")],
+        )
+
+    def test_dry_run_returns_xml_without_posting(self, profile):
+        from crm.core import appmodule
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            out = appmodule.build_sitemap(dry, **self._args())
+        assert out["_dry_run"] is True
+        assert out["sitemapname"] == "CRMWorx SiteMap"
+        assert out["sitemapxml"].startswith("<SiteMap")
+        assert "<SubArea" in out["sitemapxml"]
+        assert not any(r.method == "POST" for r in m.request_history)
+
+    def test_empty_name_raises(self, backend):
+        from crm.core import appmodule
+        args = self._args()
+        args["sitemap_name"] = "   "
+        with pytest.raises(D365Error, match="sitemap_name"):
+            appmodule.build_sitemap(backend, **args)
+
+    def test_posts_via_set_sitemap_body_unchanged(self, backend):
+        from crm.core import appmodule
+        a = self._args()
+        expected_xml = appmodule.build_sitemapxml(
+            areas=a["areas"], groups=a["groups"], subareas=a["subareas"],
+        )
+        sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("sitemaps"), status_code=204,
+                   headers={"OData-EntityId": sm_url})
+            out = appmodule.build_sitemap(backend, **self._args())
+        assert out["created"] is True
+        assert out["sitemapid"] == _SITEMAP_ID
+        posts = _posts(m)
+        assert len(posts) == 1
+        # Byte-identical to what set_sitemap would build (no sitemapnameunique here)
+        assert posts[0].json() == {
+            "sitemapname": "CRMWorx SiteMap", "sitemapxml": expected_xml,
+        }
+
+    def test_posts_with_unique_name_adds_sitemapnameunique(self, backend):
+        from crm.core import appmodule
+        sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("sitemaps"), status_code=204,
+                   headers={"OData-EntityId": sm_url})
+            appmodule.build_sitemap(backend, unique_name="cwx_crmworx", **self._args())
+        body = _posts(m)[0].json()
+        assert body["sitemapnameunique"] == "cwx_crmworx"
+
+    def test_publish_runs_when_requested(self, backend):
+        from crm.core import appmodule
+        sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("sitemaps"), status_code=204,
+                   headers={"OData-EntityId": sm_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = appmodule.build_sitemap(backend, publish=True, **self._args())
+        assert out["published"] is True
+        assert any(r.method == "POST" and "PublishAllXml" in r.url
+                   for r in m.request_history)
 
 
 class TestAppCommands:
