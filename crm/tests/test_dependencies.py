@@ -164,7 +164,7 @@ class TestRetrieveDependencies:
     def test_delete_issues_correct_url(self, backend: D365Backend) -> None:
         with req_mock.Mocker() as m:
             _mock_entity_resolve(m, backend)
-            fn_url = _mock_dep_function(m, backend, func="RetrieveDependenciesForDelete")
+            _mock_dep_function(m, backend, func="RetrieveDependenciesForDelete")
             result = dep_mod.retrieve_dependencies(backend, "entity", "new_widget", for_="delete")
         assert result["for"] == "delete"
         assert result["kind"] == "entity"

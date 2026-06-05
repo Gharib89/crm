@@ -72,7 +72,7 @@ def _map_blocker(record: dict[str, Any]) -> dict[str, Any]:
         "dependent_id": record.get("dependentcomponentobjectid"),
         "dependent_parent_id": record.get("dependentcomponentparentid"),
         "required_type": _component_label(record.get("requiredcomponenttype")),
-        "dependency_type": record.get("dependencytype"),
+        "dependency_type": record.get("dependencytype"),  # raw int; no label map for dependencytype enum
     }
 
 
@@ -109,7 +109,7 @@ def _get_metadata_id(backend: D365Backend, path: str, kind: str, target: str) ->
         return metadata_id
     except D365Error as exc:
         if exc.status == 404:
-            raise D365Error(f"{kind} {target!r} not found") from exc
+            raise D365Error(f"{kind} {target!r} not found", code="NotFound") from exc
         raise
     finally:
         backend.dry_run = was_dry
