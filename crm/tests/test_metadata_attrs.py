@@ -616,3 +616,126 @@ class TestDeleteAttribute:
         delete_req = m.request_history[-1]
         assert delete_req.method == "DELETE"
         assert delete_req.headers.get("MSCRM.SolutionUniqueName") == "DevSolution"
+
+    def test_check_dependencies_off_by_default_no_extra_get(self, backend):
+        """Without check_dependencies, no dependency GETs fire."""
+        from crm.core import metadata_attrs as ma
+        url = self._attr_url(backend, "new_widget", "new_label")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"LogicalName": "new_label", "IsCustomAttribute": True,
+                             "IsManaged": False, "IsPrimaryId": False,
+                             "IsPrimaryName": False, "AttributeOf": None})
+            m.delete(url, status_code=204)
+            info = ma.delete_attribute(backend, "new_widget", "new_label")
+        assert "can_delete" not in info
+        assert "blockers" not in info
+        dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
+        assert dep_reqs == []
+
+    def test_check_dependencies_with_blockers(self, backend):
+        """check_dependencies=True fires resolve GET + function GET; blockers in result."""
+        from crm.core import metadata_attrs as ma
+        _attr_meta_id = "ffff0001-0000-0000-0000-000000000000"
+        url = self._attr_url(backend, "new_widget", "new_label")
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_attr_meta_id},ComponentType=2)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(url, json={
+                "LogicalName": "new_label", "IsCustomAttribute": True,
+                "IsManaged": False, "IsPrimaryId": False,
+                "IsPrimaryName": False, "AttributeOf": None,
+                "MetadataId": _attr_meta_id,
+            })
+            m.get(dep_url, json={"value": [
+                {
+                    "dependentcomponenttype": 6,
+                    "dependentcomponentobjectid": "1111ffff-0000-0000-0000-000000000000",
+                    "dependentcomponentparentid": None,
+                    "requiredcomponenttype": 2,
+                    "dependencytype": 1,
+                },
+            ]})
+            m.delete(url, status_code=204)
+            info = ma.delete_attribute(backend, "new_widget", "new_label", check_dependencies=True)
+        assert info["deleted"] is True
+        assert info["can_delete"] is False
+        assert len(info["blockers"]) == 1
+        assert info["blockers"][0]["dependent_type"] == "View Attribute"
+        dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
+        assert len(dep_reqs) == 1
+
+    def test_check_dependencies_no_blockers(self, backend):
+        """Empty dependency list → can_delete True."""
+        from crm.core import metadata_attrs as ma
+        _attr_meta_id = "ffff0001-0000-0000-0000-000000000000"
+        url = self._attr_url(backend, "new_widget", "new_label")
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_attr_meta_id},ComponentType=2)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(url, json={
+                "LogicalName": "new_label", "IsCustomAttribute": True,
+                "IsManaged": False, "IsPrimaryId": False,
+                "IsPrimaryName": False, "AttributeOf": None,
+                "MetadataId": _attr_meta_id,
+            })
+            m.get(dep_url, json={"value": []})
+            m.delete(url, status_code=204)
+            info = ma.delete_attribute(backend, "new_widget", "new_label", check_dependencies=True)
+        assert info["can_delete"] is True
+        assert info["blockers"] == []
+
+
+class TestDeleteAttributeDryRun:
+    """Dry-run delete_attribute returns _dry_run preview, not {deleted: True}."""
+
+    def _attr_url(self, backend, entity, attribute):
+        return backend.url_for(
+            f"EntityDefinitions(LogicalName='{entity}')"
+            f"/Attributes(LogicalName='{attribute}')"
+        )
+
+    def test_dryrun_returns_preview_not_deleted(self, profile):
+        from crm.core import metadata_attrs as ma
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        url = self._attr_url(dry_backend, "new_widget", "new_label")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={
+                "LogicalName": "new_label", "IsCustomAttribute": True,
+                "IsManaged": False, "IsPrimaryId": False,
+                "IsPrimaryName": False, "AttributeOf": None,
+            })
+            info = ma.delete_attribute(dry_backend, "new_widget", "new_label")
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["entity"] == "new_widget"
+        assert info["attribute"] == "new_label"
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []
+
+    def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
+        _attr_meta_id = "ffff0001-0000-0000-0000-000000000000"
+        from crm.core import metadata_attrs as ma
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        url = self._attr_url(dry_backend, "new_widget", "new_label")
+        dep_url = dry_backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_attr_meta_id},ComponentType=2)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(url, json={
+                "LogicalName": "new_label", "IsCustomAttribute": True,
+                "IsManaged": False, "IsPrimaryId": False,
+                "IsPrimaryName": False, "AttributeOf": None,
+                "MetadataId": _attr_meta_id,
+            })
+            m.get(dep_url, json={"value": []})
+            info = ma.delete_attribute(dry_backend, "new_widget", "new_label", check_dependencies=True)
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["can_delete"] is True
+        assert info["blockers"] == []
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []

@@ -14,6 +14,7 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
+from crm.core import dependencies as dep_mod
 
 
 def _option_label(label_obj: dict[str, Any]) -> str | None:
@@ -353,18 +354,29 @@ def delete_optionset(
     name: str,
     *,
     solution: str | None = None,
+    check_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Delete a custom global option set.
 
     Refuses if `IsCustomOptionSet=False` or `IsManaged=True`. Server
     rejects with 400 if any picklist still references the option set.
+
+    Args:
+        check_dependencies: When True, call RetrieveDependenciesForDelete
+            before the DELETE and fold ``can_delete`` + ``blockers`` into the
+            result. Informational only — does not abort the delete.
     """
     if not name:
         raise D365Error("name is required.")
     path = f"GlobalOptionSetDefinitions(Name='{name}')"
-    rb = as_dict(backend.get(
-        path, params={"$select": "IsCustomOptionSet,IsManaged"},
-    ))
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rb = as_dict(backend.get(
+            path, params={"$select": "IsCustomOptionSet,IsManaged,MetadataId"},
+        ))
+    finally:
+        backend.dry_run = was_dry
     if rb.get("IsCustomOptionSet") is False:
         raise D365Error(
             f"{name!r} is not a custom option set; refusing to delete.",
@@ -375,6 +387,29 @@ def delete_optionset(
             f"{name!r} is managed; uninstall the parent solution to remove it.",
             code="ManagedOptionSet",
         )
+    deps = None
+    if check_dependencies:
+        _mid = rb.get("MetadataId")
+        if isinstance(_mid, str) and _mid:
+            deps = dep_mod.dependencies_by_id(backend, _mid, 9, for_="delete", kind="optionset")
+        else:
+            deps = dep_mod.retrieve_dependencies(backend, "optionset", name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    backend.delete(path, extra_headers=headers)
-    return {"deleted": True, "name": name, "solution": solution}
+    preview = backend.delete(path, extra_headers=headers)
+    if isinstance(preview, dict) and preview.get("_dry_run"):
+        result: dict[str, Any] = {
+            "_dry_run": True,
+            "would_delete": True,
+            "name": name,
+            "solution": solution,
+        }
+    else:
+        result = {
+            "deleted": True,
+            "name": name,
+            "solution": solution,
+        }
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result

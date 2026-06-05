@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.core import dependencies as dep_mod
 
 
 def list_entities(
@@ -485,20 +486,31 @@ def delete_entity(
     logical_name: str,
     *,
     solution: str | None = None,
+    check_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Permanently delete a custom entity (table) and ALL its rows.
 
     Pre-flight: refuses if `IsCustomEntity=False` or `IsManaged=True`.
     Server enforces remaining dependency checks (workflows, forms,
     relationships) and returns 4xx on conflict.
+
+    Args:
+        check_dependencies: When True, call RetrieveDependenciesForDelete
+            before the DELETE and fold ``can_delete`` + ``blockers`` into the
+            result. Informational only — does not abort the delete.
     """
     if not logical_name:
         raise D365Error("logical_name is required.")
     path = f"EntityDefinitions(LogicalName='{logical_name}')"
-    rb = as_dict(backend.get(
-        path,
-        params={"$select": "IsCustomEntity,IsManaged"},
-    ))
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rb = as_dict(backend.get(
+            path,
+            params={"$select": "IsCustomEntity,IsManaged,MetadataId"},
+        ))
+    finally:
+        backend.dry_run = was_dry
     if rb.get("IsCustomEntity") is False:
         raise D365Error(
             f"{logical_name!r} is not a custom entity; refusing to delete.",
@@ -510,13 +522,32 @@ def delete_entity(
             "solution to remove it.",
             code="ManagedEntity",
         )
+    deps = None
+    if check_dependencies:
+        _mid = rb.get("MetadataId")
+        if isinstance(_mid, str) and _mid:
+            deps = dep_mod.dependencies_by_id(backend, _mid, 1, for_="delete", kind="entity")
+        else:
+            deps = dep_mod.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    backend.delete(path, extra_headers=headers)
-    return {
-        "deleted": True,
-        "logical_name": logical_name,
-        "solution": solution,
-    }
+    preview = backend.delete(path, extra_headers=headers)
+    if isinstance(preview, dict) and preview.get("_dry_run"):
+        result: dict[str, Any] = {
+            "_dry_run": True,
+            "would_delete": True,
+            "logical_name": logical_name,
+            "solution": solution,
+        }
+    else:
+        result = {
+            "deleted": True,
+            "logical_name": logical_name,
+            "solution": solution,
+        }
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result
 
 
 import xml.etree.ElementTree as _ET  # noqa: E402

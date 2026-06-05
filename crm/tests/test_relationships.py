@@ -253,3 +253,121 @@ class TestDeleteRelationship:
         delete_req = m.request_history[-1]
         assert delete_req.method == "DELETE"
         assert delete_req.headers.get("MSCRM.SolutionUniqueName") == "DevSolution"
+
+    def test_check_dependencies_off_by_default_no_extra_get(self, backend):
+        """Without check_dependencies, no dependency GETs fire."""
+        from crm.core import relationships as rel
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(path),
+                  json={"SchemaName": "new_account_new_project",
+                        "IsCustomRelationship": True, "IsManaged": False})
+            m.delete(backend.url_for(path), status_code=204)
+            info = rel.delete_relationship(backend, "new_account_new_project")
+        assert "can_delete" not in info
+        assert "blockers" not in info
+        dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
+        assert dep_reqs == []
+
+    def test_check_dependencies_with_blockers(self, backend):
+        """check_dependencies=True fires resolve GET + function GET; blockers in result."""
+        from crm.core import relationships as rel
+        _rel_meta_id = "2222ffff-0000-0000-0000-000000000000"
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_rel_meta_id},ComponentType=10)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(path), json={
+                "SchemaName": "new_account_new_project",
+                "IsCustomRelationship": True, "IsManaged": False,
+                "MetadataId": _rel_meta_id,
+            })
+            m.get(dep_url, json={"value": [
+                {
+                    "dependentcomponenttype": 24,
+                    "dependentcomponentobjectid": "3333ffff-0000-0000-0000-000000000000",
+                    "dependentcomponentparentid": None,
+                    "requiredcomponenttype": 10,
+                    "dependencytype": 1,
+                },
+            ]})
+            m.delete(backend.url_for(path), status_code=204)
+            info = rel.delete_relationship(
+                backend, "new_account_new_project", check_dependencies=True
+            )
+        assert info["deleted"] is True
+        assert info["can_delete"] is False
+        assert len(info["blockers"]) == 1
+        assert info["blockers"][0]["dependent_type"] == "Form"
+        dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
+        assert len(dep_reqs) == 1
+
+    def test_check_dependencies_no_blockers(self, backend):
+        """Empty dependency list → can_delete True."""
+        from crm.core import relationships as rel
+        _rel_meta_id = "2222ffff-0000-0000-0000-000000000000"
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_rel_meta_id},ComponentType=10)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(path), json={
+                "SchemaName": "new_account_new_project",
+                "IsCustomRelationship": True, "IsManaged": False,
+                "MetadataId": _rel_meta_id,
+            })
+            m.get(dep_url, json={"value": []})
+            m.delete(backend.url_for(path), status_code=204)
+            info = rel.delete_relationship(
+                backend, "new_account_new_project", check_dependencies=True
+            )
+        assert info["can_delete"] is True
+        assert info["blockers"] == []
+
+
+class TestDeleteRelationshipDryRun:
+    """Dry-run delete_relationship returns _dry_run preview, not {deleted: True}."""
+
+    def test_dryrun_returns_preview_not_deleted(self, profile):
+        from crm.core import relationships as rel
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for(path), json={
+                "SchemaName": "new_account_new_project",
+                "IsCustomRelationship": True, "IsManaged": False,
+            })
+            info = rel.delete_relationship(dry_backend, "new_account_new_project")
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["schema_name"] == "new_account_new_project"
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []
+
+    def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
+        from crm.core import relationships as rel
+        _rel_meta_id = "2222ffff-0000-0000-0000-000000000000"
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        dep_url = dry_backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_rel_meta_id},ComponentType=10)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for(path), json={
+                "SchemaName": "new_account_new_project",
+                "IsCustomRelationship": True, "IsManaged": False,
+                "MetadataId": _rel_meta_id,
+            })
+            m.get(dep_url, json={"value": []})
+            info = rel.delete_relationship(
+                dry_backend, "new_account_new_project", check_dependencies=True
+            )
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["can_delete"] is True
+        assert info["blockers"] == []
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []

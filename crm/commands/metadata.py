@@ -7,6 +7,7 @@ from crm.core import metadata_attrs as ma_mod
 from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
+from crm.core import dependencies as dep_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -155,6 +156,52 @@ def metadata_describe(ctx: CLIContext, logical_name):
     ctx.emit(True, data=brief, meta={
         "writable_attributes": len(brief["writable_attributes"]),
     })
+
+
+@metadata_group.command("dependencies")
+@click.argument("target")
+@click.option(
+    "--kind",
+    type=click.Choice(["entity", "attribute", "optionset", "relationship"]),
+    default="entity",
+    show_default=True,
+    help="Component kind of <target>. attribute uses dotted 'entity.attribute'.",
+)
+@click.option(
+    "--for", "for_",
+    type=click.Choice(["delete", "dependents"]),
+    default="delete",
+    show_default=True,
+    help=(
+        "delete = blockers preventing delete (RetrieveDependenciesForDelete); "
+        "dependents = components that depend on it (RetrieveDependentComponents)."
+    ),
+)
+@pass_ctx
+def metadata_dependencies(ctx: CLIContext, target, kind, for_):
+    """Show solution-component dependencies for a metadata target.
+
+    Read-only. --for delete returns components that block deletion (can_delete +
+    blockers[]); --for dependents returns components that depend on the target.
+    """
+    try:
+        info = dep_mod.retrieve_dependencies(ctx.backend(), kind, target, for_=for_)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    meta = {"can_delete": info["can_delete"], "blockers": len(info["blockers"])}
+    if ctx.json_mode:
+        ctx.emit(True, data=info, meta=meta)
+        return
+    if info["blockers"]:
+        headers = ["Dependent Type", "Dependent Id", "Required Type", "Dependency Type"]
+        rows = [
+            [b["dependent_type"], b["dependent_id"], b["required_type"], str(b["dependency_type"])]
+            for b in info["blockers"]
+        ]
+        ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+    else:
+        ctx.emit(True, data={"can_delete": info["can_delete"]}, meta=meta)
 
 
 @metadata_group.command("create-entity")
@@ -384,8 +431,10 @@ def metadata_relationships(ctx: CLIContext, logical_name):
 @click.argument("logical_name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require_solution):
+def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require_solution, check_dependencies):
     """Permanently delete a custom entity (table) and ALL its rows."""
     if not _confirm_destructive("entity", logical_name, yes):
         ctx.emit(False, error="aborted by user")
@@ -395,6 +444,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
     try:
         info = meta_mod.delete_entity(
             ctx.backend(), logical_name, solution=solution,
+            check_dependencies=check_dependencies,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -533,8 +583,10 @@ def metadata_add_attribute(
 @click.argument("attribute")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, require_solution):
+def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, require_solution, check_dependencies):
     """Delete a custom attribute (column) from an entity."""
     if not _confirm_destructive("attribute", f"{entity}.{attribute}", yes):
         ctx.emit(False, error="aborted by user")
@@ -544,6 +596,7 @@ def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution,
     try:
         info = ma_mod.delete_attribute(
             ctx.backend(), entity, attribute, solution=solution,
+            check_dependencies=check_dependencies,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -670,8 +723,10 @@ def metadata_create_many_to_many(
 @click.argument("schema_name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, require_solution):
+def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, require_solution, check_dependencies):
     """Delete a custom relationship (1:N or N:N) by schema name."""
     if not _confirm_destructive("relationship", schema_name, yes):
         ctx.emit(False, error="aborted by user")
@@ -681,6 +736,7 @@ def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, re
     try:
         info = rel_mod.delete_relationship(
             ctx.backend(), schema_name, solution=solution,
+            check_dependencies=check_dependencies,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -838,8 +894,10 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solution):
+def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solution, check_dependencies):
     """Delete a custom global option set."""
     if not _confirm_destructive("option set", name, yes):
         ctx.emit(False, error="aborted by user")
@@ -847,7 +905,8 @@ def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solu
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
     try:
-        info = os_mod.delete_optionset(ctx.backend(), name, solution=solution)
+        info = os_mod.delete_optionset(ctx.backend(), name, solution=solution,
+                                       check_dependencies=check_dependencies)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

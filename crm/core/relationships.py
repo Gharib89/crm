@@ -15,6 +15,7 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
+from crm.core import dependencies as dep_mod
 
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
@@ -60,18 +61,29 @@ def delete_relationship(
     schema_name: str,
     *,
     solution: str | None = None,
+    check_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Delete a custom relationship (1:N or N:N) by schema name.
 
     Pre-flight: refuses if `IsCustomRelationship=False` or `IsManaged=True`.
     Server enforces remaining-dependency checks and returns 4xx on conflict.
+
+    Args:
+        check_dependencies: When True, call RetrieveDependenciesForDelete
+            before the DELETE and fold ``can_delete`` + ``blockers`` into the
+            result. Informational only — does not abort the delete.
     """
     if not schema_name:
         raise D365Error("schema_name is required.")
     path = f"RelationshipDefinitions(SchemaName='{schema_name}')"
-    rb = as_dict(backend.get(
-        path, params={"$select": "IsCustomRelationship,IsManaged"},
-    ))
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rb = as_dict(backend.get(
+            path, params={"$select": "IsCustomRelationship,IsManaged,MetadataId"},
+        ))
+    finally:
+        backend.dry_run = was_dry
     if rb.get("IsCustomRelationship") is False:
         raise D365Error(
             f"{schema_name!r} is not a custom relationship; refusing to delete.",
@@ -82,9 +94,34 @@ def delete_relationship(
             f"{schema_name!r} is managed; uninstall the parent solution to remove it.",
             code="ManagedRelationship",
         )
+    deps = None
+    if check_dependencies:
+        _mid = rb.get("MetadataId")
+        if isinstance(_mid, str) and _mid:
+            deps = dep_mod.dependencies_by_id(backend, _mid, 10, for_="delete", kind="relationship")
+        else:
+            deps = dep_mod.retrieve_dependencies(
+                backend, "relationship", schema_name, for_="delete"
+            )
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    backend.delete(path, extra_headers=headers)
-    return {"deleted": True, "schema_name": schema_name, "solution": solution}
+    preview = backend.delete(path, extra_headers=headers)
+    if isinstance(preview, dict) and preview.get("_dry_run"):
+        result: dict[str, Any] = {
+            "_dry_run": True,
+            "would_delete": True,
+            "schema_name": schema_name,
+            "solution": solution,
+        }
+    else:
+        result = {
+            "deleted": True,
+            "schema_name": schema_name,
+            "solution": solution,
+        }
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result
 
 
 def create_one_to_many(

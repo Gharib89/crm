@@ -80,16 +80,35 @@ crm --json metadata create-one-to-many --schema-name cwx_sla_cwx_ticket \
 ```
 The response reports the `referencing_attribute` (the lookup column) the server generated on the N-side entity.
 
+## Preview dependencies before deleting
+
+```bash
+crm --json metadata dependencies cwx_ticket
+crm --json metadata dependencies cwx_ticket.cwx_priority --kind attribute
+crm --json metadata dependencies cwx_status --kind optionset
+crm --json metadata dependencies cwx_sla_cwx_ticket --kind relationship --for dependents
+```
+Returns `can_delete` (bool) and `blockers[]`; each blocker carries `dependent_type`,
+`dependent_id`, `dependent_parent_id`, `required_type`, and `dependency_type`. `--for delete` (default) shows
+what would block the deletion (`RetrieveDependenciesForDelete`). `--for dependents`
+shows what currently depends on the target (`RetrieveDependentComponents`); in that
+mode `can_delete` reflects whether anything depends on the target, not a strict
+delete-safety check. Read-only — no changes are made.
+
 ## Delete a custom column
 
 ```bash
 crm --json metadata delete-attribute cwx_ticket cwx_priority --yes
 ```
-Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute targets before any DELETE. Pass `--solution` to scope the delete to a solution. The server rejects with a 4xx if the column is still referenced (forms, views, workflows) — remove those dependencies first. Destructive: needs `--yes` (or an interactive confirmation).
+Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute targets before any DELETE. Pass `--solution` to scope the delete to a solution. The server rejects with a 4xx if the column is still referenced (forms, views, workflows) — remove those dependencies first. Destructive: needs `--yes` (or an interactive confirmation). Add `--check-dependencies` (with `--dry-run` for a non-destructive preview) to fold blockers into the result:
+
+```bash
+crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --check-dependencies
+```
 
 ## Delete a custom relationship
 
 ```bash
 crm --json metadata delete-relationship cwx_sla_cwx_ticket --yes
 ```
-Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an interactive confirmation).
+Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an interactive confirmation). Pass `--check-dependencies` (optionally with `--dry-run`) to preview blocking dependencies inline before the delete.
