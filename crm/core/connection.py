@@ -428,7 +428,7 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
         tls = _check("tls", True, "TLS verification disabled (verify_ssl=False)")
     else:
         try:
-            resp = backend.session.get(profile.api_base, timeout=profile.timeout)
+            resp = backend.session.get(profile.api_base, timeout=profile.timeout)  # pyright: ignore[reportUnknownMemberType]
             seen_headers.append(resp.headers)
             tls = _check("tls", True, "TLS handshake OK")
         except requests.exceptions.SSLError as exc:
@@ -499,7 +499,7 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
 
 def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
     try:
-        resp = backend.session.get(
+        resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
             backend.url_for("RetrieveVersion()"), timeout=backend.profile.timeout
         )
     except requests.exceptions.RequestException as exc:
@@ -529,7 +529,7 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
 
 def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
     try:
-        resp = backend.session.get(
+        resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
             backend.url_for("WhoAmI"), timeout=backend.profile.timeout
         )
     except requests.exceptions.RequestException as exc:
