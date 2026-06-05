@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 from crm.core import async_ops as async_ops_mod
 from crm.core import solution as sol_mod
+from crm.core import solutionpackager as sp_mod
 from crm.core import session as session_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
@@ -357,6 +358,81 @@ def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, tim
             return
         warnings = info.pop("warnings", None)
         ctx.emit(True, data=info, warnings=warnings)
+
+
+def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
+    """Emit a SolutionPackager envelope, failing the command (ADR 0001) when the
+    tool returned a non-zero exit code — the data (exit_code, stdout_tail) is kept
+    so the failure is diagnosable."""
+    exit_code = info.get("exit_code")
+    if exit_code:
+        ctx.emit(False, data=info,
+                 error=f"SolutionPackager {info.get('action')} failed "
+                       f"(exit {exit_code}); see stdout_tail.")
+        return
+    ctx.emit(True, data=info)
+
+
+@solution_group.command("extract")
+@click.option("--zipfile", required=True, type=click.Path(dir_okay=False),
+              help="Exported solution zip to unpack.")
+@click.option("--folder", required=True, type=click.Path(file_okay=False),
+              help="Destination folder for the source-controllable tree.")
+@click.option("--package-type", "package_type",
+              type=click.Choice(["Unmanaged", "Managed", "Both"]), default="Unmanaged",
+              help="SolutionPackager /packagetype (default Unmanaged).")
+@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
+              type=click.Path(dir_okay=False),
+              help="Path to SolutionPackager.exe (else CRM_SOLUTIONPACKAGER env, then PATH).")
+@click.option("--timeout", type=int, default=None,
+              help="SolutionPackager subprocess timeout in seconds.")
+@pass_ctx
+def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
+                         solutionpackager_path, timeout):
+    """Extract a solution zip into a folder tree (offline; SolutionPackager.exe).
+
+    OFFLINE local-file transform — no connection or profile required.
+    """
+    try:
+        info = sp_mod.extract_solution(
+            zipfile=zipfile, folder=folder, package_type=package_type,
+            solutionpackager_path=solutionpackager_path, timeout=timeout,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    _emit_packager_result(ctx, info)
+
+
+@solution_group.command("pack")
+@click.option("--zipfile", required=True, type=click.Path(dir_okay=False),
+              help="Destination solution zip to build.")
+@click.option("--folder", required=True, type=click.Path(file_okay=False),
+              help="Source folder tree to pack.")
+@click.option("--package-type", "package_type",
+              type=click.Choice(["Unmanaged", "Managed", "Both"]), default="Unmanaged",
+              help="SolutionPackager /packagetype (default Unmanaged).")
+@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
+              type=click.Path(dir_okay=False),
+              help="Path to SolutionPackager.exe (else CRM_SOLUTIONPACKAGER env, then PATH).")
+@click.option("--timeout", type=int, default=None,
+              help="SolutionPackager subprocess timeout in seconds.")
+@pass_ctx
+def solution_pack_cmd(ctx: CLIContext, zipfile, folder, package_type,
+                      solutionpackager_path, timeout):
+    """Pack a folder tree back into a solution zip (offline; SolutionPackager.exe).
+
+    OFFLINE local-file transform — no connection or profile required.
+    """
+    try:
+        info = sp_mod.pack_solution(
+            zipfile=zipfile, folder=folder, package_type=package_type,
+            solutionpackager_path=solutionpackager_path, timeout=timeout,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    _emit_packager_result(ctx, info)
 
 
 @solution_group.command("import-result")

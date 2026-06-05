@@ -49,6 +49,22 @@ crm solution export CRMWorx -o docs/artifacts/crmworx.zip
 ```
 Reports the output path, byte count, `managed: False`, and the `action` that ran (falls back to synchronous `ExportSolution` when `ExportSolutionAsync` is disabled on-prem). On success the zip is written to `-o/--output`; adding `--json` only changes the printed result envelope.
 
+## Source-control a solution (extract / pack)
+
+```bash
+# Unpack an exported zip into a diff-able folder tree
+crm solution extract --zipfile docs/artifacts/crmworx.zip --folder src/CRMWorx
+
+# ...commit the tree, review `git diff`, then build a zip back from it
+crm solution pack --zipfile dist/crmworx.zip --folder src/CRMWorx
+```
+
+`extract` / `pack` are thin wrappers over the CoreTools `SolutionPackager.exe`: `extract` unpacks an exported solution zip into a folder of XML/source files you can commit, and `pack` rebuilds an importable zip from that folder. There is no XML-diff engine — **`git diff` on the extracted tree _is_ the solution diff.**
+
+These are **offline local-file transforms**: they never open a connection, and no profile or credentials are required. `--package-type` selects `Unmanaged` (default), `Managed`, or `Both`. The executable is resolved in order: `--solutionpackager-path` → the `CRM_SOLUTIONPACKAGER` environment variable → `PATH`. crm does **not** bundle or download SolutionPackager — install it from the [`Microsoft.CrmSdk.CoreTools`](https://www.nuget.org/packages/Microsoft.CrmSdk.CoreTools) NuGet package; an absent binary fails with an error naming it.
+
+`--timeout` bounds the subprocess (seconds). The result envelope carries `{action, exit_code, folder, zipfile, stdout_tail}` (only the tail of SolutionPackager's chatty output is kept); a non-zero `exit_code` fails the command (`ok: false`, exit 1) while still reporting `stdout_tail` for diagnosis ([#73](https://github.com/Gharib89/crm/issues/73)).
+
 ## Import a solution zip
 
 ```bash

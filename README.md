@@ -183,6 +183,11 @@ crm query fetchxml accounts --file ./reports/by_industry.xml
 # Solution export
 crm solution export MyCustomSolution -o /tmp/snap.zip
 
+# Solution source control: unpack a zip to a diff-able tree and pack it back
+# (offline — no connection needed; needs SolutionPackager.exe from CoreTools)
+crm solution extract --zipfile /tmp/snap.zip --folder ./src/MyCustomSolution
+crm solution pack    --zipfile /tmp/built.zip --folder ./src/MyCustomSolution
+
 # Bulk CSV
 crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue
@@ -222,7 +227,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `query`      | OData v4 and FetchXML queries                              |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
-| `solution`   | List / info / components / add-component / remove-component / set-version / export / import / import-result solutions |
+| `solution`   | List / info / components / add-component / remove-component / set-version / export / import / import-result / extract / pack solutions |
 | `data`       | Bulk CSV/JSON dataset export                               |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state and command history                    |
