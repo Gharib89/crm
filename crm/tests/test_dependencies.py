@@ -47,7 +47,8 @@ class TestResolveTarget:
             mid, ct = dep_mod.resolve_target(backend, "entity", "new_widget")
         assert mid == self.METADATA_ID
         assert ct == 1
-        assert m.last_request.qs.get("$select") == ["metadataid"]
+        sel = m.last_request.qs.get("$select") or []
+        assert [v.lower() for v in sel] == ["metadataid"]
 
     def test_resolve_attribute(self, backend: D365Backend) -> None:
         url = backend.url_for(

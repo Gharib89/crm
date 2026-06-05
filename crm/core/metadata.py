@@ -502,10 +502,15 @@ def delete_entity(
     if not logical_name:
         raise D365Error("logical_name is required.")
     path = f"EntityDefinitions(LogicalName='{logical_name}')"
-    rb = as_dict(backend.get(
-        path,
-        params={"$select": "IsCustomEntity,IsManaged"},
-    ))
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rb = as_dict(backend.get(
+            path,
+            params={"$select": "IsCustomEntity,IsManaged,MetadataId"},
+        ))
+    finally:
+        backend.dry_run = was_dry
     if rb.get("IsCustomEntity") is False:
         raise D365Error(
             f"{logical_name!r} is not a custom entity; refusing to delete.",
@@ -519,7 +524,11 @@ def delete_entity(
         )
     deps = None
     if check_dependencies:
-        deps = dep_mod.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
+        _mid = rb.get("MetadataId")
+        if isinstance(_mid, str) and _mid:
+            deps = dep_mod.dependencies_by_id(backend, _mid, 1, for_="delete", kind="entity")
+        else:
+            deps = dep_mod.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
     result: dict[str, Any] = {

@@ -408,9 +408,14 @@ def delete_attribute(
         f"EntityDefinitions(LogicalName='{entity}')"
         f"/Attributes(LogicalName='{attribute}')"
     )
-    rb = as_dict(backend.get(path, params={
-        "$select": "IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf",
-    }))
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rb = as_dict(backend.get(path, params={
+            "$select": "IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf,MetadataId",
+        }))
+    finally:
+        backend.dry_run = was_dry
     if rb.get("IsCustomAttribute") is False:
         raise D365Error(
             f"{attribute!r} is not a custom attribute; refusing to delete.",
@@ -434,9 +439,13 @@ def delete_attribute(
         )
     deps = None
     if check_dependencies:
-        deps = dep_mod.retrieve_dependencies(
-            backend, "attribute", f"{entity}.{attribute}", for_="delete"
-        )
+        _mid = rb.get("MetadataId")
+        if isinstance(_mid, str) and _mid:
+            deps = dep_mod.dependencies_by_id(backend, _mid, 2, for_="delete", kind="attribute")
+        else:
+            deps = dep_mod.retrieve_dependencies(
+                backend, "attribute", f"{entity}.{attribute}", for_="delete"
+            )
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
     result: dict[str, Any] = {

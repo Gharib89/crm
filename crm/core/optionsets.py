@@ -369,9 +369,14 @@ def delete_optionset(
     if not name:
         raise D365Error("name is required.")
     path = f"GlobalOptionSetDefinitions(Name='{name}')"
-    rb = as_dict(backend.get(
-        path, params={"$select": "IsCustomOptionSet,IsManaged"},
-    ))
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rb = as_dict(backend.get(
+            path, params={"$select": "IsCustomOptionSet,IsManaged,MetadataId"},
+        ))
+    finally:
+        backend.dry_run = was_dry
     if rb.get("IsCustomOptionSet") is False:
         raise D365Error(
             f"{name!r} is not a custom option set; refusing to delete.",
@@ -384,7 +389,11 @@ def delete_optionset(
         )
     deps = None
     if check_dependencies:
-        deps = dep_mod.retrieve_dependencies(backend, "optionset", name, for_="delete")
+        _mid = rb.get("MetadataId")
+        if isinstance(_mid, str) and _mid:
+            deps = dep_mod.dependencies_by_id(backend, _mid, 9, for_="delete", kind="optionset")
+        else:
+            deps = dep_mod.retrieve_dependencies(backend, "optionset", name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
     result: dict[str, Any] = {"deleted": True, "name": name, "solution": solution}

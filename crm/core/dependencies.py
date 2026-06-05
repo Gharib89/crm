@@ -109,7 +109,8 @@ def _get_metadata_id(backend: D365Backend, path: str, kind: str, target: str) ->
         return metadata_id
     except D365Error as exc:
         if exc.status == 404:
-            raise D365Error(f"{kind} {target!r} not found", code="NotFound") from exc
+            raise D365Error(f"{kind} {target!r} not found", code="NotFound",
+                            status=exc.status, response_body=exc.response_body) from exc
         raise
     finally:
         backend.dry_run = was_dry

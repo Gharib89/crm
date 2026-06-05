@@ -258,7 +258,7 @@ crm --json metadata dependencies cwx_ticket.cwx_priority --kind attribute
 crm --json metadata dependencies cwx_status --kind optionset --for dependents
 ```
 Returns `{can_delete, blockers[], metadata_id, component_type, kind, for}`. Each
-blocker has `dependent_type`, `dependent_id`, `required_type`, `dependency_type`.
+blocker has `dependent_type`, `dependent_id`, `dependent_parent_id`, `required_type`, `dependency_type`.
 `--for delete` (default) uses `RetrieveDependenciesForDelete`; `--for dependents`
 uses `RetrieveDependentComponents`. Read-only.
 

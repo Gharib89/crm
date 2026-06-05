@@ -76,9 +76,14 @@ def delete_relationship(
     if not schema_name:
         raise D365Error("schema_name is required.")
     path = f"RelationshipDefinitions(SchemaName='{schema_name}')"
-    rb = as_dict(backend.get(
-        path, params={"$select": "IsCustomRelationship,IsManaged"},
-    ))
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        rb = as_dict(backend.get(
+            path, params={"$select": "IsCustomRelationship,IsManaged,MetadataId"},
+        ))
+    finally:
+        backend.dry_run = was_dry
     if rb.get("IsCustomRelationship") is False:
         raise D365Error(
             f"{schema_name!r} is not a custom relationship; refusing to delete.",
@@ -91,9 +96,13 @@ def delete_relationship(
         )
     deps = None
     if check_dependencies:
-        deps = dep_mod.retrieve_dependencies(
-            backend, "relationship", schema_name, for_="delete"
-        )
+        _mid = rb.get("MetadataId")
+        if isinstance(_mid, str) and _mid:
+            deps = dep_mod.dependencies_by_id(backend, _mid, 10, for_="delete", kind="relationship")
+        else:
+            deps = dep_mod.retrieve_dependencies(
+                backend, "relationship", schema_name, for_="delete"
+            )
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
     result: dict[str, Any] = {"deleted": True, "schema_name": schema_name, "solution": solution}

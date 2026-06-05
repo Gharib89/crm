@@ -89,7 +89,7 @@ crm --json metadata dependencies cwx_status --kind optionset
 crm --json metadata dependencies cwx_sla_cwx_ticket --kind relationship --for dependents
 ```
 Returns `can_delete` (bool) and `blockers[]`; each blocker carries `dependent_type`,
-`dependent_id`, `required_type`, and `dependency_type`. `--for delete` (default) shows
+`dependent_id`, `dependent_parent_id`, `required_type`, and `dependency_type`. `--for delete` (default) shows
 what would block the deletion (`RetrieveDependenciesForDelete`). `--for dependents`
 shows what currently depends on the target (`RetrieveDependentComponents`); in that
 mode `can_delete` reflects whether anything depends on the target, not a strict
