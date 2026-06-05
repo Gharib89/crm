@@ -203,15 +203,38 @@ def test_tls_any_http_response_is_ok(socket_ok):
     assert checks["tls"]["detail"] == "TLS handshake OK"
 
 
-def test_tls_skipped_when_verify_disabled(socket_ok):
+def test_tls_probes_even_when_verify_disabled(socket_ok):
+    # verify_ssl=False must STILL issue the api_base GET (so a genuinely broken
+    # handshake/connection is caught). On success the detail notes verification
+    # is disabled.
     with requests_mock.Mocker() as m:
         m.get(f"{_BASE}/api/data/v9.2/", status_code=401)
         m.get(f"{_BASE}/api/data/v9.2/RetrieveVersion()", json={"Version": "9.1.0.1"})
         m.get(f"{_BASE}/api/data/v9.2/WhoAmI", json={"UserId": "u"})
         result = conn.connection_doctor(_backend(verify_ssl=False))
+        # the api_base GET was actually issued
+        api_base_hits = [
+            r for r in m.request_history if r.path.endswith("/api/data/v9.2/")
+        ]
+        assert len(api_base_hits) == 1
     checks = _by_name(result)
     assert checks["tls"]["ok"] is True
-    assert "verify_ssl=False" in checks["tls"]["detail"]
+    assert "verification disabled" in checks["tls"]["detail"]
+
+
+def test_tls_connection_error_caught_even_when_verify_disabled(socket_ok):
+    # With verify off no SSLError fires, but a ConnectionError still must mark
+    # tls as failed — proving the probe is no longer skipped.
+    with requests_mock.Mocker() as m:
+        m.get(
+            f"{_BASE}/api/data/v9.2/",
+            exc=requests.exceptions.ConnectionError("connection reset"),
+        )
+        result = conn.connection_doctor(_backend(verify_ssl=False))
+    checks = _by_name(result)
+    assert checks["tls"]["ok"] is False
+    assert checks["version"]["detail"] == "not checked (TLS/connection failed)"
+    assert result["ok"] is False
 
 
 def test_tls_not_applicable_for_http(socket_ok):
@@ -411,3 +434,57 @@ def test_all_green(socket_ok):
     assert result["ok"] is True
     for c in result["checks"]:
         assert c["ok"] is True, c
+
+
+# ── standard OData headers on the raw GETs ───────────────────────────────────
+
+
+def test_probes_send_standard_odata_headers(socket_ok):
+    # The raw doctor GETs must carry the same headers as the real client so they
+    # don't diverge (406/415/non-JSON on some Dataverse endpoints).
+    with requests_mock.Mocker() as m:
+        m.get(f"{_BASE}/api/data/v9.2/", status_code=401)
+        m.get(f"{_BASE}/api/data/v9.2/RetrieveVersion()", json={"Version": "9.2.1.2"})
+        m.get(f"{_BASE}/api/data/v9.2/WhoAmI", json={"UserId": "u"})
+        conn.connection_doctor(_backend())
+        version_req = next(
+            r for r in m.request_history if r.path.endswith("/retrieveversion()")
+        )
+        auth_req = next(r for r in m.request_history if r.path.endswith("/whoami"))
+    # requests headers are case-insensitive
+    for req in (version_req, auth_req):
+        assert req.headers["Accept"] == "application/json"
+        assert req.headers["OData-Version"] == "4.0"
+
+
+# ── malformed profile URL (Fix 1) ────────────────────────────────────────────
+
+
+def test_profile_url_no_hostname_fails_dns_tcp():
+    # No socket monkeypatch: a hostname-less URL must be rejected up front,
+    # never reaching socket.create_connection.
+    result = conn.connection_doctor(_backend(url="not-a-url"))
+    assert _check_names(result) == _EXPECTED_ORDER
+    checks = _by_name(result)
+    assert checks["dns_tcp"]["ok"] is False
+    assert "no hostname" in checks["dns_tcp"]["detail"]
+    assert checks["dns_tcp"]["hint"]
+    for name in ("tls", "version", "auth"):
+        assert checks[name]["ok"] is False
+        assert checks[name]["detail"] == "not checked (invalid profile URL)"
+    assert checks["rate_limit"]["ok"] is True
+    assert result["ok"] is False
+
+
+def test_profile_url_invalid_port_fails_dns_tcp():
+    # urlparse(...).port raises ValueError on a bad port — must be caught and
+    # reported as a dns_tcp failure, not crash the probe.
+    result = conn.connection_doctor(_backend(url="https://host:bad/org"))
+    assert _check_names(result) == _EXPECTED_ORDER
+    checks = _by_name(result)
+    assert checks["dns_tcp"]["ok"] is False
+    assert "invalid port" in checks["dns_tcp"]["detail"]
+    assert checks["dns_tcp"]["hint"]
+    for name in ("tls", "version", "auth"):
+        assert checks[name]["detail"] == "not checked (invalid profile URL)"
+    assert result["ok"] is False

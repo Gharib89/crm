@@ -30,6 +30,9 @@ from crm.utils.d365_backend import (
     ConnectionProfile,
     D365Backend,
     D365Error,
+    # Reuse the client's canonical OData headers so the raw doctor probes stay
+    # faithful to a real request (intentional cross-module share of the const).
+    _DEFAULT_HEADERS,  # pyright: ignore[reportPrivateUsage]
 )
 from crm.core import session as session_mod
 
@@ -388,7 +391,32 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
     parsed = urllib.parse.urlparse(profile.url)
     host = parsed.hostname or ""
     is_https = parsed.scheme == "https"
-    port = parsed.port or (443 if is_https else 80)
+
+    # Validate the URL up front so a malformed profile yields a structured
+    # dns_tcp failure instead of probing localhost (host == "") or crashing on
+    # urlparse(...).port (raises ValueError on a non-numeric :port).
+    if not host:
+        return _abort(
+            [
+                _check(
+                    "dns_tcp", False, f"profile URL has no hostname: {profile.url!r}",
+                    "set a valid D365_URL / CRM_BASE_URL, e.g. https://host/org",
+                )
+            ],
+            "invalid profile URL",
+        )
+    try:
+        port = parsed.port or (443 if is_https else 80)
+    except ValueError:
+        return _abort(
+            [
+                _check(
+                    "dns_tcp", False, f"invalid port in profile URL: {profile.url!r}",
+                    "fix the :port in D365_URL / CRM_BASE_URL",
+                )
+            ],
+            "invalid profile URL",
+        )
 
     # collected so the rate_limit step can inspect them
     seen_headers: list[Any] = []
@@ -424,13 +452,20 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
     # ── step 2: tls ──────────────────────────────────────────────────────
     if not is_https:
         tls = _check("tls", True, "not applicable (plain http)")
-    elif not profile.verify_ssl:
-        tls = _check("tls", True, "TLS verification disabled (verify_ssl=False)")
     else:
+        # Always issue the GET, even when verify_ssl is False, so a genuinely
+        # broken handshake/connection is caught (a disabled verify only skips
+        # the SSLError cert path; ConnectionError/Timeout still fire).
         try:
-            resp = backend.session.get(profile.api_base, timeout=profile.timeout)  # pyright: ignore[reportUnknownMemberType]
+            # share the client's standard OData headers — see _doctor_version.
+            resp = backend.session.get(profile.api_base, headers=_DEFAULT_HEADERS, timeout=profile.timeout)  # pyright: ignore[reportUnknownMemberType]
             seen_headers.append(resp.headers)
-            tls = _check("tls", True, "TLS handshake OK")
+            detail = (
+                "TLS handshake OK"
+                if profile.verify_ssl
+                else "TLS handshake OK (verification disabled)"
+            )
+            tls = _check("tls", True, detail)
         except requests.exceptions.SSLError as exc:
             return _abort(
                 [
@@ -499,8 +534,13 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
 
 def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
     try:
+        # share the client's standard OData headers so the diagnostic stays
+        # faithful to a real request (some Dataverse endpoints 406/415 / return
+        # non-JSON without them).
         resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
-            backend.url_for("RetrieveVersion()"), timeout=backend.profile.timeout
+            backend.url_for("RetrieveVersion()"),
+            headers=_DEFAULT_HEADERS,
+            timeout=backend.profile.timeout,
         )
     except requests.exceptions.RequestException as exc:
         # Connection dropped mid-probe (server reset/restart, read timeout)
@@ -529,8 +569,11 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
 
 def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
     try:
+        # share the client's standard OData headers (see _doctor_version).
         resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
-            backend.url_for("WhoAmI"), timeout=backend.profile.timeout
+            backend.url_for("WhoAmI"),
+            headers=_DEFAULT_HEADERS,
+            timeout=backend.profile.timeout,
         )
     except requests.exceptions.RequestException as exc:
         # Connection dropped mid-probe AFTER TLS passed — transport failure,
