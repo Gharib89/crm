@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm solution extract` and `crm solution pack` bridge the CoreTools
+  `SolutionPackager.exe` to turn an exported solution zip into a source-controllable
+  folder tree and back (`git diff` on the extracted tree _is_ the solution diff).
+  These are **offline** local-file transforms: no connection, profile, or backend
+  is required. `--package-type` selects `Unmanaged` (default) / `Managed` / `Both`;
+  the executable is resolved via `--solutionpackager-path` → `CRM_SOLUTIONPACKAGER`
+  env → `PATH`, and an absent binary fails with an actionable error naming the
+  `Microsoft.CrmSdk.CoreTools` NuGet package (no bundling or auto-download). The
+  subprocess honors `--timeout` and the emitted envelope carries
+  `{action, exit_code, folder, zipfile, stdout_tail}`; a non-zero SolutionPackager
+  exit fails the command (#73).
 - `crm entity create` and `crm entity update` accept an opt-in `--validate` flag
   that field-name-checks the payload before the write. It runs 1-3 read-only
   metadata GETs (resolve entity-set → logical name, the entity's attribute names,

@@ -132,7 +132,7 @@ pass `--profile <name>` and confirm the real target with
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
-| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
+| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
 | `data`       | `export`                                                                                | Bulk CSV/JSON dataset export                   |
@@ -246,6 +246,20 @@ crm --json metadata attribute account industrycode
 crm solution list --unmanaged
 crm solution export MyCustomSolution -o /tmp/snap.zip
 # returns {"output": "/tmp/snap.zip", "bytes": 123456, "managed": false, ...}
+```
+
+Put a solution under source control with the offline SolutionPackager bridge
+(no connection/profile needed; resolves the exe via `--solutionpackager-path` →
+`CRM_SOLUTIONPACKAGER` → PATH, else errors naming the `Microsoft.CrmSdk.CoreTools`
+NuGet). `git diff` on the extracted tree IS the solution diff:
+
+```bash
+crm solution extract --zipfile /tmp/snap.zip --folder src/MyCustomSolution
+# ...commit + review git diff, then rebuild a zip from the tree
+crm solution pack --zipfile dist/built.zip --folder src/MyCustomSolution
+# --package-type Unmanaged|Managed|Both (default Unmanaged); a non-zero
+# SolutionPackager exit fails the command. Envelope: {action, exit_code,
+# folder, zipfile, stdout_tail}.
 ```
 
 ### 7. Bulk CSV export
