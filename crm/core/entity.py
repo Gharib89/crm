@@ -26,7 +26,7 @@ def _normalize_id(record_id: str) -> str:
     return rid
 
 
-def _build_record_path(entity_set: str, record_id: str) -> str:
+def build_record_path(entity_set: str, record_id: str) -> str:
     return f"{entity_set}({_normalize_id(record_id)})"
 
 
@@ -50,7 +50,7 @@ def retrieve(
         params["$expand"] = ",".join(expand)
     headers = {"Prefer": 'odata.include-annotations="*"'} if include_annotations else None
     result = backend.get(
-        _build_record_path(entity_set, record_id),
+        build_record_path(entity_set, record_id),
         params=params or None,
         extra_headers=headers,
     )
@@ -238,7 +238,7 @@ def update(
         effective_etag = "*"
 
     result = backend.patch(
-        _build_record_path(entity_set, record_id),
+        build_record_path(entity_set, record_id),
         json_body=payload,
         extra_headers=headers or None,
         etag=effective_etag,
@@ -266,7 +266,7 @@ def upsert(
 ) -> dict[str, Any]:
     """PATCH that creates if missing (no If-Match header)."""
     result = backend.patch(
-        _build_record_path(entity_set, record_id),
+        build_record_path(entity_set, record_id),
         json_body=payload,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
@@ -292,7 +292,7 @@ def delete(
 ) -> dict[str, Any]:
     """DELETE a record."""
     result = backend.delete(
-        _build_record_path(entity_set, record_id),
+        build_record_path(entity_set, record_id),
         etag=if_match,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
@@ -325,8 +325,8 @@ def associate(
 
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/associate-disassociate-entities-using-web-api
     """
-    target_path = _build_record_path(target_set, target_id)
-    related_url = backend.url_for(_build_record_path(related_set, related_id))
+    target_path = build_record_path(target_set, target_id)
+    related_url = backend.url_for(build_record_path(related_set, related_id))
     path = f"{target_path}/{navigation_property}/$ref"
     result = as_dict(backend.post(
         path,
@@ -360,9 +360,9 @@ def disassociate(
     For single-valued nav properties (N:1 lookup), omit related_set/related_id; the
     URL becomes /<nav>/$ref and removes the reference.
     """
-    target_path = _build_record_path(target_set, target_id)
+    target_path = build_record_path(target_set, target_id)
     if related_set and related_id:
-        related_url = backend.url_for(_build_record_path(related_set, related_id))
+        related_url = backend.url_for(build_record_path(related_set, related_id))
         from urllib.parse import quote
         path = f"{target_path}/{navigation_property}/$ref?$id={quote(related_url, safe='')}"
     else:
@@ -418,7 +418,7 @@ def clear_lookup(
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Clear a single-valued lookup via DELETE /<set>(<id>)/<nav>/$ref."""
-    target_path = _build_record_path(entity_set, record_id)
+    target_path = build_record_path(entity_set, record_id)
     backend.delete(
         f"{target_path}/{navigation_property}/$ref",
         caller_id=caller_id,

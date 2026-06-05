@@ -5,10 +5,9 @@ from __future__ import annotations
 
 import json
 import math
-import textwrap
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 import requests_mock as requests_mock_lib
@@ -40,7 +39,7 @@ def _make_stub_backend(results_per_chunk: list[list[BatchResult]]) -> Any:
     backend.dry_run = False
     results_iter = iter(results_per_chunk)
 
-    def _batch(ops: list[BatchOperation], **kwargs: Any) -> list[BatchResult]:
+    def _batch(_ops: list[BatchOperation], **kwargs: Any) -> list[BatchResult]:
         return next(results_iter)
 
     backend.batch.side_effect = _batch

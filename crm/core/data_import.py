@@ -9,25 +9,12 @@ from __future__ import annotations
 
 import csv
 import json
-import re
 from pathlib import Path
 from typing import Any, Generator
 
+from crm.core import entity as entity_mod
 from crm.utils.d365_backend import D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
-
-
-_GUID_RE = re.compile(
-    r"^[{(]?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[)}]?$"
-)
-
-
-def _normalize_guid(guid: str) -> str:
-    """Strip braces from a GUID string and validate format."""
-    rid = guid.strip().lstrip("{(").rstrip("})")
-    if not _GUID_RE.match(rid):
-        raise D365Error(f"Invalid record id (expected GUID): {guid!r}")
-    return rid
 
 
 # ── CSV value coercion ───────────────────────────────────────────────────────
@@ -101,9 +88,8 @@ def _build_upsert_op(
         raise D365Error(
             f"Upsert row {row_index}: missing id_column {id_column!r} in record"
         )
-    guid = _normalize_guid(str(record[id_column]))
     body = {k: v for k, v in record.items() if k != id_column}
-    url = f"{entity_set}({guid})"
+    url = entity_mod.build_record_path(entity_set, str(record[id_column]))
     return BatchOperation(method="PATCH", url=url, body=body)
 
 
