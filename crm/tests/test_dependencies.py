@@ -94,6 +94,16 @@ class TestResolveTarget:
         with pytest.raises(D365Error, match="dotted"):
             dep_mod.resolve_target(backend, "attribute", "new_widget")
 
+    def test_attribute_leading_dot_raises(self, backend: D365Backend) -> None:
+        """'.foo' has an empty entity part — must reject before any GET."""
+        with pytest.raises(D365Error, match="dotted"):
+            dep_mod.resolve_target(backend, "attribute", ".foo")
+
+    def test_attribute_trailing_dot_raises(self, backend: D365Backend) -> None:
+        """'entity.' has an empty attribute part — must reject before any GET."""
+        with pytest.raises(D365Error, match="dotted"):
+            dep_mod.resolve_target(backend, "attribute", "entity.")
+
     def test_non_404_reraised(self, backend: D365Backend) -> None:
         url = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
         with req_mock.Mocker() as m:

@@ -139,10 +139,13 @@ def resolve_target(backend: D365Backend, kind: str, target: str) -> tuple[str, i
         raise D365Error("target is required.")
     if kind not in _KIND_TO_COMPONENT_TYPE:
         raise D365Error(f"unknown kind {kind!r}; valid: {sorted(_KIND_TO_COMPONENT_TYPE)}")
-    if kind == "attribute" and "." not in target:
-        raise D365Error(
-            f"attribute target must be dotted 'entity.attribute', got {target!r}"
-        )
+    if kind == "attribute":
+        _entity, _, _attr = target.partition(".")
+        if not _entity or not _attr:
+            raise D365Error(
+                f"attribute target must be dotted 'entity.attribute' with both parts non-empty,"
+                f" got {target!r}"
+            )
     component_type = _KIND_TO_COMPONENT_TYPE[kind]
     path = _resolve_path(kind, target)
     metadata_id = _get_metadata_id(backend, path, kind, target)
@@ -176,11 +179,15 @@ def dependencies_by_id(
     component_type: int,
     *,
     for_: str = "delete",
+    kind: str | None = None,
 ) -> dict[str, Any]:
     """Retrieve dependencies for a pre-resolved ``(metadata_id, component_type)``.
 
     Skips the resolve GET — useful when the caller already holds the MetadataId
     (e.g. a delete pre-flight that fetched it for its own reasons).
+
+    ``kind`` is an optional label (e.g. ``"entity"``) that is echoed back in the
+    result dict; pass it when known so callers get a complete, honest shape.
 
     Returns the same shape as ``retrieve_dependencies``.
     """
@@ -199,7 +206,7 @@ def dependencies_by_id(
         "blockers": blockers,
         "metadata_id": metadata_id,
         "component_type": component_type,
-        "kind": None,
+        "kind": kind,
         "for": for_,
     }
 
@@ -233,6 +240,4 @@ def retrieve_dependencies(
         }
     """
     metadata_id, component_type = resolve_target(backend, kind, target)
-    result = dependencies_by_id(backend, metadata_id, component_type, for_=for_)
-    result["kind"] = kind
-    return result
+    return dependencies_by_id(backend, metadata_id, component_type, for_=for_, kind=kind)

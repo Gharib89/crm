@@ -183,4 +183,5 @@ class TestDeleteEntityCommand:
                 "D365_DOMAIN": "CONTOSO",
             },
         )
+        assert result.exit_code == 0
         assert captured.get("check_dependencies") is True
