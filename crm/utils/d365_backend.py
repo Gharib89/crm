@@ -434,6 +434,13 @@ class D365Backend:
 
     # ── URL helpers ─────────────────────────────────────────────────────
 
+    @property
+    def session(self) -> requests.Session:
+        """The configured Session (auth + verify), for callers that must issue a
+        raw request and classify transport exceptions per layer — e.g. the
+        connection doctor — bypassing request()'s retry-and-wrap path."""
+        return self._session
+
     def url_for(self, path: str) -> str:
         """Resolve a relative API path against the profile base URL."""
         if path.startswith("http://") or path.startswith("https://"):

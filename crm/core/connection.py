@@ -18,9 +18,13 @@ above, or the path in CRM_DOTENV. Existing real env vars take precedence.
 from __future__ import annotations
 
 import os
+import socket
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from crm.utils.d365_backend import (
     ConnectionProfile,
@@ -314,3 +318,201 @@ def test_connection(backend: D365Backend, *, negotiate: bool = False) -> dict[st
         "api_base": backend.profile.api_base,
         "api_version": backend.profile.api_version,
     }
+
+
+# ── connection doctor ────────────────────────────────────────────────────
+
+# Renegotiate hint reused for a 404/501 on the configured api_version.
+_RENEGOTIATE_HINT = (
+    "on-prem caps at v9.1 — re-run `crm connection connect` without --api-version "
+    "to auto-negotiate (tries v9.2, downgrades to v9.1)"
+)
+
+# Rate-limit headers Dataverse may emit; any header starting with the prefix
+# below is also surfaced. Retry-After is the generic throttling signal.
+_RATELIMIT_PREFIX = "x-ms-ratelimit"
+
+
+def _check(check: str, ok: bool, detail: str, hint: str = "") -> dict[str, Any]:
+    return {"check": check, "ok": ok, "detail": detail, "hint": hint}
+
+
+def connection_doctor(backend: D365Backend) -> dict[str, Any]:
+    """Run an ordered, non-fatal probe chain and return a structured checklist.
+
+    The engine behind `crm connection doctor`. Issues RAW session GETs
+    (bypassing ``D365Backend.request()``'s retry-and-wrap path, which collapses
+    every transport failure into one generic error) so each layer's failure —
+    DNS, TCP, TLS, api_version, auth — is classified distinctly.
+
+    Returns ``{"ok": bool, "checks": [{"check", "ok", "detail", "hint"}, ...]}``.
+    The checklist always contains all five checks in a fixed order. Overall
+    ``ok`` is the AND of the four diagnostic checks (dns_tcp, tls, version,
+    auth); ``rate_limit`` is informational and never affects it.
+
+    Works regardless of ``backend.dry_run`` (raw session GETs ignore dry_run),
+    which is the correct behaviour for a diagnostic.
+    """
+    profile = backend.profile
+    parsed = urllib.parse.urlparse(profile.url)
+    host = parsed.hostname or ""
+    is_https = parsed.scheme == "https"
+    port = parsed.port or (443 if is_https else 80)
+
+    # collected so the rate_limit step can inspect them
+    seen_headers: list[Any] = []
+
+    # ── step 1: dns_tcp ──────────────────────────────────────────────────
+    try:
+        sock = socket.create_connection((host, port), timeout=profile.timeout)
+        sock.close()
+        dns_tcp = _check(
+            "dns_tcp", True, f"TCP connection to {host}:{port} succeeded"
+        )
+    except socket.gaierror:
+        return {
+            "ok": False,
+            "checks": [
+                _check(
+                    "dns_tcp", False, f"DNS resolution failed for {host}",
+                    "check the hostname spelling, your VPN connection, and DNS resolution",
+                ),
+                _check("tls", False, "not checked (network unreachable)"),
+                _check("version", False, "not checked (network unreachable)"),
+                _check("auth", False, "not checked (network unreachable)"),
+                _check("rate_limit", True, "not checked"),
+            ],
+        }
+    except (OSError, TimeoutError) as exc:
+        return {
+            "ok": False,
+            "checks": [
+                _check(
+                    "dns_tcp", False, f"cannot reach {host}:{port}: {exc}",
+                    "check the port, firewall rules, and that the server is up",
+                ),
+                _check("tls", False, "not checked (network unreachable)"),
+                _check("version", False, "not checked (network unreachable)"),
+                _check("auth", False, "not checked (network unreachable)"),
+                _check("rate_limit", True, "not checked"),
+            ],
+        }
+
+    # ── step 2: tls ──────────────────────────────────────────────────────
+    if not is_https:
+        tls = _check("tls", True, "not applicable (plain http)")
+    elif not profile.verify_ssl:
+        tls = _check("tls", True, "TLS verification disabled (verify_ssl=False)")
+    else:
+        try:
+            resp = backend.session.get(profile.api_base, timeout=profile.timeout)
+            seen_headers.append(resp.headers)
+            tls = _check("tls", True, "TLS handshake OK")
+        except requests.exceptions.SSLError as exc:
+            return {
+                "ok": False,
+                "checks": [
+                    dns_tcp,
+                    _check(
+                        "tls", False, f"TLS certificate not trusted: {exc}",
+                        "certificate not trusted — pass --no-verify-ssl to skip "
+                        "verification, or install the server's CA certificate",
+                    ),
+                    _check("version", False, "not checked (TLS/connection failed)"),
+                    _check("auth", False, "not checked (TLS/connection failed)"),
+                    _check("rate_limit", True, "not checked"),
+                ],
+            }
+        except requests.exceptions.ConnectionError as exc:
+            return {
+                "ok": False,
+                "checks": [
+                    dns_tcp,
+                    _check(
+                        "tls", False, f"cannot establish HTTPS connection: {exc}",
+                        "check that the server is reachable over HTTPS on this port",
+                    ),
+                    _check("version", False, "not checked (TLS/connection failed)"),
+                    _check("auth", False, "not checked (TLS/connection failed)"),
+                    _check("rate_limit", True, "not checked"),
+                ],
+            }
+
+    # ── step 3: version ──────────────────────────────────────────────────
+    # Validate only the CONFIGURED api_version — no sweep across v9.0/v9.1/v9.2.
+    version = _doctor_version(backend, seen_headers)
+
+    # ── step 4: auth ─────────────────────────────────────────────────────
+    # version failing (wrong api_version) does NOT block auth.
+    auth = _doctor_auth(backend, seen_headers)
+
+    # ── step 5: rate_limit (informational) ───────────────────────────────
+    rate_limit = _doctor_rate_limit(seen_headers)
+
+    diagnostics = [dns_tcp, tls, version, auth]
+    return {
+        "ok": all(c["ok"] for c in diagnostics),
+        "checks": [dns_tcp, tls, version, auth, rate_limit],
+    }
+
+
+def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
+    resp = backend.session.get(
+        backend.url_for("RetrieveVersion()"), timeout=backend.profile.timeout
+    )
+    seen_headers.append(resp.headers)
+    status = resp.status_code
+    if 200 <= status < 300:
+        try:
+            version = resp.json().get("Version", "?")
+        except ValueError:
+            version = "?"
+        return _check("version", True, f"server version {version}")
+    if status in (404, _VERSION_UNSUPPORTED_STATUS):
+        return _check(
+            "version", False,
+            f"api_version '{backend.profile.api_version}' not served (HTTP {status})",
+            _RENEGOTIATE_HINT,
+        )
+    return _check("version", False, f"unexpected HTTP {status} from RetrieveVersion")
+
+
+def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
+    resp = backend.session.get(
+        backend.url_for("WhoAmI"), timeout=backend.profile.timeout
+    )
+    seen_headers.append(resp.headers)
+    status = resp.status_code
+    if status == 200:
+        try:
+            user_id = resp.json().get("UserId", "?")
+        except ValueError:
+            user_id = "?"
+        return _check("auth", True, f"authenticated as {user_id}")
+    if status == 401:
+        return _check(
+            "auth", False, "authentication failed (HTTP 401)",
+            "check credentials — NTLM needs DOMAIN\\username + D365_PASSWORD "
+            "(alias CRM_PASSWORD); OAuth needs D365_CLIENT_ID / D365_CLIENT_SECRET "
+            "/ D365_TENANT_ID",
+        )
+    if status == 403:
+        return _check(
+            "auth", False, "forbidden (HTTP 403)",
+            "authenticated but the user lacks privileges / has no security role",
+        )
+    return _check("auth", False, f"unexpected HTTP {status} from WhoAmI")
+
+
+def _doctor_rate_limit(seen_headers: list[Any]) -> dict[str, Any]:
+    found: list[str] = []
+    for headers in seen_headers:
+        for name, value in headers.items():
+            lname = name.lower()
+            if lname == "retry-after" or lname.startswith(_RATELIMIT_PREFIX):
+                entry = f"{name}: {value}"
+                if entry not in found:
+                    found.append(entry)
+    if found:
+        return _check("rate_limit", True, "; ".join(found))
+    return _check("rate_limit", True, "no rate-limit headers present")
