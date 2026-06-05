@@ -678,6 +678,12 @@ class TestSitemapParsers:
         with pytest.raises(click.BadParameter):
             _parse_group("sales/:Accounts")
 
+    def test_parse_group_extra_slash_rejected(self):
+        import click
+        from crm.commands.app import _parse_group
+        with pytest.raises(click.BadParameter):
+            _parse_group("sales/accts/extra:Accounts")
+
     def test_parse_subarea_with_title(self):
         from crm.commands.app import _parse_subarea
         assert _parse_subarea("sales/accts:entity=account:Accounts") == (
@@ -698,6 +704,12 @@ class TestSitemapParsers:
         from crm.commands.app import _parse_subarea
         with pytest.raises(click.BadParameter):
             _parse_subarea("sales/accts")
+
+    def test_parse_subarea_extra_slash_rejected(self):
+        import click
+        from crm.commands.app import _parse_subarea
+        with pytest.raises(click.BadParameter):
+            _parse_subarea("sales/accts/extra:entity=account")
 
     def test_parse_subarea_missing_entity_prefix_rejected(self):
         import click

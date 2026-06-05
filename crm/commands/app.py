@@ -90,7 +90,9 @@ def _parse_group(raw: str) -> tuple[str, str, str]:
     ref, _, title = raw.partition(":")
     area_id, sep, group_id = ref.partition("/")
     area_id, group_id = area_id.strip(), group_id.strip()
-    if not sep or not area_id or not group_id:
+    # Exactly one '/': a stray slash (area/group/extra) would otherwise be
+    # absorbed into the group id and silently produce a surprising Id.
+    if not sep or not area_id or not group_id or "/" in group_id:
         raise click.BadParameter(
             f"--group must be 'areaId/groupId[:Title]': {raw!r}")
     return area_id, group_id, title.strip()
@@ -109,7 +111,8 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
             f"--subarea must be 'areaId/groupId:entity=<logical>[:Title]': {raw!r}")
     area_id, ref_sep, group_id = ref.partition("/")
     area_id, group_id = area_id.strip(), group_id.strip()
-    if not ref_sep or not area_id or not group_id:
+    # Exactly one '/' in the ref (consistent with --group); reject stray slashes.
+    if not ref_sep or not area_id or not group_id or "/" in group_id:
         raise click.BadParameter(
             f"--subarea must be 'areaId/groupId:entity=<logical>[:Title]': {raw!r}")
     ent_part, _, title = rest.partition(":")
