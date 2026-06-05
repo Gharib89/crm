@@ -21,12 +21,14 @@ from crm.utils.d365_types import BatchOperation, BatchResult
 # ── CSV value coercion ───────────────────────────────────────────────────────
 
 
-def _coerce_csv_value(raw: str) -> Any:
+def _coerce_csv_value(raw: str | None) -> Any:
     """Coerce a raw CSV string cell to a Python value.
 
     Order: empty → None, then bool, then int, then float, else str.
+    A missing cell (``None``, as ``csv.DictReader`` yields for a short row) is
+    treated as empty.
     """
-    if raw == "":
+    if raw is None or raw == "":
         return None
     if raw.lower() == "true":
         return True
@@ -73,6 +75,13 @@ def _read_csv(path: Path) -> Generator[dict[str, Any], None, None]:
     with path.open(encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
+            # csv.DictReader collects columns beyond the header under the None
+            # key (a list) — a sign of a malformed row; reject it rather than
+            # silently dropping or crashing on the list.
+            if None in row:
+                raise D365Error(
+                    f"CSV line {reader.line_num}: more columns than the header"
+                )
             yield {k: _coerce_csv_value(v) for k, v in row.items()}
 
 

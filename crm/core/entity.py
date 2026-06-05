@@ -27,6 +27,11 @@ def _normalize_id(record_id: str) -> str:
 
 
 def build_record_path(entity_set: str, record_id: str) -> str:
+    """Build an OData record path ``<entity_set>(<guid>)`` from a GUID.
+
+    ``record_id`` is normalized (braces stripped) and validated as a GUID;
+    raises ``D365Error`` if it is not one.
+    """
     return f"{entity_set}({_normalize_id(record_id)})"
 
 

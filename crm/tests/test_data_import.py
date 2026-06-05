@@ -294,6 +294,24 @@ class TestCsvCoercion:
         assert body["c"] == "-inf" and isinstance(body["c"], str)
         assert body["d"] == "Infinity" and isinstance(body["d"], str)
 
+    def test_short_row_missing_column_becomes_none(self, tmp_path: Path) -> None:
+        """A row with fewer cells than the header → missing column coerces to None."""
+        p = tmp_path / "data.csv"
+        p.write_text("name,revenue\nAlpha\n", encoding="utf-8")
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        _import_records(backend, "accounts", p)
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["body"]["name"] == "Alpha"
+        assert ops[0]["body"]["revenue"] is None
+
+    def test_extra_columns_row_raises(self, tmp_path: Path) -> None:
+        """A row with more cells than the header is rejected with a line number."""
+        p = tmp_path / "data.csv"
+        p.write_text("name,revenue\nAlpha,100,extra\n", encoding="utf-8")
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        with pytest.raises(D365Error, match="line 2: more columns"):
+            _import_records(backend, "accounts", p)
+
 
 # ── dry-run ───────────────────────────────────────────────────────────────────
 
