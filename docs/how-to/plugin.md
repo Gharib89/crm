@@ -63,9 +63,10 @@ Key points:
 - `--entity` sets the `primaryobjecttypecode`. Omit it to fire on all entities.
 - `--filtering-attributes` (comma-separated) restricts an Update step to
   specific columns; ignored for non-Update messages.
-- Step name is auto-derived as `<typename>: <message> of <entity>` (or without
-  the entity clause for global steps). Pass `--name` explicitly when the derived
-  string would exceed the platform's 256-character limit.
+- Step name is auto-derived as `<typename>: <message> of <entity>` (or
+  `<typename>: <message> of any entity` when `--entity` is omitted). Pass
+  `--name` explicitly when the derived string would exceed the platform's
+  256-character limit.
 - `--assembly` scopes the type lookup to a single assembly when multiple
   assemblies share a type name.
 

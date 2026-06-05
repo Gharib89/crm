@@ -291,8 +291,8 @@ def unregister_step(backend: D365Backend, step: str) -> dict[str, Any]:
     automatically — no separate image delete is needed (MS Learn). Dry-run
     passes through the backend's delete preview (no real DELETE).
     """
-    step_id = step.strip() if _looks_like_guid(step) else _resolve_step_id(
-        backend, step)
+    step = step.strip()
+    step_id = step if _looks_like_guid(step) else _resolve_step_id(backend, step)
     result = as_dict(backend.delete(f"sdkmessageprocessingsteps({step_id})"))
     if result.get("_dry_run"):
         return result
@@ -318,7 +318,8 @@ def unregister_assembly(
 
     Raises D365Error when an assembly name resolves to nothing.
     """
-    aid = assembly.strip() if _looks_like_guid(assembly) else (
+    assembly = assembly.strip()
+    aid = assembly if _looks_like_guid(assembly) else (
         _resolve_id_by_name(backend, assembly))
     step_ids = _dependent_step_ids(backend, aid)
 

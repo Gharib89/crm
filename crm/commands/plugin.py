@@ -15,7 +15,7 @@ from crm.commands._helpers import (
 
 @click.group("plugin")
 def plugin_group():
-    """Register and manage plug-in assemblies."""
+    """Register and manage plug-in assemblies and processing steps."""
 
 
 @plugin_group.command("register-assembly")
