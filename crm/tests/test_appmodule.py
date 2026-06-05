@@ -640,10 +640,13 @@ class TestAppCommands:
             "--subarea", "sales/accts:entity=contact:Contacts",
         ])
         assert result.exit_code == 0, result.output
-        # The closing tag (well past the 80-char _short_repr limit) proves the
-        # full document was printed, not a truncated preview.
-        assert "</SiteMap>" in result.output
-        assert "..." not in result.output
+        # stdout must be pure XML so `> sitemap.xml` works: it starts with the
+        # root tag (no warning/preamble leaked in), carries the closing tag
+        # (well past the 80-char _short_repr limit, proving no truncation), and
+        # has no truncation marker.
+        assert result.stdout.lstrip().startswith("<SiteMap")
+        assert "</SiteMap>" in result.stdout
+        assert "..." not in result.stdout
 
     def test_app_add_components_command(self, monkeypatch):
         from click.testing import CliRunner

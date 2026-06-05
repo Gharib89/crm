@@ -20,8 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `crm app build-sitemap <SITEMAP_NAME>` builds a valid SiteMapXml from
   structured input and creates the sitemap. Three repeatable options describe the
   tree: `--area 'id[:Title]'` (at least one required), `--group 'areaId/groupId[:Title]'`
-  (nested under an area), and `--subarea 'areaId/groupId:entity=<logical>[:Title]'`
-  (titles optional throughout),
+  (nested under an area), and `--subarea 'areaId/groupId:entity=<logical>[:Title]'`,
   where a SubArea binds a table via the SiteMapXml `Entity=` attribute (Title
   optional — omit it and the platform derives the label from the entity). SubArea
   Ids are auto-allocated from the entity logical name to stay unique across the
