@@ -171,20 +171,24 @@ def list_webresources(
     custom_only: bool = False,
     top: int | None = None,
 ) -> list[dict[str, Any]]:
-    """List web resources. Client-side custom_only filter and $top slice."""
-    items: list[dict[str, Any]] = as_dict(backend.get(
-        "webresourceset",
-        params={
-            "$select": "name,displayname,webresourcetype,ismanaged",
-            "$orderby": "name",
-        },
-    )).get("value", [])
+    """List web resources, filtering server-side via $filter / $top.
+
+    `custom_only` becomes a `$filter=ismanaged eq false`; `top` becomes a
+    server-side `$top`. webresourceset is a normal entity collection (unlike
+    the GlobalOptionSetDefinitions metadata endpoint), so both push to D365.
+    """
+    if top is not None and top < 1:
+        raise D365Error("--top must be >= 1")
+    params: dict[str, str] = {
+        "$select": "name,displayname,webresourcetype,ismanaged",
+        "$orderby": "name",
+    }
     if custom_only:
-        items = [it for it in items if it.get("ismanaged") is False]
+        params["$filter"] = "ismanaged eq false"
     if top is not None:
-        if top < 1:
-            raise D365Error("--top must be >= 1")
-        items = items[:top]
+        params["$top"] = str(top)
+    items: list[dict[str, Any]] = as_dict(backend.get(
+        "webresourceset", params=params)).get("value", [])
     return items
 
 

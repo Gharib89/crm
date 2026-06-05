@@ -286,10 +286,10 @@ class TestListWebresources:
             out = webresource.list_webresources(backend)
         assert len(out) == 2
 
-    def test_list_custom_only_filters_managed(self, backend):
+    def test_list_custom_only_pushes_filter_server_side(self, backend):
         from crm.core import webresource
+        # server does the filtering; mock returns the already-filtered rows
         rows = [
-            {"name": "a.js", "ismanaged": True},
             {"name": "b.js", "ismanaged": False},
             {"name": "c.js", "ismanaged": False},
         ]
@@ -297,21 +297,27 @@ class TestListWebresources:
             m.get(backend.url_for("webresourceset"), json={"value": rows})
             out = webresource.list_webresources(backend, custom_only=True)
         assert [r["name"] for r in out] == ["b.js", "c.js"]
+        # the $filter is pushed to D365, not applied client-side
+        assert m.last_request.qs["$filter"] == ["ismanaged eq false"]
 
-    def test_list_top_slices(self, backend):
+    def test_list_top_pushes_server_side(self, backend):
         from crm.core import webresource
         rows = [{"name": f"{i}.js", "ismanaged": False} for i in range(5)]
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("webresourceset"), json={"value": rows})
-            out = webresource.list_webresources(backend, top=2)
-        assert len(out) == 2
+            out = webresource.list_webresources(backend, top=5)
+        assert len(out) == 5
+        # $top is a server-side param, not a client-side slice
+        assert m.last_request.qs["$top"] == ["5"]
 
-    def test_list_top_below_one_raises(self, backend):
+    def test_list_top_below_one_raises_without_request(self, backend):
         from crm.core import webresource
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("webresourceset"), json={"value": []})
             with pytest.raises(D365Error, match=">= 1"):
                 webresource.list_webresources(backend, top=0)
+        # validation happens before any HTTP call
+        assert m.request_history == []
 
 
 class TestResolveWebresourceId:
