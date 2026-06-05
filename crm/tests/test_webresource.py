@@ -345,6 +345,16 @@ class TestResolveWebresourceId:
         assert out == _WR_ID
         assert any(r.method == "GET" for r in m.request_history)
 
+    def test_name_with_whitespace_is_trimmed_before_lookup(self, backend):
+        from crm.core import webresource
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID}]})
+            out = webresource.resolve_webresource_id(backend, "  new_icon.png  ")
+        assert out == _WR_ID
+        # the OData filter must use the trimmed name, not the padded input
+        assert m.last_request.qs["$filter"] == ["name eq 'new_icon.png'"]
+
     def test_name_not_found_raises(self, backend):
         from crm.core import webresource
         with requests_mock.Mocker() as m:

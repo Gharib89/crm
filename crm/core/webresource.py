@@ -225,4 +225,4 @@ def resolve_webresource_id(backend: D365Backend, name_or_guid: str) -> str:
     stripped = name_or_guid.strip()
     if _GUID_RE.match(stripped):
         return stripped
-    return _resolve_id_by_name(backend, name_or_guid)
+    return _resolve_id_by_name(backend, stripped)
