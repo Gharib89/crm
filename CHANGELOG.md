@@ -133,6 +133,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-transactional optionset update that fails mid-stage surfaces
   `meta.completed_steps` / `meta.failed_stage` on the error envelope so a partial
   mutation is observable. Every other error site is unchanged (#64).
+- `crm webresource create` / `update` / `get` / `list` manage web resources
+  (`webresourceset`). `create` base64-encodes the `--file` bytes into the
+  `content` column and infers the `webresourcetype` from the file extension
+  (`.html`=1, `.css`=2, `.js`=3, `.xml`=4, `.png`=5, `.jpg`=6, `.gif`=7,
+  `.xap`=8, `.xsl`=9, `.ico`=10, `.svg`=11, `.resx`=12 — the real D365
+  `webresource_webresourcetype` option set, so CSS=2 and 8 is Silverlight, not
+  the other way around); `--type <int>` overrides inference and an unknown
+  extension without it is rejected. `--display-name` defaults to the name.
+  `update <name>` resolves the resource by name and issues a plain PATCH of only
+  the sent fields (content from `--file` and/or `--display-name`; at least one
+  required) — not retrieve-merge-write. Both honor `--solution` (sent as
+  `MSCRM.SolutionUniqueName`) and publish after the write (`--no-publish` /
+  `--stage-only` suppress it). `list --custom-only` keeps unmanaged resources;
+  `get <name>` prints a record (#78).
+- `crm app create --icon-webresource <name|guid>` sets the app icon to a web
+  resource: a GUID is used directly, a name is resolved to its id, and omitting
+  the flag keeps the platform default icon (#78).
 
 **Changed**
 - **Breaking (envelope):** the singular `meta.warning` scalar is replaced by the
