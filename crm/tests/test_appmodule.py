@@ -530,6 +530,65 @@ class TestAppCommands:
         assert result.exit_code == 0, result.output
         assert captured["web_resource_id"] == _DEFAULT_ICON
 
+    def test_app_build_sitemap_command_wires_core(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured: dict[str, Any] = {}
+
+        def fake_build_sitemap(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "sitemapid": _SITEMAP_ID,
+                    "sitemapname": kw["sitemap_name"]}
+
+        monkeypatch.setattr("crm.core.appmodule.build_sitemap", fake_build_sitemap)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "app", "build-sitemap", "CRMWorx SiteMap",
+            "--area", "sales:Sales",
+            "--group", "sales/accts:Accounts",
+            "--subarea", "sales/accts:entity=account:Accounts",
+            "--subarea", "sales/accts:entity=contact",
+            "--unique-name", "cwx_crmworx", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["sitemap_name"] == "CRMWorx SiteMap"
+        assert captured["areas"] == [("sales", "Sales")]
+        assert captured["groups"] == [("sales", "accts", "Accounts")]
+        assert captured["subareas"] == [
+            ("sales", "accts", "account", "Accounts"),
+            ("sales", "accts", "contact", None),
+        ]
+        assert captured["unique_name"] == "cwx_crmworx"
+        assert captured["publish"] is False
+
+    def test_app_build_sitemap_dry_run_emits_xml_without_post(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+
+        def fake_build_sitemap(backend, **kw):
+            assert backend.dry_run is True
+            xml = appmodule.build_sitemapxml(
+                kw["areas"], kw["groups"], kw["subareas"])
+            return {"_dry_run": True, "sitemapname": kw["sitemap_name"],
+                    "sitemapxml": xml}
+
+        from crm.core import appmodule
+        monkeypatch.setattr("crm.core.appmodule.build_sitemap", fake_build_sitemap)
+
+        class _DryBackend:
+            dry_run = True
+
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: _DryBackend())
+        result = CliRunner().invoke(cli, [
+            "--json", "--dry-run", "app", "build-sitemap", "CRMWorx SiteMap",
+            "--area", "sales:Sales",
+            "--group", "sales/accts:Accounts",
+            "--subarea", "sales/accts:entity=account",
+        ])
+        assert result.exit_code == 0, result.output
+        assert "<SiteMap" in result.output
+        assert "<SubArea" in result.output
+
     def test_app_add_components_command(self, monkeypatch):
         from click.testing import CliRunner
         from crm.cli import cli
@@ -561,3 +620,75 @@ class TestAppCommands:
         ])
         assert result.exit_code == 0, result.output
         assert captured["components"] == [("view", "bbbb")]
+
+
+class TestSitemapParsers:
+    def test_parse_area_with_title(self):
+        from crm.commands.app import _parse_area
+        assert _parse_area(" sales : Sales ") == ("sales", "Sales")
+
+    def test_parse_area_empty_title_ok(self):
+        from crm.commands.app import _parse_area
+        assert _parse_area("sales") == ("sales", "")
+
+    def test_parse_area_empty_id_rejected(self):
+        import click
+        from crm.commands.app import _parse_area
+        with pytest.raises(click.BadParameter):
+            _parse_area(" :Sales")
+
+    def test_parse_group_valid(self):
+        from crm.commands.app import _parse_group
+        assert _parse_group(" sales / accts : Accounts ") == (
+            "sales", "accts", "Accounts")
+
+    def test_parse_group_no_slash_rejected(self):
+        import click
+        from crm.commands.app import _parse_group
+        with pytest.raises(click.BadParameter):
+            _parse_group("sales:Accounts")
+
+    def test_parse_group_empty_id_rejected(self):
+        import click
+        from crm.commands.app import _parse_group
+        with pytest.raises(click.BadParameter):
+            _parse_group("sales/:Accounts")
+
+    def test_parse_subarea_with_title(self):
+        from crm.commands.app import _parse_subarea
+        assert _parse_subarea("sales/accts:entity=account:Accounts") == (
+            "sales", "accts", "account", "Accounts")
+
+    def test_parse_subarea_without_title(self):
+        from crm.commands.app import _parse_subarea
+        assert _parse_subarea("sales/accts:entity=account") == (
+            "sales", "accts", "account", None)
+
+    def test_parse_subarea_blank_title_is_none(self):
+        from crm.commands.app import _parse_subarea
+        assert _parse_subarea("sales/accts:entity=account:   ") == (
+            "sales", "accts", "account", None)
+
+    def test_parse_subarea_no_colon_rejected(self):
+        import click
+        from crm.commands.app import _parse_subarea
+        with pytest.raises(click.BadParameter):
+            _parse_subarea("sales/accts")
+
+    def test_parse_subarea_missing_entity_prefix_rejected(self):
+        import click
+        from crm.commands.app import _parse_subarea
+        with pytest.raises(click.BadParameter):
+            _parse_subarea("sales/accts:account")
+
+    def test_parse_subarea_empty_entity_rejected(self):
+        import click
+        from crm.commands.app import _parse_subarea
+        with pytest.raises(click.BadParameter):
+            _parse_subarea("sales/accts:entity=")
+
+    def test_parse_subarea_bad_ref_rejected(self):
+        import click
+        from crm.commands.app import _parse_subarea
+        with pytest.raises(click.BadParameter):
+            _parse_subarea("sales:entity=account")
