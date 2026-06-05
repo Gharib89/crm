@@ -16,6 +16,20 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
 
 
+def _option_label(label_obj: dict[str, Any]) -> str | None:
+    """Best-effort display label from a Dataverse Label payload.
+
+    Prefers UserLocalizedLabel.Label, falls back to LocalizedLabels[0].Label.
+    """
+    ull: dict[str, Any] = label_obj.get("UserLocalizedLabel") or {}
+    if ull.get("Label"):
+        return str(ull["Label"])
+    locs: list[dict[str, Any]] = label_obj.get("LocalizedLabels") or []
+    if locs:
+        return str(locs[0].get("Label") or "") or None
+    return None
+
+
 def _parse_optionset_id(entity_id_url: str | None) -> str | None:
     if not entity_id_url:
         return None
@@ -148,6 +162,55 @@ def create_optionset(
     return out
 
 
+def _option_diff(
+    current: list[dict[str, Any]],
+    insert: list[tuple[int | None, str]] | None,
+    update: list[tuple[int, str]] | None,
+    delete: list[int] | None,
+    reorder: list[int] | None,
+) -> dict[str, Any]:
+    """Classify pending option changes against the current live options.
+
+    Returns:
+        inserts: list of {value, label} for options to add
+        updates: list of {value, old_label, new_label} — old_label from current, None if absent
+        deletes: list of {value, old_label} — old_label from current, None if absent
+        reorder: {old, new} — only present when reorder is requested
+    """
+    # Build lookup: value → current label
+    current_labels: dict[int, str | None] = {}
+    for opt in current:
+        v = opt.get("Value")
+        if isinstance(v, int):
+            lbl_obj: dict[str, Any] = opt.get("Label") or {}
+            current_labels[v] = _option_label(lbl_obj)
+
+    diff: dict[str, Any] = {}
+
+    if insert:
+        diff["inserts"] = [{"value": v, "label": lbl} for v, lbl in insert]
+
+    if update:
+        diff["updates"] = [
+            {"value": v, "old_label": current_labels.get(v), "new_label": lbl}
+            for v, lbl in update
+        ]
+
+    if delete:
+        diff["deletes"] = [
+            {"value": v, "old_label": current_labels.get(v)}
+            for v in delete
+        ]
+
+    if reorder:
+        diff["reorder"] = {
+            "old": list(current_labels),
+            "new": list(reorder),
+        }
+
+    return diff
+
+
 def update_optionset(
     backend: D365Backend,
     name: str,
@@ -170,6 +233,61 @@ def update_optionset(
     if not (insert or update or delete or reorder):
         raise D365Error("nothing to update — pass at least one of insert/update/delete/reorder.")
 
+    # Validate labels before dry-run branch so invalid input always raises.
+    if insert:
+        for _, lbl in insert:
+            if not lbl:
+                _exc = D365Error("insert label must not be empty.")
+                _exc.completed_steps = []
+                _exc.stage = "insert"
+                raise _exc
+    if update:
+        for _, lbl in update:
+            if not lbl:
+                _exc = D365Error("update label must not be empty.")
+                _exc.completed_steps = []
+                _exc.stage = "update"
+                raise _exc
+
+    if backend.dry_run:
+        # Force a real GET to build the before/after diff (writes stay suppressed).
+        was_dry = backend.dry_run
+        backend.dry_run = False
+        try:
+            current_os = get_optionset(backend, name)
+        finally:
+            backend.dry_run = was_dry
+        current_opts: list[dict[str, Any]] = current_os.get("Options") or []
+
+        actions: list[dict[str, Any]] = []
+        if insert:
+            for value, lbl in insert:
+                body: dict[str, Any] = {"OptionSetName": name, "Label": label(lbl)}
+                if value is not None:
+                    body["Value"] = value
+                actions.append(body)
+        if update:
+            for value, lbl in update:
+                actions.append({
+                    "OptionSetName": name,
+                    "Value": value,
+                    "Label": label(lbl),
+                    "MergeLabels": False,
+                })
+        if delete:
+            for value in delete:
+                actions.append({"OptionSetName": name, "Value": value})
+        if reorder:
+            actions.append({"OptionSetName": name, "Values": list(reorder)})
+
+        diff = _option_diff(current_opts, insert, update, delete, reorder)
+        return {
+            "_dry_run": True,
+            "name": name,
+            "diff": diff,
+            "actions": actions,
+        }
+
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     completed: list[str] = []
 
@@ -180,8 +298,6 @@ def update_optionset(
 
     if insert:
         for value, lbl in insert:
-            if not lbl:
-                raise _attach_partial(D365Error("insert label must not be empty."), "insert")
             body: dict[str, Any] = {"OptionSetName": name, "Label": label(lbl)}
             if value is not None:
                 body["Value"] = value
@@ -193,8 +309,6 @@ def update_optionset(
 
     if update:
         for value, lbl in update:
-            if not lbl:
-                raise _attach_partial(D365Error("update label must not be empty."), "update")
             body = {
                 "OptionSetName": name,
                 "Value": value,

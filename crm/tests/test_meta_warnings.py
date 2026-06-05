@@ -135,6 +135,8 @@ class TestUpdateOptionsetPartialEndToEnd:
     only the HTTP POST is stubbed."""
 
     class _PartialStub:
+        dry_run = False
+
         def post(self, path, *, json_body=None, extra_headers=None):
             if path == "InsertOptionValue":
                 return {}
