@@ -47,3 +47,11 @@ crm --json connection profiles
 crm --json connection status
 ```
 `profiles` lists every saved profile; `status` confirms the `active_profile` with its `default_solution` and `publisher_prefix` (no network call).
+
+## Diagnose a broken connection
+
+```bash
+crm connection doctor          # or the alias: crm doctor
+crm --json connection doctor
+```
+Runs a live, ordered probe and renders a five-line checklist — `dns_tcp`, `tls`, `version` (the configured `api_version`), `auth`, and an informational `rate_limit` — so a failing layer is pinpointed (DNS vs TCP vs TLS vs wrong api_version vs `401`/`403`) with an actionable hint rather than collapsed into one generic error. It is read-only: it never negotiates or mutates the profile, and the raw GETs run regardless of `--dry-run`. Under `--json` it emits `{ok, data:{checks:[{check,ok,detail,hint}]}}`; the overall `ok` (and exit code) is the AND of the four diagnostic checks — `rate_limit` is informational and never fails the command.

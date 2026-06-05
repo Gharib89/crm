@@ -6,7 +6,7 @@ import click
 from crm.core import connection as conn_mod
 from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile, D365Error
-from crm.cli import CLIContext, pass_ctx
+from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx
 from crm.commands._helpers import _handle_d365_error
 
 
@@ -170,3 +170,43 @@ def connection_disconnect(ctx: CLIContext):
     ctx.password = None
     ctx.invalidate_backend()
     ctx.emit(True, data={"disconnected": True})
+
+
+@click.command("doctor")
+@pass_ctx
+def doctor_command(ctx: CLIContext):
+    """Diagnose the connection: DNS/TCP, TLS, api_version, auth, rate-limit."""
+    # Live diagnostic — issues raw GETs and never negotiates or mutates the
+    # profile. Registered both under the `connection` group and as the
+    # top-level `crm doctor` alias (the same command object).
+    try:
+        backend = ctx.backend()
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    result = conn_mod.connection_doctor(backend)
+    if ctx.json_mode:
+        ctx.emit(result["ok"], data={"checks": result["checks"]})
+        return
+    # Human mode: render the checklist explicitly — emit's human not-ok path
+    # prints only the error line, dropping the per-check data we want to show.
+    # The whole checklist (✓/✗ lines AND hints) goes to a SINGLE stream
+    # (stdout, like skin.success/hint) so captured/piped output stays ordered;
+    # skin.error writes to stderr and would orphan each failed line from its
+    # hint. A ✗ line here is data, not an error message — render it on stdout
+    # in the same visual format as skin.success (the exit code below is what
+    # signals failure programmatically).
+    ctx.skin.section("Connection doctor")
+    for c in result["checks"]:
+        line = f"{c['check']}: {c['detail']}"
+        if c["ok"]:
+            ctx.skin.success(line)
+        else:
+            ctx.skin.failure(line)
+        if isinstance(c["hint"], str) and c["hint"]:
+            ctx.skin.hint(f"    {c['hint']}")
+    if not result["ok"]:
+        raise click.exceptions.Exit(FAILURE_EXIT_CODE)
+
+
+connection_group.add_command(doctor_command)

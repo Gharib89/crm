@@ -225,7 +225,7 @@ class ConnectionProfile:
 
 # ── Default headers per Web API spec ────────────────────────────────────
 
-_DEFAULT_HEADERS: dict[str, str] = {
+DEFAULT_HEADERS: dict[str, str] = {
     "OData-MaxVersion": "4.0",
     "OData-Version": "4.0",
     "Accept": "application/json",
@@ -434,6 +434,20 @@ class D365Backend:
 
     # ── URL helpers ─────────────────────────────────────────────────────
 
+    @property
+    def session(self) -> requests.Session:
+        """The configured Session (auth + verify), for callers that must issue a
+        raw request and classify transport exceptions per layer — e.g. the
+        connection doctor — bypassing request()'s retry-and-wrap path.
+
+        Treat the returned Session as READ-ONLY: callers must not mutate its
+        auth/verify/headers. It is the backend's live session (shared, not a
+        copy), so mutation would corrupt every subsequent request() call. The
+        accessor exists only to issue ad-hoc raw reads with the configured
+        credentials, not to reconfigure the client.
+        """
+        return self._session
+
     def url_for(self, path: str) -> str:
         """Resolve a relative API path against the profile base URL."""
         if path.startswith("http://") or path.startswith("https://"):
@@ -481,7 +495,7 @@ class D365Backend:
         # CaseInsensitiveDict so the never-both / per-call-disable pops below
         # also drop differently-cased impersonation headers from extra_headers
         # (HTTP header names are case-insensitive).
-        headers: CaseInsensitiveDict[str] = CaseInsensitiveDict(_DEFAULT_HEADERS)
+        headers: CaseInsensitiveDict[str] = CaseInsensitiveDict(DEFAULT_HEADERS)
         if extra_headers:
             headers.update(extra_headers)
 
@@ -676,7 +690,7 @@ class D365Backend:
             validated, transactional=transactional,
         )
 
-        headers = dict(_DEFAULT_HEADERS)
+        headers = dict(DEFAULT_HEADERS)
         headers["Content-Type"] = content_type
         if continue_on_error:
             headers["Prefer"] = "odata.continue-on-error"

@@ -1,0 +1,135 @@
+"""Command-level tests for `crm connection doctor` + the `crm doctor` alias (#74)."""
+# pyright: basic
+from __future__ import annotations
+
+import json
+import os
+
+import pytest
+import requests_mock
+from click.testing import CliRunner
+
+from crm.cli import cli
+
+_BASE = "https://internalcrm.contoso.local/Contoso"
+_API_BASE = f"{_BASE}/api/data/v9.2/"
+_WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001"}
+_VERSION = {"Version": "9.1.0.1"}
+
+
+@pytest.fixture(autouse=True)
+def _isolated_home(tmp_path):
+    # Snapshot/restore os.environ around each test: ctx.backend() →
+    # resolve_credentials → load_dotenv() writes .env values straight into
+    # os.environ (monkeypatch can't undo those), which would leak into later
+    # tests (cf. #56). Default CRM_DOTENV to a noop path so the repo's real
+    # ./.env is never autoloaded. Env creds make ctx.backend() build from env
+    # with no saved profile, pinned to v9.2 so api_base is deterministic.
+    saved = dict(os.environ)
+    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
+    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
+    os.environ["D365_URL"] = _BASE
+    os.environ["D365_USERNAME"] = "alice"
+    os.environ["D365_PASSWORD"] = "pw"
+    os.environ["D365_DOMAIN"] = "CONTOSO"
+    os.environ["D365_AUTH"] = "ntlm"
+    os.environ["D365_API_VERSION"] = "v9.2"
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+@pytest.fixture(autouse=True)
+def _stub_socket(monkeypatch):
+    # The dns_tcp step uses a raw socket.create_connection that requests_mock
+    # does NOT intercept — stub it to a success returning a no-op closeable.
+    class _DummySock:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        "crm.core.connection.socket.create_connection",
+        lambda *a, **k: _DummySock(),
+    )
+
+
+def _register(m, *, whoami_status=200):
+    m.get(_API_BASE, status_code=200, json={})  # TLS GET
+    m.get(f"{_API_BASE}RetrieveVersion()", json=_VERSION)
+    if whoami_status == 200:
+        m.get(f"{_API_BASE}WhoAmI", json=_WHOAMI)
+    else:
+        m.get(f"{_API_BASE}WhoAmI", status_code=whoami_status,
+              json={"error": {"code": "0x0", "message": "Unauthorized"}})
+
+
+def test_doctor_json_happy_path():
+    # AC: `crm --json connection doctor` → exit 0, ok true, all five checks.
+    with requests_mock.Mocker() as m:
+        _register(m)
+        result = CliRunner().invoke(cli, ["--json", "connection", "doctor"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    checks = payload["data"]["checks"]
+    assert len(checks) == 5
+    assert [c["check"] for c in checks] == [
+        "dns_tcp", "tls", "version", "auth", "rate_limit",
+    ]
+
+
+def test_doctor_alias_matches_group_command():
+    # AC: `crm --json doctor` behaves identically to `connection doctor` —
+    # proves the top-level alias is wired to the same command object.
+    with requests_mock.Mocker() as m:
+        _register(m)
+        result = CliRunner().invoke(cli, ["--json", "doctor"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert len(payload["data"]["checks"]) == 5
+
+
+def test_doctor_json_auth_failure():
+    # AC: a failing probe (WhoAmI 401) under --json → nonzero exit, ok false,
+    # the auth check ok false.
+    with requests_mock.Mocker() as m:
+        _register(m, whoami_status=401)
+        result = CliRunner().invoke(cli, ["--json", "connection", "doctor"])
+    assert result.exit_code != 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    auth = next(c for c in payload["data"]["checks"] if c["check"] == "auth")
+    assert auth["ok"] is False
+
+
+def test_doctor_human_failure_renders_checklist():
+    # AC: human mode on a failure → nonzero exit, and the WHOLE checklist —
+    # both the failed ✗ line AND its hint — renders on stdout, in order, so
+    # captured/piped output stays coherent (regression: skin.error → stderr
+    # used to orphan each ✗ line from its hint across the two streams).
+    with requests_mock.Mocker() as m:
+        _register(m, whoami_status=401)
+        result = CliRunner().invoke(cli, ["connection", "doctor"])
+    assert result.exit_code != 0
+    out = result.stdout
+    assert "Connection doctor" in out
+    assert "dns_tcp" in out
+    # The failed auth check and its hint both land on stdout (not stderr),
+    # and the hint immediately follows its own ✗ line.
+    auth_line = "✗ auth: authentication failed (HTTP 401)"
+    hint_line = "check credentials — NTLM needs DOMAIN\\username"
+    assert auth_line in out
+    assert hint_line in out
+    auth_idx = out.index(auth_line)
+    hint_idx = out.index(hint_line)
+    assert auth_idx < hint_idx
+    # No intervening checklist line between the ✗ auth line and its hint.
+    between = out[auth_idx:hint_idx]
+    assert "✓" not in between
+    assert "✗" not in between[len("✗ auth: authentication failed (HTTP 401)"):]
+    # The per-check failure line must NOT be the only thing on stderr-routed
+    # output: the ✗ auth line is on stdout, not stderr.
+    assert auth_line not in result.stderr
