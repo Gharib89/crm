@@ -3,6 +3,7 @@
 from __future__ import annotations
 import click
 from crm.core import appmodule as app_mod
+from crm.core import webresource as wr_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -22,20 +23,28 @@ def app_group():
               help="Publisher-prefixed unique name, e.g. 'cwx_crmworx'.")
 @click.option("--description", default=None)
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
+@click.option("--icon-webresource", "icon_webresource", default=None,
+              help="Web resource (name or GUID) for the app icon. "
+                   "Defaults to the platform icon when omitted.")
 @_solution_option
 @click.option("--publish/--no-publish", default=True)
 @pass_ctx
 def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
-               solution, require_solution, publish):
+               icon_webresource, solution, require_solution, publish):
     """Create a model-driven app."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     try:
+        backend = ctx.backend()
+        if icon_webresource:
+            web_resource_id = wr_mod.resolve_webresource_id(backend, icon_webresource)
+        else:
+            web_resource_id = app_mod.DEFAULT_APP_ICON
         info = app_mod.create_app(
-            ctx.backend(), name=name, unique_name=unique_name,
-            description=description, solution=solution, if_exists=if_exists,
-            publish=publish,
+            backend, name=name, unique_name=unique_name,
+            description=description, web_resource_id=web_resource_id,
+            solution=solution, if_exists=if_exists, publish=publish,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)

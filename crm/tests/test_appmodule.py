@@ -238,6 +238,72 @@ class TestAppCommands:
         assert result.exit_code == 0, result.output
         assert captured["unique_name"] == "cwx_crmworx"
 
+    def test_app_create_icon_webresource_guid_passthrough(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_create_app(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "appmoduleid": _APP_ID, "uniquename": kw["unique_name"]}
+
+        monkeypatch.setattr("crm.core.appmodule.create_app", fake_create_app)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
+        result = CliRunner().invoke(cli, [
+            "--json", "app", "create", "--name", "CRMWorx",
+            "--unique-name", "cwx_crmworx", "--no-publish",
+            "--icon-webresource", "11111111-1111-1111-1111-111111111111",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["web_resource_id"] == "11111111-1111-1111-1111-111111111111"
+
+    def test_app_create_icon_webresource_resolves_name(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        seen = {}
+
+        def fake_resolve(backend, name_or_guid):
+            seen["name_or_guid"] = name_or_guid
+            return "99999999-9999-9999-9999-999999999999"
+
+        def fake_create_app(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "appmoduleid": _APP_ID, "uniquename": kw["unique_name"]}
+
+        monkeypatch.setattr("crm.core.webresource.resolve_webresource_id", fake_resolve)
+        monkeypatch.setattr("crm.core.appmodule.create_app", fake_create_app)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
+        result = CliRunner().invoke(cli, [
+            "--json", "app", "create", "--name", "CRMWorx",
+            "--unique-name", "cwx_crmworx", "--no-publish",
+            "--icon-webresource", "cwx_/icons/app.svg",
+        ])
+        assert result.exit_code == 0, result.output
+        assert seen["name_or_guid"] == "cwx_/icons/app.svg"
+        assert captured["web_resource_id"] == "99999999-9999-9999-9999-999999999999"
+
+    def test_app_create_defaults_icon_when_omitted(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_create_app(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "appmoduleid": _APP_ID, "uniquename": kw["unique_name"]}
+
+        monkeypatch.setattr("crm.core.appmodule.create_app", fake_create_app)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
+        result = CliRunner().invoke(cli, [
+            "--json", "app", "create", "--name", "CRMWorx",
+            "--unique-name", "cwx_crmworx", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["web_resource_id"] == _DEFAULT_ICON
+
     def test_app_add_components_command(self, monkeypatch):
         from click.testing import CliRunner
         from crm.cli import cli
