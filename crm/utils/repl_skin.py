@@ -338,6 +338,17 @@ class ReplSkin:
         icon = self._c(_GREEN + _BOLD, "✓")
         print(f"  {icon} {self._c(_GREEN, message)}")
 
+    def failure(self, message: str):
+        """Print a failed checklist line with a red cross, on stdout.
+
+        Mirrors ``success()`` exactly (same marker/indent/color mechanism) but
+        with a red ``✗``. Unlike ``error()`` this stays on stdout so a checklist
+        of ✓/✗ lines renders as one ordered stream; use ``error()`` for genuine
+        error messages that belong on stderr.
+        """
+        icon = self._c(_RED + _BOLD, "✗")
+        print(f"  {icon} {self._c(_RED, message)}")
+
     def error(self, message: str):
         """Print an error message with red cross."""
         icon = self._c(_RED + _BOLD, "✗")

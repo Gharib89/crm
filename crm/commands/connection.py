@@ -8,7 +8,6 @@ from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx
 from crm.commands._helpers import _handle_d365_error
-from crm.utils import repl_skin
 
 
 @click.group("connection")
@@ -203,8 +202,7 @@ def doctor_command(ctx: CLIContext):
         if c["ok"]:
             ctx.skin.success(line)
         else:
-            cross = ctx.skin._c(repl_skin._RED + repl_skin._BOLD, "✗")  # noqa: SLF001
-            click.echo(f"  {cross} {ctx.skin._c(repl_skin._RED, line)}")  # noqa: SLF001
+            ctx.skin.failure(line)
         if isinstance(c["hint"], str) and c["hint"]:
             ctx.skin.hint(f"    {c['hint']}")
     if not result["ok"]:
