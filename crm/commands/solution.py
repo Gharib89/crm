@@ -2,6 +2,7 @@
 # pyright: basic
 from __future__ import annotations
 from pathlib import Path
+import json
 import click
 from crm.core import async_ops as async_ops_mod
 from crm.core import solution as sol_mod
@@ -72,13 +73,51 @@ def solution_info_cmd(ctx: CLIContext, unique_name):
 
 @solution_group.command("components")
 @click.argument("unique_name")
+@click.option("--diff", "diff_path", default=None,
+              type=click.Path(exists=True, dir_okay=False, readable=True),
+              help="Compare live components against this saved JSON snapshot; exits non-zero on drift.")
+@click.option("--save", "save_path", default=None,
+              type=click.Path(dir_okay=False, writable=True),
+              help="Write a normalized component inventory to this path as JSON.")
 @pass_ctx
-def solution_components_cmd(ctx: CLIContext, unique_name):
+def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
+    """List solution components; with --save write a normalized inventory, with --diff compare live vs expected (non-zero exit on drift)."""
+    if diff_path and save_path:
+        ctx.emit(False, error="--diff and --save are mutually exclusive.")
+        return
+
     try:
         items = sol_mod.solution_components(ctx.backend(), unique_name)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+
+    if save_path:
+        normalized = sol_mod.normalize_components(items)
+        out = Path(save_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        ctx.emit(True, data={"saved": str(out), "count": len(normalized)})
+        return
+
+    if diff_path:
+        try:
+            raw = json.loads(Path(diff_path).read_text(encoding="utf-8"))
+            if not isinstance(raw, list):
+                ctx.emit(False, error=f"Expected a JSON list in {diff_path!r}, got {type(raw).__name__}.")
+                return
+        except json.JSONDecodeError as exc:
+            ctx.emit(False, error=f"Could not parse {diff_path!r} as JSON: {exc}")
+            return
+        result = sol_mod.diff_components(items, raw)
+        if not result["matches"]:
+            msg = (f"Drift detected: {len(result['missing'])} missing, "
+                   f"{len(result['unexpected'])} unexpected component(s).")
+            ctx.emit(False, data=result, error=msg)
+            return
+        ctx.emit(True, data=result, meta={"matches": True})
+        return
+
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 

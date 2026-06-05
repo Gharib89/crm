@@ -6,6 +6,10 @@ GUIDs are generic placeholders (no real org names).
 """
 from __future__ import annotations
 
+import json
+import pytest
+from click.testing import CliRunner
+from crm.cli import cli
 from crm.core import solution as sol_mod
 
 _A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -178,3 +182,107 @@ class TestDiffComponents:
         result = sol_mod.diff_components(live, expected)
         for item in result["missing"] + result["unexpected"]:
             assert set(item.keys()) == {"componenttype", "objectid", "rootcomponentbehavior"}
+
+
+# ── CLI wiring tests ─────────────────────────────────────────────────────────
+
+# Placeholder GUID (no real org names)
+_Z = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+_LIVE = [
+    {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0},
+    {"componenttype": 61, "objectid": _B, "rootcomponentbehavior": 0},
+]
+
+
+class TestComponentsDiffSave:
+    """CLI wiring for `solution components --diff` and `--save`."""
+
+    def _invoke(self, *args):
+        return CliRunner().invoke(cli, ["--json", "solution", "components", "Contoso", *args])
+
+    def _patch(self, monkeypatch):
+        monkeypatch.setattr("crm.core.solution.solution_components", lambda backend, name: list(_LIVE))
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+
+    # 1. --diff exact match → exit 0, ok True, data["matches"] True
+    def test_diff_exact_match(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        expected_file = tmp_path / "expected.json"
+        expected_file.write_text(
+            json.dumps(sol_mod.normalize_components(_LIVE), indent=2),
+            encoding="utf-8",
+        )
+        result = self._invoke("--diff", str(expected_file))
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert data["data"]["matches"] is True
+
+    # 2. --diff with drift → exit 1, ok False, missing/unexpected non-empty, error has counts
+    def test_diff_drift(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        # Expected has _A and _Z (not _B); live has _A and _B (not _Z)
+        expected_items = [
+            {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0},
+            {"componenttype": 61, "objectid": _Z, "rootcomponentbehavior": 0},
+        ]
+        expected_file = tmp_path / "expected.json"
+        expected_file.write_text(json.dumps(expected_items, indent=2), encoding="utf-8")
+        result = self._invoke("--diff", str(expected_file))
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert len(data["data"]["missing"]) > 0
+        assert len(data["data"]["unexpected"]) > 0
+        assert "1" in data["error"]   # counts in the error message
+
+    # 3. --save writes normalized file; --diff round-trip → exit 0, matches True
+    def test_save_and_roundtrip_diff(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        save_file = tmp_path / "snapshot.json"
+        result = self._invoke("--save", str(save_file))
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert data["data"]["saved"] == str(save_file)
+        # Verify file content is a list of normalized 3-key dicts
+        contents = json.loads(save_file.read_text(encoding="utf-8"))
+        assert isinstance(contents, list)
+        for item in contents:
+            assert set(item.keys()) == {"componenttype", "objectid", "rootcomponentbehavior"}
+        # Round-trip: --diff against the saved file with same live → no drift
+        result2 = self._invoke("--diff", str(save_file))
+        assert result2.exit_code == 0, result2.output
+        data2 = json.loads(result2.output)
+        assert data2["ok"] is True
+        assert data2["data"]["matches"] is True
+
+    # 4. --diff + --save together → non-zero exit, error says mutually exclusive, backend NOT called
+    def test_diff_and_save_mutually_exclusive(self, monkeypatch, tmp_path):
+        backend_called = {"called": False}
+
+        def fake_components(backend, name):
+            backend_called["called"] = True
+            return list(_LIVE)
+
+        monkeypatch.setattr("crm.core.solution.solution_components", fake_components)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        f = tmp_path / "f.json"
+        f.write_text("[]", encoding="utf-8")
+        result = self._invoke("--diff", str(f), "--save", str(tmp_path / "out.json"))
+        assert result.exit_code != 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert "mutually exclusive" in data["error"].lower()
+        assert backend_called["called"] is False
+
+    # 5. bare components <name> (no flags) → exit 0, data is the live list (unchanged)
+    def test_bare_components_unchanged(self, monkeypatch):
+        self._patch(monkeypatch)
+        result = self._invoke()
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert isinstance(data["data"], list)
+        assert len(data["data"]) == len(_LIVE)
