@@ -225,7 +225,7 @@ class ConnectionProfile:
 
 # ── Default headers per Web API spec ────────────────────────────────────
 
-_DEFAULT_HEADERS: dict[str, str] = {
+DEFAULT_HEADERS: dict[str, str] = {
     "OData-MaxVersion": "4.0",
     "OData-Version": "4.0",
     "Accept": "application/json",
@@ -488,7 +488,7 @@ class D365Backend:
         # CaseInsensitiveDict so the never-both / per-call-disable pops below
         # also drop differently-cased impersonation headers from extra_headers
         # (HTTP header names are case-insensitive).
-        headers: CaseInsensitiveDict[str] = CaseInsensitiveDict(_DEFAULT_HEADERS)
+        headers: CaseInsensitiveDict[str] = CaseInsensitiveDict(DEFAULT_HEADERS)
         if extra_headers:
             headers.update(extra_headers)
 
@@ -683,7 +683,7 @@ class D365Backend:
             validated, transactional=transactional,
         )
 
-        headers = dict(_DEFAULT_HEADERS)
+        headers = dict(DEFAULT_HEADERS)
         headers["Content-Type"] = content_type
         if continue_on_error:
             headers["Prefer"] = "odata.continue-on-error"

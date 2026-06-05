@@ -31,8 +31,8 @@ from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
     # Reuse the client's canonical OData headers so the raw doctor probes stay
-    # faithful to a real request (intentional cross-module share of the const).
-    _DEFAULT_HEADERS,  # pyright: ignore[reportPrivateUsage]
+    # faithful to a real request.
+    DEFAULT_HEADERS,
 )
 from crm.core import session as session_mod
 
@@ -458,7 +458,7 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
         # the SSLError cert path; ConnectionError/Timeout still fire).
         try:
             # share the client's standard OData headers — see _doctor_version.
-            resp = backend.session.get(profile.api_base, headers=_DEFAULT_HEADERS, timeout=profile.timeout)  # pyright: ignore[reportUnknownMemberType]
+            resp = backend.session.get(profile.api_base, headers=DEFAULT_HEADERS, timeout=profile.timeout)  # pyright: ignore[reportUnknownMemberType]
             seen_headers.append(resp.headers)
             detail = (
                 "TLS handshake OK"
@@ -539,7 +539,7 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
         # non-JSON without them).
         resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
             backend.url_for("RetrieveVersion()"),
-            headers=_DEFAULT_HEADERS,
+            headers=DEFAULT_HEADERS,
             timeout=backend.profile.timeout,
         )
     except requests.exceptions.RequestException as exc:
@@ -572,7 +572,7 @@ def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any
         # share the client's standard OData headers (see _doctor_version).
         resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
             backend.url_for("WhoAmI"),
-            headers=_DEFAULT_HEADERS,
+            headers=DEFAULT_HEADERS,
             timeout=backend.profile.timeout,
         )
     except requests.exceptions.RequestException as exc:
