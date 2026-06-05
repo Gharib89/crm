@@ -416,6 +416,20 @@ class TestRegisterStep:
                 plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
         assert "filteringattributes" not in _posts(m)[0].json()
 
+    def test_filtering_attributes_ignored_for_non_update_message(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                filtering_attributes="name,telephone1")
+        # filtering_attributes only applies to Update steps
+        assert "filteringattributes" not in _posts(m)[0].json()
+
     def test_stage_and_mode_word_to_int(self, backend):
         from crm.core import plugin
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")

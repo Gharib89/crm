@@ -251,7 +251,7 @@ def register_step(
         filter_id = _resolve_sdkmessagefilter_id(backend, entity, message_id)
         body["SdkMessageFilterId@odata.bind"] = (
             f"/sdkmessagefilters({filter_id})")
-    if filtering_attributes is not None:
+    if filtering_attributes is not None and message.lower() == "update":
         body["filteringattributes"] = filtering_attributes
 
     result = as_dict(backend.post("sdkmessageprocessingsteps", json_body=body))
