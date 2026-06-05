@@ -173,6 +173,10 @@ crm --dry-run entity create contacts \
 crm --json entity create contacts \
     --data '{"firstname":"Rafel","lastname":"Shillo"}'
 
+# Catch typo'd field names before the write (1-3 metadata GETs; composes with --dry-run)
+crm --json entity create contacts --validate \
+    --data '{"firstnaem":"Rafel"}'   # -> ok:false, did_you_mean {firstnaem: firstname}
+
 # FetchXML
 crm query fetchxml accounts --file ./reports/by_industry.xml
 

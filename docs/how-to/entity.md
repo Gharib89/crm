@@ -32,6 +32,19 @@ crm --json entity upsert cwx_tickets c8c8f8e4-c05d-f111-b65d-00155d467b90 \
 ```
 `update` is a PATCH; `upsert` is a PATCH that creates the record if missing. Both return `{"ok": true}`.
 
+## Catch typo'd field names before the write (`--validate`)
+
+```bash
+crm --json entity create cwx_tickets --validate --data '{"cwx_naem":"typo"}'
+```
+`--validate` runs 1-3 read-only metadata GETs (entity-set → logical name, attribute names, ManyToOne nav-property names) and blocks the write when a payload key is not a known field, returning the offenders plus a suggestion:
+
+```json
+{"ok": false, "meta": {"unknown_fields": ["cwx_naem"], "did_you_mean": {"cwx_naem": "cwx_name"}}}
+```
+
+Valid `<nav>@odata.bind` keys are checked against the navigation-property names, so a bound lookup is never a false positive. It's opt-in (the GETs cost 1-3 round-trips) and composes with `--dry-run`: the validation GETs run for real, then the write is previewed. Scope is field-**name** only — option-set values are not validated. Works the same on `entity update`.
+
 ## Create from a JSON file (avoid shell-quoting XML payloads)
 
 ```bash

@@ -494,6 +494,12 @@ alternate key is rejected). `crm metadata describe <entity>` hands you the exact
 `bind_key` per lookup and the `global_optionset_id` per global-bound picklist, so you
 don't have to assemble them by hand.
 
+Add `--validate` to `entity create`/`entity update` to field-name-check the payload
+before the write. It runs 1-3 read-only metadata GETs and blocks unknown fields with
+`{ok:false, meta:{unknown_fields, did_you_mean}}`; valid `<nav>@odata.bind` keys are
+not flagged (checked against the nav-property union). It composes with `--dry-run`.
+Scope is field-**name** only — option-set values are not validated.
+
 ## Errors & recovery
 
 `D365Error` wraps any HTTP / API failure. In `--json` mode it becomes
