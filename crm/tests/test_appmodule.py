@@ -373,6 +373,30 @@ class TestBuildSitemapXml:
             appmodule.build_sitemapxml(
                 areas=[("a", "A")], groups=[("a", "", "G")], subareas=[])
 
+    def test_whitespace_only_ids_are_stripped_and_rejected(self):
+        # Whitespace-only identifiers are treated as empty in core too (not just
+        # the CLI), keeping programmatic callers safe.
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="area"):
+            appmodule.build_sitemapxml(
+                areas=[("   ", "A")], groups=[], subareas=[])
+        with pytest.raises(D365Error, match="entity"):
+            appmodule.build_sitemapxml(
+                areas=[("a", "A")], groups=[("a", "g", "G")],
+                subareas=[("a", "g", "   ", None)])
+
+    def test_ids_are_stripped_in_output(self):
+        # Surrounding whitespace on Ids/entity is stripped before emission, so
+        # references still resolve and the XML stays clean.
+        from crm.core import appmodule
+        xml = appmodule.build_sitemapxml(
+            areas=[("  sales  ", "Sales")],
+            groups=[("sales", "  accts  ", "Accounts")],
+            subareas=[("sales", "accts", "  account  ", None)])
+        assert 'Id="sales"' in xml
+        assert 'Id="accts"' in xml
+        assert 'Entity="account"' in xml
+
 
 class TestBuildSitemap:
     def _args(self) -> dict[str, Any]:

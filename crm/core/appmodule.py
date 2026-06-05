@@ -206,6 +206,14 @@ def build_sitemapxml(
     if not areas:
         raise D365Error("a sitemap needs at least one area.")
 
+    # Strip identifier fields up front: whitespace-only Ids are then caught as
+    # empty and emitted Ids stay clean for programmatic callers (the CLI already
+    # strips; this mirrors set_sitemap's .strip() discipline). Titles keep their
+    # own blank-handling below.
+    areas = [(area_id.strip(), title) for area_id, title in areas]
+    groups = [(a.strip(), g.strip(), t) for a, g, t in groups]
+    subareas = [(a.strip(), g.strip(), e.strip(), t) for a, g, e, t in subareas]
+
     area_ids: set[str] = set()
     for area_id, _ in areas:
         if not area_id:

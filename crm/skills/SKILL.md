@@ -488,9 +488,9 @@ crm --json app add-components <appmoduleid> \
 crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml --unique-name cwx_crmworx
 
 # build-sitemap: generates the SiteMapXml for you, then creates it via the same
-# path as set-sitemap. Grammar: --area 'id:Title', --group 'areaId/groupId:Title',
+# path as set-sitemap. Grammar: --area 'id[:Title]', --group 'areaId/groupId[:Title]',
 # --subarea 'areaId/groupId:entity=<logical>[:Title]' (binds a table via Entity=;
-# Title optional). SubArea Ids are auto-allocated; refs/dup Ids are validated.
+# titles optional everywhere). SubArea Ids are auto-allocated; refs/dup Ids are validated.
 # crm --dry-run app build-sitemap ... prints the generated XML and does NOT POST.
 crm --json app build-sitemap "CRMWorx Sitemap" \
     --area 'sales:Sales' --group 'sales/accounts:Customers' \

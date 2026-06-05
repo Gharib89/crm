@@ -77,22 +77,22 @@ def app_add_components(ctx: CLIContext, app_id, components):
 
 
 def _parse_area(raw: str) -> tuple[str, str]:
-    """Parse 'id:Title' (title optional; core defaults an empty title)."""
+    """Parse 'id[:Title]' (title optional; core defaults an empty title)."""
     area_id, _, title = raw.partition(":")
     area_id = area_id.strip()
     if not area_id:
-        raise click.BadParameter(f"--area must be 'id:Title': {raw!r}")
+        raise click.BadParameter(f"--area must be 'id[:Title]': {raw!r}")
     return area_id, title.strip()
 
 
 def _parse_group(raw: str) -> tuple[str, str, str]:
-    """Parse 'areaId/groupId:Title' into (area_id, group_id, title)."""
+    """Parse 'areaId/groupId[:Title]' into (area_id, group_id, title)."""
     ref, _, title = raw.partition(":")
     area_id, sep, group_id = ref.partition("/")
     area_id, group_id = area_id.strip(), group_id.strip()
     if not sep or not area_id or not group_id:
         raise click.BadParameter(
-            f"--group must be 'areaId/groupId:Title': {raw!r}")
+            f"--group must be 'areaId/groupId[:Title]': {raw!r}")
     return area_id, group_id, title.strip()
 
 
@@ -127,9 +127,9 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
 @app_group.command("build-sitemap")
 @click.argument("sitemap_name")
 @click.option("--area", "areas", multiple=True, required=True,
-              help="Repeatable 'id:Title'.")
+              help="Repeatable 'id[:Title]'.")
 @click.option("--group", "groups", multiple=True,
-              help="Repeatable 'areaId/groupId:Title'.")
+              help="Repeatable 'areaId/groupId[:Title]'.")
 @click.option("--subarea", "subareas", multiple=True,
               help="Repeatable 'areaId/groupId:entity=<logical>[:Title]'. "
                    "Binds a table via Entity=.")
