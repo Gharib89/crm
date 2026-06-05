@@ -8,6 +8,7 @@ from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx
 from crm.commands._helpers import _handle_d365_error
+from crm.utils import repl_skin
 
 
 @click.group("connection")
@@ -190,13 +191,20 @@ def doctor_command(ctx: CLIContext):
         return
     # Human mode: render the checklist explicitly — emit's human not-ok path
     # prints only the error line, dropping the per-check data we want to show.
+    # The whole checklist (✓/✗ lines AND hints) goes to a SINGLE stream
+    # (stdout, like skin.success/hint) so captured/piped output stays ordered;
+    # skin.error writes to stderr and would orphan each failed line from its
+    # hint. A ✗ line here is data, not an error message — render it on stdout
+    # in the same visual format as skin.success (the exit code below is what
+    # signals failure programmatically).
     ctx.skin.section("Connection doctor")
     for c in result["checks"]:
         line = f"{c['check']}: {c['detail']}"
         if c["ok"]:
             ctx.skin.success(line)
         else:
-            ctx.skin.error(line)
+            cross = ctx.skin._c(repl_skin._RED + repl_skin._BOLD, "✗")  # noqa: SLF001
+            click.echo(f"  {cross} {ctx.skin._c(repl_skin._RED, line)}")  # noqa: SLF001
         if isinstance(c["hint"], str) and c["hint"]:
             ctx.skin.hint(f"    {c['hint']}")
     if not result["ok"]:

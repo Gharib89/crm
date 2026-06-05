@@ -106,13 +106,30 @@ def test_doctor_json_auth_failure():
 
 
 def test_doctor_human_failure_renders_checklist():
-    # AC: human mode on a failure → nonzero exit, and the rendered checklist
-    # is present (not just the bare error line emit would print).
+    # AC: human mode on a failure → nonzero exit, and the WHOLE checklist —
+    # both the failed ✗ line AND its hint — renders on stdout, in order, so
+    # captured/piped output stays coherent (regression: skin.error → stderr
+    # used to orphan each ✗ line from its hint across the two streams).
     with requests_mock.Mocker() as m:
         _register(m, whoami_status=401)
         result = CliRunner().invoke(cli, ["connection", "doctor"])
     assert result.exit_code != 0
-    combined = result.output + result.stderr
-    assert "Connection doctor" in combined
-    assert "auth" in combined
-    assert "dns_tcp" in combined
+    out = result.stdout
+    assert "Connection doctor" in out
+    assert "dns_tcp" in out
+    # The failed auth check and its hint both land on stdout (not stderr),
+    # and the hint immediately follows its own ✗ line.
+    auth_line = "✗ auth: authentication failed (HTTP 401)"
+    hint_line = "check credentials — NTLM needs DOMAIN\\username"
+    assert auth_line in out
+    assert hint_line in out
+    auth_idx = out.index(auth_line)
+    hint_idx = out.index(hint_line)
+    assert auth_idx < hint_idx
+    # No intervening checklist line between the ✗ auth line and its hint.
+    between = out[auth_idx:hint_idx]
+    assert "✓" not in between
+    assert "✗" not in between[len("✗ auth: authentication failed (HTTP 401)"):]
+    # The per-check failure line must NOT be the only thing on stderr-routed
+    # output: the ✗ auth line is on stdout, not stderr.
+    assert auth_line not in result.stderr
