@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Fixed**
+- `crm metadata delete-entity`, `delete-attribute`, `delete-relationship`, and
+  `delete-optionset` under `--dry-run` now return
+  `{"_dry_run": true, "would_delete": true, ...}` instead of falsely reporting
+  `{"deleted": true, ...}` (#81).
 - `crm metadata picklist` (human/table mode) now resolves option labels via the
   full `UserLocalizedLabel` → `LocalizedLabels` fallback, matching `--json`
   `meta.options`. Previously the table read `UserLocalizedLabel` only, so an

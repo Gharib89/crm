@@ -395,8 +395,20 @@ def delete_optionset(
         else:
             deps = dep_mod.retrieve_dependencies(backend, "optionset", name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    backend.delete(path, extra_headers=headers)
-    result: dict[str, Any] = {"deleted": True, "name": name, "solution": solution}
+    preview = backend.delete(path, extra_headers=headers)
+    if isinstance(preview, dict) and preview.get("_dry_run"):
+        result: dict[str, Any] = {
+            "_dry_run": True,
+            "would_delete": True,
+            "name": name,
+            "solution": solution,
+        }
+    else:
+        result = {
+            "deleted": True,
+            "name": name,
+            "solution": solution,
+        }
     if deps is not None:
         result["can_delete"] = deps["can_delete"]
         result["blockers"] = deps["blockers"]

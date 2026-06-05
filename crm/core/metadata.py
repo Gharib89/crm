@@ -530,12 +530,20 @@ def delete_entity(
         else:
             deps = dep_mod.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    backend.delete(path, extra_headers=headers)
-    result: dict[str, Any] = {
-        "deleted": True,
-        "logical_name": logical_name,
-        "solution": solution,
-    }
+    preview = backend.delete(path, extra_headers=headers)
+    if isinstance(preview, dict) and preview.get("_dry_run"):
+        result: dict[str, Any] = {
+            "_dry_run": True,
+            "would_delete": True,
+            "logical_name": logical_name,
+            "solution": solution,
+        }
+    else:
+        result = {
+            "deleted": True,
+            "logical_name": logical_name,
+            "solution": solution,
+        }
     if deps is not None:
         result["can_delete"] = deps["can_delete"]
         result["blockers"] = deps["blockers"]

@@ -324,3 +324,50 @@ class TestDeleteRelationship:
             )
         assert info["can_delete"] is True
         assert info["blockers"] == []
+
+
+class TestDeleteRelationshipDryRun:
+    """Dry-run delete_relationship returns _dry_run preview, not {deleted: True}."""
+
+    def test_dryrun_returns_preview_not_deleted(self, profile):
+        from crm.core import relationships as rel
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for(path), json={
+                "SchemaName": "new_account_new_project",
+                "IsCustomRelationship": True, "IsManaged": False,
+            })
+            info = rel.delete_relationship(dry_backend, "new_account_new_project")
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["schema_name"] == "new_account_new_project"
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []
+
+    def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
+        from crm.core import relationships as rel
+        _rel_meta_id = "2222ffff-0000-0000-0000-000000000000"
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        path = "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        dep_url = dry_backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_rel_meta_id},ComponentType=10)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for(path), json={
+                "SchemaName": "new_account_new_project",
+                "IsCustomRelationship": True, "IsManaged": False,
+                "MetadataId": _rel_meta_id,
+            })
+            m.get(dep_url, json={"value": []})
+            info = rel.delete_relationship(
+                dry_backend, "new_account_new_project", check_dependencies=True
+            )
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["can_delete"] is True
+        assert info["blockers"] == []
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []

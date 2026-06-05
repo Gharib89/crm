@@ -464,3 +464,52 @@ class TestDeleteOptionset:
             info = os_mod.delete_optionset(backend, "new_priority", check_dependencies=True)
         assert info["can_delete"] is True
         assert info["blockers"] == []
+
+
+class TestDeleteOptionsetDryRun:
+    """Dry-run delete_optionset returns _dry_run preview, not {deleted: True}."""
+
+    def test_dryrun_returns_preview_not_deleted(self, profile):
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={
+                    "Name": "new_priority",
+                    "IsCustomOptionSet": True,
+                    "IsManaged": False,
+                    "MetadataId": _OS_META_ID,
+                },
+            )
+            info = os_mod.delete_optionset(dry_backend, "new_priority")
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["name"] == "new_priority"
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []
+
+    def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        dep_url = dry_backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_OS_META_ID},ComponentType=9)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={
+                    "Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False,
+                    "MetadataId": _OS_META_ID,
+                },
+            )
+            m.get(dep_url, json={"value": []})
+            info = os_mod.delete_optionset(dry_backend, "new_priority", check_dependencies=True)
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["can_delete"] is True
+        assert info["blockers"] == []
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []

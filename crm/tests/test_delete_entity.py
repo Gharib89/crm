@@ -154,6 +154,56 @@ class TestDeleteEntity:
         assert info["blockers"] == []
 
 
+class TestDeleteEntityDryRun:
+    """Dry-run delete_entity returns _dry_run preview, not {deleted: True}."""
+
+    def test_dryrun_returns_preview_not_deleted(self, profile):
+        from crm.core import metadata as meta_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
+                json={
+                    "LogicalName": "new_widget",
+                    "IsCustomEntity": True,
+                    "IsManaged": False,
+                    "MetadataId": _ENTITY_META_ID,
+                },
+            )
+            info = meta_mod.delete_entity(dry_backend, "new_widget")
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["logical_name"] == "new_widget"
+        # No DELETE should have hit the server
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []
+
+    def test_dryrun_with_check_dependencies_merges_blockers(self, profile):
+        from crm.core import metadata as meta_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        dep_url = dry_backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_ENTITY_META_ID},ComponentType=1)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
+                json={
+                    "IsCustomEntity": True, "IsManaged": False,
+                    "MetadataId": _ENTITY_META_ID,
+                },
+            )
+            m.get(dep_url, json={"value": []})
+            info = meta_mod.delete_entity(dry_backend, "new_widget", check_dependencies=True)
+        assert info.get("_dry_run") is True
+        assert info.get("would_delete") is True
+        assert "deleted" not in info
+        assert info["can_delete"] is True
+        assert info["blockers"] == []
+        delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
+        assert delete_reqs == []
+
+
 class TestDeleteEntityCommand:
     """Command-layer smoke test: --check-dependencies threads through to the core fn."""
 
