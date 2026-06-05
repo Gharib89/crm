@@ -126,6 +126,35 @@ def register_assembly(
     return out
 
 
+def list_types(
+    backend: D365Backend, *, assembly: str | None = None,
+) -> dict[str, Any]:
+    """List platform-generated plug-in types (the `plugintypes` entity set).
+
+    Plug-in **type** rows are auto-created by the platform via reflection on an
+    uploaded assembly's Content (register_assembly never POSTs them); this is a
+    plain read of those rows.
+
+    When `assembly` (an assembly NAME) is given, it is resolved to a
+    `pluginassemblyid` via `_resolve_id_by_name` (a not-found name raises
+    D365Error) and the listing is filtered server-side on
+    `_pluginassemblyid_value`.
+
+    Column names verified against MS Learn's plugintype entity reference:
+    `typename` (fully qualified class name), `friendlyname` (display name),
+    `assemblyname` (owning assembly name).
+    """
+    params: dict[str, str] = {
+        "$select": "plugintypeid,typename,friendlyname,assemblyname",
+    }
+    if assembly is not None:
+        pid = _resolve_id_by_name(backend, assembly)
+        params["$filter"] = f"_pluginassemblyid_value eq {pid}"
+    rows: list[dict[str, Any]] = as_dict(backend.get(
+        "plugintypes", params=params)).get("value", [])
+    return {"value": rows}
+
+
 def _update_assembly_content(
     backend: D365Backend, *, name: str, content_b64: str,
     solution: str | None = None,

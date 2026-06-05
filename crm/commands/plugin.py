@@ -55,6 +55,27 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
                        meta={"staged": True} if ctx.stage_only else None)
 
 
+@plugin_group.command("list-types")
+@click.option("--assembly", default=None,
+              help="Filter to plug-in types of this assembly (by name).")
+@pass_ctx
+def list_types_cmd(ctx: CLIContext, assembly):
+    """List platform-generated plug-in types (optionally for one assembly)."""
+    try:
+        result = plugin_mod.list_types(ctx.backend(), assembly=assembly)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    items = result["value"]
+    if ctx.json_mode:
+        ctx.emit(True, data=items, meta={"count": len(items)})
+        return
+    headers = ["typename", "friendlyname", "plugintypeid"]
+    rows = [[it.get(h, "") for h in headers] for it in items]
+    ctx.emit(True, table={"headers": headers, "rows": rows},
+             meta={"count": len(items)})
+
+
 def _ignored_update_flags_warning(
     update, version, culture, public_key_token, description,
 ) -> str | None:

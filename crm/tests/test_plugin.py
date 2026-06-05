@@ -264,6 +264,51 @@ class TestRegisterAssemblyUpdate:
         assert not _patches(m)
 
 
+class TestListTypes:
+    def test_no_filter_returns_rows(self, backend):
+        from crm.core import plugin
+        rows = [
+            {"plugintypeid": "aaa", "typename": "Contoso.Plugins.Foo",
+             "friendlyname": "Foo", "assemblyname": "Contoso.Plugins"},
+            {"plugintypeid": "bbb", "typename": "Contoso.Plugins.Bar",
+             "friendlyname": "Bar", "assemblyname": "Contoso.Plugins"},
+        ]
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("plugintypes"), json={"value": rows})
+            out = plugin.list_types(backend)
+        assert out["value"] == rows
+        # selects the documented columns; no $filter without an assembly
+        req = m.request_history[0]
+        assert "plugintypeid,typename,friendlyname,assemblyname" in req.qs["$select"][0]
+        assert "$filter" not in req.qs
+
+    def test_assembly_resolves_id_then_filters_by_assembly_value(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            # 1) resolve assembly name -> pluginassemblyid
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            # 2) list plugintypes filtered by that assembly id
+            m.get(backend.url_for("plugintypes"),
+                  json={"value": [{"plugintypeid": "aaa",
+                                   "typename": "Contoso.Plugins.Foo"}]})
+            out = plugin.list_types(backend, assembly="Contoso.Plugins")
+        assert len(out["value"]) == 1
+        # the assembly was resolved by exact name
+        resolve = next(r for r in m.request_history if "pluginassemblies" in r.url)
+        assert resolve.qs["$filter"] == ["name eq 'contoso.plugins'"]
+        # the type list filters on the resolved assembly lookup value
+        listing = next(r for r in m.request_history if "plugintypes" in r.url)
+        assert listing.qs["$filter"] == [f"_pluginassemblyid_value eq {_PA_ID}"]
+
+    def test_assembly_not_found_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"), json={"value": []})
+            with pytest.raises(D365Error, match="not found"):
+                plugin.list_types(backend, assembly="Nope")
+
+
 class TestPluginCommands:
     def test_register_assembly_command_wires_core(self, monkeypatch):
         import json
@@ -397,3 +442,43 @@ class TestPluginCommands:
         ])
         # click.Path(exists=True) rejects the missing file
         assert result.exit_code != 0
+
+    def test_list_types_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_list(backend, **kw):
+            captured.update(kw)
+            return {"value": [
+                {"plugintypeid": _PA_ID, "typename": "Contoso.Plugins.Foo",
+                 "friendlyname": "Foo"}]}
+
+        monkeypatch.setattr("crm.core.plugin.list_types", fake_list)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "list-types", "--assembly", "Contoso.Plugins",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["assembly"] == "Contoso.Plugins"
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["meta"]["count"] == 1
+        assert env["data"][0]["typename"] == "Contoso.Plugins.Foo"
+
+    def test_list_types_command_handles_d365_error(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+
+        def boom(backend, **kw):
+            raise D365Error("boom", status=400)
+
+        monkeypatch.setattr("crm.core.plugin.list_types", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, ["--json", "plugin", "list-types"])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "boom" in env["error"]
