@@ -513,6 +513,23 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 ],
                 "TLS/connection failed",
             )
+        except D365Error as exc:
+            # OAuth profiles acquire the bearer token inside the auth handler
+            # *during* the request, so a token/setup failure raises D365Error
+            # here (before any HTTP response) — not a requests exception.
+            # Degrade gracefully instead of crashing the non-fatal probe.
+            return _abort(
+                [
+                    dns_tcp,
+                    _check(
+                        "tls", False, f"could not authenticate the request: {exc}",
+                        "for an OAuth (online) profile this is a token/credential "
+                        "problem — check D365_CLIENT_ID / D365_CLIENT_SECRET / "
+                        "D365_TENANT_ID and the application user in Dynamics",
+                    ),
+                ],
+                "request auth/setup failed",
+            )
 
     # ── step 3: version ──────────────────────────────────────────────────
     # Validate only the CONFIGURED api_version — no sweep across v9.0/v9.1/v9.2.
@@ -542,13 +559,14 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
             headers=DEFAULT_HEADERS,
             timeout=backend.profile.timeout,
         )
-    except requests.exceptions.RequestException as exc:
-        # Connection dropped mid-probe (server reset/restart, read timeout)
-        # AFTER TLS passed — classify as a transport failure, do not crash.
+    except (requests.exceptions.RequestException, D365Error) as exc:
+        # A transport failure mid-probe (server reset/restart, read timeout) or a
+        # D365Error from the auth handler (e.g. OAuth token expiry) AFTER TLS
+        # passed — degrade to a failed check, do not crash the non-fatal probe.
         return _check(
             "version", False, f"RetrieveVersion request failed: {exc}",
-            "the connection dropped after TLS — the server may have reset or "
-            "restarted; retry, and check server stability / read timeouts",
+            "the request failed after TLS — the server may have reset/restarted "
+            "or the credentials/token expired; retry and check server stability",
         )
     seen_headers.append(resp.headers)
     status = resp.status_code
@@ -575,13 +593,14 @@ def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any
             headers=DEFAULT_HEADERS,
             timeout=backend.profile.timeout,
         )
-    except requests.exceptions.RequestException as exc:
-        # Connection dropped mid-probe AFTER TLS passed — transport failure,
-        # not an auth rejection; do not crash the probe.
+    except (requests.exceptions.RequestException, D365Error) as exc:
+        # A transport failure mid-probe (server reset/read timeout) or a
+        # D365Error from the auth handler (e.g. OAuth token expiry) AFTER TLS
+        # passed — degrade to a failed check, do not crash the probe.
         return _check(
             "auth", False, f"WhoAmI request failed: {exc}",
-            "the connection dropped after TLS — the server may have reset or "
-            "restarted; retry, and check server stability / read timeouts",
+            "the request failed after TLS — the server may have reset/restarted "
+            "or the credentials/token expired; retry and check server stability",
         )
     seen_headers.append(resp.headers)
     status = resp.status_code

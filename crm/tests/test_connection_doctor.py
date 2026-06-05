@@ -16,7 +16,7 @@ import requests
 import requests_mock
 
 from crm.core import connection as conn
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 _BASE = "https://internalcrm.contoso.local/Contoso"
 
@@ -490,3 +490,46 @@ def test_profile_url_invalid_port_fails_dns_tcp():
     for name in ("tls", "version", "auth"):
         assert checks[name]["detail"] == "not checked (invalid profile URL)"
     assert result["ok"] is False
+
+
+# ── auth-handler D365Error (OAuth token acquisition) is non-fatal ──────────
+# An OAuth profile acquires its bearer token inside the requests auth handler
+# *during* the GET, which raises D365Error (not a requests exception) on a
+# token/setup failure. The probe must degrade, not crash.
+
+
+def _raise_d365(*a, **k):
+    raise D365Error("OAuth token acquisition failed", status=401)
+
+
+def test_doctor_d365error_at_tls_is_nonfatal(socket_ok, monkeypatch):
+    b = _backend()
+    # session.get raising D365Error mirrors the OAuth auth handler failing on the
+    # first (tls) GET — before any HTTP response.
+    monkeypatch.setattr(b.session, "get", _raise_d365)
+    result = conn.connection_doctor(b)  # must not raise
+    assert _check_names(result) == _EXPECTED_ORDER
+    checks = _by_name(result)
+    assert checks["dns_tcp"]["ok"] is True
+    assert checks["tls"]["ok"] is False
+    assert "authenticate" in checks["tls"]["detail"].lower()
+    assert "OAuth token acquisition failed" in checks["tls"]["detail"]
+    for name in ("version", "auth"):
+        assert checks[name]["detail"] == "not checked (request auth/setup failed)"
+    assert result["ok"] is False
+
+
+def test_doctor_version_d365error_is_nonfatal(monkeypatch):
+    b = _backend()
+    monkeypatch.setattr(b.session, "get", _raise_d365)
+    c = conn._doctor_version(b, [])  # must not raise
+    assert c["check"] == "version" and c["ok"] is False
+    assert "OAuth token acquisition failed" in c["detail"]
+
+
+def test_doctor_auth_d365error_is_nonfatal(monkeypatch):
+    b = _backend()
+    monkeypatch.setattr(b.session, "get", _raise_d365)
+    c = conn._doctor_auth(b, [])  # must not raise
+    assert c["check"] == "auth" and c["ok"] is False
+    assert "OAuth token acquisition failed" in c["detail"]
