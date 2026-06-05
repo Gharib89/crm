@@ -24,8 +24,9 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update
 
 `--update` resolves the existing assembly by name and patches only the `content`
 column — it does not touch `name`, `version`, `culture`, or `publickeytoken`.
-Identity flags (`--name`, `--version`, etc.) are ignored under `--update` and
-produce a warning if passed. `--solution` is still honored.
+Identity flags (`--version`, `--culture`, `--public-key-token`, `--description`,
+`--isolation-mode`) are ignored under `--update` and produce a warning if passed.
+`--solution` is still honored.
 
 ## List plug-in types
 
@@ -49,8 +50,7 @@ crm --json plugin register-step \
     --entity account \
     --stage postoperation \
     --mode sync \
-    --filtering-attributes name,telephone1 \
-    --solution cwx_contoso
+    --filtering-attributes name,telephone1
 ```
 
 Key points:
@@ -85,8 +85,7 @@ crm --json plugin register-step \
     --entity account \
     --stage postoperation \
     --mode sync \
-    --filtering-attributes name,telephone1 \
-    --solution cwx_contoso
+    --filtering-attributes name,telephone1
 ```
 
 ## Unregister a step

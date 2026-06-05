@@ -556,8 +556,7 @@ crm --json plugin register-step \
     --entity account \
     --stage postoperation \
     --mode sync \
-    --filtering-attributes name,telephone1 \
-    --solution cwx_contoso
+    --filtering-attributes name,telephone1
 
 # unregister-step: by name or GUID; ambiguous name errors (use GUID).
 crm --json plugin unregister-step "Contoso.Plugins.AccountPostUpdate: Update of account" --yes
@@ -574,8 +573,7 @@ crm --json plugin list-types --assembly Contoso.Plugins
 crm --json plugin register-step \
     --message Create \
     --plugin-type Contoso.Plugins.AccountPreCreate \
-    --entity account --stage preoperation --mode sync \
-    --solution cwx_contoso
+    --entity account --stage preoperation --mode sync
 ```
 
 `--dry-run` skips all writes (resolution GETs still fire); `--json` envelope carries
