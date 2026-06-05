@@ -281,6 +281,19 @@ class TestCsvCoercion:
         assert ops[0]["body"]["val"] == 1.0
         assert isinstance(ops[0]["body"]["val"], float)
 
+    def test_non_finite_floats_stay_string(self, tmp_path: Path) -> None:
+        """'NaN', 'inf', '-inf', 'Infinity' must not produce non-JSON-safe floats."""
+        p = tmp_path / "data.csv"
+        p.write_text("a,b,c,d\nNaN,inf,-inf,Infinity\n", encoding="utf-8")
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        _import_records(backend, "accounts", p)
+        ops = backend.batch.call_args[0][0]
+        body = ops[0]["body"]
+        assert body["a"] == "NaN" and isinstance(body["a"], str)
+        assert body["b"] == "inf" and isinstance(body["b"], str)
+        assert body["c"] == "-inf" and isinstance(body["c"], str)
+        assert body["d"] == "Infinity" and isinstance(body["d"], str)
+
 
 # ── dry-run ───────────────────────────────────────────────────────────────────
 
@@ -409,3 +422,37 @@ class TestOutputCounts:
         result = _import_records(backend, "accounts", p)
         for key in ("imported", "failed", "chunks", "entity_set", "mode", "dry_run"):
             assert key in result, f"missing key: {key}"
+
+
+# ── batch flag forwarding ─────────────────────────────────────────────────────
+
+
+class TestBatchFlagForwarding:
+    def test_non_default_flags_forwarded(self, tmp_path: Path) -> None:
+        """transactional=False and continue_on_error=True must reach backend.batch()."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "x"}\n', encoding="utf-8")
+        backend = MagicMock(spec=D365Backend)
+        backend.dry_run = False
+        backend.batch.return_value = _make_2xx_results(1)
+        _import_records(
+            backend, "accounts", p,
+            transactional=False, continue_on_error=True,
+        )
+        backend.batch.assert_called_once()
+        _args, kwargs = backend.batch.call_args
+        assert kwargs["transactional"] is False
+        assert kwargs["continue_on_error"] is True
+
+    def test_default_flags_forwarded(self, tmp_path: Path) -> None:
+        """Default transactional=True and continue_on_error=False must reach backend.batch()."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "x"}\n', encoding="utf-8")
+        backend = MagicMock(spec=D365Backend)
+        backend.dry_run = False
+        backend.batch.return_value = _make_2xx_results(1)
+        _import_records(backend, "accounts", p)
+        backend.batch.assert_called_once()
+        _args, kwargs = backend.batch.call_args
+        assert kwargs["transactional"] is True
+        assert kwargs["continue_on_error"] is False

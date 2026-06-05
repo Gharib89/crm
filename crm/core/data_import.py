@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 from typing import Any, Generator
 
@@ -36,9 +37,13 @@ def _coerce_csv_value(raw: str) -> Any:
     except ValueError:
         pass
     try:
-        return float(raw)
+        f = float(raw)
     except ValueError:
         pass
+    else:
+        if math.isfinite(f):
+            return f
+        # non-finite ("NaN"/"inf"/"Infinity") → treat as plain string, fall through
     return raw
 
 
@@ -200,7 +205,7 @@ def import_records(
     for chunk_ops in op_chunks:
         chunks += 1
         results: list[BatchResult] = backend.batch(
-            chunk_ops,  # type: ignore[arg-type]  # Sequence[BatchOperation] compat
+            chunk_ops,
             transactional=transactional,
             continue_on_error=continue_on_error,
         )
