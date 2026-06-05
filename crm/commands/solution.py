@@ -109,7 +109,11 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
         except json.JSONDecodeError as exc:
             ctx.emit(False, error=f"Could not parse {diff_path!r} as JSON: {exc}")
             return
-        result = sol_mod.diff_components(items, raw)
+        try:
+            result = sol_mod.diff_components(items, raw)
+        except (KeyError, ValueError, TypeError, AttributeError) as exc:
+            ctx.emit(False, error=f"Malformed component row in {diff_path!r}: {exc}")
+            return
         if not result["matches"]:
             msg = (f"Drift detected: {len(result['missing'])} missing, "
                    f"{len(result['unexpected'])} unexpected component(s).")

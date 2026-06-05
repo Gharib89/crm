@@ -286,3 +286,31 @@ class TestComponentsDiffSave:
         assert data["ok"] is True
         assert isinstance(data["data"], list)
         assert len(data["data"]) == len(_LIVE)
+
+    # 6. --diff with a row missing componenttype → exit 1, clean ok=False envelope
+    def test_diff_malformed_missing_componenttype(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        bad_file = tmp_path / "bad.json"
+        bad_file.write_text(
+            json.dumps([{"objectid": _A}]),
+            encoding="utf-8",
+        )
+        result = self._invoke("--diff", str(bad_file))
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert "Malformed" in data["error"] or str(bad_file) in data["error"]
+
+    # 7. --diff with a non-dict list element → exit 1, clean ok=False envelope
+    def test_diff_malformed_non_dict_element(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        bad_file = tmp_path / "bad2.json"
+        bad_file.write_text(
+            json.dumps(["notadict"]),
+            encoding="utf-8",
+        )
+        result = self._invoke("--diff", str(bad_file))
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert "Malformed" in data["error"] or str(bad_file) in data["error"]
