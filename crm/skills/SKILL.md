@@ -128,7 +128,7 @@ pass `--profile <name>` and confirm the real target with
 
 | Group        | Commands                                                                                | Purpose                                       |
 |--------------|-----------------------------------------------------------------------------------------|-----------------------------------------------|
-| `connection` | `connect`, `status`, `whoami`, `test`, `profiles`, `disconnect`                         | Profiles + auth probe                          |
+| `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`               | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships` | Schema introspection + option set values      |
@@ -139,6 +139,7 @@ pass `--profile <name>` and confirm the real target with
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
 | _(top)_      | `apply -f spec.yaml`                                                                    | Declarative desired-state (publisher→…→views)  |
+| _(top)_      | `doctor`                                                                                | Alias for `connection doctor` — live connection diagnostic       |
 | _(top)_      | `describe [group]`                                                                      | Machine-readable command/option/choice catalogue (no connection) |
 | _(top)_      | `service-document`                                                                      | List every entity set the server exposes       |
 

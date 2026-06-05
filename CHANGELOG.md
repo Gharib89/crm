@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm connection doctor` (also exposed as the top-level alias `crm doctor`)
+  runs a live, ordered connection probe and renders a five-line checklist:
+  `dns_tcp`, `tls`, `version` (the configured `api_version`), `auth`, and an
+  informational `rate_limit`. Each layer's failure is classified distinctly
+  (DNS vs TCP vs TLS vs wrong api_version vs 401/403) with an actionable hint.
+  It is a read-only diagnostic — it never negotiates or mutates the profile, and
+  the raw GETs run regardless of `--dry-run`. `--json` emits
+  `{ok, data:{checks:[{check,ok,detail,hint}]}}`; overall `ok` (and the exit
+  code) is the AND of the four diagnostic checks, `rate_limit` never affects it
+  (#74).
 - `crm solution extract` and `crm solution pack` bridge the CoreTools
   `SolutionPackager.exe` to turn an exported solution zip into a source-controllable
   folder tree and back (`git diff` on the extracted tree _is_ the solution diff).
