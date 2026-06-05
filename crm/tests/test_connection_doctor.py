@@ -214,7 +214,9 @@ def test_tls_probes_even_when_verify_disabled(socket_ok):
         result = conn.connection_doctor(_backend(verify_ssl=False))
         # the api_base GET was actually issued
         api_base_hits = [
-            r for r in m.request_history if r.path.endswith("/api/data/v9.2/")
+            # match the path case-insensitively — don't depend on requests_mock's
+            # path-casing (it lowercases r.path); URLs are registered cased.
+            r for r in m.request_history if r.path.lower().endswith("/api/data/v9.2/")
         ]
         assert len(api_base_hits) == 1
     checks = _by_name(result)
@@ -261,7 +263,7 @@ def test_wrong_api_version_no_sweep(socket_ok, status):
         result = conn.connection_doctor(_backend())
         # exactly one version probe; no sweep across other api_versions
         version_hits = [
-            r for r in m.request_history if r.path.endswith("/retrieveversion()")
+            r for r in m.request_history if r.path.lower().endswith("/retrieveversion()")
         ]
         assert len(version_hits) == 1
         assert "/v9.1/" not in "".join(r.url for r in m.request_history)
@@ -448,9 +450,9 @@ def test_probes_send_standard_odata_headers(socket_ok):
         m.get(f"{_BASE}/api/data/v9.2/WhoAmI", json={"UserId": "u"})
         conn.connection_doctor(_backend())
         version_req = next(
-            r for r in m.request_history if r.path.endswith("/retrieveversion()")
+            r for r in m.request_history if r.path.lower().endswith("/retrieveversion()")
         )
-        auth_req = next(r for r in m.request_history if r.path.endswith("/whoami"))
+        auth_req = next(r for r in m.request_history if r.path.lower().endswith("/whoami"))
     # requests headers are case-insensitive
     for req in (version_req, auth_req):
         assert req.headers["Accept"] == "application/json"

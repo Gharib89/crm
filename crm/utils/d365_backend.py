@@ -438,7 +438,14 @@ class D365Backend:
     def session(self) -> requests.Session:
         """The configured Session (auth + verify), for callers that must issue a
         raw request and classify transport exceptions per layer — e.g. the
-        connection doctor — bypassing request()'s retry-and-wrap path."""
+        connection doctor — bypassing request()'s retry-and-wrap path.
+
+        Treat the returned Session as READ-ONLY: callers must not mutate its
+        auth/verify/headers. It is the backend's live session (shared, not a
+        copy), so mutation would corrupt every subsequent request() call. The
+        accessor exists only to issue ad-hoc raw reads with the configured
+        credentials, not to reconfigure the client.
+        """
         return self._session
 
     def url_for(self, path: str) -> str:
