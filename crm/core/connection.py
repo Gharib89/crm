@@ -332,9 +332,40 @@ _RENEGOTIATE_HINT = (
 # below is also surfaced. Retry-After is the generic throttling signal.
 _RATELIMIT_PREFIX = "x-ms-ratelimit"
 
+# Canonical check order — defined in exactly ONE place. The four diagnostic
+# checks (their AND is the overall ``ok``) come first, then the informational
+# rate_limit step, which is never a diagnostic.
+_DIAGNOSTIC_CHECKS = ("dns_tcp", "tls", "version", "auth")
+_RATE_LIMIT_CHECK = "rate_limit"
+_CHECK_ORDER = (*_DIAGNOSTIC_CHECKS, _RATE_LIMIT_CHECK)
+
 
 def _check(check: str, ok: bool, detail: str, hint: str = "") -> dict[str, Any]:
     return {"check": check, "ok": ok, "detail": detail, "hint": hint}
+
+
+def _abort(completed: list[dict[str, Any]], reason: str) -> dict[str, Any]:
+    """Build a failed checklist from the checks already run + filler for the rest.
+
+    ``completed`` is the ordered prefix of diagnostic checks that actually ran
+    (e.g. ``[dns_tcp]`` when TLS short-circuits). Every remaining check (by the
+    canonical ``_CHECK_ORDER``) is filled: missing diagnostics get a failed
+    ``not checked ({reason})`` entry; the informational ``rate_limit`` step gets
+    an ok=True "not checked". Overall ``ok`` is always False.
+
+    This collapses the short-circuit envelopes to one place so the canonical
+    check order lives in exactly ``_CHECK_ORDER``.
+    """
+    done = {c["check"]: c for c in completed}
+    checks: list[dict[str, Any]] = []
+    for name in _CHECK_ORDER:
+        if name in done:
+            checks.append(done[name])
+        elif name == _RATE_LIMIT_CHECK:
+            checks.append(_check(name, True, "not checked"))
+        else:
+            checks.append(_check(name, False, f"not checked ({reason})"))
+    return {"ok": False, "checks": checks}
 
 
 def connection_doctor(backend: D365Backend) -> dict[str, Any]:
@@ -370,33 +401,25 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
             "dns_tcp", True, f"TCP connection to {host}:{port} succeeded"
         )
     except socket.gaierror:
-        return {
-            "ok": False,
-            "checks": [
+        return _abort(
+            [
                 _check(
                     "dns_tcp", False, f"DNS resolution failed for {host}",
                     "check the hostname spelling, your VPN connection, and DNS resolution",
-                ),
-                _check("tls", False, "not checked (network unreachable)"),
-                _check("version", False, "not checked (network unreachable)"),
-                _check("auth", False, "not checked (network unreachable)"),
-                _check("rate_limit", True, "not checked"),
+                )
             ],
-        }
+            "network unreachable",
+        )
     except (OSError, TimeoutError) as exc:
-        return {
-            "ok": False,
-            "checks": [
+        return _abort(
+            [
                 _check(
                     "dns_tcp", False, f"cannot reach {host}:{port}: {exc}",
                     "check the port, firewall rules, and that the server is up",
-                ),
-                _check("tls", False, "not checked (network unreachable)"),
-                _check("version", False, "not checked (network unreachable)"),
-                _check("auth", False, "not checked (network unreachable)"),
-                _check("rate_limit", True, "not checked"),
+                )
             ],
-        }
+            "network unreachable",
+        )
 
     # ── step 2: tls ──────────────────────────────────────────────────────
     if not is_https:
@@ -409,34 +432,52 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
             seen_headers.append(resp.headers)
             tls = _check("tls", True, "TLS handshake OK")
         except requests.exceptions.SSLError as exc:
-            return {
-                "ok": False,
-                "checks": [
+            return _abort(
+                [
                     dns_tcp,
                     _check(
                         "tls", False, f"TLS certificate not trusted: {exc}",
                         "certificate not trusted — pass --no-verify-ssl to skip "
                         "verification, or install the server's CA certificate",
                     ),
-                    _check("version", False, "not checked (TLS/connection failed)"),
-                    _check("auth", False, "not checked (TLS/connection failed)"),
-                    _check("rate_limit", True, "not checked"),
                 ],
-            }
+                "TLS/connection failed",
+            )
+        except requests.exceptions.Timeout as exc:
+            return _abort(
+                [
+                    dns_tcp,
+                    _check(
+                        "tls", False, f"timed out establishing HTTPS connection: {exc}",
+                        "the server accepted the TCP connection but did not complete "
+                        "the HTTPS handshake in time — check server load, a proxy, or "
+                        "raise the timeout",
+                    ),
+                ],
+                "TLS/connection failed",
+            )
         except requests.exceptions.ConnectionError as exc:
-            return {
-                "ok": False,
-                "checks": [
+            return _abort(
+                [
                     dns_tcp,
                     _check(
                         "tls", False, f"cannot establish HTTPS connection: {exc}",
                         "check that the server is reachable over HTTPS on this port",
                     ),
-                    _check("version", False, "not checked (TLS/connection failed)"),
-                    _check("auth", False, "not checked (TLS/connection failed)"),
-                    _check("rate_limit", True, "not checked"),
                 ],
-            }
+                "TLS/connection failed",
+            )
+        except requests.exceptions.RequestException as exc:
+            return _abort(
+                [
+                    dns_tcp,
+                    _check(
+                        "tls", False, f"HTTPS request to api_base failed: {exc}",
+                        "check that the server is reachable over HTTPS on this port",
+                    ),
+                ],
+                "TLS/connection failed",
+            )
 
     # ── step 3: version ──────────────────────────────────────────────────
     # Validate only the CONFIGURED api_version — no sweep across v9.0/v9.1/v9.2.
@@ -457,9 +498,18 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
 
 
 def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
-    resp = backend.session.get(
-        backend.url_for("RetrieveVersion()"), timeout=backend.profile.timeout
-    )
+    try:
+        resp = backend.session.get(
+            backend.url_for("RetrieveVersion()"), timeout=backend.profile.timeout
+        )
+    except requests.exceptions.RequestException as exc:
+        # Connection dropped mid-probe (server reset/restart, read timeout)
+        # AFTER TLS passed — classify as a transport failure, do not crash.
+        return _check(
+            "version", False, f"RetrieveVersion request failed: {exc}",
+            "the connection dropped after TLS — the server may have reset or "
+            "restarted; retry, and check server stability / read timeouts",
+        )
     seen_headers.append(resp.headers)
     status = resp.status_code
     if 200 <= status < 300:
@@ -478,9 +528,18 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
 
 
 def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
-    resp = backend.session.get(
-        backend.url_for("WhoAmI"), timeout=backend.profile.timeout
-    )
+    try:
+        resp = backend.session.get(
+            backend.url_for("WhoAmI"), timeout=backend.profile.timeout
+        )
+    except requests.exceptions.RequestException as exc:
+        # Connection dropped mid-probe AFTER TLS passed — transport failure,
+        # not an auth rejection; do not crash the probe.
+        return _check(
+            "auth", False, f"WhoAmI request failed: {exc}",
+            "the connection dropped after TLS — the server may have reset or "
+            "restarted; retry, and check server stability / read timeouts",
+        )
     seen_headers.append(resp.headers)
     status = resp.status_code
     if status == 200:

@@ -168,6 +168,29 @@ def test_tls_connection_error_short_circuits(socket_ok):
     assert result["ok"] is False
 
 
+@pytest.mark.parametrize(
+    "exc_cls",
+    [requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout],
+)
+def test_tls_timeout_short_circuits(socket_ok, exc_cls):
+    # A reachable-but-slow HTTPS server (read/connect timeout) must NOT crash
+    # the probe — Timeout is a sibling of ConnectionError under RequestException.
+    with requests_mock.Mocker() as m:
+        m.get(f"{_BASE}/api/data/v9.2/", exc=exc_cls("timed out"))
+        result = conn.connection_doctor(_backend())
+
+    # _abort still emits all five checks in the canonical order
+    assert _check_names(result) == _EXPECTED_ORDER
+    checks = _by_name(result)
+    assert checks["tls"]["ok"] is False
+    assert "--no-verify-ssl" not in checks["tls"]["hint"]  # not the SSL cert hint
+    for name in ("version", "auth"):
+        assert checks[name]["ok"] is False
+        assert checks[name]["detail"] == "not checked (TLS/connection failed)"
+    assert checks["rate_limit"]["ok"] is True
+    assert result["ok"] is False
+
+
 def test_tls_any_http_response_is_ok(socket_ok):
     # Even a 404 on api_base means the TLS handshake worked.
     with requests_mock.Mocker() as m:
@@ -231,6 +254,31 @@ def test_wrong_api_version_no_sweep(socket_ok, status):
     assert result["ok"] is False
 
 
+def test_version_transport_failure_is_nonfatal(socket_ok):
+    # Socket + TLS pass, but the connection drops on the RetrieveVersion GET
+    # (server reset/restart). The probe must NOT crash: version is a failed
+    # check with a transport detail, and auth is STILL attempted.
+    with requests_mock.Mocker() as m:
+        m.get(f"{_BASE}/api/data/v9.2/", status_code=401)  # TLS ok
+        m.get(
+            f"{_BASE}/api/data/v9.2/RetrieveVersion()",
+            exc=requests.exceptions.ConnectionError("connection reset by peer"),
+        )
+        m.get(f"{_BASE}/api/data/v9.2/WhoAmI", json={"UserId": "u"})
+        result = conn.connection_doctor(_backend())
+
+    # full five-check result returned (no exception propagated)
+    assert _check_names(result) == _EXPECTED_ORDER
+    checks = _by_name(result)
+    assert checks["tls"]["ok"] is True
+    assert checks["version"]["ok"] is False
+    assert "RetrieveVersion" in checks["version"]["detail"]
+    assert "connection reset by peer" in checks["version"]["detail"]
+    # auth still attempted and succeeded
+    assert checks["auth"]["ok"] is True
+    assert result["ok"] is False
+
+
 def test_version_success_surfaces_version(socket_ok):
     with requests_mock.Mocker() as m:
         m.get(f"{_BASE}/api/data/v9.2/", status_code=401)
@@ -280,6 +328,28 @@ def test_auth_403_privileges_hint(socket_ok):
     assert checks["auth"]["ok"] is False
     assert "403" in checks["auth"]["detail"]
     assert "privilege" in checks["auth"]["hint"].lower() or "role" in checks["auth"]["hint"].lower()
+
+
+def test_auth_transport_failure_is_nonfatal(socket_ok):
+    # Connection drops on the WhoAmI GET (read timeout / reset) after TLS +
+    # version passed. auth becomes a failed check with a transport detail and
+    # the full five-check result is still returned (no exception).
+    with requests_mock.Mocker() as m:
+        m.get(f"{_BASE}/api/data/v9.2/", status_code=401)  # TLS ok
+        m.get(f"{_BASE}/api/data/v9.2/RetrieveVersion()", json={"Version": "9.2.1.2"})
+        m.get(
+            f"{_BASE}/api/data/v9.2/WhoAmI",
+            exc=requests.exceptions.ReadTimeout("read timed out"),
+        )
+        result = conn.connection_doctor(_backend())
+
+    assert _check_names(result) == _EXPECTED_ORDER
+    checks = _by_name(result)
+    assert checks["version"]["ok"] is True
+    assert checks["auth"]["ok"] is False
+    assert "WhoAmI" in checks["auth"]["detail"]
+    assert "read timed out" in checks["auth"]["detail"]
+    assert result["ok"] is False
 
 
 def test_auth_success_surfaces_user(socket_ok):
