@@ -32,6 +32,19 @@ One read-only call returns everything needed to build a valid create/update payl
 
 Pure GETs — gated so only the attribute kinds the entity actually uses cost a round-trip.
 
+## Read option set values (flattened)
+
+```bash
+crm --json metadata picklist account industrycode
+crm --json metadata get-optionset cwx_priority
+```
+Both commands return the raw Dataverse metadata under `data` *and* a flattened
+`meta.options = [{value, label}]` convenience list (JSON mode only), so you need not
+walk `Label.UserLocalizedLabel.Label` by hand. `picklist` reads the local `OptionSet`,
+falling back to `GlobalOptionSet`; `get-optionset` reads the global set's root `Options`.
+A *boolean* attribute has no `Options` array (it carries `TrueOption` / `FalseOption`),
+so its `meta.options` is empty — read those raw fields instead.
+
 ## Create a global option set (idempotent)
 
 ```bash

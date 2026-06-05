@@ -264,3 +264,95 @@ class TestCommand:
         result = CliRunner().invoke(cli, ["metadata", "describe", "--help"])
         assert result.exit_code == 0
         assert "write-readiness" in result.output.lower()
+
+
+class TestPicklistMetaOptions:
+    """`metadata picklist` JSON mode flattens options to `meta.options` (#76)."""
+
+    def _stub(self, monkeypatch, backend):
+        monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+
+    def _picklist_url(self, backend) -> str:
+        return backend.url_for(
+            "EntityDefinitions(LogicalName='account')"
+            "/Attributes(LogicalName='industrycode')"
+            "/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+        )
+
+    def test_local_picklist_meta_options_from_optionset(self, monkeypatch, backend):
+        self._stub(monkeypatch, backend)
+        raw = {
+            "LogicalName": "industrycode",
+            "OptionSet": {"Options": [_opt(1, "Accounting"), _opt(2, "Retail")]},
+            "GlobalOptionSet": None,
+        }
+        with requests_mock.Mocker() as m:
+            m.get(self._picklist_url(backend), json=raw)
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "picklist", "account", "industrycode"]
+            )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["meta"]["options"] == [
+            {"value": 1, "label": "Accounting"},
+            {"value": 2, "label": "Retail"},
+        ]
+        # Raw data is untouched — no contract break.
+        assert env["data"]["OptionSet"]["Options"] == raw["OptionSet"]["Options"]
+        assert env["data"]["GlobalOptionSet"] is None
+
+    def test_global_bound_picklist_meta_options_from_fallback(self, monkeypatch, backend):
+        self._stub(monkeypatch, backend)
+        # OptionSet null/empty → options live under GlobalOptionSet.
+        raw = {
+            "LogicalName": "industrycode",
+            "OptionSet": None,
+            "GlobalOptionSet": {"Options": [_opt(10, "Low"), _opt(20, "High")]},
+        }
+        with requests_mock.Mocker() as m:
+            m.get(self._picklist_url(backend), json=raw)
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "picklist", "account", "industrycode"]
+            )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["meta"]["options"] == [
+            {"value": 10, "label": "Low"},
+            {"value": 20, "label": "High"},
+        ]
+        assert env["data"]["GlobalOptionSet"]["Options"] == raw["GlobalOptionSet"]["Options"]
+
+
+class TestGetOptionsetMetaOptions:
+    """`metadata get-optionset` JSON mode flattens root Options (#76)."""
+
+    def _stub(self, monkeypatch, backend):
+        monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+
+    def test_get_optionset_meta_options_from_root(self, monkeypatch, backend):
+        self._stub(monkeypatch, backend)
+        # Label carried via LocalizedLabels (no UserLocalizedLabel) — the robust
+        # fallback path must still resolve it.
+        raw = {
+            "Name": "new_priority",
+            "Options": [
+                {"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Low"}]}},
+                {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "High"}]}},
+            ],
+        }
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json=raw,
+            )
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "get-optionset", "new_priority"]
+            )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["meta"]["options"] == [
+            {"value": 1, "label": "Low"},
+            {"value": 2, "label": "High"},
+        ]
+        # Raw data is untouched.
+        assert env["data"]["Options"] == raw["Options"]
