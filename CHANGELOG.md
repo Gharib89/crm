@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to build the diff; no POSTs are issued.
 
 **Added**
+- `crm app build-sitemap <SITEMAP_NAME>` builds a valid SiteMapXml from
+  structured input and creates the sitemap. Three repeatable options describe the
+  tree: `--area 'id:Title'` (at least one required), `--group 'areaId/groupId:Title'`
+  (nested under an area), and `--subarea 'areaId/groupId:entity=<logical>[:Title]'`,
+  where a SubArea binds a table via the SiteMapXml `Entity=` attribute (Title
+  optional — omit it and the platform derives the label from the entity). SubArea
+  Ids are auto-allocated from the entity logical name to stay unique across the
+  document, and every attribute value is XML-escaped; Area/Group Ids and the
+  references between them are validated, so broken references or duplicate Ids
+  fail with an error. After building the XML it delegates to the `set-sitemap`
+  path so the POST body is byte-identical, then optionally publishes. `--unique-name`
+  sets `sitemapnameunique` to auto-associate the sitemap with that app (same as
+  `set-sitemap`); `--publish/--no-publish` (default: publish) runs PublishAllXml
+  after creation. `crm --dry-run app build-sitemap ...` prints the generated
+  SiteMapXml and issues no POST. Complements `set-sitemap`, which uploads a
+  pre-built XML file (#79).
 - `crm data import <ENTITY_SET> <INPUT_FILE>` bulk-imports records via the
   Dataverse `$batch` endpoint — the only on-prem bulk mechanism (`CreateMultiple`
   / `UpsertMultiple` are cloud-only). Supports JSONL and CSV input (format

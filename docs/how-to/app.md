@@ -26,3 +26,15 @@ crm --json app add-components <appmoduleid> \
 crm --json app set-sitemap "CRMWorx Sitemap" --xml-file sitemap.xml --unique-name cwx_crmworx
 ```
 Reads SiteMapXml from `--xml-file`; `--unique-name` sets `sitemapnameunique` so the sitemap auto-associates with that app.
+
+## Build a sitemap from structured input
+
+```bash
+crm --json app build-sitemap "CRMWorx Sitemap" \
+  --area 'sales:Sales' \
+  --group 'sales/accounts:Customers' \
+  --subarea 'sales/accounts:entity=account:Accounts' \
+  --subarea 'sales/accounts:entity=contact' \
+  --unique-name cwx_crmworx
+```
+Generates the SiteMapXml for you, then creates the sitemap via the same path as `set-sitemap` (which instead uploads a pre-built XML file). The grammar is `--area 'id:Title'` (repeatable, at least one required), `--group 'areaId/groupId:Title'` (nested under an area), and `--subarea 'areaId/groupId:entity=<logical>[:Title]'`. A SubArea binds a table through the SiteMapXml `Entity=` attribute; its Title is optional, and when omitted the platform derives the label from the entity. SubArea Ids are auto-allocated from the entity logical name (you don't supply them); Area/Group Ids and the references between them are validated, so broken references or duplicate Ids fail with an error. Every attribute value is XML-escaped. `--unique-name` sets `sitemapnameunique` to auto-associate with that app, exactly as on `set-sitemap`. Creation publishes by default (`--no-publish` to skip). Use `crm --dry-run app build-sitemap ...` to print the generated SiteMapXml without creating anything.
