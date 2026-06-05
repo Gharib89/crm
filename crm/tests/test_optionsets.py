@@ -359,6 +359,9 @@ class TestUpdateOptionset:
             assert m.request_history == []
 
 
+_OS_META_ID = "cccc0001-0000-0000-0000-000000000000"
+
+
 class TestDeleteOptionset:
     def test_refuses_non_custom(self, backend):
         from crm.core import optionsets as os_mod
@@ -394,3 +397,70 @@ class TestDeleteOptionset:
             info = os_mod.delete_optionset(backend, "new_priority")
         assert info["deleted"] is True
         assert info["name"] == "new_priority"
+
+    def test_check_dependencies_off_by_default_no_extra_get(self, backend):
+        """Without check_dependencies, no dependency GETs fire."""
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False},
+            )
+            m.delete(backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204)
+            info = os_mod.delete_optionset(backend, "new_priority")
+        assert "can_delete" not in info
+        assert "blockers" not in info
+        dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
+        assert dep_reqs == []
+
+    def test_check_dependencies_with_blockers(self, backend):
+        """check_dependencies=True fires resolve GET + function GET; blockers in result."""
+        from crm.core import optionsets as os_mod
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_OS_META_ID},ComponentType=9)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={
+                    "Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False,
+                    "MetadataId": _OS_META_ID,
+                },
+            )
+            m.get(dep_url, json={"value": [
+                {
+                    "dependentcomponenttype": 2,
+                    "dependentcomponentobjectid": "dddd0001-0000-0000-0000-000000000000",
+                    "dependentcomponentparentid": "eeee0001-0000-0000-0000-000000000000",
+                    "requiredcomponenttype": 9,
+                    "dependencytype": 1,
+                },
+            ]})
+            m.delete(backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204)
+            info = os_mod.delete_optionset(backend, "new_priority", check_dependencies=True)
+        assert info["deleted"] is True
+        assert info["can_delete"] is False
+        assert len(info["blockers"]) == 1
+        assert info["blockers"][0]["dependent_type"] == "Attribute"
+        dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
+        assert len(dep_reqs) == 1
+
+    def test_check_dependencies_no_blockers(self, backend):
+        """Empty dependency list → can_delete True."""
+        from crm.core import optionsets as os_mod
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_OS_META_ID},ComponentType=9)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={
+                    "Name": "new_priority", "IsCustomOptionSet": True, "IsManaged": False,
+                    "MetadataId": _OS_META_ID,
+                },
+            )
+            m.get(dep_url, json={"value": []})
+            m.delete(backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"), status_code=204)
+            info = os_mod.delete_optionset(backend, "new_priority", check_dependencies=True)
+        assert info["can_delete"] is True
+        assert info["blockers"] == []

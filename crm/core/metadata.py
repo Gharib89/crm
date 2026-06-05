@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.core import dependencies as _dependencies
 
 
 def list_entities(
@@ -485,12 +486,18 @@ def delete_entity(
     logical_name: str,
     *,
     solution: str | None = None,
+    check_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Permanently delete a custom entity (table) and ALL its rows.
 
     Pre-flight: refuses if `IsCustomEntity=False` or `IsManaged=True`.
     Server enforces remaining dependency checks (workflows, forms,
     relationships) and returns 4xx on conflict.
+
+    Args:
+        check_dependencies: When True, call RetrieveDependenciesForDelete
+            before the DELETE and fold ``can_delete`` + ``blockers`` into the
+            result. Informational only — does not abort the delete.
     """
     if not logical_name:
         raise D365Error("logical_name is required.")
@@ -510,13 +517,20 @@ def delete_entity(
             "solution to remove it.",
             code="ManagedEntity",
         )
+    deps = None
+    if check_dependencies:
+        deps = _dependencies.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
-    return {
+    result: dict[str, Any] = {
         "deleted": True,
         "logical_name": logical_name,
         "solution": solution,
     }
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result
 
 
 import xml.etree.ElementTree as _ET  # noqa: E402

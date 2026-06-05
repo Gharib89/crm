@@ -431,8 +431,10 @@ def metadata_relationships(ctx: CLIContext, logical_name):
 @click.argument("logical_name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require_solution):
+def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require_solution, check_dependencies):
     """Permanently delete a custom entity (table) and ALL its rows."""
     if not _confirm_destructive("entity", logical_name, yes):
         ctx.emit(False, error="aborted by user")
@@ -442,6 +444,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
     try:
         info = meta_mod.delete_entity(
             ctx.backend(), logical_name, solution=solution,
+            check_dependencies=check_dependencies,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -580,8 +583,10 @@ def metadata_add_attribute(
 @click.argument("attribute")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, require_solution):
+def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, require_solution, check_dependencies):
     """Delete a custom attribute (column) from an entity."""
     if not _confirm_destructive("attribute", f"{entity}.{attribute}", yes):
         ctx.emit(False, error="aborted by user")
@@ -591,6 +596,7 @@ def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution,
     try:
         info = ma_mod.delete_attribute(
             ctx.backend(), entity, attribute, solution=solution,
+            check_dependencies=check_dependencies,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -717,8 +723,10 @@ def metadata_create_many_to_many(
 @click.argument("schema_name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, require_solution):
+def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, require_solution, check_dependencies):
     """Delete a custom relationship (1:N or N:N) by schema name."""
     if not _confirm_destructive("relationship", schema_name, yes):
         ctx.emit(False, error="aborted by user")
@@ -728,6 +736,7 @@ def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, re
     try:
         info = rel_mod.delete_relationship(
             ctx.backend(), schema_name, solution=solution,
+            check_dependencies=check_dependencies,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -885,8 +894,10 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
 @click.argument("name")
 @click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
 @_solution_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solution):
+def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solution, check_dependencies):
     """Delete a custom global option set."""
     if not _confirm_destructive("option set", name, yes):
         ctx.emit(False, error="aborted by user")
@@ -894,7 +905,8 @@ def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solu
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
     try:
-        info = os_mod.delete_optionset(ctx.backend(), name, solution=solution)
+        info = os_mod.delete_optionset(ctx.backend(), name, solution=solution,
+                                       check_dependencies=check_dependencies)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

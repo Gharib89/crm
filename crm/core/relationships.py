@@ -15,6 +15,7 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
+from crm.core import dependencies as _dependencies
 
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
@@ -60,11 +61,17 @@ def delete_relationship(
     schema_name: str,
     *,
     solution: str | None = None,
+    check_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Delete a custom relationship (1:N or N:N) by schema name.
 
     Pre-flight: refuses if `IsCustomRelationship=False` or `IsManaged=True`.
     Server enforces remaining-dependency checks and returns 4xx on conflict.
+
+    Args:
+        check_dependencies: When True, call RetrieveDependenciesForDelete
+            before the DELETE and fold ``can_delete`` + ``blockers`` into the
+            result. Informational only — does not abort the delete.
     """
     if not schema_name:
         raise D365Error("schema_name is required.")
@@ -82,9 +89,18 @@ def delete_relationship(
             f"{schema_name!r} is managed; uninstall the parent solution to remove it.",
             code="ManagedRelationship",
         )
+    deps = None
+    if check_dependencies:
+        deps = _dependencies.retrieve_dependencies(
+            backend, "relationship", schema_name, for_="delete"
+        )
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
-    return {"deleted": True, "schema_name": schema_name, "solution": solution}
+    result: dict[str, Any] = {"deleted": True, "schema_name": schema_name, "solution": solution}
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result
 
 
 def create_one_to_many(

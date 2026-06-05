@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
+from crm.core import dependencies as _dependencies
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 _STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
@@ -387,6 +388,7 @@ def delete_attribute(
     attribute: str,
     *,
     solution: str | None = None,
+    check_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Delete a custom attribute (column) from an entity.
 
@@ -394,6 +396,11 @@ def delete_attribute(
     sub-attributes (`AttributeOf` set — e.g. a Money's _base or a
     composite's parts, which the server deletes with their parent).
     Server enforces remaining-dependency checks and returns 4xx on conflict.
+
+    Args:
+        check_dependencies: When True, call RetrieveDependenciesForDelete
+            before the DELETE and fold ``can_delete`` + ``blockers`` into the
+            result. Informational only — does not abort the delete.
     """
     if not entity or not attribute:
         raise D365Error("entity and attribute are required.")
@@ -425,14 +432,23 @@ def delete_attribute(
             "delete the parent attribute instead.",
             code="SubAttribute",
         )
+    deps = None
+    if check_dependencies:
+        deps = _dependencies.retrieve_dependencies(
+            backend, "attribute", f"{entity}.{attribute}", for_="delete"
+        )
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
-    return {
+    result: dict[str, Any] = {
         "deleted": True,
         "entity": entity,
         "attribute": attribute,
         "solution": solution,
     }
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result
 
 
 def add_attribute(

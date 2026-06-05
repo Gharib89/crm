@@ -14,6 +14,7 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
+from crm.core import dependencies as _dependencies
 
 
 def _option_label(label_obj: dict[str, Any]) -> str | None:
@@ -353,11 +354,17 @@ def delete_optionset(
     name: str,
     *,
     solution: str | None = None,
+    check_dependencies: bool = False,
 ) -> dict[str, Any]:
     """Delete a custom global option set.
 
     Refuses if `IsCustomOptionSet=False` or `IsManaged=True`. Server
     rejects with 400 if any picklist still references the option set.
+
+    Args:
+        check_dependencies: When True, call RetrieveDependenciesForDelete
+            before the DELETE and fold ``can_delete`` + ``blockers`` into the
+            result. Informational only — does not abort the delete.
     """
     if not name:
         raise D365Error("name is required.")
@@ -375,6 +382,13 @@ def delete_optionset(
             f"{name!r} is managed; uninstall the parent solution to remove it.",
             code="ManagedOptionSet",
         )
+    deps = None
+    if check_dependencies:
+        deps = _dependencies.retrieve_dependencies(backend, "optionset", name, for_="delete")
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.delete(path, extra_headers=headers)
-    return {"deleted": True, "name": name, "solution": solution}
+    result: dict[str, Any] = {"deleted": True, "name": name, "solution": solution}
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result
