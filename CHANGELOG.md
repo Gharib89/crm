@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm data import <ENTITY_SET> <INPUT_FILE>` bulk-imports records via the
+  Dataverse `$batch` endpoint — the only on-prem bulk mechanism (`CreateMultiple`
+  / `UpsertMultiple` are cloud-only). Supports JSONL and CSV input (format
+  inferred from the file suffix; override with `--format`). Two modes:
+  `--mode create` (POST, default) and `--mode upsert` (PATCH by GUID via
+  `--id-column`). Records are sent in chunks of `--chunk-size` (default 100);
+  each chunk is a transactional changeset (atomic, all-or-nothing) by default.
+  `--no-transaction` sends each operation as a top-level batch operation instead.
+  `--continue-on-error` sends `Prefer: odata.continue-on-error` to skip past
+  individual failures — it requires `--no-transaction` (a changeset is itself
+  all-or-nothing; combining the two is rejected with a usage error). CSV values
+  are coerced best-effort (empty→null, `true`/`false`→bool, integers, floats);
+  non-finite tokens (`NaN`/`inf`) and integer-looking strings (`"007"`) are not
+  preserved — use JSONL for IDs, postal codes, and lookup binds. Dry-run via the
+  global `crm --dry-run data import ...` produces zero writes; the summary carries
+  `dry_run: true`. Output: `{imported, failed, chunks, entity_set, mode, dry_run,
+  format}`; `failed > 0` surfaces a `meta.warnings` advisory; exit code is 0 on
+  partial failure, consistent with `crm batch` (#75).
 - `crm connection doctor` (also exposed as the top-level alias `crm doctor`)
   runs a live, ordered connection probe and renders a five-line checklist:
   `dns_tcp`, `tls`, `version` (the configured `api_version`), `auth`, and an

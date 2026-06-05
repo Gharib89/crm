@@ -1,6 +1,6 @@
 ---
 name: crm
-description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, and bulk CSV exports. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
+description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
 ---
 
 # crm
@@ -16,7 +16,7 @@ live D365 server is a hard runtime dependency.
 - Run OData v4 (`$filter`/`$select`/`$top`) or FetchXML queries.
 - Browse schema metadata (entity / attribute / relationship definitions).
 - Export/import D365 solutions (`.zip`).
-- Pull bulk datasets to CSV/JSON for analysis.
+- Pull bulk datasets to CSV/JSON for analysis, or import CSV/JSONL records in bulk.
 - Anything you'd otherwise script against the SOAP Organization Service.
 
 ## Install
@@ -135,7 +135,7 @@ pass `--profile <name>` and confirm the real target with
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
-| `data`       | `export`                                                                                | Bulk CSV/JSON dataset export                   |
+| `data`       | `export`, `import`                                                                      | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
 | _(top)_      | `apply -f spec.yaml`                                                                    | Declarative desired-state (publisher→…→views)  |
@@ -270,6 +270,32 @@ crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue,closeprobability \
     --page-size 500
 ```
+
+### 7a. Bulk import via `$batch`
+
+All writes are routed through `$batch` — the only on-prem bulk mechanism
+(`CreateMultiple`/`UpsertMultiple` are cloud-only).
+
+```bash
+# Create records from a JSONL file (format inferred from suffix)
+crm data import accounts records.jsonl
+
+# Upsert (PATCH by GUID); id-column is stripped from the record body
+crm data import contacts contacts.jsonl --mode upsert --id-column contactid
+
+# CSV import (best-effort coercion; prefer JSONL for IDs / postal codes / lookups)
+crm data import cwx_tickets tickets.csv
+
+# Non-transactional + continue-on-error (requires --no-transaction)
+crm data import accounts large.jsonl \
+    --chunk-size 50 --no-transaction --continue-on-error
+
+# Dry-run preview — zero writes, summary shows imported:0 dry_run:true
+crm --dry-run data import accounts records.jsonl
+```
+
+Output: `{imported, failed, chunks, entity_set, mode, dry_run, format}`.
+`failed > 0` surfaces a `meta.warnings` advisory; exit code is 0 on partial failure.
 
 ### 8. Call an arbitrary OData function
 
