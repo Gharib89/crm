@@ -65,7 +65,7 @@ class TestGuards:
         result = CliRunner().invoke(cli, [
             "data", "import", "accounts", str(f), "--continue-on-error",
         ])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
         assert "--no-transaction" in (result.output + result.stderr)
 
     def test_upsert_without_id_column(self, tmp_path):
@@ -75,7 +75,7 @@ class TestGuards:
         result = CliRunner().invoke(cli, [
             "data", "import", "accounts", str(f), "--mode", "upsert",
         ])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
         assert "--id-column" in (result.output + result.stderr)
 
 
@@ -126,3 +126,46 @@ class TestHappyPath:
         )
         assert dry_run_signal is True
         assert envelope["data"]["imported"] == 0
+
+    def test_csv_format_inferred(self, monkeypatch, tmp_path):
+        """--format csv: suffix→format inference wiring locks data["format"] == "csv"."""
+        csv_file = tmp_path / "accounts.csv"
+        csv_file.write_text("name\nAcme Corp\nGlobex\n", encoding="utf-8")
+        stub = _StubBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "--json", "data", "import", "accounts", str(csv_file),
+        ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)["data"]
+        assert data["format"] == "csv"
+
+    def test_failed_records_warning(self, monkeypatch, jsonl_file):
+        """When some records fail, ok is still true and meta.warnings contains the count."""
+        class _MixedBackend(_StubBackend):
+            def batch(self, ops, *, transactional, continue_on_error, timeout=None):
+                self.calls.append(
+                    {"transactional": transactional, "continue_on_error": continue_on_error}
+                )
+                results = []
+                for i, _ in enumerate(ops):
+                    if i % 2 == 0:
+                        results.append({"method": "POST", "url": "accounts",
+                                        "status": 204, "headers": {}, "body": None, "error": None})
+                    else:
+                        results.append({"method": "POST", "url": "accounts",
+                                        "status": 400, "headers": {}, "body": None,
+                                        "error": "Bad Request"})
+                return results
+
+        stub = _MixedBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "--json", "data", "import", "accounts", str(jsonl_file),
+            "--no-transaction",
+        ])
+        assert result.exit_code == 0, result.output
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        warnings = envelope.get("meta", {}).get("warnings", [])
+        assert any("failed" in w for w in warnings)

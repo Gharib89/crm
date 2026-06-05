@@ -58,7 +58,7 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
 @click.option("--continue-on-error", is_flag=True, default=False,
               help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
 @pass_ctx
-def data_import(ctx, entity_set, input_file, fmt, mode, id_column, chunk_size,
+def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, chunk_size,
                 no_transaction, continue_on_error):
     """Bulk-import records from a JSONL/CSV file via $batch."""
     if continue_on_error and not no_transaction:
@@ -79,4 +79,9 @@ def data_import(ctx, entity_set, input_file, fmt, mode, id_column, chunk_size,
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    warnings = (
+        [f"{info['failed']} record(s) failed to import "
+         f"({info['imported']} succeeded across {info['chunks']} chunk(s))."]
+        if info.get("failed") else None
+    )
+    ctx.emit(True, data=info, warnings=warnings)
