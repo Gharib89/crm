@@ -192,9 +192,13 @@ crm solution export MyCustomSolution -o /tmp/snap.zip
 crm solution extract --zipfile /tmp/snap.zip --folder ./src/MyCustomSolution
 crm solution pack    --zipfile /tmp/built.zip --folder ./src/MyCustomSolution
 
-# Bulk CSV
+# Bulk export
 crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue
+
+# Bulk import (JSONL create; use --mode upsert --id-column <col> for PATCH)
+crm data import accounts records.jsonl
+crm --dry-run data import accounts records.jsonl   # preview: zero writes, dry_run:true
 
 # Discover the CLI surface (no connection needed) — for agents and scripts
 crm --json describe
@@ -232,7 +236,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
 | `solution`   | List / info / components / add-component / remove-component / set-version / export / import / import-result / extract / pack solutions |
-| `data`       | Bulk CSV/JSON dataset export                               |
+| `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state and command history                    |
 
