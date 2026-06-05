@@ -309,6 +309,260 @@ class TestListTypes:
                 plugin.list_types(backend, assembly="Nope")
 
 
+_MSG_ID = "22222222-2222-2222-2222-222222222222"
+_TYPE_ID = "33333333-3333-3333-3333-333333333333"
+_FILTER_ID = "44444444-4444-4444-4444-444444444444"
+_STEP_ID = "55555555-5555-5555-5555-555555555555"
+
+
+def _mock_step_resolution(m, backend, *, message="Create",
+                          plugin_type="Contoso.Plugins.PreCreateAccount",
+                          entity="account", with_filter=True):
+    """Mock the sdkmessages / plugintypes / sdkmessagefilters resolution GETs."""
+    m.get(backend.url_for("sdkmessages"),
+          json={"value": [{"sdkmessageid": _MSG_ID, "name": message}]})
+    m.get(backend.url_for("plugintypes"),
+          json={"value": [{"plugintypeid": _TYPE_ID, "typename": plugin_type}]})
+    if with_filter:
+        m.get(backend.url_for("sdkmessagefilters"),
+              json={"value": [{"sdkmessagefilterid": _FILTER_ID}]})
+
+
+class TestRegisterStep:
+    def test_with_entity_binds_all_three(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
+        assert out["created"] is True
+        assert out["sdkmessageprocessingstepid"] == _STEP_ID
+        body = _posts(m)[0].json()
+        assert body["SdkMessageId@odata.bind"] == f"/sdkmessages({_MSG_ID})"
+        assert body["PluginTypeId@odata.bind"] == f"/plugintypes({_TYPE_ID})"
+        assert body["SdkMessageFilterId@odata.bind"] == \
+            f"/sdkmessagefilters({_FILTER_ID})"
+        # default stage=postoperation(40), mode=sync(0), rank=1
+        assert body["stage"] == 40
+        assert body["mode"] == 0
+        assert body["rank"] == 1
+        # derived default name names type/message/entity
+        assert body["name"] == \
+            "Contoso.Plugins.PreCreateAccount: Create of account"
+        assert out["stage"] == 40
+        assert out["mode"] == 0
+        assert out["message"] == "Create"
+        assert out["entity"] == "account"
+        assert out["plugintype"] == "Contoso.Plugins.PreCreateAccount"
+
+    def test_without_entity_no_filter_bind_and_no_filter_get(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend, with_filter=False)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount")
+        body = _posts(m)[0].json()
+        assert "SdkMessageFilterId@odata.bind" not in body
+        # no GET to sdkmessagefilters when entity is None
+        assert not any("sdkmessagefilters" in r.url for r in m.request_history)
+        # derived default names "any entity"
+        assert body["name"] == \
+            "Contoso.Plugins.PreCreateAccount: Create of any entity"
+        assert out["entity"] is None
+
+    def test_explicit_name_wins(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                name="My Custom Step")
+        assert _posts(m)[0].json()["name"] == "My Custom Step"
+
+    def test_filtering_attributes_passed_through(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Update",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                filtering_attributes="a,b")
+        assert _posts(m)[0].json()["filteringattributes"] == "a,b"
+
+    def test_no_filtering_attributes_key_when_absent(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
+        assert "filteringattributes" not in _posts(m)[0].json()
+
+    def test_stage_and_mode_word_to_int(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                stage="preoperation", mode="async", rank=7)
+        body = _posts(m)[0].json()
+        assert body["stage"] == 20
+        assert body["mode"] == 1
+        assert body["rank"] == 7
+        assert out["stage"] == 20
+        assert out["mode"] == 1
+
+    def test_prevalidation_maps_to_ten(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                stage="prevalidation")
+        assert _posts(m)[0].json()["stage"] == 10
+
+    def test_unknown_stage_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="stage"):
+                plugin.register_step(
+                    backend, message="Create",
+                    plugin_type="Contoso.Plugins.PreCreateAccount",
+                    stage="bogus")
+        # validation happens before any HTTP call
+        assert m.request_history == []
+
+    def test_unknown_mode_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="mode"):
+                plugin.register_step(
+                    backend, message="Create",
+                    plugin_type="Contoso.Plugins.PreCreateAccount",
+                    mode="bogus")
+        assert m.request_history == []
+
+    def test_message_not_found_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessages"), json={"value": []})
+            with pytest.raises(D365Error, match="[Mm]essage"):
+                plugin.register_step(
+                    backend, message="Nope",
+                    plugin_type="Contoso.Plugins.PreCreateAccount")
+        assert not _posts(m)
+
+    def test_plugintype_not_found_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessages"),
+                  json={"value": [{"sdkmessageid": _MSG_ID, "name": "Create"}]})
+            m.get(backend.url_for("plugintypes"), json={"value": []})
+            with pytest.raises(D365Error, match="[Pp]lug-?in type"):
+                plugin.register_step(
+                    backend, message="Create",
+                    plugin_type="Contoso.Plugins.Missing")
+        assert not _posts(m)
+
+    def test_entity_without_filter_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend, with_filter=False)
+            m.get(backend.url_for("sdkmessagefilters"), json={"value": []})
+            with pytest.raises(D365Error, match="account"):
+                plugin.register_step(
+                    backend, message="Create",
+                    plugin_type="Contoso.Plugins.PreCreateAccount",
+                    entity="account")
+        assert not _posts(m)
+
+    def test_filter_get_scoped_by_message_and_entity(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
+        filt = next(r for r in m.request_history if "sdkmessagefilters" in r.url)
+        assert filt.qs["$filter"] == [
+            f"primaryobjecttypecode eq 'account' and _sdkmessageid_value eq {_MSG_ID}"
+        ]
+
+    def test_assembly_scopes_plugintype_lookup(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            # assembly name -> pluginassemblyid (via _resolve_id_by_name)
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            _mock_step_resolution(m, backend, with_filter=False)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount",
+                assembly="Contoso.Plugins")
+        types = next(r for r in m.request_history
+                     if r.url.split("?")[0].endswith("plugintypes"))
+        assert types.qs["$filter"] == [
+            f"typename eq 'contoso.plugins.precreateaccount' "
+            f"and _pluginassemblyid_value eq {_PA_ID}"
+        ]
+
+    def test_unparseable_id_sets_lookup_error(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": "https://x/sdkmessageprocessingsteps(bogus)"})
+            out = plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
+        assert out["created"] is True
+        assert out["sdkmessageprocessingstepid"] is None
+        assert "sdkmessageprocessingstep_lookup_error" in out
+
+    def test_dry_run_returns_preview_no_post(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, dry)
+            out = plugin.register_step(
+                dry, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
+        assert out["_dry_run"] is True
+        assert not _posts(m)
+
+
 class TestPluginCommands:
     def test_register_assembly_command_wires_core(self, monkeypatch):
         import json
@@ -478,6 +732,88 @@ class TestPluginCommands:
         monkeypatch.setattr("crm.core.plugin.list_types", boom)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, ["--json", "plugin", "list-types"])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "boom" in env["error"]
+
+    def test_register_step_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_step(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "sdkmessageprocessingstepid": _STEP_ID,
+                    "name": "step", "stage": 40, "mode": 0,
+                    "message": "Create", "entity": "account",
+                    "plugintype": "Contoso.Plugins.PreCreateAccount"}
+
+        monkeypatch.setattr("crm.core.plugin.register_step", fake_step)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-step",
+            "--message", "Create",
+            "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+            "--entity", "account",
+            "--stage", "preoperation", "--mode", "async", "--rank", "5",
+            "--filtering-attributes", "name,telephone1",
+            "--name", "My Step", "--assembly", "Contoso.Plugins",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["message"] == "Create"
+        assert captured["plugin_type"] == "Contoso.Plugins.PreCreateAccount"
+        assert captured["entity"] == "account"
+        assert captured["stage"] == "preoperation"
+        assert captured["mode"] == "async"
+        assert captured["rank"] == 5
+        assert captured["filtering_attributes"] == "name,telephone1"
+        assert captured["name"] == "My Step"
+        assert captured["assembly"] == "Contoso.Plugins"
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["sdkmessageprocessingstepid"] == _STEP_ID
+
+    def test_register_step_command_defaults(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        monkeypatch.setattr(
+            "crm.core.plugin.register_step",
+            lambda backend, **kw: captured.update(kw) or {
+                "created": True, "sdkmessageprocessingstepid": _STEP_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-step",
+            "--message", "Create",
+            "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["entity"] is None
+        assert captured["stage"] == "postoperation"
+        assert captured["mode"] == "sync"
+        assert captured["rank"] == 1
+        assert captured["filtering_attributes"] is None
+        assert captured["name"] is None
+        assert captured["assembly"] is None
+
+    def test_register_step_command_handles_d365_error(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+
+        def boom(backend, **kw):
+            raise D365Error("boom", status=400)
+
+        monkeypatch.setattr("crm.core.plugin.register_step", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-step",
+            "--message", "Create",
+            "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+        ])
         assert result.exit_code != 0
         env = json.loads(result.output)
         assert env["ok"] is False

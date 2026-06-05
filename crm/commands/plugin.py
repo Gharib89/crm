@@ -76,6 +76,47 @@ def list_types_cmd(ctx: CLIContext, assembly):
              meta={"count": len(items)})
 
 
+@plugin_group.command("register-step")
+@click.option("--message", required=True,
+              help="SDK message name (e.g. Create, Update, Delete).")
+@click.option("--plugin-type", "plugin_type", required=True,
+              help="Plug-in type name (the fully qualified typename).")
+@click.option("--entity", default=None,
+              help="Primary entity logical name (primaryobjecttypecode). "
+                   "Omit for a message-level step (all entities).")
+@click.option("--stage",
+              type=click.Choice(["prevalidation", "preoperation",
+                                  "postoperation"]),
+              default="postoperation",
+              help="Pipeline stage (prevalidation=10, preoperation=20, "
+                   "postoperation=40). Default: postoperation.")
+@click.option("--mode", type=click.Choice(["sync", "async"]), default="sync",
+              help="Execution mode (sync=0, async=1). Default: sync.")
+@click.option("--rank", type=int, default=1,
+              help="Execution order within the stage. Default: 1.")
+@click.option("--filtering-attributes", "filtering_attributes", default=None,
+              help="Comma-separated attributes that trigger the step (Update).")
+@click.option("--name", default=None,
+              help="Step name; defaults to a derived label.")
+@click.option("--assembly", default=None,
+              help="Scope the plug-in type lookup to this assembly (by name).")
+@pass_ctx
+def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
+                      mode, rank, filtering_attributes, name, assembly):
+    """Register a plug-in step (sdkmessageprocessingstep)."""
+    try:
+        info = plugin_mod.register_step(
+            ctx.backend(), message=message, plugin_type=plugin_type,
+            entity=entity, stage=stage, mode=mode, rank=rank,
+            filtering_attributes=filtering_attributes, name=name,
+            assembly=assembly)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    _emit_with_warning(ctx, info, None,
+                       meta={"staged": True} if ctx.stage_only else None)
+
+
 def _ignored_update_flags_warning(
     update, version, culture, public_key_token, description,
 ) -> str | None:

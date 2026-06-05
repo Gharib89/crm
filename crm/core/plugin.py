@@ -45,6 +45,19 @@ _DEFAULT_PUBLIC_KEY_TOKEN = "null"
 # sourcetype 0 = Database (default); the only mode v1 supports.
 _SOURCE_TYPE_DATABASE = 0
 
+# Step stage -> sdkmessageprocessingstep.stage option set (verified MS Learn):
+# prevalidation=10, preoperation=20, postoperation=40.
+_STAGE: dict[str, int] = {
+    "prevalidation": 10,
+    "preoperation": 20,
+    "postoperation": 40,
+}
+# Step mode -> sdkmessageprocessingstep.mode option set (sync=0, async=1).
+_MODE: dict[str, int] = {
+    "sync": 0,
+    "async": 1,
+}
+
 
 def register_assembly(
     backend: D365Backend,
@@ -153,6 +166,164 @@ def list_types(
     rows: list[dict[str, Any]] = as_dict(backend.get(
         "plugintypes", params=params)).get("value", [])
     return {"value": rows}
+
+
+def register_step(
+    backend: D365Backend,
+    *,
+    message: str,
+    plugin_type: str,
+    entity: str | None = None,
+    stage: str = "postoperation",
+    mode: str = "sync",
+    rank: int = 1,
+    filtering_attributes: str | None = None,
+    name: str | None = None,
+    assembly: str | None = None,
+) -> dict[str, Any]:
+    """Register an `sdkmessageprocessingstep` (a plug-in step).
+
+    Resolves the SDK message (by `message` name) and the plug-in type (by
+    `plugin_type` typename, optionally scoped to `assembly` by name) to their
+    ids, then POSTs a step bound to them. When `entity` is given, the message's
+    `sdkmessagefilter` for that `primaryobjecttypecode` is resolved and bound so
+    the step fires only for that entity; with no `entity` the step is
+    message-level (fires for all entities). A missing message, plug-in type, or
+    (entity-given) filter raises D365Error.
+
+    Option-set values verified against MS Learn's sdkmessageprocessingstep
+    entity reference: stage prevalidation=10 / preoperation=20 /
+    postoperation=40; mode sync=0 / async=1. Raises D365Error on an unknown
+    stage or mode.
+
+    Dry-run returns the backend preview as-is (no real POST).
+    """
+    if stage not in _STAGE:
+        raise D365Error(
+            f"Unknown stage {stage!r}; choose from {sorted(_STAGE)}.")
+    if mode not in _MODE:
+        raise D365Error(
+            f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
+    stage_int = _STAGE[stage]
+    mode_int = _MODE[mode]
+
+    message_id = _resolve_sdkmessage_id(backend, message)
+    plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
+
+    resolved_name = name or (
+        f"{plugin_type}: {message} of {entity or 'any entity'}")
+    body: dict[str, Any] = {
+        "name": resolved_name,
+        "stage": stage_int,
+        "mode": mode_int,
+        "rank": rank,
+        "SdkMessageId@odata.bind": f"/sdkmessages({message_id})",
+        "PluginTypeId@odata.bind": f"/plugintypes({plugintype_id})",
+    }
+    if entity is not None:
+        filter_id = _resolve_sdkmessagefilter_id(backend, entity, message_id)
+        body["SdkMessageFilterId@odata.bind"] = (
+            f"/sdkmessagefilters({filter_id})")
+    if filtering_attributes is not None:
+        body["filteringattributes"] = filtering_attributes
+
+    result = as_dict(backend.post("sdkmessageprocessingsteps", json_body=body))
+    if result.get("_dry_run"):
+        return result
+
+    entity_id_url = result.get("_entity_id_url") or ""
+    m = re.search(
+        r"sdkmessageprocessingsteps\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    sid = m.group(1) if m else None
+    out: dict[str, Any] = {
+        "created": True,
+        "sdkmessageprocessingstepid": sid,
+        "name": resolved_name,
+        "stage": stage_int,
+        "mode": mode_int,
+        "message": message,
+        "entity": entity,
+        "plugintype": plugin_type,
+    }
+    if not sid:
+        out["sdkmessageprocessingstep_lookup_error"] = (
+            "Could not parse sdkmessageprocessingstepid from response: "
+            f"{entity_id_url!r}"
+        )
+    return out
+
+
+def _force_read_rows(
+    backend: D365Backend, entity_set: str, params: dict[str, str],
+) -> list[dict[str, Any]]:
+    """GET `entity_set` rows, forcing a real read even under dry-run.
+
+    A step is POSTed only after its bound ids are resolved, so the resolution
+    GETs must run for real even in dry-run (mirrors `_resolve_id_by_name`).
+    """
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        return as_dict(backend.get(entity_set, params=params)).get("value", [])
+    finally:
+        backend.dry_run = was_dry
+
+
+def _resolve_sdkmessage_id(backend: D365Backend, message: str) -> str:
+    """Resolve an SDK message id by exact name (e.g. Create/Update/Delete)."""
+    esc = message.replace("'", "''")
+    rows = _force_read_rows(
+        backend, "sdkmessages",
+        {"$filter": f"name eq '{esc}'", "$select": "sdkmessageid,name"})
+    if not rows or not rows[0].get("sdkmessageid"):
+        raise D365Error(
+            f"SDK message not found: {message}", code="SdkMessageNotFound")
+    return str(rows[0]["sdkmessageid"])
+
+
+def _resolve_plugintype_id(
+    backend: D365Backend, typename: str, assembly: str | None,
+) -> str:
+    """Resolve a plug-in type id by typename, optionally scoped to an assembly.
+
+    When `assembly` (an assembly NAME) is given it is resolved to a
+    `pluginassemblyid` and ANDed into the filter to disambiguate. Without it the
+    first matching row is used.
+    """
+    esc = typename.replace("'", "''")
+    filt = f"typename eq '{esc}'"
+    if assembly is not None:
+        pid = _resolve_id_by_name(backend, assembly)
+        filt += f" and _pluginassemblyid_value eq {pid}"
+    rows = _force_read_rows(
+        backend, "plugintypes",
+        {"$filter": filt, "$select": "plugintypeid,typename"})
+    if not rows or not rows[0].get("plugintypeid"):
+        raise D365Error(
+            f"Plug-in type not found: {typename}", code="PluginTypeNotFound")
+    return str(rows[0]["plugintypeid"])
+
+
+def _resolve_sdkmessagefilter_id(
+    backend: D365Backend, entity: str, message_id: str,
+) -> str:
+    """Resolve the sdkmessagefilter id for an entity + message pair.
+
+    Raises D365Error when the message does not support the entity (no filter
+    row), since binding one is required for an entity-scoped step.
+    """
+    esc = entity.replace("'", "''")
+    filt = (f"primaryobjecttypecode eq '{esc}' "
+            f"and _sdkmessageid_value eq {message_id}")
+    rows = _force_read_rows(
+        backend, "sdkmessagefilters",
+        {"$filter": filt, "$select": "sdkmessagefilterid"})
+    if not rows or not rows[0].get("sdkmessagefilterid"):
+        raise D365Error(
+            f"No SDK message filter for entity {entity!r} on this message "
+            "(that message does not support that entity).",
+            code="SdkMessageFilterNotFound")
+    return str(rows[0]["sdkmessagefilterid"])
 
 
 def _update_assembly_content(
