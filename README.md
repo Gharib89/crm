@@ -11,7 +11,7 @@ optimized for AI agents or shell scripting. This harness gives you:
 
 - `crm` in your `PATH`
 - One-shot subcommands for record CRUD, OData and FetchXML queries, metadata
-  introspection, and solution lifecycle
+  introspection, solution lifecycle, and plug-in assembly + step registration
 - A stateful REPL for ad-hoc admin work
 - `--json` everywhere for agent consumption
 - `--dry-run` to preview the HTTP request before issuing it

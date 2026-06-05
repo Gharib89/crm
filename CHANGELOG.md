@@ -17,6 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to build the diff; no POSTs are issued.
 
 **Added**
+- `crm plugin` command group: register and manage Dynamics 365 plug-in assemblies
+  and processing steps via the `pluginassemblies` / `plugintypes` /
+  `sdkmessageprocessingsteps` Web API entity sets.
+  `register-assembly PATH` uploads a `.dll` as a plug-in assembly (base64-encoded
+  into `content`); `--update` re-uploads the binary of an existing assembly by name
+  without touching its identity metadata. `list-types` lists platform-generated
+  plug-in types (`typename`, `friendlyname`, `plugintypeid`), optionally filtered
+  by `--assembly NAME`. `register-step` registers an `sdkmessageprocessingstep`
+  bound to a message (`--message Create/Update/…`) and a fully qualified type
+  (`--plugin-type`); stage (`prevalidation`/`preoperation`/`postoperation`) and
+  mode (`sync`/`async`) are configurable — async forces `postoperation` (other
+  combinations are rejected). The step name is auto-derived as
+  `<typename>: <message> of <entity>` (pass `--name` when the derived string would
+  exceed 256 chars). `unregister-assembly ASSEMBLY` cascades — it deletes dependent
+  steps first, then the assembly. `unregister-step STEP` deletes a step by name or
+  GUID; an ambiguous name errors. `--solution` sends `MSCRM.SolutionUniqueName` on
+  the writes. `--dry-run` skips all writes (resolution GETs still fire). `--json`
+  mode returns the standard `{ok, data, meta}` envelope (#80).
 - `crm app build-sitemap <SITEMAP_NAME>` builds a valid SiteMapXml from
   structured input and creates the sitemap. Three repeatable options describe the
   tree: `--area 'id[:Title]'` (at least one required), `--group 'areaId/groupId[:Title]'`
