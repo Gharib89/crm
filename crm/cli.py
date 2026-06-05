@@ -271,6 +271,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "skill": "crm.commands.skill:skill_group",
         "solution": "crm.commands.solution:solution_group",
         "view": "crm.commands.view:view_group",
+        "webresource": "crm.commands.webresource:webresource_group",
         "workflow": "crm.commands.workflow:workflow_group",
     }
 

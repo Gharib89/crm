@@ -16,6 +16,7 @@ live D365 server is a hard runtime dependency.
 - Run OData v4 (`$filter`/`$select`/`$top`) or FetchXML queries.
 - Browse schema metadata (entity / attribute / relationship definitions).
 - Export/import D365 solutions (`.zip`).
+- Manage **web resources** (HTML/JS/CSS/images) and set model-driven app icons.
 - Pull bulk datasets to CSV/JSON for analysis, or import CSV/JSONL records in bulk.
 - Anything you'd otherwise script against the SOAP Organization Service.
 
@@ -135,6 +136,7 @@ pass `--profile <name>` and confirm the real target with
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`                                               | Model-driven apps (appmodule)                  |
+| `webresource`| `create`, `update`, `get`, `list`                                                       | Web resources (HTML/JS/CSS/images) + app icons |
 | `data`       | `export`, `import`                                                                      | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
@@ -485,6 +487,33 @@ crm --json app add-components <appmoduleid> \
 # sitemapnameunique to auto-associate the sitemap with that app.
 crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml --unique-name cwx_crmworx
 ```
+
+## Web resources — `webresource` (HTML/JS/CSS/images)
+
+```bash
+# create: --file bytes are base64'd into `content`; webresourcetype is inferred
+# from the extension (.html=1, .css=2, .js=3, .xml=4, .png=5, .jpg=6, .gif=7,
+# .xap=8, .xsl=9, .ico=10, .svg=11, .resx=12 — the real D365 option set, so
+# CSS=2 and 8 is Silverlight). --display-name defaults to --name; --type <int>
+# overrides inference (an unknown extension without --type is rejected).
+crm --json webresource create --name cwx_/scripts/ribbon.js --file ./ribbon.js --solution cwx_crmworx
+
+# update <name>: plain PATCH of only the sent fields (content from --file and/or
+# --display-name; at least one required), resolved by name — not retrieve-merge.
+crm --json webresource update cwx_/scripts/ribbon.js --file ./ribbon.js
+
+# inspect
+crm --json webresource get cwx_/scripts/ribbon.js
+crm --json webresource list --custom-only
+
+# use as a model-driven app icon: --icon-webresource takes a name or a GUID
+# (omit to keep the platform default icon).
+crm --json webresource create --name cwx_/icons/app.svg --file ./app.svg
+crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresource cwx_/icons/app.svg
+```
+
+Both `create` and `update` honor `--solution` (`MSCRM.SolutionUniqueName`) and
+publish after the write (`--no-publish` / global `--stage-only` suppress it).
 
 ## Declarative apply — `apply -f spec.yaml`
 
