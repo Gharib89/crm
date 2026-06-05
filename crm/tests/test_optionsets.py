@@ -190,6 +190,174 @@ class TestUpdateOptionset:
         with pytest.raises(D365Error, match="nothing to update"):
             os_mod.update_optionset(backend, "new_priority")
 
+    # --- dry-run diff tests ---
+
+    def test_dryrun_fires_get_for_diff(self, profile):
+        """GET must fire under dry-run; no POST must be issued."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={
+                    "Name": "new_priority",
+                    "Options": [
+                        {"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Low"}]}},
+                        {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "Medium"}]}},
+                    ],
+                },
+            )
+            result = os_mod.update_optionset(
+                dry_backend, "new_priority",
+                insert=[(7, "Critical")],
+            )
+        # GET for diff must have fired
+        get_reqs = [r for r in m.request_history if r.method == "GET"]
+        assert len(get_reqs) == 1
+        assert "GlobalOptionSetDefinitions" in get_reqs[0].url
+        # No POSTs at all
+        post_reqs = [r for r in m.request_history if r.method == "POST"]
+        assert post_reqs == []
+        # Returns dry-run envelope, not false updated:True
+        assert result.get("_dry_run") is True
+        assert not result.get("updated")
+
+    def test_dryrun_diff_classification(self, profile):
+        """Diff must classify insert / update / delete / reorder correctly."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={
+                    "Name": "new_priority",
+                    "Options": [
+                        {"Value": 1, "Label": {"LocalizedLabels": [{"Label": "Low"}]}},
+                        {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "Medium"}]}},
+                        {"Value": 3, "Label": {"LocalizedLabels": [{"Label": "High"}]}},
+                    ],
+                },
+            )
+            result = os_mod.update_optionset(
+                dry_backend, "new_priority",
+                insert=[(7, "Critical")],
+                update=[(2, "Mid")],
+                delete=[3],
+                reorder=[1, 2, 7],
+            )
+        diff = result["diff"]
+        # inserts
+        assert diff["inserts"] == [{"value": 7, "label": "Critical"}]
+        # updates with old_label
+        assert diff["updates"] == [{"value": 2, "old_label": "Medium", "new_label": "Mid"}]
+        # deletes with old_label
+        assert diff["deletes"] == [{"value": 3, "old_label": "High"}]
+        # reorder
+        assert diff["reorder"]["old"] == [1, 2, 3]
+        assert diff["reorder"]["new"] == [1, 2, 7]
+
+    def test_dryrun_return_shape(self, profile):
+        """Dry-run returns _dry_run:True, name, diff, actions; no updated key."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority", "Options": []},
+            )
+            result = os_mod.update_optionset(
+                dry_backend, "new_priority",
+                insert=[(None, "Auto")],
+            )
+        assert result["_dry_run"] is True
+        assert result["name"] == "new_priority"
+        assert "diff" in result
+        assert "actions" in result
+        assert "updated" not in result
+
+    def test_dryrun_actions_in_dispatch_order(self, profile):
+        """actions list captures bodies in insert→update→delete→reorder order."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={
+                    "Name": "new_priority",
+                    "Options": [
+                        {"Value": 2, "Label": {"LocalizedLabels": [{"Label": "Medium"}]}},
+                    ],
+                },
+            )
+            result = os_mod.update_optionset(
+                dry_backend, "new_priority",
+                insert=[(7, "Critical")],
+                update=[(2, "Mid")],
+                delete=[2],
+                reorder=[7, 2],
+            )
+        actions = result["actions"]
+        assert len(actions) == 4  # insert, update, delete, reorder
+        # First action is insert
+        assert actions[0]["OptionSetName"] == "new_priority"
+        assert actions[0]["Value"] == 7
+        # Last action is reorder
+        assert actions[3]["Values"] == [7, 2]
+
+    def test_dryrun_old_label_none_for_missing_value(self, profile):
+        """old_label is None when the value doesn't exist in current options."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority", "Options": []},
+            )
+            result = os_mod.update_optionset(
+                dry_backend, "new_priority",
+                update=[(99, "Ghost")],
+            )
+        assert result["diff"]["updates"] == [
+            {"value": 99, "old_label": None, "new_label": "Ghost"}
+        ]
+
+    def test_dryrun_no_reorder_key_when_absent(self, profile):
+        """reorder key is absent from diff when no reorder is requested."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority", "Options": []},
+            )
+            result = os_mod.update_optionset(
+                dry_backend, "new_priority",
+                insert=[(1, "One")],
+            )
+        assert "reorder" not in result["diff"]
+
+    def test_dryrun_empty_insert_label_still_raises(self, profile):
+        """Validation must still fire under dry-run; empty label raises D365Error."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with pytest.raises(D365Error, match="insert label must not be empty"):
+            os_mod.update_optionset(
+                dry_backend, "new_priority",
+                insert=[(1, "")],
+            )
+
+    def test_dryrun_empty_update_label_still_raises(self, profile):
+        """Empty update label raises before the dry-run branch, no GET/POST fired."""
+        from crm.core import optionsets as os_mod
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="update label must not be empty"):
+                os_mod.update_optionset(
+                    dry_backend, "new_priority",
+                    update=[(1, "")],
+                )
+            assert m.request_history == []
+
 
 class TestDeleteOptionset:
     def test_refuses_non_custom(self, backend):

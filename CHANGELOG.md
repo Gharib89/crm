@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Fixed**
+- `crm metadata update-optionset --dry-run` previously returned `{"updated": true, ...}`,
+  incorrectly signalling a completed write. Under dry-run it now returns
+  `{"_dry_run": true, "name": ..., "diff": {...}, "actions": [...]}` (#77).
+  The `diff` classifies each pending change as `inserts` / `updates` (with
+  `old_label` / `new_label` looked up from the live option set) / `deletes` (with
+  `old_label`) / `reorder` (`{old, new}` value lists). The live GET fires for real
+  to build the diff; no POSTs are issued.
+
 **Added**
 - `crm data import <ENTITY_SET> <INPUT_FILE>` bulk-imports records via the
   Dataverse `$batch` endpoint — the only on-prem bulk mechanism (`CreateMultiple`
