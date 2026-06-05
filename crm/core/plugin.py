@@ -196,6 +196,11 @@ def register_step(
     postoperation=40; mode sync=0 / async=1. Raises D365Error on an unknown
     stage or mode.
 
+    Async (`mode="async"`) requires the postoperation stage (enforced here):
+    other stages raise D365Error. The derived default `name` plus a very long
+    fully-qualified typename can exceed the platform's 256-char `name` limit —
+    pass `name` explicitly if so (the server enforces the limit, not this code).
+
     Dry-run returns the backend preview as-is (no real POST).
     """
     if stage not in _STAGE:
@@ -206,6 +211,12 @@ def register_step(
             f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
     stage_int = _STAGE[stage]
     mode_int = _MODE[mode]
+    # Async plug-ins can only run in the postoperation stage (MS Learn:
+    # register-plug-in#step-registration). Guard before any HTTP call.
+    if mode_int == 1 and stage_int != 40:
+        raise D365Error(
+            f"Asynchronous mode requires the postoperation stage (got {stage!r}).",
+            code="AsyncRequiresPostOperation")
 
     message_id = _resolve_sdkmessage_id(backend, message)
     plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
@@ -358,15 +369,9 @@ def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
     mirrors webresource._resolve_id_by_name).
     """
     esc = name.replace("'", "''")
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        rows: list[dict[str, Any]] = as_dict(backend.get(
-            "pluginassemblies",
-            params={"$filter": f"name eq '{esc}'", "$select": "pluginassemblyid"},
-        )).get("value", [])
-    finally:
-        backend.dry_run = was_dry
+    rows = _force_read_rows(
+        backend, "pluginassemblies",
+        {"$filter": f"name eq '{esc}'", "$select": "pluginassemblyid"})
     if not rows:
         raise D365Error(
             f"Plug-in assembly not found: {name}", code="PluginAssemblyNotFound")

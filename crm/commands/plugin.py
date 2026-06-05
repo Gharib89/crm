@@ -91,13 +91,15 @@ def list_types_cmd(ctx: CLIContext, assembly):
               help="Pipeline stage (prevalidation=10, preoperation=20, "
                    "postoperation=40). Default: postoperation.")
 @click.option("--mode", type=click.Choice(["sync", "async"]), default="sync",
-              help="Execution mode (sync=0, async=1). Default: sync.")
+              help="Execution mode (sync=0, async=1). Default: sync. "
+                   "async requires --stage postoperation.")
 @click.option("--rank", type=int, default=1,
               help="Execution order within the stage. Default: 1.")
 @click.option("--filtering-attributes", "filtering_attributes", default=None,
               help="Comma-separated attributes that trigger the step (Update).")
 @click.option("--name", default=None,
-              help="Step name; defaults to a derived label.")
+              help="Step name; defaults to a derived label. Pass explicitly if "
+                   "the derived name would exceed the platform's 256-char limit.")
 @click.option("--assembly", default=None,
               help="Scope the plug-in type lookup to this assembly (by name).")
 @pass_ctx

@@ -426,13 +426,13 @@ class TestRegisterStep:
             out = plugin.register_step(
                 backend, message="Create",
                 plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
-                stage="preoperation", mode="async", rank=7)
+                stage="preoperation", mode="sync", rank=7)
         body = _posts(m)[0].json()
         assert body["stage"] == 20
-        assert body["mode"] == 1
+        assert body["mode"] == 0
         assert body["rank"] == 7
         assert out["stage"] == 20
-        assert out["mode"] == 1
+        assert out["mode"] == 0
 
     def test_prevalidation_maps_to_ten(self, backend):
         from crm.core import plugin
@@ -467,6 +467,33 @@ class TestRegisterStep:
                     plugin_type="Contoso.Plugins.PreCreateAccount",
                     mode="bogus")
         assert m.request_history == []
+
+    def test_async_non_postoperation_raises_no_http(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="postoperation"):
+                plugin.register_step(
+                    backend, message="Create",
+                    plugin_type="Contoso.Plugins.PreCreateAccount",
+                    mode="async", stage="preoperation")
+        # guard fires before any resolution/POST
+        assert m.request_history == []
+
+    def test_async_postoperation_allowed(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                mode="async", stage="postoperation")
+        assert out["created"] is True
+        body = _posts(m)[0].json()
+        assert body["mode"] == 1
+        assert body["stage"] == 40
 
     def test_message_not_found_raises(self, backend):
         from crm.core import plugin
