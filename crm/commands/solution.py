@@ -77,7 +77,7 @@ def solution_info_cmd(ctx: CLIContext, unique_name):
               type=click.Path(exists=True, dir_okay=False, readable=True),
               help="Compare live components against this saved JSON snapshot; exits non-zero on drift.")
 @click.option("--save", "save_path", default=None,
-              type=click.Path(dir_okay=False, writable=True),
+              type=click.Path(dir_okay=False),
               help="Write a normalized component inventory to this path as JSON.")
 @pass_ctx
 def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):

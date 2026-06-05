@@ -40,6 +40,13 @@ class TestNormalizeComponents:
         result = sol_mod.normalize_components(raw)
         assert result[0]["objectid"] == _A.lower()
 
+    @pytest.mark.parametrize("bad_objectid", [None, 123, ["x"]])
+    def test_non_string_objectid_rejected(self, bad_objectid):
+        # A malformed snapshot must fail fast, not silently coerce null -> "none".
+        raw = [{"componenttype": 1, "objectid": bad_objectid, "rootcomponentbehavior": 0}]
+        with pytest.raises(ValueError, match="objectid must be a string"):
+            sol_mod.normalize_components(raw)
+
     def test_rootcomponentbehavior_missing_becomes_none(self):
         raw = [{"componenttype": 1, "objectid": _A}]
         result = sol_mod.normalize_components(raw)
@@ -307,6 +314,20 @@ class TestComponentsDiffSave:
         bad_file = tmp_path / "bad2.json"
         bad_file.write_text(
             json.dumps(["notadict"]),
+            encoding="utf-8",
+        )
+        result = self._invoke("--diff", str(bad_file))
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert "Malformed" in data["error"] or str(bad_file) in data["error"]
+
+    # 8. --diff with a null objectid → exit 1, clean ok=False envelope (no "none" coercion)
+    def test_diff_malformed_null_objectid(self, monkeypatch, tmp_path):
+        self._patch(monkeypatch)
+        bad_file = tmp_path / "bad3.json"
+        bad_file.write_text(
+            json.dumps([{"componenttype": 1, "objectid": None, "rootcomponentbehavior": 0}]),
             encoding="utf-8",
         )
         result = self._invoke("--diff", str(bad_file))

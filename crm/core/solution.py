@@ -428,7 +428,10 @@ def normalize_components(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return a new, sorted list with exactly the three canonical keys.
 
     - ``componenttype``        → coerced to ``int``
-    - ``objectid``             → lowercased ``str`` (stable GUID matching)
+    - ``objectid``             → lowercased ``str`` (stable GUID matching);
+      a non-string ``objectid`` raises ``ValueError`` rather than being coerced,
+      so a malformed snapshot (e.g. ``{"objectid": null}``) fails fast instead
+      of silently becoming the literal string ``"none"``
     - ``rootcomponentbehavior`` → ``int`` or ``None`` (missing/None preserved)
 
     Input rows are not mutated.  The sort key is
@@ -438,11 +441,16 @@ def normalize_components(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     out: list[dict[str, Any]] = []
     for row in items:
+        objectid = row["objectid"]
+        if not isinstance(objectid, str):
+            raise ValueError(
+                f"objectid must be a string, got {type(objectid).__name__}"
+            )
         rcb_raw = row.get("rootcomponentbehavior")
         rcb: int | None = None if rcb_raw is None else int(rcb_raw)
         out.append({
             "componenttype": int(row["componenttype"]),
-            "objectid": str(row["objectid"]).lower(),
+            "objectid": objectid.lower(),
             "rootcomponentbehavior": rcb,
         })
     out.sort(key=lambda c: (
