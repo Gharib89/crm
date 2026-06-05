@@ -158,6 +158,10 @@ prompt. Explicit `crm repl` always launches.
 ### One-shot subcommands
 
 ```bash
+# Preflight diagnostic — pinpoints which layer is broken (DNS/TLS/version/auth)
+crm connection doctor          # or: crm doctor
+crm --json connection doctor   # JSON: {ok, data:{checks:[{check,ok,detail,hint}]}}
+
 # Identity check
 crm --json connection whoami
 
@@ -222,7 +226,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 
 | Group        | Purpose                                                    |
 |--------------|------------------------------------------------------------|
-| `connection` | Profiles, WhoAmI, reachability checks                      |
+| `connection` | Profiles, WhoAmI, preflight diagnostic (`doctor`), reachability checks |
 | `entity`     | Record CRUD (get/create/update/upsert/delete)              |
 | `query`      | OData v4 and FetchXML queries                              |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
