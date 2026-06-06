@@ -67,13 +67,14 @@ Each line is a JSON object with these keys (in order):
 | `solution` | string \| null | Target solution unique name, or null |
 | `staged` | bool | Whether `--stage-only` was active |
 | `dry_run` | bool | Whether `--dry-run` was active |
-| `ok` | bool | Whether the command succeeded |
+| `ok` | bool | Always `true` — only successful commands are journaled (a failing command raises before the journal write) |
 | `result_id` | string \| null | GUID of the created/affected record when derivable, else null |
 
 ### Guarantees
 
 - **Payload never stored** — only the metadata above is recorded; no request bodies, field values, or secrets.
 - **Reads never journaled** — only mutating verbs write to the journal.
+- **Only successes journaled** — a command that errors out raises before the journal write, so failures never appear.
 - **`--dry-run` previews are journaled** with `dry_run: true`, so a preview is never mistaken for a real change.
 - **Append-only with fsync** — a crash mid-write cannot corrupt earlier lines.
 
