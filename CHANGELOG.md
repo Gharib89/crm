@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v0.13.1 (2026-06-06)
+
+### Bug Fixes
+
+- **repl**: Keep --session sticky across REPL command lines
+  ([#128](https://github.com/Gharib89/crm/pull/128),
+  [`a53577b`](https://github.com/Gharib89/crm/commit/a53577bc051405672e31606e32f9df8afc7b1b8d))
+
+
 ## v0.13.0 (2026-06-06)
 
 ### Features
