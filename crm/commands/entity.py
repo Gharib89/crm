@@ -11,6 +11,7 @@ from crm.commands._helpers import (
     _admin_kwargs,
     _confirm_destructive,
     _load_payload,
+    _prune_annotations,
     _touch_session,
 )
 
@@ -47,8 +48,11 @@ def _validate_or_emit(ctx: CLIContext, entity_set, payload) -> bool:
 @click.option("--select", multiple=True, help="Repeatable; column names.")
 @click.option("--expand", multiple=True, help="Repeatable; navigation properties.")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
+@click.option("--minimal", is_flag=True, default=False,
+              help="JSON mode: strip OData annotation keys (@odata.etag, "
+                   "*@FormattedValue) from the record; keeps lookup GUIDs and the primary id.")
 @pass_ctx
-def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations):
+def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal):
     """GET <entity-set> <guid>."""
     try:
         result = entity_mod.retrieve(
@@ -60,6 +64,8 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+    if minimal and ctx.json_mode and isinstance(result, dict):
+        result = _prune_annotations(result)
     ctx.emit(True, data=result)
 
 

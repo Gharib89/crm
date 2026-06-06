@@ -29,9 +29,12 @@ def query_group():
 @click.option("--count", is_flag=True, help="Also request $count.")
 @click.option("--page-size", type=int)
 @click.option("--annotations/--no-annotations", default=False)
+@click.option("--minimal", is_flag=True, default=False,
+              help="JSON mode: strip OData annotation keys (@odata.etag, "
+                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
 @pass_ctx
 def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expand,
-                count, page_size, annotations):
+                count, page_size, annotations, minimal):
     """OData v4 query over an entity set."""
     try:
         result = query_mod.odata_query(
@@ -48,7 +51,7 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_query_result(ctx, result, entity_set)
+    _emit_query_result(ctx, result, entity_set, minimal=minimal)
     _touch_session(ctx, entity_set, last_query={"type": "odata", "filter": filter_})
 
 
@@ -58,8 +61,11 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
 @click.option("--file", "xml_file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a FetchXML file.")
 @click.option("--annotations/--no-annotations", default=False)
+@click.option("--minimal", is_flag=True, default=False,
+              help="JSON mode: strip OData annotation keys (@odata.etag, "
+                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
 @pass_ctx
-def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotations):
+def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotations, minimal):
     """Run a FetchXML query."""
     if xml_inline and xml_file:
         ctx.emit(False, error="Provide --xml or --file, not both.")
@@ -76,7 +82,7 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_query_result(ctx, result, entity_set)
+    _emit_query_result(ctx, result, entity_set, minimal=minimal)
     _touch_session(ctx, entity_set, last_query={"type": "fetchxml"})
 
 
@@ -85,8 +91,11 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 @click.argument("savedquery_id")
 @click.option("--annotations/--no-annotations", default=True)
 @click.option("--page-size", type=int)
+@click.option("--minimal", is_flag=True, default=False,
+              help="JSON mode: strip OData annotation keys (@odata.etag, "
+                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
 @pass_ctx
-def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_size):
+def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_size, minimal):
     """Execute a system view (savedquery) by GUID. Use `--json query odata savedqueries` to discover IDs."""
     try:
         result = query_mod.saved_query(
@@ -96,7 +105,7 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_query_result(ctx, result, entity_set)
+    _emit_query_result(ctx, result, entity_set, minimal=minimal)
 
 
 @query_group.command("user")
@@ -104,8 +113,11 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
 @click.argument("userquery_id")
 @click.option("--annotations/--no-annotations", default=True)
 @click.option("--page-size", type=int)
+@click.option("--minimal", is_flag=True, default=False,
+              help="JSON mode: strip OData annotation keys (@odata.etag, "
+                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
 @pass_ctx
-def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size):
+def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size, minimal):
     """Execute a saved view (userquery) by GUID."""
     try:
         result = query_mod.user_query(
@@ -115,7 +127,7 @@ def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_query_result(ctx, result, entity_set)
+    _emit_query_result(ctx, result, entity_set, minimal=minimal)
 
 
 @query_group.command("count")
