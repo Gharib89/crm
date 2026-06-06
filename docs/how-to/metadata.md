@@ -240,9 +240,13 @@ crm apply -f project.yaml
 - Publisher and solution are **not** emitted — supply them via `crm apply --solution`
   or by editing the YAML before applying.
 
-**Fidelity note:** the spec is a faithful superset of what `apply` currently
-consumes. Some fields (`format_name`, `precision`, cascade / associated-menu
-configuration) are captured even though `apply` does not act on all of them today.
-`apply` ignores unknown keys, so the file remains apply-consumable and will
-re-create the entity. Attribute types that `apply` cannot create (Owner, State,
-Status, and other system kinds) are silently skipped.
+**Fidelity note:** attribute properties round-trip through `apply` —
+`precision` (decimal/double/money), `format_name` (string/datetime formats),
+`max_length`, `required`, option-set options, and lookup `target_entity` are all
+forwarded to `add_attribute`. The only captured fields that `apply` does not yet
+act on are relationship `cascade` and `associated_menu` configuration
+(`create_one_to_many` does not accept them); those are captured for fidelity and
+future use. The relationship itself is still re-created — just with default
+cascade/menu behaviour. `apply` ignores unknown keys, so the spec file remains
+apply-consumable throughout. Attribute types that `apply` cannot create (Owner,
+State, Status, and other system kinds) are silently skipped.

@@ -289,7 +289,7 @@ TTL: ~15 min. Any metadata write (create/update/delete entity, attribute, option
 relationship, publish-all/xml) auto-invalidates the cache. Read-only schema only —
 records and secrets are never cached.
 
-### 9b. Export a live entity as an apply spec (round-trip)
+### 5c. Export a live entity as an apply spec (round-trip)
 
 ```bash
 # Export entity schema to YAML — ready for `crm apply -f`
@@ -313,9 +313,12 @@ Captures: entity definition, primary-name attribute, all custom apply-creatable
 columns (deep-read for `MaxLength`/`RequiredLevel`/options), referenced global
 option sets, relationships (with flag), views (with flag). Publisher/solution are
 **not** emitted — supply them via `--solution` on `apply`, or edit the YAML.
-Fidelity note: some fields (`format_name`, cascade config) are captured as a
-faithful superset but not yet consumed by `apply`; `apply` ignores unknown keys so
-the file always remains apply-consumable.
+Fidelity note: attribute properties (`precision`, `format_name`, `max_length`,
+`required`, options, `target_entity`) are forwarded by `apply` → those columns
+round-trip correctly. The only captured fields not yet acted on are relationship
+`cascade` and `associated_menu` (captured for future use; the relationship is
+still re-created with default cascade/menu behaviour). `apply` ignores unknown
+keys so the spec always remains apply-consumable.
 
 ### 5a. Preview dependencies before deleting a metadata component
 
