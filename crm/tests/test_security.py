@@ -64,6 +64,16 @@ class TestListRoles:
         qs = m.request_history[0].qs
         assert qs["$filter"][0] == f"_businessunitid_value eq {_BU_ID}"
 
+    def test_business_unit_non_canonical_normalized_in_filter(self, backend):
+        """Braced/uppercase GUIDs must be normalised to canonical form in the OData filter."""
+        braced_upper = "{CCCCCCCC-DDDD-EEEE-FFFF-000000000000}"
+        canonical = "cccccccc-dddd-eeee-ffff-000000000000"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})
+            sec.list_roles(backend, business_unit=braced_upper)
+        qs = m.request_history[0].qs
+        assert qs["$filter"][0] == f"_businessunitid_value eq {canonical}"
+
     def test_invalid_business_unit_raises_d365error(self, backend):
         with pytest.raises(D365Error, match="business_unit must be a GUID"):
             sec.list_roles(backend, business_unit="not-a-guid")

@@ -37,10 +37,10 @@ def list_roles(
     }
     if business_unit is not None:
         try:
-            uuid.UUID(business_unit)
+            normalized_bu = str(uuid.UUID(business_unit))
         except ValueError as exc:
             raise D365Error(f"business_unit must be a GUID; got {business_unit!r}") from exc
-        params["$filter"] = f"_businessunitid_value eq {business_unit}"
+        params["$filter"] = f"_businessunitid_value eq {normalized_bu}"
     return as_dict(backend.get(_ROLES_SET, params=params)).get("value", [])
 
 
