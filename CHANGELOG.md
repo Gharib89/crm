@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `crm --profile <missing>` now emits the standard `{ok:false, ...}` error envelope (exit 1) instead of a raw `FileNotFoundError` traceback (#109).
+
 ### Added
 - `metadata export-spec <logical_name> [--with-views] [--with-relationships] [-o FILE]` —
   project a live entity into the `crm apply -f` desired-state spec (round-trip:

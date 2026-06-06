@@ -243,7 +243,10 @@ def resolve_credentials(
     """
     load_dotenv()
     if profile_name:
-        profile = session_mod.load_profile(profile_name)
+        try:
+            profile = session_mod.load_profile(profile_name)
+        except FileNotFoundError as exc:
+            raise D365Error(f"Profile {profile_name!r} not found.") from exc
     else:
         profile = profile_from_env()
 
