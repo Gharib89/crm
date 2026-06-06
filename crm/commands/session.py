@@ -42,3 +42,30 @@ def session_history(ctx: CLIContext):
         return
     for i, line in enumerate(history[-50:], 1):
         click.echo(f"  {i:>3}  {line}")
+
+
+@session_group.command("audit")
+@click.option("--tail", type=int, default=None, help="Only the last N entries.")
+@click.option("--session", "session_override", default=None,
+              help="Read another session's journal (default: current --session).")
+@pass_ctx
+def session_audit(ctx: CLIContext, tail, session_override):
+    """Show this session's audit journal of mutations."""
+    from crm.core import audit
+    name = session_override or ctx.session_name
+    rows = audit.read(name, tail=tail)
+    if ctx.json_mode:
+        ctx.emit(True, data=rows, meta={"session": name, "count": len(rows)})
+        return
+    if not rows:
+        ctx.skin.info("No audit entries.")
+        return
+    for r in rows:
+        flags = []
+        if r.get("dry_run"):
+            flags.append("dry-run")
+        if r.get("staged"):
+            flags.append("staged")
+        suffix = f" [{', '.join(flags)}]" if flags else ""
+        click.echo(f"  {r.get('ts', '')}  {r.get('command', '')}  "
+                   f"{r.get('target') or ''}  {r.get('result_id') or ''}{suffix}")

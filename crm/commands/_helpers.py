@@ -13,6 +13,24 @@ if TYPE_CHECKING:
     from crm.utils.d365_backend import ConnectionProfile, D365Error
 
 
+def _journal(ctx, command, target, result, *, solution=None, staged=None):
+    """Best-effort audit-journal a successful mutation (issue #89). Never raises."""
+    try:
+        from crm.core import audit
+        audit.record(
+            session=ctx.session_name,
+            profile=ctx.profile_name,
+            command=command,
+            target=target,
+            result=result,
+            solution=solution,
+            staged=ctx.stage_only if staged is None else staged,
+            dry_run=ctx.dry_run,
+        )
+    except Exception:
+        pass
+
+
 def _sanitize(obj: Any) -> Any:
     if isinstance(obj, dict):
         return {k: _sanitize(v) for k, v in obj.items()}
