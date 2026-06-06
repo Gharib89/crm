@@ -8,6 +8,7 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
     _confirm_destructive,
+    _journal,
     _resolve_async_state,
 )
 
@@ -78,4 +79,6 @@ def async_cancel(ctx: CLIContext, async_operation_id, yes):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data={"cancelled": True, "id": async_operation_id})
+    data = {"cancelled": True, "id": async_operation_id}
+    ctx.emit(True, data=data)
+    _journal(ctx, "async cancel", async_operation_id, data)

@@ -17,6 +17,7 @@ from crm.commands._helpers import (
     _admin_header_options,
     _admin_kwargs,
     _confirm_destructive,
+    _journal,
     _resolve_publish,
     _solution_option,
     _require_solution,
@@ -329,6 +330,7 @@ def metadata_create_entity(
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata create-entity", schema_name, info, solution=solution)
 
 
 @metadata_group.command("update-entity")
@@ -372,6 +374,7 @@ def metadata_update_entity(
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata update-entity", logical_name, info, solution=solution)
 
 
 @metadata_group.command("update-attribute")
@@ -423,6 +426,7 @@ def metadata_update_attribute(
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata update-attribute", f"{entity}.{attribute}", info, solution=solution)
 
 
 @metadata_group.command("update-relationship")
@@ -471,6 +475,7 @@ def metadata_update_relationship(
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata update-relationship", schema_name, info, solution=solution)
 
 
 @metadata_group.command("relationships")
@@ -513,6 +518,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning)
+    _journal(ctx, "metadata delete-entity", logical_name, info, solution=solution)
 
 
 @metadata_group.command("add-attribute")
@@ -639,6 +645,7 @@ def metadata_add_attribute(
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata add-attribute", f"{entity}.{schema_name}", info, solution=solution)
 
 
 @metadata_group.command("delete-attribute")
@@ -665,6 +672,7 @@ def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution,
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning)
+    _journal(ctx, "metadata delete-attribute", f"{entity}.{attribute}", info, solution=solution)
 
 
 # Relationship-creation commands (create-one-to-many / create-many-to-many)
@@ -731,6 +739,7 @@ def metadata_create_one_to_many(
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata create-one-to-many", schema_name, info, solution=solution)
 
 
 @metadata_group.command("create-many-to-many")
@@ -780,6 +789,7 @@ def metadata_create_many_to_many(
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata create-many-to-many", schema_name, info, solution=solution)
 
 
 @metadata_group.command("delete-relationship")
@@ -805,6 +815,7 @@ def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, re
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning)
+    _journal(ctx, "metadata delete-relationship", schema_name, info, solution=solution)
 
 
 @metadata_group.command("list-optionsets")
@@ -884,6 +895,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata create-optionset", name, info, solution=solution)
 
 
 @metadata_group.command("update-optionset")
@@ -951,6 +963,7 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "metadata update-optionset", name, info, solution=solution)
 
 
 @metadata_group.command("delete-optionset")
@@ -974,6 +987,7 @@ def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solu
         _handle_d365_error(ctx, exc)
         return
     _emit_with_warning(ctx, info, warning)
+    _journal(ctx, "metadata delete-optionset", name, info, solution=solution)
 
 
 from crm.core.metadata import list_actions, list_functions  # noqa: E402

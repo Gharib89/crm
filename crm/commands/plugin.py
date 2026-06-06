@@ -10,7 +10,7 @@ from crm.core import plugin as plugin_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error, _emit_with_warning, _confirm_destructive)
+    _handle_d365_error, _emit_with_warning, _confirm_destructive, _journal)
 
 
 @click.group("plugin")
@@ -54,6 +54,7 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
         return
     _emit_with_warning(ctx, info, warning,
                        meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "plugin register-assembly", path, info)
 
 
 @plugin_group.command("list-types")
@@ -118,6 +119,7 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
         return
     _emit_with_warning(ctx, info, None,
                        meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "plugin register-step", plugin_type, info)
 
 
 @plugin_group.command("unregister-assembly")
@@ -135,6 +137,7 @@ def unregister_assembly_cmd(ctx: CLIContext, assembly, yes):
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "plugin unregister-assembly", assembly, info)
 
 
 @plugin_group.command("unregister-step")
@@ -152,6 +155,7 @@ def unregister_step_cmd(ctx: CLIContext, step, yes):
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "plugin unregister-step", step, info)
 
 
 def _ignored_update_flags_warning(

@@ -10,6 +10,7 @@ from crm.commands._helpers import (
     _admin_header_options,
     _admin_kwargs,
     _handle_d365_error,
+    _journal,
 )
 
 
@@ -121,3 +122,4 @@ def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=result)
+    _journal(ctx, "security assign-role", role_id, result)

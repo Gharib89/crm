@@ -7,7 +7,7 @@ from crm.core import webresource as wr_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error, _resolve_publish, _solution_option,
+    _handle_d365_error, _journal, _resolve_publish, _solution_option,
     _require_solution, _resolve_solution, _emit_with_warning,
 )
 
@@ -46,6 +46,7 @@ def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
         return
     _emit_with_warning(ctx, info, warning,
                        meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "webresource create", name, info, solution=solution)
 
 
 @webresource_group.command("update")
@@ -72,6 +73,7 @@ def webresource_update(ctx: CLIContext, name, file, display_name,
         return
     _emit_with_warning(ctx, info, warning,
                        meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "webresource update", name, info, solution=solution)
 
 
 @webresource_group.command("get")

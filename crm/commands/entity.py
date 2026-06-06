@@ -10,6 +10,7 @@ from crm.commands._helpers import (
     _admin_header_options,
     _admin_kwargs,
     _confirm_destructive,
+    _journal,
     _load_payload,
     _prune_annotations,
     _touch_session,
@@ -114,6 +115,7 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=result)
+    _journal(ctx, "entity create", entity_set, result)
     _touch_session(ctx, entity_set)
 
 
@@ -155,7 +157,9 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=result or {"updated": True, "id": record_id})
+    data = result or {"updated": True, "id": record_id}
+    ctx.emit(True, data=data)
+    _journal(ctx, "entity update", entity_set, data)
 
 
 @entity_group.command("upsert")
@@ -177,7 +181,9 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=result or {"upserted": True, "id": record_id})
+    data = result or {"upserted": True, "id": record_id}
+    ctx.emit(True, data=data)
+    _journal(ctx, "entity upsert", entity_set, data)
 
 
 @entity_group.command("delete")
@@ -204,6 +210,7 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=result)
+    _journal(ctx, "entity delete", entity_set, result)
 
 
 @entity_group.command("associate")
@@ -226,6 +233,7 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=result)
+    _journal(ctx, "entity associate", target_set, result)
 
 
 @entity_group.command("disassociate")
@@ -249,6 +257,7 @@ def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=result)
+    _journal(ctx, "entity disassociate", target_set, result)
 
 
 @entity_group.command("set-lookup")
@@ -270,7 +279,9 @@ def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, 
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=result or {"set": True, "id": record_id, "nav": nav})
+    data = result or {"set": True, "id": record_id, "nav": nav}
+    ctx.emit(True, data=data)
+    _journal(ctx, "entity set-lookup", entity_set, data)
 
 
 @entity_group.command("clear-lookup")
@@ -291,3 +302,4 @@ def entity_clear_lookup(ctx: CLIContext, entity_set, record_id, nav,
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=result)
+    _journal(ctx, "entity clear-lookup", entity_set, result)

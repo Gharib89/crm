@@ -8,7 +8,7 @@ from crm.core import batch as batch_mod
 from crm.core import solution as sol_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error
+from crm.commands._helpers import _handle_d365_error, _journal
 
 
 @click.command("service-document")
@@ -67,7 +67,9 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
         except OSError as exc:
             ctx.emit(False, error=f"Could not write {output_path}: {exc}")
             return
-        ctx.emit(True, data={"written": output_path,
-                             **batch_mod.render_batch_summary(results)})  # type: ignore[arg-type]
+        data = {"written": output_path, **batch_mod.render_batch_summary(results)}  # type: ignore[arg-type]
+        ctx.emit(True, data=data)
+        _journal(ctx, "batch", file_path, data)
     else:
         ctx.emit(True, data=results, meta=batch_mod.render_batch_summary(results))  # type: ignore[arg-type]
+        _journal(ctx, "batch", file_path, results if isinstance(results, dict) else {"count": len(results)})
