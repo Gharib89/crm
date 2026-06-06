@@ -92,7 +92,7 @@ crm metadata add-attribute cwx_ticket --kind string \
   || echo "attribute not ready yet — retry"
 ```
 
-Each pair passes only if `str(record[ATTR]) == VALUE`; multiple `--expect` flags are AND-gated. The first mismatch exits **1** with `{"ok": false, "meta": {"attr": ..., "expected": ..., "actual": ...}}`, so a shell `||` branch (or an agent loop) can retry until the change propagates. All pairs match → normal `ok:true`, exit 0. A malformed `--expect` (no `=`) is a usage error (exit 2) raised before any HTTP. Attribute logical names are lowercase (`cwx_label`); the schema name is PascalCase (`cwx_Label`).
+Each pair passes only if `str(record[ATTR]) == VALUE`; multiple `--expect` flags are AND-gated. The first mismatch exits **1** with `{"ok": false, "error": "Expectation failed: ...", "meta": {"attr": ..., "expected": ..., "actual": ...}}`, so a shell `||` branch (or an agent loop) can retry until the change propagates. All pairs match → normal `ok:true`, exit 0. A malformed `--expect` (no `=`) is a usage error (exit 2) raised before any HTTP. Attribute logical names are lowercase (`cwx_label`); the schema name is PascalCase (`cwx_Label`).
 
 ## Preview dependencies before deleting
 

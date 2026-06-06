@@ -447,7 +447,7 @@ crm metadata add-attribute new_widget --kind string \
 
 `--expect ATTR=VALUE` is repeatable, AND-gated, and stringified (each pair passes
 only if `str(record[ATTR]) == VALUE`; a missing key never matches). The first
-mismatch exits **1** with `{ok:false, meta:{attr, expected, actual}}`, so a shell
+mismatch exits **1** with `{ok:false, error:"Expectation failed: …", meta:{attr, expected, actual}}`, so a shell
 `||` branch — or an agent — can branch on the failure and retry. All pairs match →
 normal `ok:true`, exit 0, record unchanged. A malformed `--expect` (no `=`) is a
 usage error (exit 2) raised before any HTTP. Attribute logical names are lowercase
