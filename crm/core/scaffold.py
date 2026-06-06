@@ -23,6 +23,9 @@ from crm.core.metadata_attrs import ATTRIBUTE_KINDS
 from crm.utils.d365_backend import D365Error
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
+# Ownership models metadata.create_entity accepts; validated here so a bad value
+# fails before any HTTP call rather than downstream in apply.
+_VALID_OWNERSHIP = {"UserOwned", "OrganizationOwned"}
 _ALLOWED_OPT_KEYS = {"max_length", "required", "target_entity", "optionset_name", "description"}
 
 # Kinds that require max_length and their defaults.
@@ -132,6 +135,10 @@ def _build_attribute(
                 f"lookup column {display!r} requires target_entity=<logical_name>."
             )
         attr["target_entity"] = opts["target_entity"]
+    elif "target_entity" in opts:
+        raise D365Error(
+            f"column {display!r}: target_entity is only valid for lookup columns, not {kind!r}."
+        )
 
     if kind in _PICKLIST_KINDS:
         if not opts.get("optionset_name"):
@@ -140,6 +147,11 @@ def _build_attribute(
                 "inline options are not supported in the scaffold shorthand."
             )
         attr["optionset_name"] = opts["optionset_name"]
+    elif "optionset_name" in opts:
+        raise D365Error(
+            f"column {display!r}: optionset_name is only valid for "
+            f"picklist/multiselect columns, not {kind!r}."
+        )
 
     # Carry through the remaining optional fields.
     for key in ("required", "description"):
@@ -201,6 +213,11 @@ def build_table_spec(
         D365Error: For any malformed input — unknown kind, bad opts, empty name,
             missing required opts per kind, etc.
     """
+    if ownership not in _VALID_OWNERSHIP:
+        raise D365Error(
+            f"ownership must be one of {sorted(_VALID_OWNERSHIP)}, got {ownership!r}."
+        )
+
     ent_schema = (
         schema_name
         if schema_name is not None

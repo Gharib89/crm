@@ -225,10 +225,27 @@ def test_display_collection_absent_when_not_given():
 def test_ownership_passed_through():
     spec = build_table_spec(
         display_name="T", prefix="x",
-        ownership="OrgOwned",
+        ownership="OrganizationOwned",
         columns=[],
     )
-    assert _entity(spec)["ownership"] == "OrgOwned"
+    assert _entity(spec)["ownership"] == "OrganizationOwned"
+
+
+def test_invalid_ownership_raises():
+    with pytest.raises(D365Error, match="ownership must be one of"):
+        build_table_spec(display_name="T", prefix="x", ownership="OrgOwned", columns=[])
+
+
+def test_target_entity_on_non_lookup_raises():
+    with pytest.raises(D365Error, match="target_entity is only valid for lookup"):
+        build_table_spec(display_name="T", prefix="x",
+                         columns=["Name:string:target_entity=account"])
+
+
+def test_optionset_name_on_non_picklist_raises():
+    with pytest.raises(D365Error, match="optionset_name is only valid"):
+        build_table_spec(display_name="T", prefix="x",
+                         columns=["Amount:money:optionset_name=new_set"])
 
 
 # ── Empty columns list ────────────────────────────────────────────────────────
