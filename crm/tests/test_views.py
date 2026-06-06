@@ -177,42 +177,7 @@ class TestViewCommand:
 # Tests for read_entity_views
 # ---------------------------------------------------------------------------
 
-# XML helpers — match the exact output of _build_layoutxml / _build_fetchxml.
-def _make_layoutxml(entity: str, otc: int, cols: list[tuple[str, int]]) -> str:
-    from xml.sax.saxutils import quoteattr
-    id_attr = f"{entity}id"
-    cells = "".join(
-        f'<cell name={quoteattr(name)} width="{width}" />'
-        for name, width in cols
-    )
-    jump = cols[0][0]
-    return (
-        f'<grid name="resultset" object="{otc}" '
-        f'jump={quoteattr(jump)} select="1" icon="1" preview="1">'
-        f'<row name="result" id={quoteattr(id_attr)}>{cells}</row></grid>'
-    )
-
-
-def _make_fetchxml(entity: str, cols: list[tuple[str, int]],
-                   order_by: str | None, filter_active: bool) -> str:
-    from xml.sax.saxutils import quoteattr
-    id_attr = f"{entity}id"
-    attrs = f'<attribute name={quoteattr(id_attr)} />' + "".join(
-        f'<attribute name={quoteattr(name)} />' for name, _ in cols
-    )
-    order = (
-        f'<order attribute={quoteattr(order_by)} descending="false" />'
-        if order_by else ""
-    )
-    filt = (
-        '<filter type="and"><condition attribute="statecode" '
-        'operator="eq" value="0" /></filter>'
-        if filter_active else ""
-    )
-    return (
-        '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
-        f'<entity name={quoteattr(entity)}>{attrs}{order}{filt}</entity></fetch>'
-    )
+from crm.core.views import _build_layoutxml, _build_fetchxml
 
 
 _READ_VIEW_ID = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
@@ -222,8 +187,8 @@ class TestReadEntityViews:
     def test_view_with_columns_and_order_by(self, backend):
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 220), ("cwx_priority", 120)]
-        layoutxml = _make_layoutxml("cwx_ticket", 10042, cols)
-        fetchxml = _make_fetchxml("cwx_ticket", cols, "cwx_name", False)
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _build_fetchxml("cwx_ticket", cols, "cwx_name", False)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -250,7 +215,7 @@ class TestReadEntityViews:
         """order attribute is extracted correctly regardless of descending flag."""
         from crm.core.views import read_entity_views
         cols = [("cwx_subject", 300)]
-        layoutxml = _make_layoutxml("cwx_task", 10043, cols)
+        layoutxml = _build_layoutxml("cwx_task", 10043, cols)
         # manually build fetchxml with descending="true"
         fetchxml = (
             '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
@@ -277,8 +242,8 @@ class TestReadEntityViews:
     def test_view_with_no_order_element(self, backend):
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 200)]
-        layoutxml = _make_layoutxml("cwx_ticket", 10042, cols)
-        fetchxml = _make_fetchxml("cwx_ticket", cols, None, False)
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _build_fetchxml("cwx_ticket", cols, None, False)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -311,3 +276,38 @@ class TestReadEntityViews:
         # requests encodes the query string; decode and check the raw filter value
         filter_val = qs["$filter"][0]
         assert "o''brien_entity" in filter_val
+
+    def test_non_numeric_width_omitted_no_crash(self, backend):
+        """A cell with a non-numeric or empty width attribute must not crash and
+        must omit the width key (inline literal needed: _build_layoutxml always
+        emits integer widths so it cannot produce this edge-case input)."""
+        from crm.core.views import read_entity_views
+        # Two cells: one with width="auto" (non-numeric), one with width="" (empty).
+        layoutxml = (
+            '<grid name="resultset" object="10042" jump="cwx_name" '
+            'select="1" icon="1" preview="1">'
+            '<row name="result" id="cwx_ticketid">'
+            '<cell name="cwx_name" width="auto" />'
+            '<cell name="cwx_priority" width="" />'
+            '</row></grid>'
+        )
+        fetchxml = _build_fetchxml("cwx_ticket", [("cwx_name", 1)], None, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "name": "Edge Case View",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert len(views) == 1
+        cols = views[0]["columns"]
+        assert len(cols) == 2
+        # width must be absent from both columns (unparseable → omitted)
+        assert "width" not in cols[0]
+        assert "width" not in cols[1]
+        assert cols[0]["name"] == "cwx_name"
+        assert cols[1]["name"] == "cwx_priority"

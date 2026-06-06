@@ -163,7 +163,7 @@ def read_entity_views(
             "$filter": (
                 f"returnedtypecode eq '{entity_lit}' and querytype eq 0"
             ),
-            "$select": "name,layoutxml,fetchxml,isdefault,savedqueryid",
+            "$select": "name,layoutxml,fetchxml,isdefault",
         },
     )).get("value", [])
 
@@ -187,7 +187,10 @@ def read_entity_views(
                     col: dict[str, Any] = {"name": col_name}
                     width_str = cell.get("width")
                     if width_str is not None:
-                        col["width"] = int(width_str)
+                        try:
+                            col["width"] = int(width_str)
+                        except ValueError:
+                            pass
                     columns.append(col)
 
         # --- parse order_by from fetchxml ---
@@ -200,8 +203,6 @@ def read_entity_views(
                 fetch_root = None
             if fetch_root is not None:
                 order_el = fetch_root.find(".//{*}order")
-                if order_el is None:
-                    order_el = fetch_root.find(".//order")
                 if order_el is not None:
                     order_by = order_el.get("attribute") or None
 
