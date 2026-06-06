@@ -374,7 +374,7 @@ def metadata_update_entity(
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata update-entity", logical_name, info)
+    _journal(ctx, "metadata update-entity", logical_name, info, solution=solution)
 
 
 @metadata_group.command("update-attribute")
@@ -426,7 +426,7 @@ def metadata_update_attribute(
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata update-attribute", f"{entity}.{attribute}", info)
+    _journal(ctx, "metadata update-attribute", f"{entity}.{attribute}", info, solution=solution)
 
 
 @metadata_group.command("update-relationship")
@@ -475,7 +475,7 @@ def metadata_update_relationship(
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata update-relationship", schema_name, info)
+    _journal(ctx, "metadata update-relationship", schema_name, info, solution=solution)
 
 
 @metadata_group.command("relationships")
