@@ -174,6 +174,17 @@ def build_dependency_path(
     return f"{func}(ObjectId={metadata_id},ComponentType={component_type})"
 
 
+def build_uninstall_dependency_path(solution_unique_name: str) -> str:
+    """Inline-function URL for ``RetrieveDependenciesForUninstall``.
+
+    ``SolutionUniqueName`` is ``Edm.String`` → SINGLE-QUOTED (embedded quotes
+    doubled per OData), unlike the unquoted GUID/int encoding in
+    ``build_dependency_path``.
+    """
+    escaped = solution_unique_name.replace("'", "''")
+    return f"RetrieveDependenciesForUninstall(SolutionUniqueName='{escaped}')"
+
+
 def dependencies_by_id(
     backend: D365Backend,
     metadata_id: str,
@@ -242,3 +253,44 @@ def retrieve_dependencies(
     """
     metadata_id, component_type = resolve_target(backend, kind, target)
     return dependencies_by_id(backend, metadata_id, component_type, for_=for_, kind=kind)
+
+
+def retrieve_dependencies_for_uninstall(
+    backend: D365Backend, solution_unique_name: str
+) -> dict[str, Any]:
+    """Return dependency records that would block uninstalling a managed solution.
+
+    Calls the Web API function
+    ``RetrieveDependenciesForUninstall(SolutionUniqueName='<name>')``. Unlike the
+    delete/dependents path there is no component target to resolve — the function
+    takes only the solution unique name.
+
+    The GET fires even when the backend is in dry-run mode (read-only preview).
+
+    Returns::
+
+        {
+            "solution": str,
+            "blockers": [{"dependent_type", "dependent_id",
+                          "dependent_parent_id", "required_type",
+                          "dependency_type"}, ...],
+            "count": int,
+        }
+
+    Raises:
+        D365Error: empty/whitespace solution name, or a server error.
+    """
+    name = solution_unique_name.strip()
+    if not name:
+        raise D365Error("solution unique name is required.")
+    path = build_uninstall_dependency_path(name)
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        result = as_dict(backend.get(path))
+    finally:
+        backend.dry_run = was_dry
+
+    records: list[dict[str, Any]] = result.get("value") or []
+    blockers = [_map_blocker(r) for r in records]
+    return {"solution": name, "blockers": blockers, "count": len(blockers)}
