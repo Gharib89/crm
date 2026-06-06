@@ -300,10 +300,16 @@ def test_session_with_path_separators_confined_to_audit_dir(crm_home: Path) -> N
 
 
 def test_evil_session_roundtrips_within_audit_dir(crm_home: Path) -> None:
+    from crm.core.audit import _audit_root, _journal_path
+
     record(session="/tmp/pwn", profile=None, command="entity create",
            target="accounts", result={"id": "x"}, now=FIXED_TS)
-    # Nothing was written outside the audit dir...
-    assert not Path("/tmp/pwn.jsonl").exists()
+    # The line was written inside the audit dir (hermetic — no real /tmp probe)...
+    written = _journal_path("/tmp/pwn")
+    assert written.parent == _audit_root()
+    assert written.is_file()
+    # ...and the only file under the audit dir is that confined journal.
+    assert [p.name for p in _audit_root().iterdir()] == [written.name]
     # ...and the same (sanitized) session reads its own line back.
     rows = read("/tmp/pwn")
     assert len(rows) == 1

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -41,6 +42,7 @@ class _StubCtx:
         self.profile_name = profile_name
         self.dry_run = dry_run
         self.stage_only = stage_only
+        self._backend: Any = None  # set by tests exercising resolved-profile
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +83,27 @@ class TestJournalHelper:
         _journal(ctx, "cmd", "t", {}, solution="mysolution")
         rows = audit.read(ctx.session_name)
         assert rows[0]["solution"] == "mysolution"
+
+    def test_profile_falls_back_to_profile_name_without_backend(self):
+        ctx = _StubCtx(profile_name="explicitprof")
+        _journal(ctx, "cmd", "t", {})
+        rows = audit.read(ctx.session_name)
+        assert rows[0]["profile"] == "explicitprof"
+
+    def test_profile_prefers_resolved_backend_profile_name(self):
+        # An env/active-profile run leaves profile_name None but builds a backend;
+        # the journal should record the RESOLVED profile name, not None.
+        class _Prof:
+            name = "resolvedprof"
+
+        class _Backend:
+            profile = _Prof()
+
+        ctx = _StubCtx(profile_name=None)
+        ctx._backend = _Backend()
+        _journal(ctx, "cmd", "t", {})
+        rows = audit.read(ctx.session_name)
+        assert rows[0]["profile"] == "resolvedprof"
 
     def test_never_raises_when_audit_record_blows_up(self, monkeypatch):
         monkeypatch.setattr("crm.core.audit.record", lambda **_: (_ for _ in ()).throw(RuntimeError("boom")))

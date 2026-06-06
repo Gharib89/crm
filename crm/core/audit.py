@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -130,29 +131,29 @@ def read(session: str, *, tail: int | None = None) -> list[dict[str, Any]]:
     """Return all journal rows for *session*, or the last *tail* rows.
 
     A missing journal file returns ``[]``. Lines that fail to parse are
-    silently skipped.
+    silently skipped. The file is streamed line by line; when *tail* is set the
+    last *tail* valid rows are kept in a bounded buffer, so memory stays O(tail)
+    regardless of journal size. A non-positive *tail* yields no rows ("last N"
+    of N<=0 is nothing — and `rows[-0:]` would otherwise return everything).
     """
+    if tail is not None and tail <= 0:
+        return []
+    # maxlen=None (tail omitted) is an unbounded deque == keep all rows.
+    rows: deque[dict[str, Any]] = deque(maxlen=tail)
     try:
         path = _journal_path(session)
         if not path.is_file():
             return []
-        text = path.read_text(encoding="utf-8")
+        with path.open("r", encoding="utf-8") as f:
+            for raw in f:
+                if not raw.strip():
+                    continue
+                try:
+                    parsed: Any = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if isinstance(parsed, dict):
+                    rows.append(cast("dict[str, Any]", parsed))
     except OSError:
         return []
-
-    rows: list[dict[str, Any]] = []
-    for raw in text.splitlines():
-        if not raw.strip():
-            continue
-        try:
-            parsed: Any = json.loads(raw)
-            if isinstance(parsed, dict):
-                rows.append(cast("dict[str, Any]", parsed))
-        except (json.JSONDecodeError, ValueError):
-            pass
-
-    if tail is not None:
-        # `rows[-0:]` is `rows[:]` (all rows), so a non-positive tail must be
-        # handled explicitly — "last N" of N<=0 is no rows.
-        rows = rows[-tail:] if tail > 0 else []
-    return rows
+    return list(rows)

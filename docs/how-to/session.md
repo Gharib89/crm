@@ -61,7 +61,7 @@ Each line is a JSON object with these keys (in order):
 | Key | Type | Description |
 |-----|------|-------------|
 | `ts` | string | ISO-8601 UTC timestamp of the command |
-| `profile` | string | Active connection profile name |
+| `profile` | string \| null | Active connection profile name (null if none resolved) |
 | `command` | string | CLI verb, e.g. `"entity create"` |
 | `target` | string \| null | Entity set / metadata name / solution, or null |
 | `solution` | string \| null | Target solution unique name, or null |

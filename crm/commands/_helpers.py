@@ -17,9 +17,15 @@ def _journal(ctx, command, target, result, *, solution=None, staged=None):
     """Best-effort audit-journal a successful mutation (issue #89). Never raises."""
     try:
         from crm.core import audit
+        # Prefer the RESOLVED profile name from the backend that just ran the
+        # mutation — ctx.profile_name is only the explicit --profile override and
+        # is None for env-derived / active-profile runs. The backend is already
+        # built (the command called ctx.backend()), so this needs no extra I/O.
+        backend = getattr(ctx, "_backend", None)
+        profile = getattr(getattr(backend, "profile", None), "name", None) or ctx.profile_name
         audit.record(
             session=ctx.session_name,
-            profile=ctx.profile_name,
+            profile=profile,
             command=command,
             target=target,
             result=result,

@@ -20,6 +20,9 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
     """
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
     monkeypatch.setenv("D365_PASSWORD", "pw")
+    # Point dotenv at a non-existent file so resolve_credentials can't auto-load
+    # a developer's real ./.env and make these tests non-hermetic (#56 class).
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     profile = ConnectionProfile(
