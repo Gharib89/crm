@@ -29,7 +29,8 @@ _ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
 
 
 class MetadataCache:
-    """In-memory cache of entity names for the REPL session."""
+    """Entity-name cache for the REPL session; reads from / writes to the
+    persistent on-disk cache when constructed with ``use_cache=True``."""
 
     def __init__(self, *, use_cache: bool = False, refresh: bool = False) -> None:
         self._logical: list[str] | None = None
@@ -45,6 +46,8 @@ class MetadataCache:
                 refresh=self._refresh,
                 now=time.time(),
             )
+            # lookup.status ("hit"/"miss"/"refreshed") is intentionally unused
+            # in the REPL — there is no display path for cache-status feedback.
             defs = lookup.definitions
             self._refresh = False
         else:

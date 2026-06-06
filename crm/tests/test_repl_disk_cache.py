@@ -56,7 +56,7 @@ class TestColdCacheWritesToDisk:
 
         assert logical == ["account", "contact"]
         assert sets == ["accounts", "contacts"]
-        assert mc_mod.cache_file(profile).exists()
+        assert mc_mod.cache_file(backend.profile).exists()
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +80,10 @@ class TestDiskHitAcrossInstances:
             cache2 = MetadataCache(use_cache=True)
             result = cache2.logical_names(backend)
             assert m.call_count == 1  # no extra network call
+            # set_names must also be served from disk (no extra network call)
+            sets = cache2.set_names(backend)
+            assert sets == ["accounts", "contacts"]
+            assert m.call_count == 1
 
         assert result == ["account", "contact"]
 
@@ -106,7 +110,7 @@ class TestDefaultNoCachePath:
             assert m.call_count == 2
 
         # No disk file written
-        assert not mc_mod.cache_file(profile).exists()
+        assert not mc_mod.cache_file(backend.profile).exists()
 
 
 # ---------------------------------------------------------------------------
