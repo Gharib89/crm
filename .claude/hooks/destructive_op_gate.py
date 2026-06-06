@@ -19,6 +19,7 @@ import sys
 
 BLOCK = 2
 
+# Canonical copy: crm/core/destructive.py — kept aligned by crm/tests/test_destructive_sync.py.
 # Destructive verbs keyed by command group, matched purely by token name so a
 # verb is gated the moment it ships even if the CLI command does not exist yet.
 # Forward-looking entries (delete-attribute / delete-relationship) and any
