@@ -347,7 +347,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
               help="Read entity definitions from the persistent on-disk cache "
                    "(env: CRM_CACHE_METADATA). Default off.")
 @click.option("--refresh-metadata", "refresh_metadata", is_flag=True,
-              help="Force-refresh the on-disk metadata cache on this call.")
+              help="Force-refresh the on-disk metadata cache on this call (one-shot; no env override).")
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
@@ -395,6 +395,9 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     cli_ctx.retry_on_ambiguous = retry_on_ambiguous
     env_cache = os.environ.get("CRM_CACHE_METADATA", "").lower() in ("1", "true", "yes", "on")
     cli_ctx.cache_metadata = cli_ctx.cache_metadata or cache_metadata or env_cache
+    # Refresh is deliberately per-invocation (NOT sticky): a refresh is a one-shot action
+    # and must not re-fire on every later REPL line. Compare cache_metadata above, which
+    # is sticky so the REPL stays in cache mode once opted in.
     cli_ctx.refresh_metadata = refresh_metadata
     cli_ctx.session_name = session_name
 

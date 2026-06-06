@@ -242,3 +242,50 @@ class TestEnvDriven:
         env = json.loads(result.output)
         assert env["ok"] is True
         assert "cache" in env["meta"]
+
+
+# ---------------------------------------------------------------------------
+# Test 9: human-mode cache output — 2-field table branch
+# ---------------------------------------------------------------------------
+
+class TestHumanModeCache:
+    def test_human_mode_cache_shows_entity_names(
+        self, monkeypatch, tmp_path, backend: D365Backend
+    ) -> None:
+        """Human (table) output for --cache-metadata must contain cached entity names."""
+        monkeypatch.setenv("CRM_HOME", str(tmp_path))
+        _stub_backend(monkeypatch, backend)
+        url = backend.url_for("EntityDefinitions")
+        with requests_mock.Mocker() as m:
+            m.get(url, json=_ENTITY_DEFS_2F)
+            # No --json: exercises the 2-field table branch
+            result = _invoke(["--cache-metadata", "metadata", "entities"])
+        assert result.exit_code == 0, result.output
+        # The table renders logical and set_name; both entities must appear
+        assert "account" in result.output
+        assert "accounts" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Test 10: cold refresh — empty CRM_HOME, --refresh-metadata hits network,
+#           meta.cache is "refreshed" (not "miss")
+# ---------------------------------------------------------------------------
+
+class TestColdRefresh:
+    def test_cold_refresh_hits_network_and_returns_refreshed(
+        self, monkeypatch, tmp_path, backend: D365Backend
+    ) -> None:
+        """With an empty cache dir, --refresh-metadata must report 'refreshed' and hit the network."""
+        monkeypatch.setenv("CRM_HOME", str(tmp_path))
+        _stub_backend(monkeypatch, backend)
+        url = backend.url_for("EntityDefinitions")
+        with requests_mock.Mocker() as m:
+            m.get(url, json=_ENTITY_DEFS_2F)
+            result = _invoke(["--json", "--refresh-metadata", "metadata", "entities"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        # A cold refresh must report "refreshed", not "miss"
+        assert env["meta"]["cache"] == "refreshed"
+        # Network was hit exactly once
+        assert m.call_count == 1, f"Expected 1 network call, got {m.call_count}"

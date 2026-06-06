@@ -84,12 +84,12 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["LogicalName", "EntitySetName", "SchemaName", "IsCustom"]
-    rows_5f = [
+    rows = [
         [it.get("LogicalName", ""), it.get("EntitySetName", ""),
          it.get("SchemaName", ""), str(it.get("IsCustomEntity", False))]
         for it in items
     ]
-    ctx.emit(True, table={"headers": headers, "rows": rows_5f}, meta={"count": len(items)})
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @metadata_group.command("cache-clear")
