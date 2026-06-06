@@ -72,6 +72,32 @@ ErrorCategory = Literal[
 _TRANSPORT_FAILURE_PREFIX = "HTTP transport failure"
 
 
+def validate_profile_name(name: str) -> str:
+    """Validate that *name* is a safe single path component for on-disk state.
+
+    Profile and session names become filesystem paths (``profiles/<name>.json``,
+    ``sessions/<name>.json``, ``cache/<name>/...``). Reject anything that could
+    escape the intended directory: empty, ``"."`` / ``".."``, a path separator,
+    or a name that is not its own basename (e.g. a Windows drive-relative path).
+    Returns *name* unchanged on success.
+    """
+    if not name or name in (".", ".."):
+        raise D365Error(
+            f"profile name must be a non-empty single path component; got {name!r}"
+        )
+    if "\x00" in name:
+        raise D365Error(f"profile name must not contain a null byte; got {name!r}")
+    if "/" in name or "\\" in name:
+        raise D365Error(
+            f"profile name must not contain a path separator; got {name!r}"
+        )
+    if ":" in name:
+        raise D365Error(f"profile name must not contain ':'; got {name!r}")
+    if _os.path.basename(name) != name:
+        raise D365Error(f"profile name must be a single path component; got {name!r}")
+    return name
+
+
 def classify_d365_error(
     status: int | None, code: str | None, message: str | None
 ) -> tuple[ErrorCategory, bool]:
@@ -141,6 +167,7 @@ class ConnectionProfile:
     async_timeout: int = 1800
 
     def __post_init__(self) -> None:
+        validate_profile_name(self.name)
         if self.auth_scheme not in ("ntlm", "kerberos", "negotiate", "oauth"):
             raise D365Error(
                 f"ConnectionProfile.auth_scheme must be ntlm|kerberos|negotiate|oauth, "

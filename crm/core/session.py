@@ -34,6 +34,8 @@ def _state_root() -> Path:
 
 
 def profile_path(name: str) -> Path:
+    from crm.utils.d365_backend import validate_profile_name
+    validate_profile_name(name)
     return _state_root() / "profiles" / f"{name}.json"
 
 
@@ -69,6 +71,8 @@ def delete_profile(name: str) -> bool:
 
 
 def session_path(name: str = "default") -> Path:
+    from crm.utils.d365_backend import validate_profile_name
+    validate_profile_name(name)
     return _state_root() / "sessions" / f"{name}.json"
 
 

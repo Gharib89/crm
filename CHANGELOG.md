@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Profile and session names are now validated as single path components at creation/load, preventing path traversal in on-disk profile/session/cache paths. (#126)
+
 ### Fixed
 - `crm --profile <missing>` now emits the standard `{ok:false, ...}` error envelope (exit 1) instead of a raw `FileNotFoundError` traceback (#109).
 - `async`: `list_async_operations` / `list_all_async_operations` now normalize the `owner_id` GUID filter to canonical form (braced/uppercase/urn inputs were sent to Dataverse verbatim). (#120)
