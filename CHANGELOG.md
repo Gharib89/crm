@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the old behavior when the re-send risk is acceptable.
 
 **Added**
+- `--minimal` on `crm query odata` / `fetchxml` / `saved` / `user` and
+  `crm entity get` strips OData annotation keys (any key containing `@`:
+  `@odata.etag`, `*@OData.Community.Display.V1.FormattedValue`,
+  `*@Microsoft.Dynamics.CRM.lookuplogicalname`) from each record in `--json`
+  output, keeping business fields, `_*_value` lookup GUIDs, and the primary id.
+  Shallow prune (top-level record keys only; expanded records under `--expand`
+  are untouched), and the `value`-list envelope (`@odata.count` / `@odata.nextLink`
+  / `@odata.context`) is preserved. No-op in human/table mode. Raw output remains
+  the default (non-breaking) — a token-efficient projection for agents (#85).
 - `--retry-on-ambiguous` root flag (env: `CRM_RETRY_ON_AMBIGUOUS`) re-enables
   auto-retry of non-idempotent `POST` creates on transport error / `429` / `503`,
   opting back into the duplicate-create risk (#84).
