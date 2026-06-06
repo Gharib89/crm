@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-06-06
+
 **Added**
 - `crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` — create an
   entity + N columns in a single publish by building a one-entity in-memory spec
@@ -65,39 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Enables a create→publish→verify loop, e.g. `metadata add-attribute … &&
   solution publish-all && metadata attribute <entity> <attr> --expect
   AttributeType=String` (#86).
-
-**Fixed**
-- `crm metadata delete-entity`, `delete-attribute`, `delete-relationship`, and
-  `delete-optionset` under `--dry-run` now return
-  `{"_dry_run": true, "would_delete": true, ...}` instead of falsely reporting
-  `{"deleted": true, ...}` (#81).
-- `crm metadata picklist` (human/table mode) now resolves option labels via the
-  full `UserLocalizedLabel` → `LocalizedLabels` fallback, matching `--json`
-  `meta.options`. Previously the table read `UserLocalizedLabel` only, so an
-  option whose label is carried solely via `LocalizedLabels` rendered blank (#76).
-- `crm metadata update-optionset --dry-run` previously returned `{"updated": true, ...}`,
-  incorrectly signalling a completed write. Under dry-run it now returns
-  `{"_dry_run": true, "name": ..., "diff": {...}, "actions": [...]}` (#77).
-  The `diff` classifies each pending change as `inserts` / `updates` (with
-  `old_label` / `new_label` looked up from the live option set) / `deletes` (with
-  `old_label`) / `reorder` (`{old, new}` value lists). The live GET fires for real
-  to build the diff; no POSTs are issued.
-
-**Changed**
-- Extracted the destructive-verb classification (`DESTRUCTIVE`, `ROLE_VERBS`,
-  `is_destructive()`) into a new dependency-free `crm/core/destructive.py`. The
-  PreToolUse destructive-op gate (`.claude/hooks/destructive_op_gate.py`) keeps
-  its standalone stdlib copy so it stays import-free and offline on every Bash
-  call; a new `crm/tests/test_destructive_sync.py` asserts the two copies stay
-  aligned (#87).
-- Non-idempotent `POST` record-creates (and actions) are no longer auto-retried on
-  transport error / `429` / `503` by default — a lost response may have already
-  committed the record, so a blind re-send risks a duplicate (#84). Idempotent verbs
-  (`GET`/`PUT`/`PATCH`/`DELETE`) are unchanged, and `$batch` keeps its own independent
-  retry loop. Pass `--retry-on-ambiguous` (or set `CRM_RETRY_ON_AMBIGUOUS`) to restore
-  the old behavior when the re-send risk is acceptable.
-
-**Added**
 - `--minimal` on `crm query odata` / `fetchxml` / `saved` / `user` and
   `crm entity get` strips OData annotation keys (any key containing `@`:
   `@odata.etag`, `*@OData.Community.Display.V1.FormattedValue`,
@@ -138,6 +107,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   admin-header options (`--as-user`, `--as-user-object-id`,
   `--suppress-dup-detection`, `--bypass-plugins`) are available on `assign-role`
   (#83).
+- `crm metadata dependencies <target>` is a new read-only command that returns
+  `can_delete` (bool) plus a `blockers[]` list for any metadata component. `--kind`
+  selects the component type (`entity` / `attribute` / `optionset` / `relationship`;
+  default `entity`); attribute targets use dotted notation (`entity.attribute`).
+  `--for delete` (default) calls `RetrieveDependenciesForDelete` and lists what
+  would block deletion; `--for dependents` calls `RetrieveDependentComponents` and
+  lists what currently depends on the target (#81).
+- `--check-dependencies` flag (default off) on `metadata delete-entity`,
+  `delete-attribute`, `delete-relationship`, and `delete-optionset`: folds
+  `can_delete` and `blockers[]` into the result via a pre-delete
+  `RetrieveDependenciesForDelete` call. Pair with `--dry-run` for a non-destructive
+  dependency preview without issuing the DELETE (#81).
+
+**Changed**
+- Extracted the destructive-verb classification (`DESTRUCTIVE`, `ROLE_VERBS`,
+  `is_destructive()`) into a new dependency-free `crm/core/destructive.py`. The
+  PreToolUse destructive-op gate (`.claude/hooks/destructive_op_gate.py`) keeps
+  its standalone stdlib copy so it stays import-free and offline on every Bash
+  call; a new `crm/tests/test_destructive_sync.py` asserts the two copies stay
+  aligned (#87).
+- Non-idempotent `POST` record-creates (and actions) are no longer auto-retried on
+  transport error / `429` / `503` by default — a lost response may have already
+  committed the record, so a blind re-send risks a duplicate (#84). Idempotent verbs
+  (`GET`/`PUT`/`PATCH`/`DELETE`) are unchanged, and `$batch` keeps its own independent
+  retry loop. Pass `--retry-on-ambiguous` (or set `CRM_RETRY_ON_AMBIGUOUS`) to restore
+  the old behavior when the re-send risk is acceptable.
+
+**Fixed**
+- `crm metadata delete-entity`, `delete-attribute`, `delete-relationship`, and
+  `delete-optionset` under `--dry-run` now return
+  `{"_dry_run": true, "would_delete": true, ...}` instead of falsely reporting
+  `{"deleted": true, ...}` (#81).
+- `crm metadata picklist` (human/table mode) now resolves option labels via the
+  full `UserLocalizedLabel` → `LocalizedLabels` fallback, matching `--json`
+  `meta.options`. Previously the table read `UserLocalizedLabel` only, so an
+  option whose label is carried solely via `LocalizedLabels` rendered blank (#76).
+
+## [0.10.0] — 2026-06-05
+
+**Added**
 - `crm plugin` command group: register and manage Dynamics 365 plug-in assemblies
   and processing steps via the `pluginassemblies` / `plugintypes` /
   `sdkmessageprocessingsteps` Web API entity sets.
@@ -172,6 +181,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after creation. `crm --dry-run app build-sitemap ...` prints the generated
   SiteMapXml and issues no POST. Complements `set-sitemap`, which uploads a
   pre-built XML file (#79).
+- `crm webresource create` / `update` / `get` / `list` manage web resources
+  (`webresourceset`). `create` base64-encodes the `--file` bytes into the
+  `content` column and infers the `webresourcetype` from the file extension
+  (`.html`=1, `.css`=2, `.js`=3, `.xml`=4, `.png`=5, `.jpg`=6, `.gif`=7,
+  `.xap`=8, `.xsl`=9, `.ico`=10, `.svg`=11, `.resx`=12 — the real D365
+  `webresource_webresourcetype` option set, so CSS=2 and 8 is Silverlight, not
+  the other way around); `--type <int>` overrides inference and an unknown
+  extension without it is rejected. `--display-name` defaults to the name.
+  `update <name>` resolves the resource by name and issues a plain PATCH of only
+  the sent fields (content from `--file` and/or `--display-name`; at least one
+  required) — not retrieve-merge-write. Both honor `--solution` (sent as
+  `MSCRM.SolutionUniqueName`) and publish after the write (`--no-publish` /
+  `--stage-only` suppress it). `list --custom-only` keeps unmanaged resources;
+  `get <name>` prints a record (#78).
+- `crm app create --icon-webresource <name|guid>` sets the app icon to a web
+  resource: a GUID is used directly, a name is resolved to its id, and omitting
+  the flag keeps the platform default icon (#78).
 - `crm data import <ENTITY_SET> <INPUT_FILE>` bulk-imports records via the
   Dataverse `$batch` endpoint — the only on-prem bulk mechanism (`CreateMultiple`
   / `UpsertMultiple` are cloud-only). Supports JSONL and CSV input (format
@@ -288,39 +314,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-transactional optionset update that fails mid-stage surfaces
   `meta.completed_steps` / `meta.failed_stage` on the error envelope so a partial
   mutation is observable. Every other error site is unchanged (#64).
-- `crm webresource create` / `update` / `get` / `list` manage web resources
-  (`webresourceset`). `create` base64-encodes the `--file` bytes into the
-  `content` column and infers the `webresourcetype` from the file extension
-  (`.html`=1, `.css`=2, `.js`=3, `.xml`=4, `.png`=5, `.jpg`=6, `.gif`=7,
-  `.xap`=8, `.xsl`=9, `.ico`=10, `.svg`=11, `.resx`=12 — the real D365
-  `webresource_webresourcetype` option set, so CSS=2 and 8 is Silverlight, not
-  the other way around); `--type <int>` overrides inference and an unknown
-  extension without it is rejected. `--display-name` defaults to the name.
-  `update <name>` resolves the resource by name and issues a plain PATCH of only
-  the sent fields (content from `--file` and/or `--display-name`; at least one
-  required) — not retrieve-merge-write. Both honor `--solution` (sent as
-  `MSCRM.SolutionUniqueName`) and publish after the write (`--no-publish` /
-  `--stage-only` suppress it). `list --custom-only` keeps unmanaged resources;
-  `get <name>` prints a record (#78).
-- `crm app create --icon-webresource <name|guid>` sets the app icon to a web
-  resource: a GUID is used directly, a name is resolved to its id, and omitting
-  the flag keeps the platform default icon (#78).
-- `crm metadata dependencies <target>` is a new read-only command that returns
-  `can_delete` (bool) plus a `blockers[]` list for any metadata component. `--kind`
-  selects the component type (`entity` / `attribute` / `optionset` / `relationship`;
-  default `entity`); attribute targets use dotted notation (`entity.attribute`).
-  `--for delete` (default) calls `RetrieveDependenciesForDelete` and lists what
-  would block deletion; `--for dependents` calls `RetrieveDependentComponents` and
-  lists what currently depends on the target (#81).
-- `--check-dependencies` flag (default off) on `metadata delete-entity`,
-  `delete-attribute`, `delete-relationship`, and `delete-optionset`: folds
-  `can_delete` and `blockers[]` into the result via a pre-delete
-  `RetrieveDependenciesForDelete` call. Pair with `--dry-run` for a non-destructive
-  dependency preview without issuing the DELETE (#81).
 
 **Changed**
 - **Breaking (envelope):** the singular `meta.warning` scalar is replaced by the
   `meta.warnings` array, so multiple advisories no longer clobber each other (#64).
+
+**Fixed**
+- `crm metadata update-optionset --dry-run` previously returned `{"updated": true, ...}`,
+  incorrectly signalling a completed write. Under dry-run it now returns
+  `{"_dry_run": true, "name": ..., "diff": {...}, "actions": [...]}` (#77).
+  The `diff` classifies each pending change as `inserts` / `updates` (with
+  `old_label` / `new_label` looked up from the live option set) / `deletes` (with
+  `old_label`) / `reorder` (`{old, new}` value lists). The live GET fires for real
+  to build the diff; no POSTs are issued.
 
 ## [0.9.0] — 2026-06-04
 
