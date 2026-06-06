@@ -13,6 +13,7 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
     _confirm_destructive,
+    _journal,
     _no_retry_scope,
     _active_profile,
     _EXPORT_SETTING_KEYS,
@@ -168,6 +169,7 @@ def solution_create_publisher(ctx: CLIContext, name, display, prefix,
     if set_default:
         _autowire_profile(ctx, "publisher_prefix", prefix, info)
     ctx.emit(True, data=info)
+    _journal(ctx, "solution create-publisher", name, info)
 
 
 @solution_group.command("create")
@@ -201,6 +203,7 @@ def solution_create(ctx: CLIContext, name, display, version, publisher,
     if set_default:
         _autowire_profile(ctx, "default_solution", name, info)
     ctx.emit(True, data=info)
+    _journal(ctx, "solution create", name, info)
 
 
 @solution_group.command("set-version")
@@ -222,6 +225,7 @@ def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, d
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "solution set-version", unique_name, info)
 
 
 @solution_group.command("add-component")
@@ -250,6 +254,7 @@ def solution_add_component(ctx: CLIContext, solution, type_, component_id,
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "solution add-component", solution, info)
 
 
 @solution_group.command("remove-component")
@@ -278,6 +283,7 @@ def solution_remove_component(ctx: CLIContext, solution, type_, component_id, ye
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "solution remove-component", solution, info)
 
 
 @solution_group.command("export")
@@ -319,7 +325,9 @@ def solution_publish_all(ctx: CLIContext):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=result or {"published": True})
+    data = result or {"published": True}
+    ctx.emit(True, data=data)
+    _journal(ctx, "solution publish-all", None, data)
 
 
 @solution_group.command("publish")
@@ -342,7 +350,9 @@ def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=result or {"published": True})
+    data = result or {"published": True}
+    ctx.emit(True, data=data)
+    _journal(ctx, "solution publish", None, data)
 
 
 @solution_group.command("job-status")
@@ -372,7 +382,9 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data={"cancelled": True, "id": async_operation_id})
+    data = {"cancelled": True, "id": async_operation_id}
+    ctx.emit(True, data=data)
+    _journal(ctx, "solution job-cancel", async_operation_id, data)
 
 
 @solution_group.command("import")
@@ -417,6 +429,7 @@ def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, tim
             return
         warnings = info.pop("warnings", None)
         ctx.emit(True, data=info, warnings=warnings)
+        _journal(ctx, "solution import", zip_path, info)
 
 
 def _emit_packager_result(ctx: CLIContext, info: dict) -> None:

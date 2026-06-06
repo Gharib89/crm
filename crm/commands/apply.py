@@ -10,7 +10,7 @@ from __future__ import annotations
 import click
 
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error
+from crm.commands._helpers import _handle_d365_error, _journal
 from crm.core import apply as apply_mod
 from crm.utils.d365_backend import D365Error
 
@@ -53,3 +53,5 @@ def apply_cmd(ctx: CLIContext, spec_file, solution):
 
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
     ctx.emit(res["ok"], data=data, meta={"staged": res["staged"]})
+    if res["ok"]:
+        _journal(ctx, "apply", spec_file, data)

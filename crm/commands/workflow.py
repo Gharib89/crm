@@ -9,6 +9,7 @@ from crm.commands._helpers import (
     _handle_d365_error,
     _admin_header_options,
     _admin_kwargs,
+    _journal,
 )
 
 
@@ -56,6 +57,7 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, 
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "workflow activate", workflow_id, info)
 
 
 @workflow_group.command("deactivate")
@@ -73,6 +75,7 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "workflow deactivate", workflow_id, info)
 
 
 @workflow_group.command("run")
@@ -93,3 +96,4 @@ def workflow_run(ctx: CLIContext, workflow_id, target_record_id,
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+    _journal(ctx, "workflow run", workflow_id, info)

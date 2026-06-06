@@ -6,7 +6,7 @@ from crm.core import export as export_mod
 from crm.core import data_import as import_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error
+from crm.commands._helpers import _handle_d365_error, _journal
 
 
 @click.group("data")
@@ -85,3 +85,4 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, c
         if info.get("failed") else None
     )
     ctx.emit(True, data=info, warnings=warnings)
+    _journal(ctx, "data import", entity_set, info)

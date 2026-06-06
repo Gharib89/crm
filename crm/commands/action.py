@@ -5,7 +5,7 @@ import json
 import click
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error, _load_payload, _odata_literal
+from crm.commands._helpers import _handle_d365_error, _journal, _load_payload, _odata_literal
 
 
 @click.group("action")
@@ -68,4 +68,6 @@ def action_invoke(ctx: CLIContext, name, body_json, body_file, bind_set, bind_id
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=result or {})
+    data = result or {}
+    ctx.emit(True, data=data)
+    _journal(ctx, "action invoke", name, data)
