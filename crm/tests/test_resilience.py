@@ -14,6 +14,7 @@ import requests
 import requests_mock
 
 from crm.utils.d365_backend import (
+    BatchOperation,
     ConnectionProfile,
     D365Backend,
     D365Error,
@@ -50,7 +51,8 @@ def profile() -> ConnectionProfile:
 @pytest.fixture
 def backend(profile, monkeypatch):
     # Disable any inherited env vars so the profile drives behavior.
-    for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_VERBOSE"):
+    for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_VERBOSE",
+                "CRM_RETRY_ON_AMBIGUOUS"):
         monkeypatch.delenv(var, raising=False)
     return D365Backend(profile, password="pw", dry_run=False)
 
@@ -121,13 +123,13 @@ class TestComputeDelay:
 
 class TestIsResponseRetryable:
     @pytest.mark.parametrize("method,status,expected", [
-        # 429 retryable on any method
+        # 429 retryable on idempotent methods; NOT on POST by default (#84)
         ("GET", 429, True),
-        ("POST", 429, True),
+        ("POST", 429, False),
         ("PATCH", 429, True),
-        # 503 retryable on any method
+        # 503 retryable on idempotent methods; NOT on POST by default (#84)
         ("GET", 503, True),
-        ("POST", 503, True),
+        ("POST", 503, False),
         # 502/504 retryable on idempotent methods only
         ("GET", 502, True),
         ("PATCH", 502, True),
@@ -148,6 +150,20 @@ class TestIsResponseRetryable:
         resp = requests.Response()
         resp.status_code = status
         assert _is_response_retryable(resp, method) is expected
+
+    @pytest.mark.parametrize("status,expected", [
+        # With opt-in, POST regains its prior 429/503 retry behavior (#84).
+        (429, True),
+        (503, True),
+        # Opt-in does not widen POST to 502/504 (never was retryable there).
+        (502, False),
+        (504, False),
+        (200, False),
+    ])
+    def test_post_opt_in_restores_retry(self, status, expected):
+        resp = requests.Response()
+        resp.status_code = status
+        assert _is_response_retryable(resp, "POST", retry_on_ambiguous=True) is expected
 
 
 # ── _is_transport_retryable ─────────────────────────────────────────────
@@ -293,18 +309,146 @@ class TestRetryLoop:
                 backend.post("accounts", json_body={"name": "Acme"})
         assert m.call_count == 1
 
-    def test_post_does_retry_on_503(self, backend, monkeypatch):
+    def test_post_does_not_retry_on_503_by_default(self, backend, monkeypatch):
+        # #84: a lost POST response may have committed → no auto-retry by default.
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, status_code=503,
+                   json={"error": {"message": "Service Unavailable"}})
+            with pytest.raises(D365Error) as exc_info:
+                backend.post("accounts", json_body={"name": "Acme"})
+        assert exc_info.value.status == 503
+        assert m.call_count == 1
+
+    def test_post_does_not_retry_on_429_by_default(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, status_code=429, headers={"Retry-After": "0"},
+                   json={"error": {"message": "Rate limited"}})
+            with pytest.raises(D365Error) as exc_info:
+                backend.post("accounts", json_body={"name": "Acme"})
+        assert exc_info.value.status == 429
+        assert m.call_count == 1
+
+    def test_post_retries_on_503_with_opt_in(self, profile, monkeypatch):
+        # #84: --retry-on-ambiguous restores the 503→retry behavior for POST.
+        for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_RETRY_ON_AMBIGUOUS"):
+            monkeypatch.delenv(var, raising=False)
+        be = D365Backend(profile, password="pw", retry_on_ambiguous=True)
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = be.url_for("accounts")
         with requests_mock.Mocker() as m:
             m.post(url, [
                 {"status_code": 503, "headers": {"Retry-After": "0"}},
                 {"status_code": 200, "headers": {"OData-EntityId": "https://x/y(1)"},
                  "text": ""},
             ])
-            result = backend.post("accounts", json_body={"name": "Acme"})
+            result = be.post("accounts", json_body={"name": "Acme"})
         assert isinstance(result, dict)
         assert m.call_count == 2
+
+    def test_post_transport_error_not_retried_by_default(self, backend, monkeypatch):
+        # #84: a lost POST may have committed → transport error is not auto-retried.
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, exc=requests.exceptions.ConnectionError("boom"))
+            with pytest.raises(D365Error) as exc_info:
+                backend.post("accounts", json_body={"name": "Acme"})
+        assert str(exc_info.value).startswith("HTTP transport failure")
+        assert m.call_count == 1
+
+    def test_post_transport_error_retried_with_opt_in(self, profile, monkeypatch):
+        for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_RETRY_ON_AMBIGUOUS"):
+            monkeypatch.delenv(var, raising=False)
+        be = D365Backend(profile, password="pw", retry_on_ambiguous=True)
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = be.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, [
+                {"exc": requests.exceptions.ConnectionError("boom")},
+                {"status_code": 200, "headers": {"OData-EntityId": "https://x/y(1)"},
+                 "text": ""},
+            ])
+            result = be.post("accounts", json_body={"name": "Acme"})
+        assert isinstance(result, dict)
+        assert m.call_count == 2
+
+    def test_patch_retries_on_502(self, backend, monkeypatch):
+        # Regression guard: idempotent verbs are untouched by the POST gate (#84).
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("accounts(00000000-0000-0000-0000-000000000001)")
+        with requests_mock.Mocker() as m:
+            m.patch(url, [
+                {"status_code": 502, "json": {"error": {"message": "Bad Gateway"}}},
+                {"status_code": 204, "text": ""},
+            ])
+            result = backend.patch(
+                "accounts(00000000-0000-0000-0000-000000000001)",
+                json_body={"name": "Acme"},
+            )
+        assert m.call_count == 2
+        assert result is None or isinstance(result, dict)
+
+    def test_delete_retries_on_503(self, backend, monkeypatch):
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = backend.url_for("accounts(00000000-0000-0000-0000-000000000001)")
+        with requests_mock.Mocker() as m:
+            m.delete(url, [
+                {"status_code": 503, "headers": {"Retry-After": "0"}, "text": ""},
+                {"status_code": 204, "text": ""},
+            ])
+            backend.delete("accounts(00000000-0000-0000-0000-000000000001)")
+        assert m.call_count == 2
+
+    def test_batch_post_still_retries_on_503(self, profile, monkeypatch):
+        # $batch has its own retry loop and is unaffected by the POST gate (#84).
+        # A full multipart success body is fiddly to mock; instead prove the loop
+        # fires by serving 503 until exhaustion and asserting >1 attempt.
+        for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_RETRY_ON_AMBIGUOUS"):
+            monkeypatch.delenv(var, raising=False)
+        be = D365Backend(profile, password="pw")
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = be.url_for("$batch")
+        ops: list[BatchOperation] = [
+            {"method": "POST", "url": "accounts", "body": {"name": "Acme"}}
+        ]
+        with requests_mock.Mocker() as m:
+            m.post(url, status_code=503, headers={"Retry-After": "0"}, text="")
+            with pytest.raises(D365Error) as exc_info:
+                be.batch(ops)
+        assert exc_info.value.status == 503
+        # retry_max=3 → 1 initial + 3 retries = 4 attempts (batch loop, not the gate).
+        assert m.call_count == 4
+
+    def test_opt_in_via_env(self, profile, monkeypatch):
+        for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("CRM_RETRY_ON_AMBIGUOUS", "1")
+        be = D365Backend(profile, password="pw")
+        assert be._retry_on_ambiguous is True
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        url = be.url_for("accounts")
+        with requests_mock.Mocker() as m:
+            m.post(url, [
+                {"status_code": 503, "headers": {"Retry-After": "0"}},
+                {"status_code": 200, "headers": {"OData-EntityId": "https://x/y(1)"},
+                 "text": ""},
+            ])
+            result = be.post("accounts", json_body={"name": "Acme"})
+        assert isinstance(result, dict)
+        assert m.call_count == 2
+
+    def test_construction_opt_in_flag(self, profile, monkeypatch):
+        monkeypatch.delenv("CRM_RETRY_ON_AMBIGUOUS", raising=False)
+        assert D365Backend(
+            profile, password="pw", retry_on_ambiguous=True
+        )._retry_on_ambiguous is True
+        assert D365Backend(
+            profile, password="pw"
+        )._retry_on_ambiguous is False
 
     def test_no_retry_env_disables_loop(self, profile, monkeypatch):
         monkeypatch.setenv("CRM_NO_RETRY", "1")

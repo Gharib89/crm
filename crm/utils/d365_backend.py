@@ -343,7 +343,7 @@ class D365Backend:
     """
 
     def __init__(self, profile: ConnectionProfile, password: str,
-                 dry_run: bool = False):
+                 dry_run: bool = False, retry_on_ambiguous: bool = False):
         if not profile.url:
             raise D365Error("Profile is missing the server URL.")
         if profile.auth_scheme != "oauth" and not profile.username:
@@ -359,6 +359,7 @@ class D365Backend:
         self._default_caller_object_id: str | None = _resolve_caller_object_id()
         self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
         self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
+        self._retry_on_ambiguous = retry_on_ambiguous or _resolve_bool_env("CRM_RETRY_ON_AMBIGUOUS")
 
     # ── Auth helpers ─────────────────────────────────────────────────────
 
@@ -586,7 +587,10 @@ class D365Backend:
                     timeout=self.profile.timeout,
                 )
             except requests.RequestException as exc:
-                if attempt >= max_retries or not _is_transport_retryable(exc):
+                # Non-idempotent POST (#84): a lost response may have committed,
+                # so do not auto-retry the re-send unless the caller opts in.
+                post_blocks_retry = method.upper() == "POST" and not self._retry_on_ambiguous
+                if attempt >= max_retries or post_blocks_retry or not _is_transport_retryable(exc):
                     raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
                 delay = _compute_delay(attempt, self.profile, retry_after=None)
                 _log_retry(method, url, attempt, delay,
@@ -598,10 +602,11 @@ class D365Backend:
             elapsed_ms = int((resp.elapsed.total_seconds() if resp.elapsed else 0) * 1000)
             _http_logger.debug("response", extra={"event": "response", "status": resp.status_code, "ms": elapsed_ms})
 
-            # One log per response: always emit when status warrants retry
-            # (i.e., a 429/5xx that has rate-limit headers); otherwise emit
-            # only when CRM_VERBOSE=1 is set.
-            retryable = _is_response_retryable(resp, method)
+            # One log per response: always emit when this response is about to be
+            # retried (the computed `retryable` decision below — which already
+            # accounts for the method/POST gate) and has rate-limit headers;
+            # otherwise emit only when CRM_VERBOSE=1 is set.
+            retryable = _is_response_retryable(resp, method, self._retry_on_ambiguous)
             _log_rate_limit_headers(resp, on_retryable=retryable)
 
             if not retryable:
@@ -875,12 +880,17 @@ def _compute_delay(
     return base
 
 
-def _is_response_retryable(resp: "requests.Response", method: str) -> bool:
+def _is_response_retryable(resp: "requests.Response", method: str, retry_on_ambiguous: bool = False) -> bool:
     """Return True if the response status warrants a retry for this method."""
     status = resp.status_code
+    method_upper = method.upper()
+    # Non-idempotent POST (record create / action): a lost response may have
+    # committed, so do not auto-retry unless the caller opts into the re-send
+    # risk (#84). $batch has its own retry loop and is unaffected.
+    if method_upper == "POST" and not retry_on_ambiguous:
+        return False
     if status == 429:
         return True
-    method_upper = method.upper()
     if status == 503 and method_upper == "POST":
         return True
     if status in (502, 503, 504) and method_upper in ("GET", "PUT", "PATCH", "DELETE"):

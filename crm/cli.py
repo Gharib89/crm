@@ -39,9 +39,10 @@ class CLIContext:
         self.password: str | None = None
         self.auth_scheme: str | None = None
         self.stage_only: bool = False
+        self.retry_on_ambiguous: bool = False
         self.session_name: str = "default"
         self._backend: D365Backend | None = None
-        self._backend_key: tuple[str | None, str | None, bool, str | None] | None = None
+        self._backend_key: tuple[str | None, str | None, bool, str | None, bool] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
 
     def emit(self, ok: bool, data: Any = None, *, error: str | None = None,
@@ -114,7 +115,8 @@ class CLIContext:
         from crm.core import connection as conn_mod
         from crm.utils.d365_backend import D365Backend
 
-        key = (self.profile_name, self.password, self.dry_run, self.auth_scheme)
+        key = (self.profile_name, self.password, self.dry_run, self.auth_scheme,
+               self.retry_on_ambiguous)
         if self._backend is None or self._backend_key != key:
             resolved = conn_mod.resolve_credentials(
                 profile_name=self.profile_name,
@@ -123,7 +125,8 @@ class CLIContext:
             if self.auth_scheme is not None:
                 resolved.profile.auth_scheme = self.auth_scheme
             self._backend = D365Backend(
-                resolved.profile, resolved.password, dry_run=self.dry_run
+                resolved.profile, resolved.password, dry_run=self.dry_run,
+                retry_on_ambiguous=self.retry_on_ambiguous,
             )
             self._backend_key = key
         return self._backend
@@ -334,13 +337,18 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 @click.option("--stage-only", "stage_only", is_flag=True,
               help="Stage metadata changes without publishing (env: CRM_STAGE_ONLY). "
                    "Forces every create/update command to --no-publish.")
+@click.option("--retry-on-ambiguous", "retry_on_ambiguous", is_flag=True,
+              help="Re-enable auto-retry of non-idempotent POST creates on "
+                   "transport error / 429 / 503 (env: CRM_RETRY_ON_AMBIGUOUS). "
+                   "Off by default: a lost POST response may have committed.")
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
 def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         profile_name: str | None, password: str | None,
         log_level: str | None, verbose: bool, log_format: str | None,
-        auth_scheme: str | None, stage_only: bool, session_name: str):
+        auth_scheme: str | None, stage_only: bool, retry_on_ambiguous: bool,
+        session_name: str):
     """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
     _valid_levels = ("debug", "info", "warning", "error")
     _valid_fmts = ("text", "json-line")
@@ -376,6 +384,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     # re-enable auto-publish and lose the safety guarantee.
     env_stage_only = os.environ.get("CRM_STAGE_ONLY", "").lower() in ("1", "true", "yes", "on")
     cli_ctx.stage_only = cli_ctx.stage_only or stage_only or env_stage_only
+    cli_ctx.retry_on_ambiguous = retry_on_ambiguous
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:
