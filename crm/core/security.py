@@ -6,10 +6,11 @@ responsible for formatting.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import D365Backend, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 # ── Constants ────────────────────────────────────────────────────────────
 
@@ -35,6 +36,10 @@ def list_roles(
         "$orderby": "name",
     }
     if business_unit is not None:
+        try:
+            uuid.UUID(business_unit)
+        except ValueError as exc:
+            raise D365Error(f"business_unit must be a GUID; got {business_unit!r}") from exc
         params["$filter"] = f"_businessunitid_value eq {business_unit}"
     return as_dict(backend.get(_ROLES_SET, params=params)).get("value", [])
 

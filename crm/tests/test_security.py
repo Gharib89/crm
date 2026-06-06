@@ -11,7 +11,7 @@ import json
 import pytest
 import requests_mock
 
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 from crm.core import security as sec
 
 # ── Constants ────────────────────────────────────────────────────────────
@@ -63,6 +63,10 @@ class TestListRoles:
         assert result == mock_roles
         qs = m.request_history[0].qs
         assert qs["$filter"][0] == f"_businessunitid_value eq {_BU_ID}"
+
+    def test_invalid_business_unit_raises_d365error(self, backend):
+        with pytest.raises(D365Error, match="business_unit must be a GUID"):
+            sec.list_roles(backend, business_unit="not-a-guid")
 
     def test_returns_empty_list_when_no_value(self, backend):
         with requests_mock.Mocker() as m:
