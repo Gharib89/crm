@@ -171,3 +171,143 @@ class TestViewCommand:
         ])
         assert result.exit_code == 0, result.output
         assert captured["columns"] == [("cwx_name", 220)]
+
+
+# ---------------------------------------------------------------------------
+# Tests for read_entity_views
+# ---------------------------------------------------------------------------
+
+# XML helpers — match the exact output of _build_layoutxml / _build_fetchxml.
+def _make_layoutxml(entity: str, otc: int, cols: list[tuple[str, int]]) -> str:
+    from xml.sax.saxutils import quoteattr
+    id_attr = f"{entity}id"
+    cells = "".join(
+        f'<cell name={quoteattr(name)} width="{width}" />'
+        for name, width in cols
+    )
+    jump = cols[0][0]
+    return (
+        f'<grid name="resultset" object="{otc}" '
+        f'jump={quoteattr(jump)} select="1" icon="1" preview="1">'
+        f'<row name="result" id={quoteattr(id_attr)}>{cells}</row></grid>'
+    )
+
+
+def _make_fetchxml(entity: str, cols: list[tuple[str, int]],
+                   order_by: str | None, filter_active: bool) -> str:
+    from xml.sax.saxutils import quoteattr
+    id_attr = f"{entity}id"
+    attrs = f'<attribute name={quoteattr(id_attr)} />' + "".join(
+        f'<attribute name={quoteattr(name)} />' for name, _ in cols
+    )
+    order = (
+        f'<order attribute={quoteattr(order_by)} descending="false" />'
+        if order_by else ""
+    )
+    filt = (
+        '<filter type="and"><condition attribute="statecode" '
+        'operator="eq" value="0" /></filter>'
+        if filter_active else ""
+    )
+    return (
+        '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
+        f'<entity name={quoteattr(entity)}>{attrs}{order}{filt}</entity></fetch>'
+    )
+
+
+_READ_VIEW_ID = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
+
+
+class TestReadEntityViews:
+    def test_view_with_columns_and_order_by(self, backend):
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 220), ("cwx_priority", 120)]
+        layoutxml = _make_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _make_fetchxml("cwx_ticket", cols, "cwx_name", False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "Active Tickets",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": True,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert len(views) == 1
+        v = views[0]
+        assert v["name"] == "Active Tickets"
+        assert v["is_default"] is True
+        assert v["columns"] == [
+            {"name": "cwx_name", "width": 220},
+            {"name": "cwx_priority", "width": 120},
+        ]
+        assert v["order_by"] == "cwx_name"
+
+    def test_view_descending_order_parsed(self, backend):
+        """order attribute is extracted correctly regardless of descending flag."""
+        from crm.core.views import read_entity_views
+        cols = [("cwx_subject", 300)]
+        layoutxml = _make_layoutxml("cwx_task", 10043, cols)
+        # manually build fetchxml with descending="true"
+        fetchxml = (
+            '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
+            '<entity name="cwx_task">'
+            '<attribute name="cwx_taskid" />'
+            '<attribute name="cwx_subject" />'
+            '<order attribute="cwx_createdon" descending="true" />'
+            '</entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "Recent Tasks",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_task")
+        assert views[0]["order_by"] == "cwx_createdon"
+
+    def test_view_with_no_order_element(self, backend):
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 200)]
+        layoutxml = _make_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _make_fetchxml("cwx_ticket", cols, None, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "All Tickets",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert len(views) == 1
+        assert "order_by" not in views[0]
+
+    def test_no_public_views_returns_empty(self, backend):
+        from crm.core.views import read_entity_views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            views = read_entity_views(backend, "cwx_ticket")
+        assert views == []
+
+    def test_single_quote_escaped_in_filter(self, backend):
+        """Single quotes in entity name are doubled in the OData $filter literal."""
+        from crm.core.views import read_entity_views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            read_entity_views(backend, "o'brien_entity")
+        qs = m.request_history[0].qs
+        # requests encodes the query string; decode and check the raw filter value
+        filter_val = qs["$filter"][0]
+        assert "o''brien_entity" in filter_val
