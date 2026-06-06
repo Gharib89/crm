@@ -602,9 +602,10 @@ class D365Backend:
             elapsed_ms = int((resp.elapsed.total_seconds() if resp.elapsed else 0) * 1000)
             _http_logger.debug("response", extra={"event": "response", "status": resp.status_code, "ms": elapsed_ms})
 
-            # One log per response: always emit when status warrants retry
-            # (i.e., a 429/5xx that has rate-limit headers); otherwise emit
-            # only when CRM_VERBOSE=1 is set.
+            # One log per response: always emit when this response is about to be
+            # retried (the computed `retryable` decision below — which already
+            # accounts for the method/POST gate) and has rate-limit headers;
+            # otherwise emit only when CRM_VERBOSE=1 is set.
             retryable = _is_response_retryable(resp, method, self._retry_on_ambiguous)
             _log_rate_limit_headers(resp, on_retryable=retryable)
 
