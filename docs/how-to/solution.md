@@ -90,6 +90,8 @@ By default an import **overwrites unmanaged customizations** in the target org, 
 
 On completion the result parses the import job's `data` column into a solution-level `result` (`success`/`warning`/`failure`) plus a `components` list — `{name, type, result, errorcode?, errortext?}` per imported component. **A component that failed under an overall-succeeded job is no longer hidden:** any non-success component adds a `meta.warnings` note, so `status: succeeded` can't mask a partial failure ([#70](https://github.com/Gharib89/crm/issues/70)). Add `--formatted` to also attach the Excel-format `RetrieveFormattedImportJobResults` report verbatim under `formatted_results` (opt-in — it is a separate round-trip).
 
+The result also includes a `managed` field: `true` if the imported solution is managed, `false` if unmanaged, or `null` when the flag could not be read (e.g. a corrupt zip). This is sniffed from `solution.xml` inside the zip before the upload and is present in dry-run results too ([#91](https://github.com/Gharib89/crm/issues/91)).
+
 ## Verify a prior import
 
 ```bash

@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
+import zipfile
 
 import pytest
 import requests_mock
@@ -212,6 +214,72 @@ def test_import_solution_warns_when_data_missing(backend, tmp_path, monkeypatch)
     assert any("not verified" in w for w in info["warnings"])
 
 
+# ── managed/unmanaged sniff (#91) ────────────────────────────────────────
+
+
+def _make_solution_zip(path, managed_flag):
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr(
+            "solution.xml",
+            f"<ImportExportXml><SolutionManifest>"
+            f"<UniqueName>s</UniqueName><Managed>{managed_flag}</Managed>"
+            f"</SolutionManifest></ImportExportXml>",
+        )
+
+
+_ASYNC_OP_ID = "55555555-5555-5555-5555-555555555555"
+
+
+def test_import_solution_managed_field_false_on_valid_unmanaged_zip(backend, tmp_path, monkeypatch):
+    """Real import with a valid unmanaged zip → managed is False."""
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    zip_path = tmp_path / "unmanaged.zip"
+    _make_solution_zip(zip_path, "0")
+    with requests_mock.Mocker() as m:
+        m.post(backend.url_for("ImportSolutionAsync"),
+               json={"AsyncOperationId": _ASYNC_OP_ID})
+        m.get(re.compile(r"asyncoperations"),
+              json={"statecode": 3, "statuscode": 30, "message": "Done"})
+        m.get(re.compile(r"importjobs"),
+              json={"progress": 100.0, "startedon": "2026-06-05T00:00:00Z",
+                    "completedon": "2026-06-05T00:01:00Z", "data": _DATA_PARTIAL})
+        info = sol.import_solution(backend, zip_path, quiet=True)
+    assert info["managed"] is False
+
+
+def test_import_solution_managed_field_none_on_garbage_zip(backend, tmp_path, monkeypatch):
+    """Real import with a garbage non-zip stub → managed is None."""
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    zip_path = tmp_path / "garbage.zip"
+    zip_path.write_bytes(b"PK\x03\x04stub")
+    with requests_mock.Mocker() as m:
+        m.post(backend.url_for("ImportSolutionAsync"),
+               json={"AsyncOperationId": _ASYNC_OP_ID})
+        m.get(re.compile(r"asyncoperations"),
+              json={"statecode": 3, "statuscode": 30, "message": "Done"})
+        m.get(re.compile(r"importjobs"),
+              json={"progress": 100.0, "startedon": "2026-06-05T00:00:00Z",
+                    "completedon": "2026-06-05T00:01:00Z", "data": _DATA_PARTIAL})
+        info = sol.import_solution(backend, zip_path, quiet=True)
+    assert info["managed"] is None
+
+
+def test_import_solution_dry_run_includes_managed_and_dry_run_sentinel(tmp_path):
+    """Dry-run: managed False present AND _dry_run sentinel preserved."""
+    profile = ConnectionProfile(
+        name="t", url="https://crm.contoso.local/contoso", domain="C",
+        username="u", api_version="v9.2", verify_ssl=False,
+    )
+    dry_backend = D365Backend(profile, password="pw", dry_run=True)
+    zip_path = tmp_path / "unmanaged.zip"
+    _make_solution_zip(zip_path, "0")
+    out = sol.import_solution(dry_backend, zip_path, quiet=True)
+    assert "_dry_run" in out
+    assert out["managed"] is False
+
+
 # ── command layer ────────────────────────────────────────────────────────
 
 
@@ -249,3 +317,44 @@ def test_import_result_command_surfaces_warnings_and_formatted(monkeypatch, tmp_
     assert env["meta"]["warnings"]                 # lifted into meta.warnings
     assert "warnings" not in env["data"]           # not duplicated in data
     assert captured == {"job_id": _JOB_ID, "formatted": True}
+
+
+def test_sniff_managed_never_raises_on_unexpected_error(tmp_path, monkeypatch):
+    # zf.read can raise NotImplementedError (unsupported compression) /
+    # RuntimeError (encrypted) — neither is BadZipFile/OSError. The advisory
+    # sniff must still degrade to None, never crash the import.
+    zip_path = tmp_path / "in.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("solution.xml", "<ImportExportXml/>")
+
+    class _Boom(zipfile.ZipFile):
+        def read(self, *a, **k):  # type: ignore[override]
+            raise NotImplementedError("That compression method is not supported")
+
+    monkeypatch.setattr(zipfile, "ZipFile", _Boom)
+    assert sol._sniff_solution_managed(str(zip_path)) is None
+
+
+def test_sniff_managed_returns_true_for_managed_zip(tmp_path):
+    # <Managed>1</Managed> branch was not previously covered.
+    zip_path = tmp_path / "managed.zip"
+    _make_solution_zip(zip_path, "1")
+    assert sol._sniff_solution_managed(str(zip_path)) is True
+
+
+def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
+    # Zip-bomb guard: when solution.xml's declared uncompressed size exceeds the
+    # cap, bail to None without decompressing. Shrink the cap so a normal
+    # manifest trips it (vs. writing a multi-MB file).
+    zip_path = tmp_path / "bomb.zip"
+    _make_solution_zip(zip_path, "0")
+    monkeypatch.setattr(sol, "_MAX_SOLUTION_XML_BYTES", 4)
+    assert sol._sniff_solution_managed(str(zip_path)) is None
+
+
+def test_sniff_managed_accepts_binary_stream(tmp_path):
+    # import_solution reads the zip once and sniffs from an in-memory stream, so
+    # the helper must accept a file-like object, not only a path.
+    zip_path = tmp_path / "stream.zip"
+    _make_solution_zip(zip_path, "1")
+    assert sol._sniff_solution_managed(io.BytesIO(zip_path.read_bytes())) is True

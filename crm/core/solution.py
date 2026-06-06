@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import base64
+import io
 import re
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from crm.core import entity
 from crm.core import metadata_cache
@@ -630,6 +632,47 @@ def export_solution(
     }
 
 
+# solution.xml is metadata — KB to a few MB even for large solutions (heavy
+# assets live in separate zip members). Cap the advisory sniff's decompression
+# so a zip-bomb solution.xml can't balloon memory / OOM-kill an import the
+# server would otherwise accept from the small uploaded zip.
+_MAX_SOLUTION_XML_BYTES = 64 * 1024 * 1024
+
+
+def _sniff_solution_managed(zip_src: str | Path | BinaryIO) -> bool | None:
+    """Best-effort read of solution.xml's <Managed> flag from a solution zip.
+
+    Accepts a path or an already-open binary stream (so the caller can read the
+    zip bytes once and sniff in-memory). Returns True (managed,
+    <Managed>1</Managed>), False (unmanaged, 0), or None when the flag can't be
+    determined — a bad/non-zip file, a zip with no solution.xml, a member too
+    large to be a real manifest, an unparseable document, or an unexpected
+    value. Never raises; the sniff is advisory metadata, not a gate on import.
+    """
+    try:
+        with zipfile.ZipFile(zip_src) as zf:
+            # file_size is the declared uncompressed size from the central
+            # directory — read it without decompressing, and bail before read.
+            if zf.getinfo("solution.xml").file_size > _MAX_SOLUTION_XML_BYTES:
+                return None
+            raw = zf.read("solution.xml")
+        el = ET.fromstring(raw).find(".//Managed")
+    except Exception:
+        # Advisory sniff only — must never block an import the server would
+        # accept. Beyond bad-zip/missing/parse, zf.read can raise
+        # NotImplementedError (unsupported compression) or RuntimeError
+        # (encrypted member); any failure degrades to "unknown" (None).
+        return None
+    if el is None or el.text is None:
+        return None
+    val = el.text.strip()
+    if val == "1":
+        return True
+    if val == "0":
+        return False
+    return None
+
+
 def import_solution(
     backend: D365Backend,
     zip_path: str | Path,
@@ -658,7 +701,11 @@ def import_solution(
     p = Path(zip_path)
     if not p.is_file():
         raise D365Error(f"Solution file not found: {zip_path}")
-    encoded = base64.b64encode(p.read_bytes()).decode("ascii")
+    # Read the zip once: sniff the managed flag in-memory and reuse the same
+    # bytes for the base64 upload (no second disk read).
+    data = p.read_bytes()
+    managed = _sniff_solution_managed(io.BytesIO(data))
+    encoded = base64.b64encode(data).decode("ascii")
     import_job_id = _new_guid()
     body: dict[str, Any] = {
         "CustomizationFile": encoded,
@@ -670,7 +717,8 @@ def import_solution(
     started = _time.monotonic()
     resp = as_dict(backend.post("ImportSolutionAsync", json_body=body))
     if "_dry_run" in resp:
-        return {**resp, "action": "ImportSolutionAsync", "import_job_id": import_job_id}
+        return {**resp, "action": "ImportSolutionAsync", "import_job_id": import_job_id,
+                "managed": managed}
 
     async_op_id = resp.get("AsyncOperationId")
     if not async_op_id:
@@ -723,6 +771,7 @@ def import_solution(
         "started_on": job_row.get("startedon"),
         "completed_on": job_row.get("completedon"),
         "duration_ms": duration_ms,
+        "managed": managed,
     }
 
     # The import already succeeded (statuscode 30); parsing the post-hoc report

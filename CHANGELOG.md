@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `solution import` result (real and dry-run) now includes a `managed` field
+  (`true` = managed solution, `false` = unmanaged, `null` when undeterminable)
+  sniffed from `solution.xml` inside the zip. The sniff is best-effort and never
+  blocks the import (#91).
+
 ## [0.11.0] — 2026-06-06
 
 **Added**
