@@ -743,3 +743,99 @@ def test_e2e_dry_run_greenfield_plans_dependents(dry_backend, monkeypatch, tmp_p
     assert env["data"]["applied"] == []
     assert _kinds(env["data"]["planned"]) == _FULL_KINDS
     assert _publish_hits(m, dry_backend) == []
+
+
+# ── precision / format_name round-trip (the forwarding fix) ─────────────────
+
+
+def test_apply_decimal_attribute_with_precision_succeeds(backend):
+    """A decimal attr carrying precision must apply without raising 'precision required'."""
+    attr = {"kind": "decimal", "schema_name": "contoso_Amount", "display_name": "Amount",
+            "precision": 2}
+    entity = {**_ENTITY, "attributes": [attr]}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_amount", schema="contoso_Amount",
+                               attr_type="Decimal")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "attribute"]
+    attr_posts = [
+        r for r in m.request_history
+        if "EntityDefinitions(LogicalName='contoso_project')/Attributes" in r.url
+        and r.method == "POST"
+    ]
+    assert len(attr_posts) == 1
+    body = attr_posts[0].json()
+    assert body.get("Precision") == 2
+
+
+def test_apply_string_format_name_is_preserved(backend):
+    """A string attr with format_name='Email' must POST FormatName={Value:'Email'}."""
+    attr = {"kind": "string", "schema_name": "contoso_Email", "display_name": "Email",
+            "max_length": 200, "format_name": "Email"}
+    entity = {**_ENTITY, "attributes": [attr]}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_email", schema="contoso_Email",
+                               attr_type="String")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    attr_posts = [
+        r for r in m.request_history
+        if "EntityDefinitions(LogicalName='contoso_project')/Attributes" in r.url
+        and r.method == "POST"
+    ]
+    assert len(attr_posts) == 1
+    body = attr_posts[0].json()
+    assert body.get("FormatName") == {"Value": "Email"}
+
+
+def test_apply_string_without_format_name_defaults_to_text(backend):
+    """A string attr without format_name must POST FormatName={Value:'Text'} (default)."""
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "max_length": 100}
+    entity = {**_ENTITY, "attributes": [attr]}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_code", schema="contoso_Code",
+                               attr_type="String")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    attr_posts = [
+        r for r in m.request_history
+        if "EntityDefinitions(LogicalName='contoso_project')/Attributes" in r.url
+        and r.method == "POST"
+    ]
+    assert len(attr_posts) == 1
+    body = attr_posts[0].json()
+    assert body.get("FormatName") == {"Value": "Text"}
+
+
+def test_apply_integer_attribute_no_precision_still_applies(backend):
+    """An integer attr (precision forbidden) with precision=None must apply without error."""
+    attr = {"kind": "integer", "schema_name": "contoso_Count", "display_name": "Count"}
+    entity = {**_ENTITY, "attributes": [attr]}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_count", schema="contoso_Count",
+                               attr_type="Integer")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "attribute"]

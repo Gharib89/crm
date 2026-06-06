@@ -345,6 +345,8 @@ def apply_spec(
                         description=attr.get("description"),
                         required=attr.get("required", "None"),
                         max_length=attr.get("max_length"),
+                        precision=attr.get("precision"),
+                        format_name=attr.get("format_name"),
                         optionset_name=attr.get("optionset_name"),
                         options=opts,
                         target_entity=attr.get("target_entity"),
