@@ -11,6 +11,7 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core import dependencies as dep_mod
+from crm.core import metadata_cache
 
 
 def list_entities(
@@ -478,6 +479,8 @@ def create_entity(
     }
     if entity_set_lookup_error is not None:
         out["entity_set_lookup_error"] = entity_set_lookup_error
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return out
 
 
@@ -547,6 +550,8 @@ def delete_entity(
     if deps is not None:
         result["can_delete"] = deps["can_delete"]
         result["blockers"] = deps["blockers"]
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return result
 
 

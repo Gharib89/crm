@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from crm.core import entity
+from crm.core import metadata_cache
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
@@ -899,6 +900,8 @@ def publish_all(backend: D365Backend) -> dict[str, Any]:
     result = as_dict(backend.post("PublishAllXml"))
     if result:
         return result
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return {"published": True, "action": "PublishAllXml"}
 
 
@@ -918,6 +921,8 @@ def publish_xml(backend: D365Backend, parameter_xml: str) -> dict[str, Any]:
     ))
     if result:
         return result
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return {"published": True, "action": "PublishXml"}
 
 

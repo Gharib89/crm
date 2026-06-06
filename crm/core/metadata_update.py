@@ -20,6 +20,7 @@ from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish
+from crm.core import metadata_cache
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
@@ -154,6 +155,8 @@ def _retrieve_merge_write(
 
     out: dict[str, Any] = {"updated": True, "path": path, "solution": solution}
     maybe_publish(backend, out, publish)
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return out
 
 

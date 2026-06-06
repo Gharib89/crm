@@ -16,6 +16,7 @@ from typing import Any
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
+from crm.core import metadata_cache
 
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
@@ -121,6 +122,8 @@ def delete_relationship(
     if deps is not None:
         result["can_delete"] = deps["can_delete"]
         result["blockers"] = deps["blockers"]
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return result
 
 
@@ -276,6 +279,8 @@ def create_one_to_many(
     if lookup_error:
         out["relationship_lookup_error"] = lookup_error
     maybe_publish(backend, out, publish)
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return out
 
 
@@ -401,4 +406,6 @@ def create_many_to_many(
     if lookup_error:
         out["relationship_lookup_error"] = lookup_error
     maybe_publish(backend, out, publish)
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return out
