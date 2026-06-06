@@ -9,10 +9,13 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
-## [Unreleased]
+## v0.13.0 (2026-06-06)
 
-### Fixed
-- REPL launched with `--session NAME` now keeps `NAME` active across all typed commands; previously every bare command silently reset the session to `default` (#128).
+### Features
+
+- **solution**: Add 'solution dependencies' uninstall-blocker read
+  ([#116](https://github.com/Gharib89/crm/pull/116),
+  [`27b401f`](https://github.com/Gharib89/crm/commit/27b401f9949ed6bdc0f81b82189203d8051e4540))
 
 ## [0.12.0] — 2026-06-07
 
