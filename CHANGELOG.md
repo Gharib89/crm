@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- `crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` — create an
+  entity + N columns in a single publish by building a one-entity in-memory spec
+  and running it through the `apply` engine. Column shorthand: `KIND` is one of
+  `string`, `memo`, `integer`, `bigint`, `decimal`, `double`, `money`, `boolean`,
+  `datetime`, `picklist`, `multiselect`, `lookup`, `image`, `file`; each resource
+  is created with `if_exists=skip` (re-running is a no-op); honors global
+  `--dry-run` and `--stage-only`; requires a `publisher_prefix` on the active
+  profile (#90).
 - Append-only JSONL audit journal of every mutating command. On success, each
   mutating CLI verb (entity create/update/upsert/delete/associate/disassociate/
   set-lookup/clear-lookup; all metadata create/update/delete-*; solution create/
