@@ -133,7 +133,7 @@ pass `--profile <name>` and confirm the real target with
 | `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`               | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
-| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `cache-clear` | Schema introspection + option set values + dependency preview + entity-def cache |
+| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `export-spec`, `cache-clear` | Schema introspection + option set values + dependency preview + spec export + entity-def cache |
 | `plugin`     | `register-assembly`, `list-types`, `register-step`, `unregister-assembly`, `unregister-step` | Plug-in assembly registration + step lifecycle |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
@@ -288,6 +288,34 @@ Cache file: `~/.crm/cache/<profile>/entitydefs.json` (override root with `CRM_HO
 TTL: ~15 min. Any metadata write (create/update/delete entity, attribute, optionset,
 relationship, publish-all/xml) auto-invalidates the cache. Read-only schema only —
 records and secrets are never cached.
+
+### 9b. Export a live entity as an apply spec (round-trip)
+
+```bash
+# Export entity schema to YAML — ready for `crm apply -f`
+crm metadata export-spec new_project \
+    --with-views --with-relationships \
+    -o project.yaml
+
+# Re-create (or idempotently re-apply) in any environment
+crm apply -f project.yaml
+```
+
+`export-spec` reads the entity over the Web API (pure GETs) and emits the
+`crm apply -f` desired-state spec. Flags:
+
+- `--with-views` — include the entity's public saved-query views.
+- `--with-relationships` — include the entity's custom 1:N relationships.
+- `-o FILE` — write bare YAML to FILE (directly consumable by `apply -f`). Without
+  `-o` the spec is emitted under the standard JSON envelope.
+
+Captures: entity definition, primary-name attribute, all custom apply-creatable
+columns (deep-read for `MaxLength`/`RequiredLevel`/options), referenced global
+option sets, relationships (with flag), views (with flag). Publisher/solution are
+**not** emitted — supply them via `--solution` on `apply`, or edit the YAML.
+Fidelity note: some fields (`format_name`, cascade config) are captured as a
+faithful superset but not yet consumed by `apply`; `apply` ignores unknown keys so
+the file always remains apply-consumable.
 
 ### 5a. Preview dependencies before deleting a metadata component
 
