@@ -1,9 +1,11 @@
 """Metadata commands (entities, attributes, relationships, option sets)."""
 # pyright: basic
 from __future__ import annotations
+import time
 import click
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as ma_mod
+from crm.core import metadata_cache as mc_mod
 from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
@@ -41,6 +43,38 @@ def metadata_group():
 @pass_ctx
 def metadata_entities(ctx: CLIContext, custom_only, top):
     """List entity definitions."""
+    use_cache = ctx.cache_metadata or ctx.refresh_metadata
+    if use_cache:
+        if custom_only:
+            raise click.UsageError(
+                "--custom-only is not supported with --cache-metadata "
+                "(the cache stores only logical/set names)"
+            )
+        try:
+            backend = ctx.backend()
+            lookup = mc_mod.load_definitions(
+                backend.profile,
+                fetch=lambda: meta_mod.list_entity_definitions(backend),
+                refresh=ctx.refresh_metadata,
+                now=time.time(),
+            )
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+        rows = lookup.definitions
+        if top is not None:
+            if top < 1:
+                _handle_d365_error(ctx, D365Error("--top must be >= 1"))
+                return
+            rows = rows[:top]
+        meta = {"cache": lookup.status, "count": len(rows)}
+        if ctx.json_mode:
+            ctx.emit(True, data=rows, meta=meta)
+            return
+        ctx.emit(True, table={"headers": ["LogicalName", "EntitySetName"],
+                              "rows": [[r["logical"], r["set_name"]] for r in rows]},
+                 meta=meta)
+        return
     try:
         items = meta_mod.list_entities(ctx.backend(), custom_only=custom_only, top=top)
     except D365Error as exc:
@@ -50,12 +84,25 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
     headers = ["LogicalName", "EntitySetName", "SchemaName", "IsCustom"]
-    rows = [
+    rows_5f = [
         [it.get("LogicalName", ""), it.get("EntitySetName", ""),
          it.get("SchemaName", ""), str(it.get("IsCustomEntity", False))]
         for it in items
     ]
-    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
+    ctx.emit(True, table={"headers": headers, "rows": rows_5f}, meta={"count": len(items)})
+
+
+@metadata_group.command("cache-clear")
+@pass_ctx
+def metadata_cache_clear(ctx: CLIContext):
+    """Delete the active profile's on-disk metadata cache."""
+    try:
+        backend = ctx.backend()
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    cleared = mc_mod.clear(backend.profile)
+    ctx.emit(True, data={"cleared": cleared})
 
 
 @metadata_group.command("entity")
