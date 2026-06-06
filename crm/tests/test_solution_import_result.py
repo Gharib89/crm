@@ -212,6 +212,74 @@ def test_import_solution_warns_when_data_missing(backend, tmp_path, monkeypatch)
     assert any("not verified" in w for w in info["warnings"])
 
 
+# ── managed/unmanaged sniff (#91) ────────────────────────────────────────
+
+import zipfile as _zipfile
+
+
+def _make_solution_zip(path, managed_flag):
+    with _zipfile.ZipFile(path, "w") as zf:
+        zf.writestr(
+            "solution.xml",
+            f"<ImportExportXml><SolutionManifest>"
+            f"<UniqueName>s</UniqueName><Managed>{managed_flag}</Managed>"
+            f"</SolutionManifest></ImportExportXml>",
+        )
+
+
+_ASYNC_OP_ID = "55555555-5555-5555-5555-555555555555"
+
+
+def test_import_solution_managed_field_false_on_valid_unmanaged_zip(backend, tmp_path, monkeypatch):
+    """Real import with a valid unmanaged zip → managed is False."""
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    zip_path = tmp_path / "unmanaged.zip"
+    _make_solution_zip(zip_path, "0")
+    with requests_mock.Mocker() as m:
+        m.post(backend.url_for("ImportSolutionAsync"),
+               json={"AsyncOperationId": _ASYNC_OP_ID})
+        m.get(re.compile(r"asyncoperations"),
+              json={"statecode": 3, "statuscode": 30, "message": "Done"})
+        m.get(re.compile(r"importjobs"),
+              json={"progress": 100.0, "startedon": "2026-06-05T00:00:00Z",
+                    "completedon": "2026-06-05T00:01:00Z", "data": _DATA_PARTIAL})
+        info = sol.import_solution(backend, zip_path, quiet=True)
+    assert info["managed"] is False
+
+
+def test_import_solution_managed_field_none_on_garbage_zip(backend, tmp_path, monkeypatch):
+    """Real import with a garbage non-zip stub → managed is None."""
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    zip_path = tmp_path / "garbage.zip"
+    zip_path.write_bytes(b"PK\x03\x04stub")
+    with requests_mock.Mocker() as m:
+        m.post(backend.url_for("ImportSolutionAsync"),
+               json={"AsyncOperationId": _ASYNC_OP_ID})
+        m.get(re.compile(r"asyncoperations"),
+              json={"statecode": 3, "statuscode": 30, "message": "Done"})
+        m.get(re.compile(r"importjobs"),
+              json={"progress": 100.0, "startedon": "2026-06-05T00:00:00Z",
+                    "completedon": "2026-06-05T00:01:00Z", "data": _DATA_PARTIAL})
+        info = sol.import_solution(backend, zip_path, quiet=True)
+    assert info["managed"] is None
+
+
+def test_import_solution_dry_run_includes_managed_and_dry_run_sentinel(tmp_path):
+    """Dry-run: managed False present AND _dry_run sentinel preserved."""
+    profile = ConnectionProfile(
+        name="t", url="https://crm.contoso.local/contoso", domain="C",
+        username="u", api_version="v9.2", verify_ssl=False,
+    )
+    dry_backend = D365Backend(profile, password="pw", dry_run=True)
+    zip_path = tmp_path / "unmanaged.zip"
+    _make_solution_zip(zip_path, "0")
+    out = sol.import_solution(dry_backend, zip_path, quiet=True)
+    assert "_dry_run" in out
+    assert out["managed"] is False
+
+
 # ── command layer ────────────────────────────────────────────────────────
 
 

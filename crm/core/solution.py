@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import re
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -630,6 +631,30 @@ def export_solution(
     }
 
 
+def _sniff_solution_managed(zip_path: str | Path) -> bool | None:
+    """Best-effort read of solution.xml's <Managed> flag from a solution zip.
+
+    Returns True (managed, <Managed>1</Managed>), False (unmanaged, 0), or None
+    when the flag can't be determined — a bad/non-zip file, a zip with no
+    solution.xml, an unparseable document, or an unexpected value. Never raises;
+    the sniff is advisory metadata, not a gate on the import.
+    """
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            raw = zf.read("solution.xml")
+        el = ET.fromstring(raw).find(".//Managed")
+    except (zipfile.BadZipFile, KeyError, ET.ParseError, OSError):
+        return None
+    if el is None or el.text is None:
+        return None
+    val = el.text.strip()
+    if val == "1":
+        return True
+    if val == "0":
+        return False
+    return None
+
+
 def import_solution(
     backend: D365Backend,
     zip_path: str | Path,
@@ -658,6 +683,7 @@ def import_solution(
     p = Path(zip_path)
     if not p.is_file():
         raise D365Error(f"Solution file not found: {zip_path}")
+    managed = _sniff_solution_managed(p)
     encoded = base64.b64encode(p.read_bytes()).decode("ascii")
     import_job_id = _new_guid()
     body: dict[str, Any] = {
@@ -670,7 +696,8 @@ def import_solution(
     started = _time.monotonic()
     resp = as_dict(backend.post("ImportSolutionAsync", json_body=body))
     if "_dry_run" in resp:
-        return {**resp, "action": "ImportSolutionAsync", "import_job_id": import_job_id}
+        return {**resp, "action": "ImportSolutionAsync", "import_job_id": import_job_id,
+                "managed": managed}
 
     async_op_id = resp.get("AsyncOperationId")
     if not async_op_id:
@@ -723,6 +750,7 @@ def import_solution(
         "started_on": job_row.get("startedon"),
         "completed_on": job_row.get("completedon"),
         "duration_ms": duration_ms,
+        "managed": managed,
     }
 
     # The import already succeeded (statuscode 30); parsing the post-hoc report
