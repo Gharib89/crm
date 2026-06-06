@@ -30,8 +30,9 @@ def query_group():
 @click.option("--page-size", type=int)
 @click.option("--annotations/--no-annotations", default=False)
 @click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: strip OData annotation keys (@odata.etag, "
-                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
+              help="JSON mode: drop every record key containing '@' (OData annotations "
+                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+                   "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expand,
                 count, page_size, annotations, minimal):
@@ -62,8 +63,9 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
               help="Path to a FetchXML file.")
 @click.option("--annotations/--no-annotations", default=False)
 @click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: strip OData annotation keys (@odata.etag, "
-                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
+              help="JSON mode: drop every record key containing '@' (OData annotations "
+                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+                   "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotations, minimal):
     """Run a FetchXML query."""
@@ -92,8 +94,9 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 @click.option("--annotations/--no-annotations", default=True)
 @click.option("--page-size", type=int)
 @click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: strip OData annotation keys (@odata.etag, "
-                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
+              help="JSON mode: drop every record key containing '@' (OData annotations "
+                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+                   "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_size, minimal):
     """Execute a system view (savedquery) by GUID. Use `--json query odata savedqueries` to discover IDs."""
@@ -114,8 +117,9 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
 @click.option("--annotations/--no-annotations", default=True)
 @click.option("--page-size", type=int)
 @click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: strip OData annotation keys (@odata.etag, "
-                   "*@FormattedValue) from each record; keeps lookup GUIDs and the primary id.")
+              help="JSON mode: drop every record key containing '@' (OData annotations "
+                   "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
+                   "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size, minimal):
     """Execute a saved view (userquery) by GUID."""

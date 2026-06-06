@@ -291,7 +291,7 @@ def _odata_literal(v: Any) -> str:
     return f"'{s}'"
 
 
-def _prune_annotations(record: dict) -> dict:
+def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
     """Drop OData annotation keys (any key containing '@') from a record,
     keeping business fields, `_*_value` lookup GUIDs, and the primary id.
 

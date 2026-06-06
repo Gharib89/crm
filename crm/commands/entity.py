@@ -49,8 +49,9 @@ def _validate_or_emit(ctx: CLIContext, entity_set, payload) -> bool:
 @click.option("--expand", multiple=True, help="Repeatable; navigation properties.")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--minimal", is_flag=True, default=False,
-              help="JSON mode: strip OData annotation keys (@odata.etag, "
-                   "*@FormattedValue) from the record; keeps lookup GUIDs and the primary id.")
+              help="JSON mode: drop every key containing '@' (OData annotations like "
+                   "@odata.etag, *@FormattedValue, *@lookuplogicalname); keeps business "
+                   "fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal):
     """GET <entity-set> <guid>."""
