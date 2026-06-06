@@ -62,7 +62,11 @@ _PRECISION_KINDS = frozenset({"decimal", "double", "money"})
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
-    """Return `value` as a dict, or an empty dict when it is not a mapping/None."""
+    """Return `value` as a dict, or an empty dict when it is not a mapping/None.
+
+    Narrows a nested `Any`-typed metadata field (e.g. `attr["AttributeTypeName"]`),
+    distinct from `d365_backend.as_dict`, which narrows a `dict|str|None` response.
+    """
     return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
 
 
@@ -116,24 +120,33 @@ def _project_options(
     attr_logical: str,
     attr_out: dict[str, Any],
     accumulator: dict[str, dict[str, Any]],
-) -> None:
+) -> bool:
     """Resolve a picklist/multiselect's options onto `attr_out`.
 
     Global-bound -> `optionset_name` + add the set to `accumulator` (dedup).
     Local -> inline `options`. The Picklist cast returns options for both
     picklist and multiselect kinds, so one read covers both.
+
+    Returns False when the attribute resolves to NEITHER a global
+    `optionset_name` NOR a non-empty `options` list (empty/permission-limited
+    cast). The caller skips such an attribute rather than emit a bare picklist
+    or `options: []`, which `validate_spec` rejects.
     """
     pick = metadata.picklist_options(
         backend, logical_name, attr_logical, global_optionset=True
     )
     glob = _as_dict(pick.get("GlobalOptionSet"))
     glob_name = glob.get("Name")
-    if glob_name and isinstance(glob_name, str):
+    if isinstance(glob_name, str) and glob_name:
         attr_out["optionset_name"] = glob_name
         _add_global_optionset(backend, glob_name, accumulator)
-        return
+        return True
     local = _as_dict(pick.get("OptionSet"))
-    attr_out["options"] = metadata.flatten_options(local)
+    options = metadata.flatten_options(local)
+    if not options:
+        return False
+    attr_out["options"] = options
+    return True
 
 
 def _project_attribute(
@@ -194,7 +207,8 @@ def _project_attribute(
         out["target_entity"] = first
 
     if kind in _PICKLIST_KINDS:
-        _project_options(backend, logical_name, attr_logical, out, accumulator)
+        if not _project_options(backend, logical_name, attr_logical, out, accumulator):
+            return None  # apply requires optionset_name or a non-empty options list
 
     return out
 
@@ -300,7 +314,10 @@ def build_entity_spec(
             entity["relationships"] = rels
 
     if with_views:
-        ent_views = views.read_entity_views(backend, logical_name)
+        # validate_spec requires non-empty columns per view; a view with empty
+        # columns (unparseable/empty layoutxml) would fail the spec — drop it.
+        ent_views = [v for v in views.read_entity_views(backend, logical_name)
+                     if v.get("columns")]
         if ent_views:
             entity["views"] = ent_views
 

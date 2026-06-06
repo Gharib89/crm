@@ -266,6 +266,49 @@ class TestLocalPicklist:
         assert "optionsets" not in spec
 
 
+class TestUnresolvedPicklistSkipped:
+    def test_local_picklist_empty_options_skipped(self, backend):
+        # Local OptionSet with NO options (and no GlobalOptionSet) -> skipped.
+        attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
+        cast = {
+            "LogicalName": "new_stage",
+            "OptionSet": {"Options": []},
+            "GlobalOptionSet": None,
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
+            m.get(_pick_cast_url(backend, "new_stage"), json=cast)
+            spec = build_entity_spec(backend, "new_project")
+
+        # The unresolved picklist is absent; no bare picklist / options:[] emitted.
+        assert "attributes" not in spec["entities"][0]
+        assert "optionsets" not in spec
+        apply.validate_spec(spec)  # must not raise
+
+    def test_both_null_cast_skipped(self, backend):
+        # Sparse/permission-limited read: OptionSet null AND GlobalOptionSet null.
+        attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
+        cast = {
+            "LogicalName": "new_stage",
+            "OptionSet": None,
+            "GlobalOptionSet": None,
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
+            m.get(_pick_cast_url(backend, "new_stage"), json=cast)
+            spec = build_entity_spec(backend, "new_project")
+
+        assert "attributes" not in spec["entities"][0]
+        assert "optionsets" not in spec
+        apply.validate_spec(spec)  # must not raise
+
+
 class TestGlobalPicklist:
     def test_global_picklist_emits_optionset_name_and_dedups(self, backend):
         # Two attributes share ONE global option set -> exactly one optionsets entry.
@@ -377,6 +420,38 @@ class TestOptInViewsAndRelationships:
         assert views[0]["name"] == "Active Projects"
         assert views[0]["is_default"] is True
         assert {c["name"] for c in views[0]["columns"]} == {"new_name"}
+
+    def test_with_views_filters_empty_columns(self, backend):
+        # An empty-layoutxml view (columns: []) is dropped; only the real view stays.
+        from crm.core.views import _build_layoutxml, _build_fetchxml
+        attrs = {"value": [_shallow("new_name")]}
+        cols = [("new_name", 200)]
+        good_layout = _build_layoutxml("new_project", 10042, cols)
+        good_fetch = _build_fetchxml("new_project", cols, "new_name", False)
+        savedqueries = {"value": [
+            {
+                "name": "Empty View",
+                "layoutxml": "",
+                "fetchxml": "",
+                "isdefault": False,
+            },
+            {
+                "name": "Active Projects",
+                "layoutxml": good_layout,
+                "fetchxml": good_fetch,
+                "isdefault": True,
+            },
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(backend.url_for("savedqueries"), json=savedqueries)
+            spec = build_entity_spec(backend, "new_project", with_views=True)
+
+        ent_views = spec["entities"][0]["views"]
+        assert [v["name"] for v in ent_views] == ["Active Projects"]
+        apply.validate_spec(spec)  # must not raise
 
     def test_with_relationships_includes_relationships(self, backend):
         attrs = {"value": [_shallow("new_name")]}
