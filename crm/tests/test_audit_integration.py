@@ -6,9 +6,6 @@ append nothing, and result_id is derived correctly.
 # pyright: basic
 from __future__ import annotations
 
-import os
-
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
@@ -149,5 +146,6 @@ def test_metadata_create_entity_dry_run_journals(monkeypatch, tmp_path):
     row = rows[0]
     assert row["command"] == "metadata create-entity"
     assert row["target"] == "new_Project"
+    assert row["solution"] == "MySol"
     assert row["dry_run"] is True
     assert row["ok"] is True
