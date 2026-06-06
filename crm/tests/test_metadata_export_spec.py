@@ -10,7 +10,6 @@ unregistered endpoint, so over-fetching surfaces as a test failure).
 from __future__ import annotations
 
 import json
-import unittest.mock
 
 import pytest
 import requests_mock
@@ -57,13 +56,6 @@ def _attr_url(backend, attr, entity="new_project") -> str:
     )
 
 
-def _pick_cast_url(backend, attr) -> str:
-    return backend.url_for(
-        f"EntityDefinitions(LogicalName='new_project')/Attributes(LogicalName='{attr}')"
-        "/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
-    )
-
-
 def _o2m_url(backend) -> str:
     return backend.url_for(
         "EntityDefinitions(LogicalName='new_project')/OneToManyRelationships"
@@ -78,10 +70,6 @@ def _savedqueries_url(backend) -> str:
 
 def _label(text: str) -> dict:
     return {"UserLocalizedLabel": {"Label": text, "LanguageCode": 1033}}
-
-
-def _opt(value: int, lbl: str) -> dict:
-    return {"Value": value, "Label": _label(lbl)}
 
 
 def _shallow(logical: str, *, custom: bool = True) -> dict:
