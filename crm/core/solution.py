@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from crm.core import entity
+from crm.core import metadata_cache
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
@@ -897,6 +898,11 @@ def publish_all(backend: D365Backend) -> dict[str, Any]:
     Action returns 204 No Content on success, so we synthesize a confirmation dict.
     """
     result = as_dict(backend.post("PublishAllXml"))
+    # Bust the cache on any successful non-dry-run publish, regardless of whether
+    # the action returned a body (dry-run yields a truthy preview dict — its body
+    # must NOT trigger invalidation, hence the guard before the early return).
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     if result:
         return result
     return {"published": True, "action": "PublishAllXml"}
@@ -916,6 +922,10 @@ def publish_xml(backend: D365Backend, parameter_xml: str) -> dict[str, Any]:
         "PublishXml",
         json_body={"ParameterXml": parameter_xml},
     ))
+    # Bust the cache on any successful non-dry-run publish, regardless of body
+    # (see publish_all — the dry-run preview is truthy and must not invalidate).
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     if result:
         return result
     return {"published": True, "action": "PublishXml"}

@@ -120,6 +120,75 @@ Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute tar
 crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --check-dependencies
 ```
 
+## Speed up repeated calls with the entity-definition cache
+
+By default `crm metadata entities` fetches entity definitions live on every call.
+Pass `--cache-metadata` (or set `CRM_CACHE_METADATA=1`) to read from a persistent
+on-disk cache instead, which is useful for agent loops that call the command
+repeatedly:
+
+```bash
+crm --json --cache-metadata metadata entities
+# meta.cache: "hit"   — served from disk
+# meta.cache: "miss"  — cache empty or expired; fetched live and saved
+```
+
+### Force a refresh
+
+```bash
+crm --json --refresh-metadata metadata entities
+# meta.cache: "refreshed" — always fetches live and overwrites the cache
+```
+
+`--refresh-metadata` is a one-shot flag with no env-var equivalent. It activates
+the cache on its own (you don't also need `--cache-metadata`) and always performs
+a live fetch, overwriting the cached copy.
+
+### Cache-mode limitations
+
+In cache mode the command returns **only the 2-field rows** (LogicalName /
+EntitySetName) because that is all the cache stores. The full 5-field listing is
+unchanged when `--cache-metadata` is absent.
+
+`--custom-only` is **not** supported with `--cache-metadata` (the cache does not
+store the custom flag) and exits 2 with a usage error. `--top` works as a
+client-side slice.
+
+### Cache file location and TTL
+
+The cache file lives at:
+
+```
+<CRM_HOME or ~/.crm>/cache/<profile-name>/entitydefs.json
+```
+
+It stores the `{logical, set_name}` list plus the source `url`, `api_version`, and
+`cached_at` timestamp. A url/api_version mismatch is treated as a miss. A ~15-minute
+TTL backstop forces a refresh even when the file is present. Cache misses and read
+errors degrade gracefully — the command falls back to a live fetch.
+
+### Automatic write-invalidation
+
+Any successful metadata write (entity/attribute/optionset/relationship
+create/update/delete, and publish-all/publish-xml) deletes the profile's cache file
+automatically, so a stale cache cannot outlive a schema change.
+
+### Clear the cache manually
+
+```bash
+crm --json metadata cache-clear
+# {"ok": true, "data": {"cleared": true}}
+```
+
+Returns `{"cleared": false}` if no cache file existed for the active profile.
+
+### Scope
+
+The cache stores read-only schema (entity logical names and set names) only.
+Records and secrets are never cached. When the REPL is launched with
+`--cache-metadata`, its entity-name tab completion is served from the same
+on-disk cache.
+
 ## Delete a custom relationship
 
 ```bash

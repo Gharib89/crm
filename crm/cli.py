@@ -39,6 +39,8 @@ class CLIContext:
         self.password: str | None = None
         self.auth_scheme: str | None = None
         self.stage_only: bool = False
+        self.cache_metadata: bool = False
+        self.refresh_metadata: bool = False
         self.retry_on_ambiguous: bool = False
         self.session_name: str = "default"
         self._backend: D365Backend | None = None
@@ -341,6 +343,11 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
               help="Re-enable auto-retry of non-idempotent POST creates on "
                    "transport error / 429 / 503 (env: CRM_RETRY_ON_AMBIGUOUS). "
                    "Off by default: a lost POST response may have committed.")
+@click.option("--cache-metadata", "cache_metadata", is_flag=True,
+              help="Read entity definitions from the persistent on-disk cache "
+                   "(env: CRM_CACHE_METADATA). Default off.")
+@click.option("--refresh-metadata", "refresh_metadata", is_flag=True,
+              help="Force-refresh the on-disk metadata cache on this call (one-shot; no env override).")
 @click.option("--session", "session_name", default="default", help="Session name.")
 @click.version_option(__version__, prog_name="crm")
 @click.pass_context
@@ -348,6 +355,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         profile_name: str | None, password: str | None,
         log_level: str | None, verbose: bool, log_format: str | None,
         auth_scheme: str | None, stage_only: bool, retry_on_ambiguous: bool,
+        cache_metadata: bool, refresh_metadata: bool,
         session_name: str):
     """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
     _valid_levels = ("debug", "info", "warning", "error")
@@ -385,6 +393,12 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     env_stage_only = os.environ.get("CRM_STAGE_ONLY", "").lower() in ("1", "true", "yes", "on")
     cli_ctx.stage_only = cli_ctx.stage_only or stage_only or env_stage_only
     cli_ctx.retry_on_ambiguous = retry_on_ambiguous
+    env_cache = os.environ.get("CRM_CACHE_METADATA", "").lower() in ("1", "true", "yes", "on")
+    cli_ctx.cache_metadata = cli_ctx.cache_metadata or cache_metadata or env_cache
+    # Refresh is deliberately per-invocation (NOT sticky): a refresh is a one-shot action
+    # and must not re-fire on every later REPL line. Compare cache_metadata above, which
+    # is sticky so the REPL stays in cache mode once opted in.
+    cli_ctx.refresh_metadata = refresh_metadata
     cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:

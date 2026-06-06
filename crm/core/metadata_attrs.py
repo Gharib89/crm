@@ -15,6 +15,7 @@ from typing import Any, Callable
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
+from crm.core import metadata_cache
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 _STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
@@ -466,6 +467,8 @@ def delete_attribute(
     if deps is not None:
         result["can_delete"] = deps["can_delete"]
         result["blockers"] = deps["blockers"]
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return result
 
 
@@ -621,4 +624,6 @@ def add_attribute(
     if lookup_error:
         out["attribute_lookup_error"] = lookup_error
     maybe_publish(backend, out, publish)
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
     return out
