@@ -239,12 +239,22 @@ class TestWithViewsAndRelationships:
     """--with-views / --with-relationships flags propagate to the core."""
 
     def test_with_views(self, monkeypatch, backend, tmp_path):
-        from crm.core.views import _build_layoutxml, _build_fetchxml
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name")]}
-        cols = [("new_name", 200)]
-        layout = _build_layoutxml("new_project", 10042, cols)
-        fetch = _build_fetchxml("new_project", cols, "new_name", False)
+        layout = (
+            '<grid name="resultset" object="10042" jump="new_name" select="1">'
+            '<row name="result" id="new_projectid">'
+            '<cell name="new_name" width="200" />'
+            '</row></grid>'
+        )
+        fetch = (
+            '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
+            '<entity name="new_project">'
+            '<attribute name="new_projectid" />'
+            '<attribute name="new_name" />'
+            '<order attribute="new_name" descending="false" />'
+            '</entity></fetch>'
+        )
         savedqueries = {"value": [{
             "name": "Active Projects",
             "layoutxml": layout,
