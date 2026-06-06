@@ -296,13 +296,17 @@ def _check_expectations(
     record: dict[str, Any], pairs: list[tuple[str, str]]
 ) -> dict[str, Any] | None:
     """AND-gate stringified comparison of a retrieved record against expected
-    values. Each expected VALUE (a CLI string) is compared to
-    str(record.get(attr)); a missing key stringifies to 'None' and never
-    matches. Returns None when every pair matches, else
-    {attr, expected, actual} for the FIRST mismatch in CLI order (actual is the
-    raw value, for JSON consumers)."""
+    values. Each expected VALUE (a CLI string) is compared to str(record[attr]).
+    A key absent from the record is ALWAYS a mismatch (reported with
+    actual=None): it can never satisfy an expectation, so a typo'd attribute
+    name fails instead of accidentally matching `--expect attr=None`. A key
+    that is present with a null value compares as the string 'None'. Returns
+    None when every pair matches, else {attr, expected, actual} for the FIRST
+    mismatch in CLI order (actual is the raw value, for JSON consumers)."""
     for attr, expected in pairs:
-        actual = record.get(attr)
+        if attr not in record:
+            return {"attr": attr, "expected": expected, "actual": None}
+        actual = record[attr]
         if str(actual) != expected:
             return {"attr": attr, "expected": expected, "actual": actual}
     return None

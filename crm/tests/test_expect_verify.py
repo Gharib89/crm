@@ -92,7 +92,7 @@ class TestEntityGet:
         assert env["meta"] == {"attr": "name", "expected": "Acme", "actual": "Contoso"}
 
     def test_missing_key_never_matches(self, monkeypatch, backend):
-        # A missing key stringifies to "None" and so cannot match a real value.
+        # A key absent from the record is always a mismatch (actual=None).
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
@@ -104,6 +104,21 @@ class TestEntityGet:
         env = json.loads(result.output)
         assert env["ok"] is False
         assert env["meta"] == {"attr": "nope", "expected": "anything", "actual": None}
+
+    def test_missing_key_does_not_match_literal_none(self, monkeypatch, backend):
+        # Regression (PR #123): `--expect absent=None` must NOT pass just because
+        # str(None) == "None". A missing key can never satisfy an expectation.
+        _stub(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            m.get(_get_url(backend), json=_RECORD)
+            result = _invoke([
+                "--json", "entity", "get", "accounts", _GUID,
+                "--expect", "nope=None",
+            ])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert env["meta"] == {"attr": "nope", "expected": "None", "actual": None}
 
     def test_value_may_contain_equals(self, monkeypatch, backend):
         # Split on the FIRST '=', so a VALUE may itself contain '='. Expecting
