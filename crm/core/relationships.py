@@ -11,12 +11,13 @@ lookup attribute (1:N, via a `Lookup` deep insert) and the intersect entity
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
+from crm.core import metadata as _meta_mod
 
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
@@ -48,6 +49,130 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
         "ManyToOne": many_to_one.get("value", []),
         "ManyToMany": many_to_many.get("value", []),
     }
+
+
+def _label_text(label_obj: dict[str, Any]) -> str:
+    """Best-effort display label from a Dataverse Label payload."""
+    ull: dict[str, Any] = label_obj.get("UserLocalizedLabel") or {}
+    if ull.get("Label"):
+        return str(ull["Label"])
+    locs: list[dict[str, Any]] = label_obj.get("LocalizedLabels") or []
+    if locs:
+        return str(locs[0].get("Label") or "")
+    return ""
+
+
+def _snake(name: str) -> str:
+    """Convert a PascalCase key to snake_case (e.g. RollupView → rollup_view)."""
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
+
+
+def _project_cascade(raw: dict[str, Any]) -> dict[str, Any]:
+    """Strip @-annotation keys and snake_case the remaining cascade config keys."""
+    return {_snake(k): v for k, v in raw.items() if not k.startswith("@")}
+
+
+def _project_menu(raw: dict[str, Any]) -> dict[str, Any]:
+    """Project AssociatedMenuConfiguration: snake_case keys, strip @, capture label."""
+    out: dict[str, Any] = {}
+    for k, v in raw.items():
+        if k.startswith("@"):
+            continue
+        if k == "Label":
+            # Extract the UserLocalizedLabel text
+            lbl_dict = cast("dict[str, Any]", v) if isinstance(v, dict) else {}
+            text = _label_text(lbl_dict)
+            if text:
+                out["label"] = text
+        else:
+            out[_snake(k)] = v
+    return out
+
+
+def read_entity_relationships(
+    backend: D365Backend, entity_logical_name: str
+) -> list[dict[str, Any]]:
+    """Read an entity's custom 1:N relationships as apply-spec relationship dicts.
+
+    GETs ``EntityDefinitions(LogicalName='<entity>')/OneToManyRelationships``
+    with ``$select`` that includes ``CascadeConfiguration`` and
+    ``AssociatedMenuConfiguration`` — the endpoint returns the full 1:N subtype
+    when queried via the entity navigation collection, so no per-item cast is
+    needed.
+
+    Filters to ``IsCustomRelationship == True`` (system relationships such as
+    owner/createdby are skipped). For each custom 1:N, the result is projected
+    into the apply-spec relationship sub-schema, plus a faithful capture of
+    cascade and associated-menu config.
+
+    N:N (ManyToMany) relationships are NOT emitted — the apply spec only
+    supports 1:N creation via ``create_one_to_many``.
+
+    Returns ``[]`` when the entity has no custom 1:N relationships.
+    """
+    entity_lit = entity_logical_name.replace("'", "''")
+    raw = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{entity_lit}')/OneToManyRelationships",
+        params={
+            "$select": (
+                "SchemaName,ReferencedEntity,ReferencingEntity,"
+                "ReferencingAttribute,IsCustomRelationship,"
+                "CascadeConfiguration,AssociatedMenuConfiguration"
+            )
+        },
+    ))
+    rows: list[dict[str, Any]] = raw.get("value", [])
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        if not row.get("IsCustomRelationship"):
+            continue
+
+        schema_name: str = row.get("SchemaName") or ""
+        referenced_entity: str = row.get("ReferencedEntity") or ""
+        referencing_entity: str = row.get("ReferencingEntity") or ""
+        referencing_attr: str = row.get("ReferencingAttribute") or ""
+
+        # Look up the display name and required level for the lookup column.
+        lookup_display: str = referencing_attr
+        required: str | None = None
+        if referencing_entity and referencing_attr:
+            try:
+                attr_info = _meta_mod.attribute_info(
+                    backend, referencing_entity, referencing_attr
+                )
+                dn_obj = cast("dict[str, Any]", attr_info.get("DisplayName") or {})
+                text = _label_text(dn_obj)
+                if text:
+                    lookup_display = text
+                req_obj = cast("dict[str, Any]", attr_info.get("RequiredLevel") or {})
+                req_val = req_obj.get("Value")
+                if isinstance(req_val, str) and req_val:
+                    required = req_val
+            except D365Error:
+                pass  # fall back to referencing_attr / no required key
+
+        rel_dict: dict[str, Any] = {
+            "schema_name": schema_name,
+            "referenced_entity": referenced_entity,
+            "referencing_entity": referencing_entity,
+            "lookup_schema": referencing_attr,
+            "lookup_display": lookup_display,
+        }
+        if required is not None:
+            rel_dict["required"] = required
+
+        cascade_raw = cast("dict[str, Any]", row.get("CascadeConfiguration") or {})
+        if cascade_raw:
+            rel_dict["cascade"] = _project_cascade(cascade_raw)
+
+        menu_raw = cast("dict[str, Any]", row.get("AssociatedMenuConfiguration") or {})
+        if menu_raw:
+            rel_dict["associated_menu"] = _project_menu(menu_raw)
+
+        result.append(rel_dict)
+
+    return result
 
 
 def _parse_relationship_id(entity_id_url: str | None) -> str | None:
