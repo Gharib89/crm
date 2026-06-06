@@ -2,8 +2,10 @@
 # pyright: basic
 from __future__ import annotations
 import shlex
+import time
 import click
 from crm.core import session as session_mod
+from crm.core import metadata_cache as mc_mod
 from crm.core.metadata import list_entity_definitions
 from crm.utils.d365_backend import D365Error
 from prompt_toolkit.completion import Completer, Completion
@@ -29,12 +31,24 @@ _ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
 class MetadataCache:
     """In-memory cache of entity names for the REPL session."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, use_cache: bool = False, refresh: bool = False) -> None:
         self._logical: list[str] | None = None
         self._set_names: list[str] | None = None
+        self._use_cache = use_cache
+        self._refresh = refresh
 
     def _load(self, backend) -> None:
-        defs = list_entity_definitions(backend)
+        if self._use_cache:
+            lookup = mc_mod.load_definitions(
+                backend.profile,
+                fetch=lambda: list_entity_definitions(backend),
+                refresh=self._refresh,
+                now=time.time(),
+            )
+            defs = lookup.definitions
+            self._refresh = False
+        else:
+            defs = list_entity_definitions(backend)
         self._logical = [d["logical"] for d in defs]
         self._set_names = [d["set_name"] for d in defs]
 
@@ -116,7 +130,7 @@ def repl(click_ctx: click.Context):
     ctx = click_ctx.ensure_object(CLIContext)
     ctx.skin.print_banner()
     ctx.skin.info(f"Session: {ctx.session_name}  |  Type 'help' for commands, 'quit' to exit.")
-    cache = MetadataCache()
+    cache = MetadataCache(use_cache=ctx.cache_metadata, refresh=ctx.refresh_metadata)
     completer = _EntityCompleter(ctx.backend, cache)
     pt_session = ctx.skin.create_prompt_session(completer=completer)
     state = session_mod.load_session(ctx.session_name)
