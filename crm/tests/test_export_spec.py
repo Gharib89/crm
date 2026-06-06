@@ -206,6 +206,77 @@ class TestStringAttribute:
         }
 
 
+    def test_string_uncreatable_format_omitted(self, backend):
+        # A live String whose FormatName is Json (apply cannot create it) must NOT
+        # emit format_name — the column round-trips, re-created as the default Text.
+        info = {
+            "SchemaName": "new_Payload",
+            "DisplayName": _label("Payload"),
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "None"},
+            "MaxLength": 4000,
+            "FormatName": {"Value": "Json"},
+        }
+        attrs = {"value": [_shallow("new_name"), _shallow("new_payload")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_payload"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["kind"] == "string"
+        assert col["schema_name"] == "new_Payload"
+        assert "format_name" not in col  # Json dropped
+        apply.validate_spec(spec)  # must not raise
+        # And the projected attr survives add_attribute's stricter string check.
+        from crm.core.metadata_attrs import _string_attr
+        _string_attr({**col, "logical_name": col["schema_name"].lower()})
+
+    def test_string_supported_format_retained(self, backend):
+        # Regression guard: a supported format (Email) is still emitted.
+        info = {
+            "SchemaName": "new_Contact",
+            "DisplayName": _label("Contact"),
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "None"},
+            "MaxLength": 100,
+            "FormatName": {"Value": "Email"},
+        }
+        attrs = {"value": [_shallow("new_name"), _shallow("new_contact")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_contact"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["format_name"] == "Email"
+
+    def test_string_missing_max_length_skipped(self, backend):
+        # Sparse/permission-limited deep read with no MaxLength -> attribute skipped
+        # (apply makes max_length mandatory for string/memo).
+        info = {
+            "SchemaName": "new_Sparse",
+            "DisplayName": _label("Sparse"),
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "None"},
+            # no MaxLength
+        }
+        attrs = {"value": [_shallow("new_name"), _shallow("new_sparse")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_sparse"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        assert "attributes" not in spec["entities"][0]
+        apply.validate_spec(spec)  # must not raise
+
+
 class TestNumericAttribute:
     def test_decimal_precision(self, backend):
         attrs = {"value": [_shallow("new_name"), _shallow("new_budget")]}
@@ -222,6 +293,27 @@ class TestNumericAttribute:
         assert col["required"] == "None"
         assert "max_length" not in col
         assert "format_name" not in col
+
+    def test_decimal_missing_precision_skipped(self, backend):
+        # Sparse/permission-limited deep read with no Precision -> attribute skipped
+        # (apply makes precision mandatory for decimal/double/money).
+        info = {
+            "SchemaName": "new_Sparse",
+            "DisplayName": _label("Sparse"),
+            "AttributeTypeName": {"Value": "DecimalType"},
+            "RequiredLevel": {"Value": "None"},
+            # no Precision
+        }
+        attrs = {"value": [_shallow("new_name"), _shallow("new_sparse")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_sparse"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        assert "attributes" not in spec["entities"][0]
+        apply.validate_spec(spec)  # must not raise
 
 
 class TestLookupAttribute:

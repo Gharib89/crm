@@ -313,12 +313,14 @@ Captures: entity definition, primary-name attribute, all custom apply-creatable
 columns (deep-read for `MaxLength`/`RequiredLevel`/options), referenced global
 option sets, relationships (with flag), views (with flag). Publisher/solution are
 **not** emitted — supply them via `--solution` on `apply`, or edit the YAML.
-Fidelity note: attribute properties (`precision`, `format_name`, `max_length`,
-`required`, options, `target_entity`) are forwarded by `apply` → those columns
-round-trip correctly. The only captured fields not yet acted on are relationship
-`cascade` and `associated_menu` (captured for future use; the relationship is
-still re-created with default cascade/menu behaviour). `apply` ignores unknown
-keys so the spec always remains apply-consumable.
+Fidelity note: these round-trip through `apply`: `max_length`, `required`, options,
+lookup `target_entity`, `precision` (decimal/double/money), and string `format_name`
+(`Email`/`Phone`/`Url`/`TextArea`/etc.). Caveats: a string column whose live format
+is `Json` or `RichText` (uncreatable by `apply`) is re-created as plain `Text`; a
+datetime column's format is NOT captured (re-created with the default format);
+relationship `cascade` and `associated_menu` are captured but not yet acted on (the
+relationship is re-created with default cascade/menu). `apply` ignores unknown keys
+so the spec always remains apply-consumable.
 
 ### 5a. Preview dependencies before deleting a metadata component
 

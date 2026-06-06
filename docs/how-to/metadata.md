@@ -240,13 +240,19 @@ crm apply -f project.yaml
 - Publisher and solution are **not** emitted — supply them via `crm apply --solution`
   or by editing the YAML before applying.
 
-**Fidelity note:** attribute properties round-trip through `apply` —
-`precision` (decimal/double/money), `format_name` (string/datetime formats),
-`max_length`, `required`, option-set options, and lookup `target_entity` are all
-forwarded to `add_attribute`. The only captured fields that `apply` does not yet
-act on are relationship `cascade` and `associated_menu` configuration
-(`create_one_to_many` does not accept them); those are captured for fidelity and
-future use. The relationship itself is still re-created — just with default
-cascade/menu behaviour. `apply` ignores unknown keys, so the spec file remains
-apply-consumable throughout. Attribute types that `apply` cannot create (Owner,
-State, Status, and other system kinds) are silently skipped.
+**Fidelity note:** these attribute properties round-trip through `apply` —
+`max_length`, `required`, option-set options, lookup `target_entity`, `precision`
+(decimal/double/money), and string `format_name` (`Email` / `Phone` / `Url` /
+`TextArea` / etc.). Caveats:
+
+- A string column whose live format is `Json` or `RichText` (formats `apply` cannot
+  create) is re-created as plain `Text`.
+- A datetime column's format is **not** captured; it is re-created with the default
+  format.
+- Relationship `cascade` and `associated_menu` configuration are captured but not
+  yet acted on by `apply` (`create_one_to_many` does not accept them) — the
+  relationship is re-created with default cascade/menu behaviour.
+
+`apply` ignores unknown keys, so the spec file remains apply-consumable throughout.
+Attribute types that `apply` cannot create (Owner, State, Status, and other system
+kinds) are silently skipped.

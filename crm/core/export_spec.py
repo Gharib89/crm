@@ -17,9 +17,11 @@ not the ambiguous `AttributeType` (a multiselect reports ``AttributeType:
 are skipped — the latter is represented by the entity's `primary_attr`.
 
 Fidelity notes:
-- `format_name` / `precision` are captured per the issue even though `apply`
-  does not consume them today; `apply` ignores unknown keys (see `validate_spec`)
-  so emitting them keeps the spec a faithful superset.
+- `precision` (decimal/double/money) and string `format_name` are forwarded to
+  `add_attribute`, so they round-trip. A string `format_name` is emitted only when
+  it is in `metadata_attrs.STRING_FORMATS`; a live `Json` / `RichText` format
+  (which `apply` cannot create) is dropped and the column re-created as `Text`.
+  Datetime format is NOT captured (re-created with the default format).
 - A multiselect bound to a *local* option set has its options read via the
   Picklist cast (`picklist_options`), which the server returns for both kinds;
   inline `options` are emitted best-effort. A multiselect bound to a *global*
@@ -31,6 +33,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from crm.core import metadata, optionsets, relationships, views
+from crm.core.metadata_attrs import STRING_FORMATS
 from crm.utils.d365_backend import D365Backend, D365Error
 
 # AttributeTypeName.Value -> apply `kind`. Inverse of the metadata_attrs builders
@@ -184,18 +187,23 @@ def _project_attribute(
 
     if kind in _LENGTH_KINDS:
         max_length = info.get("MaxLength")
-        if isinstance(max_length, int):
-            out["max_length"] = max_length
+        if not isinstance(max_length, int):
+            return None  # apply requires max_length for string/memo (sparse read)
+        out["max_length"] = max_length
 
     if kind == "string":
+        # Emit format_name only when the live format is one apply can re-create;
+        # Json / RichText are read-only kinds add_attribute rejects, so omit the
+        # key and let the column round-trip as the default Text.
         fmt = _format_name(info)
-        if fmt:
+        if fmt and fmt in STRING_FORMATS:
             out["format_name"] = fmt
 
     if kind in _PRECISION_KINDS:
         precision = info.get("Precision")
-        if isinstance(precision, int):
-            out["precision"] = precision
+        if not isinstance(precision, int):
+            return None  # apply requires precision for decimal/double/money (sparse read)
+        out["precision"] = precision
 
     if kind == "lookup":
         targets = info.get("Targets")
