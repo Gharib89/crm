@@ -15,6 +15,8 @@ optimized for AI agents or shell scripting. This harness gives you:
 - A stateful REPL for ad-hoc admin work
 - `--json` everywhere for agent consumption
 - `--dry-run` to preview the HTTP request before issuing it
+- `--cache-metadata` for a persistent per-profile entity-definition cache
+  (speeds up repeated one-shot agent calls; env: `CRM_CACHE_METADATA=1`)
 
 ## Documentation
 

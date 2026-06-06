@@ -133,7 +133,7 @@ pass `--profile <name>` and confirm the real target with
 | `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`               | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
-| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies` | Schema introspection + option set values + dependency preview |
+| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `cache-clear` | Schema introspection + option set values + dependency preview + entity-def cache |
 | `plugin`     | `register-assembly`, `list-types`, `register-step`, `unregister-assembly`, `unregister-step` | Plug-in assembly registration + step lifecycle |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
@@ -257,6 +257,36 @@ crm --json metadata attribute account industrycode
 # and `entity get` — see "Verify a metadata change landed" below.
 crm --json metadata attribute account industrycode --expect AttributeType=Picklist
 ```
+
+### 5b. Entity-definition cache (speed up repeated agent calls)
+
+Pass `--cache-metadata` (or set `CRM_CACHE_METADATA=1`) to serve `metadata entities`
+from a persistent per-profile on-disk cache instead of a live fetch. This is the
+recommended form for agent loops that resolve entity set names repeatedly:
+
+```bash
+crm --json --cache-metadata metadata entities
+# meta.cache: "hit"        — served from disk
+# meta.cache: "miss"       — fetched live and saved (first call or TTL expired)
+# meta.cache: "refreshed"  — live fetch forced by --refresh-metadata
+```
+
+Cache mode returns **only the 2-field rows** (LogicalName / EntitySetName) — enough
+to resolve entity set names. `--custom-only` is incompatible with `--cache-metadata`
+(exits 2); `--top` works as a client-side slice.
+
+```bash
+# Force a fresh fetch and overwrite the cache (one-shot; no env-var equivalent)
+crm --json --refresh-metadata metadata entities
+
+# Delete the active profile's cache file
+crm --json metadata cache-clear
+```
+
+Cache file: `~/.crm/cache/<profile>/entitydefs.json` (override root with `CRM_HOME`).
+TTL: ~15 min. Any metadata write (create/update/delete entity, attribute, optionset,
+relationship, publish-all/xml) auto-invalidates the cache. Read-only schema only —
+records and secrets are never cached.
 
 ### 5a. Preview dependencies before deleting a metadata component
 

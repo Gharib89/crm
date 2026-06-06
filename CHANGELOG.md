@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- Opt-in, persistent, read-only on-disk cache of entity definitions, per connection
+  profile, to speed up repeated one-shot agent invocations. Enable with
+  `--cache-metadata` (global flag) or `CRM_CACHE_METADATA=1` (truthy: `1`/`true`/`yes`/`on`).
+  Force a one-shot refresh with `--refresh-metadata`. When the cache is active,
+  `crm metadata entities` emits `meta.cache` = `"hit"` | `"miss"` | `"refreshed"` in
+  both `--json` and human output. Cache-mode caveat: with `--cache-metadata` the
+  command returns only the 2-field rows (LogicalName / EntitySetName); the full
+  5-field listing is unchanged when the flag is absent. `--custom-only` is
+  incompatible with `--cache-metadata` (the cache lacks the custom flag) and errors
+  (exit 2). `--top` works (client-side slice). Cache files live at
+  `<CRM_HOME or ~/.crm>/cache/<profile-name>/entitydefs.json`. The cache stores
+  the `{logical, set_name}` list plus the source `url`, `api_version`, and
+  `cached_at` timestamp; a url/api_version mismatch is treated as a miss.
+  Invalidation: any successful metadata write (entity/attribute/optionset/relationship
+  create/update/delete, and publish-all/publish-xml) deletes the profile's cache
+  file so a stale cache cannot outlive a schema change; a ~15-minute TTL backstop
+  also forces a refresh. Cache misses and read errors degrade gracefully (fall back to
+  a live fetch). Read-only schema only — records and secrets are never cached.
+  When launched with `--cache-metadata`, the REPL's entity-name completion is
+  served from the same on-disk cache. `crm metadata cache-clear` deletes the active
+  profile's cache file; emits `{"cleared": true|false}` (#88).
 - `crm entity get` and `crm metadata attribute` gain a repeatable `--expect
   ATTR=VALUE` flag — a field-comparison verify primitive. Each pair is split on
   the FIRST `=` (so a VALUE may itself contain `=`); every pair must match
