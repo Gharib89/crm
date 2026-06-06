@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import click
 from crm.core import async_ops as async_ops_mod
+from crm.core import dependencies as dep_mod
 from crm.core import solution as sol_mod
 from crm.core import solutionpackager as sp_mod
 from crm.core import session as session_mod
@@ -70,6 +71,40 @@ def solution_info_cmd(ctx: CLIContext, unique_name):
         _handle_d365_error(ctx, exc)
         return
     ctx.emit(True, data=info)
+
+
+@solution_group.command("dependencies")
+@click.argument("unique_name")
+@pass_ctx
+def solution_dependencies_cmd(ctx: CLIContext, unique_name):
+    """Show blockers that would prevent UNINSTALLING a managed solution.
+
+    Read-only. Calls RetrieveDependenciesForUninstall(SolutionUniqueName='<name>').
+    """
+    # An empty/blank name is a caller mistake (usage error, exit 2 — ADR 0001),
+    # not an operational failure; validate before any network call.
+    if not unique_name.strip():
+        raise click.UsageError("solution unique name is required.")
+    try:
+        info = dep_mod.retrieve_dependencies_for_uninstall(ctx.backend(), unique_name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    meta = {"blockers": info["count"]}
+    if ctx.json_mode:
+        ctx.emit(True, data=info, meta=meta)
+        return
+    if info["blockers"]:
+        headers = ["Dependent Type", "Dependent Id", "Required Type", "Dependency Type"]
+        rows = [
+            [b["dependent_type"], b["dependent_id"], b["required_type"], str(b["dependency_type"])]
+            for b in info["blockers"]
+        ]
+        ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+    else:
+        # Emit the scalar under `count` (not `blockers`) so the `blockers` key is
+        # never an int here while it's a list in JSON mode (Copilot #135).
+        ctx.emit(True, data={"solution": info["solution"], "count": 0}, meta=meta)
 
 
 @solution_group.command("components")

@@ -263,6 +263,101 @@ class TestDependenciesById:
         assert result["component_type"] == 1
 
 
+# ── build_uninstall_dependency_path ───────────────────────────────────────
+
+
+class TestBuildUninstallDependencyPath:
+    def test_string_param_single_quoted(self) -> None:
+        """SolutionUniqueName is Edm.String → SINGLE-QUOTED, not unquoted."""
+        path = dep_mod.build_uninstall_dependency_path("MySolution")
+        assert path == "RetrieveDependenciesForUninstall(SolutionUniqueName='MySolution')"
+
+    def test_embedded_quote_is_doubled(self) -> None:
+        """Per OData, an embedded single-quote is escaped by doubling it."""
+        path = dep_mod.build_uninstall_dependency_path("O'Brien")
+        assert path == "RetrieveDependenciesForUninstall(SolutionUniqueName='O''Brien')"
+
+
+# ── retrieve_dependencies_for_uninstall ───────────────────────────────────
+
+
+def _mock_uninstall_function(
+    m: req_mock.Mocker,
+    backend: D365Backend,
+    *,
+    name: str = "MySolution",
+    records: list[dict] | None = None,
+) -> str:
+    path = f"RetrieveDependenciesForUninstall(SolutionUniqueName='{name}')"
+    url = backend.url_for(path)
+    m.get(url, json={"value": records or []})
+    return url
+
+
+class TestRetrieveDependenciesForUninstall:
+    def test_issues_single_quoted_url(self, backend: D365Backend) -> None:
+        with req_mock.Mocker() as m:
+            _mock_uninstall_function(m, backend)
+            result = dep_mod.retrieve_dependencies_for_uninstall(backend, "MySolution")
+        assert result["solution"] == "MySolution"
+        fn_path = "RetrieveDependenciesForUninstall(SolutionUniqueName='MySolution')"
+        assert any(fn_path in r.url for r in m.request_history)
+        # Must NOT be unquoted
+        assert not any("SolutionUniqueName=MySolution)" in r.url for r in m.request_history)
+
+    def test_empty_when_no_blockers(self, backend: D365Backend) -> None:
+        with req_mock.Mocker() as m:
+            _mock_uninstall_function(m, backend, records=[])
+            result = dep_mod.retrieve_dependencies_for_uninstall(backend, "MySolution")
+        assert result["count"] == 0
+        assert result["blockers"] == []
+
+    def test_blocker_mapped(self, backend: D365Backend) -> None:
+        blocker_record = {
+            "dependentcomponenttype": 2,
+            "dependentcomponentobjectid": DEP_ATTR_ID,
+            "dependentcomponentparentid": DEP_PARENT_ID,
+            "requiredcomponenttype": 9,
+            "requiredcomponentobjectid": ENTITY_ID,
+            "dependencytype": 1,
+        }
+        with req_mock.Mocker() as m:
+            _mock_uninstall_function(m, backend, records=[blocker_record])
+            result = dep_mod.retrieve_dependencies_for_uninstall(backend, "MySolution")
+        assert result["count"] == 1
+        assert len(result["blockers"]) == 1
+        b = result["blockers"][0]
+        assert b["dependent_type"] == "Attribute"
+        assert b["required_type"] == "Option Set"
+        assert b["dependent_id"] == DEP_ATTR_ID
+        assert b["dependent_parent_id"] == DEP_PARENT_ID
+
+    def test_dry_run_still_issues_get(self, dry_backend: D365Backend) -> None:
+        """dry-run-off trick: the read GET must fire even under dry_run=True."""
+        with req_mock.Mocker() as m:
+            _mock_uninstall_function(m, dry_backend, records=[])
+            result = dep_mod.retrieve_dependencies_for_uninstall(dry_backend, "MySolution")
+        assert len(m.request_history) >= 1
+        assert result["count"] == 0
+        # backend should still be in dry_run mode after the call
+        assert dry_backend.dry_run is True
+
+    def test_embedded_quote_in_name_doubled(self, backend: D365Backend) -> None:
+        with req_mock.Mocker() as m:
+            _mock_uninstall_function(m, backend, name="O''Brien", records=[])
+            result = dep_mod.retrieve_dependencies_for_uninstall(backend, "O'Brien")
+        assert result["solution"] == "O'Brien"
+        assert any("SolutionUniqueName='O''Brien'" in r.url for r in m.request_history)
+
+    def test_empty_name_raises(self, backend: D365Backend) -> None:
+        with pytest.raises(D365Error):
+            dep_mod.retrieve_dependencies_for_uninstall(backend, "")
+
+    def test_whitespace_name_raises(self, backend: D365Backend) -> None:
+        with pytest.raises(D365Error):
+            dep_mod.retrieve_dependencies_for_uninstall(backend, "   ")
+
+
 # ── _component_label ──────────────────────────────────────────────────────
 
 
