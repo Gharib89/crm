@@ -15,6 +15,8 @@ optimized for AI agents or shell scripting. This harness gives you:
 - A stateful REPL for ad-hoc admin work
 - `--json` everywhere for agent consumption
 - `--dry-run` to preview the HTTP request before issuing it
+- An append-only JSONL audit journal (`~/.crm/audit/<session>.jsonl`) of every
+  mutating command; `crm session audit` to review it
 - `--cache-metadata` for a persistent per-profile entity-definition cache
   (speeds up repeated one-shot agent calls; env: `CRM_CACHE_METADATA=1`)
 
@@ -255,7 +257,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `plugin`     | Register/update/unregister plug-in assemblies and SDK message processing steps |
 | `security`   | List and assign security roles to users or teams           |
 | `action`     | Call arbitrary OData functions and actions                 |
-| `session`    | Local session state and command history                    |
+| `session`    | Local session state, command history, and audit journal    |
 
 The `metadata` group covers both browsing and write verbs. `metadata describe
 <entity>` returns a one-shot, read-only write-readiness brief — entity set, primary

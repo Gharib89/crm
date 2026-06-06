@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 **Added**
+- Append-only JSONL audit journal of every mutating command. On success, each
+  mutating CLI verb (entity create/update/upsert/delete/associate/disassociate/
+  set-lookup/clear-lookup; all metadata create/update/delete-*; solution create/
+  create-publisher/set-version/add-component/remove-component/publish/publish-all/
+  import/job-cancel; batch; workflow; action invoke; webresource create/update;
+  app create/add-components/build-sitemap/set-sitemap; view create; data import;
+  plugin register-assembly/unregister-assembly/step; security assign-role; async
+  cancel; apply) appends one JSON line to
+  `${CRM_HOME:-~/.crm}/audit/<session>.jsonl`. Each line carries: `ts` (ISO-8601
+  UTC), `profile`, `command`, `target`, `solution`, `staged`, `dry_run`, `ok`, and
+  `result_id`. Read/query/get/list/export verbs never write to the journal.
+  `--dry-run` previews are journaled with `dry_run: true` so they are never
+  mistaken for real changes. The request payload is never stored (#89).
+- `crm session audit [--tail N] [--session NAME]` prints the current (or a named)
+  session's audit journal; honors `--json` (#89).
 - Opt-in, persistent, read-only on-disk cache of entity definitions, per connection
   profile, to speed up repeated one-shot agent invocations. Enable with
   `--cache-metadata` (global flag) or `CRM_CACHE_METADATA=1` (truthy: `1`/`true`/`yes`/`on`).

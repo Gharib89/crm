@@ -142,7 +142,7 @@ pass `--profile <name>` and confirm the real target with
 | `security`   | `list-roles`, `list-user-roles`, `list-team-roles`, `assign-role`                       | Security roles — list + assign to users/teams  |
 | `data`       | `export`, `import`                                                                      | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
-| `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
+| `session`    | `info`, `clear`, `history`, `audit`                                                     | Local session state + audit journal of mutations |
 | _(top)_      | `apply -f spec.yaml`                                                                    | Declarative desired-state (publisher→…→views)  |
 | _(top)_      | `doctor`                                                                                | Alias for `connection doctor` — live connection diagnostic       |
 | _(top)_      | `describe [group]`                                                                      | Machine-readable command/option/choice catalogue (no connection) |
