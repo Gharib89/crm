@@ -140,8 +140,9 @@ crm --json --refresh-metadata metadata entities
 # meta.cache: "refreshed" — always fetches live and overwrites the cache
 ```
 
-`--refresh-metadata` is a one-shot flag with no env-var equivalent. It overrides
-`--cache-metadata` and always performs a live fetch.
+`--refresh-metadata` is a one-shot flag with no env-var equivalent. It activates
+the cache on its own (you don't also need `--cache-metadata`) and always performs
+a live fetch, overwriting the cached copy.
 
 ### Cache-mode limitations
 
