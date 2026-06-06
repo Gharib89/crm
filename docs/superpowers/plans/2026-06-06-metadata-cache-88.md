@@ -267,7 +267,8 @@ Per CLAUDE.md "keep docs in sync" — same change ships the docs.
 - `crm/skills/SKILL.md`: add the flags + `cache-clear` so the shipped agent skill
   matches the CLI (SKILL ↔ CLI sync rule).
 
-Verify: `mkdocs build --strict` clean; `git grep -ni moce` empty (generic-repo rule).
+Verify: `mkdocs build --strict` clean; a grep for the user's real org name finds
+nothing (generic-repo rule — committed code/tests/docs use `Contoso` placeholders).
 
 ---
 
