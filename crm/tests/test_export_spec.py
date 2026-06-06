@@ -17,7 +17,7 @@ import requests_mock
 
 from crm.core import apply
 from crm.core.export_spec import build_entity_spec
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
 
 @pytest.fixture
