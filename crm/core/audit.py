@@ -115,7 +115,7 @@ def read(session: str, *, tail: int | None = None) -> list[dict[str, Any]]:
     silently skipped.
     """
     try:
-        path = _audit_root() / f"{session}.jsonl"
+        path = _journal_path(session)
         if not path.is_file():
             return []
         text = path.read_text(encoding="utf-8")
