@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to build the diff; no POSTs are issued.
 
 **Changed**
+- Extracted the destructive-verb classification (`DESTRUCTIVE`, `ROLE_VERBS`,
+  `is_destructive()`) into a new dependency-free `crm/core/destructive.py`. The
+  PreToolUse destructive-op gate (`.claude/hooks/destructive_op_gate.py`) keeps
+  its standalone stdlib copy so it stays import-free and offline on every Bash
+  call; a new `crm/tests/test_destructive_sync.py` asserts the two copies stay
+  aligned (#87).
 - Non-idempotent `POST` record-creates (and actions) are no longer auto-retried on
   transport error / `429` / `503` by default — a lost response may have already
   committed the record, so a blind re-send risks a duplicate (#84). Idempotent verbs
