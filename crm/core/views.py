@@ -1,4 +1,4 @@
-"""Custom view (savedquery) creation.
+"""Custom view (savedquery) creation and reading.
 
 Generates LayoutXml (grid columns) + FetchXml (columns, order, optional
 active-state filter) and POSTs a public view (querytype 0). Read-back on
@@ -8,7 +8,8 @@ create is non-fatal, matching the metadata-write precedent.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
+from xml.etree import ElementTree
 from xml.sax.saxutils import quoteattr
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -141,3 +142,83 @@ def create_view(
             f"Could not parse savedqueryid from response: {entity_id_url!r}")
     maybe_publish(backend, out, publish)
     return out
+
+
+def read_entity_views(
+    backend: D365Backend,
+    entity_logical_name: str,
+) -> list[dict[str, Any]]:
+    """Read an entity's public saved-query views as view projection dicts.
+
+    Returns a list of dicts with keys:
+    - ``name``: view name (may be empty string for nameless rows)
+    - ``columns``: list of ``{"name": str, "width": int}`` (may be empty when
+      layoutxml is absent or unparseable)
+    - ``order_by``: attribute name string (omitted if no <order> element)
+    - ``is_default``: bool
+
+    Callers that need apply-valid projections (e.g. ``build_entity_spec``) are
+    responsible for dropping views with an empty ``name`` or empty ``columns``
+    before inserting them into a spec.
+    """
+    entity_lit = entity_logical_name.replace("'", "''")
+    rows = as_dict(backend.get(
+        "savedqueries",
+        params={
+            "$filter": (
+                f"returnedtypecode eq '{entity_lit}' and querytype eq 0"
+            ),
+            "$select": "name,layoutxml,fetchxml,isdefault",
+        },
+    )).get("value", [])
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        row = cast(dict[str, Any], row)
+
+        # --- parse columns from layoutxml ---
+        columns: list[dict[str, Any]] = []
+        layoutxml = row.get("layoutxml") or ""
+        if layoutxml:
+            try:
+                root = ElementTree.fromstring(layoutxml)
+            except ElementTree.ParseError:
+                root = None
+            if root is not None:
+                for cell in root.iter("cell"):
+                    col_name = cell.get("name")
+                    if not col_name:
+                        continue
+                    col: dict[str, Any] = {"name": col_name}
+                    width_str = cell.get("width")
+                    if width_str is not None:
+                        try:
+                            col["width"] = int(width_str)
+                        except ValueError:
+                            pass
+                    columns.append(col)
+
+        # --- parse order_by from fetchxml ---
+        order_by: str | None = None
+        fetchxml = row.get("fetchxml") or ""
+        if fetchxml:
+            try:
+                fetch_root = ElementTree.fromstring(fetchxml)
+            except ElementTree.ParseError:
+                fetch_root = None
+            if fetch_root is not None:
+                order_el = fetch_root.find(".//{*}order")
+                if order_el is not None:
+                    order_by = order_el.get("attribute") or None
+
+        view: dict[str, Any] = {
+            "name": row.get("name", ""),
+            "columns": columns,
+            "is_default": bool(row.get("isdefault", False)),
+        }
+        if order_by is not None:
+            view["order_by"] = order_by
+
+        result.append(view)
+
+    return result

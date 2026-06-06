@@ -18,7 +18,9 @@ from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
-_STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
+# The string formats add_attribute can create. Public so export_spec can filter
+# live FormatName values to the creatable set without a private cross-module import.
+STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
 _DATETIME_FORMATS = {"DateOnly", "DateAndTime"}
 
 _NUMERIC_KINDS = {"integer", "bigint", "decimal", "double", "money"}  # pyright: ignore[reportUnusedVariable]
@@ -60,8 +62,8 @@ def _string_attr(opts: dict[str, Any]) -> dict[str, Any]:
             "min_value", "max_value", "max_size_kb")
     _require(opts, "max_length")
     fmt = opts.get("format_name") or "Text"
-    if fmt not in _STRING_FORMATS:
-        raise D365Error(f"format_name for string must be one of {sorted(_STRING_FORMATS)}.")
+    if fmt not in STRING_FORMATS:
+        raise D365Error(f"format_name for string must be one of {sorted(STRING_FORMATS)}.")
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],

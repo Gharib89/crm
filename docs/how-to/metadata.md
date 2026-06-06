@@ -195,3 +195,66 @@ on-disk cache.
 crm --json metadata delete-relationship cwx_sla_cwx_ticket --yes
 ```
 Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an interactive confirmation). Pass `--check-dependencies` (optionally with `--dry-run`) to preview blocking dependencies inline before the delete.
+
+## Export a live entity as an apply spec (export-spec → apply round-trip)
+
+`crm metadata export-spec` reads an existing entity over the Web API (pure GETs)
+and emits the `{"entities": [...]}` desired-state spec consumed by `crm apply -f`.
+This lets you capture an existing entity's schema and re-create it in another
+environment, or treat it as a starting point for declarative management.
+
+```bash
+# Export to a YAML file ready for crm apply -f
+crm metadata export-spec new_project \
+    --with-views --with-relationships \
+    -o project.yaml
+
+# Then apply it (creates the entity and all captured components, idempotent)
+crm apply -f project.yaml
+```
+
+**Flags:**
+
+- `--with-views` — include the entity's public views (saved queries with non-empty
+  column layouts) in the spec. Views with empty column layouts are dropped because
+  `apply` requires at least one column per view.
+- `--with-relationships` — include the entity's custom 1:N relationships (including
+  `CascadeConfiguration` and `AssociatedMenuConfiguration`) in the spec.
+- `-o / --output FILE` — write the bare spec as YAML to FILE. The file is directly
+  consumable by `crm apply -f <file>`. Without `-o` the spec is emitted under the
+  standard JSON envelope (useful for piping or `--json` capture).
+
+**What is captured:**
+
+- Entity: `schema_name`, `display_name`, `display_collection_name`, `ownership`.
+- Primary name attribute: `schema_name` + `label` (represented as `primary_attr`).
+- Custom, apply-creatable attributes (14 kinds: `string`, `memo`, `integer`,
+  `bigint`, `decimal`, `double`, `money`, `boolean`, `datetime`, `picklist`,
+  `multiselect`, `lookup`, `image`, `file`). Each attribute is deep-read to capture
+  `MaxLength`, `FormatName`, `Precision`, `RequiredLevel`, and option-set options.
+  Picklists/multiselects bound to a global option set emit `optionset_name`; the
+  referenced global option set is captured as a top-level `optionsets` entry.
+  System attributes (Owner, State, Status, Uniqueidentifier, …) are skipped.
+- Relationships (with `--with-relationships`): custom 1:N relationships.
+- Views (with `--with-views`): public saved queries with parseable column layouts.
+- Publisher and solution are **not** emitted — supply them via `crm apply --solution`
+  or by editing the YAML before applying.
+
+**Fidelity note:** these attribute properties round-trip through `apply` —
+`max_length`, `required`, option-set options, lookup `target_entity`, `precision`
+(decimal/double/money), and string `format_name` (`Email` / `Phone` / `Url` /
+`TextArea` / etc.). Caveats:
+
+- A string column whose live format is `Json` or `RichText` (formats `apply` cannot
+  create) is re-created as plain `Text`.
+- A datetime column's format is **not** captured; it is re-created with the default
+  format.
+- A polymorphic (multi-target) lookup is exported with its first target only and
+  re-created as a single-target lookup (`apply` creates single-target lookups).
+- Relationship `cascade` and `associated_menu` configuration are captured but not
+  yet acted on by `apply` (`create_one_to_many` does not accept them) — the
+  relationship is re-created with default cascade/menu behaviour.
+
+`apply` ignores unknown keys, so the spec file remains apply-consumable throughout.
+Attribute types that `apply` cannot create (Owner, State, Status, and other system
+kinds) are silently skipped.

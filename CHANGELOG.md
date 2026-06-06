@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `metadata export-spec <logical_name> [--with-views] [--with-relationships] [-o FILE]` —
+  project a live entity into the `crm apply -f` desired-state spec (round-trip:
+  export-spec → apply re-creates the entity). Pure GETs. Without `-o` the spec is
+  emitted under the standard JSON envelope; with `-o` the bare YAML is written
+  directly to FILE. The projection is always re-appliable: a string column whose
+  live format is `Json`/`RichText` (which `apply` cannot create) is exported
+  without `format_name` and re-created as `Text`, and a string/decimal column
+  whose deep read lacks the mandatory `max_length`/`precision` (sparse reads) is
+  skipped rather than emitted unappliable (#92).
 - `solution import` result (real and dry-run) now includes a `managed` field
   (`true` = managed solution, `false` = unmanaged, `null` when undeterminable)
   sniffed from `solution.xml` inside the zip. The sniff is best-effort and never

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 import requests_mock
 
+from crm.core.views import _build_fetchxml, _build_layoutxml
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 
@@ -171,3 +172,140 @@ class TestViewCommand:
         ])
         assert result.exit_code == 0, result.output
         assert captured["columns"] == [("cwx_name", 220)]
+
+
+# ---------------------------------------------------------------------------
+# Tests for read_entity_views
+# ---------------------------------------------------------------------------
+
+_READ_VIEW_ID = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
+
+
+class TestReadEntityViews:
+    def test_view_with_columns_and_order_by(self, backend):
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 220), ("cwx_priority", 120)]
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _build_fetchxml("cwx_ticket", cols, "cwx_name", False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "Active Tickets",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": True,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert len(views) == 1
+        v = views[0]
+        assert v["name"] == "Active Tickets"
+        assert v["is_default"] is True
+        assert v["columns"] == [
+            {"name": "cwx_name", "width": 220},
+            {"name": "cwx_priority", "width": 120},
+        ]
+        assert v["order_by"] == "cwx_name"
+
+    def test_view_descending_order_parsed(self, backend):
+        """order attribute is extracted correctly regardless of descending flag."""
+        from crm.core.views import read_entity_views
+        cols = [("cwx_subject", 300)]
+        layoutxml = _build_layoutxml("cwx_task", 10043, cols)
+        # manually build fetchxml with descending="true"
+        fetchxml = (
+            '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
+            '<entity name="cwx_task">'
+            '<attribute name="cwx_taskid" />'
+            '<attribute name="cwx_subject" />'
+            '<order attribute="cwx_createdon" descending="true" />'
+            '</entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "Recent Tasks",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_task")
+        assert views[0]["order_by"] == "cwx_createdon"
+
+    def test_view_with_no_order_element(self, backend):
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 200)]
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _build_fetchxml("cwx_ticket", cols, None, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "All Tickets",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert len(views) == 1
+        assert "order_by" not in views[0]
+
+    def test_no_public_views_returns_empty(self, backend):
+        from crm.core.views import read_entity_views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            views = read_entity_views(backend, "cwx_ticket")
+        assert views == []
+
+    def test_single_quote_escaped_in_filter(self, backend):
+        """Single quotes in entity name are doubled in the OData $filter literal."""
+        from crm.core.views import read_entity_views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            read_entity_views(backend, "o'brien_entity")
+        qs = m.request_history[0].qs
+        # requests encodes the query string; decode and check the raw filter value
+        filter_val = qs["$filter"][0]
+        assert "o''brien_entity" in filter_val
+
+    def test_non_numeric_width_omitted_no_crash(self, backend):
+        """A cell with a non-numeric or empty width attribute must not crash and
+        must omit the width key (inline literal needed: _build_layoutxml always
+        emits integer widths so it cannot produce this edge-case input)."""
+        from crm.core.views import read_entity_views
+        # Two cells: one with width="auto" (non-numeric), one with width="" (empty).
+        layoutxml = (
+            '<grid name="resultset" object="10042" jump="cwx_name" '
+            'select="1" icon="1" preview="1">'
+            '<row name="result" id="cwx_ticketid">'
+            '<cell name="cwx_name" width="auto" />'
+            '<cell name="cwx_priority" width="" />'
+            '</row></grid>'
+        )
+        fetchxml = _build_fetchxml("cwx_ticket", [("cwx_name", 1)], None, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "name": "Edge Case View",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert len(views) == 1
+        cols = views[0]["columns"]
+        assert len(cols) == 2
+        # width must be absent from both columns (unparseable → omitted)
+        assert "width" not in cols[0]
+        assert "width" not in cols[1]
+        assert cols[0]["name"] == "cwx_name"
+        assert cols[1]["name"] == "cwx_priority"

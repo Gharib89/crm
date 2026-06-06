@@ -10,6 +10,7 @@ from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.core import dependencies as dep_mod
+from crm.core import export_spec as export_spec_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -184,7 +185,7 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
         _handle_d365_error(ctx, exc)
         return
     # Flatten once for both modes; local OptionSet wins, GlobalOptionSet is the
-    # fallback for a global-bound picklist. Labels use the robust `_label_text`
+    # fallback for a global-bound picklist. Labels use the robust `label_text`
     # path (UserLocalizedLabel → LocalizedLabels), so JSON and table agree.
     flat = meta_mod.flatten_options(info.get("OptionSet") or {})
     if not flat:
@@ -220,6 +221,55 @@ def metadata_describe(ctx: CLIContext, logical_name):
     ctx.emit(True, data=brief, meta={
         "writable_attributes": len(brief["writable_attributes"]),
     })
+
+
+@metadata_group.command("export-spec")
+@click.argument("logical_name")
+@click.option("--with-views", is_flag=True, default=False,
+              help="Include the entity's public views in the spec.")
+@click.option("--with-relationships", is_flag=True, default=False,
+              help="Include the entity's custom 1:N relationships in the spec.")
+@click.option("--output", "-o", default=None, type=click.Path(dir_okay=False),
+              help="Write the bare spec as YAML to FILE (directly consumable by crm apply -f).")
+@pass_ctx
+def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relationships, output):
+    """Export a live entity as an apply-consumable desired-state spec.
+
+    Reads the entity's metadata over the Web API (pure GETs) and emits a spec
+    that round-trips through `crm apply -f`. Without -o, the spec is emitted
+    under the standard JSON envelope (pipeable). With -o, the bare YAML spec is
+    written to FILE so it is ready for `crm apply -f <file>`.
+    """
+    try:
+        spec = export_spec_mod.build_entity_spec(
+            ctx.backend(), logical_name,
+            with_views=with_views,
+            with_relationships=with_relationships,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+
+    if output:
+        import yaml
+        try:
+            with open(output, "w", encoding="utf-8") as fh:
+                yaml.safe_dump(spec, fh, sort_keys=False, allow_unicode=True)
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output!r}: {exc}")
+            return
+        entity = spec["entities"][0]
+        ctx.emit(True, data={
+            "path": output,
+            "entities": 1,
+            "attributes": len(entity.get("attributes", [])),
+            "relationships": len(entity.get("relationships", [])),
+            "views": len(entity.get("views", [])),
+            "optionsets": len(spec.get("optionsets", [])),
+        })
+        return
+
+    ctx.emit(True, data=spec)
 
 
 @metadata_group.command("dependencies")

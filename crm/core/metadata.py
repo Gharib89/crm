@@ -97,7 +97,38 @@ def picklist_options(
     ))
 
 
-def _label_text(label_obj: dict[str, Any]) -> str:
+def multiselect_options(
+    backend: D365Backend,
+    logical_name: str,
+    attribute: str,
+    *,
+    global_optionset: bool = True,
+) -> dict[str, Any]:
+    """Retrieve option set values for a multi-select picklist attribute.
+
+    Mirrors `picklist_options` but casts to
+    `Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata` — a multiselect
+    column is NOT a `PicklistAttributeMetadata`, so the Picklist cast raises. The
+    MultiSelect metadata carries `OptionSet` (local) + `GlobalOptionSet` (global)
+    with the same shape, so `flatten_options` works on the result either way.
+
+    Returns `{ "LogicalName": ..., "OptionSet": {...}, "GlobalOptionSet": {...} }`.
+    """
+    if not logical_name or not attribute:
+        raise D365Error("logical_name and attribute are required.")
+    cast = "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
+    path = (
+        f"EntityDefinitions(LogicalName='{logical_name}')"
+        f"/Attributes(LogicalName='{attribute}')/{cast}"
+    )
+    expand = "OptionSet" + (",GlobalOptionSet" if global_optionset else "")
+    return as_dict(backend.get(
+        path,
+        params={"$select": "LogicalName", "$expand": expand},
+    ))
+
+
+def label_text(label_obj: dict[str, Any]) -> str:
     """Best-effort display label from a Dataverse Label payload."""
     ull: dict[str, Any] = label_obj.get("UserLocalizedLabel") or {}
     if ull.get("Label"):
@@ -113,7 +144,7 @@ def flatten_options(container: dict[str, Any]) -> list[dict[str, Any]]:
 
     `container` is any dict carrying an `Options` array — a picklist's
     `OptionSet` / `GlobalOptionSet`, or a global option set with `Options` at
-    its root. Labels use the robust `_label_text` fallback. A Boolean attribute
+    its root. Labels use the robust `label_text` fallback. A Boolean attribute
     has no `Options` array (it casts to `TrueOption` / `FalseOption`), so this
     returns `[]` for booleans — read those raw fields instead.
     """
@@ -121,7 +152,7 @@ def flatten_options(container: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for o in rows:
         lbl: dict[str, Any] = o.get("Label") or {}
-        out.append({"value": o.get("Value"), "label": _label_text(lbl)})
+        out.append({"value": o.get("Value"), "label": label_text(lbl)})
     return out
 
 

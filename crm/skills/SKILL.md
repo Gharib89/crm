@@ -133,7 +133,7 @@ pass `--profile <name>` and confirm the real target with
 | `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`               | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
-| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `cache-clear` | Schema introspection + option set values + dependency preview + entity-def cache |
+| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `export-spec`, `cache-clear` | Schema introspection + option set values + dependency preview + spec export + entity-def cache |
 | `plugin`     | `register-assembly`, `list-types`, `register-step`, `unregister-assembly`, `unregister-step` | Plug-in assembly registration + step lifecycle |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
@@ -259,7 +259,7 @@ crm --json metadata attribute account industrycode
 crm --json metadata attribute account industrycode --expect AttributeType=Picklist
 ```
 
-### 5b. Entity-definition cache (speed up repeated agent calls)
+### 5a. Entity-definition cache (speed up repeated agent calls)
 
 Pass `--cache-metadata` (or set `CRM_CACHE_METADATA=1`) to serve `metadata entities`
 from a persistent per-profile on-disk cache instead of a live fetch. This is the
@@ -289,7 +289,41 @@ TTL: ~15 min. Any metadata write (create/update/delete entity, attribute, option
 relationship, publish-all/xml) auto-invalidates the cache. Read-only schema only —
 records and secrets are never cached.
 
-### 5a. Preview dependencies before deleting a metadata component
+### 5b. Export a live entity as an apply spec (round-trip)
+
+```bash
+# Export entity schema to YAML — ready for `crm apply -f`
+crm metadata export-spec new_project \
+    --with-views --with-relationships \
+    -o project.yaml
+
+# Re-create (or idempotently re-apply) in any environment
+crm apply -f project.yaml
+```
+
+`export-spec` reads the entity over the Web API (pure GETs) and emits the
+`crm apply -f` desired-state spec. Flags:
+
+- `--with-views` — include the entity's public saved-query views.
+- `--with-relationships` — include the entity's custom 1:N relationships.
+- `-o FILE` — write bare YAML to FILE (directly consumable by `apply -f`). Without
+  `-o` the spec is emitted under the standard JSON envelope.
+
+Captures: entity definition, primary-name attribute, all custom apply-creatable
+columns (deep-read for `MaxLength`/`RequiredLevel`/options), referenced global
+option sets, relationships (with flag), views (with flag). Publisher/solution are
+**not** emitted — supply them via `--solution` on `apply`, or edit the YAML.
+Fidelity note: these round-trip through `apply`: `max_length`, `required`, options,
+lookup `target_entity`, `precision` (decimal/double/money), and string `format_name`
+(`Email`/`Phone`/`Url`/`TextArea`/etc.). Caveats: a string column whose live format
+is `Json` or `RichText` (uncreatable by `apply`) is re-created as plain `Text`; a
+datetime column's format is NOT captured (re-created with the default format); a
+polymorphic (multi-target) lookup is exported with its first target only and
+re-created as a single-target lookup; relationship `cascade` and `associated_menu`
+are captured but not yet acted on (the relationship is re-created with default
+cascade/menu). `apply` ignores unknown keys so the spec always remains apply-consumable.
+
+### 5c. Preview dependencies before deleting a metadata component
 
 ```bash
 # Check what would block deleting an entity
