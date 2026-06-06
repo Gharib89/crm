@@ -121,6 +121,12 @@ class TestSessionAuditCommand:
         assert len(data["data"]) == 1
         assert data["data"][0]["command"] == "cmd2"
 
+    def test_tail_zero_is_a_usage_error(self):
+        # --tail must be >= 1 (IntRange); 0 would otherwise return ALL rows.
+        result = self._run("session", "audit", "--tail", "0")
+        assert result.exit_code == 2
+        assert "tail" in result.output.lower()
+
     def test_session_override_reads_different_session(self):
         # Seed entries in two different sessions
         audit.record(session="alpha", profile=None, command="alpha-cmd", target="t", result={})

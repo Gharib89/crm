@@ -26,6 +26,24 @@ _GUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$"
 )
 
+# Anything outside this set is replaced with '_' so a user-controlled --session
+# value (path separators, `..`) can never escape the audit directory.
+_UNSAFE_SESSION_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _safe_session(session: str) -> str:
+    """Confine *session* to a single filename within the audit directory.
+
+    Replaces path separators and any other unsafe character with ``_``, and
+    maps an all-dots name (``.``/``..``) — which could otherwise traverse — to
+    ``default``. Ordinary names (``default``, ``my-session``) pass through
+    unchanged.
+    """
+    name = _UNSAFE_SESSION_RE.sub("_", session)
+    if set(name) <= {"."}:
+        name = "default"
+    return name
+
 
 def _audit_root() -> Path:
     root = Path(os.environ.get("CRM_HOME", str(Path.home() / ".crm"))).expanduser()
@@ -35,7 +53,7 @@ def _audit_root() -> Path:
 
 
 def _journal_path(session: str) -> Path:
-    return _audit_root() / f"{session}.jsonl"
+    return _audit_root() / f"{_safe_session(session)}.jsonl"
 
 
 def _extract_result_id(result: Any) -> str | None:
@@ -134,5 +152,7 @@ def read(session: str, *, tail: int | None = None) -> list[dict[str, Any]]:
             pass
 
     if tail is not None:
-        rows = rows[-tail:]
+        # `rows[-0:]` is `rows[:]` (all rows), so a non-positive tail must be
+        # handled explicitly — "last N" of N<=0 is no rows.
+        rows = rows[-tail:] if tail > 0 else []
     return rows

@@ -266,3 +266,53 @@ def test_key_order_in_journal(crm_home: Path) -> None:
     parsed = json.loads(raw_line)
     expected_keys = ["ts", "profile", "command", "target", "solution", "staged", "dry_run", "ok", "result_id"]
     assert list(parsed.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# tail <= 0 is no rows (not all rows via rows[-0:])
+# ---------------------------------------------------------------------------
+
+
+def test_tail_zero_returns_empty(crm_home: Path) -> None:
+    for i in range(3):
+        record(session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS)
+    assert read(SESSION, tail=0) == []
+
+
+def test_tail_negative_returns_empty(crm_home: Path) -> None:
+    for i in range(3):
+        record(session=SESSION, profile=None, command=f"cmd{i}", target=None, result=None, now=FIXED_TS)
+    assert read(SESSION, tail=-2) == []
+
+
+# ---------------------------------------------------------------------------
+# A user-controlled session name cannot escape the audit directory
+# ---------------------------------------------------------------------------
+
+
+def test_session_with_path_separators_confined_to_audit_dir(crm_home: Path) -> None:
+    from crm.core.audit import _audit_root, _journal_path
+
+    for evil in ("/tmp/pwn", "../../etc/pwn", "a/b/c"):
+        path = _journal_path(evil)
+        # The journal stays a direct child of <CRM_HOME>/audit/, never elsewhere.
+        assert path.parent == _audit_root()
+
+
+def test_evil_session_roundtrips_within_audit_dir(crm_home: Path) -> None:
+    record(session="/tmp/pwn", profile=None, command="entity create",
+           target="accounts", result={"id": "x"}, now=FIXED_TS)
+    # Nothing was written outside the audit dir...
+    assert not Path("/tmp/pwn.jsonl").exists()
+    # ...and the same (sanitized) session reads its own line back.
+    rows = read("/tmp/pwn")
+    assert len(rows) == 1
+    assert rows[0]["command"] == "entity create"
+
+
+def test_safe_session_maps_all_dots_to_default(crm_home: Path) -> None:
+    from crm.core.audit import _safe_session
+
+    assert _safe_session("..") == "default"
+    assert _safe_session(".") == "default"
+    assert _safe_session("my-session") == "my-session"  # ordinary names untouched

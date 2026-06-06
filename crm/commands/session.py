@@ -45,7 +45,8 @@ def session_history(ctx: CLIContext):
 
 
 @session_group.command("audit")
-@click.option("--tail", type=int, default=None, help="Only the last N entries.")
+@click.option("--tail", type=click.IntRange(min=1), default=None,
+              help="Only the last N entries (N >= 1).")
 @click.option("--session", "session_override", default=None,
               help="Read another session's journal (default: current --session).")
 @pass_ctx
