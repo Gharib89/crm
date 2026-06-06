@@ -164,6 +164,31 @@ class TestForwardLookingVerbs:
         assert r.returncode == 0
 
 
+_ROLE_ID = "55555555-5555-5555-5555-555555555555"
+_USER_ID = "66666666-6666-6666-6666-666666666666"
+
+
+class TestAssignRole:
+    """assign-role is in ROLE_VERBS — gated by verb name regardless of group."""
+
+    def test_block_assign_role_no_yes(self):
+        r = _run(f"crm security assign-role --to-user {_USER_ID} {_ROLE_ID}")
+        assert r.returncode == BLOCK
+        assert "assign-role" in r.stderr
+        assert "--yes" in r.stderr
+
+    def test_allow_assign_role_with_yes(self):
+        r = _run(f"crm security assign-role --to-user {_USER_ID} {_ROLE_ID} --yes")
+        assert r.returncode == 0
+        assert r.stderr == ""
+
+    def test_role_verb_gated_regardless_of_group(self):
+        # ROLE_VERBS matches by verb name only — even an unrecognised group is blocked.
+        r = _run(f"crm other-group assign-role {_ROLE_ID}")
+        assert r.returncode == BLOCK
+        assert "assign-role" in r.stderr
+
+
 class TestNonDestructivePassthrough:
     @pytest.mark.parametrize("cmd", [
         "crm query accounts --filter \"name eq 'x'\"",
