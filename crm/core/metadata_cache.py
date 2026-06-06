@@ -18,7 +18,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import ConnectionProfile
@@ -127,10 +127,10 @@ def read_definitions(
     if not _is_str_dict_list(definitions):
         return None
 
-    return definitions
+    return cast("list[dict[str, str]]", definitions)
 
 
-def _is_str_dict_list(value: Any) -> TypeGuard[list[dict[str, str]]]:
+def _is_str_dict_list(value: Any) -> bool:
     """Return True iff *value* is a ``list[dict[str, str]]``."""
     if not isinstance(value, list):
         return False
