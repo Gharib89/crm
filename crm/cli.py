@@ -407,7 +407,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     # stubs only export ParameterSource there; `click.ParameterSource` / `from click
     # import ParameterSource` fail strict type-checking even though both work at runtime.
     from click.core import ParameterSource
-    if click.get_current_context().get_parameter_source("session_name") == ParameterSource.COMMANDLINE:
+    if ctx.get_parameter_source("session_name") == ParameterSource.COMMANDLINE:
         cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:

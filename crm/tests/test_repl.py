@@ -39,8 +39,10 @@ def _isolated_env(tmp_path):
 def _repl_invoke(argv: list[str], ctx: CLIContext) -> None:
     """Simulate one REPL line: invoke cli.main the same way repl.py does.
 
-    Swallows SystemExit / click exceptions / arbitrary errors so the
-    subcommand's own failure never masks the assertion on session_name.
+    Swallows only Click's controlled exits (Exit / SystemExit) — the normal way
+    a command signals its exit code. Any unexpected error (ClickException, or
+    anything else) is allowed to propagate so a genuine break in the command
+    path or root callback fails the test instead of silently passing.
     """
     import click
 
@@ -49,10 +51,6 @@ def _repl_invoke(argv: list[str], ctx: CLIContext) -> None:
     except SystemExit:
         pass
     except click.exceptions.Exit:
-        pass
-    except click.ClickException:
-        pass
-    except Exception:  # noqa: BLE001
         pass
 
 
