@@ -114,6 +114,7 @@ nav:
       - action: how-to/action.md
       - view: how-to/view.md
       - apply: how-to/apply.md
+      - scaffold: how-to/scaffold.md
       - describe: how-to/describe.md
       - app: how-to/app.md
       - webresource: how-to/webresource.md

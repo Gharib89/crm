@@ -251,6 +251,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `query`      | OData v4 and FetchXML queries                              |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
+| `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
 | `solution`   | List / info / components (`--save`/`--diff` for drift detection) / add-component / remove-component / set-version / export / import / import-result / extract / pack solutions |
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `webresource` | Create/update/get/list web resources (HTML/JS/CSS/images); set as app icons |
@@ -277,6 +278,12 @@ columns, option sets, relationships, views) from one declarative spec, in
 dependency order, publishing once at the end — idempotent on re-apply, with
 `--dry-run` plan preview and `--stage-only` support. See
 [how-to/apply](docs/how-to/apply.md).
+
+`crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` is the quick
+one-liner path: builds an entity + N columns in memory and runs them through the
+same apply engine in one publish. Use it for simple tables; use `apply` when you
+need publishers, solutions, option sets, relationships, or views. See
+[how-to/scaffold](docs/how-to/scaffold.md).
 
 Use `crm <group> --help` for command-level details.
 

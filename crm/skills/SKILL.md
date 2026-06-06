@@ -144,6 +144,7 @@ pass `--profile <name>` and confirm the real target with
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`, `audit`                                                     | Local session state + audit journal of mutations |
 | _(top)_      | `apply -f spec.yaml`                                                                    | Declarative desired-state (publisher→…→views)  |
+| `scaffold`   | `table DISPLAY --column 'DISPLAY:KIND[:opts]' ...`                                      | Quick one-table shorthand: entity + N columns in one publish |
 | _(top)_      | `doctor`                                                                                | Alias for `connection doctor` — live connection diagnostic       |
 | _(top)_      | `describe [group]`                                                                      | Machine-readable command/option/choice catalogue (no connection) |
 | _(top)_      | `service-document`                                                                      | List every entity set the server exposes       |
@@ -766,6 +767,52 @@ entities:
     views:
       - {name: Active Projects, columns: [contoso_name, contoso_code]}
 ```
+
+## Scaffold a table — `scaffold table`
+
+Quick one-liner to create an entity + N columns in a single publish, running
+through the same `apply` engine. Each resource is created with `if_exists=skip`
+— re-running is a no-op.
+
+```bash
+# Create a table with typed columns (--json always in agent contexts)
+crm --json scaffold table "Project" \
+  --column "Name:string:max_length=200,required=ApplicationRequired" \
+  --column "Due Date:datetime" \
+  --column "Owner:lookup:target_entity=systemuser" \
+  --column "Priority:picklist:optionset_name=new_priority"
+
+# Dry-run plan (no changes; entity + all columns reported as planned)
+crm --dry-run --json scaffold table "Project" \
+  --column "Name:string" \
+  --column "Due Date:datetime"
+
+# Stage without publishing
+crm --stage-only --json scaffold table "Project" \
+  --column "Name:string"
+```
+
+Emits `{ok, data:{applied, skipped, planned, failed}, meta:{staged}}` — same
+envelope as `apply`.
+
+**Column shorthand:** `DISPLAY:KIND[:key=value,...]`. KIND ∈ `string`, `memo`,
+`integer`, `bigint`, `decimal`, `double`, `money`, `boolean`, `datetime`,
+`picklist`, `multiselect`, `lookup`, `image`, `file`.
+- `string`/`memo` default `max_length` 100/2000; override with `max_length=N`.
+  `max_length` on any other kind is an error.
+- `lookup` requires `target_entity=<logical_name>`.
+- `picklist`/`multiselect` require `optionset_name=<name>` (existing global
+  option set — inline options are **not** supported; use `apply` for those).
+- Optional: `required=None|Recommended|ApplicationRequired`, `description=<text>`.
+
+Column schema names are derived `<publisher_prefix>_<PascalCase(DISPLAY)>` from
+the profile's `publisher_prefix` (required — missing prefix → exit 2).
+`--schema-name` overrides the entity schema only, not column names. Other flags:
+`--display-collection`, `--ownership UserOwned|OrganizationOwned` (default
+`UserOwned`), `--solution`, `--require-solution`.
+
+**Limitations:** no views, no inline picklist options, single entity only. Use
+`apply -f spec.yaml` for those cases.
 
 ## Agent guidance — record-create payloads (`@odata.bind`)
 
