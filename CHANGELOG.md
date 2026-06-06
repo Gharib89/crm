@@ -4,8 +4,12 @@ All notable changes to `crm` are documented in this file.
 
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Releases from 0.12.0 on are cut automatically by python-semantic-release from
+Conventional Commit messages; new version sections are inserted below this line.
 
-## [Unreleased]
+<!-- version list -->
+
+## [0.12.0] — 2026-06-07
 
 ### Security
 - Profile and session names are now validated as single path components at creation/load, preventing path traversal in on-disk profile/session/cache paths. (#126)

@@ -30,7 +30,11 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 
 ## Release
 
-Bump version in BOTH `setup.py` and `crm/__init__.py`. Push tag `vX.Y.Z` → `release.yml` builds (`scripts/check_tag_version.py` gates the tag). Any PyInstaller bundle-shape change must touch all 5 sites: `crm.spec`, `.github/workflows/release.yml`, `.github/workflows/build.yml`, `scripts/build.sh`, `scripts/build.ps1`.
+Releases are cut **automatically** by `python-semantic-release` (`.github/workflows/semantic-release.yml`, config in `pyproject.toml` `[tool.semantic_release]`). Every push to `main` reads the Conventional Commit history since the last tag, bumps the version in BOTH `setup.py` and `crm/__init__.py`, updates `CHANGELOG.md` (`mode=update`, inserted at the `<!-- version list -->` marker), commits `chore(release): vX.Y.Z`, and pushes tag `vX.Y.Z`. So **commit messages drive the bump**: `feat:`→minor, `fix:`/`perf:`→patch, breaking→minor while pre-1.0 (`allow_zero_version=true`, `major_on_zero=false`).
+
+The tag push uses **`RELEASE_PAT`**, NOT `GITHUB_TOKEN` — a tag pushed with `GITHUB_TOKEN` does not trigger downstream workflows, so `release.yml` would never fire. PSR itself does not build or create the GitHub release (`vcs_release: false`); the tag fires `release.yml`, which builds the PyInstaller binaries, uploads to R2, and creates the GitHub release. `scripts/check_tag_version.py` still gates that the tag matches `setup.py`.
+
+Manual release (fallback / re-cut): bump both version files, then push the tag yourself (a human/PAT tag push fires `release.yml`). Any PyInstaller bundle-shape change must touch all 5 sites: `crm.spec`, `.github/workflows/release.yml`, `.github/workflows/build.yml`, `scripts/build.sh`, `scripts/build.ps1`.
 
 ## Agent skills
 

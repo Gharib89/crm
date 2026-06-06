@@ -1,0 +1,23 @@
+# python-semantic-release config only. Intentionally NO [build-system] table:
+# the project is still built from setup.py (setuptools legacy backend), and the
+# release pipeline (.github/workflows/release.yml, crm.spec) is unchanged.
+[tool.semantic_release]
+# Bump both version sites on every release (see CLAUDE.md "Release").
+version_variables = [
+    "crm/__init__.py:__version__",
+    "setup.py:version",
+]
+# Project is pre-1.0: stay in 0.x. allow_zero_version defaults to false in PSR
+# v10 (would force 1.0.0); major_on_zero=false keeps breaking changes a minor
+# bump until we deliberately cut 1.0.
+allow_zero_version = true
+major_on_zero = false
+# release.yml owns the binary build; PSR must not build.
+build_command = ""
+commit_message = "chore(release): v{version}"
+
+[tool.semantic_release.branches.main]
+match = "(main|master)"
+
+[tool.semantic_release.changelog]
+mode = "update"

@@ -1,0 +1,48 @@
+name: semantic-release
+
+# On every push to main, python-semantic-release reads the Conventional Commit
+# history since the last tag, bumps the version in setup.py + crm/__init__.py,
+# updates CHANGELOG.md, commits "chore(release): vX.Y.Z", and tags vX.Y.Z.
+#
+# It does NOT build or create the GitHub release (vcs_release: false): the tag
+# push triggers the existing release.yml, which builds the PyInstaller binaries,
+# uploads to R2, and creates the GitHub release.
+#
+# Why RELEASE_PAT and not GITHUB_TOKEN: a tag pushed using the default
+# GITHUB_TOKEN does NOT trigger other workflows (GitHub anti-recursion rule), so
+# release.yml would never fire. The tag must be pushed with a PAT.
+# RELEASE_PAT = fine-grained token, this repo only, Contents: read/write.
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref_name }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout (full history for version evaluation)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Force branch to the workflow sha
+        run: git reset --hard ${{ github.sha }}
+
+      - name: Python Semantic Release
+        uses: python-semantic-release/python-semantic-release@v10.5.3
+        with:
+          github_token: ${{ secrets.RELEASE_PAT }}
+          git_committer_name: "github-actions[bot]"
+          git_committer_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          vcs_release: "false"
+          build: "false"
