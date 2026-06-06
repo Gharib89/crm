@@ -273,6 +273,59 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
     return parsed
 
 
+def _parse_expect(pairs: tuple[str, ...]) -> list[tuple[str, str]]:
+    """Parse repeatable --expect ATTR=VALUE flags into (attr, value) pairs.
+
+    Split on the FIRST '=' so a VALUE may itself contain '='. A pair missing
+    '=' or with an empty attr is a usage error (exit 2); validate before any
+    backend call so a typo never costs a round-trip. The attr is trimmed; the
+    value is taken verbatim, so any leading/trailing whitespace in a value is
+    significant."""
+    parsed: list[tuple[str, str]] = []
+    for raw in pairs:
+        attr, sep, value = raw.partition("=")
+        if not sep or not attr.strip():
+            raise click.UsageError(
+                f"--expect must be ATTR=VALUE with a non-empty attribute, got {raw!r}"
+            )
+        parsed.append((attr.strip(), value))
+    return parsed
+
+
+def _check_expectations(
+    record: dict[str, Any], pairs: list[tuple[str, str]]
+) -> dict[str, Any] | None:
+    """AND-gate stringified comparison of a retrieved record against expected
+    values. Each expected VALUE (a CLI string) is compared to str(record[attr]).
+    A key absent from the record is ALWAYS a mismatch (reported with
+    actual=None): it can never satisfy an expectation, so a typo'd attribute
+    name fails instead of accidentally matching `--expect attr=None`. A key
+    that is present with a null value compares as the string 'None'. Returns
+    None when every pair matches, else {attr, expected, actual} for the FIRST
+    mismatch in CLI order (actual is the raw value, for JSON consumers)."""
+    for attr, expected in pairs:
+        if attr not in record:
+            return {"attr": attr, "expected": expected, "actual": None}
+        actual = record[attr]
+        if str(actual) != expected:
+            return {"attr": attr, "expected": expected, "actual": actual}
+    return None
+
+
+def _emit_expectation_failure(ctx: "CLIContext", miss: dict[str, Any]) -> None:
+    """Emit the standard `--expect` mismatch envelope (exit 1).
+
+    `miss` is the {attr, expected, actual} dict from `_check_expectations`. The
+    human-readable error string embeds the same three values because `emit`'s
+    human-mode failure path renders only `error`, not `meta`."""
+    ctx.emit(
+        False,
+        error=f"Expectation failed: {miss['attr']}={miss['expected']!r} "
+              f"(actual {miss['actual']!r})",
+        meta=miss,
+    )
+
+
 def _touch_session(ctx: "CLIContext", entity_set: str, *,
                    last_query: dict | None = None) -> None:
     state = session_mod.load_session(ctx.session_name)

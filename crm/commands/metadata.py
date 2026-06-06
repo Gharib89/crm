@@ -21,6 +21,9 @@ from crm.commands._helpers import (
     _resolve_solution,
     _resolve_schema_name,
     _emit_with_warning,
+    _parse_expect,
+    _check_expectations,
+    _emit_expectation_failure,
     _CASCADE,
     _MENU,
     _REQUIRED,
@@ -93,14 +96,26 @@ def metadata_attributes(ctx: CLIContext, logical_name):
 @metadata_group.command("attribute")
 @click.argument("logical_name")
 @click.argument("attribute_name")
+@click.option("--expect", multiple=True, metavar="ATTR=VALUE",
+              help="Repeatable; assert str(record[ATTR]) == VALUE (an absent key "
+                   "never matches). Any mismatch exits 1 (the --json envelope "
+                   "carries meta {attr, expected, actual}; human mode prints the "
+                   "error line); all match exits 0.")
 @pass_ctx
-def metadata_attribute(ctx: CLIContext, logical_name, attribute_name):
+def metadata_attribute(ctx: CLIContext, logical_name, attribute_name, expect):
     """Show a single attribute definition."""
+    # Validate untrusted --expect input before any backend call (house rule).
+    expectations = _parse_expect(expect)
     try:
         info = meta_mod.attribute_info(ctx.backend(), logical_name, attribute_name)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+    if expectations:
+        miss = _check_expectations(info, expectations)
+        if miss is not None:
+            _emit_expectation_failure(ctx, miss)
+            return
     ctx.emit(True, data=info)
 
 

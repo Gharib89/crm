@@ -251,6 +251,11 @@ crm --json query fetchxml accounts --xml '
 crm --json metadata entities --custom-only --top 20
 crm --json metadata attributes account
 crm --json metadata attribute account industrycode
+
+# --expect ATTR=VALUE asserts a field on the returned record (repeatable,
+# AND-gated, stringified); a mismatch exits 1. Available on `metadata attribute`
+# and `entity get` — see "Verify a metadata change landed" below.
+crm --json metadata attribute account industrycode --expect AttributeType=Picklist
 ```
 
 ### 5a. Preview dependencies before deleting a metadata component
@@ -426,6 +431,31 @@ crm --stage-only metadata create-optionset --name new_priority --display Priorit
 # ... more staged changes ...
 crm solution publish-all   # single publish for all staged customizations
 ```
+
+#### Verify a metadata change landed (`--expect`)
+
+After a create→publish, poll the attribute until its definition reflects the
+change — then retry if it hasn't propagated yet:
+
+```bash
+crm metadata add-attribute new_widget --kind string \
+    --schema-name new_Label --display Label --max-length 100 \
+  && crm solution publish-all \
+  && crm --json metadata attribute new_widget new_label --expect AttributeType=String \
+  || echo "attribute not ready yet — retry"
+```
+
+`--expect ATTR=VALUE` is repeatable, AND-gated, and stringified (each pair passes
+only if `str(record[ATTR]) == VALUE`; a missing key never matches). The first
+mismatch exits **1** with `{ok:false, error:"Expectation failed: …", meta:{attr, expected, actual}}`, so a shell
+`||` branch — or an agent — can branch on the failure and retry. All pairs match →
+normal `ok:true`, exit 0, record unchanged. A malformed `--expect` (no `=`) is a
+usage error (exit 2) raised before any HTTP. Attribute logical names are lowercase
+(`new_label`), the schema name PascalCase (`new_Label`).
+
+The same flag on `entity get` asserts a write landed on the record side — e.g.
+`crm --json entity get cwx_tickets <guid> --expect statecode=1` after a state
+change. (The check runs against the full record, before any `--minimal` projection.)
 
 ### 13. Inspect the server's entity sets
 

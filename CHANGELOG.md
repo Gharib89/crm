@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Added**
+- `crm entity get` and `crm metadata attribute` gain a repeatable `--expect
+  ATTR=VALUE` flag — a field-comparison verify primitive. Each pair is split on
+  the FIRST `=` (so a VALUE may itself contain `=`); every pair must match
+  `str(record[ATTR]) == VALUE` (AND-gate, a missing key never matches). The first
+  mismatch (CLI order) exits 1 with `{ok:false, error:"Expectation failed: …",
+  meta:{attr, expected, actual}}` (`actual` is the raw value); all match passes
+  through unchanged as `ok:true` (exit 0). For `entity get` the check runs against
+  the full record before any `--minimal` projection. A malformed `--expect` (no
+  `=`, or empty attr) is a usage error (exit 2) raised before any server call.
+  Enables a create→publish→verify loop, e.g. `metadata add-attribute … &&
+  solution publish-all && metadata attribute <entity> <attr> --expect
+  AttributeType=String` (#86).
+
 **Fixed**
 - `crm metadata delete-entity`, `delete-attribute`, `delete-relationship`, and
   `delete-optionset` under `--dry-run` now return
