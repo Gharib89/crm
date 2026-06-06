@@ -317,10 +317,11 @@ Fidelity note: these round-trip through `apply`: `max_length`, `required`, optio
 lookup `target_entity`, `precision` (decimal/double/money), and string `format_name`
 (`Email`/`Phone`/`Url`/`TextArea`/etc.). Caveats: a string column whose live format
 is `Json` or `RichText` (uncreatable by `apply`) is re-created as plain `Text`; a
-datetime column's format is NOT captured (re-created with the default format);
-relationship `cascade` and `associated_menu` are captured but not yet acted on (the
-relationship is re-created with default cascade/menu). `apply` ignores unknown keys
-so the spec always remains apply-consumable.
+datetime column's format is NOT captured (re-created with the default format); a
+polymorphic (multi-target) lookup is exported with its first target only and
+re-created as a single-target lookup; relationship `cascade` and `associated_menu`
+are captured but not yet acted on (the relationship is re-created with default
+cascade/menu). `apply` ignores unknown keys so the spec always remains apply-consumable.
 
 ### 5c. Preview dependencies before deleting a metadata component
 

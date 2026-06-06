@@ -249,6 +249,8 @@ crm apply -f project.yaml
   create) is re-created as plain `Text`.
 - A datetime column's format is **not** captured; it is re-created with the default
   format.
+- A polymorphic (multi-target) lookup is exported with its first target only and
+  re-created as a single-target lookup (`apply` creates single-target lookups).
 - Relationship `cascade` and `associated_menu` configuration are captured but not
   yet acted on by `apply` (`create_one_to_many` does not accept them) — the
   relationship is re-created with default cascade/menu behaviour.

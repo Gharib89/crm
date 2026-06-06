@@ -665,8 +665,9 @@ class TestOptInViewsAndRelationships:
         assert views[0]["is_default"] is True
         assert {c["name"] for c in views[0]["columns"]} == {"new_name"}
 
-    def test_with_views_filters_empty_columns(self, backend):
-        # An empty-layoutxml view (columns: []) is dropped; only the real view stays.
+    def test_with_views_filters_empty_columns_and_empty_name(self, backend):
+        # Views with empty columns (unparseable layoutxml) OR empty name are both
+        # dropped; only the fully-valid view survives and validate_spec passes.
         from crm.core.views import _build_layoutxml, _build_fetchxml
         attrs = {"value": [_shallow("new_name")]}
         cols = [("new_name", 200)]
@@ -674,13 +675,19 @@ class TestOptInViewsAndRelationships:
         good_fetch = _build_fetchxml("new_project", cols, "new_name", False)
         savedqueries = {"value": [
             {
-                "name": "Empty View",
+                "name": "Empty View",        # empty columns → dropped
                 "layoutxml": "",
                 "fetchxml": "",
                 "isdefault": False,
             },
             {
-                "name": "Active Projects",
+                "name": "",                  # empty name → dropped
+                "layoutxml": good_layout,
+                "fetchxml": good_fetch,
+                "isdefault": False,
+            },
+            {
+                "name": "Active Projects",   # valid → kept
                 "layoutxml": good_layout,
                 "fetchxml": good_fetch,
                 "isdefault": True,

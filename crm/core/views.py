@@ -148,13 +148,18 @@ def read_entity_views(
     backend: D365Backend,
     entity_logical_name: str,
 ) -> list[dict[str, Any]]:
-    """Read an entity's public views as apply-spec view dicts.
+    """Read an entity's public saved-query views as view projection dicts.
 
     Returns a list of dicts with keys:
-    - ``name``: view name
-    - ``columns``: list of ``{"name": str, "width": int}`` (width omitted if absent)
+    - ``name``: view name (may be empty string for nameless rows)
+    - ``columns``: list of ``{"name": str, "width": int}`` (may be empty when
+      layoutxml is absent or unparseable)
     - ``order_by``: attribute name string (omitted if no <order> element)
     - ``is_default``: bool
+
+    Callers that need apply-valid projections (e.g. ``build_entity_spec``) are
+    responsible for dropping views with an empty ``name`` or empty ``columns``
+    before inserting them into a spec.
     """
     entity_lit = entity_logical_name.replace("'", "''")
     rows = as_dict(backend.get(

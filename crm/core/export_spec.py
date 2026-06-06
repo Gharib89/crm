@@ -229,6 +229,9 @@ def _project_attribute(
         first = cast("list[Any]", targets)[0]
         if not isinstance(first, str) or not first:
             return None
+        # A polymorphic lookup (len(Targets) > 1) exports only the first target
+        # because apply creates single-target lookups (add_attribute → one
+        # referenced entity). Capturing all targets would not round-trip.
         out["target_entity"] = first
 
     if kind in _PICKLIST_KINDS:
@@ -347,10 +350,10 @@ def build_entity_spec(
             entity["relationships"] = rels
 
     if with_views:
-        # validate_spec requires non-empty columns per view; a view with empty
-        # columns (unparseable/empty layoutxml) would fail the spec — drop it.
+        # validate_spec requires both a non-empty name and non-empty columns per
+        # view; drop any view that fails either check so the spec stays valid.
         ent_views = [v for v in views.read_entity_views(backend, logical_name)
-                     if v.get("columns")]
+                     if v.get("name") and v.get("columns")]
         if ent_views:
             entity["views"] = ent_views
 
