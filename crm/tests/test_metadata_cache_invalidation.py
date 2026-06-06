@@ -347,3 +347,17 @@ class TestPublishAllInvalidatesCache:
             sol_mod.publish_all(dry_backend)
         from crm.core import metadata_cache as mc
         assert mc.cache_file(profile).exists(), "cache must survive dry-run publish"
+
+    def test_cache_busted_when_publish_returns_body(self, profile, backend):
+        # A real (non-dry-run) publish that returns a non-empty body must STILL
+        # bust the cache — invalidation must not be coupled to an empty 204.
+        from crm.core import solution as sol_mod
+        _seed_cache(profile)
+        with requests_mock_module.Mocker() as m:
+            m.post(
+                backend.url_for("PublishAllXml"),
+                json={"unexpected": "body"},
+                status_code=200,
+            )
+            sol_mod.publish_all(backend)
+        assert _cache_gone(profile)
