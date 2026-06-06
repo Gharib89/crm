@@ -631,16 +631,28 @@ def export_solution(
     }
 
 
+# solution.xml is metadata — KB to a few MB even for large solutions (heavy
+# assets live in separate zip members). Cap the advisory sniff's decompression
+# so a zip-bomb solution.xml can't balloon memory / OOM-kill an import the
+# server would otherwise accept from the small uploaded zip.
+_MAX_SOLUTION_XML_BYTES = 64 * 1024 * 1024
+
+
 def _sniff_solution_managed(zip_path: str | Path) -> bool | None:
     """Best-effort read of solution.xml's <Managed> flag from a solution zip.
 
     Returns True (managed, <Managed>1</Managed>), False (unmanaged, 0), or None
     when the flag can't be determined — a bad/non-zip file, a zip with no
-    solution.xml, an unparseable document, or an unexpected value. Never raises;
-    the sniff is advisory metadata, not a gate on the import.
+    solution.xml, a member too large to be a real manifest, an unparseable
+    document, or an unexpected value. Never raises; the sniff is advisory
+    metadata, not a gate on the import.
     """
     try:
         with zipfile.ZipFile(zip_path) as zf:
+            # file_size is the declared uncompressed size from the central
+            # directory — read it without decompressing, and bail before read.
+            if zf.getinfo("solution.xml").file_size > _MAX_SOLUTION_XML_BYTES:
+                return None
             raw = zf.read("solution.xml")
         el = ET.fromstring(raw).find(".//Managed")
     except Exception:

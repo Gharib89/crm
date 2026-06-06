@@ -339,3 +339,13 @@ def test_sniff_managed_returns_true_for_managed_zip(tmp_path):
     zip_path = tmp_path / "managed.zip"
     _make_solution_zip(zip_path, "1")
     assert sol._sniff_solution_managed(str(zip_path)) is True
+
+
+def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
+    # Zip-bomb guard: when solution.xml's declared uncompressed size exceeds the
+    # cap, bail to None without decompressing. Shrink the cap so a normal
+    # manifest trips it (vs. writing a multi-MB file).
+    zip_path = tmp_path / "bomb.zip"
+    _make_solution_zip(zip_path, "0")
+    monkeypatch.setattr(sol, "_MAX_SOLUTION_XML_BYTES", 4)
+    assert sol._sniff_solution_managed(str(zip_path)) is None
