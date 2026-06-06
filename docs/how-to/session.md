@@ -31,8 +31,9 @@ set-lookup/clear-lookup; all metadata create/update/delete-*; solution create/
 create-publisher/set-version/add-component/remove-component/publish/publish-all/
 import/job-cancel; batch; workflow activate/deactivate/run; action invoke;
 webresource create/update; app create/add-components/build-sitemap/set-sitemap;
-view create; data import; plugin register/unregister-assembly/step; security
-assign-role; async cancel; apply) appends one line to the audit journal on success.
+view create; data import; plugin register-assembly/register-step/unregister-assembly/
+unregister-step; security assign-role; async cancel; apply) appends one line to the
+audit journal on success.
 Read, query, get, list, and export verbs never write to the journal.
 
 Journal location: `${CRM_HOME:-~/.crm}/audit/<session>.jsonl` — one file per session
@@ -78,10 +79,14 @@ Each line is a JSON object with these keys (in order):
 
 ### Example
 
+The human-mode view is a condensed line per entry — `timestamp  command  target
+result_id` plus a bracketed suffix for `[dry-run]` / `[staged]` rows. Use `--json`
+for the full 9-key record shown in the schema above.
+
 ```bash
 # After running a few commands against a Contoso org:
 crm session audit --tail 5
-# 2026-06-06T10:00:01Z  contoso  entity create  contacts  null  false  false  true  3fa85f64-...
-# 2026-06-06T10:00:15Z  contoso  entity update  contacts  null  false  false  true  null
-# ...
+#   2026-06-06T10:00:01Z  entity create  contacts  3fa85f64-5717-4562-b3fc-2c963f66afa6
+#   2026-06-06T10:00:15Z  entity update  contacts
+#   2026-06-06T10:00:32Z  entity delete  accounts   [dry-run]
 ```
