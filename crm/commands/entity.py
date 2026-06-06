@@ -13,6 +13,9 @@ from crm.commands._helpers import (
     _load_payload,
     _prune_annotations,
     _touch_session,
+    _parse_expect,
+    _check_expectations,
+    _emit_expectation_failure,
 )
 
 
@@ -52,9 +55,15 @@ def _validate_or_emit(ctx: CLIContext, entity_set, payload) -> bool:
               help="JSON mode: drop every key containing '@' (OData annotations like "
                    "@odata.etag, *@FormattedValue, *@lookuplogicalname); keeps business "
                    "fields, _*_value lookup GUIDs, and the primary id.")
+@click.option("--expect", multiple=True, metavar="ATTR=VALUE",
+              help="Repeatable; assert str(record[ATTR]) == VALUE. Any mismatch "
+                   "exits 1 with meta {attr, expected, actual}; all match exits 0.")
 @pass_ctx
-def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal):
+def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal, expect):
     """GET <entity-set> <guid>."""
+    # Validate untrusted --expect input before any backend call (house rule):
+    # a malformed pair raises UsageError (exit 2) without a round-trip.
+    expectations = _parse_expect(expect)
     try:
         result = entity_mod.retrieve(
             ctx.backend(), entity_set, record_id,
@@ -65,6 +74,12 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+    # Verify against the FULL record, before any --minimal projection.
+    if expectations:
+        miss = _check_expectations(result, expectations)
+        if miss is not None:
+            _emit_expectation_failure(ctx, miss)
+            return
     if minimal and ctx.json_mode and isinstance(result, dict):
         result = _prune_annotations(result)
     ctx.emit(True, data=result)
