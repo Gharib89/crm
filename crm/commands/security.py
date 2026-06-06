@@ -32,7 +32,7 @@ def list_roles(ctx: CLIContext, business_unit):
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
-    headers = ["name", "roleid", "businessunit"]
+    headers = ["name", "roleid", "businessunitid"]
     rows = [[it.get("name", ""), it.get("roleid", ""),
              it.get("_businessunitid_value", "")] for it in items]
     ctx.emit(True, table={"headers": headers, "rows": rows},
