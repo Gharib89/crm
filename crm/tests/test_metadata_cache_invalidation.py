@@ -295,6 +295,33 @@ class TestCreateOneToManyInvalidatesCache:
 
 
 # ---------------------------------------------------------------------------
+# optionsets.py: update_optionset
+# ---------------------------------------------------------------------------
+
+class TestUpdateOptionsetInvalidatesCache:
+    def test_cache_busted_on_real_update(self, profile, backend):
+        from crm.core import optionsets as os_mod
+        _seed_cache(profile)
+        with requests_mock_module.Mocker() as m:
+            m.post(backend.url_for("InsertOptionValue"), status_code=204, json={})
+            os_mod.update_optionset(backend, "new_priority", insert=[(7, "Critical")])
+        assert _cache_gone(profile)
+
+    def test_cache_survives_dry_run_update(self, profile, dry_backend):
+        from crm.core import optionsets as os_mod
+        _seed_cache(profile)
+        with requests_mock_module.Mocker() as m:
+            # dry-run temporarily toggles dry_run off to fetch the current options
+            m.get(
+                dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority", "Options": []},
+            )
+            os_mod.update_optionset(dry_backend, "new_priority", insert=[(7, "Critical")])
+        from crm.core import metadata_cache as mc
+        assert mc.cache_file(profile).exists(), "cache must survive a dry-run update_optionset"
+
+
+# ---------------------------------------------------------------------------
 # solution.py: publish_all
 # ---------------------------------------------------------------------------
 
