@@ -47,8 +47,9 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
     if use_cache:
         if custom_only:
             raise click.UsageError(
-                "--custom-only is not supported with --cache-metadata "
-                "(the cache stores only logical/set names)"
+                "--custom-only is not supported with the metadata cache "
+                "(--cache-metadata / --refresh-metadata); "
+                "the cache stores only logical/set names"
             )
         try:
             backend = ctx.backend()

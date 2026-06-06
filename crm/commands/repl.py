@@ -133,7 +133,7 @@ def repl(click_ctx: click.Context):
     ctx = click_ctx.ensure_object(CLIContext)
     ctx.skin.print_banner()
     ctx.skin.info(f"Session: {ctx.session_name}  |  Type 'help' for commands, 'quit' to exit.")
-    cache = MetadataCache(use_cache=ctx.cache_metadata, refresh=ctx.refresh_metadata)
+    cache = MetadataCache(use_cache=ctx.cache_metadata or ctx.refresh_metadata, refresh=ctx.refresh_metadata)
     completer = _EntityCompleter(ctx.backend, cache)
     pt_session = ctx.skin.create_prompt_session(completer=completer)
     state = session_mod.load_session(ctx.session_name)
