@@ -56,8 +56,10 @@ def _validate_or_emit(ctx: CLIContext, entity_set, payload) -> bool:
                    "@odata.etag, *@FormattedValue, *@lookuplogicalname); keeps business "
                    "fields, _*_value lookup GUIDs, and the primary id.")
 @click.option("--expect", multiple=True, metavar="ATTR=VALUE",
-              help="Repeatable; assert str(record[ATTR]) == VALUE. Any mismatch "
-                   "exits 1 with meta {attr, expected, actual}; all match exits 0.")
+              help="Repeatable; assert str(record[ATTR]) == VALUE (an absent key "
+                   "never matches). Any mismatch exits 1 (the --json envelope "
+                   "carries meta {attr, expected, actual}; human mode prints the "
+                   "error line); all match exits 0.")
 @pass_ctx
 def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal, expect):
     """GET <entity-set> <guid>."""

@@ -97,8 +97,10 @@ def metadata_attributes(ctx: CLIContext, logical_name):
 @click.argument("logical_name")
 @click.argument("attribute_name")
 @click.option("--expect", multiple=True, metavar="ATTR=VALUE",
-              help="Repeatable; assert str(record[ATTR]) == VALUE. Any mismatch "
-                   "exits 1 with meta {attr, expected, actual}; all match exits 0.")
+              help="Repeatable; assert str(record[ATTR]) == VALUE (an absent key "
+                   "never matches). Any mismatch exits 1 (the --json envelope "
+                   "carries meta {attr, expected, actual}; human mode prints the "
+                   "error line); all match exits 0.")
 @pass_ctx
 def metadata_attribute(ctx: CLIContext, logical_name, attribute_name, expect):
     """Show a single attribute definition."""

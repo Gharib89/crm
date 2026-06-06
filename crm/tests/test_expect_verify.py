@@ -2,9 +2,11 @@
 
 A stringified AND-gate run after a record/definition is retrieved by
 `entity get` / `metadata attribute`: every pair must match
-(str(record.get(attr)) == VALUE) or the FIRST mismatch in CLI order exits 1
-with meta {attr, expected, actual} (actual is the raw value). A malformed pair
-is a usage error (exit 2) raised before any backend call — so no HTTP fires.
+(str(record[attr]) == VALUE), with a key absent from the record treated as an
+automatic mismatch (so `--expect absent=None` never passes). The FIRST mismatch
+in CLI order exits 1 with meta {attr, expected, actual} (actual is the raw
+value). A malformed pair is a usage error (exit 2) raised before any backend
+call — so no HTTP fires.
 
 Mirrors test_entity_validate.py: a real D365Backend driven by requests_mock so
 the exact GET path is asserted.
