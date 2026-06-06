@@ -6,11 +6,16 @@ dict that `apply_spec` can consume directly. No backend, no IO, no network.
 # pyright: basic
 from __future__ import annotations
 
-import pytest
+import json
 
+import pytest
+import requests_mock
+from click.testing import CliRunner
+
+from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
 from crm.core.scaffold import build_table_spec
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -364,3 +369,231 @@ def test_error_max_length_on_money():
 def test_error_max_length_on_integer():
     with pytest.raises(D365Error, match="max_length is only valid"):
         build_table_spec(display_name="T", prefix="x", columns=["Count:integer:max_length=5"])
+
+
+# ── e2e: scaffold table CLI command ─────────────────────────────────────────
+
+_ENT_ID = "33333333-3333-3333-3333-333333333333"
+_ATTR_ID = "55555555-5555-5555-5555-555555555555"
+_REL_ID = "66666666-6666-6666-6666-666666666666"
+
+_CONTOSO_PROFILE = ConnectionProfile(
+    name="contoso",
+    url="https://crm.contoso.local/contoso",
+    domain="CONTOSO",
+    username="alice",
+    api_version="v9.2",
+    verify_ssl=False,
+    publisher_prefix="contoso",
+)
+
+
+@pytest.fixture
+def backend() -> D365Backend:
+    return D365Backend(_CONTOSO_PROFILE, password="pw", dry_run=False)
+
+
+@pytest.fixture
+def dry_backend() -> D365Backend:
+    return D365Backend(_CONTOSO_PROFILE, password="pw", dry_run=True)
+
+
+def _mock_entity_create(m, backend, *, schema="contoso_Project",
+                        logical="contoso_project", exists=False, otc=10112):
+    """Mock entity LogicalName existence GET + 204 create + readback.
+
+    The LogicalName GET serves a sequence: first call is the create-time
+    existence probe. scaffold never emits views, so the second (ObjectTypeCode
+    readback) response is currently unused — but mirror apply's helper exactly
+    so the mock stays correct if scaffold ever grows a views phase.
+    """
+    ent_url = backend.url_for(f"EntityDefinitions({_ENT_ID})")
+    record = {"LogicalName": logical, "SchemaName": schema,
+              "EntitySetName": logical + "s"}
+    probe = {"json": record} if exists else {"status_code": 404}
+    otc_resp = {"json": {"ObjectTypeCode": otc} if otc is not None else {}}
+    m.get(backend.url_for(f"EntityDefinitions(LogicalName='{logical}')"), [probe, otc_resp])
+    m.post(backend.url_for("EntityDefinitions"), status_code=204,
+           headers={"OData-EntityId": ent_url})
+    m.get(ent_url, json=record)
+
+
+def _mock_attribute_create(m, backend, *, entity="contoso_project",
+                           logical, schema, attr_type="String", exists=False):
+    """Mock a non-lookup attribute existence GET + 204 create + readback."""
+    attr_url = backend.url_for(
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})")
+    probe = backend.url_for(
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical}')")
+    if exists:
+        m.get(probe, json={"LogicalName": logical, "SchemaName": schema,
+                           "AttributeType": attr_type})
+    else:
+        m.get(probe, status_code=404)
+    m.post(backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
+           status_code=204, headers={"OData-EntityId": attr_url})
+    m.get(attr_url, json={"LogicalName": logical, "SchemaName": schema,
+                          "AttributeType": attr_type})
+
+
+def _mock_one_to_many(m, backend, *, schema, exists=False):
+    """Mock a one-to-many relationship existence GET + 204 create + readback."""
+    rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+    probe = backend.url_for(f"RelationshipDefinitions(SchemaName='{schema}')")
+    if exists:
+        m.get(probe, json={"SchemaName": schema})
+    else:
+        m.get(probe, status_code=404)
+    m.post(backend.url_for("RelationshipDefinitions"), status_code=204,
+           headers={"OData-EntityId": rel_url})
+    m.get(rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+          json={"SchemaName": schema, "ReferencingAttribute": "contoso_projectid"})
+
+
+def _publish_hits(m, backend):
+    target = backend.url_for("PublishAllXml")
+    return [r for r in m.request_history if r.url == target]
+
+
+def _kinds(entries):
+    return [e["kind"] for e in entries]
+
+
+def _monkeypatch_profile(monkeypatch, profile=_CONTOSO_PROFILE):
+    """Patch _active_profile in the scaffold command module and CLIContext.backend."""
+    monkeypatch.setattr(
+        "crm.commands.scaffold._active_profile",
+        lambda ctx: profile,
+    )
+
+
+# Test 1: create + columns publishes once
+def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
+    _monkeypatch_profile(monkeypatch)
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_code",
+                               schema="contoso_Code", attr_type="String")
+        # lookup column creates a one-to-many relationship
+        _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+
+        result = CliRunner().invoke(cli, [
+            "--json", "scaffold", "table", "Project",
+            "--column", "Code:string:max_length=100",
+            "--column", "Owner:lookup:target_entity=systemuser",
+        ])
+
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is True
+    assert env["meta"]["staged"] is False
+    kinds = _kinds(env["data"]["applied"])
+    assert kinds == ["entity", "attribute", "attribute"]
+    names = [e["name"] for e in env["data"]["applied"]]
+    assert "contoso_Project" in names
+    assert "contoso_Code" in names
+    # The lookup column's applied entry is keyed off the attribute schema
+    # (contoso_Owner), not the underlying relationship schema.
+    assert "contoso_Owner" in names
+    assert len(_publish_hits(m, backend)) == 1
+
+
+# Test 2: dry-run preview — no creates, planned reported
+def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
+    _monkeypatch_profile(monkeypatch)
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+
+    with requests_mock.Mocker() as m:
+        # Only the forced-real entity existence GET fires under dry-run.
+        m.get(
+            dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+            status_code=404,
+        )
+
+        result = CliRunner().invoke(cli, [
+            "--dry-run", "--json", "scaffold", "table", "Project",
+            "--column", "Code:string:max_length=100",
+            "--column", "Owner:lookup:target_entity=systemuser",
+        ])
+
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is True
+    assert env["data"]["applied"] == []
+    assert _kinds(env["data"]["planned"]) == ["entity", "attribute", "attribute"]
+    assert _publish_hits(m, dry_backend) == []
+
+
+# Test 3: stage-only — creates but no publish, staged=True
+def test_e2e_scaffold_table_stage_only(backend, monkeypatch):
+    _monkeypatch_profile(monkeypatch)
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_code",
+                               schema="contoso_Code", attr_type="String")
+        _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+
+        result = CliRunner().invoke(cli, [
+            "--stage-only", "--json", "scaffold", "table", "Project",
+            "--column", "Code:string:max_length=100",
+            "--column", "Owner:lookup:target_entity=systemuser",
+        ])
+
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is True
+    assert env["meta"]["staged"] is True
+    assert _kinds(env["data"]["applied"]) == ["entity", "attribute", "attribute"]
+    assert env["data"]["planned"] == []
+    assert _publish_hits(m, backend) == []
+
+
+# Test 4: malformed column → clean D365Error failure, no HTTP calls
+def test_e2e_scaffold_table_malformed_column_fails_clean(backend, monkeypatch):
+    _monkeypatch_profile(monkeypatch)
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+
+    with requests_mock.Mocker() as m:
+        result = CliRunner().invoke(cli, [
+            "--json", "scaffold", "table", "Project",
+            "--column", "Bad:notakind",
+        ])
+
+    assert result.exit_code != 0
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert "notakind" in env["error"] or "kind" in env["error"]
+    assert m.request_history == []
+
+
+# Test 5: missing publisher prefix → UsageError (exit 2)
+def test_e2e_scaffold_table_missing_prefix_is_usage_error(backend, monkeypatch):
+    # Profile with no publisher prefix.
+    no_prefix_profile = ConnectionProfile(
+        name="noprefix",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
+    )
+    monkeypatch.setattr(
+        "crm.commands.scaffold._active_profile",
+        lambda ctx: no_prefix_profile,
+    )
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+
+    with requests_mock.Mocker() as m:
+        result = CliRunner().invoke(cli, [
+            "--json", "scaffold", "table", "Project",
+            "--column", "Code:string",
+        ])
+
+    assert result.exit_code == 2
+    assert m.request_history == []

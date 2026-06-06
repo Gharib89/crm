@@ -273,6 +273,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "query": "crm.commands.query:query_group",
         "repl": "crm.commands.repl:repl",
         "service-document": "crm.commands.batch:service_document_cmd",
+        "scaffold": "crm.commands.scaffold:scaffold_group",
         "security": "crm.commands.security:security_group",
         "session": "crm.commands.session:session_group",
         "skill": "crm.commands.skill:skill_group",
