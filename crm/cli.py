@@ -400,7 +400,15 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     # and must not re-fire on every later REPL line. Compare cache_metadata above, which
     # is sticky so the REPL stays in cache mode once opted in.
     cli_ctx.refresh_metadata = refresh_metadata
-    cli_ctx.session_name = session_name
+    # Sticky session: the REPL re-invokes this callback for every typed line; a bare
+    # line omits --session so Click passes the literal default "default", which would
+    # silently clobber the session name set at REPL-launch time (#128).
+    # Imported from click.core (not top-level click) because pyright's bundled click
+    # stubs only export ParameterSource there; `click.ParameterSource` / `from click
+    # import ParameterSource` fail strict type-checking even though both work at runtime.
+    from click.core import ParameterSource
+    if click.get_current_context().get_parameter_source("session_name") == ParameterSource.COMMANDLINE:
+        cli_ctx.session_name = session_name
 
     if ctx.invoked_subcommand is None:
         if _suppress_bare_repl(json_mode):

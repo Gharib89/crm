@@ -9,6 +9,11 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## [Unreleased]
+
+### Fixed
+- REPL launched with `--session NAME` now keeps `NAME` active across all typed commands; previously every bare command silently reset the session to `default` (#128).
+
 ## [0.12.0] — 2026-06-07
 
 ### Security
