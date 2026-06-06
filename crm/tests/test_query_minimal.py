@@ -70,6 +70,34 @@ class TestCLIQuery:
         assert "@odata.etag" in rec
         assert "statuscode@OData.Community.Display.V1.FormattedValue" in rec
 
+    def test_minimal_preserves_top_level_envelope(self, monkeypatch):
+        """The `{**result, "value": [...]}` rebuild must keep top-level envelope
+        keys (e.g. `@odata.count` from `--count`) while still pruning per-record
+        annotations."""
+        class StubBackend:
+            def get(self, path, **kw):
+                return {
+                    "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
+                    "@odata.count": 7,
+                    "value": [_annotated_record()],
+                }
+
+        monkeypatch.setattr(CLIContext, "backend", lambda self: StubBackend())
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["--json", "query", "odata", "accounts", "--minimal", "--count"]
+        )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        # Top-level envelope survives the rebuild: both the surfaced meta and the
+        # raw `@odata.count` key in the data payload.
+        assert env["meta"]["odata_count"] == 7
+        assert env["data"]["@odata.count"] == 7
+        # Per-record annotations are still stripped.
+        rec = env["data"]["value"][0]
+        assert "@odata.etag" not in rec
+        assert all("@" not in k for k in rec), rec
+
 
 class TestCLIEntityGet:
     def test_minimal_prunes_single_record(self, monkeypatch):

@@ -293,7 +293,10 @@ def _odata_literal(v: Any) -> str:
 
 def _prune_annotations(record: dict) -> dict:
     """Drop OData annotation keys (any key containing '@') from a record,
-    keeping business fields, `_*_value` lookup GUIDs, and the primary id."""
+    keeping business fields, `_*_value` lookup GUIDs, and the primary id.
+
+    Shallow prune: only top-level keys are stripped — annotations nested
+    inside expanded records (under `--expand`) are not pruned."""
     return {k: v for k, v in record.items() if "@" not in k}
 
 
