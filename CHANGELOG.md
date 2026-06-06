@@ -24,7 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `old_label`) / `reorder` (`{old, new}` value lists). The live GET fires for real
   to build the diff; no POSTs are issued.
 
+**Changed**
+- Non-idempotent `POST` record-creates (and actions) are no longer auto-retried on
+  transport error / `429` / `503` by default — a lost response may have already
+  committed the record, so a blind re-send risks a duplicate (#84). Idempotent verbs
+  (`GET`/`PUT`/`PATCH`/`DELETE`) are unchanged, and `$batch` keeps its own independent
+  retry loop. Pass `--retry-on-ambiguous` (or set `CRM_RETRY_ON_AMBIGUOUS`) to restore
+  the old behavior when the re-send risk is acceptable.
+
 **Added**
+- `--retry-on-ambiguous` root flag (env: `CRM_RETRY_ON_AMBIGUOUS`) re-enables
+  auto-retry of non-idempotent `POST` creates on transport error / `429` / `503`,
+  opting back into the duplicate-create risk (#84).
 - `crm solution components <name> --save <path>` writes a normalized component
   inventory (a bare JSON list, each entry `{"componenttype": int, "objectid": str,
   "rootcomponentbehavior": int|null}`) to `<path>`, creating parent dirs as needed.

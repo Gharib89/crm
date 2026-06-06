@@ -220,6 +220,11 @@ Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code
 `meta.category` is a closed enum (`not_found`, `auth_failed`, `forbidden`,
 `concurrency_conflict`, `duplicate_detected`, `validation`, `throttled`,
 `server_error`, `transport_error`) and `meta.retryable` flags the transient classes.
+The backend auto-retries those transient classes for idempotent verbs, but a
+non-idempotent record-creating `POST` is **not** retried by default — a lost response
+may have already committed the record. Pass `--retry-on-ambiguous` (env:
+`CRM_RETRY_ON_AMBIGUOUS`) to opt back into retrying creates when the duplicate risk
+is acceptable. `$batch` keeps its own retry loop regardless.
 
 `meta.warnings` is an array of non-fatal advisories — the one place to scan for
 staged-but-unpublished changes, created-but-read-back-failed records, and

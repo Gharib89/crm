@@ -727,9 +727,16 @@ only the four keys above.
 
 `meta.category` is a closed enum; `meta.retryable` flags the transient classes. The
 backend auto-retries the `transport_error` / `throttled` (429) / `server_error` (5xx)
-classes, so for those `retryable: true` is a post-exhaustion hint — act on it only
-after the error surfaces. `concurrency_conflict` (412) is the exception: the backend
-does NOT auto-retry it; the caller must refetch a fresh ETag and retry.
+classes for idempotent verbs (`GET`/`PUT`/`PATCH`/`DELETE`), so for those
+`retryable: true` is a post-exhaustion hint — act on it only after the error surfaces.
+Two exceptions never auto-retry: `concurrency_conflict` (412) — refetch a fresh ETag
+and retry; and a non-idempotent record-creating `POST` (`entity create`, actions) —
+a lost response may have already committed the record, so the backend surfaces the
+error rather than risk a duplicate. To safely retry a create, re-run it as an
+upsert-by-id (`entity upsert` with a client-supplied GUID) so the second call is
+idempotent; or, if a duplicate is acceptable, pass `--retry-on-ambiguous`
+(env: `CRM_RETRY_ON_AMBIGUOUS`) to restore POST auto-retry. `$batch` keeps its own
+independent retry loop and is unaffected by this gate.
 
 | `category` | trigger | `retryable` | recovery |
 |---|---|---|---|
@@ -739,9 +746,9 @@ does NOT auto-retry it; the caller must refetch a fresh ETag and retry.
 | `concurrency_conflict` | 412 | yes | another change won the race — retrieve a fresh ETag and retry |
 | `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
 | `validation` | other 4xx (e.g. 400), or a status-less client-side error (bad CLI input, schema/spec validation) | no | fix the request: bad payload / CLI input, alternate key, or OData syntax |
-| `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` |
-| `server_error` | 5xx | yes | transient server fault |
-| `transport_error` | request never got a response (network / TLS / timeout); message starts `HTTP transport failure` | yes | network / TLS / timeout before any response reached the client |
+| `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` (idempotent verbs only — a record-creating `POST` is not auto-retried) |
+| `server_error` | 5xx | yes | transient server fault (idempotent verbs only — a record-creating `POST` is not auto-retried) |
+| `transport_error` | request never got a response (network / TLS / timeout); message starts `HTTP transport failure` | yes | network / TLS / timeout before any response reached the client (idempotent verbs only — a record-creating `POST` is not auto-retried) |
 
 ## Hard constraints
 
