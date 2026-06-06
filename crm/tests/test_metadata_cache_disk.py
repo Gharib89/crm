@@ -308,6 +308,40 @@ def test_load_definitions_refresh_overwrites_existing(crm_home: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# atomic write — no leftover .tmp
+# ---------------------------------------------------------------------------
+
+def test_write_no_tmp_sibling_remains(crm_home: Path) -> None:
+    """After write_definitions, no *.tmp sibling should exist in the cache dir."""
+    profile = make_profile()
+    write_definitions(profile, SAMPLE_DEFS, now=T0)
+    cache_dir = cache_file(profile).parent
+    tmp_files = list(cache_dir.glob("*.tmp"))
+    assert tmp_files == [], f"leftover .tmp files: {tmp_files}"
+
+
+# ---------------------------------------------------------------------------
+# load_definitions — TTL-expired miss
+# ---------------------------------------------------------------------------
+
+def test_load_definitions_ttl_expired_miss_calls_fetch(crm_home: Path) -> None:
+    """A TTL-expired cache entry is a miss; the fetcher must be called."""
+    call_count = 0
+
+    def fetcher() -> list[dict[str, str]]:
+        nonlocal call_count
+        call_count += 1
+        return SAMPLE_DEFS
+
+    profile = make_profile()
+    write_definitions(profile, SAMPLE_DEFS, now=T0)
+    result = load_definitions(profile, fetcher, refresh=False, now=T0 + TTL_SECONDS + 1)
+    assert call_count == 1
+    assert result.status == "miss"
+    assert result.definitions == SAMPLE_DEFS
+
+
+# ---------------------------------------------------------------------------
 # Per-profile isolation
 # ---------------------------------------------------------------------------
 

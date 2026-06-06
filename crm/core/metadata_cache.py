@@ -18,7 +18,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import ConnectionProfile
@@ -74,8 +74,10 @@ def write_definitions(
     }
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
-    os.replace(tmp, path)
+        json.dump(payload, f, indent=2, sort_keys=True)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp.replace(path)
 
 
 def read_definitions(
@@ -125,10 +127,10 @@ def read_definitions(
     if not _is_str_dict_list(definitions):
         return None
 
-    return definitions  # type: ignore[return-value]
+    return definitions
 
 
-def _is_str_dict_list(value: Any) -> bool:
+def _is_str_dict_list(value: Any) -> TypeGuard[list[dict[str, str]]]:
     """Return True iff *value* is a ``list[dict[str, str]]``."""
     if not isinstance(value, list):
         return False
@@ -151,12 +153,14 @@ def clear(profile: ConnectionProfile) -> bool:
     """Unlink the cache file if it exists.
 
     Returns ``True`` if the file existed (and was removed), ``False`` otherwise.
+    Never raises ``FileNotFoundError`` — a concurrent removal is treated as
+    though the file was already absent.
     """
-    path = cache_file(profile)
-    if path.is_file():
-        path.unlink()
+    try:
+        cache_file(profile).unlink()
         return True
-    return False
+    except FileNotFoundError:
+        return False
 
 
 def invalidate(profile: ConnectionProfile) -> None:
