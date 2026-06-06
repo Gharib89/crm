@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import zipfile
 
 import pytest
 import requests_mock
@@ -214,11 +215,9 @@ def test_import_solution_warns_when_data_missing(backend, tmp_path, monkeypatch)
 
 # ── managed/unmanaged sniff (#91) ────────────────────────────────────────
 
-import zipfile as _zipfile
-
 
 def _make_solution_zip(path, managed_flag):
-    with _zipfile.ZipFile(path, "w") as zf:
+    with zipfile.ZipFile(path, "w") as zf:
         zf.writestr(
             "solution.xml",
             f"<ImportExportXml><SolutionManifest>"
@@ -323,17 +322,15 @@ def test_sniff_managed_never_raises_on_unexpected_error(tmp_path, monkeypatch):
     # zf.read can raise NotImplementedError (unsupported compression) /
     # RuntimeError (encrypted) — neither is BadZipFile/OSError. The advisory
     # sniff must still degrade to None, never crash the import.
-    import zipfile as _zip
-
     zip_path = tmp_path / "in.zip"
-    with _zip.ZipFile(zip_path, "w") as zf:
+    with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("solution.xml", "<ImportExportXml/>")
 
-    class _Boom(_zip.ZipFile):
+    class _Boom(zipfile.ZipFile):
         def read(self, *a, **k):  # type: ignore[override]
             raise NotImplementedError("That compression method is not supported")
 
-    monkeypatch.setattr(_zip, "ZipFile", _Boom)
+    monkeypatch.setattr(zipfile, "ZipFile", _Boom)
     assert sol._sniff_solution_managed(str(zip_path)) is None
 
 
