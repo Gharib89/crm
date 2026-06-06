@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import base64
+import io
 import re
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from crm.core import entity
 from crm.core import metadata_cache
@@ -638,17 +639,18 @@ def export_solution(
 _MAX_SOLUTION_XML_BYTES = 64 * 1024 * 1024
 
 
-def _sniff_solution_managed(zip_path: str | Path) -> bool | None:
+def _sniff_solution_managed(zip_src: str | Path | BinaryIO) -> bool | None:
     """Best-effort read of solution.xml's <Managed> flag from a solution zip.
 
-    Returns True (managed, <Managed>1</Managed>), False (unmanaged, 0), or None
-    when the flag can't be determined — a bad/non-zip file, a zip with no
-    solution.xml, a member too large to be a real manifest, an unparseable
-    document, or an unexpected value. Never raises; the sniff is advisory
-    metadata, not a gate on the import.
+    Accepts a path or an already-open binary stream (so the caller can read the
+    zip bytes once and sniff in-memory). Returns True (managed,
+    <Managed>1</Managed>), False (unmanaged, 0), or None when the flag can't be
+    determined — a bad/non-zip file, a zip with no solution.xml, a member too
+    large to be a real manifest, an unparseable document, or an unexpected
+    value. Never raises; the sniff is advisory metadata, not a gate on import.
     """
     try:
-        with zipfile.ZipFile(zip_path) as zf:
+        with zipfile.ZipFile(zip_src) as zf:
             # file_size is the declared uncompressed size from the central
             # directory — read it without decompressing, and bail before read.
             if zf.getinfo("solution.xml").file_size > _MAX_SOLUTION_XML_BYTES:
@@ -699,8 +701,11 @@ def import_solution(
     p = Path(zip_path)
     if not p.is_file():
         raise D365Error(f"Solution file not found: {zip_path}")
-    managed = _sniff_solution_managed(p)
-    encoded = base64.b64encode(p.read_bytes()).decode("ascii")
+    # Read the zip once: sniff the managed flag in-memory and reuse the same
+    # bytes for the base64 upload (no second disk read).
+    data = p.read_bytes()
+    managed = _sniff_solution_managed(io.BytesIO(data))
+    encoded = base64.b64encode(data).decode("ascii")
     import_job_id = _new_guid()
     body: dict[str, Any] = {
         "CustomizationFile": encoded,

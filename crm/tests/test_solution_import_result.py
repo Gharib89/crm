@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import zipfile
@@ -349,3 +350,11 @@ def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
     _make_solution_zip(zip_path, "0")
     monkeypatch.setattr(sol, "_MAX_SOLUTION_XML_BYTES", 4)
     assert sol._sniff_solution_managed(str(zip_path)) is None
+
+
+def test_sniff_managed_accepts_binary_stream(tmp_path):
+    # import_solution reads the zip once and sniffs from an in-memory stream, so
+    # the helper must accept a file-like object, not only a path.
+    zip_path = tmp_path / "stream.zip"
+    _make_solution_zip(zip_path, "1")
+    assert sol._sniff_solution_managed(io.BytesIO(zip_path.read_bytes())) is True
