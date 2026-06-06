@@ -37,7 +37,8 @@ def scaffold_group():
         "string/memo default max_length to 100/2000; override with max_length=N. "
         "lookup requires target_entity=<logical_name>. "
         "picklist/multiselect require optionset_name=<name>. "
-        "Optional: required=None|Recommended|ApplicationRequired, description=<text>. "
+        "Optional: required=None|Recommended|ApplicationRequired, description=<text> "
+        "(opts are comma-separated, so description cannot contain a comma). "
         "Repeatable — pass one --column per column."
     ),
 )

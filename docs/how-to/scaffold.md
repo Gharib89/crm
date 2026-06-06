@@ -55,7 +55,11 @@ Optional opts (any KIND):
 | Opt | Values |
 |-----|--------|
 | `required` | `None` \| `Recommended` \| `ApplicationRequired` |
-| `description` | Free text |
+| `description` | Free text — **no commas** (opts are comma-separated) |
+
+Opts are split on commas, so a `description` value cannot contain `,`. For
+descriptions with commas, create the column with `crm metadata add-attribute`
+or a declarative `apply` spec instead.
 
 `max_length` is only valid for `string` and `memo`; using it on any other kind
 is an error (exit 2). Pass `--column` once per column — the flag is repeatable.
@@ -99,8 +103,12 @@ crm --dry-run --json scaffold table "Project" \
 ```
 
 Dry-run reports the entity and all columns as `planned` and makes no create
-calls (only the entity existence GET fires to probe current state). The envelope
-carries `meta.dry_run: true`.
+calls. On a greenfield org (the table does not yet exist) only the entity
+existence GET fires — the columns are reported `planned` off the planned entity
+without their own probes. If the table already exists, apply also probes each
+column (and resolves any referenced option sets) to classify entries as
+`planned` vs `skipped`, so you will see additional GETs. The envelope carries
+`meta.dry_run: true`.
 
 ### Create without publishing
 
@@ -110,8 +118,10 @@ crm --stage-only --json scaffold table "Project" \
   --column "Due Date:datetime"
 ```
 
-Creates every component but skips `PublishAllXml`; the result envelope carries
-`meta.staged: true`. Publish later with `crm solution publish-all`.
+Creates every component but skips `PublishAllXml`. When at least one component
+was created the envelope carries `meta.staged: true` (an all-skipped no-op
+re-run stays `false`, since nothing is left unpublished). Publish later with
+`crm solution publish-all`.
 
 ### Override the entity schema name and plural label
 
