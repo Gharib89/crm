@@ -317,3 +317,28 @@ def test_import_result_command_surfaces_warnings_and_formatted(monkeypatch, tmp_
     assert env["meta"]["warnings"]                 # lifted into meta.warnings
     assert "warnings" not in env["data"]           # not duplicated in data
     assert captured == {"job_id": _JOB_ID, "formatted": True}
+
+
+def test_sniff_managed_never_raises_on_unexpected_error(tmp_path, monkeypatch):
+    # zf.read can raise NotImplementedError (unsupported compression) /
+    # RuntimeError (encrypted) — neither is BadZipFile/OSError. The advisory
+    # sniff must still degrade to None, never crash the import.
+    import zipfile as _zip
+
+    zip_path = tmp_path / "in.zip"
+    with _zip.ZipFile(zip_path, "w") as zf:
+        zf.writestr("solution.xml", "<ImportExportXml/>")
+
+    class _Boom(_zip.ZipFile):
+        def read(self, *a, **k):  # type: ignore[override]
+            raise NotImplementedError("That compression method is not supported")
+
+    monkeypatch.setattr(_zip, "ZipFile", _Boom)
+    assert sol._sniff_solution_managed(str(zip_path)) is None
+
+
+def test_sniff_managed_returns_true_for_managed_zip(tmp_path):
+    # <Managed>1</Managed> branch was not previously covered.
+    zip_path = tmp_path / "managed.zip"
+    _make_solution_zip(zip_path, "1")
+    assert sol._sniff_solution_managed(str(zip_path)) is True

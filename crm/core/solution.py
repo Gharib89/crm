@@ -643,7 +643,11 @@ def _sniff_solution_managed(zip_path: str | Path) -> bool | None:
         with zipfile.ZipFile(zip_path) as zf:
             raw = zf.read("solution.xml")
         el = ET.fromstring(raw).find(".//Managed")
-    except (zipfile.BadZipFile, KeyError, ET.ParseError, OSError):
+    except Exception:
+        # Advisory sniff only — must never block an import the server would
+        # accept. Beyond bad-zip/missing/parse, zf.read can raise
+        # NotImplementedError (unsupported compression) or RuntimeError
+        # (encrypted member); any failure degrades to "unknown" (None).
         return None
     if el is None or el.text is None:
         return None
