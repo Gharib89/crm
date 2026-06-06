@@ -62,7 +62,8 @@ descriptions with commas, create the column with `crm metadata add-attribute`
 or a declarative `apply` spec instead.
 
 `max_length` is only valid for `string` and `memo`; using it on any other kind
-is an error (exit 2). Pass `--column` once per column — the flag is repeatable.
+is a validation error (exit 1 — the failure envelope, like any malformed
+`--column`). Pass `--column` once per column — the flag is repeatable.
 
 Schema names for columns are derived as `<publisher_prefix>_<PascalCase(DISPLAY)>`.
 A profile without a `publisher_prefix` causes exit 2 before any network call.
