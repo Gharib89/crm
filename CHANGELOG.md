@@ -17,7 +17,6 @@ Conventional Commit messages; new version sections are inserted below this line.
   ([#116](https://github.com/Gharib89/crm/pull/116),
   [`27b401f`](https://github.com/Gharib89/crm/commit/27b401f9949ed6bdc0f81b82189203d8051e4540))
 
-
 ## [0.12.0] — 2026-06-07
 
 ### Security
