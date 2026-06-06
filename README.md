@@ -239,6 +239,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `webresource` | Create/update/get/list web resources (HTML/JS/CSS/images); set as app icons |
 | `plugin`     | Register/update/unregister plug-in assemblies and SDK message processing steps |
+| `security`   | List and assign security roles to users or teams           |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state and command history                    |
 
