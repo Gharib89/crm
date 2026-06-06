@@ -26,8 +26,8 @@ from crm.core.metadata_cache import (
 # ---------------------------------------------------------------------------
 
 SAMPLE_DEFS: list[dict[str, str]] = [
-    {"LogicalName": "account", "EntitySetName": "accounts"},
-    {"LogicalName": "contact", "EntitySetName": "contacts"},
+    {"logical": "account", "set_name": "accounts"},
+    {"logical": "contact", "set_name": "contacts"},
 ]
 
 
@@ -184,8 +184,8 @@ def test_read_definitions_not_list_returns_none(crm_home: Path) -> None:
     assert read_definitions(profile, now=T0) is None
 
 
-def test_read_definitions_not_list_of_str_dicts_returns_none(crm_home: Path) -> None:
-    """definitions containing non-str values are rejected."""
+def test_read_definitions_type_violation_returns_none(crm_home: Path) -> None:
+    """definitions with correct keys but non-str value are rejected."""
     profile = make_profile()
     cf = cache_file(profile)
     cf.parent.mkdir(parents=True, exist_ok=True)
@@ -193,7 +193,22 @@ def test_read_definitions_not_list_of_str_dicts_returns_none(crm_home: Path) -> 
         "url": profile.url.rstrip("/"),
         "api_version": profile.api_version,
         "cached_at": T0,
-        "definitions": [{"LogicalName": 42}],  # int value, not str
+        "definitions": [{"logical": "account", "set_name": 123}],  # int value, not str
+    }
+    cf.write_text(json.dumps(payload), encoding="utf-8")
+    assert read_definitions(profile, now=T0) is None
+
+
+def test_read_definitions_wrong_keys_returns_none(crm_home: Path) -> None:
+    """definitions using legacy LogicalName/EntitySetName keys are a MISS (C2 regression guard)."""
+    profile = make_profile()
+    cf = cache_file(profile)
+    cf.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "url": profile.url.rstrip("/"),
+        "api_version": profile.api_version,
+        "cached_at": T0,
+        "definitions": [{"LogicalName": "account", "EntitySetName": "accounts"}],
     }
     cf.write_text(json.dumps(payload), encoding="utf-8")
     assert read_definitions(profile, now=T0) is None
@@ -298,7 +313,7 @@ def test_load_definitions_refresh_overwrites_existing(crm_home: Path) -> None:
     profile = make_profile()
     write_definitions(profile, SAMPLE_DEFS, now=T0)
 
-    new_defs = [{"LogicalName": "opportunity", "EntitySetName": "opportunities"}]
+    new_defs = [{"logical": "opportunity", "set_name": "opportunities"}]
     result = load_definitions(profile, lambda: new_defs, refresh=True, now=T0 + 1)
     assert result.status == "refreshed"
     assert result.definitions == new_defs
@@ -348,8 +363,8 @@ def test_load_definitions_ttl_expired_miss_calls_fetch(crm_home: Path) -> None:
 def test_per_profile_isolation(crm_home: Path) -> None:
     p1 = make_profile(name="alpha")
     p2 = make_profile(name="beta")
-    defs1 = [{"LogicalName": "account", "EntitySetName": "accounts"}]
-    defs2 = [{"LogicalName": "contact", "EntitySetName": "contacts"}]
+    defs1 = [{"logical": "account", "set_name": "accounts"}]
+    defs2 = [{"logical": "contact", "set_name": "contacts"}]
 
     write_definitions(p1, defs1, now=T0)
     write_definitions(p2, defs2, now=T0)

@@ -8,13 +8,16 @@ The cache is opt-in and read-through: callers supply a ``fetch`` callable and
 choose whether to bypass the cache (``refresh=True``) or serve from it when
 fresh (``refresh=False``). A 15-minute TTL backstop guards against stale data.
 
-Atomic writes (tmp + ``os.replace``) make concurrent one-shot agent calls safe.
+Atomic writes (unique tmp via ``tempfile.mkstemp`` + ``os.replace``) make
+concurrent writes safe: each writer uses its own temp file so two processes
+cannot clobber the same ``.tmp`` path.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,8 +64,10 @@ def write_definitions(
 ) -> None:
     """Atomically write *definitions* to the cache file for *profile*.
 
-    Creates parent directories as needed. Writes via a ``.tmp`` sibling then
-    ``os.replace`` so a concurrent reader never sees a partial file.
+    Creates parent directories as needed. Each call writes to its own unique
+    temp file (via ``tempfile.mkstemp``) then atomically replaces the target
+    with ``Path.replace``, so concurrent writers cannot clobber each other's
+    temp file and a concurrent reader never sees a partial file.
     """
     path = cache_file(profile)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,12 +77,22 @@ def write_definitions(
         "cached_at": now,
         "definitions": definitions,
     }
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, sort_keys=True)
-        f.flush()
-        os.fsync(f.fileno())
-    tmp.replace(path)
+    fd, tmp_str = tempfile.mkstemp(
+        dir=str(path.parent), prefix=path.name + ".", suffix=".tmp"
+    )
+    tmp = Path(tmp_str)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp.replace(path)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def read_definitions(
@@ -94,7 +109,7 @@ def read_definitions(
     - payload not a ``dict``
     - ``url`` or ``api_version`` mismatch
     - ``cached_at`` older than :data:`TTL_SECONDS`
-    - ``definitions`` not a list of ``{str: str}`` dicts
+    - ``definitions`` not a list of ``{"logical": str, "set_name": str}`` dicts
     """
     path = cache_file(profile)
     try:
@@ -124,23 +139,32 @@ def read_definitions(
     if now - float(cached_at) > TTL_SECONDS:
         return None
 
-    if not _is_str_dict_list(definitions):
+    if not _is_definition_list(definitions):
         return None
 
     return cast("list[dict[str, str]]", definitions)
 
 
-def _is_str_dict_list(value: Any) -> bool:
-    """Return True iff *value* is a ``list[dict[str, str]]``."""
+def _is_definition_list(value: Any) -> bool:
+    """Return True iff *value* is a list of valid definition rows.
+
+    Each row must be a dict carrying at least the keys ``"logical"`` and
+    ``"set_name"``, both mapping to :class:`str` values (extra keys are
+    tolerated). A row missing either key, or with a non-str value, is rejected
+    so that downstream consumers that index ``row["logical"]``/``row["set_name"]``
+    never see a ``KeyError``.
+    """
     if not isinstance(value, list):
         return False
     items: list[Any] = cast("list[Any]", value)
     for item in items:
         if not isinstance(item, dict):
             return False
-        for k, v in cast("dict[Any, Any]", item).items():
-            if not isinstance(k, str) or not isinstance(v, str):
-                return False
+        row = cast("dict[Any, Any]", item)
+        logical = row.get("logical")
+        set_name = row.get("set_name")
+        if not isinstance(logical, str) or not isinstance(set_name, str):
+            return False
     return True
 
 
@@ -195,7 +219,10 @@ def load_definitions(
     """
     if refresh:
         defs = fetch()
-        write_definitions(profile, defs, now=now)
+        try:
+            write_definitions(profile, defs, now=now)
+        except OSError:
+            pass
         return CacheLookup(defs, "refreshed")
 
     cached = read_definitions(profile, now=now)
@@ -203,5 +230,8 @@ def load_definitions(
         return CacheLookup(cached, "hit")
 
     defs = fetch()
-    write_definitions(profile, defs, now=now)
+    try:
+        write_definitions(profile, defs, now=now)
+    except OSError:
+        pass
     return CacheLookup(defs, "miss")
