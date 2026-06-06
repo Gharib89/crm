@@ -135,7 +135,7 @@ pass `--profile <name>` and confirm the real target with
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `export-spec`, `cache-clear` | Schema introspection + option set values + dependency preview + spec export + entity-def cache |
 | `plugin`     | `register-assembly`, `list-types`, `register-step`, `unregister-assembly`, `unregister-step` | Plug-in assembly registration + step lifecycle |
-| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
+| `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `dependencies`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`, `build-sitemap`                              | Model-driven apps (appmodule)                  |
 | `webresource`| `create`, `update`, `get`, `list`                                                       | Web resources (HTML/JS/CSS/images) + app icons |
@@ -347,6 +347,19 @@ crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --c
 ```
 `--check-dependencies` is available on `delete-entity`, `delete-attribute`,
 `delete-relationship`, and `delete-optionset`. Default off (no extra round-trip).
+
+### 5d. Preview what blocks uninstalling a managed solution
+
+```bash
+crm --json solution dependencies CRMWorx
+```
+Solution-scoped counterpart to `metadata dependencies` (§5c): calls
+`RetrieveDependenciesForUninstall(SolutionUniqueName='<name>')` and returns
+`{solution, blockers[], count}`, each blocker shaped like the metadata-dependency
+blockers (`dependent_type`, `dependent_id`, `dependent_parent_id`, `required_type`,
+`dependency_type`). Read-only; the GET fires under `--dry-run`. Unknown solution
+name → clean `{ok:false}`. Use this for "what stops me uninstalling solution X?";
+use `metadata dependencies` for a single component.
 
 ### 6. Export a solution
 

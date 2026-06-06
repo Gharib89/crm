@@ -252,7 +252,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
 | `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
-| `solution`   | List / info / components (`--save`/`--diff` for drift detection) / add-component / remove-component / set-version / export / import / import-result / extract / pack solutions |
+| `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / add-component / remove-component / set-version / export / import / import-result / extract / pack solutions |
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `webresource` | Create/update/get/list web resources (HTML/JS/CSS/images); set as app icons |
 | `plugin`     | Register/update/unregister plug-in assemblies and SDK message processing steps |

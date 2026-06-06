@@ -50,6 +50,13 @@ Wrap the `AddSolutionComponent` / `RemoveSolutionComponent` actions. `--type` ta
 
 `remove-component` is **destructive**: it prompts for confirmation (aborting cleanly with `{"ok": false, "error": "aborted by user"}` in a non-TTY context) unless `--yes`, and the agent-side PreToolUse hook blocks it without `--yes` ([#71](https://github.com/Gharib89/crm/issues/71)).
 
+## Preview what blocks uninstalling a managed solution
+
+```bash
+crm --json solution dependencies CRMWorx
+```
+Calls `RetrieveDependenciesForUninstall` and returns the components that would block uninstalling that managed solution: `{"solution", "blockers": [...], "count"}`, each blocker carrying `dependent_type`, `dependent_id`, `dependent_parent_id`, `required_type`, `dependency_type` (the same shape as [`metadata dependencies`](metadata.md)). Human mode prints a blocker table; an empty result means nothing blocks the uninstall. Read-only — the GET fires even under `--dry-run`. This is the **solution-scoped** counterpart to `metadata dependencies`: that command targets a single component (entity/attribute/optionset/relationship); this one takes only a solution unique name. An unknown solution name returns a clean `{ok:false}` envelope ([#116](https://github.com/Gharib89/crm/issues/116)).
+
 ## Bump the version (or friendly name / description) before export
 
 ```bash
