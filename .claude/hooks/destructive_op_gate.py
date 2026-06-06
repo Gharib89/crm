@@ -36,8 +36,11 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "plugin": {"unregister-assembly", "unregister-step"},
 }
 
-# Future role/privilege mutation verbs, gated by name regardless of group.
+# Role/privilege mutation verbs, gated by verb name regardless of group.
+# assign-role is live; delete-role/remove-role/revoke-privilege/remove-privilege
+# are pre-emptively gated forward-looking verbs.
 ROLE_VERBS: set[str] = {
+    "assign-role",
     "delete-role",
     "remove-role",
     "revoke-privilege",

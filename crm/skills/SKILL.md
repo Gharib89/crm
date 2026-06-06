@@ -139,6 +139,7 @@ pass `--profile <name>` and confirm the real target with
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`, `build-sitemap`                              | Model-driven apps (appmodule)                  |
 | `webresource`| `create`, `update`, `get`, `list`                                                       | Web resources (HTML/JS/CSS/images) + app icons |
+| `security`   | `list-roles`, `list-user-roles`, `list-team-roles`, `assign-role`                       | Security roles — list + assign to users/teams  |
 | `data`       | `export`, `import`                                                                      | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |
 | `session`    | `info`, `clear`, `history`                                                              | Local session state                            |
@@ -627,6 +628,40 @@ crm --json plugin register-step \
 `--dry-run` skips all writes (resolution GETs still fire); `--json` envelope carries
 `meta.dry_run: true`.
 
+## Security — `security` (roles and role assignment)
+
+```bash
+# List all security roles
+crm --json security list-roles
+
+# Filter to roles belonging to a specific business unit
+crm --json security list-roles --business-unit 00000000-0000-0000-0000-000000000001
+
+# Roles assigned to a system user (USER_ID is a GUID)
+crm --json security list-user-roles 00000000-0000-0000-0000-000000000002
+
+# Roles assigned to a team (TEAM_ID is a GUID)
+crm --json security list-team-roles 00000000-0000-0000-0000-000000000003
+
+# Assign a security role to a user — requires --yes (non-interactive) or interactive confirm
+crm --json security assign-role 00000000-0000-0000-0000-000000000004 \
+    --to-user 00000000-0000-0000-0000-000000000002 --yes
+
+# Assign a security role to a team
+crm --json security assign-role 00000000-0000-0000-0000-000000000004 \
+    --to-team 00000000-0000-0000-0000-000000000003 --yes
+```
+
+`assign-role` requires exactly one of `--to-user` or `--to-team`. Role
+assignment is cumulative and not cleanly reversible — omitting `--yes` in a
+non-interactive context aborts (exit 1). The command also carries the standard
+admin-header options (`--as-user GUID`, `--as-user-object-id GUID`,
+`--suppress-dup-detection`, `--bypass-plugins`).
+
+Security roles in D365 are **business-unit-scoped** — a role belongs to exactly
+one business unit, and it can only be assigned to users or teams within the
+same business unit.
+
 ## Declarative apply — `apply -f spec.yaml`
 
 Stand up a whole table from one YAML/JSON spec instead of many imperative
@@ -700,7 +735,7 @@ does NOT auto-retry it; the caller must refetch a fresh ETag and retry.
 |---|---|---|---|
 | `not_found` | 404 / code `0x80040217` | no | record doesn't exist, or wrong entity set / GUID |
 | `auth_failed` | 401 | no | NTLM: check `D365_DOMAIN\D365_USERNAME` + password. OAuth: app-registration (client id/secret, tenant) + an application user with a role |
-| `forbidden` | 403 | no | the user lacks the privilege for that operation in the CRM security model |
+| `forbidden` | 403 | no | the user lacks the privilege for that operation in the CRM security model; for `security assign-role` this also occurs when the role's business unit differs from the target user/team's business unit (roles are BU-scoped — assign a role from the same business unit as the principal) |
 | `concurrency_conflict` | 412 | yes | another change won the race — retrieve a fresh ETag and retry |
 | `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
 | `validation` | other 4xx (e.g. 400), or a status-less client-side error (bad CLI input, schema/spec validation) | no | fix the request: bad payload / CLI input, alternate key, or OData syntax |

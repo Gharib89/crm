@@ -41,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contract break). Labels resolve via `UserLocalizedLabel` then `LocalizedLabels`.
   Boolean attributes have no `Options` array (`TrueOption` / `FalseOption`
   instead), so `meta.options` is empty for them — read those raw fields directly (#76).
+- `crm security` command group: list and assign Dynamics 365 security roles.
+  `list-roles` lists all security roles (optionally filtered to a business unit
+  via `--business-unit GUID`). `list-user-roles USER_ID` and
+  `list-team-roles TEAM_ID` return the roles currently assigned to a system user
+  or team (both positional args are GUIDs). `assign-role ROLE_ID` assigns a
+  security role to a user (`--to-user GUID`) or a team (`--to-team GUID`) —
+  exactly one target flag is required. Assignment is cumulative and not cleanly
+  reversible, so the command is gated by an interactive confirmation prompt
+  (bypass with `--yes`) and the destructive-op PreToolUse hook. Standard
+  admin-header options (`--as-user`, `--as-user-object-id`,
+  `--suppress-dup-detection`, `--bypass-plugins`) are available on `assign-role`
+  (#83).
 - `crm plugin` command group: register and manage Dynamics 365 plug-in assemblies
   and processing steps via the `pluginassemblies` / `plugintypes` /
   `sdkmessageprocessingsteps` Web API entity sets.
