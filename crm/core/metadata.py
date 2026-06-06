@@ -97,6 +97,37 @@ def picklist_options(
     ))
 
 
+def multiselect_options(
+    backend: D365Backend,
+    logical_name: str,
+    attribute: str,
+    *,
+    global_optionset: bool = True,
+) -> dict[str, Any]:
+    """Retrieve option set values for a multi-select picklist attribute.
+
+    Mirrors `picklist_options` but casts to
+    `Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata` — a multiselect
+    column is NOT a `PicklistAttributeMetadata`, so the Picklist cast raises. The
+    MultiSelect metadata carries `OptionSet` (local) + `GlobalOptionSet` (global)
+    with the same shape, so `flatten_options` works on the result either way.
+
+    Returns `{ "LogicalName": ..., "OptionSet": {...}, "GlobalOptionSet": {...} }`.
+    """
+    if not logical_name or not attribute:
+        raise D365Error("logical_name and attribute are required.")
+    cast = "Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
+    path = (
+        f"EntityDefinitions(LogicalName='{logical_name}')"
+        f"/Attributes(LogicalName='{attribute}')/{cast}"
+    )
+    expand = "OptionSet" + (",GlobalOptionSet" if global_optionset else "")
+    return as_dict(backend.get(
+        path,
+        params={"$select": "LogicalName", "$expand": expand},
+    ))
+
+
 def label_text(label_obj: dict[str, Any]) -> str:
     """Best-effort display label from a Dataverse Label payload."""
     ull: dict[str, Any] = label_obj.get("UserLocalizedLabel") or {}

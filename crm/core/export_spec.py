@@ -22,10 +22,10 @@ Fidelity notes:
   it is in `metadata_attrs.STRING_FORMATS`; a live `Json` / `RichText` format
   (which `apply` cannot create) is dropped and the column re-created as `Text`.
   Datetime format is NOT captured (re-created with the default format).
-- A multiselect bound to a *local* option set has its options read via the
-  Picklist cast (`picklist_options`), which the server returns for both kinds;
-  inline `options` are emitted best-effort. A multiselect bound to a *global*
-  set is handled the same as a picklist (emits `optionset_name`).
+- A multiselect's options are read via the MultiSelect cast
+  (`multiselect_options`) — a multiselect column is NOT a PicklistAttributeMetadata,
+  so the Picklist cast raises on it. A *local* set emits inline `options`; a
+  *global* set is handled the same as a picklist (emits `optionset_name`).
 """
 
 from __future__ import annotations
@@ -71,6 +71,17 @@ def _as_dict(value: Any) -> dict[str, Any]:
     distinct from `d365_backend.as_dict`, which narrows a `dict|str|None` response.
     """
     return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
+
+
+def _label_or(label_value: str, fallback: str) -> str:
+    """Return `label_value` when non-empty, else `fallback`.
+
+    `metadata.label_text` returns "" on a missing / unlocalized label (sparse or
+    permission-limited reads); `validate_spec` requires entity / attribute
+    `display_name` to be truthy, so we fall back to the schema/logical name to
+    keep the projected spec apply-consumable and deterministic.
+    """
+    return label_value or fallback
 
 
 def _type_name(attr: dict[str, Any]) -> str | None:
@@ -120,6 +131,7 @@ def _add_global_optionset(
 def _project_options(
     backend: D365Backend,
     logical_name: str,
+    kind: str,
     attr_logical: str,
     attr_out: dict[str, Any],
     accumulator: dict[str, dict[str, Any]],
@@ -127,17 +139,18 @@ def _project_options(
     """Resolve a picklist/multiselect's options onto `attr_out`.
 
     Global-bound -> `optionset_name` + add the set to `accumulator` (dedup).
-    Local -> inline `options`. The Picklist cast returns options for both
-    picklist and multiselect kinds, so one read covers both.
+    Local -> inline `options`. Dispatches by `kind`: a `picklist` reads via the
+    Picklist cast, a `multiselect` via the MultiSelect cast — a multiselect column
+    is NOT a `PicklistAttributeMetadata`, so the Picklist cast raises on it. Both
+    metadata kinds carry `OptionSet` / `GlobalOptionSet` in the same shape.
 
     Returns False when the attribute resolves to NEITHER a global
     `optionset_name` NOR a non-empty `options` list (empty/permission-limited
     cast). The caller skips such an attribute rather than emit a bare picklist
     or `options: []`, which `validate_spec` rejects.
     """
-    pick = metadata.picklist_options(
-        backend, logical_name, attr_logical, global_optionset=True
-    )
+    read = metadata.multiselect_options if kind == "multiselect" else metadata.picklist_options
+    pick = read(backend, logical_name, attr_logical, global_optionset=True)
     glob = _as_dict(pick.get("GlobalOptionSet"))
     glob_name = glob.get("Name")
     if isinstance(glob_name, str) and glob_name:
@@ -174,7 +187,11 @@ def _project_attribute(
     out: dict[str, Any] = {
         "kind": kind,
         "schema_name": schema_name,
-        "display_name": metadata.label_text(_as_dict(info.get("DisplayName"))),
+        # validate_spec requires display_name truthy; a sparse/unlocalized label
+        # reads as "" -> fall back to the schema name so the spec stays appliable.
+        "display_name": _label_or(
+            metadata.label_text(_as_dict(info.get("DisplayName"))), schema_name
+        ),
     }
 
     description = metadata.label_text(_as_dict(info.get("Description")))
@@ -215,7 +232,7 @@ def _project_attribute(
         out["target_entity"] = first
 
     if kind in _PICKLIST_KINDS:
-        if not _project_options(backend, logical_name, attr_logical, out, accumulator):
+        if not _project_options(backend, logical_name, kind, attr_logical, out, accumulator):
             return None  # apply requires optionset_name or a non-empty options list
 
     return out
@@ -259,7 +276,11 @@ def build_entity_spec(
 
     entity: dict[str, Any] = {
         "schema_name": schema_name,
-        "display_name": metadata.label_text(_as_dict(ent.get("DisplayName"))),
+        # validate_spec requires entity display_name truthy; fall back to the
+        # schema name when the label reads empty (sparse/permission-limited).
+        "display_name": _label_or(
+            metadata.label_text(_as_dict(ent.get("DisplayName"))), schema_name
+        ),
     }
     collection = metadata.label_text(_as_dict(ent.get("DisplayCollectionName")))
     if collection:
@@ -290,9 +311,13 @@ def build_entity_spec(
         if is_primary:
             info = metadata.attribute_info(backend, logical_name, attr_logical)
             p_schema = info.get("SchemaName")
+            p_schema = p_schema if isinstance(p_schema, str) and p_schema else attr_logical
             primary_attr = {
-                "schema_name": p_schema if isinstance(p_schema, str) else attr_logical,
-                "label": metadata.label_text(_as_dict(info.get("DisplayName"))),
+                "schema_name": p_schema,
+                # Keep the label non-empty (deterministic) when unlocalized/sparse.
+                "label": _label_or(
+                    metadata.label_text(_as_dict(info.get("DisplayName"))), p_schema
+                ),
             }
             continue
 

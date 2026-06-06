@@ -60,6 +60,13 @@ def _pick_cast_url(backend, attr, entity="new_project") -> str:
     )
 
 
+def _multi_cast_url(backend, attr, entity="new_project") -> str:
+    return backend.url_for(
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attr}')"
+        "/Microsoft.Dynamics.CRM.MultiSelectPicklistAttributeMetadata"
+    )
+
+
 def _o2m_url(backend, entity="new_project") -> str:
     return backend.url_for(
         f"EntityDefinitions(LogicalName='{entity}')/OneToManyRelationships"
@@ -147,6 +154,15 @@ def _global_pick_info(schema):
         "SchemaName": schema,
         "DisplayName": _label(schema),
         "AttributeTypeName": {"Value": "PicklistType"},
+        "RequiredLevel": {"Value": "None"},
+    }
+
+
+def _multiselect_info(schema="new_Tags"):
+    return {
+        "SchemaName": schema,
+        "DisplayName": _label("Tags"),
+        "AttributeTypeName": {"Value": "MultiSelectPicklistType"},
         "RequiredLevel": {"Value": "None"},
     }
 
@@ -453,6 +469,142 @@ class TestGlobalPicklist:
             {"value": 10, "label": "Low"},
             {"value": 20, "label": "High"},
         ]
+
+
+class TestMultiselect:
+    def test_local_multiselect_inline_options(self, backend):
+        # A multiselect bound to a LOCAL option set is read via the MultiSelect
+        # cast (NOT the Picklist cast) and emits inline options.
+        attrs = {"value": [_shallow("new_name"), _shallow("new_tags")]}
+        cast = {
+            "LogicalName": "new_tags",
+            "OptionSet": {"Options": [_opt(1, "Red"), _opt(2, "Blue")]},
+            "GlobalOptionSet": None,
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_tags"), json=_multiselect_info())
+            m.get(_multi_cast_url(backend, "new_tags"), json=cast)
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["kind"] == "multiselect"
+        assert col["options"] == [
+            {"value": 1, "label": "Red"},
+            {"value": 2, "label": "Blue"},
+        ]
+        assert "optionset_name" not in col
+        assert "optionsets" not in spec
+        apply.validate_spec(spec)  # must not raise
+
+    def test_global_multiselect_emits_optionset_name(self, backend):
+        # A multiselect bound to a GLOBAL set emits optionset_name + a top-level
+        # optionsets entry (read via the MultiSelect cast, the global set via the
+        # GlobalOptionSetDefinitions endpoint).
+        attrs = {"value": [_shallow("new_name"), _shallow("new_tags")]}
+        cast = {
+            "LogicalName": "new_tags",
+            "OptionSet": None,
+            "GlobalOptionSet": {"Name": "new_tagset", "IsGlobal": True},
+        }
+        gos = {
+            "Name": "new_tagset",
+            "DisplayName": _label("Tag Set"),
+            "Options": [_opt(100, "Alpha"), _opt(200, "Beta")],
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_tags"), json=_multiselect_info())
+            m.get(_multi_cast_url(backend, "new_tags"), json=cast)
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_tagset')"),
+                json=gos,
+            )
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["kind"] == "multiselect"
+        assert col["optionset_name"] == "new_tagset"
+        assert "options" not in col
+        assert len(spec["optionsets"]) == 1
+        os_entry = spec["optionsets"][0]
+        assert os_entry["name"] == "new_tagset"
+        assert os_entry["display_name"] == "Tag Set"
+        assert os_entry["options"] == [
+            {"value": 100, "label": "Alpha"},
+            {"value": 200, "label": "Beta"},
+        ]
+        apply.validate_spec(spec)  # must not raise
+
+
+class TestEmptyLabelFallback:
+    def test_attribute_display_name_falls_back_to_schema(self, backend):
+        # An attribute whose DisplayName is absent -> display_name == schema_name.
+        info = {
+            "SchemaName": "new_Code",
+            # no DisplayName
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "None"},
+            "MaxLength": 50,
+            "FormatName": {"Value": "Text"},
+        }
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["display_name"] == "new_Code"
+        apply.validate_spec(spec)  # must not raise
+
+    def test_entity_display_name_falls_back_to_schema(self, backend):
+        # An entity with no DisplayName -> entity display_name == schema_name.
+        ent = {
+            "LogicalName": "new_project",
+            "SchemaName": "new_Project",
+            # no DisplayName
+            "OwnershipType": "UserOwned",
+            "PrimaryNameAttribute": "new_name",
+        }
+        attrs = {"value": [_shallow("new_name")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=ent)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            spec = build_entity_spec(backend, "new_project")
+
+        assert spec["entities"][0]["display_name"] == "new_Project"
+        apply.validate_spec(spec)  # must not raise
+
+    def test_primary_attr_label_falls_back_to_schema(self, backend):
+        # Primary attribute with no DisplayName -> label falls back to schema name.
+        primary = {
+            "SchemaName": "new_Name",
+            # no DisplayName
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "ApplicationRequired"},
+            "MaxLength": 200,
+            "FormatName": {"Value": "Text"},
+        }
+        attrs = {"value": [_shallow("new_name")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=primary)
+            spec = build_entity_spec(backend, "new_project")
+
+        assert spec["entities"][0]["primary_attr"] == {
+            "schema_name": "new_Name",
+            "label": "new_Name",
+        }
+        apply.validate_spec(spec)  # must not raise
 
 
 class TestSystemAttributesExcluded:

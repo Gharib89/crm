@@ -259,7 +259,7 @@ crm --json metadata attribute account industrycode
 crm --json metadata attribute account industrycode --expect AttributeType=Picklist
 ```
 
-### 5b. Entity-definition cache (speed up repeated agent calls)
+### 5a. Entity-definition cache (speed up repeated agent calls)
 
 Pass `--cache-metadata` (or set `CRM_CACHE_METADATA=1`) to serve `metadata entities`
 from a persistent per-profile on-disk cache instead of a live fetch. This is the
@@ -289,7 +289,7 @@ TTL: ~15 min. Any metadata write (create/update/delete entity, attribute, option
 relationship, publish-all/xml) auto-invalidates the cache. Read-only schema only —
 records and secrets are never cached.
 
-### 5c. Export a live entity as an apply spec (round-trip)
+### 5b. Export a live entity as an apply spec (round-trip)
 
 ```bash
 # Export entity schema to YAML — ready for `crm apply -f`
@@ -322,7 +322,7 @@ relationship `cascade` and `associated_menu` are captured but not yet acted on (
 relationship is re-created with default cascade/menu). `apply` ignores unknown keys
 so the spec always remains apply-consumable.
 
-### 5a. Preview dependencies before deleting a metadata component
+### 5c. Preview dependencies before deleting a metadata component
 
 ```bash
 # Check what would block deleting an entity
