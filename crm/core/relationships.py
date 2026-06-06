@@ -14,7 +14,7 @@ import re
 from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.core.metadata import label, maybe_publish, target_exists
+from crm.core.metadata import label, label_text, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
 from crm.core import metadata as _meta_mod
@@ -51,19 +51,12 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
     }
 
 
-def _label_text(label_obj: dict[str, Any]) -> str:
-    """Best-effort display label from a Dataverse Label payload."""
-    ull: dict[str, Any] = label_obj.get("UserLocalizedLabel") or {}
-    if ull.get("Label"):
-        return str(ull["Label"])
-    locs: list[dict[str, Any]] = label_obj.get("LocalizedLabels") or []
-    if locs:
-        return str(locs[0].get("Label") or "")
-    return ""
-
-
 def _snake(name: str) -> str:
-    """Convert a PascalCase key to snake_case (e.g. RollupView → rollup_view)."""
+    """Convert a PascalCase key to snake_case (e.g. RollupView → rollup_view).
+
+    Note: consecutive capitals (e.g. XMLFoo) are not split — acceptable for
+    the known D365 cascade/menu key set where no such names appear.
+    """
     return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
 
 
@@ -81,7 +74,7 @@ def _project_menu(raw: dict[str, Any]) -> dict[str, Any]:
         if k == "Label":
             # Extract the UserLocalizedLabel text
             lbl_dict = cast("dict[str, Any]", v) if isinstance(v, dict) else {}
-            text = _label_text(lbl_dict)
+            text = label_text(lbl_dict)
             if text:
                 out["label"] = text
         else:
@@ -142,7 +135,7 @@ def read_entity_relationships(
                     backend, referencing_entity, referencing_attr
                 )
                 dn_obj = cast("dict[str, Any]", attr_info.get("DisplayName") or {})
-                text = _label_text(dn_obj)
+                text = label_text(dn_obj)
                 if text:
                     lookup_display = text
                 req_obj = cast("dict[str, Any]", attr_info.get("RequiredLevel") or {})

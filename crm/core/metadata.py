@@ -97,7 +97,7 @@ def picklist_options(
     ))
 
 
-def _label_text(label_obj: dict[str, Any]) -> str:
+def label_text(label_obj: dict[str, Any]) -> str:
     """Best-effort display label from a Dataverse Label payload."""
     ull: dict[str, Any] = label_obj.get("UserLocalizedLabel") or {}
     if ull.get("Label"):
@@ -113,7 +113,7 @@ def flatten_options(container: dict[str, Any]) -> list[dict[str, Any]]:
 
     `container` is any dict carrying an `Options` array — a picklist's
     `OptionSet` / `GlobalOptionSet`, or a global option set with `Options` at
-    its root. Labels use the robust `_label_text` fallback. A Boolean attribute
+    its root. Labels use the robust `label_text` fallback. A Boolean attribute
     has no `Options` array (it casts to `TrueOption` / `FalseOption`), so this
     returns `[]` for booleans — read those raw fields instead.
     """
@@ -121,7 +121,7 @@ def flatten_options(container: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for o in rows:
         lbl: dict[str, Any] = o.get("Label") or {}
-        out.append({"value": o.get("Value"), "label": _label_text(lbl)})
+        out.append({"value": o.get("Value"), "label": label_text(lbl)})
     return out
 
 

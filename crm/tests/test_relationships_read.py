@@ -113,7 +113,6 @@ class TestReadEntityRelationshipsFull:
 
     def test_system_relationship_excluded(self, backend):
         from crm.core import relationships as rel
-        custom_row = dict(_FULL_ROW)
         system_row = {
             "SchemaName": "account_contacts",
             "ReferencedEntity": "account",
@@ -124,7 +123,7 @@ class TestReadEntityRelationshipsFull:
             "AssociatedMenuConfiguration": {},
         }
         with requests_mock.Mocker() as m:
-            m.get(_o2m_url(backend), json={"value": [custom_row, system_row]})
+            m.get(_o2m_url(backend), json={"value": [_FULL_ROW, system_row]})
             m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
             result = rel.read_entity_relationships(backend, "new_project")
 
@@ -206,3 +205,37 @@ class TestReadEntityRelationshipsFull:
         r2 = next(r for r in result if r["schema_name"] == "new_contact_new_project")
         assert r2["cascade"]["assign"] == "Cascade"
         assert r2["required"] == "ApplicationRequired"
+        # row2's menu has no Label key — projection should omit "label" key
+        menu2 = r2["associated_menu"]
+        assert menu2["behavior"] == "UseCollectionName"
+        assert menu2["group"] == "Sales"
+        assert menu2["order"] == 500
+        assert "label" not in menu2
+
+    def test_attribute_info_404_falls_back_gracefully(self, backend):
+        """When attribute_info raises D365Error (404), lookup_display falls back
+        to the referencing attribute logical name and 'required' is omitted."""
+        from crm.core import relationships as rel
+
+        custom_row = {
+            "SchemaName": "new_account_new_project",
+            "ReferencedEntity": "account",
+            "ReferencingEntity": "new_project",
+            "ReferencingAttribute": "new_accountid",
+            "IsCustomRelationship": True,
+            "CascadeConfiguration": {},
+            "AssociatedMenuConfiguration": {},
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_o2m_url(backend), json={"value": [custom_row]})
+            m.get(
+                _attr_url(backend, "new_project", "new_accountid"),
+                status_code=404,
+                json={"error": {"code": "0x80040217", "message": "Could not find attribute"}},
+            )
+            result = rel.read_entity_relationships(backend, "new_project")
+
+        assert len(result) == 1
+        r = result[0]
+        assert r["lookup_display"] == "new_accountid"
+        assert "required" not in r

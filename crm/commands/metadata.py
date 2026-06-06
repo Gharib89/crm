@@ -184,7 +184,7 @@ def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
         _handle_d365_error(ctx, exc)
         return
     # Flatten once for both modes; local OptionSet wins, GlobalOptionSet is the
-    # fallback for a global-bound picklist. Labels use the robust `_label_text`
+    # fallback for a global-bound picklist. Labels use the robust `label_text`
     # path (UserLocalizedLabel → LocalizedLabels), so JSON and table agree.
     flat = meta_mod.flatten_options(info.get("OptionSet") or {})
     if not flat:
