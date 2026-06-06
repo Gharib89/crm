@@ -36,10 +36,10 @@ def list_async_operations(
         filters.append(f"messagename eq '{escaped}'")
     if owner_id is not None:
         try:
-            uuid.UUID(owner_id)
+            normalized = str(uuid.UUID(owner_id))
         except ValueError as exc:
             raise D365Error(f"owner_id must be a GUID; got {owner_id!r}") from exc
-        filters.append(f"_ownerid_value eq {owner_id}")
+        filters.append(f"_ownerid_value eq {normalized}")
 
     params: dict[str, Any] = {
         "$select": _SELECT,
@@ -107,10 +107,10 @@ def list_all_async_operations(
         filters.append(f"messagename eq '{escaped}'")
     if owner_id is not None:
         try:
-            uuid.UUID(owner_id)
+            normalized = str(uuid.UUID(owner_id))
         except ValueError as exc:
             raise D365Error(f"owner_id must be a GUID; got {owner_id!r}") from exc
-        filters.append(f"_ownerid_value eq {owner_id}")
+        filters.append(f"_ownerid_value eq {normalized}")
 
     params: dict[str, Any] = {
         "$select": _SELECT,

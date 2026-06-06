@@ -102,6 +102,32 @@ class TestOwnerValidation:
         with pytest.raises(D365Error, match="owner_id"):
             async_ops.list_all_async_operations(backend, owner_id="not-a-guid")
 
+    def test_list_normalizes_braced_uppercase_owner_id(self, backend, profile):
+        """Braced + uppercase GUID must be emitted canonical (lower, no braces)."""
+        braced = "{CCCCCCCC-DDDD-EEEE-FFFF-000000000000}"
+        canonical = "cccccccc-dddd-eeee-ffff-000000000000"
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}asyncoperations", json={"value": []})
+            async_ops.list_async_operations(backend, owner_id=braced)
+            qs = m.last_request.qs
+            f = qs.get("$filter", [""])[0]
+            assert f"_ownerid_value eq {canonical}" in f
+            assert "{" not in f
+            assert "CCCCCCCC" not in f
+
+    def test_list_all_normalizes_braced_uppercase_owner_id(self, backend, profile):
+        """Braced + uppercase GUID must be emitted canonical (lower, no braces)."""
+        braced = "{CCCCCCCC-DDDD-EEEE-FFFF-000000000000}"
+        canonical = "cccccccc-dddd-eeee-ffff-000000000000"
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}asyncoperations", json={"value": []})
+            async_ops.list_all_async_operations(backend, owner_id=braced)
+            qs = m.last_request.qs
+            f = qs.get("$filter", [""])[0]
+            assert f"_ownerid_value eq {canonical}" in f
+            assert "{" not in f
+            assert "CCCCCCCC" not in f
+
 
 class TestListAll:
     def test_follows_next_link_until_exhausted(self, backend, profile):
