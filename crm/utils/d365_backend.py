@@ -83,18 +83,22 @@ def validate_profile_name(name: str) -> str:
     """
     if not name or name in (".", ".."):
         raise D365Error(
-            f"profile name must be a non-empty single path component; got {name!r}"
+            f"profile/session name must be a non-empty single path component; got {name!r}"
         )
     if "\x00" in name:
-        raise D365Error(f"profile name must not contain a null byte; got {name!r}")
+        raise D365Error(
+            f"profile/session name must not contain a null byte; got {name!r}"
+        )
     if "/" in name or "\\" in name:
         raise D365Error(
-            f"profile name must not contain a path separator; got {name!r}"
+            f"profile/session name must not contain a path separator; got {name!r}"
         )
     if ":" in name:
-        raise D365Error(f"profile name must not contain ':'; got {name!r}")
+        raise D365Error(f"profile/session name must not contain ':'; got {name!r}")
     if _os.path.basename(name) != name:
-        raise D365Error(f"profile name must be a single path component; got {name!r}")
+        raise D365Error(
+            f"profile/session name must be a single path component; got {name!r}"
+        )
     return name
 
 
