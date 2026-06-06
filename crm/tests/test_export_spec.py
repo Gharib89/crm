@@ -17,7 +17,7 @@ import requests_mock
 
 from crm.core import apply
 from crm.core.export_spec import build_entity_spec
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 
 @pytest.fixture
@@ -413,6 +413,31 @@ class TestUnresolvedPicklistSkipped:
             spec = build_entity_spec(backend, "new_project")
 
         assert "attributes" not in spec["entities"][0]
+        assert "optionsets" not in spec
+        apply.validate_spec(spec)  # must not raise
+
+    def test_cast_read_404_skips_attribute_rest_of_entity_exports(self, backend):
+        # A picklist whose cast GET returns 404 (permission-limited metadata) must
+        # be silently dropped; the remaining attributes still export and
+        # validate_spec passes on the result.
+        attrs = {"value": [
+            _shallow("new_name"),
+            _shallow("new_stage"),   # picklist — cast will 404 → dropped
+            _shallow("new_code"),    # string — must still export
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
+            m.get(_pick_cast_url(backend, "new_stage"), status_code=404,
+                  json={"error": {"message": "Not Found"}})
+            m.get(_attr_url(backend, "new_code"), json=_string_info())
+            spec = build_entity_spec(backend, "new_project")
+
+        # The picklist is absent; the string column is still present.
+        cols = spec["entities"][0]["attributes"]
+        assert [c["schema_name"] for c in cols] == ["new_Code"]
         assert "optionsets" not in spec
         apply.validate_spec(spec)  # must not raise
 

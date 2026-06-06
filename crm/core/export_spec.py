@@ -150,12 +150,18 @@ def _project_options(
     or `options: []`, which `validate_spec` rejects.
     """
     read = metadata.multiselect_options if kind == "multiselect" else metadata.picklist_options
-    pick = read(backend, logical_name, attr_logical, global_optionset=True)
+    try:
+        pick = read(backend, logical_name, attr_logical, global_optionset=True)
+    except D365Error:
+        return False  # permission-limited / inaccessible cast → skip this attribute
     glob = _as_dict(pick.get("GlobalOptionSet"))
     glob_name = glob.get("Name")
     if isinstance(glob_name, str) and glob_name:
+        try:
+            _add_global_optionset(backend, glob_name, accumulator)
+        except D365Error:
+            return False  # inaccessible global option set → skip this attribute
         attr_out["optionset_name"] = glob_name
-        _add_global_optionset(backend, glob_name, accumulator)
         return True
     local = _as_dict(pick.get("OptionSet"))
     options = metadata.flatten_options(local)

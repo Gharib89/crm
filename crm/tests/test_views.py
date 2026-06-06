@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 import requests_mock
 
+from crm.core.views import _build_fetchxml, _build_layoutxml
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 
@@ -176,9 +177,6 @@ class TestViewCommand:
 # ---------------------------------------------------------------------------
 # Tests for read_entity_views
 # ---------------------------------------------------------------------------
-
-from crm.core.views import _build_layoutxml, _build_fetchxml
-
 
 _READ_VIEW_ID = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
 
