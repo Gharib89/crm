@@ -207,6 +207,13 @@ crm --json connection whoami
 ```bash
 crm --json query odata contacts \
     --filter "statecode eq 0" --select fullname,emailaddress1 --top 5
+
+# token-efficient variant: --minimal strips OData annotation keys (@odata.etag,
+# *@FormattedValue, *@...lookuplogicalname) from each --json record, keeping
+# business fields, _*_value lookup GUIDs, and the primary id — the form to chain
+# downstream. Also on query fetchxml/saved/user and entity get.
+crm --json query odata contacts \
+    --filter "statecode eq 0" --select fullname,emailaddress1 --top 5 --minimal
 ```
 
 ### 3. Create → update → delete a contact

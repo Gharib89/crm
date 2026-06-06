@@ -11,6 +11,14 @@ crm --json query odata cwx_tickets \
 ```
 Returns matching rows under `data.value`; queries the entity-set (plural) name.
 
+## Strip annotations for token-efficient JSON (`--minimal`)
+
+```bash
+crm --json query odata cwx_tickets \
+  --filter "cwx_priority eq 3" --select cwx_name,cwx_severity --annotations --minimal
+```
+In `--json` mode `--minimal` drops every OData annotation key (anything containing `@` — `@odata.etag`, `*@OData.Community.Display.V1.FormattedValue`, `*@…lookuplogicalname`) from each record, keeping business fields, `_*_value` lookup GUIDs, and the primary id; the `value`-list envelope (`@odata.count`/`@odata.nextLink`) is preserved. It is a no-op in human/table mode and also works on `query fetchxml`, `query saved`, `query user`, and `entity get`.
+
 ## Run a FetchXML query
 
 ```bash

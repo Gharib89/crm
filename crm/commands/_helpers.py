@@ -291,7 +291,18 @@ def _odata_literal(v: Any) -> str:
     return f"'{s}'"
 
 
-def _emit_query_result(ctx: "CLIContext", result: dict, entity_set: str) -> None:
+def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
+    """Drop OData annotation keys (any key containing '@') from a record,
+    keeping business fields, `_*_value` lookup GUIDs, and the primary id.
+
+    Shallow prune: only top-level keys are stripped — annotations nested
+    inside expanded records (under `--expand`) are not pruned."""
+    return {k: v for k, v in record.items() if "@" not in k}
+
+
+def _emit_query_result(
+    ctx: "CLIContext", result: dict, entity_set: str, *, minimal: bool = False,
+) -> None:
     values = result.get("value", []) if isinstance(result, dict) else []
     meta: dict[str, Any] = {"entity_set": entity_set, "count": len(values)}
     if "@odata.count" in (result or {}):
@@ -299,6 +310,10 @@ def _emit_query_result(ctx: "CLIContext", result: dict, entity_set: str) -> None
     if "@odata.nextLink" in (result or {}):
         meta["next_link"] = "(present)"
     if ctx.json_mode:
+        if minimal:
+            result = {**result, "value": [
+                _prune_annotations(r) if isinstance(r, dict) else r for r in values
+            ]}
         ctx.emit(True, data=result, meta=meta)
         return
     if not values:
