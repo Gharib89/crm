@@ -102,7 +102,9 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
         ]
         ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
     else:
-        ctx.emit(True, data={"solution": info["solution"], "blockers": 0}, meta=meta)
+        # Emit the scalar under `count` (not `blockers`) so the `blockers` key is
+        # never an int here while it's a list in JSON mode (Copilot #135).
+        ctx.emit(True, data={"solution": info["solution"], "count": 0}, meta=meta)
 
 
 @solution_group.command("components")
