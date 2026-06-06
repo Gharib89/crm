@@ -45,6 +45,20 @@ crm --json entity create cwx_tickets --validate --data '{"cwx_naem":"typo"}'
 
 Valid `<nav>@odata.bind` keys are checked against the navigation-property names, so a bound lookup is never a false positive. It's opt-in (the GETs cost 1-3 round-trips) and composes with `--dry-run`: the validation GETs run for real, then the write is previewed. Scope is field-**name** only — option-set values are not validated. Works the same on `entity update`.
 
+## Assert a field value after a write (`--expect`)
+
+```bash
+crm --json entity get cwx_tickets a41cfedb-c05d-f111-b65d-00155d467b90 \
+  --expect statecode=1 --expect statuscode=5
+```
+The repeatable `--expect ATTR=VALUE` flag turns the retrieve into a self-checking verify step — handy for confirming a state change or an async write actually landed. Each pair passes only if `str(record[ATTR]) == VALUE`; multiple `--expect` flags are AND-gated (every one must match). The first mismatch exits **1** with the offending field under `meta`:
+
+```json
+{"ok": false, "error": "Expectation failed: statecode='1' (actual '0')", "meta": {"attr": "statecode", "expected": "1", "actual": 0}}
+```
+
+When every pair matches, the command exits **0** and emits the record as usual. The check runs against the **full** record, before any `--minimal` projection. A malformed `--expect` (no `=`) is a usage error (exit 2) raised before the GET.
+
 ## Create from a JSON file (avoid shell-quoting XML payloads)
 
 ```bash

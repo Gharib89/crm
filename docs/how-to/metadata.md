@@ -80,6 +80,20 @@ crm --json metadata create-one-to-many --schema-name cwx_sla_cwx_ticket \
 ```
 The response reports the `referencing_attribute` (the lookup column) the server generated on the N-side entity.
 
+## Verify a metadata change landed (`--expect`)
+
+A metadata change isn't readable until it's published. The repeatable `--expect ATTR=VALUE` flag on `metadata attribute` turns the read-back into a self-checking verify step — pair it with a create + publish to poll until the definition reflects the change:
+
+```bash
+crm metadata add-attribute cwx_ticket --kind string \
+    --schema-name cwx_Label --display "Label" --max-length 100 \
+  && crm solution publish-all \
+  && crm --json metadata attribute cwx_ticket cwx_label --expect AttributeType=String \
+  || echo "attribute not ready yet — retry"
+```
+
+Each pair passes only if `str(record[ATTR]) == VALUE`; multiple `--expect` flags are AND-gated. The first mismatch exits **1** with `{"ok": false, "meta": {"attr": ..., "expected": ..., "actual": ...}}`, so a shell `||` branch (or an agent loop) can retry until the change propagates. All pairs match → normal `ok:true`, exit 0. A malformed `--expect` (no `=`) is a usage error (exit 2) raised before any HTTP. Attribute logical names are lowercase (`cwx_label`); the schema name is PascalCase (`cwx_Label`).
+
 ## Preview dependencies before deleting
 
 ```bash

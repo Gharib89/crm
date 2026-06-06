@@ -181,6 +181,11 @@ crm --json entity create contacts \
 crm --json entity create contacts --validate \
     --data '{"firstnaem":"Rafel"}'   # -> ok:false, did_you_mean {firstnaem: firstname}
 
+# Verify after write/publish — repeatable --expect ATTR=VALUE asserts a field on the
+# returned record (AND-gated, stringified); first mismatch exits 1 with meta{attr,expected,actual}.
+crm --json entity get contacts <guid> --expect statecode=1           # assert a write landed
+crm --json metadata attribute account industrycode --expect AttributeType=Picklist  # assert a publish landed
+
 # FetchXML
 crm query fetchxml accounts --file ./reports/by_industry.xml
 
