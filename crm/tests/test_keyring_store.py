@@ -72,3 +72,26 @@ def test_unavailable_when_keyring_missing(monkeypatch):
     assert keyring_store.delete_secret("prod") is False  # soft: nothing to delete
     with pytest.raises(D365Error):
         keyring_store.set_secret("prod", "x")            # hard: explicit intent
+
+
+def test_is_available_false_when_get_keyring_raises(monkeypatch):
+    class _Raises:
+        def get_keyring(self):
+            raise RuntimeError("no backend")
+    monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Raises())
+    assert keyring_store.is_available() is False
+
+
+def test_is_available_false_for_null_backend(monkeypatch):
+    # A backend object whose class lives in the null-backend module is "unusable".
+    null_mod = keyring_store._NULL_BACKEND_MODULE
+
+    class _NullBackend:
+        pass
+    _NullBackend.__module__ = null_mod
+
+    class _Kr:
+        def get_keyring(self):
+            return _NullBackend()
+    monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Kr())
+    assert keyring_store.is_available() is False
