@@ -276,9 +276,9 @@ def resolve_credentials(
         if is_oauth:
             raise D365Error(
                 f"No client secret supplied. Set {ENV_CLIENT_SECRET} (or "
-                "CRM_CLIENT_SECRET) in the environment / .env, pass --password, "
-                "or store it once with `crm connection connect --store-password` "
-                "(OS keyring) / --store-password-plaintext."
+                "CRM_CLIENT_SECRET) in the environment / .env, or pass "
+                "--password. (Storing OAuth secrets via the CLI is not yet "
+                "supported; see issue #137.)"
             )
         raise D365Error(
             f"No password supplied. Set {ENV_PASSWORD} (or CRM_PASSWORD) in the "

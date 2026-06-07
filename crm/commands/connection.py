@@ -89,10 +89,10 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
         profile.api_version = info["api_version"]
         session_mod.save_profile(profile)
 
-    state = session_mod.load_session(ctx.session_name)
-    state["active_profile"] = profile_name
-    session_mod.save_session(state, ctx.session_name)
-    ctx.invalidate_backend()
+    # Store (or clear) the secret BEFORE committing active_profile. A keyring
+    # write can fail (no backend, locked); if it does the command exits as a
+    # failure, and it must not also leave the session pointing at this profile
+    # — that would silently change later commands' default profile selection.
     if store_password:
         try:
             keyring_store.set_secret(profile_name, resolved.password)
@@ -121,6 +121,11 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
         # re-saves, so it would otherwise persist). Keyring entries are left
         # intact — that is the configure-once path (#130).
         session_mod.clear_profile_secret(profile_name)
+
+    state = session_mod.load_session(ctx.session_name)
+    state["active_profile"] = profile_name
+    session_mod.save_session(state, ctx.session_name)
+    ctx.invalidate_backend()
     ctx.emit(True, data=info, meta={"profile": profile_name})
 
 
