@@ -130,7 +130,7 @@ pass `--profile <name>` and confirm the real target with
 
 | Group        | Commands                                                                                | Purpose                                       |
 |--------------|-----------------------------------------------------------------------------------------|-----------------------------------------------|
-| `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`               | Profiles + auth probe + connection diagnostic  |
+| `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`, `delete-password` | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `export-spec`, `cache-clear` | Schema introspection + option set values + dependency preview + spec export + entity-def cache |

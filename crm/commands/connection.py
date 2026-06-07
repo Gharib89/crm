@@ -99,8 +99,13 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
         except D365Error as exc:
             _handle_d365_error(ctx, exc)
             return
+        # Keyring is now this profile's single store — drop any stale plaintext
+        # secret so it can't shadow the keyring value (plaintext wins resolution).
+        session_mod.clear_profile_secret(profile_name)
     elif store_password_plaintext:
         session_mod.save_profile_secret_plaintext(profile_name, resolved.password)
+        # Plaintext is now this profile's single store — drop any stale keyring entry.
+        keyring_store.delete_secret(profile_name)
         warn = (
             "Stored the secret in PLAINTEXT in the profile file."
             if os.name != "posix"
@@ -254,7 +259,7 @@ def connection_delete_password(ctx: CLIContext, profile_name):
     ctx.emit(
         True,
         data={"profile": profile_name, "removed": removed, "from": where},
-        meta={"note": "no stored secret found" if not removed else None},
+        meta=({"note": "no stored secret found"} if not removed else None),
     )
 
 

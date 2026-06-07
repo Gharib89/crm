@@ -217,6 +217,47 @@ class TestConnectStoreFlags:
             assert r2.exit_code == 0, r2.output
         assert "_secret" not in _profile_json(tmp_path, "prod")
 
+    def test_switch_plaintext_to_keyring_clears_stale_plaintext(self, fake_keyring, tmp_path):
+        # A store-type switch must make the new store authoritative (#130): a
+        # rotated keyring secret must not be shadowed by a stale plaintext one
+        # (plaintext wins resolution).
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            runner = CliRunner()
+            r1 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "OLD", "--profile-name", "prod",
+                "--store-password-plaintext",
+            ])
+            assert r1.exit_code == 0, r1.output
+            assert _profile_json(tmp_path, "prod")["_secret"] == "OLD"
+            r2 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "NEW", "--profile-name", "prod", "--store-password",
+            ])
+            assert r2.exit_code == 0, r2.output
+        assert fake_keyring["prod"] == "NEW"
+        assert "_secret" not in _profile_json(tmp_path, "prod")
+
+    def test_switch_keyring_to_plaintext_clears_stale_keyring(self, fake_keyring, tmp_path):
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            runner = CliRunner()
+            r1 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "OLD", "--profile-name", "prod", "--store-password",
+            ])
+            assert r1.exit_code == 0, r1.output
+            assert fake_keyring["prod"] == "OLD"
+            r2 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "NEW", "--profile-name", "prod",
+                "--store-password-plaintext",
+            ])
+            assert r2.exit_code == 0, r2.output
+        assert "prod" not in fake_keyring
+        assert _profile_json(tmp_path, "prod")["_secret"] == "NEW"
+
 
 class TestDeletePassword:
     def _save_profile(self):
