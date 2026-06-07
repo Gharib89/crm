@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.1.0 (2026-06-07)
+
+### Documentation
+
+- **connection**: Document 'set-password' for storing profile secrets
+  ([#139](https://github.com/Gharib89/crm/pull/139),
+  [`1dc7387`](https://github.com/Gharib89/crm/commit/1dc73876c89c839e70807988a0d8331f8cb3219d))
+
+- **plan**: Add set-password (#137) implementation plan
+  ([#139](https://github.com/Gharib89/crm/pull/139),
+  [`1dc7387`](https://github.com/Gharib89/crm/commit/1dc73876c89c839e70807988a0d8331f8cb3219d))
+
+### Features
+
+- **connection**: Add 'set-password' to store a secret for any profile
+  ([#139](https://github.com/Gharib89/crm/pull/139),
+  [`1dc7387`](https://github.com/Gharib89/crm/commit/1dc73876c89c839e70807988a0d8331f8cb3219d))
+
+- **connection**: Add 'set-password' to store a secret for any profile (#137)
+  ([#139](https://github.com/Gharib89/crm/pull/139),
+  [`1dc7387`](https://github.com/Gharib89/crm/commit/1dc73876c89c839e70807988a0d8331f8cb3219d))
+
+
 ## v1.0.0 (2026-06-07)
 
 ### Documentation
