@@ -102,7 +102,7 @@ Credentials come from environment variables (preferred) or a saved profile.
 ```bash
 export D365_URL="https://crm.contoso.local/contoso"
 export D365_USERNAME="alice"
-export D365_PASSWORD="..."        # never persisted to disk
+export D365_PASSWORD="..."        # not persisted by default (opt-in: connect/set-password --store-password)
 export D365_DOMAIN="CONTOSO"      # optional if username is a UPN
 export D365_AUTH="ntlm"           # default
 export D365_API_VERSION="v9.1"    # on-prem caps at v9.1 (v9.2 → HTTP 501); online uses v9.2
@@ -115,7 +115,7 @@ export D365_URL="https://contoso.crm.dynamics.com"
 export D365_AUTH="oauth"
 export D365_TENANT_ID="<aad-tenant-id>"
 export D365_CLIENT_ID="<app-registration-id>"
-export D365_CLIENT_SECRET="..."   # never persisted to disk
+export D365_CLIENT_SECRET="..."   # not persisted by default (opt-in: connection set-password)
 ```
 
 The app registration needs an **application user** in Dynamics with a suitable
@@ -144,18 +144,24 @@ State lives under `~/.crm/` (override with `CRM_HOME`).
 
 ### Storing credentials once
 
-By default secrets are never persisted. To configure once:
+By default secrets are not persisted. To configure once:
 
 - `crm connection connect ... --store-password` saves the secret in your OS
   keyring (macOS Keychain / Windows Credential Manager / Linux SecretService).
   Requires the optional extra: `pip install crm[keyring]`.
 - For headless/CI hosts with no keyring, `--store-password-plaintext` writes the
   secret into the profile file (`0600` on POSIX; perms unenforced on Windows).
+- `crm connection set-password --profile NAME` stores a secret for a profile that
+  already exists, for **both** auth schemes — the OAuth client secret or the NTLM
+  password. It takes the same `--store-password` / `--store-password-plaintext`
+  flags (keyring by default) and is the configure-once path for an OAuth profile
+  created by `crm init`. It never contacts the server.
 - `crm connection delete-password --profile NAME` removes a stored secret.
 - `crm connection profiles` shows each profile's storage type (keyring / plaintext / none).
 
-Resolution order: `--password` > `D365_PASSWORD`/`CRM_PASSWORD` (env/.env) >
-stored secret (keyring or plaintext) > interactive prompt (TTY only).
+Resolution order: `--password` > scheme env var (`D365_PASSWORD`/`CRM_PASSWORD` for
+NTLM, `D365_CLIENT_SECRET`/`CRM_CLIENT_SECRET` for OAuth; env/.env) > stored secret
+(keyring or plaintext) > interactive prompt (TTY only).
 
 ## Use
 

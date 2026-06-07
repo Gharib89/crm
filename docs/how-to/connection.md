@@ -58,9 +58,9 @@ Runs a live, ordered probe and renders a five-line checklist — `dns_tcp`, `tls
 
 ## Store credentials once
 
-By default secrets are never persisted to disk. Use one of the opt-in storage
-flags on `crm connection connect` to configure once and skip the prompt on every
-subsequent call.
+By default secrets are not persisted to disk. Use one of the opt-in storage
+flags on `crm connection connect` (or `crm connection set-password` for a profile
+that already exists) to configure once and skip the prompt on every subsequent call.
 
 ### OS keyring (recommended)
 
@@ -86,13 +86,19 @@ For the NTLM flow the `--password` value is read from `--password` or the
 subsequent invocations retrieve it automatically.
 
 **OAuth (Dataverse online):** an OAuth profile is created with `crm init` (it
-prompts for the tenant and application IDs). Supply the client secret via
-`D365_CLIENT_SECRET` (environment or `.env`) — it is resolved through the same
-chain shown below, so `crm init` plus an env/`.env` secret is the configure-once
-path for OAuth today. (The `--store-password` / `--store-password-plaintext`
-flags build the profile from the `connect` arguments, i.e. the NTLM/password
-flow; storing an OAuth client secret directly in the keyring via the CLI is
-tracked in [issue #137](https://github.com/Gharib89/crm/issues/137).)
+prompts for the tenant and application IDs). The client secret may be supplied via
+`D365_CLIENT_SECRET` (environment or `.env`) on every run, or stored once with
+`crm connection set-password` — the OAuth client secret goes into the keyring (or
+plaintext) exactly like an NTLM password:
+
+```bash
+crm connection set-password --profile online --store-password
+```
+
+The secret is read from `--password`, else `D365_CLIENT_SECRET` / `CRM_CLIENT_SECRET`,
+else a TTY prompt. See [Store a secret for an existing profile](#store-a-secret-for-an-existing-profile)
+below; the `connect`-time `--store-password` flags are NTLM-only because `connect`
+builds an NTLM-shaped profile.
 
 ### Headless / CI fallback (plaintext)
 
@@ -109,6 +115,33 @@ crm connection connect \
 
 This writes the secret into the profile file. On POSIX the file is created
 `0600`; on Windows file permissions are not enforced and a warning is emitted.
+
+### Store a secret for an existing profile
+
+`crm connection set-password` stores a secret for a profile that already exists,
+scheme-agnostically — the **OAuth client secret** or the **NTLM password**. It is
+the storage-side mirror of `delete-password`: it never contacts the server, never
+rebuilds the profile, and never reads the existing on-disk store.
+
+```bash
+# OS keyring (default when neither flag is given; needs crm[keyring])
+crm connection set-password --profile online --store-password
+
+# Headless / CI fallback — write into the profile file (0600 on POSIX)
+crm connection set-password --profile online --store-password-plaintext
+```
+
+The secret is read from `--password`, else the scheme's env var
+(`D365_CLIENT_SECRET` / `CRM_CLIENT_SECRET` for OAuth, `D365_PASSWORD` /
+`CRM_PASSWORD` for NTLM), else a TTY prompt. The two store flags are mutually
+exclusive. Each profile keeps a single store, so writing one removes the other.
+Under `--json` it emits `data: {"profile": NAME, "stored": true, "to": "keyring"}`
+(or `"plaintext"`).
+
+This is the configure-once path for an OAuth profile created by `crm init`:
+previously the client secret could only come from the environment / `.env` on
+every run, because `connect`'s `--store-password` flags build an NTLM-shaped
+profile.
 
 ### Remove a stored secret
 
@@ -134,6 +167,10 @@ on each profile line.
 When a command needs the secret it checks, in order:
 
 1. `--password` flag on the command line
-2. `D365_PASSWORD` / `CRM_PASSWORD` environment variable (or `.env` file)
+2. Scheme env var — `D365_PASSWORD` / `CRM_PASSWORD` (NTLM) or
+   `D365_CLIENT_SECRET` / `CRM_CLIENT_SECRET` (OAuth), from the environment or `.env`
 3. Stored secret (keyring or plaintext profile entry)
 4. Interactive TTY prompt (skipped in non-interactive / CI contexts)
+
+(`connection set-password` resolves the secret the same way but deliberately skips
+step 3 — it never re-stores an already-stored secret.)
