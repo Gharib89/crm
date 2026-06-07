@@ -27,7 +27,8 @@ def _import_keyring() -> Any:
             "The optional 'keyring' dependency is not installed. Install it with "
             "`pip install crm[keyring]`, or store the secret with "
             "--store-password-plaintext, or supply it via D365_PASSWORD / "
-            "D365_CLIENT_SECRET (env or .env)."
+            "D365_CLIENT_SECRET (or the CRM_PASSWORD / CRM_CLIENT_SECRET aliases; "
+            "env or .env)."
         ) from exc
     return keyring
 

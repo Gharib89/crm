@@ -261,7 +261,9 @@ def resolve_credentials(
     # (a profile carries at most one store; the connect flags are exclusive).
     if not secret and profile_name:
         secret = session_mod.load_profile_secret(profile_name)
-        if not secret and keyring_store.is_available():
+        if not secret:
+            # get_secret() guards availability itself and returns None when no
+            # backend is configured — no need to probe is_available() first.
             secret = keyring_store.get_secret(profile_name)
 
     if not secret and allow_prompt:
