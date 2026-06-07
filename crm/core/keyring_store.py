@@ -50,7 +50,13 @@ def get_secret(profile_name: str) -> str | None:
     so the resolver can treat keyring as just one optional source."""
     if not is_available():
         return None
-    return _import_keyring().get_password(KEYRING_SERVICE, profile_name)
+    try:
+        return _import_keyring().get_password(KEYRING_SERVICE, profile_name)
+    except Exception:
+        # A configured-but-flaky backend (locked Keychain, DBus error) must not
+        # crash the resolver — degrade to "no stored secret" so resolution can
+        # fall through to env/prompt/raise. Matches the soft is_available() guard.
+        return None
 
 
 def set_secret(profile_name: str, secret: str) -> None:
@@ -64,7 +70,15 @@ def set_secret(profile_name: str, secret: str) -> None:
             "No usable OS keyring backend is available. Use "
             "--store-password-plaintext, or env vars, instead."
         )
-    _import_keyring().set_password(KEYRING_SERVICE, profile_name, secret)
+    try:
+        _import_keyring().set_password(KEYRING_SERVICE, profile_name, secret)
+    except Exception as exc:
+        # Convert a backend write failure into a D365Error so the CLI's handler
+        # reports it cleanly instead of leaking a raw keyring traceback.
+        raise D365Error(
+            f"Failed to store the secret in the OS keyring: {exc}. Use "
+            "--store-password-plaintext, or env vars, instead."
+        ) from exc
 
 
 def delete_secret(profile_name: str) -> bool:
@@ -73,10 +87,14 @@ def delete_secret(profile_name: str) -> bool:
     if not is_available():
         return False
     kr = _import_keyring()
-    if kr.get_password(KEYRING_SERVICE, profile_name) is None:
+    try:
+        if kr.get_password(KEYRING_SERVICE, profile_name) is None:
+            return False
+        kr.delete_password(KEYRING_SERVICE, profile_name)
+        return True
+    except Exception:
+        # Soft-fail: a backend error must not break delete-password / profiles.
         return False
-    kr.delete_password(KEYRING_SERVICE, profile_name)
-    return True
 
 
 def has_secret(profile_name: str) -> bool:

@@ -237,8 +237,9 @@ def resolve_credentials(
     """Resolve a ConnectionProfile + the one secret its scheme needs.
 
     Secret order: override → env → on-disk (plaintext _secret, else OS keyring)
-    → TTY prompt (only when ``allow_prompt``) → raise. The on-disk and prompt
-    steps fire only for a named profile; env-only mode is unchanged.
+    → TTY prompt (only when ``allow_prompt``) → raise. The on-disk step fires
+    only for a named profile; the prompt step fires whenever ``allow_prompt``
+    is set, including env-only mode (``profile_name is None``).
 
     ``allow_prompt`` defaults False so core stays non-interactive for library
     callers and tests; the CLI passes True only on a TTY and not under --json.

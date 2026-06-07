@@ -52,6 +52,11 @@ def save_profile(profile: ConnectionProfile) -> Path:
         payload["_secret"] = existing_secret
     p = profile_path(profile.name)
     _atomic_write_json(p, payload)
+    # _atomic_write_json writes a fresh tmp file (default 0644) and renames over
+    # the original, dropping any prior 0600. Re-enforce it when a plaintext
+    # secret is present so an unrelated re-save can't widen its permissions.
+    if existing_secret is not None and os.name == "posix":
+        os.chmod(p, 0o600)
     return p
 
 

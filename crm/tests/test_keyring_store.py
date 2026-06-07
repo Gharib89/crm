@@ -82,6 +82,41 @@ def test_is_available_false_when_get_keyring_raises(monkeypatch):
     assert keyring_store.is_available() is False
 
 
+class _ErroringKeyring:
+    """Usable backend whose password ops raise (locked Keychain, DBus error)."""
+    def get_password(self, service, name):
+        raise RuntimeError("backend locked")
+
+    def set_password(self, service, name, secret):
+        raise RuntimeError("backend locked")
+
+    def delete_password(self, service, name):
+        raise RuntimeError("backend locked")
+
+    def get_keyring(self):
+        return self  # reports usable, but every op blows up
+
+
+@pytest.fixture
+def erroring(monkeypatch):
+    kr = _ErroringKeyring()
+    monkeypatch.setattr(keyring_store, "_import_keyring", lambda: kr)
+    return kr
+
+
+def test_get_secret_soft_fails_on_backend_error(erroring):
+    assert keyring_store.get_secret("prod") is None  # no traceback to the resolver
+
+
+def test_delete_secret_soft_fails_on_backend_error(erroring):
+    assert keyring_store.delete_secret("prod") is False
+
+
+def test_set_secret_converts_backend_error_to_d365error(erroring):
+    with pytest.raises(D365Error):
+        keyring_store.set_secret("prod", "x")
+
+
 def test_is_available_false_for_null_backend(monkeypatch):
     # A backend object whose class lives in the null-backend module is "unusable".
     null_mod = keyring_store._NULL_BACKEND_MODULE

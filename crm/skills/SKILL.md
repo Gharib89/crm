@@ -75,7 +75,7 @@ export D365_URL="https://contoso.crm.dynamics.com"
 export D365_AUTH="oauth"
 export D365_TENANT_ID="<aad-tenant-id>"
 export D365_CLIENT_ID="<app-registration-id>"
-export D365_CLIENT_SECRET="..."        # not persisted by default (opt-in: connect --store-password)
+export D365_CLIENT_SECRET="..."        # env/.env only; connect can't yet store OAuth secrets (#137)
 ```
 
 Scope (`https://<host>/.default`) and authority

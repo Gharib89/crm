@@ -75,6 +75,18 @@ def test_secret_survives_unrelated_profile_resave():
     assert session_mod.load_profile_secret("prod") == "p@ss"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="chmod 0600 only enforced on POSIX")
+def test_secret_file_stays_0600_after_unrelated_resave():
+    # Regression (#130): save_profile() re-enforces 0600 when it preserves a
+    # _secret, so an unrelated re-save can't widen the file to 0644.
+    _save_base_profile()
+    session_mod.save_profile_secret_plaintext("prod", "p@ss")
+    p = session_mod.load_profile("prod")
+    p.default_solution = "MySolution"
+    path = session_mod.save_profile(p)
+    assert (path.stat().st_mode & 0o777) == 0o600
+
+
 def test_save_secret_raises_for_missing_profile():
     with pytest.raises(FileNotFoundError):
         session_mod.save_profile_secret_plaintext("ghost", "x")
