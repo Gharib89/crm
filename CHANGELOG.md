@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.0.0 (2026-06-07)
+
+### Documentation
+
+- **claude**: CHANGELOG is PSR-owned, don't hand-edit
+  ([`68b3101`](https://github.com/Gharib89/crm/commit/68b3101f362455dc7fe29c7b8e8792ba5d649c3d))
+
+### Features
+
+- **release**: Graduate to 1.0.0 with configure-once credentials
+  ([#130](https://github.com/Gharib89/crm/pull/130),
+  [`7be46b0`](https://github.com/Gharib89/crm/commit/7be46b03d5691fb39c5cdb023ad52da110421922))
+
+### Breaking Changes
+
+- **release**: Secrets can now be persisted (opt-in keyring/plaintext); profile resolution restores
+  the session active_profile when no --profile is given. Flips allow_zero_version so PSR cuts
+  v1.0.0.
+
+
 ## v0.13.1 (2026-06-06)
 
 ### Bug Fixes
