@@ -81,21 +81,18 @@ crm connection connect \
     --store-password
 ```
 
-**OAuth (Dataverse online):**
+For the NTLM flow the `--password` value is read from `--password` or the
+`D365_PASSWORD` env var and then stored in the keyring under the profile name;
+subsequent invocations retrieve it automatically.
 
-```bash
-crm connection connect \
-    --url https://contoso.crm.dynamics.com \
-    --auth oauth \
-    --tenant-id "<aad-tenant-id>" \
-    --client-id "<app-registration-id>" \
-    --profile-name cloud \
-    --store-password
-```
-
-The `--password` / client secret value is read from `--password` or the
-`D365_CLIENT_SECRET` / `D365_PASSWORD` env var and then stored in the keyring
-under the profile name. Subsequent invocations retrieve it automatically.
+**OAuth (Dataverse online):** an OAuth profile is created with `crm init` (it
+prompts for the tenant and application IDs). Supply the client secret via
+`D365_CLIENT_SECRET` (environment or `.env`) — it is resolved through the same
+chain shown below, so `crm init` plus an env/`.env` secret is the configure-once
+path for OAuth today. (The `--store-password` / `--store-password-plaintext`
+flags build the profile from the `connect` arguments, i.e. the NTLM/password
+flow; storing an OAuth client secret directly in the keyring via the CLI is
+tracked in [issue #137](https://github.com/Gharib89/crm/issues/137).)
 
 ### Headless / CI fallback (plaintext)
 
@@ -128,8 +125,9 @@ profile uses. The profile itself is kept; only the secret is removed.
 crm --json connection profiles
 ```
 
-The output now includes a `storage` field per profile showing `keyring`,
-`plaintext`, or `none`.
+Each profile entry in the `meta.profiles[]` array gains a `credential_storage`
+field (`keyring`, `plaintext`, or `none`); in human mode it appears as `cred=…`
+on each profile line.
 
 ### Resolution order
 
