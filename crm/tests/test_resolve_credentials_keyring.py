@@ -79,3 +79,15 @@ def test_raise_when_nothing_and_no_prompt(monkeypatch):
     monkeypatch.setattr(keyring_store, "is_available", lambda: False)
     with pytest.raises(D365Error, match="keyring|--store-password"):
         conn_mod.resolve_credentials("prod", allow_prompt=False)
+
+
+def test_oauth_resolves_client_secret_from_keyring(fake_keyring):
+    # oauth profiles resolve the CLIENT SECRET (not a password) from the same
+    # on-disk chain; here the OS keyring supplies it (#130).
+    session_mod.save_profile(ConnectionProfile(
+        name="cloud", url="https://contoso.crm.dynamics.com/x", domain="",
+        username="", auth_scheme="oauth", tenant_id="t", client_id="c",
+    ))
+    fake_keyring["cloud"] = "oauth-secret"
+    rc = conn_mod.resolve_credentials("cloud")
+    assert rc.password == "oauth-secret"
