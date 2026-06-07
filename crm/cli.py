@@ -115,14 +115,28 @@ class CLIContext:
 
     def backend(self) -> "D365Backend":
         from crm.core import connection as conn_mod
+        from crm.core import session as session_mod
         from crm.utils.d365_backend import D365Backend
 
-        key = (self.profile_name, self.password, self.dry_run, self.auth_scheme,
+        # Profile selection: --profile flag > session active_profile > env.
+        # A flag value is authoritative; otherwise fall back to the saved
+        # active_profile so `connect` once works on later commands (#130).
+        effective_profile = self.profile_name
+        if effective_profile is None:
+            state = session_mod.load_session(self.session_name)
+            candidate = state.get("active_profile")
+            # Ignore a stale pointer to a deleted profile — fall back to env.
+            if candidate and session_mod.profile_path(candidate).is_file():
+                effective_profile = candidate
+
+        key = (effective_profile, self.password, self.dry_run, self.auth_scheme,
                self.retry_on_ambiguous)
         if self._backend is None or self._backend_key != key:
+            allow_prompt = _stdin_is_tty() and not self.json_mode
             resolved = conn_mod.resolve_credentials(
-                profile_name=self.profile_name,
+                profile_name=effective_profile,
                 password_override=self.password,
+                allow_prompt=allow_prompt,
             )
             if self.auth_scheme is not None:
                 resolved.profile.auth_scheme = self.auth_scheme
