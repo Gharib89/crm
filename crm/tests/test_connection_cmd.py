@@ -221,7 +221,6 @@ class TestConnectStoreFlags:
 class TestDeletePassword:
     def _save_profile(self):
         from crm.utils.d365_backend import ConnectionProfile
-        session_path = None  # noqa: F841
         from crm.core import session as session_mod
         session_mod.save_profile(ConnectionProfile(
             name="prod", url="https://crm.contoso.local/c", domain="C", username="a",
@@ -230,11 +229,14 @@ class TestDeletePassword:
     def test_delete_removes_keyring_entry(self, fake_keyring):
         self._save_profile()
         fake_keyring["prod"] = "pw"
-        r = CliRunner().invoke(cli, ["connection", "delete-password", "--profile", "prod"])
+        r = CliRunner().invoke(cli, ["--json", "connection", "delete-password", "--profile", "prod"])
         assert r.exit_code == 0, r.output
         assert "prod" not in fake_keyring
+        payload = json.loads(r.stdout)
+        assert payload["data"]["removed"] is True
+        assert "keyring" in payload["data"]["from"]
 
-    def test_delete_removes_plaintext_secret(self, fake_keyring, tmp_path):
+    def test_delete_removes_plaintext_secret(self, fake_keyring):
         from crm.core import session as session_mod
         self._save_profile()
         session_mod.save_profile_secret_plaintext("prod", "pw")
