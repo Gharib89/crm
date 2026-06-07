@@ -357,7 +357,7 @@ class ReplSkin:
     def warning(self, message: str):
         """Print a warning message with yellow triangle."""
         icon = self._c(_YELLOW + _BOLD, "⚠")
-        print(f"  {icon} {self._c(_YELLOW, message)}")
+        print(f"  {icon} {self._c(_YELLOW, message)}", file=sys.stderr)
 
     def info(self, message: str):
         """Print an info message with blue dot."""

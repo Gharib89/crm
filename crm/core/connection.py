@@ -35,6 +35,7 @@ from crm.utils.d365_backend import (
     DEFAULT_HEADERS,
 )
 from crm.core import session as session_mod
+from crm.core import keyring_store
 
 
 # ── Env var name groups (D365_* canonical, CRM_* alias) ─────────────────
@@ -230,16 +231,18 @@ def profile_from_env(name: str = "env") -> ConnectionProfile:
 def resolve_credentials(
     profile_name: str | None = None,
     password_override: str | None = None,
+    *,
+    allow_prompt: bool = False,
 ) -> ResolvedCredentials:
-    """Resolve a ConnectionProfile + password.
+    """Resolve a ConnectionProfile + the one secret its scheme needs.
 
-    Resolution order:
-    1. If profile_name is given, load it from disk; password from env or override.
-    2. Else build a profile entirely from env (and .env autoload).
+    Secret order: override → env → on-disk (plaintext _secret, else OS keyring)
+    → TTY prompt (only when ``allow_prompt``) → raise. The on-disk step fires
+    only for a named profile; the prompt step fires whenever ``allow_prompt``
+    is set, including env-only mode (``profile_name is None``).
 
-    The "password" is scheme-dependent: the NTLM password for ntlm, or the
-    OAuth client secret (D365_CLIENT_SECRET) for oauth. Either way it is the
-    one secret the backend needs and is never stored on the profile.
+    ``allow_prompt`` defaults False so core stays non-interactive for library
+    callers and tests; the CLI passes True only on a TTY and not under --json.
     """
     load_dotenv()
     if profile_name:
@@ -250,24 +253,41 @@ def resolve_credentials(
     else:
         profile = profile_from_env()
 
-    if profile.auth_scheme == "oauth":
-        secret = password_override or _env(ENV_CLIENT_SECRET)
-        if not secret:
-            raise D365Error(
-                f"No client secret supplied. Set {ENV_CLIENT_SECRET} "
-                "(or CRM_CLIENT_SECRET) in the environment, in a .env file, "
-                "or pass --password."
-            )
-        return ResolvedCredentials(profile=profile, password=secret)
+    is_oauth = profile.auth_scheme == "oauth"
+    env_secret = _env(ENV_CLIENT_SECRET) if is_oauth else _env(ENV_PASSWORD)
+    secret = password_override or env_secret
 
-    password = password_override or _env(ENV_PASSWORD)
-    if not password:
+    # On-disk secret (named profiles only): plaintext _secret wins over keyring
+    # (a profile carries at most one store; the connect flags are exclusive).
+    if not secret and profile_name:
+        secret = session_mod.load_profile_secret(profile_name)
+        if not secret:
+            # get_secret() guards availability itself and returns None when no
+            # backend is configured — no need to probe is_available() first.
+            secret = keyring_store.get_secret(profile_name)
+
+    if not secret and allow_prompt:
+        import getpass
+        label = "client secret" if is_oauth else "password"
+        entered = getpass.getpass(f"D365 {label} for profile {profile.name!r}: ")
+        secret = entered or None
+
+    if not secret:
+        if is_oauth:
+            raise D365Error(
+                f"No client secret supplied. Set {ENV_CLIENT_SECRET} (or "
+                "CRM_CLIENT_SECRET) in the environment / .env, or pass "
+                "--password. (Storing OAuth secrets via the CLI is not yet "
+                "supported; see issue #137.)"
+            )
         raise D365Error(
-            f"No password supplied. Set {ENV_PASSWORD} (or CRM_PASSWORD) "
-            "in the environment, in a .env file, or pass --password."
+            f"No password supplied. Set {ENV_PASSWORD} (or CRM_PASSWORD) in the "
+            "environment / .env, pass --password, or store it once with "
+            "`crm connection connect --store-password` (OS keyring) / "
+            "--store-password-plaintext."
         )
 
-    return ResolvedCredentials(profile=profile, password=password)
+    return ResolvedCredentials(profile=profile, password=secret)
 
 
 # ── Live probes ─────────────────────────────────────────────────────────

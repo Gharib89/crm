@@ -1,0 +1,11 @@
+# GitGuardian configuration.
+#
+# The test suite seeds fabricated credentials (e.g. D365_PASSWORD="envpw") to
+# exercise the credential-resolution paths. These are not real secrets — real
+# credentials are supplied at runtime via environment variables or a .env file
+# (which is gitignored) and never live in the repo. Exclude the test tree from
+# secret scanning so these fixtures don't raise false-positive incidents.
+version: 2
+secret:
+  ignored-paths:
+    - "crm/tests/**"

@@ -10,6 +10,7 @@ import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import cli
+from crm.core import keyring_store
 
 _WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001"}
 
@@ -129,3 +130,185 @@ class TestMissingProfileEnvelope:
         assert payload["ok"] is False
         assert "does_not_exist" in payload["error"]
         assert payload["meta"]["category"] == "validation"
+
+
+@pytest.fixture
+def fake_keyring(monkeypatch):
+    store = {}
+    monkeypatch.setattr(keyring_store, "is_available", lambda: True)
+    monkeypatch.setattr(keyring_store, "get_secret", lambda n: store.get(n))
+    monkeypatch.setattr(keyring_store, "set_secret",
+                        lambda n, s: store.__setitem__(n, s))
+    monkeypatch.setattr(keyring_store, "has_secret", lambda n: n in store)
+    monkeypatch.setattr(keyring_store, "delete_secret",
+                        lambda n: store.pop(n, None) is not None)
+    return store
+
+
+class TestConnectStoreFlags:
+    _BASE = "https://crm.contoso.local/Contoso"
+
+    def test_store_password_writes_keyring(self, fake_keyring):
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            r = CliRunner().invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--domain", "CONTOSO", "--password", "pw",
+                "--profile-name", "prod", "--store-password",
+            ])
+        assert r.exit_code == 0, r.output
+        assert fake_keyring["prod"] == "pw"
+
+    def test_store_plaintext_writes_secret_with_warning(self, tmp_path):
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            r = CliRunner().invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--domain", "CONTOSO", "--password", "pw",
+                "--profile-name", "ci", "--store-password-plaintext",
+            ])
+        assert r.exit_code == 0, r.output
+        assert _profile_json(tmp_path, "ci")["_secret"] == "pw"
+        assert "plaintext" in r.stderr.lower()
+
+    def test_both_flags_is_usage_error(self):
+        r = CliRunner().invoke(cli, [
+            "connection", "connect", "--url", self._BASE, "--username", "alice",
+            "--password", "pw", "--profile-name", "x",
+            "--store-password", "--store-password-plaintext",
+        ])
+        assert r.exit_code == 2  # click.UsageError
+        assert "mutually exclusive" in (r.output + (r.stderr or "")).lower()
+
+    def test_store_password_without_keyring_is_graceful(self, monkeypatch):
+        monkeypatch.setattr(keyring_store, "is_available", lambda: False)
+        def _raise(n, s):
+            from crm.utils.d365_backend import D365Error
+            raise D365Error("The optional 'keyring' dependency is not installed.")
+        monkeypatch.setattr(keyring_store, "set_secret", _raise)
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            r = CliRunner().invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "pw", "--profile-name", "p", "--store-password",
+            ])
+        assert r.exit_code == 1               # graceful failure envelope
+        assert "Traceback" not in (r.output + (r.stderr or ""))
+        assert "keyring" in (r.output + (r.stderr or "")).lower()
+
+    def test_reconnect_without_store_flag_clears_plaintext(self, fake_keyring, tmp_path):
+        # Regression for the maintainer-approved fix (#130): save_profile now
+        # preserves _secret across re-saves, so connect with NO store flag must
+        # explicitly drop a previously stored plaintext secret.
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            runner = CliRunner()
+            r1 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "pw", "--profile-name", "prod",
+                "--store-password-plaintext",
+            ])
+            assert r1.exit_code == 0, r1.output
+            assert _profile_json(tmp_path, "prod")["_secret"] == "pw"
+            r2 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "pw", "--profile-name", "prod",
+            ])
+            assert r2.exit_code == 0, r2.output
+        assert "_secret" not in _profile_json(tmp_path, "prod")
+
+    def test_switch_plaintext_to_keyring_clears_stale_plaintext(self, fake_keyring, tmp_path):
+        # A store-type switch must make the new store authoritative (#130): a
+        # rotated keyring secret must not be shadowed by a stale plaintext one
+        # (plaintext wins resolution).
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            runner = CliRunner()
+            r1 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "OLD", "--profile-name", "prod",
+                "--store-password-plaintext",
+            ])
+            assert r1.exit_code == 0, r1.output
+            assert _profile_json(tmp_path, "prod")["_secret"] == "OLD"
+            r2 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "NEW", "--profile-name", "prod", "--store-password",
+            ])
+            assert r2.exit_code == 0, r2.output
+        assert fake_keyring["prod"] == "NEW"
+        assert "_secret" not in _profile_json(tmp_path, "prod")
+
+    def test_switch_keyring_to_plaintext_clears_stale_keyring(self, fake_keyring, tmp_path):
+        with requests_mock.Mocker() as m:
+            m.get(f"{self._BASE}/api/data/v9.2/WhoAmI", json=_WHOAMI)
+            runner = CliRunner()
+            r1 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "OLD", "--profile-name", "prod", "--store-password",
+            ])
+            assert r1.exit_code == 0, r1.output
+            assert fake_keyring["prod"] == "OLD"
+            r2 = runner.invoke(cli, [
+                "connection", "connect", "--url", self._BASE, "--username", "alice",
+                "--password", "NEW", "--profile-name", "prod",
+                "--store-password-plaintext",
+            ])
+            assert r2.exit_code == 0, r2.output
+        assert "prod" not in fake_keyring
+        assert _profile_json(tmp_path, "prod")["_secret"] == "NEW"
+
+
+class TestDeletePassword:
+    def _save_profile(self):
+        from crm.utils.d365_backend import ConnectionProfile
+        from crm.core import session as session_mod
+        session_mod.save_profile(ConnectionProfile(
+            name="prod", url="https://crm.contoso.local/c", domain="C", username="a",
+        ))
+
+    def test_delete_removes_keyring_entry(self, fake_keyring):
+        self._save_profile()
+        fake_keyring["prod"] = "pw"
+        r = CliRunner().invoke(cli, ["--json", "connection", "delete-password", "--profile", "prod"])
+        assert r.exit_code == 0, r.output
+        assert "prod" not in fake_keyring
+        payload = json.loads(r.stdout)
+        assert payload["data"]["removed"] is True
+        assert "keyring" in payload["data"]["from"]
+
+    def test_delete_removes_plaintext_secret(self, fake_keyring):
+        from crm.core import session as session_mod
+        self._save_profile()
+        session_mod.save_profile_secret_plaintext("prod", "pw")
+        r = CliRunner().invoke(cli, ["connection", "delete-password", "--profile", "prod"])
+        assert r.exit_code == 0, r.output
+        assert session_mod.load_profile_secret("prod") is None
+
+    def test_delete_nothing_stored_is_clear_noop(self, fake_keyring):
+        self._save_profile()
+        r = CliRunner().invoke(cli, ["--json", "connection", "delete-password", "--profile", "prod"])
+        assert r.exit_code == 0, r.output
+        payload = json.loads(r.stdout)
+        assert payload["data"]["removed"] is False
+
+
+class TestProfilesStorageType:
+    def _mk(self, name):
+        from crm.utils.d365_backend import ConnectionProfile
+        from crm.core import session as session_mod
+        session_mod.save_profile(ConnectionProfile(
+            name=name, url="https://crm.contoso.local/c", domain="C", username="a",
+        ))
+
+    def test_reports_three_storage_types(self, fake_keyring):
+        from crm.core import session as session_mod
+        self._mk("kr"); self._mk("pt"); self._mk("no")
+        fake_keyring["kr"] = "pw"
+        session_mod.save_profile_secret_plaintext("pt", "pw")
+        r = CliRunner().invoke(cli, ["--json", "connection", "profiles"])
+        assert r.exit_code == 0, r.output
+        payload = json.loads(r.stdout)
+        assert sorted(payload["data"]) == ["kr", "no", "pt"]  # data shape unchanged
+        by = {p["name"]: p["credential_storage"] for p in payload["meta"]["profiles"]}
+        assert by == {"kr": "keyring", "pt": "plaintext", "no": "none"}
