@@ -91,3 +91,70 @@ def test_oauth_resolves_client_secret_from_keyring(fake_keyring):
     fake_keyring["cloud"] = "oauth-secret"
     rc = conn_mod.resolve_credentials("cloud")
     assert rc.password == "oauth-secret"
+
+
+# ── resolve_secret_for_storage: the write-side resolver (issue #137) ──────
+
+
+def _ntlm_profile(name="prod"):
+    return ConnectionProfile(
+        name=name, url="https://crm.contoso.local/c", domain="C", username="alice",
+    )
+
+
+def _oauth_profile(name="cloud"):
+    return ConnectionProfile(
+        name=name, url="https://contoso.crm.dynamics.com/x", domain="",
+        username="", auth_scheme="oauth", tenant_id="t", client_id="c",
+    )
+
+
+def test_storage_override_beats_env(monkeypatch):
+    monkeypatch.setenv("D365_PASSWORD", "from-env")
+    secret = conn_mod.resolve_secret_for_storage(
+        _ntlm_profile(), password_override="from-flag")
+    assert secret == "from-flag"
+
+
+def test_storage_env_scheme_aware_ntlm(monkeypatch):
+    monkeypatch.setenv("D365_PASSWORD", "the-password")
+    monkeypatch.setenv("D365_CLIENT_SECRET", "the-client-secret")
+    secret = conn_mod.resolve_secret_for_storage(_ntlm_profile())
+    assert secret == "the-password"
+
+
+def test_storage_env_scheme_aware_oauth(monkeypatch):
+    monkeypatch.setenv("D365_PASSWORD", "the-password")
+    monkeypatch.setenv("D365_CLIENT_SECRET", "the-client-secret")
+    secret = conn_mod.resolve_secret_for_storage(_oauth_profile())
+    assert secret == "the-client-secret"
+
+
+def test_storage_prompts_when_allowed_and_nothing_else(monkeypatch):
+    monkeypatch.setattr("getpass.getpass", lambda *a, **k: "typed-secret")
+    secret = conn_mod.resolve_secret_for_storage(_ntlm_profile(), allow_prompt=True)
+    assert secret == "typed-secret"
+
+
+def test_storage_raises_when_nothing_and_no_prompt():
+    with pytest.raises(D365Error, match="D365_PASSWORD"):
+        conn_mod.resolve_secret_for_storage(_ntlm_profile(), allow_prompt=False)
+
+
+def test_storage_oauth_raises_names_client_secret_var():
+    with pytest.raises(D365Error, match="D365_CLIENT_SECRET"):
+        conn_mod.resolve_secret_for_storage(_oauth_profile(), allow_prompt=False)
+
+
+def test_storage_never_reads_on_disk(fake_keyring):
+    # set-password must NOT silently re-store an already-stored secret: with a
+    # plaintext _secret AND a keyring entry present, no override/env, and no
+    # prompt, it must still raise — and the stored secrets stay intact.
+    _save("prod")
+    session_mod.save_profile_secret_plaintext("prod", "on-disk-plaintext")
+    fake_keyring["prod"] = "on-disk-keyring"
+    profile = session_mod.load_profile("prod")
+    with pytest.raises(D365Error):
+        conn_mod.resolve_secret_for_storage(profile, allow_prompt=False)
+    assert session_mod.load_profile_secret("prod") == "on-disk-plaintext"
+    assert fake_keyring["prod"] == "on-disk-keyring"

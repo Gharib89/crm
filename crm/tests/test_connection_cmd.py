@@ -293,6 +293,168 @@ class TestDeletePassword:
         assert payload["data"]["removed"] is False
 
 
+class TestSetPassword:
+    """`crm connection set-password` — scheme-agnostic secret writer (#137)."""
+
+    def _save_ntlm(self, name="prod"):
+        from crm.utils.d365_backend import ConnectionProfile
+        from crm.core import session as session_mod
+        session_mod.save_profile(ConnectionProfile(
+            name=name, url="https://crm.contoso.local/c", domain="C", username="a",
+        ))
+
+    def _save_oauth(self, name="cloud"):
+        from crm.utils.d365_backend import ConnectionProfile
+        from crm.core import session as session_mod
+        session_mod.save_profile(ConnectionProfile(
+            name=name, url="https://contoso.crm.dynamics.com/x", domain="",
+            username="", auth_scheme="oauth", tenant_id="t", client_id="c",
+        ))
+
+    def test_default_stores_in_keyring_and_clears_plaintext(self, fake_keyring):
+        from crm.core import session as session_mod
+        self._save_ntlm()
+        session_mod.save_profile_secret_plaintext("prod", "stale")
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod", "--password", "X",
+        ])
+        assert r.exit_code == 0, r.output
+        assert fake_keyring["prod"] == "X"
+        assert session_mod.load_profile_secret("prod") is None
+
+    def test_store_password_flag_keyring(self, fake_keyring):
+        from crm.core import session as session_mod
+        self._save_ntlm()
+        session_mod.save_profile_secret_plaintext("prod", "stale")
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod",
+            "--password", "X", "--store-password",
+        ])
+        assert r.exit_code == 0, r.output
+        assert fake_keyring["prod"] == "X"
+        assert session_mod.load_profile_secret("prod") is None
+
+    def test_store_plaintext_writes_secret_clears_keyring_warns(self, fake_keyring, tmp_path):
+        self._save_ntlm()
+        fake_keyring["prod"] = "stale"
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod",
+            "--password", "X", "--store-password-plaintext",
+        ])
+        assert r.exit_code == 0, r.output
+        assert _profile_json(tmp_path, "prod")["_secret"] == "X"
+        assert "prod" not in fake_keyring
+        assert "plaintext" in r.stderr.lower()
+
+    def test_both_flags_is_usage_error(self, fake_keyring):
+        self._save_ntlm()
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod", "--password", "X",
+            "--store-password", "--store-password-plaintext",
+        ])
+        assert r.exit_code == 2
+        assert "mutually exclusive" in (r.output + (r.stderr or "")).lower()
+
+    def test_missing_profile_emits_validation_envelope(self, fake_keyring):
+        r = CliRunner().invoke(cli, [
+            "--json", "connection", "set-password", "--profile", "ghost", "--password", "X",
+        ])
+        assert r.exit_code == 1
+        payload = json.loads(r.stdout)
+        assert payload["ok"] is False
+        assert "ghost" in payload["error"]
+        assert payload["meta"]["category"] == "validation"
+
+    def test_keyring_no_backend_is_graceful(self, monkeypatch):
+        self._save_ntlm()
+        monkeypatch.setattr(keyring_store, "is_available", lambda: False)
+        def _raise(n, s):
+            from crm.utils.d365_backend import D365Error
+            raise D365Error("The optional 'keyring' dependency is not installed.")
+        monkeypatch.setattr(keyring_store, "set_secret", _raise)
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod",
+            "--password", "X", "--store-password",
+        ])
+        assert r.exit_code == 1
+        assert "Traceback" not in (r.output + (r.stderr or ""))
+        assert "keyring" in (r.output + (r.stderr or "")).lower()
+
+    def test_secret_from_env_oauth(self, fake_keyring):
+        self._save_oauth()
+        os.environ["D365_CLIENT_SECRET"] = "env-secret"
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "cloud",
+        ])
+        assert r.exit_code == 0, r.output
+        assert fake_keyring["cloud"] == "env-secret"
+
+    def test_secret_from_env_ntlm(self, fake_keyring):
+        self._save_ntlm()
+        os.environ["D365_PASSWORD"] = "env-pw"
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod",
+        ])
+        assert r.exit_code == 0, r.output
+        assert fake_keyring["prod"] == "env-pw"
+
+    def test_on_disk_is_not_a_source(self, fake_keyring):
+        # A stored keyring secret must not be silently re-stored: no --password,
+        # no env, non-TTY stdin → no secret resolves → exit 1, store untouched.
+        self._save_ntlm()
+        fake_keyring["prod"] = "already-stored"
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod",
+        ])
+        assert r.exit_code == 1
+        assert "Traceback" not in (r.output + (r.stderr or ""))
+        assert fake_keyring["prod"] == "already-stored"
+
+    def test_overwrite_second_value_wins(self, fake_keyring):
+        self._save_ntlm()
+        r1 = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod", "--password", "first",
+        ])
+        assert r1.exit_code == 0, r1.output
+        r2 = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "prod", "--password", "second",
+        ])
+        assert r2.exit_code == 0, r2.output
+        assert fake_keyring["prod"] == "second"
+
+    def test_success_envelope_keyring(self, fake_keyring):
+        self._save_ntlm()
+        r = CliRunner().invoke(cli, [
+            "--json", "connection", "set-password", "--profile", "prod", "--password", "X",
+        ])
+        assert r.exit_code == 0, r.output
+        payload = json.loads(r.stdout)
+        assert payload["data"] == {"profile": "prod", "stored": True, "to": "keyring"}
+
+    def test_success_envelope_plaintext(self, fake_keyring):
+        self._save_ntlm()
+        r = CliRunner().invoke(cli, [
+            "--json", "connection", "set-password", "--profile", "prod",
+            "--password", "X", "--store-password-plaintext",
+        ])
+        assert r.exit_code == 0, r.output
+        payload = json.loads(r.stdout)
+        assert payload["data"] == {"profile": "prod", "stored": True, "to": "plaintext"}
+
+    def test_137_oauth_round_trip(self, fake_keyring):
+        # The #137 fix: store an OAuth client secret via set-password, then
+        # resolve_credentials reads it back with no D365_CLIENT_SECRET in env.
+        from crm.core import connection as conn_mod
+        self._save_oauth()
+        r = CliRunner().invoke(cli, [
+            "connection", "set-password", "--profile", "cloud",
+            "--password", "S", "--store-password",
+        ])
+        assert r.exit_code == 0, r.output
+        rc = conn_mod.resolve_credentials("cloud")
+        assert rc.password == "S"
+
+
 class TestProfilesStorageType:
     def _mk(self, name):
         from crm.utils.d365_backend import ConnectionProfile

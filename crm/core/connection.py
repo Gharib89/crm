@@ -275,19 +275,49 @@ def resolve_credentials(
     if not secret:
         if is_oauth:
             raise D365Error(
-                f"No client secret supplied. Set {ENV_CLIENT_SECRET} (or "
-                "CRM_CLIENT_SECRET) in the environment / .env, or pass "
-                "--password. (Storing OAuth secrets via the CLI is not yet "
-                "supported; see issue #137.)"
+                f"No client secret supplied. Set {ENV_CLIENT_SECRET} (or CRM_CLIENT_SECRET) "
+                "in the environment / .env, pass --password, or store it once with "
+                "`crm connection set-password --profile <name> --store-password` (OS keyring) "
+                "/ --store-password-plaintext."
             )
         raise D365Error(
             f"No password supplied. Set {ENV_PASSWORD} (or CRM_PASSWORD) in the "
             "environment / .env, pass --password, or store it once with "
-            "`crm connection connect --store-password` (OS keyring) / "
+            "`crm connection connect --store-password` / "
+            "`crm connection set-password --store-password` (OS keyring) / "
             "--store-password-plaintext."
         )
 
     return ResolvedCredentials(profile=profile, password=secret)
+
+
+def resolve_secret_for_storage(
+    profile: ConnectionProfile,
+    password_override: str | None = None,
+    *,
+    allow_prompt: bool = False,
+) -> str:
+    """Resolve a secret to STORE for *profile*: override → env (scheme-aware) →
+    TTY prompt. Deliberately never reads the on-disk store (plaintext _secret /
+    OS keyring) — set-password must not silently re-store an already-stored
+    secret. Raises D365Error when nothing resolves."""
+    load_dotenv()
+    is_oauth = profile.auth_scheme == "oauth"
+    secret: str | None = password_override or (
+        _env(ENV_CLIENT_SECRET) if is_oauth else _env(ENV_PASSWORD)
+    )
+    if not secret and allow_prompt:
+        import getpass
+        label = "client secret" if is_oauth else "password"
+        secret = getpass.getpass(f"D365 {label} for profile {profile.name!r}: ") or None
+    if not secret:
+        var = ENV_CLIENT_SECRET if is_oauth else ENV_PASSWORD
+        label = "client secret" if is_oauth else "password"
+        raise D365Error(
+            f"No {label} supplied to store. Pass --password or set {var} "
+            f"(or its CRM_ alias) in the environment / .env."
+        )
+    return secret
 
 
 # ── Live probes ─────────────────────────────────────────────────────────

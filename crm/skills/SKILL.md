@@ -54,7 +54,7 @@ The CLI authenticates with **NTLM (Windows Integrated)** for on-prem, or
 # Canonical names
 export D365_URL="https://crm.contoso.local/contoso"
 export D365_USERNAME="alice"
-export D365_PASSWORD="..."             # not persisted by default (opt-in: connect --store-password)
+export D365_PASSWORD="..."             # not persisted by default (opt-in: connect/set-password --store-password)
 export D365_DOMAIN="CONTOSO"           # optional if username is a UPN
 export D365_AUTH="ntlm"
 export D365_API_VERSION="v9.2"         # online: v9.2 · on-prem caps at v9.1 (v9.2 → HTTP 501)
@@ -75,7 +75,7 @@ export D365_URL="https://contoso.crm.dynamics.com"
 export D365_AUTH="oauth"
 export D365_TENANT_ID="<aad-tenant-id>"
 export D365_CLIENT_ID="<app-registration-id>"
-export D365_CLIENT_SECRET="..."        # env/.env only; connect can't yet store OAuth secrets (#137)
+export D365_CLIENT_SECRET="..."        # env/.env, or store once: connection set-password --store-password
 ```
 
 Scope (`https://<host>/.default`) and authority
@@ -83,7 +83,11 @@ Scope (`https://<host>/.default`) and authority
 public cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json`
 (`0600`) and reused across invocations until expiry. The app registration needs
 an **application user** with a security role in Dynamics. `CRM_*` aliases
-(`CRM_TENANT_ID`, `CRM_CLIENT_ID`, `CRM_CLIENT_SECRET`) work here too.
+(`CRM_TENANT_ID`, `CRM_CLIENT_ID`, `CRM_CLIENT_SECRET`) work here too. The client
+secret can also be stored once for an existing OAuth profile (created by
+`crm init`) with `crm connection set-password --profile <name> --store-password`
+(OS keyring) or `--store-password-plaintext` (headless/CI), exactly like an NTLM
+password — see **Hard constraints** below.
 
 A `.env` file in the current directory (or its parent, or the path in
 `CRM_DOTENV`) is auto-loaded on every command. Real env vars take
@@ -130,7 +134,7 @@ pass `--profile <name>` and confirm the real target with
 
 | Group        | Commands                                                                                | Purpose                                       |
 |--------------|-----------------------------------------------------------------------------------------|-----------------------------------------------|
-| `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`, `delete-password` | Profiles + auth probe + connection diagnostic  |
+| `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`, `set-password`, `delete-password` | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
 | `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `export-spec`, `cache-clear` | Schema introspection + option set values + dependency preview + spec export + entity-def cache |
@@ -920,9 +924,13 @@ independent retry loop and is unaffected by this gate.
 - **Real server required.** No local mocking; a live D365 server must be reachable.
 - **Secrets are not persisted by default; they may be stored on explicit opt-in**
   (`connection connect --store-password` → OS keyring, or `--store-password-plaintext`
-  → profile file, `0600` on POSIX). Resolution: `--password` > env/.env > stored
-  secret > TTY prompt. (The OAuth bearer token is still cached at
-  `~/.crm/msal_token_cache.json` (`0600`), as before.)
+  → profile file, `0600` on POSIX). For an already-existing profile — including an
+  OAuth profile created by `crm init` — store the secret once with
+  `connection set-password --profile <name>` (same `--store-password` /
+  `--store-password-plaintext` flags; keyring by default), which works for both the
+  OAuth client secret and the NTLM password. `connection delete-password` removes it.
+  Resolution: `--password` > env/.env > stored secret > TTY prompt. (The OAuth bearer
+  token is still cached at `~/.crm/msal_token_cache.json` (`0600`), as before.)
 
 ## Command discovery
 

@@ -1,14 +1,13 @@
 """Connection management commands."""
 # pyright: basic
 from __future__ import annotations
-import os
 import click
 from crm.core import connection as conn_mod
 from crm.core import keyring_store
 from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx, _stdin_is_tty
-from crm.commands._helpers import _handle_d365_error
+from crm.commands._helpers import _handle_d365_error, _plaintext_secret_warning
 
 
 @click.group("connection")
@@ -106,15 +105,7 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
         session_mod.save_profile_secret_plaintext(profile_name, resolved.password)
         # Plaintext is now this profile's single store — drop any stale keyring entry.
         keyring_store.delete_secret(profile_name)
-        warn = (
-            "Stored the secret in PLAINTEXT in the profile file."
-            if os.name != "posix"
-            else "Stored the secret in PLAINTEXT in the profile file (0600)."
-        )
-        if os.name != "posix":
-            warn += (" On Windows file permissions are NOT enforced — prefer "
-                     "--store-password (Credential Manager).")
-        ctx.skin.warning(warn)
+        ctx.skin.warning(_plaintext_secret_warning())
     else:
         # No store flag on this connect: drop any stale plaintext _secret so it is
         # not silently retained (save_profile now PRESERVES _secret across
@@ -266,6 +257,63 @@ def connection_delete_password(ctx: CLIContext, profile_name):
         data={"profile": profile_name, "removed": removed, "from": where},
         meta=({"note": "no stored secret found"} if not removed else None),
     )
+
+
+@connection_group.command("set-password")
+@click.option("--profile", "profile_name", required=True,
+              help="Profile to store the secret for (must already exist).")
+@click.option("--password", "password_opt",
+              help="Secret to store (else env D365_CLIENT_SECRET/D365_PASSWORD per the "
+                   "profile's auth scheme, else a TTY prompt).")
+@click.option("--store-password", is_flag=True,
+              help="Store the secret in the OS keyring (default when neither flag is "
+                   "given). Needs the 'crm[keyring]' extra.")
+@click.option("--store-password-plaintext", is_flag=True,
+              help="Headless/CI fallback: write the secret into the profile file "
+                   "(0600 on POSIX; perms unenforced on Windows). Emits a warning.")
+@pass_ctx
+def connection_set_password(ctx: CLIContext, profile_name, password_opt,
+                            store_password, store_password_plaintext):
+    """Store a secret (OAuth client secret or NTLM password) for an existing profile.
+
+    Storage-side mirror of `connection delete-password`. Does not contact the server
+    and does not rebuild the profile — it only writes the secret into the chosen store
+    (OS keyring by default, or the profile file with --store-password-plaintext), keeping
+    a profile's single-store invariant. The secret is read from --password, else the
+    scheme's env var, else a TTY prompt; the existing on-disk store is never read.
+    """
+    if store_password and store_password_plaintext:
+        raise click.UsageError(
+            "--store-password and --store-password-plaintext are mutually exclusive."
+        )
+    try:
+        profile = session_mod.load_profile(profile_name)
+    except FileNotFoundError:
+        _handle_d365_error(ctx, D365Error(f"Profile {profile_name!r} not found."))
+        return
+    allow_prompt = _stdin_is_tty() and not ctx.json_mode
+    try:
+        secret = conn_mod.resolve_secret_for_storage(
+            profile, password_override=password_opt, allow_prompt=allow_prompt,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if store_password_plaintext:
+        session_mod.save_profile_secret_plaintext(profile_name, secret)
+        # Plaintext is now the single store — drop any stale keyring entry.
+        keyring_store.delete_secret(profile_name)
+        ctx.skin.warning(_plaintext_secret_warning())
+        where = "plaintext"
+    else:
+        try:
+            keyring_store.set_secret(profile_name, secret)
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+        session_mod.clear_profile_secret(profile_name)
+        where = "keyring"
+    ctx.emit(True, data={"profile": profile_name, "stored": True, "to": where})
 
 
 @click.command("doctor")
