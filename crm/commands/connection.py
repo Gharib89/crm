@@ -4,9 +4,10 @@ from __future__ import annotations
 import os
 import click
 from crm.core import connection as conn_mod
+from crm.core import keyring_store
 from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile, D365Error
-from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx
+from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx, _stdin_is_tty
 from crm.commands._helpers import _handle_d365_error
 
 
@@ -29,11 +30,23 @@ def connection_group():
               help="Default solution uniquename for mutating metadata commands.")
 @click.option("--publisher-prefix", default=None,
               help="Default schema-name prefix for create commands, e.g. 'new'.")
+@click.option("--store-password", is_flag=True,
+              help="Store the secret in the OS keyring (service 'crm', account = "
+                   "profile name) so later commands need no password. Needs the "
+                   "'crm[keyring]' extra.")
+@click.option("--store-password-plaintext", is_flag=True,
+              help="Headless/CI fallback: write the secret into the profile file "
+                   "(0600 on POSIX; perms unenforced on Windows). Emits a warning.")
 @pass_ctx
 def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
                        profile_name, api_version, no_verify_ssl,
-                       default_solution, publisher_prefix):
+                       default_solution, publisher_prefix,
+                       store_password, store_password_plaintext):
     """Save a connection profile and test the credentials with WhoAmI."""
+    if store_password and store_password_plaintext:
+        raise click.UsageError(
+            "--store-password and --store-password-plaintext are mutually exclusive."
+        )
     # An omitted --api-version is negotiated against the server (v9.2 → v9.1 on
     # on-prem); an explicit value is pinned and never auto-downgraded.
     negotiate = api_version is None
@@ -50,7 +63,19 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
     )
     session_mod.save_profile(profile)
     ctx.profile_name = profile_name
-    ctx.password = password_opt or os.environ.get(conn_mod.ENV_PASSWORD, "")
+    # Resolve the secret once (flag → env → keyring/plaintext → TTY prompt) so we
+    # can both connect with it and store it without prompting twice.
+    allow_prompt = _stdin_is_tty() and not ctx.json_mode
+    try:
+        resolved = conn_mod.resolve_credentials(
+            profile_name=profile_name,
+            password_override=password_opt,
+            allow_prompt=allow_prompt,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.password = resolved.password
     ctx.invalidate_backend()
     try:
         info = conn_mod.test_connection(ctx.backend(), negotiate=negotiate)
@@ -68,6 +93,29 @@ def connection_connect(ctx: CLIContext, url, username, domain, password_opt,
     state["active_profile"] = profile_name
     session_mod.save_session(state, ctx.session_name)
     ctx.invalidate_backend()
+    if store_password:
+        try:
+            keyring_store.set_secret(profile_name, resolved.password)
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+    elif store_password_plaintext:
+        session_mod.save_profile_secret_plaintext(profile_name, resolved.password)
+        warn = (
+            "Stored the secret in PLAINTEXT in the profile file."
+            if os.name != "posix"
+            else "Stored the secret in PLAINTEXT in the profile file (0600)."
+        )
+        if os.name != "posix":
+            warn += (" On Windows file permissions are NOT enforced — prefer "
+                     "--store-password (Credential Manager).")
+        ctx.skin.warning(warn)
+    else:
+        # No store flag on this connect: drop any stale plaintext _secret so it is
+        # not silently retained (save_profile now PRESERVES _secret across
+        # re-saves, so it would otherwise persist). Keyring entries are left
+        # intact — that is the configure-once path (#130).
+        session_mod.clear_profile_secret(profile_name)
     ctx.emit(True, data=info, meta={"profile": profile_name})
 
 
