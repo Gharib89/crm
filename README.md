@@ -60,7 +60,10 @@ irm https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.ps1 | iex
 
 Installs to `%LOCALAPPDATA%\Programs\crm` and adds it to your user PATH. Open a
 new shell, then run `crm --version`. The binary is unsigned, so Windows
-SmartScreen may warn on first run. To uninstall, download `install.ps1` and run
+SmartScreen may warn on first run. On managed machines this binary may be
+blocked outright by endpoint security (e.g. Microsoft Defender ASR or
+AppLocker) — use [Option 2: uv tool install](#option-2-uv-tool-install-isolated-recommended-for-managed-machines)
+below in that case. To uninstall, download `install.ps1` and run
 `.\install.ps1 -Uninstall`.
 
 **Linux:**
@@ -82,7 +85,46 @@ hash from a trusted channel (or to install a release published before checksums
 existed), set `CRM_SHA256` (`$env:CRM_SHA256` on Windows). See
 [the install guide](docs/getting-started/install.md#integrity-verification).
 
-### Option 2: From source (development)
+### Option 2: uv tool install (isolated, recommended for managed machines)
+
+Installs `crm` into an isolated environment that runs through your trusted
+`python` interpreter instead of a standalone binary. Use this when Option 1's
+prebuilt binary is blocked by endpoint security (Microsoft Defender ASR,
+AppLocker, etc.) — there is no new unsigned executable for those policies to
+flag.
+
+First install [uv](https://docs.astral.sh/uv/getting-started/installation/) if
+you don't already have it:
+
+**Windows (PowerShell):**
+
+```powershell
+winget install --id=astral-sh.uv -e
+```
+
+**Linux / macOS:**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then install `crm` from the repository (it is not published to PyPI, so install
+from the Git source or a wheel):
+
+```bash
+uv tool install git+https://github.com/Gharib89/crm
+crm --version
+```
+
+`uv tool install` places a small launcher on your PATH; run `uv tool
+update-shell` once if `crm` isn't found in a new shell. If even that launcher is
+blocked, run the CLI as a module instead — no executable is created at all:
+
+```bash
+uv run --from git+https://github.com/Gharib89/crm crm --version
+```
+
+### Option 3: From source (development)
 
 ```bash
 # From source (local dev)
