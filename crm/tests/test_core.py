@@ -877,7 +877,7 @@ class TestReplBackendCache:
         # Stub credential resolution to avoid env/profile loading.
         monkeypatch.setattr(
             "crm.core.connection.resolve_credentials",
-            lambda profile_name=None, password_override=None:
+            lambda profile_name=None, password_override=None, *, allow_prompt=False:
                 ResolvedCredentials(profile=profile, password="pw"),
         )
         # Count D365Backend instantiations.
@@ -900,7 +900,7 @@ class TestReplBackendCache:
         ctx.password = "pw"
         monkeypatch.setattr(
             "crm.core.connection.resolve_credentials",
-            lambda profile_name=None, password_override=None:
+            lambda profile_name=None, password_override=None, *, allow_prompt=False:
                 ResolvedCredentials(profile=profile, password="pw"),
         )
         calls = {"n": 0}

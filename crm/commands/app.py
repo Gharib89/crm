@@ -166,8 +166,8 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
     # full (and to stdout, so `> sitemap.xml` works) — the default emit path
     # would truncate it via _short_repr. JSON mode already carries the full XML.
     if info.get("_dry_run") and not ctx.json_mode:
-        # Warning to stderr (skin.warning writes stdout) so stdout stays pure
-        # XML and `> sitemap.xml` produces a valid file.
+        # Warning to stderr (raw, bypassing skin.warning to skip its ⚠ icon) so
+        # stdout stays pure XML and `> sitemap.xml` produces a valid file.
         if warning:
             click.echo(warning, err=True)
         click.echo(info["sitemapxml"])

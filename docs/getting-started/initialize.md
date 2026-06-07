@@ -28,7 +28,11 @@ crm init
 Prompts for the server URL, auth scheme (`ntlm` | `kerberos` | `negotiate` |
 `oauth`, default `ntlm`), credentials, and a profile name, then saves a
 connection profile under `~/.crm/`. Secrets (password / client secret) are
-**not** written to the profile — supply them via env vars at connect time.
+**not** written to the profile by the wizard — supply them via env vars at connect
+time, or store one once for the saved profile with
+`crm connection set-password --profile <name>` (OS keyring by default). This works
+for an OAuth client secret as well as an NTLM password — see
+[Configure](configure.md).
 
 The wizard is the quickest path to a working profile. For manual setup or the
 full env-var reference, see [Configure](configure.md).

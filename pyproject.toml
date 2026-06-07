@@ -7,11 +7,11 @@ version_variables = [
     "crm/__init__.py:__version__",
     "setup.py:version",
 ]
-# Project is pre-1.0: stay in 0.x. allow_zero_version defaults to false in PSR
-# v10 (would force 1.0.0); major_on_zero=false keeps breaking changes a minor
-# bump until we deliberately cut 1.0.
-allow_zero_version = true
-major_on_zero = false
+# Graduated to 1.0 (#130). With allow_zero_version=false PSR forces the next
+# release (driven by this milestone's feat: commits) to 1.0.0, and normal semver
+# resumes thereafter (breaking → major). major_on_zero is moot once >= 1.0.
+allow_zero_version = false
+major_on_zero = true
 # release.yml owns the binary build; PSR must not build.
 build_command = ""
 commit_message = "chore(release): v{version}"
