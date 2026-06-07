@@ -169,6 +169,19 @@ def connection_test(ctx: CLIContext):
     ctx.emit(True, data=info)
 
 
+def _credential_storage(name: str) -> str:
+    """Where this profile's secret is stored: plaintext > keyring > none.
+
+    Plaintext is checked first (a cheap file read, no keyring call) and reported
+    even if a keyring entry also exists — the on-disk secret is the one to flag.
+    """
+    if session_mod.load_profile_secret(name) is not None:
+        return "plaintext"
+    if keyring_store.has_secret(name):
+        return "keyring"
+    return "none"
+
+
 @connection_group.command("profiles")
 @pass_ctx
 def connection_profiles(ctx: CLIContext):
@@ -180,29 +193,33 @@ def connection_profiles(ctx: CLIContext):
         # is surfaced under `meta` instead of changing the shape of `data`.
         profiles = []
         for n in names:
+            storage = _credential_storage(n)
             try:
                 p = session_mod.load_profile(n)
                 profiles.append({
                     "name": n,
                     "default_solution": p.default_solution,
                     "publisher_prefix": p.publisher_prefix,
+                    "credential_storage": storage,
                 })
             except FileNotFoundError:
-                profiles.append({"name": n})
+                profiles.append({"name": n, "credential_storage": storage})
         ctx.emit(True, data=names, meta={"profiles": profiles})
         return
     ctx.skin.section("Profiles")
     if not names:
         ctx.skin.hint("(none)")
     for n in names:
+        storage = _credential_storage(n)
         try:
             p = session_mod.load_profile(n)
             ctx.skin.status(
                 n,
-                f"solution={p.default_solution} prefix={p.publisher_prefix}",
+                f"solution={p.default_solution} prefix={p.publisher_prefix} "
+                f"cred={storage}",
             )
         except FileNotFoundError:
-            ctx.skin.info(n)
+            ctx.skin.status(n, f"cred={storage}")
 
 
 @connection_group.command("disconnect")

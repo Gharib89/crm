@@ -250,3 +250,24 @@ class TestDeletePassword:
         assert r.exit_code == 0, r.output
         payload = json.loads(r.stdout)
         assert payload["data"]["removed"] is False
+
+
+class TestProfilesStorageType:
+    def _mk(self, name):
+        from crm.utils.d365_backend import ConnectionProfile
+        from crm.core import session as session_mod
+        session_mod.save_profile(ConnectionProfile(
+            name=name, url="https://crm.contoso.local/c", domain="C", username="a",
+        ))
+
+    def test_reports_three_storage_types(self, fake_keyring):
+        from crm.core import session as session_mod
+        self._mk("kr"); self._mk("pt"); self._mk("no")
+        fake_keyring["kr"] = "pw"
+        session_mod.save_profile_secret_plaintext("pt", "pw")
+        r = CliRunner().invoke(cli, ["--json", "connection", "profiles"])
+        assert r.exit_code == 0, r.output
+        payload = json.loads(r.stdout)
+        assert sorted(payload["data"]) == ["kr", "no", "pt"]  # data shape unchanged
+        by = {p["name"]: p["credential_storage"] for p in payload["meta"]["profiles"]}
+        assert by == {"kr": "keyring", "pt": "plaintext", "no": "none"}
