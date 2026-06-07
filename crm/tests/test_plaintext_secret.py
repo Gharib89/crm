@@ -62,3 +62,19 @@ def test_plaintext_file_is_0600():
     _save_base_profile()
     path = session_mod.save_profile_secret_plaintext("prod", "p@ss")
     assert (path.stat().st_mode & 0o777) == 0o600
+
+
+def test_secret_survives_unrelated_profile_resave():
+    # Regression (#130): an unrelated profile mutation (e.g. solution autowire)
+    # re-saves via save_profile(); a stored plaintext secret must survive it.
+    _save_base_profile()
+    session_mod.save_profile_secret_plaintext("prod", "p@ss")
+    p = session_mod.load_profile("prod")
+    p.default_solution = "MySolution"
+    session_mod.save_profile(p)
+    assert session_mod.load_profile_secret("prod") == "p@ss"
+
+
+def test_save_secret_raises_for_missing_profile():
+    with pytest.raises(FileNotFoundError):
+        session_mod.save_profile_secret_plaintext("ghost", "x")

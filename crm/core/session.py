@@ -42,8 +42,16 @@ def profile_path(name: str) -> Path:
 
 
 def save_profile(profile: ConnectionProfile) -> Path:
+    # Preserve any existing opt-in plaintext _secret across unrelated re-saves
+    # (e.g. solution autowire).  The connect flow explicitly calls
+    # clear_profile_secret() when the user opts out, so omitting _secret here
+    # would silently wipe it on every unrelated profile mutation.
+    payload = profile.to_dict()
+    existing_secret = load_profile_secret(profile.name)
+    if existing_secret is not None:
+        payload["_secret"] = existing_secret
     p = profile_path(profile.name)
-    _atomic_write_json(p, profile.to_dict())
+    _atomic_write_json(p, payload)
     return p
 
 
