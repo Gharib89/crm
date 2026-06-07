@@ -220,6 +220,27 @@ def connection_disconnect(ctx: CLIContext):
     ctx.emit(True, data={"disconnected": True})
 
 
+@connection_group.command("delete-password")
+@click.option("--profile", "profile_name", required=True,
+              help="Profile whose stored secret should be removed.")
+@pass_ctx
+def connection_delete_password(ctx: CLIContext, profile_name):
+    """Remove a stored secret for a profile (OS keyring AND plaintext)."""
+    removed_keyring = keyring_store.delete_secret(profile_name)
+    removed_plaintext = session_mod.clear_profile_secret(profile_name)
+    removed = removed_keyring or removed_plaintext
+    where = []
+    if removed_keyring:
+        where.append("keyring")
+    if removed_plaintext:
+        where.append("plaintext")
+    ctx.emit(
+        True,
+        data={"profile": profile_name, "removed": removed, "from": where},
+        meta={"note": "no stored secret found" if not removed else None},
+    )
+
+
 @click.command("doctor")
 @pass_ctx
 def doctor_command(ctx: CLIContext):
