@@ -2,11 +2,13 @@
 
 Layout under `~/.crm/`:
 
-    profiles/<name>.json   — ConnectionProfile dicts (no passwords)
+    profiles/<name>.json   — ConnectionProfile dicts (+ optional opt-in `_secret`)
     sessions/<name>.json   — last-used profile + context (current entity, last query)
     history                — prompt_toolkit REPL history file
 
-Passwords are never persisted. They come from env (`D365_PASSWORD`) or `--password`.
+Secrets are not persisted by default; a plaintext `_secret` may be stored opt-in
+(see save_profile_secret_plaintext). They otherwise come from env (`D365_PASSWORD`),
+`--password`, or the OS keyring.
 """
 
 from __future__ import annotations
@@ -65,6 +67,57 @@ def delete_profile(name: str) -> bool:
         p.unlink()
         return True
     return False
+
+
+# ── Plaintext profile secret (issue #130, explicit opt-in only) ─────────
+#
+# Stored as a `_secret` key in the SAME profile JSON file, written/read here
+# directly — never via ConnectionProfile.to_dict()/from_dict() — so the
+# dataclass (and every status/list view built from it) stays secret-free.
+
+
+def _read_profile_raw(name: str) -> dict[str, Any]:
+    p = profile_path(name)
+    if not p.is_file():
+        raise FileNotFoundError(f"Profile not found: {name} (looked at {p})")
+    with p.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_profile_secret_plaintext(name: str, secret: str) -> Path:
+    """Merge a plaintext `_secret` into the profile JSON; 0600 on POSIX.
+
+    Windows cannot enforce file-mode perms via chmod — the caller emits the
+    warning that steers Windows users to --store-password (Credential Manager).
+    """
+    data = _read_profile_raw(name)
+    data["_secret"] = secret
+    p = profile_path(name)
+    _atomic_write_json(p, data)
+    if os.name == "posix":
+        os.chmod(p, 0o600)
+    return p
+
+
+def load_profile_secret(name: str) -> str | None:
+    """Return the plaintext `_secret` from the profile file, or None."""
+    try:
+        return _read_profile_raw(name).get("_secret")
+    except FileNotFoundError:
+        return None
+
+
+def clear_profile_secret(name: str) -> bool:
+    """Strip `_secret` from the profile file. True iff one was present."""
+    try:
+        data = _read_profile_raw(name)
+    except FileNotFoundError:
+        return False
+    if "_secret" not in data:
+        return False
+    del data["_secret"]
+    _atomic_write_json(profile_path(name), data)
+    return True
 
 
 # ── Session persistence ─────────────────────────────────────────────────
