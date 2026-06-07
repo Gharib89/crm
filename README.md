@@ -142,6 +142,21 @@ crm connection connect \
 
 State lives under `~/.crm/` (override with `CRM_HOME`).
 
+### Storing credentials once
+
+By default secrets are never persisted. To configure once:
+
+- `crm connection connect ... --store-password` saves the secret in your OS
+  keyring (macOS Keychain / Windows Credential Manager / Linux SecretService).
+  Requires the optional extra: `pip install crm[keyring]`.
+- For headless/CI hosts with no keyring, `--store-password-plaintext` writes the
+  secret into the profile file (`0600` on POSIX; perms unenforced on Windows).
+- `crm connection delete-password --profile NAME` removes a stored secret.
+- `crm connection profiles` shows each profile's storage type (keyring / plaintext / none).
+
+Resolution order: `--password` > `D365_PASSWORD`/`CRM_PASSWORD` (env/.env) >
+stored secret (keyring or plaintext) > interactive prompt (TTY only).
+
 ## Use
 
 ### Default REPL

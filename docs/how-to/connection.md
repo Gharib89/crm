@@ -55,3 +55,87 @@ crm connection doctor          # or the alias: crm doctor
 crm --json connection doctor
 ```
 Runs a live, ordered probe and renders a five-line checklist — `dns_tcp`, `tls`, `version` (the configured `api_version`), `auth`, and an informational `rate_limit` — so a failing layer is pinpointed (DNS vs TCP vs TLS vs wrong api_version vs `401`/`403`) with an actionable hint rather than collapsed into one generic error. It is read-only: it never negotiates or mutates the profile, and the raw GETs run regardless of `--dry-run`. Under `--json` it emits `{ok, data:{checks:[{check,ok,detail,hint}]}}`; the overall `ok` (and exit code) is the AND of the four diagnostic checks — `rate_limit` is informational and never fails the command.
+
+## Store credentials once
+
+By default secrets are never persisted to disk. Use one of the opt-in storage
+flags on `crm connection connect` to configure once and skip the prompt on every
+subsequent call.
+
+### OS keyring (recommended)
+
+Saves the secret in the platform keyring — macOS Keychain, Windows Credential
+Manager, or Linux SecretService. Requires the optional extra:
+
+```bash
+pip install crm[keyring]
+```
+
+**NTLM (on-prem):**
+
+```bash
+crm connection connect \
+    --url https://crm.contoso.local/Contoso \
+    --username alice --domain CONTOSO \
+    --profile-name prod \
+    --store-password
+```
+
+**OAuth (Dataverse online):**
+
+```bash
+crm connection connect \
+    --url https://contoso.crm.dynamics.com \
+    --auth oauth \
+    --tenant-id "<aad-tenant-id>" \
+    --client-id "<app-registration-id>" \
+    --profile-name cloud \
+    --store-password
+```
+
+The `--password` / client secret value is read from `--password` or the
+`D365_CLIENT_SECRET` / `D365_PASSWORD` env var and then stored in the keyring
+under the profile name. Subsequent invocations retrieve it automatically.
+
+### Headless / CI fallback (plaintext)
+
+On hosts with no keyring daemon (containers, CI runners), use
+`--store-password-plaintext` instead:
+
+```bash
+crm connection connect \
+    --url https://crm.contoso.local/Contoso \
+    --username alice --domain CONTOSO \
+    --profile-name prod \
+    --store-password-plaintext
+```
+
+This writes the secret into the profile file. On POSIX the file is created
+`0600`; on Windows file permissions are not enforced and a warning is emitted.
+
+### Remove a stored secret
+
+```bash
+crm connection delete-password --profile prod
+```
+
+Removes the stored secret from whichever store (keyring or plaintext) the
+profile uses. The profile itself is kept; only the secret is removed.
+
+### Check storage type
+
+```bash
+crm --json connection profiles
+```
+
+The output now includes a `storage` field per profile showing `keyring`,
+`plaintext`, or `none`.
+
+### Resolution order
+
+When a command needs the secret it checks, in order:
+
+1. `--password` flag on the command line
+2. `D365_PASSWORD` / `CRM_PASSWORD` environment variable (or `.env` file)
+3. Stored secret (keyring or plaintext profile entry)
+4. Interactive TTY prompt (skipped in non-interactive / CI contexts)

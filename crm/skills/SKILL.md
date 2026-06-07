@@ -54,7 +54,7 @@ The CLI authenticates with **NTLM (Windows Integrated)** for on-prem, or
 # Canonical names
 export D365_URL="https://crm.contoso.local/contoso"
 export D365_USERNAME="alice"
-export D365_PASSWORD="..."             # never persisted to disk
+export D365_PASSWORD="..."             # not persisted by default (opt-in: connect --store-password)
 export D365_DOMAIN="CONTOSO"           # optional if username is a UPN
 export D365_AUTH="ntlm"
 export D365_API_VERSION="v9.2"         # online: v9.2 · on-prem caps at v9.1 (v9.2 → HTTP 501)
@@ -75,7 +75,7 @@ export D365_URL="https://contoso.crm.dynamics.com"
 export D365_AUTH="oauth"
 export D365_TENANT_ID="<aad-tenant-id>"
 export D365_CLIENT_ID="<app-registration-id>"
-export D365_CLIENT_SECRET="..."        # never persisted to disk
+export D365_CLIENT_SECRET="..."        # not persisted by default (opt-in: connect --store-password)
 ```
 
 Scope (`https://<host>/.default`) and authority
@@ -918,10 +918,11 @@ independent retry loop and is unaffected by this gate.
   scope; OAuth targets the public cloud only.
 - **D365 CE on-prem 9.x or Dataverse online.** Same Web API; only auth differs.
 - **Real server required.** No local mocking; a live D365 server must be reachable.
-- **Credentials are never persisted; the OAuth bearer token is.** The NTLM password
-  / OAuth client secret live in `D365_PASSWORD` / `D365_CLIENT_SECRET` or `--password`
-  only — never on a saved profile. The OAuth **bearer token** (a secret until it
-  expires) IS cached on disk at `~/.crm/msal_token_cache.json` (`0600`).
+- **Secrets are not persisted by default; they may be stored on explicit opt-in**
+  (`connection connect --store-password` → OS keyring, or `--store-password-plaintext`
+  → profile file, `0600` on POSIX). Resolution: `--password` > env/.env > stored
+  secret > TTY prompt. (The OAuth bearer token is still cached at
+  `~/.crm/msal_token_cache.json` (`0600`), as before.)
 
 ## Command discovery
 
