@@ -21,7 +21,11 @@ _NULL_BACKEND_MODULE = "keyring.backends.fail"
 
 def _import_keyring() -> Any:
     try:
-        import keyring
+        # Optional extra (crm[keyring]); absent in the lint/build envs, so the
+        # missing-import diagnostic is suppressed. The ImportError guard is the
+        # real contract — _import_keyring()'s Any return leaves the keyring API
+        # calls unchecked regardless, so nothing is lost type-wise.
+        import keyring  # pyright: ignore[reportMissingImports]
     except ImportError as exc:
         raise D365Error(
             "The optional 'keyring' dependency is not installed. Install it with "
