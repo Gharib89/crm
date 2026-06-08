@@ -9,6 +9,101 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.4.0 (2026-06-08)
+
+### Bug Fixes
+
+- **ribbon**: Add dry-run support, fix pyright basic pragma in tests
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Fix remaining pyright errors in test_ribbon.py
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Guard empty slugify, replace assert with if-guard, remove unused code
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Guard None solution before _load_solution_ribbon_diff
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Harden ZIP decode, improve error messages, fix bundler spec
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+### Documentation
+
+- **plan**: Implementation plan for crm ribbon command group
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: How-to, README capability, SKILL entry
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **spec**: Design for crm ribbon command group ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **spec**: Verify ribbon decode + group ids against live org
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+### Features
+
+- **ribbon**: Add crm ribbon command group (#142) ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Add_custom_action injects button + command nodes
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Apply_ribbon_change export->validate->import->publish
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Customizations.xml entity + RibbonDiffXml navigation
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Decode RetrieveEntityRibbon CompressedEntityXml zip
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Group mapping + deterministic button id helpers
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Parse custom buttons from RibbonDiffXml
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Remove_custom_action drops action + orphaned command
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Retrieve_entity_ribbon via inline-literal RetrieveEntityRibbon
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Ribbon add-button with webresource pre-flight
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Ribbon export command + group registration
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Ribbon list reads custom buttons from solution
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+- **ribbon**: Ribbon remove with destructive confirm
+  ([#150](https://github.com/Gharib89/crm/pull/150),
+  [`2f20ed3`](https://github.com/Gharib89/crm/commit/2f20ed3bfa18bd6667d026c0c800f4b7dee02216))
+
+
 ## v1.3.0 (2026-06-08)
 
 ### Chores
