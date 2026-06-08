@@ -7,6 +7,7 @@ import click
 from crm.core import async_ops as async_ops_mod
 from crm.core import dependencies as dep_mod
 from crm.core import solution as sol_mod
+from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
 from crm.core import session as session_mod
 from crm.utils.d365_backend import D365Error
@@ -546,6 +547,33 @@ def solution_pack_cmd(ctx: CLIContext, zipfile, folder, package_type,
         _handle_d365_error(ctx, exc)
         return
     _emit_packager_result(ctx, info)
+
+
+@solution_group.command("validate")
+@click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--against-org", "against_org", is_flag=True,
+              help="Also run online checks against the connected org "
+                   "(GUID collisions, web-resource & option-set existence). "
+                   "Requires a connection/profile.")
+@pass_ctx
+def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
+    """Statically validate a solution zip before import.
+
+    OFFLINE by default -- no connection or profile required. --against-org adds
+    online checks (GUID collisions, web-resource & option-set existence). Exits
+    non-zero when any error-severity problem is found.
+    """
+    backend = ctx.backend() if against_org else None
+    try:
+        report = sv_mod.validate_solution(zip_path, backend=backend)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if report["valid"]:
+        ctx.emit(True, data=report)
+        return
+    n = sum(1 for f in report["findings"] if f["severity"] == "error")
+    ctx.emit(False, data=report, error=f"{n} validation error(s) found")
 
 
 @solution_group.command("import-result")

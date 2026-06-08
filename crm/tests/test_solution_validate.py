@@ -252,3 +252,43 @@ class TestOrgCollisions:
         _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
         report = sv.validate_solution(p)
         assert "guid-collision" not in report["checks_run"]
+
+
+# ── Task 6: CLI wiring ────────────────────────────────────────────────────────
+
+class TestValidateCli:
+    def test_good_package_exit_zero(self, tmp_path):
+        p = tmp_path / "good.zip"
+        _make_pkg(p, _sol('<RootComponent type="9" schemaName="cwx_s"/>'),
+                  _cust(optionsets='<optionset Name="cwx_s"/>'))
+        result = CliRunner().invoke(cli, ["--json", "solution", "validate", str(p)])
+        assert result.exit_code == 0, result.output
+        import json
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert data["data"]["valid"] is True
+
+    def test_parity_problem_exit_one(self, tmp_path):
+        p = tmp_path / "bad.zip"
+        _make_pkg(p, _sol(), _cust(optionsets='<optionset Name="cwx_orphan"/>'))
+        result = CliRunner().invoke(cli, ["--json", "solution", "validate", str(p)])
+        assert result.exit_code == 1, result.output
+        import json
+        data = json.loads(result.output)
+        assert data["ok"] is False
+        assert data["data"]["valid"] is False
+        assert "error" in data and data["error"]
+
+    def test_against_org_uses_backend(self, tmp_path, backend, monkeypatch):
+        p = tmp_path / "collide.zip"
+        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        import json
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"systemforms"), json={"value": [{"formid": _FORM_GUID}]})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            result = CliRunner().invoke(
+                cli, ["--json", "solution", "validate", str(p), "--against-org"])
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert any(f["check"] == "guid-collision" for f in data["data"]["findings"])
