@@ -102,6 +102,10 @@ class TestCloneWorkflow:
             "primaryentity": "cwx_ticket", "type": 1, "xaml": _XAML,
             "mode": 0, "scope": 4, "ondemand": True, "subprocess": False,
             "languagecode": 1033,
+            "triggeroncreate": True, "triggerondelete": False,
+            "triggeronupdateattributelist": None,
+            "asyncautodelete": True, "runas": 1,
+            "syncworkflowlogonfailure": False, "istransacted": True,
         }
 
     def test_clones_classic_workflow_as_draft(self, backend):
@@ -121,6 +125,19 @@ class TestCloneWorkflow:
         assert out["workflow_id"] == out["workflow_id"]  # a real GUID string
         # only the upsert PATCH happened, no activation PATCH
         assert len(_patches(m)) == 1
+
+    def test_trigger_fields_forwarded(self, backend):
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src())
+            m.patch(requests_mock.ANY, status_code=204)
+            workflow.clone_workflow_to_entity(
+                backend, _SRC_ID, "cwx_ticketclone", activate=False,
+            )
+        body = _patches(m)[0].json()
+        assert body["triggeroncreate"] is True
+        assert body["asyncautodelete"] is True
+        assert body["runas"] == 1
 
     def test_activate_true_compiles_after_create(self, backend):
         from crm.core import workflow

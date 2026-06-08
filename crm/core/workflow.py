@@ -63,7 +63,9 @@ def retarget_xaml(
 
 _WORKFLOW_SELECT = (
     "workflowid,name,category,primaryentity,type,xaml,"
-    "mode,scope,ondemand,subprocess,languagecode,statecode,statuscode"
+    "mode,scope,ondemand,subprocess,languagecode,statecode,statuscode,"
+    "triggeroncreate,triggerondelete,triggeronupdateattributelist,"
+    "asyncautodelete,runas,syncworkflowlogonfailure,istransacted"
 )
 
 
@@ -93,7 +95,11 @@ _NEEDS_MORE_CATEGORIES = {CATEGORY_ACTION, CATEGORY_BPF}
 # Categories out of scope for clone entirely.
 _UNSUPPORTED_CATEGORIES = {CATEGORY_DIALOG, CATEGORY_MODERN_FLOW}
 
-_CLONE_COPY_FIELDS = ("category", "mode", "scope", "ondemand", "subprocess", "languagecode")
+_CLONE_COPY_FIELDS = (
+    "category", "mode", "scope", "ondemand", "subprocess", "languagecode",
+    "triggeroncreate", "triggerondelete", "triggeronupdateattributelist",
+    "asyncautodelete", "runas", "syncworkflowlogonfailure", "istransacted",
+)
 COMPONENT_TYPE_WORKFLOW = 29
 
 
