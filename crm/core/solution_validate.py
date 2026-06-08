@@ -51,6 +51,63 @@ def _norm(name: str | None) -> str:
     return (name or "").strip().strip("{}").lower()
 
 
+def _entry_name(entry: ET.Element) -> str | None:
+    """Best-effort identifying name of a customizations component entry."""
+    for attr in ("schemaName", "Name", "name"):
+        v = entry.get(attr)
+        if v:
+            return v
+    for child in ("Name", "UniqueName", "FormId", "LocalizedName"):
+        t = entry.findtext(child)
+        if t:
+            return t
+    return None
+
+
+def _customization_components(cust_root: ET.Element) -> set[tuple[int, str]]:
+    """(componenttype, normalised name) for every component declared in a known node."""
+    found: set[tuple[int, str]] = set()
+    for node_tag, ctype in NODE_COMPONENT_TYPE.items():
+        for container in cust_root.iter(node_tag):
+            for entry in list(container):
+                name = _entry_name(entry)
+                if name:
+                    found.add((ctype, _norm(name)))
+    return found
+
+
+def _root_components(sol_root: ET.Element) -> set[tuple[int, str]]:
+    """(type, normalised schemaName-or-id) for every <RootComponent> in solution.xml."""
+    found: set[tuple[int, str]] = set()
+    for rc in sol_root.iter("RootComponent"):
+        type_attr = rc.get("type")
+        if type_attr is None or not type_attr.strip().lstrip("-").isdigit():
+            continue
+        name = rc.get("schemaName") or rc.get("id")
+        if name:
+            found.add((int(type_attr), _norm(name)))
+    return found
+
+
+def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Finding]:
+    cust = _customization_components(cust_root)
+    root = _root_components(sol_root)
+    findings: list[Finding] = []
+    for ctype, name in sorted(cust - root):
+        findings.append(Finding(
+            "error", "root-parity",
+            f"component {name!r} of type {ctype} is present in customizations.xml "
+            f"but not declared in <RootComponents>",
+            component=name, location="customizations.xml"))
+    for ctype, name in sorted(root - cust):
+        findings.append(Finding(
+            "error", "root-parity",
+            f"RootComponent {name!r} of type {ctype} is declared in solution.xml "
+            f"but has no definition in customizations.xml",
+            component=name, location="solution.xml/<RootComponents>"))
+    return findings
+
+
 def _load(
     zip_path: str | Path,
 ) -> tuple[ET.Element | None, ET.Element | None, list[Finding]]:
@@ -121,8 +178,8 @@ def validate_solution(
     sol_root, cust_root, findings = _load(zip_path)
     checks_run = ["package"]
     if sol_root is not None and cust_root is not None:
-        # Checkers added in later tasks are wired in here.
-        pass
+        checks_run.append("root-parity")
+        findings += _check_root_parity(sol_root, cust_root)
     valid = not any(f.severity == "error" for f in findings)
     return {
         "valid": valid,

@@ -96,3 +96,49 @@ class TestPackageChecks:
         report = sv.validate_solution(p)
         f = report["findings"][0]
         assert set(f.keys()) == {"severity", "check", "message", "component", "location"}
+
+
+# ── Task 2: root-component parity ─────────────────────────────────────────────
+
+_DASH_GUID = "11111111-1111-1111-1111-111111111111"
+
+
+class TestRootParity:
+    def test_optionset_missing_from_rootcomponents(self, tmp_path):
+        # Issue class #1: optionset in <optionsets> but not in <RootComponents>.
+        p = tmp_path / "bad_optionset.zip"
+        _make_pkg(p, _sol(), _cust(optionsets='<optionset Name="cwx_slatier"/>'))
+        report = sv.validate_solution(p)
+        assert report["valid"] is False
+        errs = [f for f in report["findings"] if f["check"] == "root-parity"]
+        assert len(errs) == 1
+        assert errs[0]["component"] == "cwx_slatier"
+        assert "not declared in <RootComponents>" in errs[0]["message"]
+
+    def test_dashboard_missing_from_rootcomponents(self, tmp_path):
+        # Issue class #3: dashboard (type 60) in node but not in <RootComponents>.
+        p = tmp_path / "bad_dashboard.zip"
+        _make_pkg(p, _sol(),
+                  _cust(dashboards=f"<Dashboard><FormId>{_DASH_GUID}</FormId></Dashboard>"))
+        report = sv.validate_solution(p)
+        errs = [f for f in report["findings"] if f["check"] == "root-parity"]
+        assert len(errs) == 1
+        assert errs[0]["component"] == _DASH_GUID
+
+    def test_rootcomponent_with_no_definition(self, tmp_path):
+        # Reverse direction: declared in <RootComponents> but absent from customizations.
+        p = tmp_path / "orphan_root.zip"
+        _make_pkg(p, _sol('<RootComponent type="9" schemaName="cwx_ghost"/>'), _cust())
+        report = sv.validate_solution(p)
+        errs = [f for f in report["findings"] if f["check"] == "root-parity"]
+        assert len(errs) == 1
+        assert errs[0]["component"] == "cwx_ghost"
+        assert "no definition in customizations.xml" in errs[0]["message"]
+
+    def test_clean_parity_is_valid(self, tmp_path):
+        p = tmp_path / "good.zip"
+        _make_pkg(p, _sol('<RootComponent type="9" schemaName="cwx_slatier"/>'),
+                  _cust(optionsets='<optionset Name="cwx_slatier"/>'))
+        report = sv.validate_solution(p)
+        assert report["valid"] is True
+        assert "root-parity" in report["checks_run"]
