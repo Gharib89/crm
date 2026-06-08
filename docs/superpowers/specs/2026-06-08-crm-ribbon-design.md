@@ -11,8 +11,10 @@ Adding a single command-bar (ribbon) button to a D365 entity currently requires 
 
 Reading the current ribbon is also awkward. Two undocumented sharp edges cost time:
 
-1. `RetrieveEntityRibbon`'s `RibbonLocationFilter` rejects an int (`7`) and requires the string member `"All"`.
+1. `RetrieveEntityRibbon`'s `RibbonLocationFilter` rejects an int (`7`); it must be the string member `'All'` passed as an **inline OData literal in the function call** (parameter-alias forms fail — see Read path below).
 2. The returned `CompressedEntityXml` is a **ZIP** (PK header), not gzip.
+
+> **Verified against the live MOCE on-prem org (2026-06-08)** via a throwaway probe on `account`, `rel_premise`, `itworx_case`, and `cwx_ticket`. The decode, the exact `RetrieveEntityRibbon` call form, and every default group ID below were confirmed live, not guessed.
 
 ## Goal
 
@@ -54,16 +56,19 @@ One new core module + one new command module + one registration line. No edits t
 
 ## Read path — `export` + `list`
 
-The decode, isolated in `retrieve_entity_ribbon`:
+The decode, isolated in `retrieve_entity_ribbon` (call form **verified live**):
 
 ```
-GET RetrieveEntityRibbon(EntityName=@p,RibbonLocationFilter=@f)
-    ?@p='cwx_ticket'
-    &@f=Microsoft.Dynamics.CRM.RibbonLocationFilter'All'   # string member, NOT int 7
+GET RetrieveEntityRibbon(EntityName='cwx_ticket',RibbonLocationFilter='All')
+    # inline string literals in the function parens. VERIFIED on the live org:
+    #   - parameter-alias `?@f='All'`  -> 400 "Expected type 'RibbonLocationFilters' but received ''All''"
+    #   - bare `?@f=All`               -> 500
+    #   - inline `RibbonLocationFilter='All'` (above) -> OK
+    # note the enum type is RibbonLocationFilters (plural).
 -> resp["CompressedEntityXml"]  (base64)
 -> base64.b64decode -> bytes starting PK\x03\x04            # ZIP, NOT gzip
--> zipfile.ZipFile(BytesIO(...)) -> read XML member(s)
--> ElementTree
+-> zipfile.ZipFile(BytesIO(...))                           # members: RibbonXml.xml, [Content_Types].xml
+-> read "RibbonXml.xml" -> ElementTree
 ```
 
 **`crm ribbon export <entity> [--output FILE]`** — pretty-prints the composed ribbon XML to stdout, or writes to `--output`. No `--solution`. Satisfies "returns readable ribbon XML directly" and is the debugging tool.
@@ -105,13 +110,15 @@ Command Id      = {base}.Command
 
 Overridable with `--id BASE`. Collision check: if any `{base}.*` ID already exists in the `RibbonDiffXml`, error and suggest a different `--label`/`--id`.
 
-**`--location` → default group** (exact group IDs confirmed against the live org during build; `--group` overrides):
+**`--location` → default group** (group IDs **verified live**, parametric on the entity logical name; `--group` overrides). The `CustomAction` `Location` injects into the group's controls, i.e. `{group}.Controls._children`:
 
 | `--location` | default group |
 |--------------|---------------|
-| `form` | `Mscrm.Form.{entity}.MainTab` (Save-area group) |
-| `homegrid` | `Mscrm.HomepageGrid.{entity}.MainTab` (Management group) |
-| `subgrid` | `Mscrm.SubGrid.{entity}.MainTab` |
+| `form` | `Mscrm.Form.{entity}.MainTab.Save` |
+| `homegrid` | `Mscrm.HomepageGrid.{entity}.MainTab.Management` |
+| `subgrid` | `Mscrm.SubGrid.{entity}.MainTab.Management` |
+
+> The exact `Location` suffix (`.Controls._children` vs the group ID alone) is the one remaining detail to confirm when `add-button` is run live — the group IDs themselves are verified.
 
 **`--param`** → `<CrmParameter Value="...">`: `PrimaryControl` (form) or `SelectedControlSelectedItemIds` (grid). **`--sequence N`** optional.
 
