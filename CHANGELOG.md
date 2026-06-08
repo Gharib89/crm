@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.2.0 (2026-06-08)
+
+### Features
+
+- **keyring**: Promote keyring to core dependency
+  ([`3500745`](https://github.com/Gharib89/crm/commit/3500745df1f3c4f58bc6f7ba128a24936e2a51c0))
+
+
 ## v1.1.1 (2026-06-08)
 
 ### Bug Fixes
