@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from crm.core.solution import export_solution, import_solution, publish_all
 from crm.core.solution_validate import validate_solution
+from crm.core.webresource import resolve_webresource_id  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend

@@ -81,3 +81,65 @@ def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
                     "function", "library"],
         "rows": rows,
     }, warnings=[warning] if warning else None)
+
+
+@ribbon_group.command("add-button")
+@click.argument("entity")
+@click.option("--label", required=True, help="Button label text.")
+@click.option("--location", required=True,
+              type=click.Choice(["form", "homegrid", "subgrid"]),
+              help="Where the button appears.")
+@click.option("--group", "group_override", default=None,
+              help="Override the target ribbon group id.")
+@click.option("--webresource", required=True,
+              help="JS web resource name, e.g. 'cwx_/scripts/x.js'.")
+@click.option("--function", required=True,
+              help="JavaScript function name, e.g. 'ns.fn'.")
+@click.option("--param", required=True,
+              type=click.Choice(["PrimaryControl", "SelectedControlSelectedItemIds"]),
+              help="CrmParameter passed to the function.")
+@click.option("--sequence", type=int, default=50, show_default=True)
+@click.option("--id", "id_base", default=None,
+              help="Override the generated id base ({entity}.{location}.{label}).")
+@_solution_option
+@pass_ctx
+def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
+                      function, param, sequence, id_base, solution, require_solution):
+    """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(True))
+    if solution is None:
+        ctx.emit(False, error="--solution is required")
+        return
+    try:
+        ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
+    except (D365Error, ValueError) as exc:
+        if isinstance(exc, D365Error):
+            _handle_d365_error(ctx, exc)
+        else:
+            ctx.emit(False, error=str(exc))
+        return
+
+    group = ribbon_mod.resolve_group(location, entity, group_override)
+    ids = ribbon_mod.build_button_ids(entity, location, label, id_base)
+
+    def mutate(cust_root):
+        node = ribbon_mod.find_entity_node(cust_root, entity)
+        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+        ribbon_mod.add_custom_action(
+            diff, ids=ids, group=group, label=label, webresource=webresource,
+            function=function, param=param, sequence=sequence)
+
+    try:
+        result = ribbon_mod.apply_ribbon_change(
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    ctx.emit(True, data={"button_id": ids.custom_action, "group": group,
+                         "result": result},
+             warnings=[warning] if warning else None)
+    _journal(ctx, "ribbon add-button", ids.custom_action, result, solution=solution)

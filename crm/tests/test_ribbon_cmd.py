@@ -56,3 +56,46 @@ def test_ribbon_list_shows_custom_buttons(monkeypatch, tmp_path):
     assert res.exit_code == 0, res.output
     assert "cwx_ticket.form.Validate.CustomAction" in res.output
     assert "Validate" in res.output
+
+
+def test_ribbon_add_button_applies(monkeypatch):
+    calls: dict[str, object] = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, **kw):
+        # exercise the mutate callback against a minimal solution root
+        root = ET.fromstring(
+            "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+            "</Entity></Entities></ImportExportXml>")
+        mutate(root)
+        calls["solution"] = solution
+        calls["entity"] = entity
+        calls["has_button"] = (
+            root.find(".//Button[@LabelText='Validate']") is not None)
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/scripts/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 0, res.output
+    assert calls["solution"] == "MySol"
+    assert calls["has_button"] is True
+
+
+def test_ribbon_add_button_rejects_missing_webresource(monkeypatch):
+    def boom(backend, name):
+        raise ValueError(f"web resource {name!r} not found")
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id", boom)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/missing.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 1
+    assert "not found" in res.output
