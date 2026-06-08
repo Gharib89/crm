@@ -22,12 +22,16 @@ from crm.commands._helpers import (
 # Metadata entity-sets that reject record-style PATCH; point the user at the
 # metadata command group instead (#146d). Matched case-insensitively on the
 # collection name that precedes any key, so 'EntityDefinitions(...)' counts.
-_METADATA_SETS = frozenset(("entitydefinitions", "attributemetadata", "globaloptionsetdefinitions"))
+_METADATA_SETS = frozenset(("entitydefinitions", "attributemetadata"))
+_OPTIONSET_SETS = frozenset(("globaloptionsetdefinitions",))
 
 
 def _metadata_set_hint(entity_set: str) -> str | None:
     """Return a hint for EntityMetadata PATCH operations, None for regular entities."""
     head = entity_set.split("(", 1)[0].strip().lower()
+    if head in _OPTIONSET_SETS:
+        return ("global option sets are not editable via 'entity update'; use "
+                "'crm metadata update-optionset'.")
     if head in _METADATA_SETS or head.endswith("metadata"):
         return ("metadata is not editable via 'entity update'; use "
                 "'crm metadata update-entity' / 'crm metadata update-attribute'.")

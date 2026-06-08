@@ -341,7 +341,10 @@ def apply_spec(
                     planned.append(comp_entry)
                     continue
                 try:
-                    raw = os_mod.get_optionset(backend, os_name)
+                    raw = as_dict(backend.get(
+                        f"GlobalOptionSetDefinitions(Name='{os_name}')",
+                        params={"$select": "MetadataId"},
+                    ))
                     metadata_id = raw.get("MetadataId")
                     if not isinstance(metadata_id, str) or not metadata_id:
                         raise D365Error(
