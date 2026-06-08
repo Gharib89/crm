@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -89,3 +90,46 @@ def list_custom_buttons(ribbon_diff: ET.Element) -> list[RibbonButton]:
             library=lib,
         ))
     return buttons
+
+
+DEFAULT_GROUPS: dict[str, str] = {
+    "form": "Mscrm.Form.{entity}.MainTab.Save",
+    "homegrid": "Mscrm.HomepageGrid.{entity}.MainTab.Management",
+    "subgrid": "Mscrm.SubGrid.{entity}.MainTab.Management",
+}
+
+
+def slugify(label: str) -> str:
+    """Reduce a label to an ID-safe token (alphanumerics only)."""
+    return re.sub(r"[^A-Za-z0-9]+", "", label)
+
+
+def resolve_group(location: str, entity: str, group_override: str | None) -> str:
+    """Map a --location to its default ribbon group, or honor --group override."""
+    if group_override:
+        return group_override
+    try:
+        return DEFAULT_GROUPS[location].format(entity=entity)
+    except KeyError:
+        raise ValueError(
+            f"unknown location {location!r}; expected one of {sorted(DEFAULT_GROUPS)}")
+
+
+@dataclass(frozen=True)
+class ButtonIds:
+    """The three deterministic IDs a custom button needs."""
+    custom_action: str
+    button: str
+    command: str
+
+
+def build_button_ids(
+    entity: str, location: str, label: str, base_override: str | None
+) -> ButtonIds:
+    """Deterministic, human-readable IDs: ``{entity}.{location}.{slug(label)}.*``."""
+    base = base_override or f"{entity}.{location}.{slugify(label)}"
+    return ButtonIds(
+        custom_action=f"{base}.CustomAction",
+        button=f"{base}.Button",
+        command=f"{base}.Command",
+    )

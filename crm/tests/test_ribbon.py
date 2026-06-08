@@ -81,3 +81,34 @@ def test_list_custom_buttons_extracts_fields():
 def test_list_custom_buttons_empty_when_no_customactions():
     diff = ET.fromstring("<RibbonDiffXml><CustomActions/></RibbonDiffXml>")
     assert ribbon.list_custom_buttons(diff) == []
+
+
+def test_slugify_label():
+    assert ribbon.slugify("Validate Ticket!") == "ValidateTicket"
+    assert ribbon.slugify("re-open") == "reopen"
+
+
+def test_resolve_group_defaults_are_parametric():
+    assert ribbon.resolve_group("form", "cwx_ticket", None) == \
+        "Mscrm.Form.cwx_ticket.MainTab.Save"
+    assert ribbon.resolve_group("homegrid", "cwx_ticket", None) == \
+        "Mscrm.HomepageGrid.cwx_ticket.MainTab.Management"
+    assert ribbon.resolve_group("subgrid", "cwx_ticket", None) == \
+        "Mscrm.SubGrid.cwx_ticket.MainTab.Management"
+
+
+def test_resolve_group_override_wins():
+    assert ribbon.resolve_group("form", "cwx_ticket", "My.Custom.Group") == \
+        "My.Custom.Group"
+
+
+def test_build_button_ids():
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    assert ids.custom_action == "cwx_ticket.form.Validate.CustomAction"
+    assert ids.button == "cwx_ticket.form.Validate.Button"
+    assert ids.command == "cwx_ticket.form.Validate.Command"
+
+
+def test_build_button_ids_with_override_base():
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", "my.base")
+    assert ids.custom_action == "my.base.CustomAction"
