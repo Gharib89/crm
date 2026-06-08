@@ -257,7 +257,7 @@ def _project_attribute(
         first = cast("list[Any]", targets)[0]
         if not isinstance(first, str) or not first:
             warnings.append(
-                f"dropped column {attr_logical!r}: lookup has no resolvable target entity"
+                f"dropped column {attr_logical!r}: lookup target entry is not a valid string"
             )
             return None
         # A polymorphic lookup (len(Targets) > 1) exports only the first target
