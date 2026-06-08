@@ -133,3 +133,25 @@ def build_button_ids(
         button=f"{base}.Button",
         command=f"{base}.Command",
     )
+
+
+def find_entity_node(cust_root: ET.Element, entity: str) -> ET.Element:
+    """Locate the ``<Entity>`` whose ``<Name>`` matches ``entity`` (case-insensitive)."""
+    target = entity.lower()
+    for node in cust_root.iter("Entity"):
+        name = node.findtext("Name")
+        if name is not None and name.lower() == target:
+            return node
+    raise ValueError(f"entity {entity!r} not found in solution customizations")
+
+
+def get_or_create_ribbon_diff(entity_node: ET.Element) -> ET.Element:
+    """Return the entity's ``<RibbonDiffXml>``, creating an empty skeleton if absent."""
+    diff = entity_node.find("RibbonDiffXml")
+    if diff is None:
+        diff = ET.SubElement(entity_node, "RibbonDiffXml")
+    for child in ("CustomActions", "Templates", "CommandDefinitions",
+                  "RuleDefinitions", "LocLabels"):
+        if diff.find(child) is None:
+            ET.SubElement(diff, child)
+    return diff

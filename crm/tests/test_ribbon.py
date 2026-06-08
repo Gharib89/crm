@@ -112,3 +112,46 @@ def test_build_button_ids():
 def test_build_button_ids_with_override_base():
     ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", "my.base")
     assert ids.custom_action == "my.base.CustomAction"
+
+
+CUST_XML = """<ImportExportXml>
+  <Entities>
+    <Entity><Name>cwx_ticket</Name><RibbonDiffXml><CustomActions/></RibbonDiffXml></Entity>
+    <Entity><Name>account</Name></Entity>
+  </Entities>
+</ImportExportXml>"""
+
+
+def test_find_entity_node_case_insensitive():
+    root = ET.fromstring(CUST_XML)
+    node = ribbon.find_entity_node(root, "CWX_Ticket")
+    assert node is not None
+    assert node.findtext("Name") == "cwx_ticket"
+
+
+def test_find_entity_node_missing_raises():
+    root = ET.fromstring(CUST_XML)
+    with pytest.raises(ValueError, match="not found in solution"):
+        ribbon.find_entity_node(root, "cwx_missing")
+
+
+def test_get_or_create_ribbon_diff_returns_existing():
+    root = ET.fromstring(CUST_XML)
+    entity = ribbon.find_entity_node(root, "cwx_ticket")
+    diff = ribbon.get_or_create_ribbon_diff(entity)
+    assert diff.tag == "RibbonDiffXml"
+    assert diff.find("CustomActions") is not None
+
+
+def test_get_or_create_ribbon_diff_creates_skeleton():
+    root = ET.fromstring(CUST_XML)
+    entity = ribbon.find_entity_node(root, "account")
+    diff = ribbon.get_or_create_ribbon_diff(entity)
+    assert diff.tag == "RibbonDiffXml"
+    for child in ("CustomActions", "Templates", "CommandDefinitions",
+                  "RuleDefinitions", "LocLabels"):
+        assert diff.find(child) is not None
+    # idempotent: second call returns the same element, no duplicate
+    again = ribbon.get_or_create_ribbon_diff(entity)
+    assert again is diff
+    assert len(entity.findall("RibbonDiffXml")) == 1
