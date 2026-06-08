@@ -510,7 +510,7 @@ def _async_export_unavailable(exc: D365Error) -> bool:
     )
 
 
-def _import_job_id_rejected(exc: D365Error) -> bool:
+def _import_job_id_rejected(exc: D365Error) -> bool:  # pyright: ignore[reportUnusedFunction]
     """True when on-prem rejects ImportJobId as an invalid parameter."""
     msg = str(exc).lower()
     return "importjobid" in msg and (
