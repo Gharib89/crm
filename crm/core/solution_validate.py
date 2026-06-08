@@ -24,6 +24,7 @@ _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml"
 # Cap decompression so a zip-bomb manifest can't OOM the validator (see the same
 # guard on solution._sniff_solution_managed).
 _MAX_XML_BYTES = 64 * 1024 * 1024
+_WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<]+)")
 
 # customizations.xml container node -> componenttype int (single source of truth
 # is SOLUTION_COMPONENT_TYPES). Each container wraps one entry per component.
@@ -108,6 +109,42 @@ def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Find
     return findings
 
 
+def _webresource_exists_in_org(backend: D365Backend, name: str) -> bool:
+    lit = name.replace("'", "''")
+    resp = as_dict(backend.get(
+        "webresourceset",
+        params={"$select": "webresourceid", "$filter": f"name eq '{lit}'", "$top": "1"}))
+    return bool(resp.get("value"))
+
+
+def _check_webresource_refs(
+    cust_root: ET.Element, backend: D365Backend | None
+) -> list[Finding]:
+    refs: set[str] = set()
+    for ribbon in cust_root.iter("RibbonDiffXml"):
+        refs.update(_WEBRESOURCE_REF.findall(ET.tostring(ribbon, encoding="unicode")))
+    if not refs:
+        return []
+    pkg: set[str] = set()
+    for container in cust_root.iter("WebResources"):
+        for entry in list(container):
+            n = _entry_name(entry)
+            if n:
+                pkg.add(_norm(n))
+    findings: list[Finding] = []
+    for ref in sorted(refs):
+        if _norm(ref) in pkg:
+            continue
+        if backend is not None and _webresource_exists_in_org(backend, ref):
+            continue
+        where = "package or org" if backend is not None else "package"
+        findings.append(Finding(
+            "error", "webresource-ref",
+            f"ribbon references web resource {ref!r} which is not present in the {where}",
+            component=ref, location="customizations.xml/RibbonDiffXml"))
+    return findings
+
+
 def _load(
     zip_path: str | Path,
 ) -> tuple[ET.Element | None, ET.Element | None, list[Finding]]:
@@ -180,6 +217,8 @@ def validate_solution(
     if sol_root is not None and cust_root is not None:
         checks_run.append("root-parity")
         findings += _check_root_parity(sol_root, cust_root)
+        checks_run.append("webresource-ref")
+        findings += _check_webresource_refs(cust_root, backend)
     valid = not any(f.severity == "error" for f in findings)
     return {
         "valid": valid,

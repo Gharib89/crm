@@ -142,3 +142,41 @@ class TestRootParity:
         report = sv.validate_solution(p)
         assert report["valid"] is True
         assert "root-parity" in report["checks_run"]
+
+
+# ── Task 3: $webresource: ribbon refs ─────────────────────────────────────────
+
+def _ribbon(*refs):
+    cmds = "".join(
+        f'<CommandDefinition Id="c{i}"><JavaScriptFunction Library="$webresource:{r}"/>'
+        f"</CommandDefinition>"
+        for i, r in enumerate(refs)
+    )
+    return f"<Entity><RibbonDiffXml><CommandDefinitions>{cmds}</CommandDefinitions></RibbonDiffXml></Entity>"
+
+
+class TestWebresourceRefs:
+    def test_unresolved_ref_is_error(self, tmp_path):
+        p = tmp_path / "bad_ref.zip"
+        _make_pkg(p, _sol(), _cust(entities=_ribbon("cwx_/missing.js")))
+        report = sv.validate_solution(p)
+        errs = [f for f in report["findings"] if f["check"] == "webresource-ref"]
+        assert len(errs) == 1
+        assert errs[0]["component"] == "cwx_/missing.js"
+
+    def test_ref_resolved_in_package_is_ok(self, tmp_path):
+        p = tmp_path / "good_ref.zip"
+        _make_pkg(p, _sol(),
+                  _cust(entities=_ribbon("cwx_/present.js"),
+                        webresources="<WebResource><Name>cwx_/present.js</Name></WebResource>"))
+        report = sv.validate_solution(p)
+        assert [f for f in report["findings"] if f["check"] == "webresource-ref"] == []
+
+    def test_ref_resolved_against_org(self, tmp_path, backend):
+        p = tmp_path / "org_ref.zip"
+        _make_pkg(p, _sol(), _cust(entities=_ribbon("cwx_/inorg.js")))
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"webresourceset"),
+                  json={"value": [{"webresourceid": "x"}]})
+            report = sv.validate_solution(p, backend=backend)
+        assert [f for f in report["findings"] if f["check"] == "webresource-ref"] == []
