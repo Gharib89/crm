@@ -13,3 +13,4 @@ site/
 .wrangler/
 .claude/scheduled_tasks.lock
 data/
+.worktrees/
