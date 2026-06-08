@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.3.0 (2026-06-08)
+
+### Chores
+
+- **plan**: Add the plan file for issue 140
+  ([`a7c26ec`](https://github.com/Gharib89/crm/commit/a7c26ecaab2e8202754f43a42586f05aa1ffeba0))
+
+### Documentation
+
+- **spec**: Design for crm solution validate ([#141](https://github.com/Gharib89/crm/pull/141),
+  [`361510a`](https://github.com/Gharib89/crm/commit/361510a41305ef1e7785b53be3fb4b658c7ab05a))
+
+### Features
+
+- **solution**: Add crm solution validate for offline pre-import checks
+  ([#141](https://github.com/Gharib89/crm/pull/141),
+  [`4b1806a`](https://github.com/Gharib89/crm/commit/4b1806a37182e57cab8174844d3f1dfe3711a3aa))
+
+
 ## v1.2.0 (2026-06-08)
 
 ### Features
