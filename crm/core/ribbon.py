@@ -155,3 +155,51 @@ def get_or_create_ribbon_diff(entity_node: ET.Element) -> ET.Element:
         if diff.find(child) is None:
             ET.SubElement(diff, child)
     return diff
+
+
+def add_custom_action(
+    ribbon_diff: ET.Element,
+    *,
+    ids: ButtonIds,
+    group: str,
+    label: str,
+    webresource: str,
+    function: str,
+    param: str,
+    sequence: int,
+) -> None:
+    """Inject a CustomAction + CommandDefinition for a JS button into RibbonDiffXml.
+
+    Raises ValueError if any of the three IDs already exists in the diff.
+    """
+    existing = {el.get("Id") for el in ribbon_diff.iter()
+                if el.tag in ("CustomAction", "Button", "CommandDefinition")}
+    for new_id in (ids.custom_action, ids.button, ids.command):
+        if new_id in existing:
+            raise ValueError(
+                f"ribbon id {new_id!r} already exists — use a different --label/--id")
+
+    actions = ribbon_diff.find("CustomActions")
+    cmds = ribbon_diff.find("CommandDefinitions")
+    if actions is None or cmds is None:
+        raise ValueError("RibbonDiffXml missing CustomActions/CommandDefinitions")
+
+    action = ET.SubElement(actions, "CustomAction", {
+        "Id": ids.custom_action,
+        "Location": f"{group}.Controls._children",
+        "Sequence": str(sequence),
+    })
+    uidef = ET.SubElement(action, "CommandUIDefinition")
+    ET.SubElement(uidef, "Button", {
+        "Id": ids.button, "Command": ids.command, "LabelText": label,
+        "ToolTipTitle": label, "TemplateAlias": "o1", "Sequence": str(sequence),
+    })
+
+    cdef = ET.SubElement(cmds, "CommandDefinition", {"Id": ids.command})
+    ET.SubElement(cdef, "EnableRules")
+    ET.SubElement(cdef, "DisplayRules")
+    actions_el = ET.SubElement(cdef, "Actions")
+    jsf = ET.SubElement(actions_el, "JavaScriptFunction", {
+        "Library": f"$webresource:{webresource}", "FunctionName": function,
+    })
+    ET.SubElement(jsf, "CrmParameter", {"Value": param})

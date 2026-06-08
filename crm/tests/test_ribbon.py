@@ -155,3 +155,43 @@ def test_get_or_create_ribbon_diff_creates_skeleton():
     again = ribbon.get_or_create_ribbon_diff(entity)
     assert again is diff
     assert len(entity.findall("RibbonDiffXml")) == 1
+
+
+def _empty_diff() -> ET.Element:
+    root = ET.fromstring(
+        "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+        "</Entity></Entities></ImportExportXml>")
+    return ribbon.get_or_create_ribbon_diff(ribbon.find_entity_node(root, "cwx_ticket"))
+
+
+def test_add_custom_action_injects_three_nodes():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="Mscrm.Form.cwx_ticket.MainTab.Save",
+        label="Validate", webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    buttons = ribbon.list_custom_buttons(diff)
+    assert len(buttons) == 1
+    b = buttons[0]
+    assert b.button_id == ids.custom_action
+    assert b.label == "Validate"
+    assert b.function == "ns.fn"
+    assert b.library == "$webresource:cwx_/scripts/x.js"
+    action = diff.find(f".//CustomAction[@Id='{ids.custom_action}']")
+    assert action is not None
+    assert action.get("Location") == \
+        "Mscrm.Form.cwx_ticket.MainTab.Save.Controls._children"
+    crm_param = diff.find(".//JavaScriptFunction/CrmParameter")
+    assert crm_param is not None and crm_param.get("Value") == "PrimaryControl"
+
+
+def test_add_custom_action_rejects_id_collision():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    kw = dict(ids=ids, group="G", label="Validate",
+              webresource="cwx_/scripts/x.js", function="ns.fn",
+              param="PrimaryControl", sequence=50)
+    ribbon.add_custom_action(diff, **kw)
+    with pytest.raises(ValueError, match="already exists"):
+        ribbon.add_custom_action(diff, **kw)
