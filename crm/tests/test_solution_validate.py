@@ -214,3 +214,41 @@ class TestOptionsetBindings:
                   json={"value": [{"Name": "cwx_inorg"}]})
             report = sv.validate_solution(p, backend=backend)
         assert [f for f in report["findings"] if f["check"] == "optionset-binding"] == []
+
+
+# ── Task 5: org GUID collisions (--against-org) ───────────────────────────────
+
+_FORM_GUID = "22222222-2222-2222-2222-222222222222"
+
+
+def _form(guid):
+    return f'<Entity><FormXml><forms><systemform><formid>{guid}</formid></systemform></forms></FormXml></Entity>'
+
+
+class TestOrgCollisions:
+    def test_colliding_formid_is_error(self, tmp_path, backend):
+        p = tmp_path / "collide.zip"
+        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"systemforms"), json={"value": [{"formid": _FORM_GUID}]})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend)
+        errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
+        assert len(errs) == 1
+        assert _FORM_GUID in errs[0]["message"]
+        assert "guid-collision" in report["checks_run"]
+
+    def test_no_collision_is_ok(self, tmp_path, backend):
+        p = tmp_path / "nocollide.zip"
+        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"systemforms"), json={"value": []})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend)
+        assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
+
+    def test_collisions_skipped_without_backend(self, tmp_path):
+        p = tmp_path / "offline.zip"
+        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
+        report = sv.validate_solution(p)
+        assert "guid-collision" not in report["checks_run"]

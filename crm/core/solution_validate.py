@@ -26,6 +26,12 @@ _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml"
 _MAX_XML_BYTES = 64 * 1024 * 1024
 _WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<>]+)")
 
+# (customizations element tag, id-field candidates, org entity set, org id attr)
+_COLLISION_SOURCES: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
+    ("systemform", ("formid", "FormId", "id"), "systemforms", "formid"),
+    ("savedquery", ("savedqueryid", "SavedQueryId", "id"), "savedqueries", "savedqueryid"),
+)
+
 # customizations.xml container node -> componenttype int (single source of truth
 # is SOLUTION_COMPONENT_TYPES). Each container wraps one entry per component.
 NODE_COMPONENT_TYPE: dict[str, int] = {
@@ -184,6 +190,41 @@ def _check_optionset_bindings(
     return findings
 
 
+def _extract_guid(el: ET.Element, candidates: tuple[str, ...]) -> str | None:
+    for c in candidates:
+        v = el.get(c) or el.findtext(c)
+        if v:
+            return v
+    return None
+
+
+def _check_org_collisions(cust_root: ET.Element, backend: D365Backend) -> list[Finding]:
+    """Report formid/savedqueryid GUIDs that already exist in the target org.
+
+    A cloned form/view that kept its source GUID collides on import (the root
+    cause of the "label ... already exists" class). OData v4 GUID filters take
+    the bare GUID (no quotes), matching solution.solution_components.
+    """
+    findings: list[Finding] = []
+    for elem_tag, id_fields, entity_set, id_attr in _COLLISION_SOURCES:
+        guids: set[str] = set()
+        for el in cust_root.iter(elem_tag):
+            gid = _extract_guid(el, id_fields)
+            if gid:
+                guids.add(_norm(gid))
+        for gid in sorted(guids):
+            resp = as_dict(backend.get(
+                entity_set,
+                params={"$select": id_attr, "$filter": f"{id_attr} eq {gid}", "$top": "1"}))
+            if resp.get("value"):
+                findings.append(Finding(
+                    "error", "guid-collision",
+                    f"{elem_tag} id {gid} already exists in the target org "
+                    f"(import will fail with a duplicate-id/label error)",
+                    component=gid, location="customizations.xml"))
+    return findings
+
+
 def _load(
     zip_path: str | Path,
 ) -> tuple[ET.Element | None, ET.Element | None, list[Finding]]:
@@ -260,6 +301,9 @@ def validate_solution(
         findings += _check_webresource_refs(cust_root, backend)
         checks_run.append("optionset-binding")
         findings += _check_optionset_bindings(cust_root, backend)
+        if backend is not None:
+            checks_run.append("guid-collision")
+            findings += _check_org_collisions(cust_root, backend)
     valid = not any(f.severity == "error" for f in findings)
     return {
         "valid": valid,
