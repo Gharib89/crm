@@ -234,3 +234,66 @@ class TestCloneEntityWorkflows:
         assert len(out["skipped_workflows"]) == 1
         assert out["skipped_workflows"][0]["name"] == "BadAction"
         assert "not yet supported" in out["skipped_workflows"][0]["reason"]
+
+
+from click.testing import CliRunner
+
+
+class TestCloneCommand:
+    def test_clone_entity_command_invokes_core(self, monkeypatch):
+        from crm.commands import metadata as md_cmd
+
+        called = {}
+
+        def fake_clone(backend, source, new_schema, **kw):
+            called.update(dict(source=source, new_schema=new_schema, **kw))
+            return {"created": True, "logical_name": new_schema.lower(),
+                    "counts": {"attributes": 1, "views": 0, "forms": 0, "workflows": 0},
+                    "skipped_workflows": [], "ribbon_note": "n/a"}
+
+        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity", fake_clone)
+
+        from crm.cli import cli
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "metadata", "clone-entity", "new_project", "cwx_TicketClone",
+            "--display", "Ticket Clone", "--with-all",
+        ])
+        assert result.exit_code == 0, result.output
+        assert called["source"] == "new_project"
+        assert called["new_schema"] == "cwx_TicketClone"
+        assert called["display"] == "Ticket Clone"
+        assert called["with_forms"] is True
+        assert called["with_views"] is True
+        assert called["with_workflows"] is True
+
+    def test_with_all_overrides_individual_flags(self, monkeypatch):
+        from crm.commands import metadata as md_cmd
+        called = {}
+        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
+                            lambda b, s, n, **kw: called.update(kw) or {
+                                "created": True, "logical_name": n.lower(),
+                                "counts": {"attributes": 0, "views": 0,
+                                           "forms": 0, "workflows": 0},
+                                "skipped_workflows": [], "ribbon_note": "n/a"})
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-all"])
+        assert result.exit_code == 0, result.output
+        assert called["with_forms"] and called["with_views"] and called["with_workflows"]
+
+    def test_skipped_workflows_surface_in_output(self, monkeypatch):
+        from crm.commands import metadata as md_cmd
+        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
+                            lambda b, s, n, **kw: {
+                                "created": True, "logical_name": n.lower(),
+                                "counts": {"attributes": 0, "views": 0,
+                                           "forms": 0, "workflows": 1},
+                                "skipped_workflows": [{"name": "BadAction",
+                                                       "reason": "not yet supported"}],
+                                "ribbon_note": "n/a"})
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-workflows"])
+        assert result.exit_code == 0, result.output
+        assert "BadAction" in result.output
