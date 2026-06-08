@@ -24,7 +24,7 @@ _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml"
 # Cap decompression so a zip-bomb manifest can't OOM the validator (see the same
 # guard on solution._sniff_solution_managed).
 _MAX_XML_BYTES = 64 * 1024 * 1024
-_WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<]+)")
+_WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<>]+)")
 
 # customizations.xml container node -> componenttype int (single source of truth
 # is SOLUTION_COMPONENT_TYPES). Each container wraps one entry per component.
