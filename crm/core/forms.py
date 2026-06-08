@@ -12,7 +12,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, as_dict
+from crm.core.metadata import maybe_publish
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 FORM_TYPE_MAIN = 2
 
@@ -64,3 +65,51 @@ def read_entity_forms(
             "isdefault": bool(row.get("isdefault", False)),
         })
     return result
+
+
+def clone_form_to_entity(
+    backend: D365Backend,
+    form: dict[str, Any],
+    new_entity: str,
+    *,
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Create a systemform on ``new_entity`` from a ``read_entity_forms`` dict.
+
+    Retargets ``formxml`` and sets ``objecttypecode`` to the clone. The server
+    assigns a fresh formid. Read-back is via the OData-EntityId header, matching
+    the view/metadata-write precedent.
+    """
+    src_entity = form.get("objecttypecode")
+    if not src_entity:
+        raise D365Error("form is missing objecttypecode; cannot retarget.")
+    body: dict[str, Any] = {
+        "name": form.get("name"),
+        "objecttypecode": new_entity,
+        "type": form.get("type"),
+        "formxml": retarget_formxml(
+            form.get("formxml", ""), src_entity=src_entity, dst_entity=new_entity),
+    }
+    if form.get("description") is not None:
+        body["description"] = form["description"]
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post("systemforms", json_body=body, extra_headers=headers))
+    if result.get("_dry_run"):
+        return result
+
+    entity_id_url = result.get("_entity_id_url") or ""
+    match = re.search(r"systemforms\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    formid = match.group(1) if match else None
+    out: dict[str, Any] = {
+        "created": True,
+        "name": form.get("name", ""),
+        "formid": formid,
+        "type": form.get("type"),
+        "objecttypecode": new_entity,
+    }
+    if formid is None:
+        out["form_lookup_error"] = (
+            f"Could not parse formid from response: {entity_id_url!r}")
+    maybe_publish(backend, out, publish)
+    return out

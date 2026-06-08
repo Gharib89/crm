@@ -92,3 +92,38 @@ class TestRetargetFormxml:
         from crm.core.forms import retarget_formxml
         out = retarget_formxml("<form/>", src_entity="new_project", dst_entity="cwx_ticketclone")
         assert out == "<form/>"
+
+
+class TestCloneFormToEntity:
+    def test_posts_retargeted_form(self, backend):
+        from crm.core import forms
+        form = {
+            "formid": "old", "name": "Information", "objecttypecode": "new_project",
+            "type": 2,
+            "formxml": '<form><control entityname="new_project" /></form>',
+            "description": "Main form", "isdefault": True,
+        }
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("systemforms"), status_code=204, headers={
+                "OData-EntityId":
+                    backend.url_for("systemforms(99998888-7777-6666-5555-444433332222)"),
+            })
+            out = forms.clone_form_to_entity(backend, form, "cwx_ticketclone")
+        body = m.last_request.json()
+        assert body["objecttypecode"] == "cwx_ticketclone"
+        assert 'entityname="cwx_ticketclone"' in body["formxml"]
+        assert body["name"] == "Information"
+        assert body["type"] == 2
+        assert out["created"] is True
+        assert out["formid"] == "99998888-7777-6666-5555-444433332222"
+
+    def test_adds_solution_header_when_given(self, backend):
+        from crm.core import forms
+        form = {"formid": "old", "name": "F", "objecttypecode": "new_project",
+                "type": 2, "formxml": "<form/>", "description": None, "isdefault": False}
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("systemforms"), status_code=204, headers={
+                "OData-EntityId": backend.url_for("systemforms(99998888-7777-6666-5555-444433332222)"),
+            })
+            forms.clone_form_to_entity(backend, form, "cwx_ticketclone", solution="MySol")
+        assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
