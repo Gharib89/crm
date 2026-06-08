@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli, CLIContext

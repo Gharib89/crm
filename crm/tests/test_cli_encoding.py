@@ -29,6 +29,13 @@ def test_noop_on_stream_without_reconfigure():
     assert d.encoding == "cp1252"
 
 
+def test_noop_on_stream_with_none_encoding():
+    class Dummy:
+        encoding = None
+    d = Dummy()
+    force_utf8_output(d)  # must not raise AttributeError on None.lower()
+
+
 def test_noop_on_already_utf8_stream():
     s = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
     force_utf8_output(s)

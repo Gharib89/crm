@@ -38,7 +38,8 @@ def force_utf8_output(stream: Any) -> None:
     errors='replace' takes effect only when reconfigure succeeds; if the stream
     lacks reconfigure or the call raises, the stream is left unchanged.
     """
-    if getattr(stream, "encoding", "").lower() == "utf-8":
+    encoding = getattr(stream, "encoding", None)
+    if isinstance(encoding, str) and encoding.lower() == "utf-8":
         return
     reconfigure = getattr(stream, "reconfigure", None)
     if reconfigure is None:
