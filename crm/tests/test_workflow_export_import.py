@@ -51,3 +51,31 @@ class TestExportImport:
         assert patches[0].json()["xaml"] == _XAML
         assert out["workflow_id"] == _WF_ID
         assert out["activated"] is False
+
+
+from click.testing import CliRunner
+
+
+class TestExportImportCommands:
+    def test_export_command(self, monkeypatch, tmp_path):
+        from crm.commands import workflow as wf_cmd
+        captured = {}
+        monkeypatch.setattr(wf_cmd.workflow_mod, "export_workflow",
+                            lambda backend, wid, **kw: captured.update(id=wid, **kw) or {"out_path": kw.get("out_path")})
+        from crm.cli import cli
+        result = CliRunner().invoke(cli,
+            ["workflow", "export", _WF_ID, "--out", str(tmp_path / "x.json")])
+        assert result.exit_code == 0, result.output
+        assert captured["id"] == _WF_ID
+
+    def test_import_command(self, monkeypatch, tmp_path):
+        from crm.commands import workflow as wf_cmd
+        captured = {}
+        monkeypatch.setattr(wf_cmd.workflow_mod, "import_workflow",
+                            lambda backend, **kw: captured.update(**kw) or {"workflow_id": "x", "activated": False})
+        f = tmp_path / "x.json"; f.write_text("{}", encoding="utf-8")
+        from crm.cli import cli
+        result = CliRunner().invoke(cli,
+            ["workflow", "import", "--file", str(f)])
+        assert result.exit_code == 0, result.output
+        assert captured["file_path"] == str(f)

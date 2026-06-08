@@ -123,3 +123,40 @@ def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, 
         return
     ctx.emit(True, data=info)
     _journal(ctx, "workflow clone", workflow_id, info)
+
+
+@workflow_group.command("export")
+@click.argument("workflow_id")
+@click.option("--out", "out_path", default=None, type=click.Path(),
+              help="Write the workflow definition to this JSON file. Default: stdout only.")
+@pass_ctx
+def workflow_export(ctx: CLIContext, workflow_id, out_path):
+    """Export a workflow definition (incl. xaml) to a JSON file."""
+    try:
+        info = workflow_mod.export_workflow(ctx.backend(), workflow_id, out_path=out_path)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+
+
+@workflow_group.command("import")
+@click.option("--file", "file_path", required=True, type=click.Path(exists=True),
+              help="Exported workflow JSON file to upsert.")
+@click.option("--activate/--no-activate", default=False,
+              help="Activate after import. Default: leave as draft.")
+@_admin_header_options
+@pass_ctx
+def workflow_import(ctx: CLIContext, file_path, activate,
+                    as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+    """Import (upsert) a workflow definition from an exported JSON file."""
+    try:
+        info = workflow_mod.import_workflow(
+            ctx.backend(), file_path=file_path, activate=activate,
+            caller_id=as_user, caller_object_id=as_user_object_id,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+    _journal(ctx, "workflow import", info.get("workflow_id", ""), info)
