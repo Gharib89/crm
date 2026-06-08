@@ -118,6 +118,7 @@ nav:
       - describe: how-to/describe.md
       - app: how-to/app.md
       - webresource: how-to/webresource.md
+      - ribbon: how-to/ribbon.md
       - plugin: how-to/plugin.md
       - security: how-to/security.md
       - async: how-to/async.md
