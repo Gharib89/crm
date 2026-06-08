@@ -67,7 +67,7 @@ Reused as-is: `metadata.create_entity` / `describe_entity` / `list_attributes`,
 `views.read_entity_views` / `create_view`, `entity.create`, `solution.publish_all` /
 `add_solution_component` / `_validate_customization_prefix`.
 
-**A `crm form` user-facing command is out of scope** — filed as a follow-up issue.
+**A `crm form` user-facing command is out of scope** — filed as follow-up [#151](https://github.com/Gharib89/crm/issues/151).
 The core `forms.py` module is built here so that command can wrap it later, the
 same way `view` wraps `views.py`.
 
@@ -121,7 +121,7 @@ same way `view` wraps `views.py`.
 - **MVP (this PR):** skeleton + opt-in `--with-forms` / `--with-views` /
   `--with-charts`; ribbon detect-and-warn; `forms.py` core helper.
 - **Deferred:** `--with-workflows` (blocked on #144, open), `--retarget-lookup`,
-  `crm form` command group (follow-up issue).
+  `crm form` command group (follow-up [#151](https://github.com/Gharib89/crm/issues/151)).
 
 ## Docs (ship in same PR)
 
