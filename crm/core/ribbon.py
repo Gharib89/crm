@@ -34,3 +34,20 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
              and not n.startswith("[")), names[0])
         xml_bytes = zf.read(member)
     return ET.fromstring(xml_bytes)
+
+
+def retrieve_entity_ribbon(backend: "D365Backend", entity: str) -> ET.Element:
+    """Call RetrieveEntityRibbon for ``entity`` and return the decoded ribbon root.
+
+    The enum filter MUST be an inline OData string literal (``'All'``); parameter
+    aliases are rejected by the server (verified live). Returns the full composed
+    ribbon (system + custom).
+    """
+    safe = entity.replace("'", "''")
+    path = (f"RetrieveEntityRibbon(EntityName='{safe}',"
+            f"RibbonLocationFilter='All')")
+    resp = backend.get(path)
+    if not isinstance(resp, dict) or "CompressedEntityXml" not in resp:
+        raise ValueError(
+            f"RetrieveEntityRibbon returned no CompressedEntityXml for {entity!r}")
+    return decode_compressed_ribbon(str(resp["CompressedEntityXml"]))
