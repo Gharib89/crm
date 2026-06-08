@@ -57,6 +57,31 @@ def retarget_xaml(
     return out
 
 
+_WORKFLOW_SELECT = (
+    "workflowid,name,category,primaryentity,type,xaml,"
+    "mode,scope,ondemand,subprocess,languagecode,statecode,statuscode"
+)
+
+
+def get_workflow(backend: D365Backend, workflow_id: str) -> dict[str, Any]:
+    """Retrieve a workflow definition (type=1) including its xaml.
+
+    Raises if the id points at a type=2 activation copy — callers want the
+    definition the server compiles from.
+    """
+    if not workflow_id:
+        raise D365Error("workflow_id is required.")
+    result = as_dict(backend.get(
+        f"workflows({workflow_id})", params={"$select": _WORKFLOW_SELECT}
+    ))
+    if result.get("type") == TYPE_ACTIVATION:
+        raise D365Error(
+            f"Workflow {workflow_id} is a type=2 activation copy; "
+            "pass the type=1 definition id instead."
+        )
+    return result
+
+
 def list_workflows(
     backend: D365Backend,
     *,
