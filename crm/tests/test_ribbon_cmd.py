@@ -1,20 +1,9 @@
 # pyright: basic
-import base64
-import io
-import zipfile
 import xml.etree.ElementTree as ET
 from click.testing import CliRunner
 import pytest
 from crm.cli import cli
 from crm.core import ribbon as ribbon_mod
-
-
-def _compressed(diff_xml: str) -> str:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("RibbonXml.xml", diff_xml)
-        zf.writestr("[Content_Types].xml", "<Types/>")
-    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 def test_ribbon_export_prints_xml(monkeypatch):
@@ -29,7 +18,7 @@ def test_ribbon_export_prints_xml(monkeypatch):
     assert "RibbonDiffXml" in res.output
 
 
-def test_ribbon_list_shows_custom_buttons(monkeypatch, tmp_path):
+def test_ribbon_list_shows_custom_buttons(monkeypatch):
     cust = ("<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
             "<RibbonDiffXml><CustomActions>"
             "<CustomAction Id='cwx_ticket.form.Validate.CustomAction' "

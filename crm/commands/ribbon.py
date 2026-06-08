@@ -70,7 +70,8 @@ def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
     """List the custom buttons declared in a solution's RibbonDiffXml."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(True))
-    assert solution is not None  # _resolve_solution exits when require=True + no solution
+    if solution is None:
+        return  # _resolve_solution already emitted the error
     if ctx.dry_run:
         try:
             with tempfile.TemporaryDirectory() as td:
@@ -125,7 +126,8 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
     """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(True))
-    assert solution is not None  # _resolve_solution exits when require=True + no solution
+    if solution is None:
+        return  # _resolve_solution already emitted the error
     try:
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
     except (D365Error, ValueError) as exc:
@@ -171,7 +173,8 @@ def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
     """Remove a custom button (CustomAction + its CommandDefinition)."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(True))
-    assert solution is not None  # _resolve_solution exits when require=True + no solution
+    if solution is None:
+        return  # _resolve_solution already emitted the error
     if not _confirm_destructive("ribbon button", button_id, yes):
         ctx.emit(False, error="aborted by user")
         return

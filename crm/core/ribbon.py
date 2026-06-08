@@ -139,7 +139,14 @@ def build_button_ids(
     entity: str, location: str, label: str, base_override: str | None
 ) -> ButtonIds:
     """Deterministic, human-readable IDs: ``{entity}.{location}.{slug(label)}.*``."""
-    base = base_override or f"{entity}.{location}.{slugify(label)}"
+    if not base_override:
+        slug = slugify(label)
+        if not slug:
+            raise ValueError(
+                f"label {label!r} produces an empty slug; use --id to set a base ID")
+        base = f"{entity}.{location}.{slug}"
+    else:
+        base = base_override
     return ButtonIds(
         custom_action=f"{base}.CustomAction",
         button=f"{base}.Button",

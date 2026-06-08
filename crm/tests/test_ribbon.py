@@ -116,6 +116,11 @@ def test_build_button_ids_with_override_base():
     assert ids.custom_action == "my.base.CustomAction"
 
 
+def test_build_button_ids_empty_slug_raises():
+    with pytest.raises(ValueError, match="empty slug"):
+        ribbon.build_button_ids("cwx_ticket", "form", "!!!", None)
+
+
 CUST_XML = """<ImportExportXml>
   <Entities>
     <Entity><Name>cwx_ticket</Name><RibbonDiffXml><CustomActions/></RibbonDiffXml></Entity>
