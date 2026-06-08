@@ -31,8 +31,7 @@ def connection_group():
               help="Default schema-name prefix for create commands, e.g. 'new'.")
 @click.option("--store-password", is_flag=True,
               help="Store the secret in the OS keyring (service 'crm', account = "
-                   "profile name) so later commands need no password. Needs the "
-                   "'crm[keyring]' extra.")
+                   "profile name) so later commands need no password.")
 @click.option("--store-password-plaintext", is_flag=True,
               help="Headless/CI fallback: write the secret into the profile file "
                    "(0600 on POSIX; perms unenforced on Windows). Emits a warning.")
@@ -267,7 +266,7 @@ def connection_delete_password(ctx: CLIContext, profile_name):
                    "profile's auth scheme, else a TTY prompt).")
 @click.option("--store-password", is_flag=True,
               help="Store the secret in the OS keyring (default when neither flag is "
-                   "given). Needs the 'crm[keyring]' extra.")
+                   "given).")
 @click.option("--store-password-plaintext", is_flag=True,
               help="Headless/CI fallback: write the secret into the profile file "
                    "(0600 on POSIX; perms unenforced on Windows). Emits a warning.")

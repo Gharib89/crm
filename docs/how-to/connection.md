@@ -65,11 +65,10 @@ that already exists) to configure once and skip the prompt on every subsequent c
 ### OS keyring (recommended)
 
 Saves the secret in the platform keyring — macOS Keychain, Windows Credential
-Manager, or Linux SecretService. Requires the optional extra:
-
-```bash
-pip install crm[keyring]
-```
+Manager, or Linux SecretService. Keyring support is built in (a core dependency),
+so it works out of the box on every install — the wheel, the prebuilt binary, and
+`uv tool install` alike. No extra to install. (Headless Linux without a
+SecretService daemon has no backend; use the plaintext fallback below there.)
 
 **NTLM (on-prem):**
 
@@ -124,7 +123,7 @@ the storage-side mirror of `delete-password`: it never contacts the server, neve
 rebuilds the profile, and never reads the existing on-disk store.
 
 ```bash
-# OS keyring (default when neither flag is given; needs crm[keyring])
+# OS keyring (default when neither flag is given)
 crm connection set-password --profile online --store-password
 
 # Headless / CI fallback — write into the profile file (0600 on POSIX)

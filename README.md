@@ -190,7 +190,8 @@ By default secrets are not persisted. To configure once:
 
 - `crm connection connect ... --store-password` saves the secret in your OS
   keyring (macOS Keychain / Windows Credential Manager / Linux SecretService).
-  Requires the optional extra: `pip install crm[keyring]`.
+  Keyring support is built in — no extra install. (Headless Linux with no
+  SecretService daemon has no backend; use `--store-password-plaintext` there.)
 - For headless/CI hosts with no keyring, `--store-password-plaintext` writes the
   secret into the profile file (`0600` on POSIX; perms unenforced on Windows).
 - `crm connection set-password --profile NAME` stores a secret for a profile that

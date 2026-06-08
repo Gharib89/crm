@@ -102,3 +102,22 @@ def test_lazy_command_modules_are_bundled_in_pyinstaller_spec():
         f"crm.spec hiddenimports is missing lazily-loaded modules {sorted(missing)}; "
         f"add them or the frozen binary crashes when those commands run"
     )
+
+
+def test_keyring_backends_bundled_in_pyinstaller_spec():
+    """keyring (a core dependency) resolves its OS backend via entry points, which
+    PyInstaller can't follow — so the package and every platform backend must be in
+    crm.spec hiddenimports, or `connection set-password` is unreachable in the frozen
+    binary (the exact gap that motivated bundling keyring instead of an extra)."""
+    bundled = _spec_hiddenimports()
+    required = {
+        "keyring",
+        "keyring.backends.Windows",
+        "keyring.backends.macOS",
+        "keyring.backends.SecretService",
+    }
+    missing = required - bundled
+    assert not missing, (
+        f"crm.spec hiddenimports is missing keyring modules {sorted(missing)}; "
+        f"the frozen binary can't store secrets in the OS keyring without them"
+    )

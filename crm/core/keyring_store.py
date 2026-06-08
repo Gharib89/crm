@@ -9,6 +9,7 @@ client secret) — this module just stores an opaque string.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from crm.utils.d365_backend import D365Error
@@ -18,22 +19,39 @@ KEYRING_SERVICE = "crm"
 # Backend module name keyring uses when no real backend is available.
 _NULL_BACKEND_MODULE = "keyring.backends.fail"
 
+# Reused by both failure paths (import failure, no usable backend).
+_SECRET_FALLBACK = (
+    " Meanwhile, store the secret with --store-password-plaintext, or supply it "
+    "via D365_PASSWORD / D365_CLIENT_SECRET (or the CRM_PASSWORD / "
+    "CRM_CLIENT_SECRET aliases; env or .env)."
+)
+
+
+def _missing_keyring_message() -> str:
+    """keyring is a core dependency, so this only fires on a broken install. The
+    remedy depends on how crm was installed — a frozen binary can't pip-install,
+    a `uv tool` install needs uv — so point at the install method, not a single
+    (often wrong for this machine) pip command."""
+    if getattr(sys, "frozen", False):
+        return (
+            "This crm binary is missing its bundled 'keyring' support — likely a "
+            "build defect; please report it." + _SECRET_FALLBACK
+        )
+    return (
+        "The 'keyring' package is missing from this crm install (it ships as a "
+        "core dependency). Reinstall crm with your installer, e.g. "
+        "`uv tool install --reinstall <source>` or `pip install --force-reinstall "
+        "crm`." + _SECRET_FALLBACK
+    )
+
 
 def _import_keyring() -> Any:
     try:
-        # Optional extra (crm[keyring]); absent in the lint/build envs, so the
-        # missing-import diagnostic is suppressed. The ImportError guard is the
-        # real contract — _import_keyring()'s Any return leaves the keyring API
-        # calls unchecked regardless, so nothing is lost type-wise.
-        import keyring  # pyright: ignore[reportMissingImports]
+        # Imported lazily (not at module top) to keep the CLI fast path cheap —
+        # keyring is only needed when a secret is actually stored or read.
+        import keyring
     except ImportError as exc:
-        raise D365Error(
-            "The optional 'keyring' dependency is not installed. Install it with "
-            "`pip install crm[keyring]`, or store the secret with "
-            "--store-password-plaintext, or supply it via D365_PASSWORD / "
-            "D365_CLIENT_SECRET (or the CRM_PASSWORD / CRM_CLIENT_SECRET aliases; "
-            "env or .env)."
-        ) from exc
+        raise D365Error(_missing_keyring_message()) from exc
     return keyring
 
 

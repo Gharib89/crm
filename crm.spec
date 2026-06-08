@@ -54,6 +54,18 @@ a = Analysis(
         'crm.commands.view',
         'crm.commands.webresource',
         'crm.commands.workflow',
+        # keyring resolves its OS backend through entry points, which PyInstaller's
+        # static analysis can't follow — bundle the package and every platform
+        # backend so `connection set-password` works in the frozen binary on each
+        # OS. Each build keeps only the backend whose deps it can import; the other
+        # two emit a benign "hidden import not found" warning (e.g. SecretService's
+        # secretstorage on Windows) and are simply skipped. win32ctypes is the
+        # Windows backend's runtime dependency (pywin32-ctypes).
+        'keyring',
+        'keyring.backends.Windows',
+        'keyring.backends.macOS',
+        'keyring.backends.SecretService',
+        'win32ctypes.pywin32.win32cred',
     ],
     hookspath=[],
     hooksconfig={},
