@@ -326,6 +326,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `webresource` | Create/update/get/list web resources (HTML/JS/CSS/images); set as app icons |
 | `plugin`     | Register/update/unregister plug-in assemblies and SDK message processing steps |
 | `security`   | List and assign security roles to users or teams           |
+| `workflow`   | List, activate/deactivate, trigger, clone, export, and import D365 workflow definitions |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state, command history, and audit journal    |
 
