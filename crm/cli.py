@@ -29,6 +29,27 @@ from crm.commands._helpers import _sanitize, _short_repr
 FAILURE_EXIT_CODE = 1
 
 
+def force_utf8_output(stream: Any) -> None:
+    """Reconfigure a text stream to UTF-8 so box-drawing output never crashes.
+
+    On a default Windows console (cp1252) the human table/banner renderers emit
+    box-drawing characters that cp1252 cannot encode, raising UnicodeEncodeError
+    (#146a). TextIOWrapper.reconfigure (3.7+) flips the encoding in place. A
+    captured/redirected stream may lack reconfigure or already be UTF-8 — both
+    are no-ops. errors='replace' guarantees no crash even on a stream we cannot
+    flip.
+    """
+    if getattr(stream, "encoding", "").lower() == "utf-8":
+        return
+    reconfigure = getattr(stream, "reconfigure", None)
+    if reconfigure is None:
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="replace")
+    except (ValueError, OSError):
+        pass  # stream not reconfigurable (already detached / non-seekable wrapper)
+
+
 class CLIContext:
     """Per-invocation state shared across subcommands."""
 
@@ -374,6 +395,8 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         cache_metadata: bool, refresh_metadata: bool,
         session_name: str):
     """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
+    force_utf8_output(sys.stdout)
+    force_utf8_output(sys.stderr)
     _valid_levels = ("debug", "info", "warning", "error")
     _valid_fmts = ("text", "json-line")
     effective_level = log_level or os.environ.get("CRM_LOG_LEVEL") or "warning"
