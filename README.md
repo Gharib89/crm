@@ -266,7 +266,7 @@ crm solution extract --zipfile /tmp/snap.zip --folder ./src/MyCustomSolution
 crm solution pack    --zipfile /tmp/built.zip --folder ./src/MyCustomSolution
 
 # Validate a solution zip before import (offline by default; --against-org adds
-# GUID-collision + existence checks against the connected org). Exits non-zero on any problem.
+# GUID-collision + existence checks against the connected org). Exits non-zero on any error.
 crm solution validate /tmp/snap.zip
 
 # Bulk export
