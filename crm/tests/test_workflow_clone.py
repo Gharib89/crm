@@ -173,3 +173,29 @@ class TestCloneWorkflow:
             m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src(category=category))
             with pytest.raises(D365Error, match="not supported"):
                 workflow.clone_workflow_to_entity(backend, _SRC_ID, "cwx_ticketclone")
+
+
+from click.testing import CliRunner
+
+
+class TestCloneCommand:
+    def test_clone_command_invokes_core(self, monkeypatch):
+        from crm.commands import workflow as wf_cmd
+        called = {}
+
+        def fake_clone(backend, workflow_id, target_entity, **kw):
+            called.update(dict(workflow_id=workflow_id, target_entity=target_entity, **kw))
+            return {"workflow_id": "new", "activated": kw.get("activate", True)}
+
+        monkeypatch.setattr(wf_cmd.workflow_mod, "clone_workflow_to_entity", fake_clone)
+
+        from crm.cli import cli
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "workflow", "clone", _SRC_ID, "--to-entity", "cwx_ticketclone",
+            "--name", "My Clone", "--no-activate",
+        ])
+        assert result.exit_code == 0, result.output
+        assert called["target_entity"] == "cwx_ticketclone"
+        assert called["name"] == "My Clone"
+        assert called["activate"] is False

@@ -97,3 +97,29 @@ def workflow_run(ctx: CLIContext, workflow_id, target_record_id,
         return
     ctx.emit(True, data=info)
     _journal(ctx, "workflow run", workflow_id, info)
+
+
+@workflow_group.command("clone")
+@click.argument("workflow_id")
+@click.option("--to-entity", "target_entity", required=True,
+              help="Logical name of the entity to clone the workflow onto.")
+@click.option("--name", default=None, help="Name for the clone. Default: '<source> (Clone)'.")
+@click.option("--activate/--no-activate", default=True,
+              help="Activate the clone after creating it (compiles the xaml). Default: activate.")
+@click.option("--solution", default=None, help="Add the clone to this unmanaged solution.")
+@_admin_header_options
+@pass_ctx
+def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, solution,
+                   as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+    """Clone a workflow definition onto another entity (xaml-retargeted)."""
+    try:
+        info = workflow_mod.clone_workflow_to_entity(
+            ctx.backend(), workflow_id, target_entity,
+            name=name, activate=activate, solution=solution,
+            caller_id=as_user, caller_object_id=as_user_object_id,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+    _journal(ctx, "workflow clone", workflow_id, info)
