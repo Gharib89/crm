@@ -17,6 +17,7 @@ from typing import Any
 from uuid import uuid4
 
 from crm.core import entity as entity_ops
+from crm.core import solution as solution_ops
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
@@ -54,8 +55,8 @@ def retarget_xaml(
       (e.g. `cwx_ticketcategory` is left intact).
     Attribute logical names are not touched.
     """
-    src_class = "XrmWorkflow" + src_id.replace("-", "")
-    dst_class = "XrmWorkflow" + dst_id.replace("-", "")
+    src_class = "XrmWorkflow" + src_id.replace("-", "").lower()
+    dst_class = "XrmWorkflow" + dst_id.replace("-", "").lower()
     out = xaml.replace(src_class, dst_class)
     out = re.sub(rf"\b{re.escape(src_entity)}\b", dst_entity, out)
     return out
@@ -113,6 +114,8 @@ def clone_workflow_to_entity(
     solution: str | None = None,
     caller_id: str | None = None,
     caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Clone a workflow definition onto another entity.
 
@@ -156,6 +159,8 @@ def clone_workflow_to_entity(
     entity_ops.upsert(
         backend, "workflows", new_id, payload,
         caller_id=caller_id, caller_object_id=caller_object_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
 
     activated = False
@@ -163,12 +168,13 @@ def clone_workflow_to_entity(
         set_workflow_state(
             backend, new_id, activate=True,
             caller_id=caller_id, caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
         activated = True
 
     if solution:
-        from crm.core import solution as solution_ops  # type: ignore[import]
-        solution_ops.add_solution_component(  # type: ignore[attr-defined]
+        solution_ops.add_solution_component(
             backend, solution=solution,
             component_id=new_id, component_type=COMPONENT_TYPE_WORKFLOW,
         )
@@ -208,6 +214,8 @@ def import_workflow(
     activate: bool = False,
     caller_id: str | None = None,
     caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Upsert a workflow definition from a previously exported JSON file."""
     record: dict[str, Any] = _json.loads(Path(file_path).read_text(encoding="utf-8"))
@@ -218,11 +226,17 @@ def import_workflow(
     entity_ops.upsert(
         backend, "workflows", wf_id, payload,
         caller_id=caller_id, caller_object_id=caller_object_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     activated = False
     if activate:
-        set_workflow_state(backend, wf_id, activate=True,
-                           caller_id=caller_id, caller_object_id=caller_object_id)
+        set_workflow_state(
+            backend, wf_id, activate=True,
+            caller_id=caller_id, caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
         activated = True
     return {"workflow_id": wf_id, "activated": activated}
 

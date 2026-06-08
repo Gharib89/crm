@@ -117,6 +117,8 @@ def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, 
             ctx.backend(), workflow_id, target_entity,
             name=name, activate=activate, solution=solution,
             caller_id=as_user, caller_object_id=as_user_object_id,
+            suppress_duplicate_detection=suppress_dup_detection,
+            bypass_custom_plugin_execution=bypass_plugins,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -127,7 +129,8 @@ def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, 
 
 @workflow_group.command("export")
 @click.argument("workflow_id")
-@click.option("--out", "out_path", default=None, type=click.Path(),
+@click.option("--out", "out_path", default=None,
+              type=click.Path(file_okay=True, dir_okay=False),
               help="Write the workflow definition to this JSON file. Default: stdout only.")
 @pass_ctx
 def workflow_export(ctx: CLIContext, workflow_id, out_path):
@@ -141,7 +144,8 @@ def workflow_export(ctx: CLIContext, workflow_id, out_path):
 
 
 @workflow_group.command("import")
-@click.option("--file", "file_path", required=True, type=click.Path(exists=True),
+@click.option("--file", "file_path", required=True,
+              type=click.Path(exists=True, file_okay=True, dir_okay=False),
               help="Exported workflow JSON file to upsert.")
 @click.option("--activate/--no-activate", default=False,
               help="Activate after import. Default: leave as draft.")
@@ -154,6 +158,8 @@ def workflow_import(ctx: CLIContext, file_path, activate,
         info = workflow_mod.import_workflow(
             ctx.backend(), file_path=file_path, activate=activate,
             caller_id=as_user, caller_object_id=as_user_object_id,
+            suppress_duplicate_detection=suppress_dup_detection,
+            bypass_custom_plugin_execution=bypass_plugins,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
