@@ -763,6 +763,33 @@ crm --json plugin register-step \
 `--dry-run` skips all writes (resolution GETs still fire); `--json` envelope carries
 `meta.dry_run: true`.
 
+## Workflows — `workflow`
+
+```bash
+# List workflow definitions on an entity
+crm --json workflow list --entity cwx_ticket --category 0
+
+# Activate / deactivate
+crm --json workflow activate <workflow-guid>
+crm --json workflow deactivate <workflow-guid>
+
+# Trigger an on-demand workflow
+crm --json workflow run <workflow-guid> --target <record-guid>
+
+# Clone a classic workflow onto another entity (xaml-retargeted; activates by default)
+crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone
+crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone --no-activate
+crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone \
+    --name "My Clone" --solution my_solution
+
+# Export / import a workflow definition (incl. xaml) as JSON
+crm --json workflow export <workflow-guid> --out ./wf.json
+crm --json workflow import --file ./wf.json
+crm --json workflow import --file ./wf.json --activate
+```
+
+Category values: `0`=Workflow, `1`=Dialog, `2`=BusinessRule, `3`=Action, `4`=BPF, `5`=ModernFlow. Clone supports only `0` and `2`; action/BPF fail loudly.
+
 ## Security — `security` (roles and role assignment)
 
 ```bash
