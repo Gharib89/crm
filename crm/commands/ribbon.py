@@ -62,6 +62,9 @@ def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
     """List the custom buttons declared in a solution's RibbonDiffXml."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
+    if solution is None:
+        ctx.emit(False, error="--solution is required")
+        return
     try:
         _, _, diff = _load_solution_ribbon_diff(ctx, solution, entity)
     except D365Error as exc:
