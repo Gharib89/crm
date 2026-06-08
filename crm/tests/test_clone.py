@@ -258,7 +258,10 @@ class TestCloneCommand:
         result = runner.invoke(cli, [
             "metadata", "clone-entity", "new_project", "cwx_TicketClone",
             "--display", "Ticket Clone", "--with-all",
-        ])
+        ], env={
+            "D365_URL": "https://crm.contoso.local/contoso",
+            "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO",
+        })
         assert result.exit_code == 0, result.output
         assert called["source"] == "new_project"
         assert called["new_schema"] == "cwx_TicketClone"
@@ -277,8 +280,11 @@ class TestCloneCommand:
                                            "forms": 0, "workflows": 0},
                                 "skipped_workflows": [], "ribbon_note": "n/a"})
         from crm.cli import cli
+        _env = {"D365_URL": "https://crm.contoso.local/contoso",
+                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
         result = CliRunner().invoke(cli, [
-            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-all"])
+            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-all"],
+            env=_env)
         assert result.exit_code == 0, result.output
         assert called["with_forms"] and called["with_views"] and called["with_workflows"]
 
@@ -293,7 +299,10 @@ class TestCloneCommand:
                                                        "reason": "not yet supported"}],
                                 "ribbon_note": "n/a"})
         from crm.cli import cli
+        _env = {"D365_URL": "https://crm.contoso.local/contoso",
+                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
         result = CliRunner().invoke(cli, [
-            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-workflows"])
+            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-workflows"],
+            env=_env)
         assert result.exit_code == 0, result.output
         assert "BadAction" in result.output
