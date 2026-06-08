@@ -469,17 +469,19 @@ def test_apply_idempotent_reapply_all_skipped(backend):
         _mock_view_create(m, backend, exists=True)
         # Pre-existing optionset: add_solution_component fires to ensure membership.
         m.post(backend.url_for("AddSolutionComponent"), json={})
-        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        # PublishAllXml: nothing was applied so publish does not run.
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
-    # solution-component membership add counts as applied (publish still runs once).
-    assert _kinds(res["applied"]) == ["solution-component"]
-    assert res["applied"][0]["name"] == "contoso_priority"
+    # solution-component add is reported as skipped (pre-existed; we can't tell
+    # without an extra GET whether it was already a solution member, so we don't
+    # count it as applied and don't trigger a redundant publish on every re-apply).
+    assert res["applied"] == []
     assert _kinds(res["skipped"]) == [
         "publisher", "solution", "entity", "optionset",
+        "solution-component",
         "attribute", "attribute", "attribute", "relationship", "view",
     ]
-    assert len(_publish_hits(m, backend)) == 1
+    assert len(_publish_hits(m, backend)) == 0
     assert res["staged"] is False
 
 
@@ -728,10 +730,14 @@ def test_e2e_idempotent_reapply_all_skipped(backend, monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
-    # Pre-existing optionset: solution-component membership add fires (publish runs).
-    assert _kinds(env["data"]["applied"]) == ["solution-component"]
-    assert _kinds(env["data"]["skipped"]) == _FULL_KINDS
-    assert len(_publish_hits(m, backend)) == 1
+    # solution-component add is skipped (pre-existed); nothing applied → no publish.
+    assert env["data"]["applied"] == []
+    # solution-component phase runs after optionsets, before attributes.
+    _full_with_sc = (
+        _FULL_KINDS[:4] + ["solution-component"] + _FULL_KINDS[4:]
+    )
+    assert _kinds(env["data"]["skipped"]) == _full_with_sc
+    assert len(_publish_hits(m, backend)) == 0
 
 
 def test_e2e_dry_run_greenfield_plans_dependents(dry_backend, monkeypatch, tmp_path):

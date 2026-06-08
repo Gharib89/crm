@@ -34,10 +34,9 @@ def force_utf8_output(stream: Any) -> None:
 
     On a default Windows console (cp1252) the human table/banner renderers emit
     box-drawing characters that cp1252 cannot encode, raising UnicodeEncodeError
-    (#146a). TextIOWrapper.reconfigure (3.7+) flips the encoding in place. A
-    captured/redirected stream may lack reconfigure or already be UTF-8 — both
-    are no-ops. errors='replace' guarantees no crash even on a stream we cannot
-    flip.
+    (#146a). TextIOWrapper.reconfigure (3.7+) flips the encoding in place.
+    errors='replace' takes effect only when reconfigure succeeds; if the stream
+    lacks reconfigure or the call raises, the stream is left unchanged.
     """
     if getattr(stream, "encoding", "").lower() == "utf-8":
         return

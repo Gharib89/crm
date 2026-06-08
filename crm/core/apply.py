@@ -353,7 +353,11 @@ def apply_spec(
                         component_id=metadata_id,
                         component_type=sol_mod.SOLUTION_COMPONENT_TYPES["optionset"],
                     )
-                    applied.append(comp_entry)
+                    # Report as skipped (not applied): the optionset pre-existed so
+                    # we cannot tell without an extra GET whether it was already a
+                    # solution member. Reporting applied would trigger publish and
+                    # show a change on every re-apply even when nothing changed.
+                    skipped.append(comp_entry)
                 except D365Error as exc:
                     # Best-effort: a membership-add failure must not abort an apply
                     # whose entities/attrs already landed. Record, do not raise.
