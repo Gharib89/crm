@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.6.0 (2026-06-08)
+
+### Chores
+
+- Add .worktrees/ to .gitignore
+  ([`2a01d5d`](https://github.com/Gharib89/crm/commit/2a01d5d7b63d3fad28f9ae76c9d2f018826eb15d))
+
+### Features
+
+- **metadata**: Add clone-entity command ([#143](https://github.com/Gharib89/crm/pull/143),
+  [`a20ed6e`](https://github.com/Gharib89/crm/commit/a20ed6ef2283d84254d5592d84c3c76032ba5ce7))
+
+
 ## v1.5.0 (2026-06-08)
 
 ### Bug Fixes
