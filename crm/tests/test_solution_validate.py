@@ -292,3 +292,50 @@ class TestValidateCli:
         assert result.exit_code == 1, result.output
         data = json.loads(result.output)
         assert any(f["check"] == "guid-collision" for f in data["data"]["findings"])
+
+
+# ── Task 7: acceptance (issue #141) ───────────────────────────────────────────
+
+class TestAcceptance:
+    def test_all_three_classes_in_one_pass(self, tmp_path, backend, monkeypatch):
+        """One `validate --against-org` pass reports class #1 (optionset not in
+        RootComponents), #3 (dashboard not in RootComponents), and #2 (colliding
+        formid in org); exit non-zero."""
+        p = tmp_path / "all_three.zip"
+        _make_pkg(
+            p,
+            _sol(),  # empty RootComponents → optionset + dashboard are orphans
+            _cust(
+                optionsets='<optionset Name="cwx_slatier"/>',
+                dashboards=f"<Dashboard><FormId>{_DASH_GUID}</FormId></Dashboard>",
+                entities=_form(_FORM_GUID),
+            ),
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        import json
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"systemforms"), json={"value": [{"formid": _FORM_GUID}]})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            result = CliRunner().invoke(
+                cli, ["--json", "solution", "validate", str(p), "--against-org"])
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        checks = {f["check"] for f in data["data"]["findings"]}
+        assert "root-parity" in checks      # classes #1 + #3
+        assert "guid-collision" in checks    # class #2
+        parity = [f for f in data["data"]["findings"] if f["check"] == "root-parity"]
+        assert {"cwx_slatier", _DASH_GUID} <= {f["component"] for f in parity}
+
+    def test_good_package_against_org_exit_zero(self, tmp_path, backend, monkeypatch):
+        p = tmp_path / "good.zip"
+        _make_pkg(p, _sol('<RootComponent type="9" schemaName="cwx_s"/>'),
+                  _cust(optionsets='<optionset Name="cwx_s"/>'))
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        import json
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"systemforms"), json={"value": []})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            result = CliRunner().invoke(
+                cli, ["--json", "solution", "validate", str(p), "--against-org"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"]["valid"] is True
