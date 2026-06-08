@@ -143,3 +143,44 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
                          "result": result},
              warnings=[warning] if warning else None)
     _journal(ctx, "ribbon add-button", ids.custom_action, result, solution=solution)
+
+
+@ribbon_group.command("remove")
+@click.argument("entity")
+@click.option("--button-id", "button_id", required=True,
+              help="The CustomAction Id to remove (see `crm ribbon list`).")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_solution_option
+@pass_ctx
+def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
+    """Remove a custom button (CustomAction + its CommandDefinition)."""
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(True))
+    if solution is None:
+        ctx.emit(False, error="--solution is required")
+        return
+    if not _confirm_destructive("ribbon button", button_id, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+
+    def mutate(cust_root):
+        node = ribbon_mod.find_entity_node(cust_root, entity)
+        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+        if not ribbon_mod.remove_custom_action(diff, button_id):
+            available = [b.button_id
+                         for b in ribbon_mod.list_custom_buttons(diff)]
+            raise ValueError(
+                f"button-id {button_id!r} not found; available: {available}")
+
+    try:
+        result = ribbon_mod.apply_ribbon_change(
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    ctx.emit(True, data={"removed": button_id, "result": result},
+             warnings=[warning] if warning else None)
+    _journal(ctx, "ribbon remove", button_id, result, solution=solution)

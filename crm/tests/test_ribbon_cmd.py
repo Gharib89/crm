@@ -99,3 +99,46 @@ def test_ribbon_add_button_rejects_missing_webresource(monkeypatch):
         "--param", "PrimaryControl"])
     assert res.exit_code == 1
     assert "not found" in res.output
+
+
+def test_ribbon_remove_deletes_button(monkeypatch):
+    cust = ("<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+            "<RibbonDiffXml><CustomActions>"
+            "<CustomAction Id='cwx_ticket.form.Validate.CustomAction'>"
+            "<CommandUIDefinition><Button Id='b' "
+            "Command='cwx_ticket.form.Validate.Command' LabelText='Validate'/>"
+            "</CommandUIDefinition></CustomAction></CustomActions>"
+            "<CommandDefinitions/></RibbonDiffXml></Entity></Entities></ImportExportXml>")
+    captured: dict[str, object] = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, **kw):
+        root = ET.fromstring(cust)
+        mutate(root)
+        captured["remaining"] = len(root.findall(".//CustomAction"))
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "ribbon", "remove", "cwx_ticket", "--solution", "MySol",
+        "--button-id", "cwx_ticket.form.Validate.CustomAction", "--yes"])
+    assert res.exit_code == 0, res.output
+    assert captured["remaining"] == 0
+
+
+def test_ribbon_remove_unknown_button_errors(monkeypatch):
+    cust = ("<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+            "<RibbonDiffXml><CustomActions/><CommandDefinitions/></RibbonDiffXml>"
+            "</Entity></Entities></ImportExportXml>")
+
+    def fake_apply(backend, *, solution, entity, mutate, **kw):
+        mutate(ET.fromstring(cust))  # mutate raises -> propagate
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "remove", "cwx_ticket", "--solution", "MySol",
+        "--button-id", "does.not.exist", "--yes"])
+    assert res.exit_code == 1
+    assert "not found" in res.output
