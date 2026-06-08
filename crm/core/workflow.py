@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from uuid import uuid4
 
+from crm.core import entity as entity_ops
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 
@@ -80,6 +82,98 @@ def get_workflow(backend: D365Backend, workflow_id: str) -> dict[str, Any]:
             "pass the type=1 definition id instead."
         )
     return result
+
+
+# Categories clone supports fully via xaml-retarget alone.
+_TIER1_CATEGORIES = {CATEGORY_WORKFLOW, CATEGORY_BUSINESS_RULE}
+# Categories that need more than xaml (verified live in Task 7); refuse for now.
+_NEEDS_MORE_CATEGORIES = {CATEGORY_ACTION, CATEGORY_BPF}
+# Categories out of scope for clone entirely.
+_UNSUPPORTED_CATEGORIES = {CATEGORY_DIALOG, CATEGORY_MODERN_FLOW}
+
+_CLONE_COPY_FIELDS = ("category", "mode", "scope", "ondemand", "subprocess", "languagecode")
+COMPONENT_TYPE_WORKFLOW = 29
+
+
+def clone_workflow_to_entity(
+    backend: D365Backend,
+    workflow_id: str,
+    target_entity: str,
+    *,
+    name: str | None = None,
+    activate: bool = True,
+    solution: str | None = None,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+) -> dict[str, Any]:
+    """Clone a workflow definition onto another entity.
+
+    Retargets the xaml entity references and the `XrmWorkflow<id>` class to a
+    fresh id, creates the clone as a draft (explicit-GUID upsert), then
+    optionally activates it (which compiles the xaml). Tier-1 categories
+    (classic workflow, business rule) are fully supported; action/BPF fail
+    loudly until Task 7 confirms their full create path.
+    """
+    if not target_entity:
+        raise D365Error("target_entity is required.")
+    src = get_workflow(backend, workflow_id)
+    category = src.get("category")
+
+    if category in _UNSUPPORTED_CATEGORIES:
+        raise D365Error(
+            f"Cloning category {category} (dialog/modern flow) is not supported."
+        )
+    if category in _NEEDS_MORE_CATEGORIES:
+        raise D365Error(
+            f"Cloning category {category} (action/BPF) is not yet supported: it "
+            "needs more than an xaml retarget (sdkmessage / stage records). "
+            "Use solution export/import for now."
+        )
+    if category not in _TIER1_CATEGORIES:
+        raise D365Error(f"Unknown workflow category {category}; cannot clone.")
+
+    new_id = str(uuid4())
+    new_xaml = retarget_xaml(
+        src.get("xaml", ""),
+        src_entity=src["primaryentity"], dst_entity=target_entity,
+        src_id=workflow_id, dst_id=new_id,
+    )
+    payload: dict[str, Any] = {k: src[k] for k in _CLONE_COPY_FIELDS if k in src}
+    payload.update({
+        "name": name or f"{src.get('name', 'Workflow')} (Clone)",
+        "primaryentity": target_entity,
+        "type": TYPE_DEFINITION,
+        "xaml": new_xaml,
+    })
+    entity_ops.upsert(
+        backend, "workflows", new_id, payload,
+        caller_id=caller_id, caller_object_id=caller_object_id,
+    )
+
+    activated = False
+    if activate:
+        set_workflow_state(
+            backend, new_id, activate=True,
+            caller_id=caller_id, caller_object_id=caller_object_id,
+        )
+        activated = True
+
+    if solution:
+        from crm.core import solution as solution_ops  # type: ignore[import]
+        solution_ops.add_solution_component(  # type: ignore[attr-defined]
+            backend, solution=solution,
+            component_id=new_id, component_type=COMPONENT_TYPE_WORKFLOW,
+        )
+
+    return {
+        "workflow_id": new_id,
+        "source_id": workflow_id,
+        "name": payload["name"],
+        "primaryentity": target_entity,
+        "category": category,
+        "activated": activated,
+        "solution": solution,
+    }
 
 
 def list_workflows(

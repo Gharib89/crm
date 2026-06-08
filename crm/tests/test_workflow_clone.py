@@ -89,3 +89,87 @@ class TestGetWorkflow:
             m.get(wf_url, json={"workflowid": _SRC_ID, "type": 2, "name": "X"})
             with pytest.raises(D365Error, match="definition"):
                 workflow.get_workflow(backend, _SRC_ID)
+
+
+def _patches(m):
+    return [r for r in m.request_history if r.method == "PATCH"]
+
+
+class TestCloneWorkflow:
+    def _src(self, category=0):
+        return {
+            "workflowid": _SRC_ID, "name": "Update request", "category": category,
+            "primaryentity": "cwx_ticket", "type": 1, "xaml": _XAML,
+            "mode": 0, "scope": 4, "ondemand": True, "subprocess": False,
+            "languagecode": 1033,
+        }
+
+    def test_clones_classic_workflow_as_draft(self, backend):
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src())
+            m.patch(requests_mock.ANY, status_code=204)
+            out = workflow.clone_workflow_to_entity(
+                backend, _SRC_ID, "cwx_ticketclone", activate=False,
+            )
+        body = _patches(m)[0].json()
+        assert body["primaryentity"] == "cwx_ticketclone"
+        assert 'Entity="cwx_ticketclone"' in body["xaml"]
+        assert body["name"] == "Update request (Clone)"
+        assert body["category"] == 0
+        assert out["activated"] is False
+        assert out["workflow_id"] == out["workflow_id"]  # a real GUID string
+        # only the upsert PATCH happened, no activation PATCH
+        assert len(_patches(m)) == 1
+
+    def test_activate_true_compiles_after_create(self, backend):
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src())
+            m.patch(requests_mock.ANY, status_code=204)
+            out = workflow.clone_workflow_to_entity(
+                backend, _SRC_ID, "cwx_ticketclone", activate=True,
+            )
+        # two PATCHes: upsert (draft) then activation
+        assert len(_patches(m)) == 2
+        activation = _patches(m)[1].json()
+        assert activation == {"statecode": 1, "statuscode": 2}
+        assert out["activated"] is True
+
+    def test_custom_name_override(self, backend):
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src())
+            m.patch(requests_mock.ANY, status_code=204)
+            workflow.clone_workflow_to_entity(
+                backend, _SRC_ID, "cwx_ticketclone", name="My Clone", activate=False,
+            )
+            assert _patches(m)[0].json()["name"] == "My Clone"
+
+    def test_business_rule_supported(self, backend):
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src(category=2))
+            m.patch(requests_mock.ANY, status_code=204)
+            out = workflow.clone_workflow_to_entity(
+                backend, _SRC_ID, "cwx_ticketclone", activate=False,
+            )
+        assert out["category"] == 2
+
+    @pytest.mark.parametrize("category", [3, 4])
+    def test_action_and_bpf_fail_loudly(self, backend, category):
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src(category=category))
+            with pytest.raises(D365Error, match="not yet supported"):
+                workflow.clone_workflow_to_entity(backend, _SRC_ID, "cwx_ticketclone")
+        # nothing was written
+        assert not _patches(m)
+
+    @pytest.mark.parametrize("category", [1, 5])
+    def test_dialog_and_modern_flow_out_of_scope(self, backend, category):
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src(category=category))
+            with pytest.raises(D365Error, match="not supported"):
+                workflow.clone_workflow_to_entity(backend, _SRC_ID, "cwx_ticketclone")
