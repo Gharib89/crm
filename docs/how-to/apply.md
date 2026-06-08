@@ -99,3 +99,20 @@ remaining steps, reports the failure under `failed` (with the error), exits
 non-zero, and does **not** publish. Whatever was already created is left
 staged-but-unpublished (`meta.staged` is `true`) — fix the spec and re-apply;
 the already-created resources are skipped.
+
+## Referenced global option sets
+
+When a spec contains an `optionsets` block and a `--solution` is provided, `apply`
+automatically adds each referenced global option set to the solution (via
+`AddSolutionComponent`) even if the option set already existed and was skipped
+during creation. This ensures option sets created in a previous apply run (or
+pre-existing) are properly linked to the solution.
+
+To opt out:
+
+```bash
+crm apply -f spec.yaml --solution MySolution --no-include-referenced-optionsets
+```
+
+This flag is also exposed as `include_referenced_optionsets` on the Python
+`apply_spec` function for programmatic callers.
