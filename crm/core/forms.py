@@ -46,6 +46,8 @@ def read_entity_forms(
     Returns dicts with keys ``formid, name, objecttypecode, type, formxml,
     description, isdefault``.
     """
+    if not form_types:
+        raise D365Error("form_types must not be empty.")
     entity_lit = entity_logical_name.replace("'", "''")
     type_clause = " or ".join(f"type eq {t}" for t in form_types)
     filt = f"objecttypecode eq '{entity_lit}' and ({type_clause})"

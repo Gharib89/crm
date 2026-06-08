@@ -428,6 +428,8 @@ def metadata_clone_entity(
         _handle_d365_error(ctx, exc)
         return
     notes = [warning] if warning else []
+    if info.get("views_note"):
+        notes.append(info["views_note"])
     skipped = info.get("skipped_workflows") or []
     if skipped:
         names = ", ".join(w["name"] for w in skipped)

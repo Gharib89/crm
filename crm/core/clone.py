@@ -78,6 +78,11 @@ def clone_entity(
     Returns ``{created, source, logical_name, schema_name, counts,
     skipped_workflows, ribbon_note, apply}``.
     """
+    if not new_schema_name or "_" not in new_schema_name:
+        raise D365Error(
+            "new_schema_name must include a publisher prefix and be PascalCase, "
+            f"e.g. 'new_TicketClone'. Got: {new_schema_name!r}"
+        )
     prefix, _, _ = new_schema_name.partition("_")
     _validate_customization_prefix(prefix)
 
@@ -88,6 +93,8 @@ def clone_entity(
     apply_result = apply_spec(backend, spec, solution=solution, stage_only=not publish)
 
     applied = apply_result.get("applied", [])
+    planned = apply_result.get("planned", [])
+    planned_views = _count_kind(planned, "view")
     out: dict[str, Any] = {
         "created": apply_result.get("ok", False),
         "source": source,
@@ -103,6 +110,12 @@ def clone_entity(
         "ribbon_note": _RIBBON_NOTE,
         "apply": apply_result,
     }
+    if planned_views:
+        out["views_note"] = (
+            f"{planned_views} view(s) were planned but not yet created — the "
+            "entity's ObjectTypeCode was unreadable at apply time. Re-run "
+            "`crm metadata apply` on the same spec to land them."
+        )
     if not apply_result.get("ok"):
         return out
 
