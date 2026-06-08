@@ -145,6 +145,45 @@ def _check_webresource_refs(
     return findings
 
 
+def _optionset_exists_in_org(backend: D365Backend, name: str) -> bool:
+    lit = name.replace("'", "''")
+    resp = as_dict(backend.get(
+        "GlobalOptionSetDefinitions",
+        params={"$select": "Name", "$filter": f"Name eq '{lit}'", "$top": "1"}))
+    return bool(resp.get("value"))
+
+
+def _check_optionset_bindings(
+    cust_root: ET.Element, backend: D365Backend | None
+) -> list[Finding]:
+    declared: set[str] = set()
+    for container in cust_root.iter("optionsets"):
+        for entry in list(container):
+            n = _entry_name(entry)
+            if n:
+                declared.add(_norm(n))
+    findings: list[Finding] = []
+    seen: set[str] = set()
+    for os_el in cust_root.iter("OptionSet"):
+        flag = (os_el.findtext("IsGlobal") or os_el.get("IsGlobal") or "").strip().lower()
+        if flag not in ("1", "true"):
+            continue
+        name = os_el.get("Name") or os_el.findtext("Name")
+        if not name or _norm(name) in seen:
+            continue
+        seen.add(_norm(name))
+        if _norm(name) in declared:
+            continue
+        if backend is not None and _optionset_exists_in_org(backend, name):
+            continue
+        where = "package or org" if backend is not None else "package"
+        findings.append(Finding(
+            "error", "optionset-binding",
+            f"attribute binds global option set {name!r} which is not declared in the {where}",
+            component=name, location="customizations.xml"))
+    return findings
+
+
 def _load(
     zip_path: str | Path,
 ) -> tuple[ET.Element | None, ET.Element | None, list[Finding]]:
@@ -219,6 +258,8 @@ def validate_solution(
         findings += _check_root_parity(sol_root, cust_root)
         checks_run.append("webresource-ref")
         findings += _check_webresource_refs(cust_root, backend)
+        checks_run.append("optionset-binding")
+        findings += _check_optionset_bindings(cust_root, backend)
     valid = not any(f.severity == "error" for f in findings)
     return {
         "valid": valid,

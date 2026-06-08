@@ -180,3 +180,37 @@ class TestWebresourceRefs:
                   json={"value": [{"webresourceid": "x"}]})
             report = sv.validate_solution(p, backend=backend)
         assert [f for f in report["findings"] if f["check"] == "webresource-ref"] == []
+
+
+# ── Task 4: global option-set bindings ────────────────────────────────────────
+
+def _attr_global_optionset(name):
+    return (f'<Entity><attributes><attribute><OptionSet Name="{name}">'
+            f"<IsGlobal>1</IsGlobal></OptionSet></attribute></attributes></Entity>")
+
+
+class TestOptionsetBindings:
+    def test_undeclared_global_binding_is_error(self, tmp_path):
+        p = tmp_path / "bad_os.zip"
+        _make_pkg(p, _sol(), _cust(entities=_attr_global_optionset("cwx_missingset")))
+        report = sv.validate_solution(p)
+        errs = [f for f in report["findings"] if f["check"] == "optionset-binding"]
+        assert len(errs) == 1
+        assert errs[0]["component"] == "cwx_missingset"
+
+    def test_declared_global_binding_is_ok(self, tmp_path):
+        p = tmp_path / "good_os.zip"
+        _make_pkg(p, _sol(),
+                  _cust(optionsets='<optionset Name="cwx_set"/>',
+                        entities=_attr_global_optionset("cwx_set")))
+        report = sv.validate_solution(p)
+        assert [f for f in report["findings"] if f["check"] == "optionset-binding"] == []
+
+    def test_binding_resolved_against_org(self, tmp_path, backend):
+        p = tmp_path / "org_os.zip"
+        _make_pkg(p, _sol(), _cust(entities=_attr_global_optionset("cwx_inorg")))
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"GlobalOptionSetDefinitions"),
+                  json={"value": [{"Name": "cwx_inorg"}]})
+            report = sv.validate_solution(p, backend=backend)
+        assert [f for f in report["findings"] if f["check"] == "optionset-binding"] == []
