@@ -35,7 +35,7 @@
 | `crm/tests/test_clone.py` (**new**) | Unit tests for `retarget_spec` (pure) + orchestrator (monkeypatched composition) + command. | — |
 | `README.md`, `docs/how-to/metadata.md`, `crm/skills/SKILL.md` (**modify**) | Docs shipped in the same PR. | — |
 
-**Reused as-is (do not modify):** `export_spec.build_entity_spec`, `apply.apply_spec`, `workflow.list_workflows` / `clone_workflow_to_entity`, `solution._validate_customization_prefix` / `publish_all`, `metadata.maybe_publish`.
+**Reused as-is (do not modify):** `export_spec.build_entity_spec`, `apply.apply_spec`, `workflow.list_workflows` / `clone_workflow_to_entity`, `solution.validate_customization_prefix` / `publish_all`, `metadata.maybe_publish`.
 
 ### Key signatures the executor will call (verified against HEAD)
 
@@ -65,7 +65,7 @@ def clone_workflow_to_entity(backend, workflow_id, target_entity, *, name=None, 
 #   clone_entity emits a constant ribbon_note instead.
 
 # crm/core/solution.py
-def _validate_customization_prefix(prefix: str) -> None   # raises D365Error if 'mscrm…' or not /[A-Za-z][A-Za-z0-9]{1,7}/
+def validate_customization_prefix(prefix: str) -> None   # raises D365Error if 'mscrm…' or not /[A-Za-z][A-Za-z0-9]{1,7}/
 def publish_all(backend) -> dict[str, Any]
 
 # crm/utils/d365_backend.py
@@ -326,7 +326,7 @@ Add imports and `clone_entity` to `crm/core/clone.py` (place imports next to the
 # --- add to the imports block at the top of crm/core/clone.py ---
 from crm.core.apply import apply_spec
 from crm.core.export_spec import build_entity_spec
-from crm.core.solution import _validate_customization_prefix
+from crm.core.solution import validate_customization_prefix
 from crm.utils.d365_backend import D365Backend, D365Error
 ```
 
@@ -367,7 +367,7 @@ def clone_entity(
     skipped_workflows, ribbon_note, apply}``.
     """
     prefix, _, _ = new_schema_name.partition("_")
-    _validate_customization_prefix(prefix)
+    validate_customization_prefix(prefix)
 
     # with_relationships=False: read_entity_relationships returns PARENT-side rows
     # (other tables' lookups pointing at source), which are the wrong direction
@@ -914,7 +914,7 @@ In `crm/core/clone.py`, add to the imports:
 
 ```python
 from crm.core.forms import clone_form_to_entity, read_entity_forms
-from crm.core.solution import _validate_customization_prefix, publish_all
+from crm.core.solution import validate_customization_prefix, publish_all
 ```
 
 (merge the `publish_all` import into the existing `from crm.core.solution import …` line).
