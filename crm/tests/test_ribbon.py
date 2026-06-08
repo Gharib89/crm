@@ -38,3 +38,46 @@ def test_retrieve_entity_ribbon_uses_inline_string_literals():
     # Verified live: inline literals, NOT parameter aliases.
     assert be.last_path == (
         "RetrieveEntityRibbon(EntityName='cwx_ticket',RibbonLocationFilter='All')")
+
+
+SAMPLE_DIFF = """
+<RibbonDiffXml>
+  <CustomActions>
+    <CustomAction Id="cwx_ticket.form.Validate.CustomAction"
+                  Location="Mscrm.Form.cwx_ticket.MainTab.Save.Controls._children"
+                  Sequence="50">
+      <CommandUIDefinition>
+        <Button Id="cwx_ticket.form.Validate.Button"
+                Command="cwx_ticket.form.Validate.Command" LabelText="Validate"/>
+      </CommandUIDefinition>
+    </CustomAction>
+  </CustomActions>
+  <CommandDefinitions>
+    <CommandDefinition Id="cwx_ticket.form.Validate.Command">
+      <Actions>
+        <JavaScriptFunction Library="$webresource:cwx_/scripts/x.js" FunctionName="ns.fn">
+          <CrmParameter Value="PrimaryControl"/>
+        </JavaScriptFunction>
+      </Actions>
+    </CommandDefinition>
+  </CommandDefinitions>
+</RibbonDiffXml>
+"""
+
+
+def test_list_custom_buttons_extracts_fields():
+    diff = ET.fromstring(SAMPLE_DIFF)
+    buttons = ribbon.list_custom_buttons(diff)
+    assert len(buttons) == 1
+    b = buttons[0]
+    assert b.button_id == "cwx_ticket.form.Validate.CustomAction"
+    assert b.label == "Validate"
+    assert b.command == "cwx_ticket.form.Validate.Command"
+    assert b.location == "Mscrm.Form.cwx_ticket.MainTab.Save.Controls._children"
+    assert b.function == "ns.fn"
+    assert b.library == "$webresource:cwx_/scripts/x.js"
+
+
+def test_list_custom_buttons_empty_when_no_customactions():
+    diff = ET.fromstring("<RibbonDiffXml><CustomActions/></RibbonDiffXml>")
+    assert ribbon.list_custom_buttons(diff) == []
