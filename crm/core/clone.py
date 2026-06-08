@@ -13,8 +13,8 @@ from typing import Any
 
 from crm.core.apply import apply_spec
 from crm.core.export_spec import build_entity_spec
-from crm.core.solution import _validate_customization_prefix
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.core.solution import _validate_customization_prefix  # pyright: ignore[reportPrivateUsage]
+from crm.utils.d365_backend import D365Backend
 
 
 def retarget_spec(
