@@ -28,6 +28,11 @@ def ribbon_group():
 @pass_ctx
 def ribbon_export(ctx: CLIContext, entity, output):
     """Export an entity's composed ribbon as readable XML."""
+    if ctx.dry_run:
+        safe = entity.replace("'", "''")
+        ctx.emit(True, data=ctx.backend().get(
+            f"RetrieveEntityRibbon(EntityName='{safe}',RibbonLocationFilter='All')"))
+        return
     try:
         root = ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity)
     except D365Error as exc:
@@ -66,6 +71,17 @@ def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(True))
     assert solution is not None  # _resolve_solution exits when require=True + no solution
+    if ctx.dry_run:
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                preview = ribbon_mod.export_solution(
+                    ctx.backend(), solution, Path(td) / "dry.zip",
+                    export_customizations=True)
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+        ctx.emit(True, data=preview, warnings=[warning] if warning else None)
+        return
     try:
         _, _, diff = _load_solution_ribbon_diff(ctx, solution, entity)
     except D365Error as exc:

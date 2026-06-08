@@ -271,8 +271,11 @@ def apply_ribbon_change(
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "export.zip"
         dst = Path(td) / "import.zip"
-        export_solution(backend, solution, src, export_customizations=True,
-                        timeout=timeout)
+        export_result = export_solution(backend, solution, src,
+                                        export_customizations=True,
+                                        timeout=timeout)
+        if "_dry_run" in export_result:
+            return export_result
         _rewrite_customizations(src, dst, mutate)
         if validate:
             report = validate_solution(dst, backend=backend)

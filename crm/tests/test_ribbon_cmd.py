@@ -1,4 +1,4 @@
-# crm/tests/test_ribbon_cmd.py
+# pyright: basic
 import base64
 import io
 import zipfile
