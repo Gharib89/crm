@@ -13,7 +13,7 @@ from __future__ import annotations
 import json as _json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from crm.core import entity as entity_ops
@@ -218,7 +218,10 @@ def import_workflow(
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Upsert a workflow definition from a previously exported JSON file."""
-    record: dict[str, Any] = _json.loads(Path(file_path).read_text(encoding="utf-8"))
+    parsed: Any = _json.loads(Path(file_path).read_text(encoding="utf-8"))
+    if not isinstance(parsed, dict):
+        raise D365Error(f"{file_path} must contain a JSON object, not {type(parsed).__name__}.")
+    record = cast(dict[str, Any], parsed)
     wf_id = record.get("workflowid")
     if not wf_id:
         raise D365Error(f"{file_path} has no 'workflowid'.")

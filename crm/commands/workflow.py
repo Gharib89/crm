@@ -116,9 +116,7 @@ def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, 
         info = workflow_mod.clone_workflow_to_entity(
             ctx.backend(), workflow_id, target_entity,
             name=name, activate=activate, solution=solution,
-            caller_id=as_user, caller_object_id=as_user_object_id,
-            suppress_duplicate_detection=suppress_dup_detection,
-            bypass_custom_plugin_execution=bypass_plugins,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -157,9 +155,7 @@ def workflow_import(ctx: CLIContext, file_path, activate,
     try:
         info = workflow_mod.import_workflow(
             ctx.backend(), file_path=file_path, activate=activate,
-            caller_id=as_user, caller_object_id=as_user_object_id,
-            suppress_duplicate_detection=suppress_dup_detection,
-            bypass_custom_plugin_execution=bypass_plugins,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
