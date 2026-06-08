@@ -9,6 +9,7 @@ can wrap it the way `view` wraps `views.py`.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, as_dict
@@ -16,6 +17,20 @@ from crm.utils.d365_backend import D365Backend, as_dict
 FORM_TYPE_MAIN = 2
 
 _FORM_SELECT = "formid,name,objecttypecode,type,formxml,description,isdefault"
+
+
+def retarget_formxml(formxml: str, *, src_entity: str, dst_entity: str) -> str:
+    """Rewrite a form's formxml to reference the clone entity.
+
+    Swaps whole-token occurrences of ``src_entity`` for ``dst_entity``. Word
+    boundaries protect attribute logical names that merely start with the entity
+    name (e.g. ``new_projectid``, ``new_project_code`` are left intact) — the
+    clone reuses those attribute names verbatim, so their bindings must not
+    change. Only the entity name itself (subgrid/navigation entity refs) moves.
+    """
+    if not formxml:
+        return formxml
+    return re.sub(rf"\b{re.escape(src_entity)}\b", dst_entity, formxml)
 
 
 def read_entity_forms(

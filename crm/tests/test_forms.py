@@ -70,3 +70,25 @@ class TestReadEntityForms:
             m.get(_forms_url(backend), json={"value": []})
             forms.read_entity_forms(backend, "it's_table")
         assert "it%27%27s_table" in m.last_request.url
+
+
+class TestRetargetFormxml:
+    def test_rewrites_whole_word_entity_refs(self):
+        from crm.core.forms import retarget_formxml
+        xml = ('<form><control entityname="new_project" /></form>')
+        out = retarget_formxml(xml, src_entity="new_project", dst_entity="cwx_ticketclone")
+        assert 'entityname="cwx_ticketclone"' in out
+
+    def test_protects_attribute_datafieldnames(self):
+        from crm.core.forms import retarget_formxml
+        xml = ('<cell><control id="new_projectid" datafieldname="new_projectid" />'
+               '<control datafieldname="new_project_code" /></cell>')
+        out = retarget_formxml(xml, src_entity="new_project", dst_entity="cwx_ticketclone")
+        assert 'datafieldname="new_projectid"' in out
+        assert 'datafieldname="new_project_code"' in out
+        assert "cwx_ticketclone" not in out
+
+    def test_noop_when_entity_absent(self):
+        from crm.core.forms import retarget_formxml
+        out = retarget_formxml("<form/>", src_entity="new_project", dst_entity="cwx_ticketclone")
+        assert out == "<form/>"
