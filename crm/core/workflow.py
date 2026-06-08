@@ -10,7 +10,9 @@ Reference:
 
 from __future__ import annotations
 
+import json as _json
 import re
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -174,6 +176,49 @@ def clone_workflow_to_entity(
         "activated": activated,
         "solution": solution,
     }
+
+
+_EXPORT_FIELDS = (
+    "workflowid", "name", "category", "primaryentity", "type", "xaml",
+    "mode", "scope", "ondemand", "subprocess", "languagecode",
+)
+
+
+def export_workflow(
+    backend: D365Backend, workflow_id: str, *, out_path: str | None = None
+) -> dict[str, Any]:
+    """Retrieve a workflow definition and (optionally) write it to a JSON file."""
+    wf = get_workflow(backend, workflow_id)
+    record = {k: wf[k] for k in _EXPORT_FIELDS if k in wf}
+    if out_path:
+        Path(out_path).write_text(_json.dumps(record, indent=2), encoding="utf-8")
+    return {"workflow_id": workflow_id, "out_path": out_path, "record": record}
+
+
+def import_workflow(
+    backend: D365Backend,
+    *,
+    file_path: str,
+    activate: bool = False,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+) -> dict[str, Any]:
+    """Upsert a workflow definition from a previously exported JSON file."""
+    record: dict[str, Any] = _json.loads(Path(file_path).read_text(encoding="utf-8"))
+    wf_id = record.get("workflowid")
+    if not wf_id:
+        raise D365Error(f"{file_path} has no 'workflowid'.")
+    payload = {k: v for k, v in record.items() if k != "workflowid"}
+    entity_ops.upsert(
+        backend, "workflows", wf_id, payload,
+        caller_id=caller_id, caller_object_id=caller_object_id,
+    )
+    activated = False
+    if activate:
+        set_workflow_state(backend, wf_id, activate=True,
+                           caller_id=caller_id, caller_object_id=caller_object_id)
+        activated = True
+    return {"workflow_id": wf_id, "activated": activated}
 
 
 def list_workflows(
