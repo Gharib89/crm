@@ -9,10 +9,15 @@ from __future__ import annotations
 import base64
 import io
 import re
+import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable
+
+from crm.core.solution import export_solution, import_solution, publish_all
+from crm.core.solution_validate import validate_solution
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
@@ -227,3 +232,48 @@ def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
         if cdef is not None:
             cmds.remove(cdef)
     return True
+
+
+def _rewrite_customizations(
+    src_zip: Path, dst_zip: Path, mutate: Callable[[ET.Element], None]
+) -> None:
+    """Copy every member of ``src_zip`` to ``dst_zip``, applying ``mutate`` to the
+    parsed customizations.xml root before writing it back."""
+    with zipfile.ZipFile(src_zip) as zin:
+        members = {name: zin.read(name) for name in zin.namelist()}
+    cust_root = ET.fromstring(members["customizations.xml"])
+    mutate(cust_root)
+    members["customizations.xml"] = ET.tostring(cust_root, encoding="utf-8")
+    with zipfile.ZipFile(dst_zip, "w", zipfile.ZIP_DEFLATED) as zout:
+        for name, data in members.items():
+            zout.writestr(name, data)
+
+
+def apply_ribbon_change(
+    backend: "D365Backend",
+    *,
+    solution: str,
+    entity: str,
+    mutate: Callable[[ET.Element], None],
+    validate: bool = True,
+    publish: bool = True,
+    timeout: int | None = None,
+) -> dict[str, Any]:
+    """Export ``solution``, rewrite ``entity``'s RibbonDiffXml via ``mutate``,
+    validate, import, and publish. Reuses #140 import + #141 validate."""
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "export.zip"
+        dst = Path(td) / "import.zip"
+        export_solution(backend, solution, src, export_customizations=True,
+                        timeout=timeout)
+        _rewrite_customizations(src, dst, mutate)
+        if validate:
+            report = validate_solution(dst, backend=backend)
+            if not report["valid"]:
+                errs = [f for f in report["findings"]
+                        if f.get("severity") == "error"]
+                raise ValueError(f"pre-import validation failed: {errs}")
+        result = import_solution(backend, dst, timeout=timeout)
+        if publish:
+            publish_all(backend)
+        return result

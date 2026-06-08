@@ -213,3 +213,78 @@ def test_remove_custom_action_deletes_action_and_command():
 def test_remove_custom_action_unknown_returns_false():
     diff = _empty_diff()
     assert ribbon.remove_custom_action(diff, "nope.CustomAction") is False
+
+
+def _make_solution_zip(path, cust_xml: str) -> None:
+    import zipfile as zf
+    with zf.ZipFile(path, "w") as z:
+        z.writestr("solution.xml", "<ImportExportXml><SolutionManifest/></ImportExportXml>")
+        z.writestr("customizations.xml", cust_xml)
+        z.writestr("[Content_Types].xml", "<Types/>")
+
+
+def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    def fake_export(backend, name, output_path, **kw):
+        _make_solution_zip(output_path, CUST_XML)
+        return {"output": str(output_path), "bytes": 1}
+
+    def fake_validate(zip_path, *, backend=None):
+        # read back the rewritten customizations so the test can assert on it
+        import zipfile as zf
+        with zf.ZipFile(zip_path) as z:
+            captured["customizations"] = z.read("customizations.xml").decode()
+        return {"valid": True, "findings": [], "checks_run": ["package"]}
+
+    def fake_import(backend, zip_path, **kw):
+        captured["imported"] = str(zip_path)
+        return {"status": "succeeded"}
+
+    def fake_publish(backend):
+        captured["published"] = True
+        return {"ok": True}
+
+    monkeypatch.setattr(ribbon, "export_solution", fake_export)
+    monkeypatch.setattr(ribbon, "validate_solution", fake_validate)
+    monkeypatch.setattr(ribbon, "import_solution", fake_import)
+    monkeypatch.setattr(ribbon, "publish_all", fake_publish)
+
+    def mutate(cust_root: ET.Element) -> None:
+        entity = ribbon.find_entity_node(cust_root, "cwx_ticket")
+        diff = ribbon.get_or_create_ribbon_diff(entity)
+        ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+        ribbon.add_custom_action(
+            diff, ids=ids, group="Mscrm.Form.cwx_ticket.MainTab.Save",
+            label="Validate", webresource="cwx_/scripts/x.js", function="ns.fn",
+            param="PrimaryControl", sequence=50)
+
+    result = ribbon.apply_ribbon_change(
+        object(), solution="MySol", entity="cwx_ticket", mutate=mutate)
+
+    assert result["status"] == "succeeded"
+    assert captured["published"] is True
+    assert "cwx_ticket.form.Validate.Button" in captured["customizations"]  # type: ignore[operator]
+
+
+def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
+    def fake_export(backend, name, output_path, **kw):
+        _make_solution_zip(output_path, CUST_XML)
+        return {"output": str(output_path)}
+
+    def fake_validate(zip_path, *, backend=None):
+        return {"valid": False,
+                "findings": [{"severity": "error", "message": "bad ribbon"}],
+                "checks_run": ["package"]}
+
+    imported: list[str] = []
+    monkeypatch.setattr(ribbon, "export_solution", fake_export)
+    monkeypatch.setattr(ribbon, "validate_solution", fake_validate)
+    monkeypatch.setattr(ribbon, "import_solution",
+                        lambda *a, **k: imported.append("x"))
+    monkeypatch.setattr(ribbon, "publish_all", lambda *a, **k: None)
+
+    with pytest.raises(ValueError, match="validation failed"):
+        ribbon.apply_ribbon_change(
+            object(), solution="MySol", entity="cwx_ticket", mutate=lambda r: None)
+    assert imported == []  # never imported a failing package
