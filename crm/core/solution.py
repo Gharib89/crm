@@ -25,7 +25,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 # customizationoptionvalueprefix 10000-99999; solution publisherid@odata.bind).
 
 
-def _validate_customization_prefix(prefix: str) -> None:
+def validate_customization_prefix(prefix: str) -> None:
     """Enforce the publisher customizationprefix rules before any HTTP call."""
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,7}", prefix):
         raise D365Error(
@@ -69,7 +69,7 @@ def create_publisher(
     """
     if not name:
         raise D365Error("name is required.")
-    _validate_customization_prefix(prefix)
+    validate_customization_prefix(prefix)
     if not 10000 <= option_value_prefix <= 99999:
         raise D365Error(
             f"option_value_prefix must be in the range 10000-99999; got {option_value_prefix}."

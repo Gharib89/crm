@@ -14,7 +14,7 @@ from typing import Any
 from crm.core.apply import apply_spec
 from crm.core.export_spec import build_entity_spec
 from crm.core.forms import clone_form_to_entity, read_entity_forms
-from crm.core.solution import _validate_customization_prefix, publish_all  # pyright: ignore[reportPrivateUsage]
+from crm.core.solution import publish_all, validate_customization_prefix
 from crm.core.workflow import clone_workflow_to_entity, list_workflows
 from crm.utils.d365_backend import D365Backend, D365Error
 
@@ -84,7 +84,7 @@ def clone_entity(
             f"e.g. 'new_TicketClone'. Got: {new_schema_name!r}"
         )
     prefix, _, _ = new_schema_name.partition("_")
-    _validate_customization_prefix(prefix)
+    validate_customization_prefix(prefix)
 
     spec = build_entity_spec(
         backend, source, with_views=with_views, with_relationships=False)
@@ -114,7 +114,8 @@ def clone_entity(
         out["views_note"] = (
             f"{planned_views} view(s) were planned but not yet created — the "
             "entity's ObjectTypeCode was unreadable at apply time. Re-run "
-            "`crm metadata apply` on the same spec to land them."
+            f"`crm metadata clone-entity {source} {new_schema_name} --with-views` "
+            "after the initial publish to land them."
         )
     if not apply_result.get("ok"):
         return out

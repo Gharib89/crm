@@ -217,6 +217,14 @@ dialogs, and modern flows are skipped (reported under `skipped_workflows`), and
 because there is no "is custom" filter it copies every matching definition
 (type=1), including managed ones.
 
+**Views and the ObjectTypeCode timing caveat:** A brand-new entity's
+ObjectTypeCode (OTC) is sometimes unreadable until after the first apply's
+publish step. When this happens, `--with-views` puts views in the *planned*
+state rather than applying them immediately; the command surfaces this via a
+`views_note` warning. If you see that warning, re-run the clone with
+`--with-views` (and without `--with-forms` / `--with-workflows` so it is
+idempotent) after the initial publish to land the views.
+
 **Not cloned (Web API limits):**
 
 - **Ribbon** — `RibbonDiffXml` has no Web API write path; it deploys only via
