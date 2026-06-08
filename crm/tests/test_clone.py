@@ -193,3 +193,44 @@ class TestCloneEntityForms:
         assert out["created"] is False
         assert called["read"] is False
         assert out["counts"]["forms"] == 0
+
+
+class TestCloneEntityWorkflows:
+    def _base_patch(self, monkeypatch):
+        monkeypatch.setattr(clone_mod, "build_entity_spec",
+                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
+                                                             "display_name": "Project",
+                                                             "relationships": []}]})
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
+
+    def test_clones_supported_workflows(self, monkeypatch):
+        self._base_patch(monkeypatch)
+        monkeypatch.setattr(clone_mod, "list_workflows",
+                            lambda b, **k: [{"workflowid": "w1", "name": "WF1"}])
+        seen = {}
+        monkeypatch.setattr(clone_mod, "clone_workflow_to_entity",
+                            lambda b, wid, ent, **k: seen.update(wid=wid, ent=ent, sol=k.get("solution"))
+                            or {"workflow_id": "new"})
+        out = clone_mod.clone_entity(None, "new_project", "cwx_TicketClone",
+                                     with_workflows=True, solution="MySol")
+        assert out["counts"]["workflows"] == 1
+        assert seen == {"wid": "w1", "ent": "cwx_ticketclone", "sol": "MySol"}
+
+    def test_unsupported_workflow_is_skipped_not_fatal(self, monkeypatch):
+        from crm.utils.d365_backend import D365Error
+        self._base_patch(monkeypatch)
+        monkeypatch.setattr(clone_mod, "list_workflows",
+                            lambda b, **k: [{"workflowid": "w1", "name": "Good"},
+                                            {"workflowid": "w2", "name": "BadAction"}])
+
+        def fake_clone(b, wid, ent, **k):
+            if wid == "w2":
+                raise D365Error("Cloning category 3 (action/BPF) is not yet supported")
+            return {"workflow_id": "new"}
+
+        monkeypatch.setattr(clone_mod, "clone_workflow_to_entity", fake_clone)
+        out = clone_mod.clone_entity(None, "new_project", "cwx_TicketClone", with_workflows=True)
+        assert out["counts"]["workflows"] == 1
+        assert len(out["skipped_workflows"]) == 1
+        assert out["skipped_workflows"][0]["name"] == "BadAction"
+        assert "not yet supported" in out["skipped_workflows"][0]["reason"]

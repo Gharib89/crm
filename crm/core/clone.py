@@ -15,7 +15,8 @@ from crm.core.apply import apply_spec
 from crm.core.export_spec import build_entity_spec
 from crm.core.forms import clone_form_to_entity, read_entity_forms
 from crm.core.solution import _validate_customization_prefix, publish_all  # pyright: ignore[reportPrivateUsage]
-from crm.utils.d365_backend import D365Backend
+from crm.core.workflow import clone_workflow_to_entity, list_workflows
+from crm.utils.d365_backend import D365Backend, D365Error
 
 
 def retarget_spec(
@@ -106,6 +107,7 @@ def clone_entity(
         return out
 
     clone_logical = new_schema_name.lower()
+
     if with_forms:
         forms_done = 0
         for form in read_entity_forms(backend, source):
@@ -114,5 +116,19 @@ def clone_entity(
         out["counts"]["forms"] = forms_done
         if forms_done and publish and (not backend or not backend.dry_run):
             publish_all(backend)
+
+    if with_workflows:
+        wf_done = 0
+        skipped_wf: list[dict[str, str]] = []
+        for wf in list_workflows(backend, primary_entity=source):
+            wf_id = wf.get("workflowid") or ""
+            try:
+                clone_workflow_to_entity(
+                    backend, wf_id, clone_logical, solution=solution)
+                wf_done += 1
+            except D365Error as exc:
+                skipped_wf.append({"name": wf.get("name", ""), "reason": str(exc)})
+        out["counts"]["workflows"] = wf_done
+        out["skipped_workflows"] = skipped_wf
 
     return out
