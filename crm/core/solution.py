@@ -510,6 +510,15 @@ def _async_export_unavailable(exc: D365Error) -> bool:
     )
 
 
+def _import_job_id_rejected(exc: D365Error) -> bool:
+    """True when on-prem rejects ImportJobId as an invalid parameter."""
+    msg = str(exc).lower()
+    return "importjobid" in msg and (
+        "not a valid parameter" in msg
+        or "invalid parameter" in msg
+    )
+
+
 def _write_export_file(output_path: str | Path, encoded: str) -> tuple[Path, int]:
     data = base64.b64decode(encoded)
     out = Path(output_path)
@@ -715,7 +724,16 @@ def import_solution(
     }
 
     started = _time.monotonic()
-    resp = as_dict(backend.post("ImportSolutionAsync", json_body=body))
+    try:
+        resp = as_dict(backend.post("ImportSolutionAsync", json_body=body))
+    except D365Error as exc:
+        if not _import_job_id_rejected(exc):
+            raise
+        # On-prem D365 CE doesn't accept ImportJobId — retry without it.
+        body.pop("ImportJobId", None)
+        import_job_id = None
+        resp = as_dict(backend.post("ImportSolutionAsync", json_body=body))
+
     if "_dry_run" in resp:
         return {**resp, "action": "ImportSolutionAsync", "import_job_id": import_job_id,
                 "managed": managed}
@@ -743,11 +761,11 @@ def import_solution(
         _sys.stderr.write(f"[crm] import progress={pct:.1f}% status={msg}\n")
 
     try:
-        backend.poll_async_operation(
+        op = backend.poll_async_operation(
             async_op_id,
             timeout=timeout,
-            import_job_id=None if quiet else import_job_id,
-            on_progress=None if quiet else _on_progress,
+            import_job_id=None if (quiet or import_job_id is None) else import_job_id,
+            on_progress=None if (quiet or import_job_id is None) else _on_progress,
         )
     except D365Error as exc:
         raise D365Error(
@@ -755,12 +773,20 @@ def import_solution(
             status=exc.status, code=exc.code, response_body=exc.response_body,
         ) from exc
 
+    # When ImportJobId was omitted (on-prem fallback), recover the server-assigned
+    # importjob GUID from the asyncop's regarding-object lookup field.
+    if import_job_id is None:
+        import_job_id = op.get("_regardingobjectid_value") or None
+
     # Final importjobs read for the canonical progress + timestamps + the per-
     # component result envelope (data column).
-    job_row = as_dict(backend.get(
-        f"importjobs({import_job_id})",
-        params={"$select": "progress,startedon,completedon,data"},
-    ))
+    if import_job_id is not None:
+        job_row = as_dict(backend.get(
+            f"importjobs({import_job_id})",
+            params={"$select": "progress,startedon,completedon,data"},
+        ))
+    else:
+        job_row = {}
     duration_ms = int((_time.monotonic() - started) * 1000)
     prog = job_row.get("progress")
     out: dict[str, Any] = {
@@ -778,7 +804,7 @@ def import_solution(
     # is best-effort (missing/unparseable data → warning, never an error).
     _attach_import_results(out, job_row.get("data"))
 
-    if formatted:
+    if formatted and import_job_id is not None:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
 
     return out

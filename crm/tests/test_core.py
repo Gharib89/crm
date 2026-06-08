@@ -1143,6 +1143,136 @@ class TestImportSolutionAsync:
         assert info["action"] == "ImportSolutionAsync"
         assert "import_job_id" in info
 
+    RECOVERED_JOB_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+    def test_import_job_id_rejected_retries_without_it(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """On-prem rejects ImportJobId → retry without it → recover id from asyncop."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        call_count: dict[str, int] = {"n": 0}
+
+        def _post_handler(request, context):  # type: ignore[return]
+            call_count["n"] += 1
+            body = request.json()
+            if call_count["n"] == 1:
+                # First call: reject ImportJobId
+                assert "ImportJobId" in body
+                context.status_code = 400
+                return {
+                    "error": {
+                        "message": "The parameter 'ImportJobId' in the request payload "
+                                   "is not a valid parameter for the operation 'ImportSolutionAsync'."
+                    }
+                }
+            # Second call: ImportJobId must be absent
+            assert "ImportJobId" not in body
+            context.status_code = 200
+            return {"AsyncOperationId": self.OP_ID}
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"), json=_post_handler)
+            # asyncop poll returns completed with _regardingobjectid_value set
+            m.get(
+                requests_mock.ANY,
+                [
+                    {
+                        "json": {
+                            "statecode": 3,
+                            "statuscode": 30,
+                            "message": "Done",
+                            "_regardingobjectid_value": self.RECOVERED_JOB_ID,
+                        }
+                    },
+                    # importjobs GET after recovery
+                    {
+                        "json": {
+                            "progress": 100.0,
+                            "startedon": "2024-01-01T00:00:00Z",
+                            "completedon": "2024-01-01T00:01:00Z",
+                            "data": None,
+                        }
+                    },
+                ],
+            )
+            from crm.core import solution as sol_mod
+            info = sol_mod.import_solution(backend, zip_path, quiet=True)
+
+        assert call_count["n"] == 2
+        assert info["import_job_id"] == self.RECOVERED_JOB_ID
+        assert info["async_operation_id"] == self.OP_ID
+        assert info["status"] == "succeeded"
+
+    def test_import_other_d365_error_reraised(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """A D365Error unrelated to ImportJobId is re-raised without retry."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        call_count: dict[str, int] = {"n": 0}
+
+        def _post_handler(request, context):  # type: ignore[return]
+            call_count["n"] += 1
+            context.status_code = 403
+            return {"error": {"message": "Caller does not have permission to ImportSolution."}}
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"), json=_post_handler)
+            from crm.core import solution as sol_mod
+            with pytest.raises(D365Error, match="permission"):
+                sol_mod.import_solution(backend, zip_path, quiet=True)
+
+        assert call_count["n"] == 1
+
+    def test_import_no_regardingobjectid_skips_job_row(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """If _regardingobjectid_value is absent, import_job_id stays None and
+        the importjobs GET is skipped (no KeyError, no extra HTTP call)."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        call_count: dict[str, int] = {"post": 0, "get": 0}
+
+        def _post_handler(request, context):  # type: ignore[return]
+            call_count["post"] += 1
+            body = request.json()
+            if call_count["post"] == 1:
+                context.status_code = 400
+                return {
+                    "error": {
+                        "message": "The parameter 'ImportJobId' is not a valid parameter "
+                                   "for the operation 'ImportSolutionAsync'."
+                    }
+                }
+            assert "ImportJobId" not in body
+            context.status_code = 200
+            return {"AsyncOperationId": self.OP_ID}
+
+        def _get_handler(request, context):
+            call_count["get"] += 1
+            # asyncop only — no _regardingobjectid_value
+            return {"statecode": 3, "statuscode": 30, "message": "Done"}
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"), json=_post_handler)
+            m.get(requests_mock.ANY, json=_get_handler)
+            from crm.core import solution as sol_mod
+            info = sol_mod.import_solution(backend, zip_path, quiet=True)
+
+        assert info["import_job_id"] is None
+        assert info["status"] == "succeeded"
+        assert call_count["get"] == 1  # only the asyncop poll, no importjobs GET
+
 
 class TestLoadPayload:
     def test_rejects_json_list_with_typename(self):
