@@ -19,6 +19,20 @@ from crm.commands._helpers import (
     _emit_expectation_failure,
 )
 
+# Metadata entity-sets that reject record-style PATCH; point the user at the
+# metadata command group instead (#146d). Matched case-insensitively on the
+# collection name that precedes any key, so 'EntityDefinitions(...)' counts.
+_METADATA_SETS = frozenset(("entitydefinitions", "attributemetadata", "globaloptionsetdefinitions"))
+
+
+def _metadata_set_hint(entity_set: str) -> str | None:
+    """Return a hint for EntityMetadata PATCH operations, None for regular entities."""
+    head = entity_set.split("(", 1)[0].strip().lower()
+    if head in _METADATA_SETS or head.endswith("metadata"):
+        return ("metadata is not editable via 'entity update'; use "
+                "'crm metadata update-entity' / 'crm metadata update-attribute'.")
+    return None
+
 
 @click.group("entity")
 def entity_group():
@@ -155,7 +169,7 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
-        _handle_d365_error(ctx, exc)
+        _handle_d365_error(ctx, exc, hint=_metadata_set_hint(entity_set))
         return
     data = result or {"updated": True, "id": record_id}
     ctx.emit(True, data=data)
