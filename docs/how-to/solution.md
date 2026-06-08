@@ -88,6 +88,31 @@ These are **offline local-file transforms**: they never open a connection, and n
 
 `--timeout` bounds the subprocess (seconds). The result envelope carries `{action, exit_code, folder, zipfile, stdout_tail}` (only the tail of SolutionPackager's chatty output is kept); a non-zero `exit_code` fails the command (`ok: false`, exit 1) while still reporting `stdout_tail` for diagnosis ([#73](https://github.com/Gharib89/crm/issues/73)).
 
+## Validate a solution package before import
+
+Catch packaging problems offline in one pass instead of one-error-per-import round-trip:
+
+```bash
+crm solution validate ./MySolution.zip
+```
+
+Offline checks: every component in `customizations.xml` is declared in
+`solution.xml` `<RootComponents>` and vice-versa; `$webresource:` references in
+ribbon XML resolve to a web resource in the package; every global option-set
+binding is declared; both manifests are well-formed and all required members
+(`solution.xml`, `customizations.xml`, `[Content_Types].xml`) are present.
+
+Add `--against-org` to also check the connected org for colliding `formid` /
+`savedqueryid` GUIDs and for the existence of referenced web resources and
+global option sets (requires a connection/profile):
+
+```bash
+crm solution validate ./MySolution.zip --against-org
+```
+
+`validate` exits non-zero when any error-severity problem is found, so it drops
+straight into a pre-import CI gate.
+
 ## Import a solution zip
 
 ```bash

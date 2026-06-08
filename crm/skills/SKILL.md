@@ -387,6 +387,21 @@ crm solution pack --zipfile dist/built.zip --folder src/MyCustomSolution
 # folder, zipfile, stdout_tail}.
 ```
 
+### 6a. Validate a solution zip before import
+
+Offline static analysis — no connection or profile needed:
+
+```bash
+crm solution validate /tmp/snap.zip
+# checks: RootComponents<->customizations parity, $webresource: ribbon refs,
+# global option-set bindings, well-formed XML, required members present.
+# exits non-zero on any error-severity finding.
+```
+
+Add `--against-org` to also check for colliding `formid`/`savedqueryid` GUIDs
+and existence of referenced web resources and global option sets in the target org
+(requires a connection/profile). Use before `solution import` as a CI gate.
+
 ### 7. Bulk CSV export
 
 ```bash
