@@ -9,6 +9,79 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.5.0 (2026-06-08)
+
+### Bug Fixes
+
+- **workflow**: Address Copilot round-1 findings ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Address Copilot round-2 findings ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Address Copilot round-3 findings ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+### Documentation
+
+- **plan**: Implementation plan for crm workflow clone/export/import
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **spec**: Design for crm metadata clone-entity ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **spec**: Design for crm workflow clone/export/import
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **spec**: Link clone-entity spec to follow-up #151
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **spec**: Sequence #144 before #143; --with-workflows back in scope
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Document clone/export/import ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+### Features
+
+- **workflow**: Add 'workflow clone' command ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Add 'workflow export' and 'workflow import' commands
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Add clone, export, and import commands (#144)
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Add export_workflow/import_workflow round-trip
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Add get_workflow definition retrieval
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Add retarget_xaml transform for clone
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+- **workflow**: Clone_workflow_to_entity with tiered category guard
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+### Testing
+
+- **workflow**: Align clone with live-org field requirements
+  ([#152](https://github.com/Gharib89/crm/pull/152),
+  [`a4f9fcd`](https://github.com/Gharib89/crm/commit/a4f9fcdd9ec71549e8fff82b457d298da8599c68))
+
+
 ## v1.4.0 (2026-06-08)
 
 ### Bug Fixes
