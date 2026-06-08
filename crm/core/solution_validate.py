@@ -129,11 +129,26 @@ def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Find
     return findings
 
 
+def _force_get(backend: D365Backend, path: str, params: dict[str, str]) -> dict[str, Any]:
+    """Read-only org probe: always a real GET, even under --dry-run.
+
+    The org checks are idempotent reads whose accuracy depends on the live
+    answer; a preview/empty dry-run response would surface false findings.
+    Mirrors metadata.target_exists / plugin._force_read_rows.
+    """
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        return as_dict(backend.get(path, params=params))
+    finally:
+        backend.dry_run = was_dry
+
+
 def _webresource_exists_in_org(backend: D365Backend, name: str) -> bool:
     lit = name.replace("'", "''")
-    resp = as_dict(backend.get(
-        "webresourceset",
-        params={"$select": "webresourceid", "$filter": f"name eq '{lit}'", "$top": "1"}))
+    resp = _force_get(
+        backend, "webresourceset",
+        {"$select": "webresourceid", "$filter": f"name eq '{lit}'", "$top": "1"})
     return bool(resp.get("value"))
 
 
@@ -167,9 +182,9 @@ def _check_webresource_refs(
 
 def _optionset_exists_in_org(backend: D365Backend, name: str) -> bool:
     lit = name.replace("'", "''")
-    resp = as_dict(backend.get(
-        "GlobalOptionSetDefinitions",
-        params={"$select": "Name", "$filter": f"Name eq '{lit}'", "$top": "1"}))
+    resp = _force_get(
+        backend, "GlobalOptionSetDefinitions",
+        {"$select": "Name", "$filter": f"Name eq '{lit}'", "$top": "1"})
     return bool(resp.get("value"))
 
 
@@ -227,9 +242,9 @@ def _check_org_collisions(cust_root: ET.Element, backend: D365Backend) -> list[F
             if gid:
                 guids.add(_norm(gid))
         for gid in sorted(guids):
-            resp = as_dict(backend.get(
-                entity_set,
-                params={"$select": id_attr, "$filter": f"{id_attr} eq {gid}", "$top": "1"}))
+            resp = _force_get(
+                backend, entity_set,
+                {"$select": id_attr, "$filter": f"{id_attr} eq {gid}", "$top": "1"})
             if resp.get("value"):
                 findings.append(Finding(
                     "error", "guid-collision",
@@ -275,6 +290,16 @@ def _load(
     except zipfile.BadZipFile:
         return None, None, [Finding("error", "package",
                                     f"{p} is not a valid zip file", location=str(p))]
+    except (zipfile.LargeZipFile, RuntimeError, NotImplementedError) as exc:
+        # A member that can't be read as a manifest (encrypted member ->
+        # RuntimeError, unsupported compression -> NotImplementedError, a >4GiB
+        # member without zip64 -> LargeZipFile) is a package problem, not an
+        # operational failure — report it instead of crashing the CLI (which
+        # only catches D365Error). Mirrors solution._sniff_solution_managed,
+        # which degrades on any such read failure.
+        return None, None, [Finding("error", "package",
+                                    f"{p} could not be read as a solution package: {exc}",
+                                    location=str(p))]
     except OSError as exc:
         raise D365Error(f"Could not read solution file {p}: {exc}") from exc
 

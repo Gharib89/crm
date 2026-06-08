@@ -351,3 +351,45 @@ class TestAcceptance:
                 cli, ["--json", "solution", "validate", str(p), "--against-org"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["valid"] is True
+
+
+# ── Copilot round 1: robustness fixes ─────────────────────────────────────────
+
+class TestDryRunForcesRealReads:
+    """--against-org probes are read-only and must force a real GET even under
+    --dry-run; otherwise the dry-run preview response (no 'value' key) hides
+    real collisions / fakes missing web resources & option sets (#149 review)."""
+
+    def test_org_collision_detected_under_dry_run(self, tmp_path):
+        dry_backend = D365Backend(
+            ConnectionProfile(name="t", url="https://crm.contoso.local/contoso",
+                              domain="C", username="u", api_version="v9.2", verify_ssl=False),
+            password="pw", dry_run=True)
+        p = tmp_path / "collide.zip"
+        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
+        with requests_mock.Mocker() as m:
+            sysforms = m.get(re.compile(r"systemforms"), json={"value": [{"formid": _FORM_GUID}]})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            report = sv.validate_solution(p, backend=dry_backend)
+        assert sysforms.called  # a real GET fired despite dry_run
+        assert any(f["check"] == "guid-collision" for f in report["findings"])
+        assert dry_backend.dry_run is True  # flag restored after the probe
+
+
+def test_unreadable_member_degrades_to_package_finding(tmp_path, monkeypatch):
+    """A member that can't be read (encrypted -> RuntimeError, unsupported
+    compression -> NotImplementedError, oversized -> LargeZipFile) must produce
+    a 'package' finding, not crash the CLI (which only catches D365Error)."""
+    p = tmp_path / "weird.zip"
+    _make_pkg(p, _sol(), _cust())
+    orig_read = zipfile.ZipFile.read
+
+    def boom(self, name, *a, **k):
+        if name == "solution.xml":
+            raise RuntimeError("That compression method is not supported")
+        return orig_read(self, name, *a, **k)
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", boom)
+    report = sv.validate_solution(p)  # must not raise
+    assert report["valid"] is False
+    assert any(f["check"] == "package" for f in report["findings"])
