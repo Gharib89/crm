@@ -9,6 +9,22 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.1.1 (2026-06-08)
+
+### Bug Fixes
+
+- **solution**: Omit ImportJobId on on-prem; recover server-assigned id from asyncop
+  ([`2870969`](https://github.com/Gharib89/crm/commit/287096939e52f227f6d005afce86d47b8d993d40))
+
+- **solution**: Suppress false Pyright unused-function warning on _import_job_id_rejected
+  ([`ec37686`](https://github.com/Gharib89/crm/commit/ec376860d9184cfd5658f057ea79be198954675f))
+
+### Documentation
+
+- **install**: Add uv tool install option for ASR-blocked machines
+  ([`bed9523`](https://github.com/Gharib89/crm/commit/bed952374cadfae49ae53abc01575858441cef86))
+
+
 ## v1.1.0 (2026-06-07)
 
 ### Documentation
