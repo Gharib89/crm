@@ -11,6 +11,7 @@ from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.core import dependencies as dep_mod
 from crm.core import export_spec as export_spec_mod
+from crm.core import clone as clone_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -381,6 +382,60 @@ def metadata_create_entity(
         return
     _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
     _journal(ctx, "metadata create-entity", schema_name, info, solution=solution)
+
+
+@metadata_group.command("clone-entity")
+@click.argument("source")
+@click.argument("new_schema_name")
+@click.option("--display", "display", default=None,
+              help="Display name for the clone. Default: '<source display> (Clone)'.")
+@click.option("--with-forms", is_flag=True, default=False,
+              help="Clone the source's main forms onto the clone.")
+@click.option("--with-views", is_flag=True, default=False,
+              help="Clone the source's public views onto the clone.")
+@click.option("--with-workflows", is_flag=True, default=False,
+              help="Clone the source's classic workflows / business rules onto the clone.")
+@click.option("--with-all", is_flag=True, default=False,
+              help="Enable --with-forms, --with-views, and --with-workflows.")
+@_solution_option
+@click.option("--publish/--no-publish", default=True,
+              help="Run PublishAllXml after creation. Default: publish.")
+@pass_ctx
+def metadata_clone_entity(
+    ctx: CLIContext, source, new_schema_name, display,
+    with_forms, with_views, with_workflows, with_all,
+    solution, require_solution, publish,
+):
+    """Duplicate a custom entity (skeleton + opt-in forms/views/workflows).
+
+    Pure Web API -- no XML. The ribbon is not cloned (no API write path; the
+    result carries a ribbon_note saying so). N:N relationships and the source's
+    parent-side relationships are not cloned.
+    """
+    if with_all:
+        with_forms = with_views = with_workflows = True
+    solution, warning = _resolve_solution(
+        ctx, solution, require=_require_solution(require_solution))
+    publish = _resolve_publish(ctx, publish)
+    try:
+        info = clone_mod.clone_entity(
+            ctx.backend(), source, new_schema_name,
+            display=display,
+            with_forms=with_forms, with_views=with_views, with_workflows=with_workflows,
+            solution=solution, publish=publish,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    notes = [warning] if warning else []
+    if info.get("views_note"):
+        notes.append(info["views_note"])
+    skipped = info.get("skipped_workflows") or []
+    if skipped:
+        names = ", ".join(w["name"] for w in skipped)
+        notes.append(f"{len(skipped)} workflow(s) not cloned: {names}")
+    _emit_with_warning(ctx, info, "; ".join(notes) or None)
+    _journal(ctx, "metadata clone-entity", new_schema_name, info, solution=solution)
 
 
 @metadata_group.command("update-entity")

@@ -196,6 +196,48 @@ crm --json metadata delete-relationship cwx_sla_cwx_ticket --yes
 ```
 Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an interactive confirmation). Pass `--check-dependencies` (optionally with `--dry-run`) to preview blocking dependencies inline before the delete.
 
+## Clone an entity
+
+Duplicate a custom entity under a new schema name. The bare clone copies the
+entity, its custom attributes (including lookup columns, which are recreated
+pointing at the same parent tables), and the global option sets it references
+(by name — not duplicated). Forms, views, and workflows are opt-in.
+
+```bash
+# skeleton only (entity + attributes + lookups + reused option sets)
+crm metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone"
+
+# everything cloneable over the API
+crm metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
+```
+
+`--with-forms` clones **Main** forms only. `--with-workflows` clones classic
+workflows and business rules whose primary entity is the source; actions, BPFs,
+dialogs, and modern flows are skipped (reported under `skipped_workflows`), and
+because there is no "is custom" filter it copies every matching definition
+(type=1), including managed ones.
+
+**Views and the ObjectTypeCode timing caveat:** A brand-new entity's
+ObjectTypeCode (OTC) is sometimes unreadable until after the first apply's
+publish step. When this happens, `--with-views` puts views in the *planned*
+state rather than applying them immediately; the command surfaces this via a
+`views_note` warning. If you see that warning, re-run the clone with
+`--with-views` (and without `--with-forms` / `--with-workflows` so it is
+idempotent) after the initial publish to land the views.
+
+**Not cloned (Web API limits):**
+
+- **Ribbon** — `RibbonDiffXml` has no Web API write path; it deploys only via
+  solution import. The result carries a `ribbon_note` saying so.
+- **N:N relationships**, and 1:N relationships where the source is the *parent*
+  (referenced) side — cloning those would add lookups to *other* tables.
+- **Lookup cascade / associated-menu behavior** — recreated lookups use the
+  default cascade behavior, not the source's.
+- **Polymorphic / Customer lookups** — only single-target lookups come across.
+- **Charts** — deferred to a follow-up (see issue tracker).
+- On Unified Interface a cloned form may need adding to the model-driven app's
+  form list to be user-visible.
+
 ## Export a live entity as an apply spec (export-spec → apply round-trip)
 
 `crm metadata export-spec` reads an existing entity over the Web API (pure GETs)

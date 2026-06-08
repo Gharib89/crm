@@ -137,7 +137,7 @@ pass `--profile <name>` and confirm the real target with
 | `connection` | `connect`, `status`, `whoami`, `test`, `doctor`, `profiles`, `disconnect`, `set-password`, `delete-password` | Profiles + auth probe + connection diagnostic  |
 | `entity`     | `get`, `create`, `update`, `upsert`, `delete`, `associate`, `disassociate`, `set-lookup`, `clear-lookup` | Record CRUD + relationships               |
 | `query`      | `odata`, `fetchxml`, `saved`, `user`                                                    | OData v4, FetchXML, savedquery, userquery     |
-| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `export-spec`, `cache-clear` | Schema introspection + option set values + dependency preview + spec export + entity-def cache |
+| `metadata`   | `describe`, `entities`, `entity`, `attributes`, `attribute`, `picklist`, `relationships`, `dependencies`, `export-spec`, `clone-entity`, `cache-clear` | Schema introspection + option set values + dependency preview + spec export + entity clone + entity-def cache |
 | `plugin`     | `register-assembly`, `list-types`, `register-step`, `unregister-assembly`, `unregister-step` | Plug-in assembly registration + step lifecycle |
 | `solution`   | `create-publisher`, `create`, `set-version`, `list`, `info`, `components`, `dependencies`, `add-component`, `remove-component`, `export`, `import`, `import-result`, `extract`, `pack`, `publish-all`, `publish` | Solution lifecycle + publish customizations    |
 | `view`       | `create`                                                                                | System views (savedquery)                      |
@@ -328,7 +328,46 @@ re-created as a single-target lookup; relationship `cascade` and `associated_men
 are captured but not yet acted on (the relationship is re-created with default
 cascade/menu). `apply` ignores unknown keys so the spec always remains apply-consumable.
 
-### 5c. Preview dependencies before deleting a metadata component
+### 5c. Clone a custom entity
+
+Duplicate a custom entity under a new schema name. The bare clone copies entity
+definition, custom attributes (including lookups, recreated pointing at the same
+parent tables), and reuses referenced global option sets by name (not duplicated).
+Forms, views, and workflows are opt-in.
+
+```bash
+# skeleton only (entity + attributes + lookups + reused option sets)
+crm --json metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone"
+
+# everything cloneable over the API
+crm --json metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
+
+# opt-in flags
+crm --json metadata clone-entity new_project cwx_TicketClone \
+    --with-forms --with-views --with-workflows
+```
+
+Key flags: `--display` overrides the display name of the new entity; `--solution`
+scopes all created components; `--with-forms` (Main forms only), `--with-views`,
+`--with-workflows` (classic workflows and business rules), `--with-all` enables
+all three.
+
+**Not cloned (Web API limits):**
+
+- **Ribbon** (`RibbonDiffXml` has no Web API write path — solution import only).
+  The result carries a `ribbon_note` field confirming this.
+- **N:N relationships** and 1:N relationships where the source is the *parent*
+  (referenced) side — cloning those would add lookups on *other* tables.
+- **Polymorphic / Customer lookups** — only single-target lookups come across.
+- **Charts** — deferred follow-up.
+
+`--with-workflows` copies every classic workflow/business rule (`type=1`) whose
+primary entity is the source, including managed ones (no "is custom" filter
+available). Actions, BPFs, dialogs, and modern flows are skipped (reported under
+`skipped_workflows`). On Unified Interface a cloned form may need adding to the
+model-driven app's form list to be visible.
+
+### 5e. Preview dependencies before deleting a metadata component
 
 ```bash
 # Check what would block deleting an entity
@@ -353,12 +392,12 @@ crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --c
 `--check-dependencies` is available on `delete-entity`, `delete-attribute`,
 `delete-relationship`, and `delete-optionset`. Default off (no extra round-trip).
 
-### 5d. Preview what blocks uninstalling a managed solution
+### 5f. Preview what blocks uninstalling a managed solution
 
 ```bash
 crm --json solution dependencies CRMWorx
 ```
-Solution-scoped counterpart to `metadata dependencies` (§5c): calls
+Solution-scoped counterpart to `metadata dependencies` (§5e): calls
 `RetrieveDependenciesForUninstall(SolutionUniqueName='<name>')` and returns
 `{solution, blockers[], count}`, each blocker shaped like the metadata-dependency
 blockers (`dependent_type`, `dependent_id`, `dependent_parent_id`, `required_type`,
