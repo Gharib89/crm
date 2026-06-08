@@ -203,3 +203,27 @@ def add_custom_action(
         "Library": f"$webresource:{webresource}", "FunctionName": function,
     })
     ET.SubElement(jsf, "CrmParameter", {"Value": param})
+
+
+def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
+    """Remove the CustomAction with ``button_id`` and its orphaned CommandDefinition.
+
+    Returns True if a matching CustomAction was found and removed, else False.
+    """
+    actions = ribbon_diff.find("CustomActions")
+    cmds = ribbon_diff.find("CommandDefinitions")
+    if actions is None:
+        return False
+    target = next((a for a in actions.findall("CustomAction")
+                   if a.get("Id") == button_id), None)
+    if target is None:
+        return False
+    btn = target.find(".//Button")
+    command_id = btn.get("Command") if btn is not None else None
+    actions.remove(target)
+    if command_id and cmds is not None:
+        cdef = next((c for c in cmds.findall("CommandDefinition")
+                     if c.get("Id") == command_id), None)
+        if cdef is not None:
+            cmds.remove(cdef)
+    return True

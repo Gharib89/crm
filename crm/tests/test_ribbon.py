@@ -195,3 +195,21 @@ def test_add_custom_action_rejects_id_collision():
     ribbon.add_custom_action(diff, **kw)
     with pytest.raises(ValueError, match="already exists"):
         ribbon.add_custom_action(diff, **kw)
+
+
+def test_remove_custom_action_deletes_action_and_command():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Validate",
+        webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    removed = ribbon.remove_custom_action(diff, ids.custom_action)
+    assert removed is True
+    assert ribbon.list_custom_buttons(diff) == []
+    assert diff.find(f".//CommandDefinition[@Id='{ids.command}']") is None
+
+
+def test_remove_custom_action_unknown_returns_false():
+    diff = _empty_diff()
+    assert ribbon.remove_custom_action(diff, "nope.CustomAction") is False
