@@ -143,6 +143,18 @@ class TestRootParity:
         assert report["valid"] is True
         assert "root-parity" in report["checks_run"]
 
+    def test_unscanned_rootcomponent_type_is_not_flagged(self, tmp_path):
+        # A real solution roots many component types (workflows type 29, plug-in
+        # assemblies type 91, …) that have no customizations node we scan. The
+        # reverse parity direction must NOT flag those as "no definition".
+        p = tmp_path / "workflow_root.zip"
+        _make_pkg(p, _sol('<RootComponent type="29" id="{aaaaaaaa-0000-0000-0000-000000000000}"/>'
+                          '<RootComponent type="91" id="{bbbbbbbb-0000-0000-0000-000000000000}"/>'),
+                  _cust())
+        report = sv.validate_solution(p)
+        assert [f for f in report["findings"] if f["check"] == "root-parity"] == []
+        assert report["valid"] is True
+
 
 # ── Task 3: $webresource: ribbon refs ─────────────────────────────────────────
 

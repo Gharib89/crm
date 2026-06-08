@@ -34,14 +34,25 @@ _COLLISION_SOURCES: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
 
 # customizations.xml container node -> componenttype int (single source of truth
 # is SOLUTION_COMPONENT_TYPES). Each container wraps one entry per component.
+# Restricted to the node types whose customizations entry is keyed the SAME way
+# the matching <RootComponent> is (schemaName/name, or the form GUID) so parity
+# matching is reliable. Roles/Workflows are deliberately excluded: their
+# <RootComponent> is keyed by GUID `id` while their customizations entry exposes
+# a Name, so including them would emit spurious both-direction parity findings on
+# a real export. Re-add once that GUID-vs-Name keying is verified (see #141 plan).
 NODE_COMPONENT_TYPE: dict[str, int] = {
     "Entities": _CT["entity"],
     "optionsets": _CT["optionset"],
-    "Roles": _CT["role"],
-    "Workflows": _CT["workflow"],
     "WebResources": _CT["webresource"],
     "InteractionCentricDashboards": _CT["systemform"],  # type 60
 }
+
+# Component types we scan in customizations.xml. The reverse parity direction
+# (a <RootComponent> with no backing definition) is checked ONLY for these
+# types, so the many component types a real solution legitimately roots without
+# a scanned customizations node (workflows, plug-in assemblies, SDK steps, …)
+# never produce false "declared but no definition" findings.
+_SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
 
 
 @dataclass(frozen=True)
@@ -90,9 +101,12 @@ def _root_components(sol_root: ET.Element) -> set[tuple[int, str]]:
         type_attr = rc.get("type")
         if type_attr is None or not type_attr.strip().lstrip("-").isdigit():
             continue
+        ctype = int(type_attr)
+        if ctype not in _SCANNED_TYPES:
+            continue  # only parity-check types we also scan in customizations.xml
         name = rc.get("schemaName") or rc.get("id")
         if name:
-            found.add((int(type_attr), _norm(name)))
+            found.add((ctype, _norm(name)))
     return found
 
 
