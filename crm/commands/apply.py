@@ -21,8 +21,12 @@ from crm.utils.d365_backend import D365Error
               help="Path to the YAML or JSON desired-state spec.")
 @click.option("--solution", default=None,
               help="Override the spec's target solution (unique name).")
+@click.option("--include-referenced-optionsets/--no-include-referenced-optionsets",
+              "include_referenced_optionsets", default=True, show_default=True,
+              help="Add a picklist's referenced global option set to the target "
+                   "solution (covers pre-existing globals the create step skips).")
 @pass_ctx
-def apply_cmd(ctx: CLIContext, spec_file, solution):
+def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionsets):
     """Apply a declarative desired-state spec.
 
     The spec declares a publisher, solution, and entities (with attributes,
@@ -46,7 +50,8 @@ def apply_cmd(ctx: CLIContext, spec_file, solution):
 
     try:
         res = apply_mod.apply_spec(
-            ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only)
+            ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only,
+            include_referenced_optionsets=include_referenced_optionsets)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
