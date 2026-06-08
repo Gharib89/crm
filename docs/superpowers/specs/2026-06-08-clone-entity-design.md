@@ -44,7 +44,7 @@ ribbon template, so its `RibbonDiffXml` is usually empty and nothing is lost.
 ```
 crm metadata clone-entity <source> <new-schema-name>
     [--display "New Display"]      # default: "<source display> (Clone)"
-    [--with-forms] [--with-views] [--with-charts] [--with-all]
+    [--with-forms] [--with-views] [--with-charts] [--with-workflows] [--with-all]
     [--solution <unique-name>]     # add created components to a solution
     [--publish/--no-publish]       # default: publish
 ```
@@ -90,10 +90,13 @@ same way `view` wraps `views.py`.
    returned-type-code → `create_view` on clone.
 7. `--with-forms`: `read_entity_forms(source)` → retarget `formxml` + `objecttypecode`
    → create `systemform` records → publish.
-8. **Ribbon:** `RetrieveEntityRibbon(source)`. Non-trivial diff → print a clear
+8. `--with-workflows`: reuse #144's `workflow clone --to-entity` helper to clone
+   each custom workflow whose `primaryentity` is the source, retargeting xaml
+   entity refs + `x:Class` id, onto the clone.
+9. **Ribbon:** `RetrieveEntityRibbon(source)`. Non-trivial diff → print a clear
    warning that the custom ribbon was not copied (no API write path). Empty diff
    (common) → silent no-op.
-9. `--solution`: `add_solution_component` for each created component.
+10. `--solution`: `add_solution_component` for each created component.
 
 ## Defaults & decisions
 
@@ -118,10 +121,16 @@ same way `view` wraps `views.py`.
 
 ## Staging
 
-- **MVP (this PR):** skeleton + opt-in `--with-forms` / `--with-views` /
-  `--with-charts`; ribbon detect-and-warn; `forms.py` core helper.
-- **Deferred:** `--with-workflows` (blocked on #144, open), `--retarget-lookup`,
-  `crm form` command group (follow-up [#151](https://github.com/Gharib89/crm/issues/151)).
+**Sequencing decision (2026-06-08):** #144 lands first, then full #143.
+`--with-workflows` is therefore **in scope** for this feature — it reuses the
+`workflow clone` xaml-retarget helper built in #144 (same way `--with-forms`
+reuses `forms.py`). It is no longer deferred.
+
+- **Full #143 (this feature, after #144):** skeleton + opt-in `--with-forms` /
+  `--with-views` / `--with-charts` / `--with-workflows`; `--with-all`; ribbon
+  detect-and-warn; `forms.py` core helper.
+- **Deferred:** `--retarget-lookup`, `crm form` command group (follow-up
+  [#151](https://github.com/Gharib89/crm/issues/151)).
 
 ## Docs (ship in same PR)
 
