@@ -13,7 +13,8 @@ from typing import Any
 
 from crm.core.apply import apply_spec
 from crm.core.export_spec import build_entity_spec
-from crm.core.solution import _validate_customization_prefix  # pyright: ignore[reportPrivateUsage]
+from crm.core.forms import clone_form_to_entity, read_entity_forms
+from crm.core.solution import _validate_customization_prefix, publish_all  # pyright: ignore[reportPrivateUsage]
 from crm.utils.d365_backend import D365Backend
 
 
@@ -103,4 +104,15 @@ def clone_entity(
     }
     if not apply_result.get("ok"):
         return out
+
+    clone_logical = new_schema_name.lower()
+    if with_forms:
+        forms_done = 0
+        for form in read_entity_forms(backend, source):
+            clone_form_to_entity(backend, form, clone_logical, solution=solution)
+            forms_done += 1
+        out["counts"]["forms"] = forms_done
+        if forms_done and publish and (not backend or not backend.dry_run):
+            publish_all(backend)
+
     return out

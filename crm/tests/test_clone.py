@@ -132,3 +132,64 @@ class TestCloneEntitySkeleton:
         self._patch_common(monkeypatch, apply_result=_applied("entity"), captured=captured)
         clone_mod.clone_entity(None, "new_project", "cwx_TicketClone", solution="MySol")
         assert captured["solution"] == "MySol"
+
+
+class TestCloneEntityForms:
+    def _patch(self, monkeypatch, *, forms_list, captured):
+        monkeypatch.setattr(clone_mod, "build_entity_spec",
+                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
+                                                             "display_name": "Project",
+                                                             "relationships": []}]})
+        monkeypatch.setattr(clone_mod, "apply_spec",
+                            lambda b, spec, **k: _applied("entity"))
+        monkeypatch.setattr(clone_mod, "read_entity_forms", lambda b, s: forms_list)
+
+        def fake_clone_form(backend, form, new_entity, *, solution=None):
+            captured.setdefault("targets", []).append((form["name"], new_entity, solution))
+            return {"created": True, "formid": "f", "name": form["name"]}
+
+        monkeypatch.setattr(clone_mod, "clone_form_to_entity", fake_clone_form)
+        monkeypatch.setattr(clone_mod, "publish_all",
+                            lambda b: captured.__setitem__("published", True))
+
+    def test_with_forms_clones_each_form_and_counts(self, monkeypatch):
+        captured: dict = {}
+        self._patch(monkeypatch, forms_list=[{"name": "A", "objecttypecode": "new_project"},
+                                             {"name": "B", "objecttypecode": "new_project"}],
+                    captured=captured)
+        out = clone_mod.clone_entity(None, "new_project", "cwx_TicketClone",
+                                     with_forms=True, solution="MySol")
+        assert out["counts"]["forms"] == 2
+        assert captured["targets"] == [("A", "cwx_ticketclone", "MySol"),
+                                       ("B", "cwx_ticketclone", "MySol")]
+        assert captured.get("published") is True
+
+    def test_without_forms_does_not_read_forms(self, monkeypatch):
+        captured: dict = {}
+        called = {"read": False}
+        monkeypatch.setattr(clone_mod, "build_entity_spec",
+                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
+                                                             "display_name": "Project",
+                                                             "relationships": []}]})
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
+        monkeypatch.setattr(clone_mod, "read_entity_forms",
+                            lambda b, s: called.__setitem__("read", True) or [])
+        out = clone_mod.clone_entity(None, "new_project", "cwx_TicketClone", with_forms=False)
+        assert called["read"] is False
+        assert out["counts"]["forms"] == 0
+
+    def test_failed_skeleton_skips_forms(self, monkeypatch):
+        captured: dict = {}
+        called = {"read": False}
+        self._patch(monkeypatch, forms_list=[{"name": "A", "objecttypecode": "new_project"}],
+                    captured=captured)
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: {
+            "ok": False, "applied": [{"kind": "entity", "name": "e"}],
+            "skipped": [], "planned": [], "failed": [{"kind": "attribute", "name": "x"}],
+            "staged": False})
+        monkeypatch.setattr(clone_mod, "read_entity_forms",
+                            lambda b, s: called.__setitem__("read", True) or [])
+        out = clone_mod.clone_entity(None, "new_project", "cwx_TicketClone", with_forms=True)
+        assert out["created"] is False
+        assert called["read"] is False
+        assert out["counts"]["forms"] == 0
