@@ -23,6 +23,14 @@ def backend():
     return D365Backend(profile, password="pw", dry_run=False)
 
 
+_TRIGGER_FIELDS = {
+    "triggeroncreate": True, "triggerondelete": False,
+    "triggeronupdateattributelist": None,
+    "asyncautodelete": True, "runas": 1,
+    "syncworkflowlogonfailure": False, "istransacted": True,
+}
+
+
 class TestExportImport:
     def test_export_writes_file(self, backend, tmp_path):
         out_file = tmp_path / "wf.json"
@@ -30,12 +38,15 @@ class TestExportImport:
             m.get(backend.url_for(f"workflows({_WF_ID})"), json={
                 "workflowid": _WF_ID, "name": "Update request", "category": 0,
                 "primaryentity": "cwx_ticket", "type": 1, "xaml": _XAML,
+                **_TRIGGER_FIELDS,
             })
             result = workflow.export_workflow(backend, _WF_ID, out_path=str(out_file))
         saved = json.loads(out_file.read_text(encoding="utf-8"))
         assert saved["xaml"] == _XAML
         assert saved["primaryentity"] == "cwx_ticket"
         assert result["out_path"] == str(out_file)
+        assert saved["triggeroncreate"] is True
+        assert saved["asyncautodelete"] is True
 
     def test_import_upserts_from_file(self, backend, tmp_path):
         src = tmp_path / "wf.json"
@@ -43,12 +54,17 @@ class TestExportImport:
             "workflowid": _WF_ID, "name": "Update request", "category": 0,
             "primaryentity": "cwx_ticket", "type": 1, "xaml": _XAML,
             "mode": 0, "scope": 4,
+            **_TRIGGER_FIELDS,
         }), encoding="utf-8")
         with requests_mock.Mocker() as m:
             m.patch(requests_mock.ANY, status_code=204)
             out = workflow.import_workflow(backend, file_path=str(src), activate=False)
         patches = [r for r in m.request_history if r.method == "PATCH"]
-        assert patches[0].json()["xaml"] == _XAML
+        body = patches[0].json()
+        assert body["xaml"] == _XAML
+        assert body["triggeroncreate"] is True
+        assert body["asyncautodelete"] is True
+        assert body["type"] == 1
         assert out["workflow_id"] == _WF_ID
         assert out["activated"] is False
 

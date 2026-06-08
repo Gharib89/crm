@@ -2,7 +2,7 @@
 
 Issue: [#144](https://github.com/Gharib89/crm/issues/144)
 Date: 2026-06-08
-Status: approved-pending-implementation
+Status: implemented (PR #152)
 Sequenced **before** [#143](https://github.com/Gharib89/crm/issues/143) (clone-entity reuses `clone_workflow_to_entity`).
 
 ## Corrected premise

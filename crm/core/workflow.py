@@ -193,6 +193,8 @@ def clone_workflow_to_entity(
 _EXPORT_FIELDS = (
     "workflowid", "name", "category", "primaryentity", "type", "xaml",
     "mode", "scope", "ondemand", "subprocess", "languagecode",
+    "triggeroncreate", "triggerondelete", "triggeronupdateattributelist",
+    "asyncautodelete", "runas", "syncworkflowlogonfailure", "istransacted",
 )
 
 
@@ -226,6 +228,7 @@ def import_workflow(
     if not wf_id:
         raise D365Error(f"{file_path} has no 'workflowid'.")
     payload = {k: v for k, v in record.items() if k != "workflowid"}
+    payload["type"] = TYPE_DEFINITION
     entity_ops.upsert(
         backend, "workflows", wf_id, payload,
         caller_id=caller_id, caller_object_id=caller_object_id,
