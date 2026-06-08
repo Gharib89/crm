@@ -10,6 +10,7 @@ Reference:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -30,6 +31,30 @@ TYPE_ACTIVATION = 2
 # Activation state pairs
 STATE_DRAFT = (0, 1)        # (statecode, statuscode)
 STATE_ACTIVATED = (1, 2)
+
+
+def retarget_xaml(
+    xaml: str,
+    *,
+    src_entity: str,
+    dst_entity: str,
+    src_id: str,
+    dst_id: str,
+) -> str:
+    """Rewrite a workflow xaml definition to target a new entity and a new id.
+
+    - `XrmWorkflow<src_id-no-dashes>` (the `x:Class` and the matching
+      `<this:XrmWorkflow...>` element tags) -> `XrmWorkflow<dst_id-no-dashes>`.
+    - Whole-token references to `src_entity` -> `dst_entity`. Word-boundary
+      matching protects tokens that merely start with the entity name
+      (e.g. `cwx_ticketcategory` is left intact).
+    Attribute logical names are not touched.
+    """
+    src_class = "XrmWorkflow" + src_id.replace("-", "")
+    dst_class = "XrmWorkflow" + dst_id.replace("-", "")
+    out = xaml.replace(src_class, dst_class)
+    out = re.sub(rf"\b{re.escape(src_entity)}\b", dst_entity, out)
+    return out
 
 
 def list_workflows(
