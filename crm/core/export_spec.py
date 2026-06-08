@@ -135,6 +135,7 @@ def _project_options(
     attr_logical: str,
     attr_out: dict[str, Any],
     accumulator: dict[str, dict[str, Any]],
+    warnings: list[str],
 ) -> bool:
     """Resolve a picklist/multiselect's options onto `attr_out`.
 
@@ -152,20 +153,30 @@ def _project_options(
     read = metadata.multiselect_options if kind == "multiselect" else metadata.picklist_options
     try:
         pick = read(backend, logical_name, attr_logical, global_optionset=True)
-    except D365Error:
-        return False  # permission-limited / inaccessible cast → skip this attribute
+    except D365Error as exc:
+        warnings.append(
+            f"dropped column {attr_logical!r}: could not read its {kind} options ({exc})"
+        )
+        return False
     glob = _as_dict(pick.get("GlobalOptionSet"))
     glob_name = glob.get("Name")
     if isinstance(glob_name, str) and glob_name:
         try:
             _add_global_optionset(backend, glob_name, accumulator)
-        except D365Error:
-            return False  # inaccessible global option set → skip this attribute
+        except D365Error as exc:
+            warnings.append(
+                f"dropped column {attr_logical!r}: referenced global option set "
+                f"{glob_name!r} is unreadable ({exc})"
+            )
+            return False
         attr_out["optionset_name"] = glob_name
         return True
     local = _as_dict(pick.get("OptionSet"))
     options = metadata.flatten_options(local)
     if not options:
+        warnings.append(
+            f"dropped column {attr_logical!r}: resolved option list is empty"
+        )
         return False
     attr_out["options"] = options
     return True
@@ -178,6 +189,7 @@ def _project_attribute(
     attr_logical: str,
     info: dict[str, Any],
     accumulator: dict[str, dict[str, Any]],
+    warnings: list[str],
 ) -> dict[str, Any] | None:
     """Project an already-deep-read attribute `info` into an apply attribute dict.
 
@@ -188,6 +200,7 @@ def _project_attribute(
     """
     schema_name = info.get("SchemaName")
     if not isinstance(schema_name, str) or not schema_name:
+        warnings.append(f"dropped column {attr_logical!r}: no readable SchemaName")
         return None
 
     out: dict[str, Any] = {
@@ -211,7 +224,10 @@ def _project_attribute(
     if kind in _LENGTH_KINDS:
         max_length = info.get("MaxLength")
         if not isinstance(max_length, int):
-            return None  # apply requires max_length for string/memo (sparse read)
+            warnings.append(
+                f"dropped column {attr_logical!r}: {kind} has no readable MaxLength"
+            )
+            return None
         out["max_length"] = max_length
 
     if kind == "string":
@@ -225,15 +241,24 @@ def _project_attribute(
     if kind in _PRECISION_KINDS:
         precision = info.get("Precision")
         if not isinstance(precision, int):
-            return None  # apply requires precision for decimal/double/money (sparse read)
+            warnings.append(
+                f"dropped column {attr_logical!r}: {kind} has no readable Precision"
+            )
+            return None
         out["precision"] = precision
 
     if kind == "lookup":
         targets = info.get("Targets")
         if not isinstance(targets, list) or not targets:
-            return None  # apply requires target_entity for a lookup
+            warnings.append(
+                f"dropped column {attr_logical!r}: lookup has no resolvable target entity"
+            )
+            return None
         first = cast("list[Any]", targets)[0]
         if not isinstance(first, str) or not first:
+            warnings.append(
+                f"dropped column {attr_logical!r}: lookup has no resolvable target entity"
+            )
             return None
         # A polymorphic lookup (len(Targets) > 1) exports only the first target
         # because apply creates single-target lookups (add_attribute → one
@@ -241,8 +266,10 @@ def _project_attribute(
         out["target_entity"] = first
 
     if kind in _PICKLIST_KINDS:
-        if not _project_options(backend, logical_name, kind, attr_logical, out, accumulator):
-            return None  # apply requires optionset_name or a non-empty options list
+        if not _project_options(
+            backend, logical_name, kind, attr_logical, out, accumulator, warnings
+        ):
+            return None  # _project_options already appended the reason
 
     return out
 
@@ -253,6 +280,7 @@ def build_entity_spec(
     *,
     with_views: bool = False,
     with_relationships: bool = False,
+    warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Project a live entity into an apply-consumable desired-state spec dict.
 
@@ -273,7 +301,12 @@ def build_entity_spec(
         with_relationships: When True, attach the entity's custom 1:N
             relationships (via `relationships.read_entity_relationships`); the
             key is omitted when there are none.
+        warnings: Optional list to accumulate structured drop-reason strings.
+            Each silently skipped attribute appends one entry. Callers that
+            want to surface diagnostics pass an empty list here; callers that
+            don't care may omit the argument.
     """
+    warn = warnings if warnings is not None else []
     ent = metadata.entity_info(backend, logical_name)
 
     schema_name = ent.get("SchemaName")
@@ -337,10 +370,14 @@ def build_entity_spec(
         type_name = _type_name(info)
         kind = _TYPE_NAME_TO_KIND.get(type_name) if type_name else None
         if kind is None:
-            continue  # system / uncreatable kind — skip
+            warn.append(
+                f"dropped column {attr_logical!r}: attribute type "
+                f"{type_name!r} is not one apply can create"
+            )
+            continue
 
         projected = _project_attribute(
-            backend, logical_name, kind, attr_logical, info, optionset_acc
+            backend, logical_name, kind, attr_logical, info, optionset_acc, warn
         )
         if projected is not None:
             attributes.append(projected)
