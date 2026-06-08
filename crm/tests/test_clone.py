@@ -58,3 +58,77 @@ class TestRetargetSpec:
         spec = _spec()
         retarget_spec(spec, new_schema="cwx_TicketClone")
         assert "relationships" not in spec["entities"][0]
+
+
+from crm.core import clone as clone_mod
+
+
+def _applied(*kinds):
+    """Build an apply_spec-shaped result whose `applied` has one entry per kind."""
+    applied = [{"kind": k, "name": f"{k}1"} for k in kinds]
+    return {"ok": True, "applied": applied, "skipped": [], "planned": [],
+            "failed": [], "staged": False}
+
+
+class TestCloneEntitySkeleton:
+    def _patch_common(self, monkeypatch, *, apply_result, captured):
+        def fake_build(backend, logical, *, with_views=False, with_relationships=False):
+            captured["with_views"] = with_views
+            captured["with_relationships"] = with_relationships
+            return {"entities": [{"schema_name": "new_Project", "display_name": "Project",
+                                  "attributes": []}]}
+
+        def fake_apply(backend, spec, *, solution=None, stage_only=False):
+            captured["spec"] = spec
+            captured["solution"] = solution
+            captured["stage_only"] = stage_only
+            return apply_result
+
+        monkeypatch.setattr(clone_mod, "build_entity_spec", fake_build)
+        monkeypatch.setattr(clone_mod, "apply_spec", fake_apply)
+
+    def test_skeleton_counts_and_logical_name(self, monkeypatch):
+        captured: dict = {}
+        self._patch_common(
+            monkeypatch,
+            apply_result=_applied("entity", "attribute", "attribute", "view"),
+            captured=captured)
+        out = clone_mod.clone_entity(
+            None, "new_project", "cwx_TicketClone", with_views=True)
+        assert out["logical_name"] == "cwx_ticketclone"
+        assert out["schema_name"] == "cwx_TicketClone"
+        assert out["source"] == "new_project"
+        assert out["counts"]["attributes"] == 2
+        assert out["counts"]["views"] == 1
+        assert out["counts"]["forms"] == 0
+        assert out["counts"]["workflows"] == 0
+        assert "relationships" not in out["counts"]
+        assert "Ribbon not cloned" in out["ribbon_note"]
+
+    def test_relationships_are_never_read(self, monkeypatch):
+        captured: dict = {}
+        self._patch_common(monkeypatch, apply_result=_applied("entity"), captured=captured)
+        clone_mod.clone_entity(None, "new_project", "cwx_TicketClone", with_views=False)
+        assert captured["with_views"] is False
+        assert captured["with_relationships"] is False
+
+    def test_no_publish_maps_to_stage_only(self, monkeypatch):
+        captured: dict = {}
+        self._patch_common(monkeypatch, apply_result=_applied("entity"), captured=captured)
+        clone_mod.clone_entity(None, "new_project", "cwx_TicketClone", publish=False)
+        assert captured["stage_only"] is True
+
+    def test_invalid_prefix_raises_before_any_call(self, monkeypatch):
+        from crm.utils.d365_backend import D365Error
+        called = {"build": False}
+        monkeypatch.setattr(clone_mod, "build_entity_spec",
+                            lambda *a, **k: called.__setitem__("build", True))
+        with pytest.raises(D365Error, match="customizationprefix"):
+            clone_mod.clone_entity(None, "new_project", "mscrm_Bad")
+        assert called["build"] is False
+
+    def test_solution_threaded_to_apply(self, monkeypatch):
+        captured: dict = {}
+        self._patch_common(monkeypatch, apply_result=_applied("entity"), captured=captured)
+        clone_mod.clone_entity(None, "new_project", "cwx_TicketClone", solution="MySol")
+        assert captured["solution"] == "MySol"

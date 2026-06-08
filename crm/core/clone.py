@@ -11,6 +11,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from crm.core.apply import apply_spec
+from crm.core.export_spec import build_entity_spec
+from crm.core.solution import _validate_customization_prefix
+from crm.utils.d365_backend import D365Backend, D365Error
+
 
 def retarget_spec(
     spec: dict[str, Any],
@@ -36,3 +41,66 @@ def retarget_spec(
     entity["schema_name"] = new_schema
     entity["display_name"] = display
     entity.pop("display_collection_name", None)
+
+
+_RIBBON_NOTE = (
+    "Ribbon not cloned: RibbonDiffXml has no Web API write path. If the source "
+    "has a custom command bar, redeploy it onto the clone via solution import."
+)
+
+
+def _count_kind(entries: list[dict[str, Any]], kind: str) -> int:
+    return sum(1 for e in entries if e.get("kind") == kind)
+
+
+def clone_entity(
+    backend: D365Backend,
+    source: str,
+    new_schema_name: str,
+    *,
+    display: str | None = None,
+    with_forms: bool = False,
+    with_views: bool = False,
+    with_workflows: bool = False,
+    solution: str | None = None,
+    publish: bool = True,
+) -> dict[str, Any]:
+    """Clone a custom entity under a new schema name, purely over the Web API.
+
+    Bare clone = entity + custom attributes (lookups included — they ride along
+    as kind=lookup attributes pointing at the same parents) + reused global
+    option sets. Forms / views / workflows are opt-in. The ribbon is
+    noted (``ribbon_note``), never written. Relationships where the source is the
+    parent side, N:N, and cascade behavior are not cloned (see module docs).
+
+    Returns ``{created, source, logical_name, schema_name, counts,
+    skipped_workflows, ribbon_note, apply}``.
+    """
+    prefix, _, _ = new_schema_name.partition("_")
+    _validate_customization_prefix(prefix)
+
+    spec = build_entity_spec(
+        backend, source, with_views=with_views, with_relationships=False)
+    retarget_spec(spec, new_schema=new_schema_name, display=display)
+
+    apply_result = apply_spec(backend, spec, solution=solution, stage_only=not publish)
+
+    applied = apply_result.get("applied", [])
+    out: dict[str, Any] = {
+        "created": apply_result.get("ok", False),
+        "source": source,
+        "logical_name": new_schema_name.lower(),
+        "schema_name": new_schema_name,
+        "counts": {
+            "attributes": _count_kind(applied, "attribute"),
+            "views": _count_kind(applied, "view"),
+            "forms": 0,
+            "workflows": 0,
+        },
+        "skipped_workflows": [],
+        "ribbon_note": _RIBBON_NOTE,
+        "apply": apply_result,
+    }
+    if not apply_result.get("ok"):
+        return out
+    return out
