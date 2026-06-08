@@ -143,6 +143,7 @@ pass `--profile <name>` and confirm the real target with
 | `view`       | `create`                                                                                | System views (savedquery)                      |
 | `app`        | `create`, `add-components`, `set-sitemap`, `build-sitemap`                              | Model-driven apps (appmodule)                  |
 | `webresource`| `create`, `update`, `get`, `list`                                                       | Web resources (HTML/JS/CSS/images) + app icons |
+| `ribbon`     | `export`, `list`, `add-button`, `remove`                                            | Read and edit entity command-bar (ribbon) buttons; `--solution` required for list/add-button/remove |
 | `security`   | `list-roles`, `list-user-roles`, `list-team-roles`, `assign-role`                       | Security roles — list + assign to users/teams  |
 | `data`       | `export`, `import`                                                                      | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `action`     | `function`, `invoke`                                                                    | Unbound OData functions/actions                |

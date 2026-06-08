@@ -1,0 +1,301 @@
+# pyright: basic
+from __future__ import annotations
+from pathlib import Path
+import xml.etree.ElementTree as ET
+import pytest
+from crm.core import ribbon
+
+FIXTURE = Path(__file__).parent / "fixtures" / "ribbon_account.b64"
+
+
+def test_decode_compressed_ribbon_returns_ribbondiff_root():
+    b64 = FIXTURE.read_text()
+    root = ribbon.decode_compressed_ribbon(b64)
+    assert isinstance(root, ET.Element)
+    assert root.tag == "RibbonDiffXml"
+
+
+def test_decode_compressed_ribbon_rejects_non_zip():
+    import base64
+    not_a_zip = base64.b64encode(b"plain text, not PK").decode("ascii")
+    with pytest.raises(ValueError, match="not a ZIP"):
+        ribbon.decode_compressed_ribbon(not_a_zip)
+
+
+class _FakeBackend:
+    """Minimal D365Backend stand-in: records the GET path, returns canned JSON."""
+    def __init__(self, compressed_b64: str) -> None:
+        self.compressed_b64 = compressed_b64
+        self.last_path: str | None = None
+
+    def get(self, path: str, **kw: object) -> dict[str, object]:
+        self.last_path = path
+        return {"CompressedEntityXml": self.compressed_b64}
+
+
+def test_retrieve_entity_ribbon_uses_inline_string_literals():
+    be = _FakeBackend(FIXTURE.read_text())
+    root = ribbon.retrieve_entity_ribbon(be, "cwx_ticket")  # type: ignore[arg-type]
+    assert root.tag == "RibbonDiffXml"
+    # Verified live: inline literals, NOT parameter aliases.
+    assert be.last_path == (
+        "RetrieveEntityRibbon(EntityName='cwx_ticket',RibbonLocationFilter='All')")
+
+
+SAMPLE_DIFF = """
+<RibbonDiffXml>
+  <CustomActions>
+    <CustomAction Id="cwx_ticket.form.Validate.CustomAction"
+                  Location="Mscrm.Form.cwx_ticket.MainTab.Save.Controls._children"
+                  Sequence="50">
+      <CommandUIDefinition>
+        <Button Id="cwx_ticket.form.Validate.Button"
+                Command="cwx_ticket.form.Validate.Command" LabelText="Validate"/>
+      </CommandUIDefinition>
+    </CustomAction>
+  </CustomActions>
+  <CommandDefinitions>
+    <CommandDefinition Id="cwx_ticket.form.Validate.Command">
+      <Actions>
+        <JavaScriptFunction Library="$webresource:cwx_/scripts/x.js" FunctionName="ns.fn">
+          <CrmParameter Value="PrimaryControl"/>
+        </JavaScriptFunction>
+      </Actions>
+    </CommandDefinition>
+  </CommandDefinitions>
+</RibbonDiffXml>
+"""
+
+
+def test_list_custom_buttons_extracts_fields():
+    diff = ET.fromstring(SAMPLE_DIFF)
+    buttons = ribbon.list_custom_buttons(diff)
+    assert len(buttons) == 1
+    b = buttons[0]
+    assert b.button_id == "cwx_ticket.form.Validate.CustomAction"
+    assert b.label == "Validate"
+    assert b.command == "cwx_ticket.form.Validate.Command"
+    assert b.location == "Mscrm.Form.cwx_ticket.MainTab.Save.Controls._children"
+    assert b.function == "ns.fn"
+    assert b.library == "$webresource:cwx_/scripts/x.js"
+
+
+def test_list_custom_buttons_empty_when_no_customactions():
+    diff = ET.fromstring("<RibbonDiffXml><CustomActions/></RibbonDiffXml>")
+    assert ribbon.list_custom_buttons(diff) == []
+
+
+def test_slugify_label():
+    assert ribbon.slugify("Validate Ticket!") == "ValidateTicket"
+    assert ribbon.slugify("re-open") == "reopen"
+
+
+def test_resolve_group_defaults_are_parametric():
+    assert ribbon.resolve_group("form", "cwx_ticket", None) == \
+        "Mscrm.Form.cwx_ticket.MainTab.Save"
+    assert ribbon.resolve_group("homegrid", "cwx_ticket", None) == \
+        "Mscrm.HomepageGrid.cwx_ticket.MainTab.Management"
+    assert ribbon.resolve_group("subgrid", "cwx_ticket", None) == \
+        "Mscrm.SubGrid.cwx_ticket.MainTab.Management"
+
+
+def test_resolve_group_override_wins():
+    assert ribbon.resolve_group("form", "cwx_ticket", "My.Custom.Group") == \
+        "My.Custom.Group"
+
+
+def test_build_button_ids():
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    assert ids.custom_action == "cwx_ticket.form.Validate.CustomAction"
+    assert ids.button == "cwx_ticket.form.Validate.Button"
+    assert ids.command == "cwx_ticket.form.Validate.Command"
+
+
+def test_build_button_ids_with_override_base():
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", "my.base")
+    assert ids.custom_action == "my.base.CustomAction"
+
+
+def test_build_button_ids_empty_slug_raises():
+    with pytest.raises(ValueError, match="empty slug"):
+        ribbon.build_button_ids("cwx_ticket", "form", "!!!", None)
+
+
+CUST_XML = """<ImportExportXml>
+  <Entities>
+    <Entity><Name>cwx_ticket</Name><RibbonDiffXml><CustomActions/></RibbonDiffXml></Entity>
+    <Entity><Name>account</Name></Entity>
+  </Entities>
+</ImportExportXml>"""
+
+
+def test_find_entity_node_case_insensitive():
+    root = ET.fromstring(CUST_XML)
+    node = ribbon.find_entity_node(root, "CWX_Ticket")
+    assert node is not None
+    assert node.findtext("Name") == "cwx_ticket"
+
+
+def test_find_entity_node_missing_raises():
+    root = ET.fromstring(CUST_XML)
+    with pytest.raises(ValueError, match="not found in solution"):
+        ribbon.find_entity_node(root, "cwx_missing")
+
+
+def test_get_or_create_ribbon_diff_returns_existing():
+    root = ET.fromstring(CUST_XML)
+    entity = ribbon.find_entity_node(root, "cwx_ticket")
+    diff = ribbon.get_or_create_ribbon_diff(entity)
+    assert diff.tag == "RibbonDiffXml"
+    assert diff.find("CustomActions") is not None
+
+
+def test_get_or_create_ribbon_diff_creates_skeleton():
+    root = ET.fromstring(CUST_XML)
+    entity = ribbon.find_entity_node(root, "account")
+    diff = ribbon.get_or_create_ribbon_diff(entity)
+    assert diff.tag == "RibbonDiffXml"
+    for child in ("CustomActions", "Templates", "CommandDefinitions",
+                  "RuleDefinitions", "LocLabels"):
+        assert diff.find(child) is not None
+    # idempotent: second call returns the same element, no duplicate
+    again = ribbon.get_or_create_ribbon_diff(entity)
+    assert again is diff
+    assert len(entity.findall("RibbonDiffXml")) == 1
+
+
+def _empty_diff() -> ET.Element:
+    root = ET.fromstring(
+        "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+        "</Entity></Entities></ImportExportXml>")
+    return ribbon.get_or_create_ribbon_diff(ribbon.find_entity_node(root, "cwx_ticket"))
+
+
+def test_add_custom_action_injects_three_nodes():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="Mscrm.Form.cwx_ticket.MainTab.Save",
+        label="Validate", webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    buttons = ribbon.list_custom_buttons(diff)
+    assert len(buttons) == 1
+    b = buttons[0]
+    assert b.button_id == ids.custom_action
+    assert b.label == "Validate"
+    assert b.function == "ns.fn"
+    assert b.library == "$webresource:cwx_/scripts/x.js"
+    action = diff.find(f".//CustomAction[@Id='{ids.custom_action}']")
+    assert action is not None
+    assert action.get("Location") == \
+        "Mscrm.Form.cwx_ticket.MainTab.Save.Controls._children"
+    crm_param = diff.find(".//JavaScriptFunction/CrmParameter")
+    assert crm_param is not None and crm_param.get("Value") == "PrimaryControl"
+
+
+def test_add_custom_action_rejects_id_collision():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Validate",
+        webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    with pytest.raises(ValueError, match="already exists"):
+        ribbon.add_custom_action(
+            diff, ids=ids, group="G", label="Validate",
+            webresource="cwx_/scripts/x.js", function="ns.fn",
+            param="PrimaryControl", sequence=50)
+
+
+def test_remove_custom_action_deletes_action_and_command():
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Validate",
+        webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    removed = ribbon.remove_custom_action(diff, ids.custom_action)
+    assert removed is True
+    assert ribbon.list_custom_buttons(diff) == []
+    assert diff.find(f".//CommandDefinition[@Id='{ids.command}']") is None
+
+
+def test_remove_custom_action_unknown_returns_false():
+    diff = _empty_diff()
+    assert ribbon.remove_custom_action(diff, "nope.CustomAction") is False
+
+
+def _make_solution_zip(path, cust_xml: str) -> None:
+    import zipfile as zf
+    with zf.ZipFile(path, "w") as z:
+        z.writestr("solution.xml", "<ImportExportXml><SolutionManifest/></ImportExportXml>")
+        z.writestr("customizations.xml", cust_xml)
+        z.writestr("[Content_Types].xml", "<Types/>")
+
+
+def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+
+    def fake_export(backend, name, output_path, **kw):
+        _make_solution_zip(output_path, CUST_XML)
+        return {"output": str(output_path), "bytes": 1}
+
+    def fake_validate(zip_path, *, backend=None):
+        # read back the rewritten customizations so the test can assert on it
+        import zipfile as zf
+        with zf.ZipFile(zip_path) as z:
+            captured["customizations"] = z.read("customizations.xml").decode()
+        return {"valid": True, "findings": [], "checks_run": ["package"]}
+
+    def fake_import(backend, zip_path, **kw):
+        captured["imported"] = str(zip_path)
+        return {"status": "succeeded"}
+
+    def fake_publish(backend):
+        captured["published"] = True
+        return {"ok": True}
+
+    monkeypatch.setattr(ribbon, "export_solution", fake_export)
+    monkeypatch.setattr(ribbon, "validate_solution", fake_validate)
+    monkeypatch.setattr(ribbon, "import_solution", fake_import)
+    monkeypatch.setattr(ribbon, "publish_all", fake_publish)
+
+    def mutate(cust_root: ET.Element) -> None:
+        entity = ribbon.find_entity_node(cust_root, "cwx_ticket")
+        diff = ribbon.get_or_create_ribbon_diff(entity)
+        ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+        ribbon.add_custom_action(
+            diff, ids=ids, group="Mscrm.Form.cwx_ticket.MainTab.Save",
+            label="Validate", webresource="cwx_/scripts/x.js", function="ns.fn",
+            param="PrimaryControl", sequence=50)
+
+    result = ribbon.apply_ribbon_change(
+        object(), solution="MySol", entity="cwx_ticket", mutate=mutate)  # type: ignore[arg-type]
+
+    assert result["status"] == "succeeded"
+    assert captured["published"] is True
+    assert "cwx_ticket.form.Validate.Button" in captured["customizations"]  # type: ignore[operator]
+
+
+def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
+    def fake_export(backend, name, output_path, **kw):
+        _make_solution_zip(output_path, CUST_XML)
+        return {"output": str(output_path)}
+
+    def fake_validate(zip_path, *, backend=None):
+        return {"valid": False,
+                "findings": [{"severity": "error", "message": "bad ribbon"}],
+                "checks_run": ["package"]}
+
+    imported: list[str] = []
+    monkeypatch.setattr(ribbon, "export_solution", fake_export)
+    monkeypatch.setattr(ribbon, "validate_solution", fake_validate)
+    monkeypatch.setattr(ribbon, "import_solution",
+                        lambda *a, **k: imported.append("x"))
+    monkeypatch.setattr(ribbon, "publish_all", lambda *a, **k: None)
+
+    with pytest.raises(ValueError, match="validation failed"):
+        ribbon.apply_ribbon_change(
+            object(), solution="MySol", entity="cwx_ticket",  # type: ignore[arg-type]
+            mutate=lambda r: None)
+    assert imported == []  # never imported a failing package
