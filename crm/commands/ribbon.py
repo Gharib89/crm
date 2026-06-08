@@ -33,6 +33,9 @@ def ribbon_export(ctx: CLIContext, entity, output):
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
     pretty = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
     if output:
         Path(output).write_text(pretty, encoding="utf-8")
@@ -61,10 +64,8 @@ def _load_solution_ribbon_diff(ctx: CLIContext, solution: str, entity: str):
 def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
     """List the custom buttons declared in a solution's RibbonDiffXml."""
     solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
-    if solution is None:
-        ctx.emit(False, error="--solution is required")
-        return
+        ctx, solution, require=_require_solution(True))
+    assert solution is not None  # _resolve_solution exits when require=True + no solution
     try:
         _, _, diff = _load_solution_ribbon_diff(ctx, solution, entity)
     except D365Error as exc:
@@ -108,9 +109,7 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
     """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(True))
-    if solution is None:
-        ctx.emit(False, error="--solution is required")
-        return
+    assert solution is not None  # _resolve_solution exits when require=True + no solution
     try:
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
     except (D365Error, ValueError) as exc:
@@ -156,9 +155,7 @@ def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
     """Remove a custom button (CustomAction + its CommandDefinition)."""
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(True))
-    if solution is None:
-        ctx.emit(False, error="--solution is required")
-        return
+    assert solution is not None  # _resolve_solution exits when require=True + no solution
     if not _confirm_destructive("ribbon button", button_id, yes):
         ctx.emit(False, error="aborted by user")
         return

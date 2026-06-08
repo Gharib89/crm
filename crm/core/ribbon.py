@@ -35,8 +35,14 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
     raw = base64.b64decode(compressed_b64)
     if raw[:2] != b"PK":
         raise ValueError("CompressedEntityXml is not a ZIP archive (no PK header)")
-    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+    try:
+        zf_obj = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"CompressedEntityXml is not a valid ZIP archive: {exc}") from exc
+    with zf_obj as zf:
         names = zf.namelist()
+        if not names:
+            raise ValueError("CompressedEntityXml ZIP archive contains no members")
         member = _RIBBON_MEMBER if _RIBBON_MEMBER in names else next(
             (n for n in names if n.lower().endswith(".xml")
              and not n.startswith("[")), names[0])
@@ -273,7 +279,9 @@ def apply_ribbon_change(
             if not report["valid"]:
                 errs = [f for f in report["findings"]
                         if f.get("severity") == "error"]
-                raise ValueError(f"pre-import validation failed: {errs}")
+                msgs = "; ".join(e.get("message", "") for e in errs[:3])
+                raise ValueError(
+                    f"pre-import validation failed ({len(errs)} error(s)): {msgs}")
         result = import_solution(backend, dst, timeout=timeout)
         if publish:
             publish_all(backend)
