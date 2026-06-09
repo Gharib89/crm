@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+
 import pytest
 import requests_mock
 from click.testing import CliRunner
@@ -65,6 +67,22 @@ class TestAddScriptable:
         assert p.auth_scheme == "oauth"
         assert p.tenant_id == "t1" and p.client_id == "c1"
 
+    def test_add_negotiates_api_version_down_on_501(self, crm_home):
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            # v9.2 probe 501 (on-prem cap); v9.1 retry succeeds.
+            m.get(re.compile(r"/api/data/v9\.2/"), status_code=501,
+                  json={"error": {"message": "Not Implemented"}})
+            m.get(re.compile(r"/api/data/v9\.1/"), json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://crm.contoso.local/contoso",
+                "--username", "alice", "--domain", "CONTOSO",
+                "--password", "pw", "--name", "negc", "--yes",
+            ])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("negc").api_version == "v9.1"
+
     def test_add_missing_url_in_json_mode_errors_cleanly(self, crm_home):
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "add", "--name", "x"])
@@ -121,6 +139,18 @@ class TestListEditRm:
         data = json.loads(result.output)["data"]
         active = {row["name"]: row["active"] for row in data}
         assert active["a"] is True and active["b"] is False
+
+    def test_list_survives_corrupt_profile(self, crm_home):
+        self._seed("good")
+        # Corrupt a second profile file directly on disk.
+        prof_dir = crm_home / ".crm" / "profiles"
+        prof_dir.mkdir(parents=True, exist_ok=True)
+        (prof_dir / "broken.json").write_text("{ this is not valid json", encoding="utf-8")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "list"])
+        assert result.exit_code == 0, result.output
+        names = {row["name"] for row in json.loads(result.output)["data"]}
+        assert "good" in names and "broken" in names
 
     def test_edit_changes_url(self, crm_home):
         self._seed("a")

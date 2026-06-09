@@ -200,11 +200,20 @@ def _use_label(name: str, active: str | None) -> str:
 
 
 def _credential_storage(name: str) -> str:
-    if session_mod.load_profile_secret(name) is not None:
-        return "plaintext"
-    if keyring_store.has_secret(name):
-        return "keyring"
-    return "none"
+    """Report where a profile's secret lives ('plaintext'|'keyring'|'none').
+
+    Resilient to an unreadable/corrupt profile file — returns 'unknown' rather
+    than letting a single bad file crash `crm profile list`.
+    """
+    try:
+        if session_mod.load_profile_secret(name) is not None:
+            return "plaintext"
+        if keyring_store.has_secret(name):
+            return "keyring"
+        return "none"
+    except (OSError, ValueError):
+        # ValueError covers json.JSONDecodeError (corrupt profile file).
+        return "unknown"
 
 
 @profile_group.command("list")
@@ -224,7 +233,7 @@ def profile_list(ctx: CLIContext):
                 "default_solution": p.default_solution,
                 "publisher_prefix": p.publisher_prefix,
             })
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError, OSError):
             rows.append({"name": n, "active": n == active,
                         "credential_storage": _credential_storage(n)})
     if ctx.json_mode:
