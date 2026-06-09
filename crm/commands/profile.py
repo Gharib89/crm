@@ -18,6 +18,17 @@ from crm.commands._helpers import (
 )
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 
+# A profile file can be missing (FileNotFoundError), unreadable (OSError),
+# non-JSON (ValueError → json.JSONDecodeError), or JSON-valid but malformed —
+# from_dict does d["name"]/d["url"]/d["username"] (KeyError), .rstrip on a
+# non-str (AttributeError/TypeError), and __post_init__ validates the auth
+# scheme / name (D365Error). Treat all of these as "this one profile is
+# unusable" so a single bad file never crashes list/use.
+_PROFILE_LOAD_ERRORS = (
+    FileNotFoundError, OSError, ValueError, KeyError, TypeError,
+    AttributeError, D365Error,
+)
+
 
 @click.group("profile")
 def profile_group():
@@ -101,14 +112,22 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
             return
 
     negotiate = api_version is None
-    profile = ConnectionProfile(
-        name=name, url=url, domain=domain or "", username=username or "",
-        api_version=api_version or conn_mod.DEFAULT_API_VERSION,
-        verify_ssl=not no_verify_ssl, auth_scheme=auth_scheme,
-        tenant_id=tenant_id, client_id=client_id,
-        default_solution=default_solution, publisher_prefix=publisher_prefix,
-    )
-    session_mod.save_profile(profile)
+    try:
+        profile = ConnectionProfile(
+            name=name, url=url, domain=domain or "", username=username or "",
+            api_version=api_version or conn_mod.DEFAULT_API_VERSION,
+            verify_ssl=not no_verify_ssl, auth_scheme=auth_scheme,
+            tenant_id=tenant_id, client_id=client_id,
+            default_solution=default_solution, publisher_prefix=publisher_prefix,
+        )
+        session_mod.save_profile(profile)
+    except D365Error as exc:
+        # Invalid name / auth scheme — emit the clean envelope, not a traceback.
+        _handle_d365_error(ctx, exc)
+        return
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not write profile {name!r}: {exc}")
+        return
 
     try:
         where = conn_mod.save_secret(name, secret, force_plaintext=store_password_plaintext)
@@ -203,7 +222,8 @@ def _use_label(name: str, active: str | None) -> str:
         target = "cloud" if p.auth_scheme == "oauth" else "on-prem"
         flag = "  (active)" if name == active else ""
         return f"{name}  {target}  {p.url}{flag}"
-    except FileNotFoundError:
+    except _PROFILE_LOAD_ERRORS:
+        # A corrupt/malformed profile still gets a pickable bare-name label.
         return name
 
 
@@ -219,8 +239,7 @@ def _credential_storage(name: str) -> str:
         if keyring_store.has_secret(name):
             return "keyring"
         return "none"
-    except (OSError, ValueError):
-        # ValueError covers json.JSONDecodeError (corrupt profile file).
+    except _PROFILE_LOAD_ERRORS:
         return "unknown"
 
 
@@ -241,7 +260,7 @@ def profile_list(ctx: CLIContext):
                 "default_solution": p.default_solution,
                 "publisher_prefix": p.publisher_prefix,
             })
-        except (FileNotFoundError, ValueError, OSError):
+        except _PROFILE_LOAD_ERRORS:
             rows.append({"name": n, "active": n == active,
                         "credential_storage": _credential_storage(n)})
     if ctx.json_mode:

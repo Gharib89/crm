@@ -142,15 +142,29 @@ class TestListEditRm:
 
     def test_list_survives_corrupt_profile(self, crm_home):
         self._seed("good")
-        # Corrupt a second profile file directly on disk.
         prof_dir = crm_home / ".crm" / "profiles"
         prof_dir.mkdir(parents=True, exist_ok=True)
+        # Two failure shapes: non-JSON, and JSON-valid-but-missing-required-keys
+        # (the latter makes from_dict raise KeyError, not JSONDecodeError).
         (prof_dir / "broken.json").write_text("{ this is not valid json", encoding="utf-8")
+        (prof_dir / "incomplete.json").write_text('{"name": "incomplete"}', encoding="utf-8")
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "list"])
         assert result.exit_code == 0, result.output
         names = {row["name"] for row in json.loads(result.output)["data"]}
-        assert "good" in names and "broken" in names
+        assert {"good", "broken", "incomplete"} <= names
+
+    def test_use_by_name_survives_a_corrupt_sibling(self, crm_home):
+        # A malformed profile must not crash `profile use <good-name>` — the
+        # picker-label helper for the sibling falls back to the bare name.
+        self._seed("good")
+        prof_dir = crm_home / ".crm" / "profiles"
+        prof_dir.mkdir(parents=True, exist_ok=True)
+        (prof_dir / "incomplete.json").write_text('{"name": "incomplete"}', encoding="utf-8")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "use", "good"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_session("default")["active_profile"] == "good"
 
     def test_edit_changes_url(self, crm_home):
         self._seed("a")
