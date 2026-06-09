@@ -139,27 +139,43 @@ crm --version
 
 ## Configure
 
-Credentials come from environment variables (preferred) or a saved profile.
-
-**On-prem (NTLM, default):**
+Credentials live in a saved **profile** — there is no `.env` file and no credential
+environment variables. Create one with `crm profile add`:
 
 ```bash
-export D365_URL="https://crm.contoso.local/contoso"
-export D365_USERNAME="alice"
-export D365_PASSWORD="..."        # not persisted by default (opt-in: connect/set-password --store-password)
-export D365_DOMAIN="CONTOSO"      # optional if username is a UPN
-export D365_AUTH="ntlm"           # default
-export D365_API_VERSION="v9.1"    # on-prem caps at v9.1 (v9.2 → HTTP 501); online uses v9.2
+crm profile add
 ```
+
+On a terminal this runs an interactive wizard (URL → inferred auth scheme →
+identity → secret), saves the profile, stores the secret, runs a `WhoAmI` to
+confirm, and activates it. The first connection command run with no profile
+configured launches this wizard automatically; under `--json` / no TTY it errors
+cleanly and tells you to run `crm profile add`.
+
+For scripting, pass flags instead. The auth scheme is inferred from the URL
+(`*.dynamics.*` → OAuth, anything else → NTLM); override with `--auth-scheme`.
+
+**On-prem (NTLM):**
+
+```bash
+crm profile add \
+    --url https://crm.contoso.local/contoso \
+    --username alice --domain CONTOSO \
+    --password "$SECRET" \
+    --name prod
+```
+
+`--domain` is optional when the username is a UPN. Omit `--api-version` to
+auto-negotiate — on-prem caps at v9.1 (v9.2 → HTTP 501); online uses v9.2.
 
 **Online / Dataverse cloud (OAuth 2.0 client-credentials):**
 
 ```bash
-export D365_URL="https://contoso.crm.dynamics.com"
-export D365_AUTH="oauth"
-export D365_TENANT_ID="<aad-tenant-id>"
-export D365_CLIENT_ID="<app-registration-id>"
-export D365_CLIENT_SECRET="..."   # not persisted by default (opt-in: connection set-password)
+crm profile add \
+    --url https://contoso.crm.dynamics.com \
+    --tenant-id <aad-tenant-id> --client-id <app-registration-id> \
+    --password "$CLIENT_SECRET" \
+    --name online
 ```
 
 The app registration needs an **application user** in Dynamics with a suitable
@@ -169,44 +185,34 @@ bearer token is cached at `~/.crm/msal_token_cache.json` (mode `0600`) and reuse
 across invocations until it expires. Username/password/domain are not used in
 this mode.
 
-> **Pin your profile when both credential sets are present.** If your environment
-> defines both `CRM_*`/NTLM and `D365_*`/OAuth variables, a bare `crm` command lets
-> the `D365_*` vars override the active profile and silently connect to cloud.
-> Always pass `--profile <name>` and confirm the real target with
-> `crm --json connection whoami` (check the `@odata.context` host).
-
-Or save a reusable profile (no password):
+Attach a default solution and schema-name prefix so metadata write commands target
+them by default:
 
 ```bash
-crm connection connect \
-    --url https://crm.contoso.local/contoso \
-    --username alice --domain CONTOSO \
-    --profile-name prod
+crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
 ```
 
-State lives under `~/.crm/` (override with `CRM_HOME`).
+State lives under `~/.crm/` — the only environment knob that affects connections is
+`CRM_HOME`, which relocates that directory.
 
-### Storing credentials once
+### Storing credentials
 
-By default secrets are not persisted. To configure once:
+`crm profile add` stores the secret automatically:
 
-- `crm connection connect ... --store-password` saves the secret in your OS
-  keyring (macOS Keychain / Windows Credential Manager / Linux SecretService).
-  Keyring support is built in — no extra install. (Headless Linux with no
-  SecretService daemon has no backend; use `--store-password-plaintext` there.)
-- For headless/CI hosts with no keyring, `--store-password-plaintext` writes the
-  secret into the profile file (`0600` on POSIX; perms unenforced on Windows).
-- `crm connection set-password --profile NAME` stores a secret for a profile that
-  already exists, for **both** auth schemes — the OAuth client secret or the NTLM
-  password. It takes the same `--store-password` / `--store-password-plaintext`
-  flags (keyring by default) and is the configure-once path for an OAuth profile
-  created by `crm init`. It never contacts the server.
-- `crm connection delete-password --profile NAME` removes a stored secret.
-- `crm connection profiles` shows each profile's storage type (keyring / plaintext / none).
+- By default it goes into your OS keyring (macOS Keychain / Windows Credential
+  Manager / Linux SecretService). Keyring support is built in — no extra install.
+- On hosts with no keyring backend (typical WSL / headless CI) it falls back
+  automatically to a `0600` plaintext entry inside the profile file. Force plaintext
+  anywhere with `--store-password-plaintext` (`0600` on POSIX; perms unenforced on
+  Windows).
+- `crm profile set-password --profile NAME` stores or replaces the secret for an
+  existing profile (NTLM password or OAuth client secret alike); never contacts the
+  server. `crm profile delete-password --profile NAME` removes it.
+- `crm profile list` shows each profile's storage type (keyring / plaintext / none).
 
-Resolution order: `--password` > scheme env var (`D365_PASSWORD`/`CRM_PASSWORD` for
-NTLM, `D365_CLIENT_SECRET`/`CRM_CLIENT_SECRET` for OAuth; env/.env) > stored secret
-(keyring or plaintext) > interactive prompt (TTY only).
+Secret resolution order: `--password` (per-run override) > stored secret (plaintext
+entry, then keyring) > interactive prompt (TTY only). No environment variable is
+consulted.
 
 ## Use
 

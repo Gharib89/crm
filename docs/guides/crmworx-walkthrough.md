@@ -11,9 +11,10 @@ The build order is: **option sets → entities → attributes → relationships 
 
 ## Prerequisites
 
-- A reachable D365 CE on-prem server and NTLM credentials (via `.env`: `CRM_BASE_URL`,
-  `CRM_USERNAME`, `CRM_PASSWORD`, `CRM_AUTH=ntlm`, `CRM_API_VERSION`). The password is
-  read from `D365_PASSWORD`, with `CRM_PASSWORD` accepted as an alias — both names work.
+- A reachable D365 CE on-prem server and NTLM credentials, saved as the active
+  profile with `crm profile add` (see [How-to: profile](../how-to/profile.md)). The
+  `add` step below pins the api-version and wires in the `CRMWorx` solution and `cwx`
+  prefix.
 - **A `CRMWorx` *unmanaged* solution and a publisher with prefix `cwx`.** Create both
   from the CLI — no web UI ([#34](https://github.com/Gharib89/crm/issues/34)).
   `--if-exists skip` makes re-runs a no-op:
@@ -50,46 +51,49 @@ crm --json connection whoami
 ```
 
 Save a **targeting profile** so every mutating metadata command lands in the `CRMWorx`
-solution and uses the `cwx` schema-name prefix by default. `connect` saves the profile
-and validates the credentials with a WhoAmI call (the password is read from the
-`D365_PASSWORD` environment variable, never passed on the command line):
+solution and uses the `cwx` schema-name prefix by default. `crm profile add` infers the
+auth scheme from the URL (here NTLM), stores the secret, validates the credentials with
+a WhoAmI call, and activates the profile:
 
 ```bash
-crm --json connection connect \
-  --url "$CRM_BASE_URL" --username "$CRM_USERNAME" \
+crm --json profile add \
+  --url https://crm.contoso.local/Contoso \
+  --username alice --domain CONTOSO --password "$SECRET" \
   --api-version v9.1 \
   --default-solution CRMWorx --publisher-prefix cwx \
-  --profile-name crmworx
+  --name crmworx
 ```
 
 ```json
 {
   "ok": true,
   "data": {
-    "ok": true,
+    "profile": "crmworx",
+    "auth_scheme": "ntlm",
+    "credential_storage": "plaintext",
+    "active": true,
     "user_id": "f890426a-8339-f111-b65d-00155d467b90",
-    "api_base": "http://<server>/<org>/api/data/v9.1/",
     "api_version": "v9.1"
-  },
-  "meta": { "profile": "crmworx" }
+  }
 }
 ```
 
 Verify the active profile resolves the solution and prefix:
 
 ```bash
-crm --json connection profiles
+crm --json profile list
 crm --json connection status
 ```
 
 ```json
 {
   "ok": true,
-  "meta": {
-    "profiles": [
-      { "name": "crmworx", "default_solution": "CRMWorx", "publisher_prefix": "cwx" }
-    ]
-  }
+  "data": [
+    {
+      "name": "crmworx", "active": true, "target": "on-prem",
+      "default_solution": "CRMWorx", "publisher_prefix": "cwx"
+    }
+  ]
 }
 ```
 
@@ -990,8 +994,8 @@ present and populated — Priority, Severity, Category, the SLA lookup, and Cust
     suppresses the native NTLM prompt, so the browser needs the credentials supplied
     *programmatically*. These shots were taken by launching Chromium with
     `--auth-server-allowlist=*contoso.local` and an `http_credentials` context — the documented
-    way to negotiate NTLM headless. Credentials were read from `.env` at run time and never
-    appear in the capture.
+    way to negotiate NTLM headless. Credentials were supplied to the browser at run time and
+    never appear in the capture.
 
 The server-side read-back corroborates that the app and its components exist on the server
 regardless of the browser:
@@ -1052,7 +1056,8 @@ Every `crm` command group is exercised by this walkthrough:
 
 | Group | Exercised by |
 | --- | --- |
-| connection | §1 — `whoami`, `connect`, `profiles`, `status` |
+| profile | §1 — `add` (saves + activates the `crmworx` targeting profile), `list` |
+| connection | §1 — `whoami`, `status` |
 | session | `session info` (active profile, current entity set, last query) |
 | metadata | §2 — `create-optionset`, `create-entity`, `add-attribute`, `create-one-to-many`, `create-many-to-many`, `relationships`, `list-optionsets`, `entities` |
 | entity | §3 — `create`, `update`, `upsert` (lookups via `@odata.bind`); §6–§11 — `create`/`update` on `savedqueries`, `systemforms`, `savedqueryvisualizations`, `webresourceset`, `appmodules`, `sitemaps` (`--no-return` for appmodule/sitemap) |

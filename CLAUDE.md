@@ -2,6 +2,10 @@
 
 Python CLI for Microsoft Dynamics 365 Customer Engagement — on-prem v9.x (NTLM) **or** Dataverse online (OAuth client-credentials). Same commands hit both targets, over the Dataverse Web API (OData v4) / HTTPS. Single-package layout (`crm/`), pyright strict on `crm/core/*` and `crm/utils/d365_backend.py`, basic mode elsewhere.
 
+## Credential model
+
+Setup is `crm profile add` (interactive wizard on a TTY; flag-driven for scripting) — infers auth from the URL, saves the secret (OS keyring → `0600` plaintext fallback on WSL/headless), tests via WhoAmI, and activates. Profile verbs: `crm profile add | use | list | edit | rm | set-password | delete-password`. Diagnostics only under `crm connection whoami | test | doctor | status`. **No `.env`, no credential env vars** (`D365_*`/`CRM_*`/`D365_AUTH`/`CRM_AUTH_SCHEME` are gone) — credentials come only from a saved profile or `--password` (per-run override); secret resolution is `--password` > stored plaintext > keyring > TTY prompt. The only retained env knob is `CRM_HOME` (state dir). A connection command with no profile auto-launches `crm profile add` on a TTY; under `--json`/no-TTY it errors with "run `crm profile add`".
+
 ## Architecture
 
 - `crm/core/*` — Web API logic, one module per domain (`entity`, `query`, `metadata`, `solution`, …); pyright **strict**.
@@ -12,7 +16,7 @@ Python CLI for Microsoft Dynamics 365 Customer Engagement — on-prem v9.x (NTLM
 
 ```bash
 pip install -e ".[dev,docs]"              # dev + docs deps
-pytest                                    # tests (E2E need live D365 creds in .env)
+pytest                                    # tests (E2E need live D365 creds via D365_* env)
 pyright --pythonpath .venv/bin/python     # local lint (omit → ~56 false errors)
 mkdocs build --strict                     # docs; CI runs this, warnings fail
 ```
