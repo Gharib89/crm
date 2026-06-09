@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.8.0 (2026-06-09)
+
+### Bug Fixes
+
+- **clone**: Consolidate publish_all to single call after all opt-in layers
+  ([#157](https://github.com/Gharib89/crm/pull/157),
+  [`737f382`](https://github.com/Gharib89/crm/commit/737f382f300f3ba0e7a07558413485efe9428a2f))
+
+### Documentation
+
+- Update stale opt-in layer text to include charts
+  ([#157](https://github.com/Gharib89/crm/pull/157),
+  [`737f382`](https://github.com/Gharib89/crm/commit/737f382f300f3ba0e7a07558413485efe9428a2f))
+
+### Features
+
+- **metadata**: Add --with-charts to clone-entity ([#157](https://github.com/Gharib89/crm/pull/157),
+  [`737f382`](https://github.com/Gharib89/crm/commit/737f382f300f3ba0e7a07558413485efe9428a2f))
+
+- **metadata**: Add --with-charts to clone-entity (#153)
+  ([#157](https://github.com/Gharib89/crm/pull/157),
+  [`737f382`](https://github.com/Gharib89/crm/commit/737f382f300f3ba0e7a07558413485efe9428a2f))
+
+
 ## v1.7.0 (2026-06-09)
 
 ### Documentation
