@@ -43,10 +43,6 @@ class TestAuthErrorHint:
         assert "crm profile set-password" in hint
         assert "--profile cloud" in hint
 
-    def test_no_secret_message_hints_set_password(self):
-        hint = _auth_error_hint(None, "cloud", no_secret=True)
-        assert "crm profile set-password" in hint
-
     def test_unrelated_status_has_no_hint(self):
         assert _auth_error_hint(404, "cloud") == ""
 

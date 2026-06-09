@@ -531,13 +531,12 @@ def default_profile_name(url: str) -> str:
     return label or "default"
 
 
-def _auth_error_hint(status: int | None, profile_name: str,
-                     *, no_secret: bool = False) -> str:
+def _auth_error_hint(status: int | None, profile_name: str) -> str:
     """Map an auth failure to a copy-paste fix command, or '' when none applies.
 
-    A 401 (rejected secret) or a missing-secret error both steer the user to
-    re-store the secret for the active profile."""
-    if no_secret or status == 401:
+    A 401 (rejected secret) steers the user to re-store the secret for the
+    active profile."""
+    if status == 401:
         return f"run: crm profile set-password --profile {profile_name}"
     return ""
 
