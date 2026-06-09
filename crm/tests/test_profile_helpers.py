@@ -69,8 +69,10 @@ class TestSelectOne:
         class _FakeDialog:
             def run(self):
                 return "b"
+        # select_one imports radiolist_dialog lazily from prompt_toolkit.shortcuts
+        # (kept off the fast-startup path), so patch it at the source module.
         monkeypatch.setattr(
-            "crm.commands._helpers.radiolist_dialog",
+            "prompt_toolkit.shortcuts.radiolist_dialog",
             lambda **kw: _FakeDialog(),
         )
         assert select_one("Pick one", [("a", "label a"), ("b", "label b")]) == "b"
@@ -81,7 +83,7 @@ class TestSelectOne:
             def run(self):
                 return None  # user hit Esc / Ctrl-C
         monkeypatch.setattr(
-            "crm.commands._helpers.radiolist_dialog",
+            "prompt_toolkit.shortcuts.radiolist_dialog",
             lambda **kw: _FakeDialog(),
         )
         assert select_one("Pick one", [("a", "label a")]) is None

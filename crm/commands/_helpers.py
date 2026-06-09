@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
 from crm.core import session as session_mod
-from prompt_toolkit.shortcuts import radiolist_dialog
 if TYPE_CHECKING:
     from crm.cli import CLIContext
     from crm.utils.d365_backend import ConnectionProfile, D365Error
@@ -562,6 +561,9 @@ def select_one(title: str, items: list[tuple[str, str]]) -> str | None:
         raise RuntimeError(
             "select_one: no interactive terminal — pass an explicit choice instead"
         )
+    # Lazy import: prompt_toolkit is heavy; keep it off the `crm --version`
+    # fast path (_helpers is imported by cli.py). Only the picker pays the cost.
+    from prompt_toolkit.shortcuts import radiolist_dialog
     return radiolist_dialog(
         title=title,
         text="Use ↑/↓ then Enter; Esc to cancel.",

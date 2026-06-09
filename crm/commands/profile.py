@@ -136,6 +136,10 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = name
     session_mod.save_session(state, ctx.session_name)
+    # Clear the in-memory secret now that it's persisted: later commands resolve
+    # from the saved store, and in the REPL (sticky root options) a lingering
+    # ctx.password would otherwise override the stored secret on every command.
+    ctx.password = None
     ctx.invalidate_backend()
     data = {
         "profile": name, "auth_scheme": auth_scheme,
@@ -330,9 +334,9 @@ def profile_set_password(ctx: CLIContext, profile_name, password_opt, store_pass
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    if where == "plaintext":
-        ctx.skin.warning(_plaintext_secret_warning())
-    ctx.emit(True, data={"profile": profile_name, "stored": True, "to": where})
+    warnings = [_plaintext_secret_warning()] if where == "plaintext" else None
+    ctx.emit(True, data={"profile": profile_name, "stored": True, "to": where},
+             warnings=warnings)
 
 
 @profile_group.command("delete-password")

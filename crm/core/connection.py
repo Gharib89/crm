@@ -448,7 +448,7 @@ def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any
         return _check(
             "auth", False, "authentication failed (HTTP 401)",
             "check the stored secret — re-store it with "
-            "`crm profile set-password --profile <name>`",
+            f"`crm profile set-password --profile {backend.profile.name}`",
         )
     if status == 403:
         return _check(

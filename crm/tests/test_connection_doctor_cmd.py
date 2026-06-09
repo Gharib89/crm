@@ -115,7 +115,8 @@ def test_doctor_human_failure_renders_checklist():
     # The failed auth check and its hint both land on stdout (not stderr),
     # and the hint immediately follows its own ✗ line.
     auth_line = "✗ auth: authentication failed (HTTP 401)"
-    hint_line = "check the stored secret — re-store it with `crm profile set-password --profile <name>`"
+    # The 401 hint interpolates the active profile name (the fixture seeds 'doc').
+    hint_line = "check the stored secret — re-store it with `crm profile set-password --profile doc`"
     assert auth_line in out
     assert hint_line in out
     auth_idx = out.index(auth_line)
