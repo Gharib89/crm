@@ -343,7 +343,7 @@ one call. Write verbs new in 0.5.0:
 - `metadata delete-attribute <entity> <attribute>` / `delete-relationship <schema-name>` — drop a custom column or relationship (gated)
 - `metadata dependencies <target> [--kind entity|attribute|optionset|relationship] [--for delete|dependents]` — pre-delete dependency preview: returns `can_delete` + `blockers[]`; pass `--check-dependencies` on a `metadata delete-*` verb (delete-entity, delete-attribute, delete-relationship, delete-optionset) to fold this into the preview
 - `metadata export-spec <logical_name> [--with-views] [--with-relationships] [-o FILE]` — project a live entity into a `crm apply -f`–consumable desired-state spec (round-trip). Pure GETs; `-o` writes the bare YAML directly. Custom columns that cannot be represented (permission limits, unsupported formats) are reported in `meta.warnings` instead of silently dropped.
-- `metadata clone-entity <source> <new-schema-name>` — duplicate a custom entity (skeleton + opt-in `--with-forms` / `--with-views` / `--with-workflows`, or `--with-all`) purely over the Web API. The ribbon is not cloned (no API write path); N:N and parent-side relationships are not cloned.
+- `metadata clone-entity <source> <new-schema-name>` — duplicate a custom entity (skeleton + opt-in `--with-forms` / `--with-views` / `--with-workflows` / `--with-charts`, or `--with-all`) purely over the Web API. The ribbon is not cloned (no API write path); N:N and parent-side relationships are not cloned.
 
 `crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
 columns, option sets, relationships, views) from one declarative spec, in

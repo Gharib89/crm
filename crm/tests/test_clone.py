@@ -105,6 +105,7 @@ class TestCloneEntitySkeleton:
         assert out["counts"]["views"] == 1
         assert out["counts"]["forms"] == 0
         assert out["counts"]["workflows"] == 0
+        assert out["counts"]["charts"] == 0
         assert "relationships" not in out["counts"]
         assert "Ribbon not cloned" in out["ribbon_note"]
 
@@ -239,6 +240,68 @@ class TestCloneEntityWorkflows:
         assert "not yet supported" in out["skipped_workflows"][0]["reason"]
 
 
+class TestCloneEntityCharts:
+    def _patch(self, monkeypatch, *, charts_list, captured):
+        monkeypatch.setattr(clone_mod, "build_entity_spec",
+                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
+                                                             "display_name": "Project",
+                                                             "relationships": []}]})
+        monkeypatch.setattr(clone_mod, "apply_spec",
+                            lambda b, spec, **k: _applied("entity"))
+        monkeypatch.setattr(clone_mod, "read_entity_charts", lambda b, s: charts_list)
+
+        def fake_clone_chart(backend, chart, new_entity, *, solution=None):
+            captured.setdefault("targets", []).append((chart["name"], new_entity, solution))
+            return {"created": True, "savedqueryvisualizationid": "c", "name": chart["name"]}
+
+        monkeypatch.setattr(clone_mod, "clone_chart_to_entity", fake_clone_chart)
+        monkeypatch.setattr(clone_mod, "publish_all",
+                            lambda b: captured.__setitem__("published", True))
+
+    def test_with_charts_clones_each_chart_and_counts(self, monkeypatch):
+        captured: dict = {}
+        self._patch(monkeypatch,
+                    charts_list=[{"name": "By Priority", "primaryentitytypecode": "new_project"},
+                                  {"name": "By Status", "primaryentitytypecode": "new_project"}],
+                    captured=captured)
+        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
+                                     with_charts=True, solution="MySol")
+        assert out["counts"]["charts"] == 2
+        assert captured["targets"] == [("By Priority", "cwx_ticketclone", "MySol"),
+                                       ("By Status", "cwx_ticketclone", "MySol")]
+        assert captured.get("published") is True
+
+    def test_without_charts_does_not_read_charts(self, monkeypatch):
+        called = {"read": False}
+        monkeypatch.setattr(clone_mod, "build_entity_spec",
+                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
+                                                             "display_name": "Project"}]})
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
+        monkeypatch.setattr(clone_mod, "read_entity_charts",
+                            lambda b, s: called.__setitem__("read", True) or [])
+        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
+                                     with_charts=False)
+        assert called["read"] is False
+        assert out["counts"]["charts"] == 0
+
+    def test_failed_skeleton_skips_charts(self, monkeypatch):
+        called = {"read": False}
+        self._patch(monkeypatch,
+                    charts_list=[{"name": "By Priority", "primaryentitytypecode": "new_project"}],
+                    captured={})
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: {
+            "ok": False, "applied": [{"kind": "entity", "name": "e"}],
+            "skipped": [], "planned": [], "failed": [{"kind": "attribute", "name": "x"}],
+            "staged": False})
+        monkeypatch.setattr(clone_mod, "read_entity_charts",
+                            lambda b, s: called.__setitem__("read", True) or [])
+        out = clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
+                                     with_charts=True)
+        assert out["created"] is False
+        assert called["read"] is False
+        assert out["counts"]["charts"] == 0
+
+
 from click.testing import CliRunner
 
 
@@ -251,7 +314,8 @@ class TestCloneCommand:
         def fake_clone(backend, source, new_schema, **kw):
             called.update(dict(source=source, new_schema=new_schema, **kw))
             return {"created": True, "logical_name": new_schema.lower(),
-                    "counts": {"attributes": 1, "views": 0, "forms": 0, "workflows": 0},
+                    "counts": {"attributes": 1, "views": 0, "forms": 0, "workflows": 0,
+                               "charts": 0},
                     "skipped_workflows": [], "ribbon_note": "n/a"}
 
         monkeypatch.setattr(md_cmd.clone_mod, "clone_entity", fake_clone)
@@ -280,7 +344,7 @@ class TestCloneCommand:
                             lambda b, s, n, **kw: called.update(kw) or {
                                 "created": True, "logical_name": n.lower(),
                                 "counts": {"attributes": 0, "views": 0,
-                                           "forms": 0, "workflows": 0},
+                                           "forms": 0, "workflows": 0, "charts": 0},
                                 "skipped_workflows": [], "ribbon_note": "n/a"})
         from crm.cli import cli
         _env = {"D365_URL": "https://crm.contoso.local/contoso",
@@ -290,6 +354,48 @@ class TestCloneCommand:
             env=_env)
         assert result.exit_code == 0, result.output
         assert called["with_forms"] and called["with_views"] and called["with_workflows"]
+        assert called["with_charts"] is True
+
+    def test_with_charts_flag_threads_to_core(self, monkeypatch):
+        from crm.commands import metadata as md_cmd
+        called = {}
+        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
+                            lambda b, s, n, **kw: called.update(kw) or {
+                                "created": True, "logical_name": n.lower(),
+                                "counts": {"attributes": 0, "views": 0,
+                                           "forms": 0, "workflows": 0, "charts": 0},
+                                "skipped_workflows": [], "ribbon_note": "n/a"})
+        from crm.cli import cli
+        _env = {"D365_URL": "https://crm.contoso.local/contoso",
+                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
+        result = CliRunner().invoke(cli, [
+            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-charts"],
+            env=_env)
+        assert result.exit_code == 0, result.output
+        assert called["with_charts"] is True
+        assert called["with_forms"] is False
+        assert called["with_views"] is False
+
+    def test_with_all_enables_charts(self, monkeypatch):
+        from crm.commands import metadata as md_cmd
+        called = {}
+        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
+                            lambda b, s, n, **kw: called.update(kw) or {
+                                "created": True, "logical_name": n.lower(),
+                                "counts": {"attributes": 0, "views": 0,
+                                           "forms": 0, "workflows": 0, "charts": 0},
+                                "skipped_workflows": [], "ribbon_note": "n/a"})
+        from crm.cli import cli
+        _env = {"D365_URL": "https://crm.contoso.local/contoso",
+                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
+        result = CliRunner().invoke(cli, [
+            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-all"],
+            env=_env)
+        assert result.exit_code == 0, result.output
+        assert called["with_charts"] is True
+        assert called["with_forms"] is True
+        assert called["with_views"] is True
+        assert called["with_workflows"] is True
 
     def test_skipped_workflows_surface_in_output(self, monkeypatch):
         from crm.commands import metadata as md_cmd
@@ -297,7 +403,7 @@ class TestCloneCommand:
                             lambda b, s, n, **kw: {
                                 "created": True, "logical_name": n.lower(),
                                 "counts": {"attributes": 0, "views": 0,
-                                           "forms": 0, "workflows": 1},
+                                           "forms": 0, "workflows": 1, "charts": 0},
                                 "skipped_workflows": [{"name": "BadAction",
                                                        "reason": "not yet supported"}],
                                 "ribbon_note": "n/a"})

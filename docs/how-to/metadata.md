@@ -207,7 +207,7 @@ pointing at the same parent tables), and the global option sets it references
 # skeleton only (entity + attributes + lookups + reused option sets)
 crm metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone"
 
-# everything cloneable over the API
+# everything cloneable over the API (forms, views, workflows, charts)
 crm metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
 ```
 
@@ -215,7 +215,9 @@ crm metadata clone-entity new_project cwx_TicketClone --with-all --solution MySo
 workflows and business rules whose primary entity is the source; actions, BPFs,
 dialogs, and modern flows are skipped (reported under `skipped_workflows`), and
 because there is no "is custom" filter it copies every matching definition
-(type=1), including managed ones.
+(type=1), including managed ones. `--with-charts` clones public system charts
+(`savedqueryvisualization`); each chart's `datadescription` FetchXML is
+retargeted to the clone entity via a whole-token name swap.
 
 **Views and the ObjectTypeCode timing caveat:** A brand-new entity's
 ObjectTypeCode (OTC) is sometimes unreadable until after the first apply's
@@ -234,7 +236,6 @@ idempotent) after the initial publish to land the views.
 - **Lookup cascade / associated-menu behavior** — recreated lookups use the
   default cascade behavior, not the source's.
 - **Polymorphic / Customer lookups** — only single-target lookups come across.
-- **Charts** — deferred to a follow-up (see issue tracker).
 - On Unified Interface a cloned form may need adding to the model-driven app's
   form list to be user-visible.
 

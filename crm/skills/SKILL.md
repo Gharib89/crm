@@ -344,13 +344,14 @@ crm --json metadata clone-entity new_project cwx_TicketClone --with-all --soluti
 
 # opt-in flags
 crm --json metadata clone-entity new_project cwx_TicketClone \
-    --with-forms --with-views --with-workflows
+    --with-forms --with-views --with-workflows --with-charts
 ```
 
 Key flags: `--display` overrides the display name of the new entity; `--solution`
 scopes all created components; `--with-forms` (Main forms only), `--with-views`,
-`--with-workflows` (classic workflows and business rules), `--with-all` enables
-all three.
+`--with-workflows` (classic workflows and business rules), `--with-charts` (public
+system charts — `datadescription` FetchXML retargeted to the clone), `--with-all`
+enables all four.
 
 **Not cloned (Web API limits):**
 
@@ -359,7 +360,7 @@ all three.
 - **N:N relationships** and 1:N relationships where the source is the *parent*
   (referenced) side — cloning those would add lookups on *other* tables.
 - **Polymorphic / Customer lookups** — only single-target lookups come across.
-- **Charts** — deferred follow-up.
+- **Personal charts** (`userqueryvisualization`) — not cloned; public system charts are handled by `--with-charts`.
 
 `--with-workflows` copies every classic workflow/business rule (`type=1`) whose
 primary entity is the source, including managed ones (no "is custom" filter
