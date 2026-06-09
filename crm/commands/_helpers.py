@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.parse
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
@@ -494,3 +495,37 @@ _CASCADE = click.Choice(
 )
 _MENU = click.Choice(["UseLabel", "UseCollectionName", "DoNotDisplay"])
 _REQUIRED = click.Choice(["None", "Recommended", "ApplicationRequired"])
+
+
+# ── Profile-UX helpers (credential revamp) ───────────────────────────────
+
+# Dataverse online hosts always end in this suffix (crm.dynamics.com,
+# crm4.dynamics.com, crm.dynamics.cn, ...). Anything else is treated as on-prem.
+_CLOUD_HOST_MARKER = ".dynamics."
+
+
+def infer_auth_scheme(url: str) -> str:
+    """Guess the auth scheme from the server URL: oauth for Dataverse online
+    (`*.dynamics.*`), else ntlm. The wizard shows this as an overridable default."""
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    return "oauth" if _CLOUD_HOST_MARKER in host else "ntlm"
+
+
+def default_profile_name(url: str) -> str:
+    """Default profile name = the first label of the URL host (`crm.contoso.local`
+    -> `crm`, `orgd080.crm.dynamics.com` -> `orgd080`). Falls back to 'default'
+    when the URL has no parseable host."""
+    host = urllib.parse.urlparse(url).hostname or ""
+    label = host.split(".")[0] if host else ""
+    return label or "default"
+
+
+def _auth_error_hint(status: int | None, profile_name: str,
+                     *, no_secret: bool = False) -> str:
+    """Map an auth failure to a copy-paste fix command, or '' when none applies.
+
+    A 401 (rejected secret) or a missing-secret error both steer the user to
+    re-store the secret for the active profile."""
+    if no_secret or status == 401:
+        return f"run: crm profile set-password --profile {profile_name}"
+    return ""
