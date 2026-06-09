@@ -553,8 +553,8 @@ def solution_pack_cmd(ctx: CLIContext, zipfile, folder, package_type,
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--against-org", "against_org", is_flag=True,
               help="Also run online checks against the connected org "
-                   "(GUID collisions, web-resource & option-set existence). "
-                   "Requires a connection/profile.")
+                   "(form/view + BPF process-stage GUID collisions, web-resource "
+                   "& option-set existence). Requires a connection/profile.")
 @pass_ctx
 def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
     """Statically validate a solution zip before import.
