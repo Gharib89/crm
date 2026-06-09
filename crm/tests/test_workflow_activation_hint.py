@@ -1,0 +1,106 @@
+"""Command-layer tests for the workflow activation-record hint (issue #160)."""
+# pyright: basic
+from __future__ import annotations
+
+import json
+
+from click.testing import CliRunner
+
+from crm.utils.d365_backend import ConnectionProfile, D365Error
+
+
+_WF_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+_PARENT_GUID = "11111111-2222-3333-4444-555555555555"
+
+
+def _seed_profile(tmp_path, monkeypatch):
+    """Isolate CRM_HOME and seed an NTLM profile + plaintext secret named 't'."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+    from crm.core import session as session_mod
+    session_mod.save_profile(ConnectionProfile(
+        name="t", url="https://crm.contoso.local/contoso",
+        domain="CONTOSO", username="alice"))
+    session_mod.save_profile_secret_plaintext("t", "pw")
+
+
+class TestWorkflowActivationHintWiring:
+    def test_deactivate_hint_reaches_envelope(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import workflow as wf_cmd
+
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod,
+            "set_workflow_state",
+            lambda backend, wid, **kw: (_ for _ in ()).throw(
+                D365Error("Cannot update a workflow activation.", status=400, code="0x80045003")
+            ),
+        )
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod,
+            "activation_record_hint",
+            lambda backend, wid, exc: f"hint: use parent {_PARENT_GUID}",
+        )
+
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+        assert result.exit_code != 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert envelope["meta"]["code"] == "0x80045003"
+        assert _PARENT_GUID in envelope["meta"]["hint"]
+
+    def test_activate_hint_reaches_envelope(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import workflow as wf_cmd
+
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod,
+            "set_workflow_state",
+            lambda backend, wid, **kw: (_ for _ in ()).throw(
+                D365Error("Cannot update a workflow activation.", status=400, code="0x80045003")
+            ),
+        )
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod,
+            "activation_record_hint",
+            lambda backend, wid, exc: f"hint: use parent {_PARENT_GUID}",
+        )
+
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "activate", _WF_ID])
+        assert result.exit_code != 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert envelope["meta"]["code"] == "0x80045003"
+        assert _PARENT_GUID in envelope["meta"]["hint"]
+
+    def test_non_activation_error_skips_hint_lookup(self, monkeypatch, tmp_path):
+        """A non-0x80045003 error must NOT trigger the hint lookup — the gate
+        keeps the second ctx.backend() off the credential-failure path."""
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import workflow as wf_cmd
+
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod,
+            "set_workflow_state",
+            lambda backend, wid, **kw: (_ for _ in ()).throw(
+                D365Error("Workflow not found.", status=404, code="0x80040217")
+            ),
+        )
+        called = {"hint": False}
+
+        def _spy(backend, wid, exc):
+            called["hint"] = True
+            return None
+
+        monkeypatch.setattr(wf_cmd.workflow_mod, "activation_record_hint", _spy)
+
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+        assert result.exit_code != 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert envelope["meta"]["code"] == "0x80040217"
+        assert "hint" not in envelope["meta"]
+        assert called["hint"] is False

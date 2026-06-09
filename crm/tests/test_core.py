@@ -718,6 +718,61 @@ class TestWorkflow:
         with pytest.raises(D365Error):
             wf_mod.execute_workflow(backend, "x", "")
 
+    def test_activation_record_hint_resolves_parent(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "22222222-2222-2222-2222-222222222222"
+        parent_guid = "33333333-3333-3333-3333-333333333333"
+        error_body = {"error": {"code": "0x80045003", "message": "Cannot update a workflow activation."}}
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"workflows({wid})"), status_code=400, json=error_body)
+            with pytest.raises(D365Error) as exc_info:
+                wf_mod.set_workflow_state(backend, wid, activate=True)
+        exc = exc_info.value
+        assert exc.code == "0x80045003"
+
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({wid})"),
+                json={"_parentworkflowid_value": parent_guid},
+            )
+            hint = wf_mod.activation_record_hint(backend, wid, exc)
+        assert hint is not None
+        assert parent_guid in hint
+        # Verify $select=parentworkflowid was used
+        req = m.request_history[0]
+        assert req.qs.get("$select") == ["parentworkflowid"]
+
+    def test_activation_record_hint_fallback_when_no_parent(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "44444444-4444-4444-4444-444444444444"
+        exc = D365Error("Cannot update a workflow activation.", status=400, code="0x80045003")
+
+        # GET returns empty dict — no parent
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({wid})"), json={})
+            hint = wf_mod.activation_record_hint(backend, wid, exc)
+        assert hint is not None
+        assert "activation record" in hint
+        # No parent GUID in hint
+        assert "33333333" not in hint
+
+        # GET returns 500 — should fall back gracefully
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({wid})"), status_code=500, json={"error": {"code": "0x80000000", "message": "Server error"}})
+            hint2 = wf_mod.activation_record_hint(backend, wid, exc)
+        assert hint2 is not None
+        assert "activation record" in hint2
+
+    def test_activation_record_hint_ignores_other_codes(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "55555555-5555-5555-5555-555555555555"
+        exc = D365Error("Some other error.", status=400, code="0x80040217")
+
+        with requests_mock.Mocker() as m:
+            result = wf_mod.activation_record_hint(backend, wid, exc)
+        assert result is None
+        assert len(m.request_history) == 0
+
 
 class TestCountEntitySet:
     def test_count_returns_int_from_text_plain(self, backend):

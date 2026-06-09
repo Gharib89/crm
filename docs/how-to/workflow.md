@@ -16,6 +16,8 @@ crm --json workflow activate <workflow-guid>
 ```
 Sets `statecode=1, statuscode=2`; `crm workflow deactivate` reverses it.
 
+If you pass an activation-record GUID (type=2 — the compiled copy the server creates when a draft is activated), the command returns `ok: false` with a hint naming the parent draft GUID to pass instead.
+
 ## Trigger an on-demand workflow against a record
 
 ```bash
