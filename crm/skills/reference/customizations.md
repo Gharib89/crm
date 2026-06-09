@@ -11,8 +11,7 @@ command-bar (ribbon) buttons, and entity forms. Groups: `app`, `webresource`,
 crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
 
 # add-components: APP_ID positional + repeatable --component 'kind:guid'.
-# kind ∈ view|chart|form|dashboard|sitemap|bpf (NOT 'entity' — tables surface
-# via the sitemap's Entity= subareas, not AddAppComponents).
+# 'entity' is NOT a valid kind — tables surface via sitemap Entity= subareas.
 crm --json app add-components <appmoduleid> \
     --component view:<savedqueryid> --component chart:<savedqueryvisualizationid>
 

@@ -73,6 +73,8 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
             meta={"target": target, "dest": str(dest_dir)},
         )
 
+    if force and dest_dir.exists():
+        shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(
         src_dir, dest_dir,

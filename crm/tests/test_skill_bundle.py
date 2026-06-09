@@ -38,8 +38,10 @@ def test_router_is_thin():
 
 def test_expected_reference_files_present():
     present = {p.name for p in REFERENCE_DIR.glob("*.md")}
-    missing = EXPECTED_REFERENCES - present
-    assert not missing, f"missing reference files: {sorted(missing)}"
+    assert present == EXPECTED_REFERENCES, (
+        f"reference file mismatch — missing: {sorted(EXPECTED_REFERENCES - present)}, "
+        f"extra: {sorted(present - EXPECTED_REFERENCES)}"
+    )
 
 
 def test_every_reference_is_linked_from_router():

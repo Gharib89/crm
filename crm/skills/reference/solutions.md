@@ -7,12 +7,9 @@ Flags/choices: `crm solution --help`.
 ## Solution scaffolding — publisher + solution
 
 ```bash
-# Publisher: --prefix is 2–8 alphanumeric, letter-first, not 'mscrm';
-# --option-value-prefix is an integer 10000–99999.
 crm --json solution create-publisher --name crmworx --display CRMWorx \
     --prefix cwx --option-value-prefix 30000 --if-exists skip
 
-# Solution: --publisher XOR --publisher-id (mutually exclusive).
 crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
 ```
 
