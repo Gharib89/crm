@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.7.0 (2026-06-09)
+
+### Documentation
+
+- **plans**: Add export-spec and cli-robustness implementation plan
+  ([`473d5a7`](https://github.com/Gharib89/crm/commit/473d5a7ef3f7395ced807f63b7a2912248abb5f7))
+
+### Features
+
+- Add crm form command group (list/clone/export) ([#156](https://github.com/Gharib89/crm/pull/156),
+  [`f180386`](https://github.com/Gharib89/crm/commit/f180386fd3ca0cfb76602c1c0fdd2d4b02d026cd))
+
+
 ## v1.6.1 (2026-06-09)
 
 ### Bug Fixes
