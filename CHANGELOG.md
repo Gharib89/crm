@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.1.0 (2026-06-09)
+
+### Features
+
+- Entity delete emits deactivate-parent hint on workflow activation-record GUID
+  ([#173](https://github.com/Gharib89/crm/pull/173),
+  [`009732c`](https://github.com/Gharib89/crm/commit/009732c0d5cb0a13504d9f7b52ca5bc3bd84f6b9))
+
+- Entity delete emits deactivate-parent hint on workflow activation-record GUID (#161)
+  ([#173](https://github.com/Gharib89/crm/pull/173),
+  [`009732c`](https://github.com/Gharib89/crm/commit/009732c0d5cb0a13504d9f7b52ca5bc3bd84f6b9))
+
+### Refactoring
+
+- Gate workflow import on exact code; fix overpromising delete-hint doc
+  ([#173](https://github.com/Gharib89/crm/pull/173),
+  [`009732c`](https://github.com/Gharib89/crm/commit/009732c0d5cb0a13504d9f7b52ca5bc3bd84f6b9))
+
+- Lazy-import workflow module on entity delete error path
+  ([#173](https://github.com/Gharib89/crm/pull/173),
+  [`009732c`](https://github.com/Gharib89/crm/commit/009732c0d5cb0a13504d9f7b52ca5bc3bd84f6b9))
+
+
 ## v2.0.2 (2026-06-09)
 
 ### Bug Fixes
