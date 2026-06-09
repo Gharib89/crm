@@ -49,7 +49,7 @@ If two main forms share the same name, the command errors rather than guessing:
 
 ```
 Error: Ambiguous: 2 forms named 'Ticket Main Form' — cannot pick one
-automatically. Matches: formid='aaa...' type=main, formid='bbb...' type=main
+automatically. Matches: formid='aaa...' type=2, formid='bbb...' type=2
 ```
 
 Use `crm form list cwx_ticket` to inspect the colliding formids, then rename
