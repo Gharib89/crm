@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.6.1 (2026-06-09)
+
+### Bug Fixes
+
+- Export-spec warns on dropped columns; Windows UTF-8 output; metadata-update hint; apply adds
+  referenced option sets
+  ([`4816f97`](https://github.com/Gharib89/crm/commit/4816f97e26fded9bc8b062771307b7cce7772e30))
+
+
 ## v1.6.0 (2026-06-08)
 
 ### Chores
