@@ -124,6 +124,7 @@ def clone_entity(
         return out
 
     clone_logical = new_schema_name.lower()
+    needs_publish = False
 
     if with_forms:
         forms_done = 0
@@ -131,8 +132,8 @@ def clone_entity(
             clone_form_to_entity(backend, form, clone_logical, solution=solution)
             forms_done += 1
         out["counts"]["forms"] = forms_done
-        if forms_done and publish and (not backend or not backend.dry_run):
-            publish_all(backend)
+        if forms_done:
+            needs_publish = True
 
     if with_workflows:
         wf_done = 0
@@ -154,7 +155,10 @@ def clone_entity(
             clone_chart_to_entity(backend, chart, clone_logical, solution=solution)
             charts_done += 1
         out["counts"]["charts"] = charts_done
-        if charts_done and publish and (not backend or not backend.dry_run):
-            publish_all(backend)
+        if charts_done:
+            needs_publish = True
+
+    if needs_publish and publish and (not backend or not backend.dry_run):
+        publish_all(backend)
 
     return out

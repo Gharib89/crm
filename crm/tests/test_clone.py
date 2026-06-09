@@ -301,6 +301,27 @@ class TestCloneEntityCharts:
         assert called["read"] is False
         assert out["counts"]["charts"] == 0
 
+    def test_forms_and_charts_publish_once(self, monkeypatch):
+        """publish_all called exactly once when both with_forms and with_charts are enabled."""
+        publish_calls: list[int] = []
+        monkeypatch.setattr(clone_mod, "build_entity_spec",
+                            lambda b, s, **k: {"entities": [{"schema_name": "new_Project",
+                                                             "display_name": "Project",
+                                                             "relationships": []}]})
+        monkeypatch.setattr(clone_mod, "apply_spec", lambda b, spec, **k: _applied("entity"))
+        monkeypatch.setattr(clone_mod, "read_entity_forms",
+                            lambda b, s: [{"name": "F", "objecttypecode": "new_project"}])
+        monkeypatch.setattr(clone_mod, "clone_form_to_entity",
+                            lambda b, form, ne, *, solution=None: {"created": True, "name": form["name"]})
+        monkeypatch.setattr(clone_mod, "read_entity_charts",
+                            lambda b, s: [{"name": "C", "primaryentitytypecode": "new_project"}])
+        monkeypatch.setattr(clone_mod, "clone_chart_to_entity",
+                            lambda b, chart, ne, *, solution=None: {"created": True, "name": chart["name"]})
+        monkeypatch.setattr(clone_mod, "publish_all", lambda b: publish_calls.append(1))
+        clone_mod.clone_entity(cast(D365Backend, None), "new_project", "cwx_TicketClone",
+                               with_forms=True, with_charts=True)
+        assert len(publish_calls) == 1
+
 
 from click.testing import CliRunner
 
