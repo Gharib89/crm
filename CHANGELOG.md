@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.9.0 (2026-06-09)
+
+### Features
+
+- **skill**: Split SKILL.md into thin router + on-demand reference files
+  ([#158](https://github.com/Gharib89/crm/pull/158),
+  [`d1be79a`](https://github.com/Gharib89/crm/commit/d1be79a9f0b8ed4290769f82358665dcdf6b7fbc))
+
+
 ## v1.8.0 (2026-06-09)
 
 ### Bug Fixes
