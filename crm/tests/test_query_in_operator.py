@@ -47,9 +47,9 @@ _RAISING_FILTERS = [
 _PASSTHROUGH_FILTERS = [
     "name eq 'stand in (queue)'",  # ` in (` inside a quoted literal
     "Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['a','b'])",  # native fn
-    "createdon gt 2020-01-01",  # column name contains 'in'
-    "_in_value eq 5",
-    "min_value eq 3",
+    "createdon gt 2020-01-01",  # ordinary column, no bare `in` operator
+    "_in_value eq 5",  # column name contains the substring 'in'
+    "min_value eq 3",  # ditto
     "contains(name,'foo')",  # OData contains function
 ]
 
