@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.0.2 (2026-06-09)
+
+### Bug Fixes
+
+- Workflow activate/deactivate hint resolves parent draft on activation-record GUID
+  ([#160](https://github.com/Gharib89/crm/pull/160),
+  [`ada1bb5`](https://github.com/Gharib89/crm/commit/ada1bb506424391dffd16fc4377ebf7b2a7d1255))
+
+
 ## v2.0.1 (2026-06-09)
 
 ### Bug Fixes
