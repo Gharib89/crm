@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 import requests_mock as rm_module
@@ -70,10 +69,6 @@ _CLONE_ENTITY_ID_URL = (
 
 def _forms_url(backend: D365Backend) -> str:
     return backend.url_for("systemforms")
-
-
-def _publish_url(backend: D365Backend) -> str:
-    return backend.url_for("PublishAllXml")
 
 
 # ---------------------------------------------------------------------------
