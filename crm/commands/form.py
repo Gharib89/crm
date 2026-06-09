@@ -20,6 +20,24 @@ def form_group():
     """Read and clone entity forms."""
 
 
+def _read_forms_real(ctx: CLIContext, entity: str) -> list[dict]:
+    """Read forms with a real GET even under ``--dry-run``.
+
+    The read is an idempotency probe, not a mutation: the dry-run backend's
+    ``request`` returns a preview dict with no ``value`` key, so a dry-run
+    read would yield zero forms and make ``clone``/``export`` falsely report
+    "No form named …". Force ``dry_run`` off for the GET, then restore it so
+    the subsequent clone POST is still previewed (pattern from views.py).
+    """
+    backend = ctx.backend()
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        return forms_mod.read_entity_forms(backend, entity)
+    finally:
+        backend.dry_run = was_dry
+
+
 def _resolve_single_form(
     ctx: CLIContext, forms: list[dict], form_name: str
 ) -> dict | None:
@@ -52,7 +70,7 @@ def _resolve_single_form(
 def form_list(ctx: CLIContext, entity: str) -> None:
     """List the main forms for an entity."""
     try:
-        forms = forms_mod.read_entity_forms(ctx.backend(), entity)
+        forms = _read_forms_real(ctx, entity)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -70,7 +88,7 @@ def form_list(ctx: CLIContext, entity: str) -> None:
         for r in listed
     ]
     ctx.emit(True, data=listed, table={
-        "headers": ["name", "type", "formid", "default"],
+        "headers": ["name", "type", "formid", "isdefault"],
         "rows": rows,
     })
 
@@ -93,7 +111,7 @@ def form_clone(
         ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     try:
-        forms = forms_mod.read_entity_forms(ctx.backend(), entity)
+        forms = _read_forms_real(ctx, entity)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -122,7 +140,7 @@ def form_clone(
 def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None) -> None:
     """Export a form's formxml."""
     try:
-        forms = forms_mod.read_entity_forms(ctx.backend(), entity)
+        forms = _read_forms_real(ctx, entity)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

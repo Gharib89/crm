@@ -168,6 +168,27 @@ class TestFormClone:
         post_urls = [r.url for r in m.request_history if r.method == "POST"]
         assert not any("PublishAllXml" in u for u in post_urls)
 
+    def test_clone_dry_run_resolves_source_form(self, profile, monkeypatch):
+        """--dry-run must force a real GET to resolve the source form, then
+        preview the POST. Regression: a dry-run backend's request returns a
+        preview dict with no 'value', so the read would otherwise yield zero
+        forms and the command would falsely error 'No form named ...'."""
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: dry_backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(dry_backend), json={"value": [_FORM_A]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "clone", "new_project", "Information",
+                "--to", "cwx_ticketclone", "--no-publish",
+            ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        # No real POST issued under dry-run
+        assert not any(r.method == "POST" for r in m.request_history)
+        # dry_run flag restored after the forced-real read
+        assert dry_backend.dry_run is True
+
     def test_clone_unknown_form_errors_no_post(self, backend, monkeypatch):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
         with rm_module.Mocker() as m:

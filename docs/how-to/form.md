@@ -9,7 +9,7 @@ List, clone, and export entity main forms (systemform). See the
 crm form list cwx_ticket
 ```
 
-Output columns: `name`, `type`, `formid`, `default`. Only **main** forms are
+Output columns: `name`, `type`, `formid`, `isdefault`. Only **main** forms are
 returned — quick-create, card, and mobile-express forms are not included.
 
 ## Clone a form to another entity
