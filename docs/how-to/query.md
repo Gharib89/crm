@@ -11,6 +11,15 @@ crm --json query odata cwx_tickets \
 ```
 Returns matching rows under `data.value`; queries the entity-set (plural) name.
 
+The bare `in` operator (`workflowid in ('a','b')`) is **OData 4.01** and the
+Dataverse Web API (OData 4.0) rejects it — `query odata` detects it and errors
+before the request. Use the native `In` query function, or `query fetchxml`:
+
+```bash
+crm --json query odata workflows \
+  --filter "Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['<id1>','<id2>'])"
+```
+
 ## Strip annotations for token-efficient JSON (`--minimal`)
 
 ```bash

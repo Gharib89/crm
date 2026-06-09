@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+
+# Bare OData 4.01 `in` operator (e.g. `workflowid in ('a','b')`). The Dataverse
+# Web API is OData 4.0 and rejects it with a generic 500 — detect it client-side
+# before scanning string literals (which may contain ` in (`). Lowercase-only and
+# no IGNORECASE so the native `Microsoft.Dynamics.CRM.In(` function is NOT matched.
+_QUOTED_LITERAL_RE = re.compile(r"'(?:''|[^'])*'")
+_BARE_IN_OPERATOR_RE = re.compile(r"\bin\s*[(\[]")
 
 
 # ── OData query ─────────────────────────────────────────────────────────
@@ -31,6 +39,13 @@ def odata_query(
     if select:
         params["$select"] = ",".join(select)
     if filter_:
+        if _BARE_IN_OPERATOR_RE.search(_QUOTED_LITERAL_RE.sub("", filter_)):
+            raise D365Error(
+                "OData 'in' operator is not supported by the Dataverse Web API (OData 4.0).\n"
+                "Use the In query function:\n"
+                "  --filter \"Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['<id1>','<id2>'])\"\n"
+                "or run the equivalent FetchXML via `crm query fetchxml`."
+            )
         params["$filter"] = filter_
     if top is not None:
         if top < 1:
