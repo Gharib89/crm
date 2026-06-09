@@ -311,6 +311,27 @@ def set_workflow_state(
 
 # Server error code returned when a state PATCH targets a type=2 activation row.
 ACTIVATION_PATCH_ERROR_CODE = "0x80045003"
+# Server error code returned when a DELETE targets a type=2 activation row.
+ACTIVATION_DELETE_ERROR_CODE = "0x80045004"
+
+
+def _resolve_parent_workflow_id(
+    backend: D365Backend, workflow_id: str
+) -> str | None:
+    """Best-effort single GET of the activation row's `parentworkflowid` lookup.
+
+    Returns the parent definition GUID, or None if the GET fails or the row has
+    no parent. Never raises — used only on an already-failed error path, so it
+    must not mask the original error.
+    """
+    try:
+        row = as_dict(backend.get(
+            f"workflows({workflow_id})", params={"$select": "parentworkflowid"}
+        ))
+    except D365Error:
+        return None
+    parent = row.get("_parentworkflowid_value") or row.get("parentworkflowid")
+    return parent or None
 
 
 def activation_record_hint(
@@ -330,18 +351,43 @@ def activation_record_hint(
         f"{workflow_id} is a workflow activation record; "
         "pass the parent draft (type=1) GUID instead."
     )
-    try:
-        row = as_dict(backend.get(
-            f"workflows({workflow_id})", params={"$select": "parentworkflowid"}
-        ))
-    except D365Error:
-        return generic
-    parent = row.get("_parentworkflowid_value") or row.get("parentworkflowid")
+    parent = _resolve_parent_workflow_id(backend, workflow_id)
     if not parent:
         return generic
     return (
         f"{workflow_id} is a workflow activation record. "
         f"Pass the parent draft GUID instead: {parent}"
+    )
+
+
+def activation_delete_hint(
+    backend: D365Backend, workflow_id: str, exc: D365Error
+) -> str | None:
+    """If `exc` is the 'cannot delete a workflow activation' rejection, return a
+    hint pointing at deactivating the parent definition; else None.
+
+    Only `0x80045004` (a DELETE against a type=2 activation row) is handled.
+    Resolves the activation row's `parentworkflowid` with a single GET; if that
+    lookup fails or yields no parent, falls back to a generic hint referencing
+    `parentworkflowid` by name rather than masking the original error or raising
+    again. D365 blocks deleting activation rows directly — deactivating the
+    parent definition removes the activation.
+    """
+    if exc.code != ACTIVATION_DELETE_ERROR_CODE:
+        return None
+    generic = (
+        f"{workflow_id} is a workflow activation record (type=2) that cannot be "
+        "deleted directly. Deactivate its parent definition instead (the parent "
+        "GUID is on this row's parentworkflowid lookup): "
+        "crm workflow deactivate <parent-guid>"
+    )
+    parent = _resolve_parent_workflow_id(backend, workflow_id)
+    if not parent:
+        return generic
+    return (
+        f"{workflow_id} is a workflow activation record (type=2) that cannot be "
+        "deleted directly. Deactivate its parent definition instead, which "
+        f"removes the activation: crm workflow deactivate {parent}"
     )
 
 
