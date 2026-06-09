@@ -295,6 +295,9 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     except FileNotFoundError:
         _handle_d365_error(ctx, D365Error(f"Profile {name!r} not found."))
         return
+    except _PROFILE_LOAD_ERRORS as exc:
+        ctx.emit(False, error=f"Profile {name!r} is unreadable: {exc}")
+        return
     if url is not None: p.url = url.rstrip("/")
     if username is not None: p.username = username
     if domain is not None: p.domain = domain
@@ -303,6 +306,16 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     if api_version is not None: p.api_version = api_version
     if default_solution is not None: p.default_solution = default_solution
     if publisher_prefix is not None: p.publisher_prefix = publisher_prefix
+    # Fail fast on an edit that leaves the profile unusable, rather than letting
+    # it surface later as a confusing backend-build error.
+    if not p.url:
+        raise click.UsageError("--url cannot be empty.")
+    if p.auth_scheme == "oauth":
+        if not p.tenant_id or not p.client_id:
+            raise click.UsageError(
+                "an OAuth profile needs tenant_id and client_id.")
+    elif not p.username:
+        raise click.UsageError("an on-prem profile needs a username.")
     session_mod.save_profile(p)
     ctx.invalidate_backend()
     ctx.emit(True, data={"profile": name, "updated": True})

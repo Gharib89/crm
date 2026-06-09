@@ -128,8 +128,10 @@ When a command needs the secret it checks, in order:
 3. An interactive TTY prompt (skipped in `--json` / non-interactive contexts)
 
 There is no environment-variable step — `.env`, `D365_*`, and `CRM_*` credential
-variables are not read. The only environment knob that affects connections is
-`CRM_HOME`, which relocates the state directory (default `~/.crm/`).
+variables are not read. `CRM_HOME` is the only env var involved in
+credential/connection resolution (it relocates the state directory, default
+`~/.crm/`). Other `CRM_*` vars tune unrelated runtime behavior (logging,
+retries, stage-only) but never supply connection config.
 
 ## Confirm it works
 

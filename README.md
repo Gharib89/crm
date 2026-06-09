@@ -192,8 +192,10 @@ them by default:
 crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
 ```
 
-State lives under `~/.crm/` — the only environment knob that affects connections is
-`CRM_HOME`, which relocates that directory.
+State lives under `~/.crm/` — `CRM_HOME` is the only env var involved in
+credential/connection resolution (it relocates that directory). No credentials
+are ever read from the environment. (Other `CRM_*` vars tune unrelated runtime
+behavior — logging, retries, stage-only — but never supply connection config.)
 
 ### Storing credentials
 

@@ -175,6 +175,15 @@ class TestListEditRm:
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("a").url == "https://new.contoso.local/o2"
 
+    def test_edit_blank_username_on_ntlm_fails_fast(self, crm_home):
+        # Clearing the username on an on-prem profile must fail at edit time
+        # (UsageError, exit 2), not later when a backend is built.
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--username", ""])
+        assert result.exit_code == 2, result.output
+        assert session_mod.load_profile("a").username == "u"  # unchanged
+
     def test_rm_deletes_profile_and_secret(self, crm_home):
         self._seed("a")
         session_mod.save_profile_secret_plaintext("a", "pw")
