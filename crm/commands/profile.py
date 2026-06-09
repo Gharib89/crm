@@ -127,6 +127,10 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     try:
         info = conn_mod.test_connection(ctx.backend(), negotiate=negotiate)
     except D365Error as exc:
+        # The secret is already saved; don't leave it lingering in-memory as a
+        # sticky REPL root option after a failed connection.
+        ctx.password = None
+        ctx.invalidate_backend()
         _handle_d365_error(ctx, exc, hint="profile saved; fix creds then re-run `crm profile add`")
         return
     if info["api_version"] != profile.api_version:

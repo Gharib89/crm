@@ -169,7 +169,7 @@ Column schema names are derived from the active profile's `publisher_prefix`
 
 ```
 Error: scaffold table needs a publisher prefix to derive column schema names;
-set publisher_prefix on the active profile (e.g. via crm profile add).
+set publisher_prefix on the active profile (e.g. via crm profile edit).
 ```
 
 ## Limitations
