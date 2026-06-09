@@ -28,8 +28,9 @@ Full docs (install, configure, per-group how-tos, generated CLI reference) live 
 
 Two surfaces feed AI agents:
 
-- **`crm/skills/SKILL.md`** — the agent skill loaded by skill-aware harnesses
-  (Claude Code, Copilot CLI, …) after `crm skill install`.
+- **`crm/skills/`** — the agent skill loaded by skill-aware harnesses (Claude
+  Code, Copilot CLI, …) after `crm skill install`: a thin `SKILL.md` router plus
+  `reference/*.md` files loaded on demand.
 - **`llms.txt` / `llms-full.txt`** — published at the docs-site root for *any*
   web-fetch agent: [`/llms.txt`](https://crm-cli-docs.pages.dev/llms.txt) is a
   curated index, [`/llms-full.txt`](https://crm-cli-docs.pages.dev/llms-full.txt)
