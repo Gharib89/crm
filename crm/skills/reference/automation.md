@@ -13,8 +13,9 @@ register a step** against one of those types:
 # MSCRM.SolutionUniqueName.
 crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
 
-# --update: re-uploads content of an existing assembly by name; identity flags
-# (--name, --version, etc.) are IGNORED under --update and produce a warning.
+# --update: re-uploads content of an existing assembly (resolved by name); the
+# identity flags --version/--culture/--public-key-token/--description/--isolation-mode
+# are IGNORED under --update and produce a warning.
 crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update
 
 # list-types: platform-generated rows in plugintypes (one per IPlugin class).
