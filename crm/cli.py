@@ -358,7 +358,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True, help="Preview HTTP request without issuing it.")
 @click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
-@click.option("--password", help="Override password (otherwise read from D365_PASSWORD).")
+@click.option("--password", help="Secret for this run (overrides the profile's stored secret).")
 @click.option("--log-level",
               type=click.Choice(["debug", "info", "warning", "error"]),
               default=None,
@@ -372,8 +372,8 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 @click.option("--auth-scheme",
               type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
               default=None,
-              help="HTTP auth scheme (env: CRM_AUTH_SCHEME). "
-                   "ntlm/kerberos/negotiate = on-prem; oauth = cloud. Default: ntlm.")
+              help="Override the active profile's auth scheme for this run. "
+                   "ntlm/kerberos/negotiate = on-prem; oauth = cloud.")
 @click.option("--stage-only", "stage_only", is_flag=True,
               help="Stage metadata changes without publishing (env: CRM_STAGE_ONLY). "
                    "Forces every create/update command to --no-publish.")
@@ -426,7 +426,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         cli_ctx.profile_name = profile_name
     if password is not None:
         cli_ctx.password = password
-    cli_ctx.auth_scheme = auth_scheme or os.environ.get("CRM_AUTH_SCHEME")
+    cli_ctx.auth_scheme = auth_scheme
     # Sticky safety flag: once --stage-only (or CRM_STAGE_ONLY) is set, never clear it
     # back to False on a later bare REPL line that omits the token, which would silently
     # re-enable auto-publish and lose the safety guarantee.
