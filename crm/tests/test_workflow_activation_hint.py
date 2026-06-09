@@ -112,6 +112,7 @@ class TestEntityDeleteActivationHintWiring:
     def test_delete_hint_reaches_envelope(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as entity_cmd
+        from crm.core import workflow as workflow_mod
 
         monkeypatch.setattr(
             entity_cmd.entity_mod,
@@ -120,8 +121,10 @@ class TestEntityDeleteActivationHintWiring:
                 D365Error("Cannot delete a workflow activation.", status=400, code="0x80045004")
             ),
         )
+        # entity delete lazy-imports workflow on the error path, so patch the
+        # source module (crm.core.workflow), not a command-level alias.
         monkeypatch.setattr(
-            entity_cmd.workflow_mod,
+            workflow_mod,
             "activation_delete_hint",
             lambda backend, wid, exc: f"hint: crm workflow deactivate {_PARENT_GUID}",
         )
@@ -140,6 +143,7 @@ class TestEntityDeleteActivationHintWiring:
         the gate keeps the resolver's extra GET off every other delete."""
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as entity_cmd
+        from crm.core import workflow as workflow_mod
 
         monkeypatch.setattr(
             entity_cmd.entity_mod,
@@ -154,7 +158,7 @@ class TestEntityDeleteActivationHintWiring:
             called["hint"] = True
             return None
 
-        monkeypatch.setattr(entity_cmd.workflow_mod, "activation_delete_hint", _spy)
+        monkeypatch.setattr(workflow_mod, "activation_delete_hint", _spy)
 
         from crm.cli import cli
         result = CliRunner().invoke(

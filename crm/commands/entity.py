@@ -3,7 +3,6 @@
 from __future__ import annotations
 import click
 from crm.core import entity as entity_mod
-from crm.core import workflow as workflow_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -227,8 +226,10 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
         )
     except D365Error as exc:
         # 0x80045004 is the workflow-specific 'cannot delete a workflow
-        # activation' rejection. Gating on the code keeps the resolver's extra
-        # GET off every other delete (success path never reaches here).
+        # activation' rejection. Import workflow lazily on the error path only,
+        # so unrelated `crm entity` subcommands never pay its import cost; gating
+        # on the code keeps the resolver's extra GET off every other delete.
+        from crm.core import workflow as workflow_mod
         hint = (workflow_mod.activation_delete_hint(ctx.backend(), record_id, exc)
                 if exc.code == workflow_mod.ACTIVATION_DELETE_ERROR_CODE else None)
         _handle_d365_error(ctx, exc, hint=hint)
