@@ -302,6 +302,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "describe": "crm.commands.describe:describe_cmd",
         "doctor": "crm.commands.connection:doctor_command",
         "entity": "crm.commands.entity:entity_group",
+        "form": "crm.commands.form:form_group",
         "init": "crm.commands.init:init_cmd",
         "metadata": "crm.commands.metadata:metadata_group",
         "plugin": "crm.commands.plugin:plugin_group",

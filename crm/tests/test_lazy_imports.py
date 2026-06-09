@@ -17,7 +17,7 @@ LAZY_MODULES = {
     "crm.commands.async_ops",
     "crm.commands.batch", "crm.commands.connection", "crm.commands.data",
     "crm.commands.describe",
-    "crm.commands.entity", "crm.commands.init", "crm.commands.metadata",
+    "crm.commands.entity", "crm.commands.form", "crm.commands.init", "crm.commands.metadata",
     "crm.commands.query", "crm.commands.repl", "crm.commands.session",
     "crm.commands.skill", "crm.commands.solution", "crm.commands.view",
     "crm.commands.workflow", "crm.utils.d365_backend",
