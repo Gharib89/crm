@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.0.1 (2026-06-09)
+
+### Bug Fixes
+
+- Register_step binds sdkmessageprocessingstep lookups with lowercase nav-property names
+  ([#159](https://github.com/Gharib89/crm/pull/159),
+  [`768231b`](https://github.com/Gharib89/crm/commit/768231be3820b37114dc4efcf9c1b77e0083b83d))
+
+
 ## v2.0.0 (2026-06-09)
 
 ### Documentation
