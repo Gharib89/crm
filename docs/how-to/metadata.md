@@ -201,7 +201,7 @@ Works for both 1:N and N:N. Refuses managed and non-custom relationships client-
 Duplicate a custom entity under a new schema name. The bare clone copies the
 entity, its custom attributes (including lookup columns, which are recreated
 pointing at the same parent tables), and the global option sets it references
-(by name — not duplicated). Forms, views, and workflows are opt-in.
+(by name — not duplicated). Forms, views, workflows, and charts are opt-in.
 
 ```bash
 # skeleton only (entity + attributes + lookups + reused option sets)

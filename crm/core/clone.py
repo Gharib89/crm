@@ -73,7 +73,7 @@ def clone_entity(
 
     Bare clone = entity + custom attributes (lookups included — they ride along
     as kind=lookup attributes pointing at the same parents) + reused global
-    option sets. Forms / views / workflows are opt-in. The ribbon is
+    option sets. Forms / views / workflows / charts are opt-in. The ribbon is
     noted (``ribbon_note``), never written. Relationships where the source is the
     parent side, N:N, and cascade behavior are not cloned (see module docs).
 
