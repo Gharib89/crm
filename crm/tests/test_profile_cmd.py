@@ -201,3 +201,14 @@ class TestSetDeletePassword:
             "--json", "profile", "delete-password", "--profile", "a"])
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") is None
+
+
+class TestAutoLaunch:
+    def test_no_profile_json_mode_errors_no_hang(self, crm_home):
+        # whoami with no profile, under --json (no TTY) -> clean error, exit 1.
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "connection", "whoami"])
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        assert "crm profile add" in payload["error"]
