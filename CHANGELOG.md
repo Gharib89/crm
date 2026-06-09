@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.1.1 (2026-06-09)
+
+### Bug Fixes
+
+- **query**: Detect unsupported OData 'in' operator, redirect to In function
+  ([#174](https://github.com/Gharib89/crm/pull/174),
+  [`7c6b2b3`](https://github.com/Gharib89/crm/commit/7c6b2b3c3eec388e6c6ca02b219b4147871cd9c0))
+
+### Documentation
+
+- **triage**: Record solution-clone as out-of-scope
+  ([#166](https://github.com/Gharib89/crm/pull/166),
+  [`d3e211d`](https://github.com/Gharib89/crm/commit/d3e211d9840fbecb7c18fbba330dcaf493b6e6da))
+
+
 ## v2.1.0 (2026-06-09)
 
 ### Features
