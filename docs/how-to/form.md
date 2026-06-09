@@ -59,7 +59,7 @@ one form in the UI before cloning.
 
 `crm form clone` is the standalone surface for the same form-clone logic that
 `crm metadata clone-entity --with-forms` invokes when duplicating a whole
-entity. Use `form clone` when you only need to push a single form to another
+entity. Use `crm form clone` when you only need to push a single form to another
 entity without cloning the entity itself.
 
 ## Export a form's formxml
