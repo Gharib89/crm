@@ -11,7 +11,7 @@ setup(
     python_requires=">=3.9",
     packages=find_packages(),
     package_data={
-        "crm": ["skills/*.md", "README.md"],
+        "crm": ["skills/*.md", "skills/reference/*.md", "README.md"],
     },
     install_requires=[
         "click>=8.0",

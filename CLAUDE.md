@@ -6,7 +6,7 @@ Python CLI for Microsoft Dynamics 365 Customer Engagement — on-prem v9.x (NTLM
 
 - `crm/core/*` — Web API logic, one module per domain (`entity`, `query`, `metadata`, `solution`, …); pyright **strict**.
 - `crm/commands/*` — thin Click wrappers, one per `crm <group>`; `crm/cli.py` wires them; `crm/__main__.py` is the entry.
-- `crm/skills/SKILL.md` — agent-skill copy shipped in the wheel (kept in sync with the CLI — see below).
+- `crm/skills/` — agent skill shipped in the wheel: a thin `SKILL.md` router + `reference/*.md` loaded on demand (kept in sync with the CLI — see below).
 
 ## Commands
 
@@ -24,7 +24,7 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 - **README.md** — user-facing capability or install change.
 - **CHANGELOG.md** — do **not** hand-edit. `python-semantic-release` owns it: it generates each version's section from the Conventional Commit history at release time (see **Release** below). Ship a good `fix:`/`feat:` commit subject instead; for a squash-merge, set the squash *subject* to that line so PSR bumps and documents correctly. There is no `## [Unreleased]` section to maintain.
 - **docs/** — matching `docs/how-to/<group>.md` and `docs/reference/cli.md`.
-- **SKILL ↔ CLI** — `crm/skills/SKILL.md` is the single tracked agent skill (source of truth); `crm skill install` copies it into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). Never track an in-repo `.claude/skills/` copy. See `docs/contributing/skill-and-cli.md`.
+- **SKILL ↔ CLI** — `crm/skills/` is the single tracked agent skill (source of truth): a thin `SKILL.md` router + `reference/*.md`. `crm skill install` copies the whole tree into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). The skill is **self-contained** — it ships to users who have only the skill, not the repo, so never link a shipped skill file to a repo path (`docs/**`, `CONTEXT.md`); inline what's needed. The skill states only what `crm describe`/`--help` cannot (workflows, gotchas, the JSON contract) — **never restate flags/choices/defaults**. Never track an in-repo `.claude/skills/` copy. See `docs/contributing/skill-and-cli.md`.
 
 `.github/workflows/docs.yml` runs `mkdocs build --strict` on any `crm/**`, `setup.py`, `docs/**`, or `mkdocs.yml` change — **stale refs / broken links fail CI.**
 
