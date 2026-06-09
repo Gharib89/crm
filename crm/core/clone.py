@@ -2,9 +2,9 @@
 
 Skeleton clone = build_entity_spec(source, with_relationships=False) ->
 retarget_spec(...) -> apply_spec. Lookup columns ride along as kind=lookup
-attributes (recreated pointing at the same parents); forms and workflows are
-layered on top by `clone_entity`, which also emits a constant ribbon note (the
-ribbon has no Web API write path). No XML surgery, no solutionpackager.
+attributes (recreated pointing at the same parents); forms / workflows / charts
+are layered on top by `clone_entity`, which also emits a constant ribbon note
+(the ribbon has no Web API write path). No XML surgery, no solutionpackager.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from crm.core.apply import apply_spec
+from crm.core.charts import clone_chart_to_entity, read_entity_charts
 from crm.core.export_spec import build_entity_spec
 from crm.core.forms import clone_form_to_entity, read_entity_forms
 from crm.core.solution import publish_all, validate_customization_prefix
@@ -64,6 +65,7 @@ def clone_entity(
     with_forms: bool = False,
     with_views: bool = False,
     with_workflows: bool = False,
+    with_charts: bool = False,
     solution: str | None = None,
     publish: bool = True,
 ) -> dict[str, Any]:
@@ -71,7 +73,7 @@ def clone_entity(
 
     Bare clone = entity + custom attributes (lookups included — they ride along
     as kind=lookup attributes pointing at the same parents) + reused global
-    option sets. Forms / views / workflows are opt-in. The ribbon is
+    option sets. Forms / views / workflows / charts are opt-in. The ribbon is
     noted (``ribbon_note``), never written. Relationships where the source is the
     parent side, N:N, and cascade behavior are not cloned (see module docs).
 
@@ -105,6 +107,7 @@ def clone_entity(
             "views": _count_kind(applied, "view"),
             "forms": 0,
             "workflows": 0,
+            "charts": 0,
         },
         "skipped_workflows": [],
         "ribbon_note": _RIBBON_NOTE,
@@ -121,6 +124,7 @@ def clone_entity(
         return out
 
     clone_logical = new_schema_name.lower()
+    needs_publish = False
 
     if with_forms:
         forms_done = 0
@@ -128,8 +132,8 @@ def clone_entity(
             clone_form_to_entity(backend, form, clone_logical, solution=solution)
             forms_done += 1
         out["counts"]["forms"] = forms_done
-        if forms_done and publish and (not backend or not backend.dry_run):
-            publish_all(backend)
+        if forms_done:
+            needs_publish = True
 
     if with_workflows:
         wf_done = 0
@@ -144,5 +148,17 @@ def clone_entity(
                 skipped_wf.append({"name": wf.get("name", ""), "reason": str(exc)})
         out["counts"]["workflows"] = wf_done
         out["skipped_workflows"] = skipped_wf
+
+    if with_charts:
+        charts_done = 0
+        for chart in read_entity_charts(backend, source):
+            clone_chart_to_entity(backend, chart, clone_logical, solution=solution)
+            charts_done += 1
+        out["counts"]["charts"] = charts_done
+        if charts_done:
+            needs_publish = True
+
+    if needs_publish and publish and (not backend or not backend.dry_run):
+        publish_all(backend)
 
     return out

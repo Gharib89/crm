@@ -397,25 +397,27 @@ def metadata_create_entity(
               help="Clone the source's public views onto the clone.")
 @click.option("--with-workflows", is_flag=True, default=False,
               help="Clone the source's classic workflows / business rules onto the clone.")
+@click.option("--with-charts", is_flag=True, default=False,
+              help="Clone the source's public system charts onto the clone.")
 @click.option("--with-all", is_flag=True, default=False,
-              help="Enable --with-forms, --with-views, and --with-workflows.")
+              help="Enable --with-forms, --with-views, --with-workflows, and --with-charts.")
 @_solution_option
 @click.option("--publish/--no-publish", default=True,
               help="Run PublishAllXml after creation. Default: publish.")
 @pass_ctx
 def metadata_clone_entity(
     ctx: CLIContext, source, new_schema_name, display,
-    with_forms, with_views, with_workflows, with_all,
+    with_forms, with_views, with_workflows, with_charts, with_all,
     solution, require_solution, publish,
 ):
-    """Duplicate a custom entity (skeleton + opt-in forms/views/workflows).
+    """Duplicate a custom entity (skeleton + opt-in forms/views/workflows/charts).
 
     Pure Web API -- no XML. The ribbon is not cloned (no API write path; the
     result carries a ribbon_note saying so). N:N relationships and the source's
     parent-side relationships are not cloned.
     """
     if with_all:
-        with_forms = with_views = with_workflows = True
+        with_forms = with_views = with_workflows = with_charts = True
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
@@ -423,7 +425,8 @@ def metadata_clone_entity(
         info = clone_mod.clone_entity(
             ctx.backend(), source, new_schema_name,
             display=display,
-            with_forms=with_forms, with_views=with_views, with_workflows=with_workflows,
+            with_forms=with_forms, with_views=with_views,
+            with_workflows=with_workflows, with_charts=with_charts,
             solution=solution, publish=publish,
         )
     except D365Error as exc:
