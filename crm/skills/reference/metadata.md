@@ -98,7 +98,8 @@ edit the YAML. **Fidelity caveats** (these silently lose information on round-tr
 
 Duplicate a custom entity under a new schema name. The bare clone copies entity
 definition, custom attributes (lookups recreated pointing at the same parent tables),
-and reuses referenced global option sets by name. Forms, views, and workflows are opt-in.
+and reuses referenced global option sets by name. Forms, views, workflows, and charts
+are opt-in.
 
 ```bash
 # skeleton only (entity + attributes + lookups + reused option sets)
@@ -106,6 +107,10 @@ crm --json metadata clone-entity new_project cwx_TicketClone --display "Ticket C
 
 # everything cloneable over the API
 crm --json metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
+
+# opt-in flags
+crm --json metadata clone-entity new_project cwx_TicketClone \
+    --with-forms --with-views --with-workflows --with-charts
 ```
 
 **Not cloned (Web API limits):**
@@ -115,7 +120,8 @@ crm --json metadata clone-entity new_project cwx_TicketClone --with-all --soluti
 - **N:N relationships**, and 1:N where the source is the *parent* (referenced) side —
   cloning those would add lookups on *other* tables.
 - **Polymorphic / Customer lookups** — only single-target lookups come across.
-- **Charts** — deferred.
+- **Personal charts** (`userqueryvisualization`) — not cloned; public system charts are
+  handled by `--with-charts`.
 
 `--with-workflows` copies every classic workflow/business rule (`type=1`) whose
 primary entity is the source, including managed ones (no "is custom" filter available).
