@@ -65,6 +65,14 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = 
         "category": category,
         "retryable": retryable,
     }
+    # Auto-derive an auth fix-it hint on a 401 when the caller gave none, so a
+    # rejected/stale secret steers the user to re-store it. The active profile
+    # name comes from the resolved backend, else the --profile flag.
+    if hint is None and exc.status == 401:
+        backend = getattr(ctx, "_backend", None)
+        pname = (getattr(getattr(backend, "profile", None), "name", None)
+                 or ctx.profile_name or "<name>")
+        hint = _auth_error_hint(exc.status, pname)
     # Partial-failure context (#64): only the non-transactional optionset update
     # path sets these. Guarded is-not-None so every other error site keeps
     # emitting an identical {status, code, category, retryable} envelope.
@@ -72,6 +80,8 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = 
         meta["completed_steps"] = exc.completed_steps
     if exc.stage is not None:
         meta["failed_stage"] = exc.stage
+    if hint and ctx.json_mode:
+        meta["hint"] = hint
     message = f"{exc}\nHint: {hint}" if hint else str(exc)
     ctx.emit(False, error=message, meta=meta)
 

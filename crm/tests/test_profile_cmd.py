@@ -212,3 +212,21 @@ class TestAutoLaunch:
         payload = json.loads(result.output)
         assert payload["ok"] is False
         assert "crm profile add" in payload["error"]
+
+
+class TestAuthHints:
+    def test_401_whoami_prints_set_password_hint(self, crm_home):
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name="cloud", url="https://org.crm.dynamics.com",
+            domain="", username="", auth_scheme="oauth",
+            tenant_id="t", client_id="c"))
+        session_mod.save_profile_secret_plaintext("cloud", "badsecret")
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, status_code=401, json={"error": {"message": "unauthorized"}})
+            result = runner.invoke(cli, ["--json", "--profile", "cloud", "connection", "whoami"])
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert "set-password" in (payload.get("meta", {}).get("hint", "")
+                                  or payload.get("error", ""))

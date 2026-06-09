@@ -339,7 +339,8 @@ def test_auth_401_with_credentials_hint(socket_ok):
     checks = _by_name(result)
     assert checks["auth"]["ok"] is False
     assert "401" in checks["auth"]["detail"]
-    assert "credentials" in checks["auth"]["hint"].lower()
+    hint = checks["auth"]["hint"].lower()
+    assert "secret" in hint and "set-password" in hint
     assert result["ok"] is False
 
 
