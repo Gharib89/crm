@@ -18,7 +18,7 @@ Sets `statecode=1, statuscode=2`; `crm workflow deactivate` reverses it.
 
 If you pass an activation-record GUID (type=2 — the compiled copy the server creates when a draft is activated), the command returns `ok: false` with a hint naming the parent draft GUID to pass instead.
 
-`crm entity delete workflows <guid>` against that same activation-record GUID fails too — D365 rejects deleting activation rows directly (server code `0x80045004`). You can't delete the activation; deactivate its parent definition instead, which removes the activation. The error carries a hint naming the resolved parent GUID and the exact `crm workflow deactivate <parent-guid>` command to run.
+`crm entity delete workflows <guid>` against that same activation-record GUID fails too — D365 rejects deleting activation rows directly (server code `0x80045004`). You can't delete the activation; deactivate its parent definition instead, which removes the activation. The error carries a hint: when the parent can be resolved it names the parent GUID and the exact `crm workflow deactivate <parent-guid>` command; otherwise it points you at the activation row's `parentworkflowid` lookup.
 
 ## Trigger an on-demand workflow against a record
 

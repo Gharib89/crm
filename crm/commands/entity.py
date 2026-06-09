@@ -226,12 +226,14 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
         )
     except D365Error as exc:
         # 0x80045004 is the workflow-specific 'cannot delete a workflow
-        # activation' rejection. Import workflow lazily on the error path only,
-        # so unrelated `crm entity` subcommands never pay its import cost; gating
-        # on the code keeps the resolver's extra GET off every other delete.
-        from crm.core import workflow as workflow_mod
-        hint = (workflow_mod.activation_delete_hint(ctx.backend(), record_id, exc)
-                if exc.code == workflow_mod.ACTIVATION_DELETE_ERROR_CODE else None)
+        # activation' rejection. Gate the lazy workflow import on this exact
+        # code so unrelated deletes (incl. common 404s) never pay the import
+        # cost or the resolver's extra GET. The literal mirrors
+        # workflow.ACTIVATION_DELETE_ERROR_CODE (a fixed D365 server code).
+        hint = None
+        if exc.code == "0x80045004":
+            from crm.core import workflow as workflow_mod
+            hint = workflow_mod.activation_delete_hint(ctx.backend(), record_id, exc)
         _handle_d365_error(ctx, exc, hint=hint)
         return
     ctx.emit(True, data=result)
