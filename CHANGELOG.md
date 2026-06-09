@@ -9,6 +9,34 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.0.0 (2026-06-09)
+
+### Documentation
+
+- **plan**: Profile & credential UX revamp implementation plan
+  ([`ebf862b`](https://github.com/Gharib89/crm/commit/ebf862b44e0aae7c907384630464ee9d1f91a048))
+
+- **spec**: Crm update command + startup update nudge design
+  ([`93b4281`](https://github.com/Gharib89/crm/commit/93b428156ad910ff042af13f240fc197198c34b4))
+
+- **spec**: Profile & credential UX revamp design (v2.0.0)
+  ([`1beca81`](https://github.com/Gharib89/crm/commit/1beca812d1101dfc27e0896a74ff94bef48c6f59))
+
+### Features
+
+- Profile-first credential UX — replace init/connect, drop .env/env-var creds
+  ([#171](https://github.com/Gharib89/crm/pull/171),
+  [`fa0df11`](https://github.com/Gharib89/crm/commit/fa0df11393089fa8024b413d80be686da106153a))
+
+### Breaking Changes
+
+- `crm init` and `crm connection connect` (plus the migrated/removed `profiles` / `disconnect` /
+  `set-password` / `delete-password` verbs under `connection`) are removed — use `crm profile
+  add|use|list|edit|rm|set-password|delete-password`. `.env` autoload and every `D365_*` / `CRM_*`
+  credential env var (and the `CRM_AUTH_SCHEME` override) are no longer read. `CRM_HOME` is the only
+  retained env knob.
+
+
 ## v1.9.0 (2026-06-09)
 
 ### Features
