@@ -79,7 +79,7 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = 
 def _plaintext_secret_warning() -> str:
     """Warning shown after writing a profile secret in PLAINTEXT.
 
-    Shared by `connection connect` and `connection set-password` so the wording
+    Shared by `profile add` and `profile set-password` so the wording
     stays identical. POSIX notes the 0600 mode; Windows adds that file perms are
     NOT enforced and steers to --store-password (Credential Manager).
     """
