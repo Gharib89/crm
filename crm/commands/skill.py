@@ -74,7 +74,11 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
         )
 
     if force and dest_dir.exists():
-        shutil.rmtree(dest_dir)
+        ref_dir = dest_dir / "reference"
+        if ref_dir.is_dir():
+            shutil.rmtree(ref_dir)
+        if dest_file.exists():
+            dest_file.unlink()
     dest_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(
         src_dir, dest_dir,

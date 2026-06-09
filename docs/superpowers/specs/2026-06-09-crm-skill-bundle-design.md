@@ -1,7 +1,7 @@
 # Design — crm agent-skill restructure (router + reference files)
 
 Date: 2026-06-09
-Status: approved-pending-implementation
+Status: implemented
 
 ## Problem
 
