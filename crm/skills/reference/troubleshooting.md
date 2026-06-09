@@ -30,6 +30,9 @@ Note `status is None` is **not** a reliable transport-failure signal — client-
 validation errors also have no status. Only the `transport_error` message prefix marks
 the genuine no-response path.
 
+The bare OData `in` predicate is unsupported (Web API is OData 4.0) — use
+`Microsoft.Dynamics.CRM.In(PropertyName='...',PropertyValues=[...])` or `query fetchxml`.
+
 ## Retry semantics
 
 The backend **auto-retries** the `transport_error` / `throttled` (429) / `server_error`
