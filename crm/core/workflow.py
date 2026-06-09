@@ -309,6 +309,42 @@ def set_workflow_state(
     }
 
 
+# Server error code returned when a state PATCH targets a type=2 activation row.
+ACTIVATION_PATCH_ERROR_CODE = "0x80045003"
+
+
+def activation_record_hint(
+    backend: D365Backend, workflow_id: str, exc: D365Error
+) -> str | None:
+    """If `exc` is the 'cannot update a workflow activation' rejection, return a
+    hint pointing at the parent draft GUID; else None.
+
+    Only `0x80045003` (a state PATCH against a type=2 activation row) is handled.
+    Resolves the activation row's `parentworkflowid` with a single GET; if that
+    lookup fails or yields no parent, falls back to a generic hint rather than
+    masking the original error or raising again.
+    """
+    if exc.code != ACTIVATION_PATCH_ERROR_CODE:
+        return None
+    generic = (
+        f"{workflow_id} is a workflow activation record; "
+        "pass the parent draft (type=1) GUID instead."
+    )
+    try:
+        row = as_dict(backend.get(
+            f"workflows({workflow_id})", params={"$select": "parentworkflowid"}
+        ))
+    except D365Error:
+        return generic
+    parent = row.get("_parentworkflowid_value") or row.get("parentworkflowid")
+    if not parent:
+        return generic
+    return (
+        f"{workflow_id} is a workflow activation record. "
+        f"Pass the parent draft GUID instead: {parent}"
+    )
+
+
 def execute_workflow(
     backend: D365Backend,
     workflow_id: str,

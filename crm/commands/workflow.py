@@ -54,7 +54,12 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, 
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
-        _handle_d365_error(ctx, exc)
+        # Resolve the activation-record hint only for the code the PATCH raises;
+        # gating on the code keeps ctx.backend() (cached after a successful PATCH)
+        # off the path where the original error came from building the backend.
+        hint = (workflow_mod.activation_record_hint(ctx.backend(), workflow_id, exc)
+                if exc.code == workflow_mod.ACTIVATION_PATCH_ERROR_CODE else None)
+        _handle_d365_error(ctx, exc, hint=hint)
         return
     ctx.emit(True, data=info)
     _journal(ctx, "workflow activate", workflow_id, info)
@@ -72,7 +77,12 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
-        _handle_d365_error(ctx, exc)
+        # Resolve the activation-record hint only for the code the PATCH raises;
+        # gating on the code keeps ctx.backend() (cached after a successful PATCH)
+        # off the path where the original error came from building the backend.
+        hint = (workflow_mod.activation_record_hint(ctx.backend(), workflow_id, exc)
+                if exc.code == workflow_mod.ACTIVATION_PATCH_ERROR_CODE else None)
+        _handle_d365_error(ctx, exc, hint=hint)
         return
     ctx.emit(True, data=info)
     _journal(ctx, "workflow deactivate", workflow_id, info)
