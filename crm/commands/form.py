@@ -23,11 +23,17 @@ def form_group():
 def _resolve_single_form(
     ctx: CLIContext, forms: list[dict], form_name: str
 ) -> dict | None:
-    """Filter forms to exactly one match by name; emit error and return None otherwise."""
+    """Filter forms to exactly one match by name.
+
+    On 0 or >1 matches, emits the error envelope via ``ctx.emit(False, ...)``,
+    which raises ``click.exceptions.Exit`` (per ADR 0001). The ``return None``
+    after each is unreachable but kept so the declared ``dict | None`` return
+    type holds for pyright; the caller's ``if form is None`` guard mirrors it.
+    """
     matches = [f for f in forms if f.get("name") == form_name]
     if len(matches) == 0:
         ctx.emit(False, error=f"No form named {form_name!r} found.")
-        return None
+        return None  # unreachable: emit(False) raises Exit
     if len(matches) > 1:
         details = ", ".join(
             f"formid={m['formid']!r} type={m['type']}" for m in matches
@@ -36,7 +42,7 @@ def _resolve_single_form(
             f"Ambiguous: {len(matches)} forms named {form_name!r} — "
             f"cannot pick one automatically. Matches: {details}"
         ))
-        return None
+        return None  # unreachable: emit(False) raises Exit
     return matches[0]
 
 
@@ -50,12 +56,20 @@ def form_list(ctx: CLIContext, entity: str) -> None:
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    rows = [
-        [f.get("name", ""), f.get("type", ""), f.get("formid", ""),
-         str(f.get("isdefault", False))]
+    # Project to the list-oriented fields only — read_entity_forms also returns
+    # formxml (potentially large) + description/objecttypecode, which would
+    # bloat --json output and surprise consumers expecting list columns.
+    listed = [
+        {"name": f.get("name", ""), "type": f.get("type"),
+         "formid": f.get("formid"), "isdefault": bool(f.get("isdefault", False))}
         for f in forms
     ]
-    ctx.emit(True, data=forms, table={
+    rows = [
+        [r["name"], "" if r["type"] is None else r["type"],
+         r["formid"] or "", str(r["isdefault"])]
+        for r in listed
+    ]
+    ctx.emit(True, data=listed, table={
         "headers": ["name", "type", "formid", "default"],
         "rows": rows,
     })
@@ -94,7 +108,8 @@ def form_clone(
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, warning,
+                       meta={"staged": True} if ctx.stage_only else None)
     _journal(ctx, "form clone", form_name, info, solution=solution)
 
 
