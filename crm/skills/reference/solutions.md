@@ -84,7 +84,9 @@ crm solution validate /tmp/snap.zip
 # exits non-zero on any error-severity finding.
 ```
 
-Add `--against-org` to also check for colliding `formid`/`savedqueryid` GUIDs and
+Add `--against-org` to also check for colliding `formid`/`savedqueryid` GUIDs,
+BPF process-stage GUIDs (`StageId`/`NextStageId` in `Workflows/*.xaml`, probed
+against `processstages` — the `CreateProcessStage` duplicate-key class), and
 existence of referenced web resources and global option sets in the target org
 (requires a connection/profile). Use before `solution import`.
 

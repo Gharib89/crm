@@ -103,8 +103,10 @@ binding is declared; both manifests are well-formed and all required members
 (`solution.xml`, `customizations.xml`, `[Content_Types].xml`) are present.
 
 Add `--against-org` to also check the connected org for colliding `formid` /
-`savedqueryid` GUIDs and for the existence of referenced web resources and
-global option sets (requires a connection/profile):
+`savedqueryid` GUIDs, colliding BPF process-stage GUIDs (`StageId` /
+`NextStageId` read from `Workflows/*.xaml` and probed against `processstages` —
+the `CreateProcessStage` duplicate-key import failure), and for the existence of
+referenced web resources and global option sets (requires a connection/profile):
 
 ```bash
 crm solution validate ./MySolution.zip --against-org

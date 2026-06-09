@@ -16,13 +16,20 @@ from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 # ── fixtures ────────────────────────────────────────────────────────────────
 
-def _make_pkg(path, solution_xml, customizations_xml, content_types=True):
-    """Write a minimal solution zip (solution.xml + customizations.xml [+ Content_Types])."""
+def _make_pkg(path, solution_xml, customizations_xml, content_types=True, workflows=None):
+    """Write a minimal solution zip (solution.xml + customizations.xml [+ Content_Types]).
+
+    `workflows` is an optional {member_path: xaml_bytes_or_str} mapping whose keys
+    are written verbatim as zip members — callers pass the full member path
+    (e.g. "Workflows/MyBpf.xaml") for BPF process XAML.
+    """
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr("solution.xml", solution_xml)
         zf.writestr("customizations.xml", customizations_xml)
         if content_types:
             zf.writestr("[Content_Types].xml", "<Types/>")
+        for name, body in (workflows or {}).items():
+            zf.writestr(name, body)
 
 
 def _sol(roots=""):
@@ -264,6 +271,255 @@ class TestOrgCollisions:
         _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
         report = sv.validate_solution(p)
         assert "guid-collision" not in report["checks_run"]
+
+
+# ── #163: BPF stage-GUID collisions in Workflows/*.xaml ───────────────────────
+
+_STAGE_GUID = "33333333-3333-3333-3333-333333333333"
+_NEXT_STAGE_GUID = "44444444-4444-4444-4444-444444444444"
+
+
+def _xaml(*, stage_id=None, next_stage_id=None):
+    """Minimal BPF process XAML with the `x` namespace declared, like a real export."""
+    body = ['<Activity xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">']
+    if stage_id is not None:
+        body.append(f'<x:String x:Key="StageId">{stage_id}</x:String>')
+    if next_stage_id is not None:
+        body.append(f'<x:String x:Key="NextStageId">{next_stage_id}</x:String>')
+    body.append("</Activity>")
+    return "".join(body)
+
+
+class TestXamlStageCollisions:
+    def test_colliding_stage_id_is_error(self, tmp_path, backend):
+        p = tmp_path / "bpf_collide.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)})
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"),
+                  json={"value": [{"processstageid": _STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=backend)
+        errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
+        assert len(errs) == 1
+        assert _STAGE_GUID in errs[0]["message"]
+        assert errs[0]["severity"] == "error"
+        assert "guid-collision" in report["checks_run"]
+        assert report["valid"] is False
+
+    def test_colliding_next_stage_id_is_error(self, tmp_path, backend):
+        # The only colliding GUID lives in a NextStageId element.
+        p = tmp_path / "bpf_next.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(next_stage_id=_NEXT_STAGE_GUID)})
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"),
+                  json={"value": [{"processstageid": _NEXT_STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=backend)
+        errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
+        assert len(errs) == 1
+        assert _NEXT_STAGE_GUID in errs[0]["message"]
+
+    def test_no_stage_collision_is_ok(self, tmp_path, backend):
+        p = tmp_path / "bpf_nocollide.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)})
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend)
+        assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
+        assert report["valid"] is True
+
+    def test_stage_collisions_skipped_without_backend(self, tmp_path):
+        p = tmp_path / "bpf_offline.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)})
+        report = sv.validate_solution(p)
+        assert "guid-collision" not in report["checks_run"]
+        assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
+
+    def test_malformed_xaml_member_does_not_crash(self, tmp_path, backend):
+        # A non-parseable XAML member must degrade, never raise (CLI only catches
+        # D365Error) — that is the primary guarantee. The member is unterminated
+        # XML overall (an ElementTree parse would throw) yet still embeds a well-
+        # formed, recoverable <x:String x:Key="StageId">{guid}</x:String>; the
+        # regex/best-effort scan finds that GUID despite the broken neighbour,
+        # which is the whole reason a regex is used here over ElementTree.
+        p = tmp_path / "bpf_malformed.zip"
+        body = (
+            '<Activity xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+            f'<x:String x:Key="StageId">{_STAGE_GUID}</x:String>'
+            '<x:String x:Key=unterminated'  # malformed: unquoted attr, no close
+        )
+        _make_pkg(p, _sol(), _cust(), workflows={"Workflows/Bad.xaml": body})
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"),
+                  json={"value": [{"processstageid": _STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=backend)  # must not raise
+        assert isinstance(report["findings"], list)
+        errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
+        assert len(errs) == 1
+        assert _STAGE_GUID in errs[0]["message"]
+
+    def test_stage_id_with_trailing_attribute_is_extracted(self, tmp_path, backend):
+        # A real export can carry xml:space="preserve" (or any attr) AFTER x:Key on
+        # the value element. The scan must still pull the GUID and probe the org.
+        p = tmp_path / "bpf_trailing_attr.zip"
+        body = (
+            '<Activity xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
+            f'<x:String x:Key="StageId" xml:space="preserve">{_STAGE_GUID}</x:String>'
+            "</Activity>"
+        )
+        _make_pkg(p, _sol(), _cust(), workflows={"Workflows/MyBpf.xaml": body})
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"),
+                  json={"value": [{"processstageid": _STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=backend)
+        errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
+        assert len(errs) == 1
+        assert _STAGE_GUID in errs[0]["message"]
+
+    def test_same_guid_in_stage_and_next_stage_dedups_to_one_finding(self, tmp_path, backend):
+        # The same GUID appearing in both a StageId and a NextStageId element must
+        # be probed once and yield exactly ONE finding, not one per occurrence.
+        p = tmp_path / "bpf_dedup.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml":
+                             _xaml(stage_id=_STAGE_GUID, next_stage_id=_STAGE_GUID)})
+        with requests_mock.Mocker() as m:
+            stages = m.get(re.compile(r"processstages"),
+                           json={"value": [{"processstageid": _STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=backend)
+        errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
+        assert len(errs) == 1
+        assert _STAGE_GUID in errs[0]["message"]
+        assert stages.call_count == 1  # probed once, not per occurrence
+
+    def test_unreadable_xaml_member_does_not_crash(self, tmp_path, backend, monkeypatch):
+        # An unreadable member (RuntimeError on read) must not escape as a non-
+        # D365Error exception; degrade to a finding or skip it.
+        p = tmp_path / "bpf_unreadable.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/Enc.xaml": _xaml(stage_id=_STAGE_GUID)})
+        orig_read = zipfile.ZipFile.read
+
+        def boom(self, name, *a, **k):
+            if str(name).endswith(".xaml"):
+                raise RuntimeError("That compression method is not supported")
+            return orig_read(self, name, *a, **k)
+
+        monkeypatch.setattr(zipfile.ZipFile, "read", boom)
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend)  # must not raise
+        assert isinstance(report["findings"], list)
+
+    def test_corrupt_member_degrades_and_scan_continues(self, tmp_path, backend, monkeypatch):
+        # A single corrupt member (bad CRC -> BadZipFile on read) degrades to a
+        # 'package' finding without aborting the whole scan: a second, good
+        # member's stage GUID is still probed and its collision reported.
+        p = tmp_path / "bpf_corrupt.zip"
+        good_guid = _STAGE_GUID
+        _make_pkg(p, _sol(), _cust(), workflows={
+            "Workflows/Bad.xaml": _xaml(stage_id="99999999-9999-9999-9999-999999999999"),
+            "Workflows/Good.xaml": _xaml(stage_id=good_guid),
+        })
+        orig_read = zipfile.ZipFile.read
+
+        def boom(self, name, *a, **k):
+            if str(name).endswith("Bad.xaml"):
+                raise zipfile.BadZipFile("Bad CRC-32 for file Workflows/Bad.xaml")
+            return orig_read(self, name, *a, **k)
+
+        monkeypatch.setattr(zipfile.ZipFile, "read", boom)
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"),
+                  json={"value": [{"processstageid": good_guid}]})
+            report = sv.validate_solution(p, backend=backend)  # must not raise
+        assert any(f["check"] == "package" and "Bad.xaml" in f["message"]
+                   for f in report["findings"])
+        assert any(f["check"] == "guid-collision" and good_guid in f["message"]
+                   for f in report["findings"])
+
+    def test_reopen_failure_degrades_to_package_finding(self, tmp_path, backend, monkeypatch):
+        # _load opens the zip first and succeeds; if re-opening it to scan
+        # Workflows/*.xaml then fails (BadZipFile/OSError), the scan must emit a
+        # 'package' finding rather than silently skip — and never raise.
+        p = tmp_path / "bpf_reopen.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)})
+        real_zipfile = zipfile.ZipFile
+        calls = {"n": 0}
+
+        def flaky(*a, **k):
+            calls["n"] += 1
+            if calls["n"] >= 2:  # _load's open succeeds; the re-read open fails
+                raise zipfile.BadZipFile("file changed under us")
+            return real_zipfile(*a, **k)
+
+        monkeypatch.setattr(sv.zipfile, "ZipFile", flaky)
+        report = sv.validate_solution(p, backend=backend)  # must not raise
+        assert any(f["check"] == "package" and "Workflows/*.xaml" in f["message"]
+                   for f in report["findings"])
+
+    def test_utf16_encoded_member_is_decoded_and_probed(self, tmp_path, backend):
+        # D365 process XAML is often UTF-16 (BOM-prefixed). The scan must decode
+        # by BOM, not blindly as UTF-8, or the StageId regex misses the GUID.
+        p = tmp_path / "bpf_utf16.zip"
+        xaml_bytes = _xaml(stage_id=_STAGE_GUID).encode("utf-16")  # adds a BOM
+        _make_pkg(p, _sol(), _cust(), workflows={"Workflows/Utf16.xaml": xaml_bytes})
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"),
+                  json={"value": [{"processstageid": _STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=backend)
+        errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
+        assert len(errs) == 1
+        assert _STAGE_GUID in errs[0]["message"]
+
+    def test_non_guid_capture_is_not_probed(self, tmp_path, backend):
+        # A malformed/unexpected StageId value must never reach the OData $filter
+        # (would 400 / allow injection); it is skipped, not probed.
+        p = tmp_path / "bpf_badval.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/Bad.xaml": _xaml(stage_id="not-a-guid' or 1 eq 1")})
+        with requests_mock.Mocker() as m:
+            stages = m.get(re.compile(r"processstages"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend)
+        assert not stages.called  # malformed value never hit the org
+        assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
+
+    def test_stage_collision_under_dry_run_forces_real_get(self, tmp_path):
+        # Mirror TestDryRunForcesRealReads: the probe must hit the network even
+        # under --dry-run, and the dry_run flag must be restored after.
+        dry_backend = D365Backend(
+            ConnectionProfile(name="t", url="https://crm.contoso.local/contoso",
+                              domain="C", username="u", api_version="v9.2", verify_ssl=False),
+            password="pw", dry_run=True)
+        p = tmp_path / "bpf_dry.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)})
+        with requests_mock.Mocker() as m:
+            stages = m.get(re.compile(r"processstages"),
+                           json={"value": [{"processstageid": _STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=dry_backend)
+        assert stages.called  # a real GET fired despite dry_run
+        assert any(f["check"] == "guid-collision" for f in report["findings"])
+        assert dry_backend.dry_run is True  # flag restored after the probe
+
+    def test_cli_against_org_detects_stage_collision(self, tmp_path, backend, monkeypatch):
+        p = tmp_path / "bpf_cli.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        import json
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"processstages"),
+                  json={"value": [{"processstageid": _STAGE_GUID}]})
+            result = CliRunner().invoke(
+                cli, ["--json", "solution", "validate", str(p), "--against-org"])
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert any(f["check"] == "guid-collision" and _STAGE_GUID in f["message"]
+                   for f in data["data"]["findings"])
 
 
 # ── Task 6: CLI wiring ────────────────────────────────────────────────────────

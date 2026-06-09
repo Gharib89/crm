@@ -5,7 +5,8 @@ reports every discoverable pre-import problem in one pass: missing/unparseable
 package files, RootComponents<->customizations parity, unresolved
 $webresource: ribbon references, and undeclared global option-set bindings.
 With a backend (the --against-org path) it also reports formid/savedqueryid
-GUID collisions with the target org. Mirrors the zip/XML handling proven in
+GUID collisions with the target org, plus BPF process-stage GUID collisions read
+from the Workflows/*.xaml members. Mirrors the zip/XML handling proven in
 solution.py::_sniff_solution_managed.
 """
 from __future__ import annotations
@@ -25,6 +26,32 @@ _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml"
 # guard on solution._sniff_solution_managed).
 _MAX_XML_BYTES = 64 * 1024 * 1024
 _WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<>]+)")
+
+# BPF process-stage GUIDs live in the Workflows/*.xaml members, NOT in the two
+# top-level manifests. A cloned solution whose XAML kept its source StageId /
+# NextStageId values passes the form/view collision check yet fails import with
+# "Cannot insert duplicate key" on CreateProcessStage (#163). Both keys denote a
+# `processstage` record (EntitySetName=processstages, PK=processstageid). Scoped
+# regex over the XAML text: <x:String x:Key="StageId">{guid}</x:String> (and the
+# NextStageId variant). The `[^>]*` after the x:Key attribute tolerates further
+# attributes on the same element (e.g. xml:space="preserve" emitted before or
+# after x:Key on a real export) before the closing `>`. Namespaced ElementTree
+# key-attr matching is fiddly and the structure is fixed per the issue, so a
+# regex is the simplest robust pull.
+#
+# DEFERRED — not probed, pending $metadata confirmation of the entity set:
+#   * ProcessStepId (<x:String x:Key="ProcessStepId">...): there is NO standalone
+#     `processstep` Web API entity (the MS Learn page 404s), so we cannot emit a
+#     query against an unconfirmed set without risking a spurious HTTP error.
+#   * LabelId="{guid}" on mcwo:StepLabel elements: localized-label rows, not a
+#     clean queryable collision set. Neither is implemented here.
+_XAML_STAGE_GUID = re.compile(
+    r'x:Key="(?:Stage|NextStage)Id"[^>]*>\s*([^<]+?)\s*</', re.IGNORECASE)
+_WORKFLOWS_MEMBER = re.compile(r"(?:^|/)Workflows/[^/]+\.xaml$", re.IGNORECASE)
+# A captured value is probed only if it is a bare GUID (post-_norm, brace-stripped
+# and lowercased) — keeps malformed/unexpected text out of the OData $filter.
+_GUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 # (customizations element tag, id-field candidates, org entity set, org id attr)
 _COLLISION_SOURCES: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
@@ -254,6 +281,108 @@ def _check_org_collisions(cust_root: ET.Element, backend: D365Backend) -> list[F
     return findings
 
 
+def _decode_xaml(raw: bytes) -> str:
+    """Decode a XAML member to text, honouring its byte-order mark.
+
+    D365 process/workflow XAML is frequently UTF-16 (BOM-prefixed); decoding it
+    as UTF-8 would yield NUL-laden text and silently defeat the StageId regex.
+    A UTF-16/UTF-8 BOM picks the codec; otherwise fall back to UTF-8 (the XML
+    default) with replacement so a truly undecodable member never raises.
+    """
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16", "replace")
+    if raw[:3] == b"\xef\xbb\xbf":
+        return raw.decode("utf-8-sig", "replace")
+    return raw.decode("utf-8", "replace")
+
+
+def _read_workflow_xaml(zip_path: str | Path) -> tuple[list[str], list[Finding]]:
+    """Read the text of every Workflows/*.xaml member from the solution zip.
+
+    Returns (xaml_texts, findings). A member that can't be read — too large
+    (the _MAX_XML_BYTES zip-bomb cap), encrypted (RuntimeError), an unsupported
+    compression (NotImplementedError), a >4GiB member without zip64
+    (LargeZipFile), or corrupt/unreadable bytes (BadZipFile on a bad CRC,
+    OSError) — degrades to a 'package' Finding and the scan continues to the
+    next member, instead of crashing the CLI (which only catches D365Error). A
+    failure re-opening the zip itself
+    (BadZipFile/OSError) likewise degrades to a 'package' finding rather than
+    raising — _load already opened and vetted the zip, so this is a rare mid-run
+    change, but the scan must never be silently skipped nor escape as an
+    unexpected exception.
+    """
+    texts: list[str] = []
+    findings: list[Finding] = []
+    try:
+        with zipfile.ZipFile(Path(zip_path)) as zf:
+            members = [n for n in zf.namelist() if _WORKFLOWS_MEMBER.search(n)]
+            for name in members:
+                try:
+                    if zf.getinfo(name).file_size > _MAX_XML_BYTES:
+                        findings.append(Finding(
+                            "error", "package",
+                            f"{name} is too large to scan "
+                            f"({zf.getinfo(name).file_size} bytes)", location=name))
+                        continue
+                    raw = zf.read(name)
+                except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError,
+                        RuntimeError, NotImplementedError) as exc:
+                    # A single corrupt member (bad CRC -> BadZipFile, oversized ->
+                    # LargeZipFile, encrypted -> RuntimeError, unsupported
+                    # compression -> NotImplementedError, OS read error -> OSError)
+                    # degrades to a finding; the loop continues to the next member.
+                    findings.append(Finding(
+                        "error", "package",
+                        f"{name} could not be read from the solution package: {exc}",
+                        location=name))
+                    continue
+                texts.append(_decode_xaml(raw))
+    except (zipfile.BadZipFile, OSError) as exc:
+        # _load already opened the zip; a failure re-opening it here is rare, but
+        # emit a finding rather than silently skipping the scan — and never raise
+        # a non-D365Error to the CLI.
+        findings.append(Finding(
+            "error", "package",
+            f"could not re-open the solution package to scan Workflows/*.xaml: {exc}",
+            location=str(Path(zip_path))))
+        return texts, findings
+    return texts, findings
+
+
+def _check_xaml_stage_collisions(
+    zip_path: str | Path, backend: D365Backend
+) -> list[Finding]:
+    """Report BPF process-stage GUIDs (StageId/NextStageId) already in the org.
+
+    A cloned BPF whose Workflows/*.xaml kept its source stage GUIDs collides on
+    import (CreateProcessStage 'Cannot insert duplicate key', #163). Probes the
+    `processstages` entity set (PK processstageid); OData v4 GUID filters take the
+    bare GUID, no quotes, matching _check_org_collisions.
+    """
+    texts, findings = _read_workflow_xaml(zip_path)
+    guids: set[str] = set()
+    for text in texts:
+        for raw in _XAML_STAGE_GUID.findall(text):
+            gid = _norm(raw)
+            # Only probe a well-formed GUID: a malformed/unexpected capture must
+            # not reach the OData $filter (would 400 / allow injection and defeat
+            # the "never crash on a bad member" goal).
+            if _GUID_RE.match(gid):
+                guids.add(gid)
+    for gid in sorted(guids):
+        resp = _force_get(
+            backend, "processstages",
+            {"$select": "processstageid", "$filter": f"processstageid eq {gid}",
+             "$top": "1"})
+        if resp.get("value"):
+            findings.append(Finding(
+                "error", "guid-collision",
+                f"process-stage id {gid} already exists in the target org "
+                f"(import will fail with a duplicate-key error on CreateProcessStage)",
+                component=gid, location="Workflows/*.xaml"))
+    return findings
+
+
 def _load(
     zip_path: str | Path,
 ) -> tuple[ET.Element | None, ET.Element | None, list[Finding]]:
@@ -343,6 +472,9 @@ def validate_solution(
         if backend is not None:
             checks_run.append("guid-collision")
             findings += _check_org_collisions(cust_root, backend)
+            # BPF stage GUIDs live in Workflows/*.xaml, not the manifests — same
+            # guid-collision check name, re-reads the zip for those members (#163).
+            findings += _check_xaml_stage_collisions(zip_path, backend)
     valid = not any(f.severity == "error" for f in findings)
     return {
         "valid": valid,
