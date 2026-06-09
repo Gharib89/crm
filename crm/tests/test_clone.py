@@ -326,8 +326,21 @@ class TestCloneEntityCharts:
 from click.testing import CliRunner
 
 
+def _seed_profile(tmp_path, monkeypatch):
+    """Isolate CRM_HOME and seed an NTLM profile + plaintext secret named 't'."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+    from crm.core import session as session_mod
+    from crm.utils.d365_backend import ConnectionProfile
+    session_mod.save_profile(ConnectionProfile(
+        name="t", url="https://crm.contoso.local/contoso",
+        domain="CONTOSO", username="alice"))
+    session_mod.save_profile_secret_plaintext("t", "pw")
+
+
 class TestCloneCommand:
-    def test_clone_entity_command_invokes_core(self, monkeypatch):
+    def test_clone_entity_command_invokes_core(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
 
         called = {}
@@ -344,12 +357,9 @@ class TestCloneCommand:
         from crm.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, [
-            "metadata", "clone-entity", "new_project", "cwx_TicketClone",
+            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
             "--display", "Ticket Clone", "--with-all",
-        ], env={
-            "D365_URL": "https://crm.contoso.local/contoso",
-            "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO",
-        })
+        ])
         assert result.exit_code == 0, result.output
         assert called["source"] == "new_project"
         assert called["new_schema"] == "cwx_TicketClone"
@@ -358,7 +368,8 @@ class TestCloneCommand:
         assert called["with_views"] is True
         assert called["with_workflows"] is True
 
-    def test_with_all_overrides_individual_flags(self, monkeypatch):
+    def test_with_all_overrides_individual_flags(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
         called = {}
         monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
@@ -368,16 +379,15 @@ class TestCloneCommand:
                                            "forms": 0, "workflows": 0, "charts": 0},
                                 "skipped_workflows": [], "ribbon_note": "n/a"})
         from crm.cli import cli
-        _env = {"D365_URL": "https://crm.contoso.local/contoso",
-                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
         result = CliRunner().invoke(cli, [
-            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-all"],
-            env=_env)
+            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
+            "--with-all"])
         assert result.exit_code == 0, result.output
         assert called["with_forms"] and called["with_views"] and called["with_workflows"]
         assert called["with_charts"] is True
 
-    def test_with_charts_flag_threads_to_core(self, monkeypatch):
+    def test_with_charts_flag_threads_to_core(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
         called = {}
         monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
@@ -387,17 +397,16 @@ class TestCloneCommand:
                                            "forms": 0, "workflows": 0, "charts": 0},
                                 "skipped_workflows": [], "ribbon_note": "n/a"})
         from crm.cli import cli
-        _env = {"D365_URL": "https://crm.contoso.local/contoso",
-                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
         result = CliRunner().invoke(cli, [
-            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-charts"],
-            env=_env)
+            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
+            "--with-charts"])
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is False
         assert called["with_views"] is False
 
-    def test_with_all_enables_charts(self, monkeypatch):
+    def test_with_all_enables_charts(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
         called = {}
         monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
@@ -407,18 +416,17 @@ class TestCloneCommand:
                                            "forms": 0, "workflows": 0, "charts": 0},
                                 "skipped_workflows": [], "ribbon_note": "n/a"})
         from crm.cli import cli
-        _env = {"D365_URL": "https://crm.contoso.local/contoso",
-                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
         result = CliRunner().invoke(cli, [
-            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-all"],
-            env=_env)
+            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
+            "--with-all"])
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is True
         assert called["with_views"] is True
         assert called["with_workflows"] is True
 
-    def test_skipped_workflows_surface_in_output(self, monkeypatch):
+    def test_skipped_workflows_surface_in_output(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd
         monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
                             lambda b, s, n, **kw: {
@@ -429,10 +437,8 @@ class TestCloneCommand:
                                                        "reason": "not yet supported"}],
                                 "ribbon_note": "n/a"})
         from crm.cli import cli
-        _env = {"D365_URL": "https://crm.contoso.local/contoso",
-                "D365_USERNAME": "alice", "D365_PASSWORD": "pw", "D365_DOMAIN": "CONTOSO"}
         result = CliRunner().invoke(cli, [
-            "metadata", "clone-entity", "new_project", "cwx_TicketClone", "--with-workflows"],
-            env=_env)
+            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
+            "--with-workflows"])
         assert result.exit_code == 0, result.output
         assert "BadAction" in result.output

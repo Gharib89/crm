@@ -207,13 +207,25 @@ class TestDeleteEntityDryRun:
 class TestDeleteEntityCommand:
     """Command-layer smoke test: --check-dependencies threads through to the core fn."""
 
-    def test_check_dependencies_flag_plumbs_through(self, profile, monkeypatch):
+    def test_check_dependencies_flag_plumbs_through(self, profile, monkeypatch, tmp_path):
         from click.testing import CliRunner
         from crm.commands.metadata import metadata_group
         from crm.core import metadata as meta_mod
-        captured = {}
+        from crm.core import session as session_mod
 
-        original = meta_mod.delete_entity
+        # metadata_group is invoked directly (no top-level --profile option), so
+        # seed an active profile + secret for ctx.backend() to resolve.
+        monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+        session_mod.save_profile(ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso",
+            domain="CONTOSO", username="alice"))
+        session_mod.save_profile_secret_plaintext("t", "pw")
+        state = session_mod.load_session("default")
+        state["active_profile"] = "t"
+        session_mod.save_session(state, "default")
+
+        captured = {}
 
         def fake_delete_entity(backend, logical_name, *, solution=None, check_dependencies=False):
             captured["check_dependencies"] = check_dependencies
@@ -226,12 +238,6 @@ class TestDeleteEntityCommand:
             metadata_group,
             ["delete-entity", "new_widget", "--yes", "--check-dependencies"],
             catch_exceptions=False,
-            env={
-                "D365_URL": "https://crm.contoso.local/contoso",
-                "D365_USERNAME": "alice",
-                "D365_PASSWORD": "pw",
-                "D365_DOMAIN": "CONTOSO",
-            },
         )
         assert result.exit_code == 0
         assert captured.get("check_dependencies") is True

@@ -83,45 +83,6 @@ def _isolate_env(monkeypatch, tmp_path):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / "crmhome"))
 
 
-class TestProfileFromEnvOAuth:
-    def test_oauth_profile_built_without_username(self, monkeypatch):
-        from crm.core import connection as conn
-
-        monkeypatch.setenv("D365_URL", "https://contoso.crm.dynamics.com")
-        monkeypatch.setenv("D365_AUTH", "oauth")
-        monkeypatch.setenv("D365_TENANT_ID", "tid")
-        monkeypatch.setenv("D365_CLIENT_ID", "cid")
-        # deliberately NO D365_USERNAME / D365_PASSWORD / D365_DOMAIN
-
-        p = conn.profile_from_env()
-        assert p.auth_scheme == "oauth"
-        assert p.tenant_id == "tid"
-        assert p.client_id == "cid"
-        assert p.url == "https://contoso.crm.dynamics.com"
-
-    def test_missing_tenant_id_names_the_var(self, monkeypatch):
-        from crm.core import connection as conn
-        from crm.utils.d365_backend import D365Error
-
-        monkeypatch.setenv("D365_URL", "https://contoso.crm.dynamics.com")
-        monkeypatch.setenv("D365_AUTH", "oauth")
-        monkeypatch.setenv("D365_CLIENT_ID", "cid")
-        # no D365_TENANT_ID
-        with pytest.raises(D365Error, match="D365_TENANT_ID"):
-            conn.profile_from_env()
-
-    def test_missing_client_id_names_the_var(self, monkeypatch):
-        from crm.core import connection as conn
-        from crm.utils.d365_backend import D365Error
-
-        monkeypatch.setenv("D365_URL", "https://contoso.crm.dynamics.com")
-        monkeypatch.setenv("D365_AUTH", "oauth")
-        monkeypatch.setenv("D365_TENANT_ID", "tid")
-        # no D365_CLIENT_ID
-        with pytest.raises(D365Error, match="D365_CLIENT_ID"):
-            conn.profile_from_env()
-
-
 class TestMakeOAuthAuth:
     def test_oauth_scheme_returns_an_authbase(self, monkeypatch):
         from crm.utils.d365_backend import D365Backend
@@ -288,29 +249,31 @@ class TestTokenCache:
 
 
 class TestResolveCredentialsOAuth:
-    def _set_oauth_env(self, monkeypatch):
-        monkeypatch.setenv("D365_URL", "https://contoso.crm.dynamics.com")
-        monkeypatch.setenv("D365_AUTH", "oauth")
-        monkeypatch.setenv("D365_TENANT_ID", "tid")
-        monkeypatch.setenv("D365_CLIENT_ID", "cid")
+    def _seed_oauth_profile(self):
+        from crm.core import session as session_mod
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name="cloud", url="https://contoso.crm.dynamics.com", domain="",
+            username="", auth_scheme="oauth", tenant_id="tid", client_id="cid"))
 
-    def test_client_secret_flows_as_password(self, monkeypatch):
+    def test_client_secret_flows_as_password(self):
         from crm.core import connection as conn
+        from crm.core import session as session_mod
 
-        self._set_oauth_env(monkeypatch)
-        monkeypatch.setenv("D365_CLIENT_SECRET", "sssh-secret")
-        resolved = conn.resolve_credentials()
+        self._seed_oauth_profile()
+        session_mod.save_profile_secret_plaintext("cloud", "sssh-secret")
+        resolved = conn.resolve_credentials("cloud")
         assert resolved.profile.auth_scheme == "oauth"
         assert resolved.password == "sssh-secret"
 
-    def test_missing_client_secret_names_the_var(self, monkeypatch):
+    def test_missing_client_secret_raises_actionable(self):
         from crm.core import connection as conn
         from crm.utils.d365_backend import D365Error
 
-        self._set_oauth_env(monkeypatch)
-        # no D365_CLIENT_SECRET, no D365_PASSWORD
-        with pytest.raises(D365Error, match="D365_CLIENT_SECRET"):
-            conn.resolve_credentials()
+        self._seed_oauth_profile()
+        # No secret stored → actionable error steering to set-password.
+        with pytest.raises(D365Error, match="set-password"):
+            conn.resolve_credentials("cloud", allow_prompt=False)
 
 
 class TestProfileAcceptsOAuth:

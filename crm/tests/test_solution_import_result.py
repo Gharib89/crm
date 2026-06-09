@@ -285,12 +285,13 @@ def test_import_solution_dry_run_includes_managed_and_dry_run_sentinel(tmp_path)
 
 def _save_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
-    monkeypatch.setenv("D365_PASSWORD", "pw")
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
     profile = ConnectionProfile(
         name="p", url="https://crm.contoso.local/contoso", domain="C", username="alice",
     )
     session_mod.save_profile(profile)
+    session_mod.save_profile_secret_plaintext("p", "pw")
     state = session_mod.load_session("default")
     state["active_profile"] = "p"
     session_mod.save_session(state, "default")
