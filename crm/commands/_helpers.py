@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
 from crm.core import session as session_mod
+from prompt_toolkit.shortcuts import radiolist_dialog
 if TYPE_CHECKING:
     from crm.cli import CLIContext
     from crm.utils.d365_backend import ConnectionProfile, D365Error
@@ -529,3 +530,31 @@ def _auth_error_hint(status: int | None, profile_name: str,
     if no_secret or status == 401:
         return f"run: crm profile set-password --profile {profile_name}"
     return ""
+
+
+def _stdin_is_tty() -> bool:
+    """Re-export of cli._stdin_is_tty as a module-level name so tests can
+    monkeypatch it without triggering a circular import at module load time
+    (cli.py imports _helpers, so a top-level import of cli would be circular)."""
+    from crm.cli import _stdin_is_tty as _impl
+    return _impl()
+
+
+def select_one(title: str, items: list[tuple[str, str]]) -> str | None:
+    """Show an arrow-key single-select picker; return the chosen value (the first
+    element of the chosen tuple) or None if the user cancelled.
+
+    `items` is a list of (value, label) pairs. Raises ValueError on empty input
+    and RuntimeError when stdin is not a TTY (scripts/CI must pass an explicit
+    choice instead of relying on the picker)."""
+    if not items:
+        raise ValueError("select_one: no choices to display")
+    if not _stdin_is_tty():
+        raise RuntimeError(
+            "select_one: no interactive terminal — pass an explicit choice instead"
+        )
+    return radiolist_dialog(
+        title=title,
+        text="Use ↑/↓ then Enter; Esc to cancel.",
+        values=[(value, label) for value, label in items],
+    ).run()

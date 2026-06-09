@@ -49,3 +49,43 @@ class TestAuthErrorHint:
 
     def test_unrelated_status_has_no_hint(self):
         assert _auth_error_hint(404, "cloud") == ""
+
+
+import pytest
+from crm.commands._helpers import select_one
+
+
+class TestSelectOne:
+    def test_non_tty_raises_runtime_error(self, monkeypatch):
+        # No TTY -> the picker must refuse rather than block on input.
+        monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: False)
+        with pytest.raises(RuntimeError, match="no interactive terminal"):
+            select_one("Pick one", [("a", "label a"), ("b", "label b")])
+
+    def test_empty_items_raises_value_error(self, monkeypatch):
+        monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
+        with pytest.raises(ValueError, match="no choices"):
+            select_one("Pick one", [])
+
+    def test_returns_selected_value(self, monkeypatch):
+        monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
+        # Stub the prompt_toolkit dialog so the test never opens a real TUI.
+        class _FakeDialog:
+            def run(self):
+                return "b"
+        monkeypatch.setattr(
+            "crm.commands._helpers.radiolist_dialog",
+            lambda **kw: _FakeDialog(),
+        )
+        assert select_one("Pick one", [("a", "label a"), ("b", "label b")]) == "b"
+
+    def test_cancel_returns_none(self, monkeypatch):
+        monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
+        class _FakeDialog:
+            def run(self):
+                return None  # user hit Esc / Ctrl-C
+        monkeypatch.setattr(
+            "crm.commands._helpers.radiolist_dialog",
+            lambda **kw: _FakeDialog(),
+        )
+        assert select_one("Pick one", [("a", "label a")]) is None
