@@ -773,6 +773,59 @@ class TestWorkflow:
         assert result is None
         assert len(m.request_history) == 0
 
+    def test_activation_delete_hint_resolves_parent(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "22222222-2222-2222-2222-222222222222"
+        parent_guid = "33333333-3333-3333-3333-333333333333"
+        exc = D365Error("Cannot delete a workflow activation.", status=400, code="0x80045004")
+
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({wid})"),
+                json={"_parentworkflowid_value": parent_guid},
+            )
+            hint = wf_mod.activation_delete_hint(backend, wid, exc)
+        assert hint is not None
+        assert parent_guid in hint
+        assert f"crm workflow deactivate {parent_guid}" in hint
+        # Verify $select=parentworkflowid was used (lowercase nav-prop per $metadata)
+        req = m.request_history[0]
+        assert req.qs.get("$select") == ["parentworkflowid"]
+
+    def test_activation_delete_hint_fallback_when_no_parent(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "44444444-4444-4444-4444-444444444444"
+        exc = D365Error("Cannot delete a workflow activation.", status=400, code="0x80045004")
+
+        # GET returns empty dict — no parent
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({wid})"), json={})
+            hint = wf_mod.activation_delete_hint(backend, wid, exc)
+        assert hint is not None
+        assert "parentworkflowid" in hint
+        # No concrete parent GUID in the static fallback
+        assert "33333333" not in hint
+        # Original error untouched
+        assert exc.code == "0x80045004"
+        assert str(exc) == "Cannot delete a workflow activation."
+
+        # GET returns 500 — should fall back gracefully
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({wid})"), status_code=500, json={"error": {"code": "0x80000000", "message": "Server error"}})
+            hint2 = wf_mod.activation_delete_hint(backend, wid, exc)
+        assert hint2 is not None
+        assert "parentworkflowid" in hint2
+
+    def test_activation_delete_hint_ignores_other_codes(self, backend):
+        from crm.core import workflow as wf_mod
+        wid = "55555555-5555-5555-5555-555555555555"
+        exc = D365Error("Some other error.", status=400, code="0x80040217")
+
+        with requests_mock.Mocker() as m:
+            result = wf_mod.activation_delete_hint(backend, wid, exc)
+        assert result is None
+        assert len(m.request_history) == 0
+
 
 class TestCountEntitySet:
     def test_count_returns_int_from_text_plain(self, backend):

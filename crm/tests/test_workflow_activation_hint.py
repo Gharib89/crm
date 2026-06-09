@@ -104,3 +104,68 @@ class TestWorkflowActivationHintWiring:
         assert envelope["meta"]["code"] == "0x80040217"
         assert "hint" not in envelope["meta"]
         assert called["hint"] is False
+
+
+class TestEntityDeleteActivationHintWiring:
+    """`entity delete` against a workflow activation GUID (issue #161)."""
+
+    def test_delete_hint_reaches_envelope(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import entity as entity_cmd
+        from crm.core import workflow as workflow_mod
+
+        monkeypatch.setattr(
+            entity_cmd.entity_mod,
+            "delete",
+            lambda backend, entity_set, record_id, **kw: (_ for _ in ()).throw(
+                D365Error("Cannot delete a workflow activation.", status=400, code="0x80045004")
+            ),
+        )
+        # entity delete lazy-imports workflow on the error path, so patch the
+        # source module (crm.core.workflow), not a command-level alias.
+        monkeypatch.setattr(
+            workflow_mod,
+            "activation_delete_hint",
+            lambda backend, wid, exc: f"hint: crm workflow deactivate {_PARENT_GUID}",
+        )
+
+        from crm.cli import cli
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "entity", "delete", "workflows", _WF_ID, "--yes"])
+        assert result.exit_code != 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert envelope["meta"]["code"] == "0x80045004"
+        assert _PARENT_GUID in envelope["meta"]["hint"]
+
+    def test_non_activation_delete_skips_hint_lookup(self, monkeypatch, tmp_path):
+        """A non-0x80045004 delete failure must NOT trigger the hint lookup —
+        the gate keeps the resolver's extra GET off every other delete."""
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import entity as entity_cmd
+        from crm.core import workflow as workflow_mod
+
+        monkeypatch.setattr(
+            entity_cmd.entity_mod,
+            "delete",
+            lambda backend, entity_set, record_id, **kw: (_ for _ in ()).throw(
+                D365Error("Record not found.", status=404, code="0x80040217")
+            ),
+        )
+        called = {"hint": False}
+
+        def _spy(backend, wid, exc):
+            called["hint"] = True
+            return None
+
+        monkeypatch.setattr(workflow_mod, "activation_delete_hint", _spy)
+
+        from crm.cli import cli
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "entity", "delete", "contacts", _WF_ID, "--yes"])
+        assert result.exit_code != 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert envelope["meta"]["code"] == "0x80040217"
+        assert "hint" not in envelope["meta"]
+        assert called["hint"] is False
