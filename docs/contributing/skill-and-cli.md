@@ -35,7 +35,7 @@ crm skill install --target claude --force
 ## When the CLI changes
 
 After adding or changing a command, update the relevant `crm/skills/reference/*.md`
-(workflows/gotchas only — not flags) and the SKILL.md map if a new group appeared,
+(workflows and gotchas — not flag *definitions* already in `--help`; flags appear in examples) and the SKILL.md map if a new group appeared,
 then reinstall with `--force`. To detect drift against an install:
 
 ```bash
