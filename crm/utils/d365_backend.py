@@ -315,8 +315,8 @@ class _OAuthBearerAuth(AuthBase):
             except Exception as exc:
                 raise D365Error(
                     f"OAuth setup failed: {exc}\n"
-                    "Verify D365_TENANT_ID and that the org URL is a reachable "
-                    "public-cloud Dataverse host.",
+                    "Verify the profile's tenant_id (crm profile edit) and that the "
+                    "org URL is a reachable public-cloud Dataverse host.",
                     status=401,
                 ) from exc
         return self._app
@@ -439,14 +439,15 @@ class D365Backend:
 
         if not secret:
             raise D365Error(
-                "OAuth requires a client secret (set D365_CLIENT_SECRET or pass --password)."
+                "OAuth requires a client secret "
+                "(crm profile set-password, or pass --password)."
             )
         tenant = self.profile.tenant_id
         client = self.profile.client_id
         if not tenant or not client:
             raise D365Error(
                 "OAuth requires tenant_id and client_id on the profile "
-                "(set D365_TENANT_ID and D365_CLIENT_ID)."
+                "(set them with crm profile edit)."
             )
 
         host = urllib.parse.urlparse(self.profile.url).netloc

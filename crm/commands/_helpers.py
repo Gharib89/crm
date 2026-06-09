@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.parse
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
@@ -19,8 +20,8 @@ def _journal(ctx, command, target, result, *, solution=None, staged=None):
         from crm.core import audit
         # Prefer the RESOLVED profile name from the backend that just ran the
         # mutation — ctx.profile_name is only the explicit --profile override and
-        # is None for env-derived / active-profile runs. The backend is already
-        # built (the command called ctx.backend()), so this needs no extra I/O.
+        # is None for active-profile runs. The backend is already built (the
+        # command called ctx.backend()), so this needs no extra I/O.
         backend = getattr(ctx, "_backend", None)
         profile = getattr(getattr(backend, "profile", None), "name", None) or ctx.profile_name
         audit.record(
@@ -63,6 +64,14 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = 
         "category": category,
         "retryable": retryable,
     }
+    # Auto-derive an auth fix-it hint on a 401 when the caller gave none, so a
+    # rejected/stale secret steers the user to re-store it. The active profile
+    # name comes from the resolved backend, else the --profile flag.
+    if hint is None and exc.status == 401:
+        backend = getattr(ctx, "_backend", None)
+        pname = (getattr(getattr(backend, "profile", None), "name", None)
+                 or ctx.profile_name or "<name>")
+        hint = _auth_error_hint(exc.status, pname)
     # Partial-failure context (#64): only the non-transactional optionset update
     # path sets these. Guarded is-not-None so every other error site keeps
     # emitting an identical {status, code, category, retryable} envelope.
@@ -70,6 +79,8 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = 
         meta["completed_steps"] = exc.completed_steps
     if exc.stage is not None:
         meta["failed_stage"] = exc.stage
+    if hint and ctx.json_mode:
+        meta["hint"] = hint
     message = f"{exc}\nHint: {hint}" if hint else str(exc)
     ctx.emit(False, error=message, meta=meta)
 
@@ -77,7 +88,7 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = 
 def _plaintext_secret_warning() -> str:
     """Warning shown after writing a profile secret in PLAINTEXT.
 
-    Shared by `connection connect` and `connection set-password` so the wording
+    Shared by `profile add` and `profile set-password` so the wording
     stays identical. POSIX notes the 0600 mode; Windows adds that file perms are
     NOT enforced and steers to --store-password (Credential Manager).
     """
@@ -494,3 +505,67 @@ _CASCADE = click.Choice(
 )
 _MENU = click.Choice(["UseLabel", "UseCollectionName", "DoNotDisplay"])
 _REQUIRED = click.Choice(["None", "Recommended", "ApplicationRequired"])
+
+
+# ── Profile-UX helpers (credential revamp) ───────────────────────────────
+
+# Dataverse online hosts always end in this suffix (crm.dynamics.com,
+# crm4.dynamics.com, crm.dynamics.cn, ...). Anything else is treated as on-prem.
+_CLOUD_HOST_MARKER = ".dynamics."
+
+
+def infer_auth_scheme(url: str) -> str:
+    """Guess the auth scheme from the server URL: oauth for Dataverse online
+    (`*.dynamics.*`), else ntlm. The wizard shows this as an overridable default."""
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    return "oauth" if _CLOUD_HOST_MARKER in host else "ntlm"
+
+
+def default_profile_name(url: str) -> str:
+    """Default profile name = the first label of the URL host (`crm.contoso.local`
+    -> `crm`, `orgd080.crm.dynamics.com` -> `orgd080`). Falls back to 'default'
+    when the URL has no parseable host."""
+    host = urllib.parse.urlparse(url).hostname or ""
+    label = host.split(".")[0] if host else ""
+    return label or "default"
+
+
+def _auth_error_hint(status: int | None, profile_name: str) -> str:
+    """Map an auth failure to a copy-paste fix command, or '' when none applies.
+
+    A 401 (rejected secret) steers the user to re-store the secret for the
+    active profile."""
+    if status == 401:
+        return f"run: crm profile set-password --profile {profile_name}"
+    return ""
+
+
+def _stdin_is_tty() -> bool:
+    """Re-export of cli._stdin_is_tty as a module-level name so tests can
+    monkeypatch it without triggering a circular import at module load time
+    (cli.py imports _helpers, so a top-level import of cli would be circular)."""
+    from crm.cli import _stdin_is_tty as _impl
+    return _impl()
+
+
+def select_one(title: str, items: list[tuple[str, str]]) -> str | None:
+    """Show an arrow-key single-select picker; return the chosen value (the first
+    element of the chosen tuple) or None if the user cancelled.
+
+    `items` is a list of (value, label) pairs. Raises ValueError on empty input
+    and RuntimeError when stdin is not a TTY (scripts/CI must pass an explicit
+    choice instead of relying on the picker)."""
+    if not items:
+        raise ValueError("select_one: no choices to display")
+    if not _stdin_is_tty():
+        raise RuntimeError(
+            "select_one: no interactive terminal — pass an explicit choice instead"
+        )
+    # Lazy import: prompt_toolkit is heavy; keep it off the `crm --version`
+    # fast path (_helpers is imported by cli.py). Only the picker pays the cost.
+    from prompt_toolkit.shortcuts import radiolist_dialog
+    return radiolist_dialog(
+        title=title,
+        text="Use ↑/↓ then Enter; Esc to cancel.",
+        values=[(value, label) for value, label in items],
+    ).run()

@@ -72,19 +72,32 @@ class TestExportImport:
 from click.testing import CliRunner
 
 
+def _seed_profile(tmp_path, monkeypatch):
+    """Isolate CRM_HOME and seed an NTLM profile + plaintext secret named 't'."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+    from crm.core import session as session_mod
+    session_mod.save_profile(ConnectionProfile(
+        name="t", url="https://crm.contoso.local/contoso",
+        domain="CONTOSO", username="alice"))
+    session_mod.save_profile_secret_plaintext("t", "pw")
+
+
 class TestExportImportCommands:
     def test_export_command(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
         from crm.commands import workflow as wf_cmd
         captured = {}
         monkeypatch.setattr(wf_cmd.workflow_mod, "export_workflow",
                             lambda backend, wid, **kw: captured.update(id=wid, **kw) or {"out_path": kw.get("out_path")})
         from crm.cli import cli
         result = CliRunner().invoke(cli,
-            ["workflow", "export", _WF_ID, "--out", str(tmp_path / "x.json")])
+            ["--profile", "t", "workflow", "export", _WF_ID, "--out", str(tmp_path / "x.json")])
         assert result.exit_code == 0, result.output
         assert captured["id"] == _WF_ID
 
     def test_import_command(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
         from crm.commands import workflow as wf_cmd
         captured = {}
         monkeypatch.setattr(wf_cmd.workflow_mod, "import_workflow",
@@ -92,6 +105,6 @@ class TestExportImportCommands:
         f = tmp_path / "x.json"; f.write_text("{}", encoding="utf-8")
         from crm.cli import cli
         result = CliRunner().invoke(cli,
-            ["workflow", "import", "--file", str(f)])
+            ["--profile", "t", "workflow", "import", "--file", str(f)])
         assert result.exit_code == 0, result.output
         assert captured["file_path"] == str(f)

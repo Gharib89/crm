@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 import requests_mock
@@ -18,27 +17,23 @@ _VERSION = {"Version": "9.1.0.1"}
 
 
 @pytest.fixture(autouse=True)
-def _isolated_home(tmp_path):
-    # Snapshot/restore os.environ around each test: ctx.backend() →
-    # resolve_credentials → load_dotenv() writes .env values straight into
-    # os.environ (monkeypatch can't undo those), which would leak into later
-    # tests (cf. #56). Default CRM_DOTENV to a noop path so the repo's real
-    # ./.env is never autoloaded. Env creds make ctx.backend() build from env
-    # with no saved profile, pinned to v9.2 so api_base is deterministic.
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    os.environ["D365_URL"] = _BASE
-    os.environ["D365_USERNAME"] = "alice"
-    os.environ["D365_PASSWORD"] = "pw"
-    os.environ["D365_DOMAIN"] = "CONTOSO"
-    os.environ["D365_AUTH"] = "ntlm"
-    os.environ["D365_API_VERSION"] = "v9.2"
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+def _isolated_home(tmp_path, monkeypatch):
+    # Seed an active NTLM profile + plaintext secret so bare `connection doctor`
+    # resolves it (env-derived credentials are gone). Pin api_version to v9.2 so
+    # api_base is deterministic — the tests register mocks against _API_BASE.
+    # CRM_DOTENV points at a noop path so the repo's real ./.env never autoloads.
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+    from crm.core import session as session_mod
+    from crm.utils.d365_backend import ConnectionProfile
+    session_mod.save_profile(ConnectionProfile(
+        name="doc", url=_BASE, domain="CONTOSO", username="alice",
+        api_version="v9.2"))
+    session_mod.save_profile_secret_plaintext("doc", "pw")
+    state = session_mod.load_session("default")
+    state["active_profile"] = "doc"
+    session_mod.save_session(state, "default")
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -120,7 +115,8 @@ def test_doctor_human_failure_renders_checklist():
     # The failed auth check and its hint both land on stdout (not stderr),
     # and the hint immediately follows its own ✗ line.
     auth_line = "✗ auth: authentication failed (HTTP 401)"
-    hint_line = "check credentials — NTLM needs DOMAIN\\username"
+    # The 401 hint interpolates the active profile name (the fixture seeds 'doc').
+    hint_line = "check the stored secret — re-store it with `crm profile set-password --profile doc`"
     assert auth_line in out
     assert hint_line in out
     auth_idx = out.index(auth_line)

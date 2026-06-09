@@ -196,8 +196,15 @@ from click.testing import CliRunner
 
 
 class TestCloneCommand:
-    def test_clone_command_invokes_core(self, monkeypatch):
+    def test_clone_command_invokes_core(self, monkeypatch, tmp_path):
         from crm.commands import workflow as wf_cmd
+        from crm.core import session as session_mod
+        monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+        session_mod.save_profile(ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso",
+            domain="CONTOSO", username="alice"))
+        session_mod.save_profile_secret_plaintext("t", "pw")
         called = {}
 
         def fake_clone(backend, workflow_id, target_entity, **kw):
@@ -209,7 +216,7 @@ class TestCloneCommand:
         from crm.cli import cli
         runner = CliRunner()
         result = runner.invoke(cli, [
-            "workflow", "clone", _SRC_ID, "--to-entity", "cwx_ticketclone",
+            "--profile", "t", "workflow", "clone", _SRC_ID, "--to-entity", "cwx_ticketclone",
             "--name", "My Clone", "--no-activate",
         ])
         assert result.exit_code == 0, result.output

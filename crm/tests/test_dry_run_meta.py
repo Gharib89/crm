@@ -16,13 +16,17 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 
-_ENV = {
-    "D365_URL": "https://crm.contoso.local/contoso",
-    "D365_USERNAME": "alice",
-    "D365_PASSWORD": "pw",
-    "D365_DOMAIN": "CONTOSO",
-    "CRM_DOTENV": "/dev/null",
-}
+
+def _seed_profile(tmp_path, monkeypatch):
+    """Isolate CRM_HOME and seed an NTLM profile + plaintext secret named 't'."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+    from crm.core import session as session_mod
+    from crm.utils.d365_backend import ConnectionProfile
+    session_mod.save_profile(ConnectionProfile(
+        name="t", url="https://crm.contoso.local/contoso",
+        domain="CONTOSO", username="alice"))
+    session_mod.save_profile_secret_plaintext("t", "pw")
 
 
 def _emit_envelope(ctx, capsys, **kw):
@@ -79,24 +83,24 @@ class TestEmitMetaDryRun:
 
 
 class TestDryRunMetaEndToEnd:
-    def test_entity_create_dry_run_has_meta_dry_run(self):
+    def test_entity_create_dry_run_has_meta_dry_run(self, tmp_path, monkeypatch):
+        _seed_profile(tmp_path, monkeypatch)
         result = CliRunner().invoke(
             cli,
-            ["--json", "--dry-run", "entity", "create", "accounts",
+            ["--json", "--profile", "t", "--dry-run", "entity", "create", "accounts",
              "--data", '{"name": "Acme"}'],
-            env=_ENV,
         )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["meta"]["dry_run"] is True
 
-    def test_batch_dry_run_has_meta_dry_run_and_preserves_summary(self, tmp_path):
+    def test_batch_dry_run_has_meta_dry_run_and_preserves_summary(self, tmp_path, monkeypatch):
+        _seed_profile(tmp_path, monkeypatch)
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
         result = CliRunner().invoke(
             cli,
-            ["--json", "--dry-run", "batch", str(p)],
-            env=_ENV,
+            ["--json", "--profile", "t", "--dry-run", "batch", str(p)],
         )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)

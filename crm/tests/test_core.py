@@ -57,47 +57,6 @@ def isolated_home(monkeypatch, tmp_path):
 # ── connection.py ───────────────────────────────────────────────────────
 
 
-class TestConnectionEnv:
-    def test_profile_from_env_happy_path(self, monkeypatch, tmp_path):
-        # Isolate from any developer .env / CRM_* aliases in the surrounding shell.
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
-        for k in (conn_mod.ENV_API_VERSION, "CRM_API_VERSION"):
-            monkeypatch.delenv(k, raising=False)
-        monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
-        monkeypatch.setenv(conn_mod.ENV_DOMAIN, "CONTOSO")
-        monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
-        monkeypatch.setenv(conn_mod.ENV_AUTH, "ntlm")
-        p = conn_mod.profile_from_env()
-        assert p.url == "https://crm.x.local/org"
-        assert p.domain == "CONTOSO"
-        assert p.username == "alice"
-        assert p.api_version == "v9.2"
-
-    def test_profile_from_env_missing_url(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
-        for k in (conn_mod.ENV_URL, "CRM_BASE_URL", "CRM_URL"):
-            monkeypatch.delenv(k, raising=False)
-        with pytest.raises(D365Error, match="D365_URL"):
-            conn_mod.profile_from_env()
-
-    def test_profile_from_env_rejects_unsupported_auth(self, monkeypatch):
-        # ntlm and oauth are env-settable; anything else is rejected.
-        monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
-        monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
-        monkeypatch.setenv(conn_mod.ENV_AUTH, "saml")
-        with pytest.raises(D365Error, match="ntlm"):
-            conn_mod.profile_from_env()
-
-    def test_resolve_credentials_requires_password(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
-        monkeypatch.setenv(conn_mod.ENV_URL, "https://crm.x.local/org")
-        monkeypatch.setenv(conn_mod.ENV_USERNAME, "alice")
-        for k in (conn_mod.ENV_PASSWORD, "CRM_PASSWORD", "CRM_PASS"):
-            monkeypatch.delenv(k, raising=False)
-        with pytest.raises(D365Error, match="No password"):
-            conn_mod.resolve_credentials()
-
-
 class TestApiVersionNegotiation:
     """Issue #51: on-prem v9.x 501s on the v9.2 default — negotiate down to v9.1."""
 
@@ -644,80 +603,6 @@ class TestPublish:
             sol_mod_local.publish_xml(backend, xml)
         body = json.loads(m.request_history[0].body)
         assert body["ParameterXml"] == xml
-
-
-class TestConnectionDotenv:
-    def test_load_dotenv_reads_crm_aliases_and_does_not_override(self, tmp_path, monkeypatch):
-        for k in ("D365_URL", "CRM_BASE_URL", "D365_USERNAME", "CRM_USERNAME",
-                  "D365_PASSWORD", "CRM_PASSWORD", "D365_DOMAIN", "CRM_DOMAIN"):
-            monkeypatch.delenv(k, raising=False)
-        # profile_from_env() re-discovers ./.env in cwd; chdir into tmp so it
-        # finds only the temp file below, not a developer's real repo .env.
-        monkeypatch.chdir(tmp_path)
-        env_file = tmp_path / ".env"
-        env_file.write_text(
-            "CRM_BASE_URL=http://crm.x.local/Contoso\n"
-            "CRM_API_VERSION=v9.1\n"
-            "CRM_USERNAME=contoso\\admin\n"
-            "CRM_PASSWORD=pw\n"
-            "CRM_AUTH=ntlm\n"
-        )
-        from crm.core import connection as conn_mod_local
-        loaded = conn_mod_local.load_dotenv(env_file)
-        assert loaded == env_file
-        profile = conn_mod_local.profile_from_env()
-        assert profile.url == "http://crm.x.local/Contoso"
-        assert profile.api_version == "v9.1"
-        assert profile.domain == "contoso"
-        assert profile.username == "admin"
-
-    def test_crm_dotenv_authoritative_missing_file_loads_nothing(self, tmp_path, monkeypatch):
-        # A real ./.env exists in cwd, but an explicit CRM_DOTENV points at a
-        # missing file. Authoritative semantics: load nothing, do NOT fall back
-        # to ./.env (this is the bug in issue #36).
-        (tmp_path / ".env").write_text("CRM_BASE_URL=http://leak.local/org\n", encoding="utf-8")
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("CRM_BASE_URL", raising=False)
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))  # never created
-        from crm.core import connection as conn_mod_local
-        assert conn_mod_local.load_dotenv() is None
-        import os
-        assert "CRM_BASE_URL" not in os.environ  # ./.env must not have leaked in
-
-    def test_crm_dotenv_authoritative_existing_file_loads_only_it(self, tmp_path, monkeypatch):
-        # CRM_DOTENV points at an existing file: load exactly it, ignoring the
-        # ./.env that would otherwise be auto-discovered in cwd.
-        (tmp_path / ".env").write_text("CRM_BASE_URL=http://leak.local/org\n", encoding="utf-8")
-        explicit = tmp_path / "explicit.env"
-        explicit.write_text("CRM_BASE_URL=http://explicit.local/org\n", encoding="utf-8")
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("CRM_BASE_URL", raising=False)
-        monkeypatch.setenv("CRM_DOTENV", str(explicit))
-        from crm.core import connection as conn_mod_local
-        assert conn_mod_local.load_dotenv() == explicit
-        import os
-        assert os.environ["CRM_BASE_URL"] == "http://explicit.local/org"
-
-    def test_dotenv_autodiscovers_cwd_when_override_unset(self, tmp_path, monkeypatch):
-        # With CRM_DOTENV unset, auto-discovery of ./.env in cwd is unchanged.
-        (tmp_path / ".env").write_text("CRM_BASE_URL=http://found.local/org\n", encoding="utf-8")
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("CRM_DOTENV", raising=False)
-        monkeypatch.delenv("CRM_BASE_URL", raising=False)
-        from crm.core import connection as conn_mod_local
-        assert conn_mod_local.load_dotenv() == tmp_path / ".env"
-        import os
-        assert os.environ["CRM_BASE_URL"] == "http://found.local/org"
-
-    def test_dotenv_preserves_inner_quotes(self, tmp_path, monkeypatch):
-        for k in ("KEY_WITH_QUOTE", "D365_URL", "CRM_BASE_URL"):
-            monkeypatch.delenv(k, raising=False)
-        env_file = tmp_path / ".env"
-        env_file.write_text('KEY_WITH_QUOTE="foo\'s bar"\n')
-        from crm.core import connection as conn_mod_local
-        conn_mod_local.load_dotenv(env_file)
-        import os
-        assert os.environ["KEY_WITH_QUOTE"] == "foo's bar"
 
 
 class TestOrderedKeys:

@@ -3,12 +3,19 @@
 These tests REQUIRE a live, reachable Dynamics 365 CE on-prem 9.x server. There is
 no graceful skip — per HARNESS.md the real software is a hard runtime dependency.
 
-Required env:
+Credentials still come from a saved profile (the CLI no longer reads credential
+env vars). To keep the live suite self-contained, the ``_live_profile`` fixture
+reads the env values below ONLY to SEED a temporary profile + activate it under an
+isolated ``CRM_HOME``; the CLI itself resolves from that profile, not the env.
+
+Required env (consumed by the fixture, not by the CLI):
     D365_URL=https://<server>/<org>
     D365_USERNAME=<user>
-    D365_PASSWORD=<pw>
-    D365_DOMAIN=<DOMAIN>   (optional for UPN)
-    D365_AUTH=ntlm
+    D365_PASSWORD=<pw>            (OAuth: the client secret, or set D365_CLIENT_SECRET)
+    D365_DOMAIN=<DOMAIN>          (optional for UPN)
+    D365_AUTH=ntlm                (set 'oauth' for Dataverse online)
+    D365_TENANT_ID / D365_CLIENT_ID   (OAuth only)
+    D365_API_VERSION              (optional; defaults v9.1 on-prem / v9.2 cloud)
 
 CI / release runs should also set CRM_FORCE_INSTALLED=1 to require the
 installed `crm` command (not a python -m fallback).
@@ -50,8 +57,54 @@ def _resolve_cli(name: str):
     return [sys.executable, "-m", module]
 
 
+_LIVE_PROFILE = "e2e"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _live_profile(tmp_path_factory):
+    """Seed a profile named ``e2e`` from the live env vars and activate it under an
+    isolated ``CRM_HOME`` exported for the whole module — so both the in-process
+    ``backend`` fixture and the subprocess ``crm`` invocations resolve from the
+    saved profile (the CLI no longer reads credential env vars). The env values are
+    consumed HERE only, to build the profile; they never reach the CLI directly."""
+    if not _have_live_env():
+        yield
+        return
+    from crm.core import session as session_mod
+    from crm.utils.d365_backend import ConnectionProfile
+
+    home = tmp_path_factory.mktemp("e2e-crm")
+    saved = dict(os.environ)
+    os.environ["CRM_HOME"] = str(home)
+    auth = os.environ.get("D365_AUTH", "ntlm").lower()
+    secret = os.environ.get("D365_PASSWORD") or os.environ.get("D365_CLIENT_SECRET") or ""
+    api_version = os.environ.get("D365_API_VERSION") or (
+        "v9.2" if auth == "oauth" else "v9.1"
+    )
+    profile = ConnectionProfile(
+        name=_LIVE_PROFILE,
+        url=os.environ["D365_URL"],
+        domain="" if auth == "oauth" else os.environ.get("D365_DOMAIN", ""),
+        username="" if auth == "oauth" else os.environ.get("D365_USERNAME", ""),
+        api_version=api_version,
+        auth_scheme=auth,
+        tenant_id=os.environ.get("D365_TENANT_ID"),
+        client_id=os.environ.get("D365_CLIENT_ID"),
+    )
+    session_mod.save_profile(profile)
+    session_mod.save_profile_secret_plaintext(_LIVE_PROFILE, secret)
+    state = session_mod.load_session("default")
+    state["active_profile"] = _LIVE_PROFILE
+    session_mod.save_session(state, "default")
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
 @pytest.fixture(scope="module")
-def backend():
+def backend(_live_profile):
     if not _have_live_env():
         pytest.fail(
             "Live D365 env vars required. Set D365_URL, D365_USERNAME, D365_PASSWORD."
@@ -59,7 +112,7 @@ def backend():
     from crm.core.connection import resolve_credentials
     from crm.utils.d365_backend import D365Backend
 
-    resolved = resolve_credentials()
+    resolved = resolve_credentials(_LIVE_PROFILE)
     return D365Backend(resolved.profile, resolved.password, dry_run=False)
 
 

@@ -110,7 +110,7 @@ def test_resolve_none_strict_raises(monkeypatch):
 
 def _save_profile(monkeypatch, tmp_path, **kwargs):
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
-    monkeypatch.setenv("D365_PASSWORD", "pw")
+    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     profile = ConnectionProfile(
@@ -121,6 +121,7 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
         **kwargs,
     )
     session_mod.save_profile(profile)
+    session_mod.save_profile_secret_plaintext("p", "pw")
     state = session_mod.load_session("default")
     state["active_profile"] = "p"
     session_mod.save_session(state, "default")
@@ -243,19 +244,3 @@ def test_connection_status_surfaces_new_fields(monkeypatch, tmp_path):
     prof = env["data"]["profile"]
     assert prof["default_solution"] == "MySol"
     assert prof["publisher_prefix"] == "new"
-
-
-def test_connection_profiles_json_keeps_data_as_name_list(monkeypatch, tmp_path):
-    # Back-compat: `--json` consumers iterate `data` as the list of profile
-    # names. The richer per-profile detail is surfaced under `meta`, not by
-    # changing the shape of `data`.
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
-    result = CliRunner().invoke(
-        cli, ["--json", "--profile", "p", "connection", "profiles"],
-    )
-    assert result.exit_code == 0, result.output
-    env = json.loads(result.output)
-    assert env["data"] == ["p"]
-    detail = {d["name"]: d for d in env["meta"]["profiles"]}
-    assert detail["p"]["default_solution"] == "MySol"
-    assert detail["p"]["publisher_prefix"] == "new"

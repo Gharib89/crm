@@ -1,38 +1,34 @@
 # Initialize
 
-`crm init` bootstraps a workspace — generate an env template, or run an
-interactive wizard that saves a reusable connection profile.
+## First-run setup
 
-## Generate an env template
-
-```bash
-crm init --template
-```
-
-Writes `.env.example` to the current directory (refuses to overwrite an
-existing one). Copy it to `.env`, pick **one** auth block, and fill in values:
-
-- **On-prem (NTLM, default):** `CRM_URL`, `CRM_USERNAME`, `CRM_PASSWORD`,
-  `CRM_DOMAIN`, `CRM_AUTH=ntlm`.
-- **Online / Dataverse cloud (OAuth):** `CRM_URL`, `CRM_AUTH=oauth`,
-  `CRM_TENANT_ID`, `CRM_CLIENT_ID`, `CRM_CLIENT_SECRET`.
-
-`CRM_*` and `D365_*` names are interchangeable — see [Configure](configure.md).
-
-## Interactive wizard
+A working setup is a single saved **profile** — the server URL, auth scheme,
+identity, and secret. Create one with:
 
 ```bash
-crm init
+crm profile add
 ```
 
-Prompts for the server URL, auth scheme (`ntlm` | `kerberos` | `negotiate` |
-`oauth`, default `ntlm`), credentials, and a profile name, then saves a
-connection profile under `~/.crm/`. Secrets (password / client secret) are
-**not** written to the profile by the wizard — supply them via env vars at connect
-time, or store one once for the saved profile with
-`crm connection set-password --profile <name>` (OS keyring by default). This works
-for an OAuth client secret as well as an NTLM password — see
-[Configure](configure.md).
+On a terminal, `add` with no flags runs an interactive wizard: it asks for the server
+URL, infers the auth scheme from it (`*.dynamics.*` → OAuth, anything else → NTLM),
+collects the identity fields (NTLM username/domain or OAuth tenant/client id) and the
+secret, then saves the profile, stores the secret, runs a `WhoAmI` to confirm it
+works, and activates it. That is the quickest path to a working profile.
 
-The wizard is the quickest path to a working profile. For manual setup or the
-full env-var reference, see [Configure](configure.md).
+You don't even have to run it first: the **first time you run any connection command
+with no profile configured**, the CLI launches this wizard for you automatically (on
+a terminal). Under `--json` or a non-interactive shell it skips the wizard and errors
+cleanly, telling you to run `crm profile add`.
+
+For scripting or CI, pass flags instead of answering prompts:
+
+```bash
+crm profile add \
+    --url https://crm.contoso.local/contoso \
+    --username alice --domain CONTOSO \
+    --password "$SECRET" \
+    --name prod
+```
+
+See [How-to: profile](../how-to/profile.md) for switching, editing, and managing the
+stored secret, and [Configure](configure.md) for the NTLM vs OAuth field reference.

@@ -192,7 +192,9 @@ def repl(click_ctx: click.Context):
 
 def _repl_help(ctx):
     ctx.skin.help({
-        "connection connect": "Save profile and verify with WhoAmI",
+        "profile add": "Create a profile, verify with WhoAmI, and activate it",
+        "profile use": "Switch the active profile",
+        "profile list": "List saved profiles",
         "connection status": "Show active session/profile",
         "connection whoami": "Issue WhoAmI() against the server",
         "entity get <set> <id>": "GET a record",
@@ -213,7 +215,6 @@ def _repl_help(ctx):
         "solution list / info / export / import": "Solution lifecycle",
         "data export <set> -o file.csv": "Bulk export",
         "action function/invoke <name>": "Call OData function/action",
-        "init [--template]": "Bootstrap a workspace (.env.example or interactive profile)",
         "session info / clear / history": "Local session state",
         "help / quit": "REPL controls",
     })

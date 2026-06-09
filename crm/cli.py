@@ -139,16 +139,29 @@ class CLIContext:
         from crm.core import session as session_mod
         from crm.utils.d365_backend import D365Backend
 
-        # Profile selection: --profile flag > session active_profile > env.
+        # Profile selection: --profile flag > session active_profile > wizard.
         # A flag value is authoritative; otherwise fall back to the saved
-        # active_profile so `connect` once works on later commands (#130).
+        # active_profile so `crm profile use` persists across later commands (#130).
         effective_profile = self.profile_name
         if effective_profile is None:
             state = session_mod.load_session(self.session_name)
             candidate = state.get("active_profile")
-            # Ignore a stale pointer to a deleted profile — fall back to env.
+            # Ignore a stale pointer to a deleted profile (its file is gone).
             if candidate and session_mod.profile_path(candidate).is_file():
                 effective_profile = candidate
+
+        if effective_profile is None and _stdin_is_tty() and not self.json_mode:
+            # First-run UX: no profile resolvable and we're on an interactive
+            # terminal — drop into the setup wizard so a new user goes
+            # zero-to-working. Under --json / no-TTY we skip this and let
+            # resolve_credentials() raise the actionable "run `crm profile add`"
+            # error instead (never hang an agent/CI invocation).
+            import click as _click
+            from crm.commands.profile import profile_add
+            _click.echo("No profile configured yet. Let's set one up:")
+            _click.get_current_context().invoke(profile_add)
+            state = session_mod.load_session(self.session_name)
+            effective_profile = state.get("active_profile")
 
         key = (effective_profile, self.password, self.dry_run, self.auth_scheme,
                self.retry_on_ambiguous)
@@ -171,7 +184,7 @@ class CLIContext:
     def invalidate_backend(self) -> None:
         """Drop the cached D365Backend so the next backend() call rebuilds it.
 
-        Called when the profile changes (`connection connect`/`disconnect`) so
+        Called when the profile changes (`crm profile add`/`use`/`rm`) so
         the REPL stops reusing a backend wired up to a stale profile.
         Also triggers automatically if `profile_name`/`password`/`dry_run` change
         between calls (e.g., root opts re-supplied per REPL line).
@@ -303,9 +316,9 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "doctor": "crm.commands.connection:doctor_command",
         "entity": "crm.commands.entity:entity_group",
         "form": "crm.commands.form:form_group",
-        "init": "crm.commands.init:init_cmd",
         "metadata": "crm.commands.metadata:metadata_group",
         "plugin": "crm.commands.plugin:plugin_group",
+        "profile": "crm.commands.profile:profile_group",
         "query": "crm.commands.query:query_group",
         "repl": "crm.commands.repl:repl",
         "ribbon": "crm.commands.ribbon:ribbon_group",
@@ -358,7 +371,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True, help="Preview HTTP request without issuing it.")
 @click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
-@click.option("--password", help="Override password (otherwise read from D365_PASSWORD).")
+@click.option("--password", help="Secret for this run (overrides the profile's stored secret).")
 @click.option("--log-level",
               type=click.Choice(["debug", "info", "warning", "error"]),
               default=None,
@@ -372,8 +385,8 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 @click.option("--auth-scheme",
               type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
               default=None,
-              help="HTTP auth scheme (env: CRM_AUTH_SCHEME). "
-                   "ntlm/kerberos/negotiate = on-prem; oauth = cloud. Default: ntlm.")
+              help="Override the active profile's auth scheme for this run. "
+                   "ntlm/kerberos/negotiate = on-prem; oauth = cloud.")
 @click.option("--stage-only", "stage_only", is_flag=True,
               help="Stage metadata changes without publishing (env: CRM_STAGE_ONLY). "
                    "Forces every create/update command to --no-publish.")
@@ -421,12 +434,12 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     cli_ctx.dry_run = dry_run
     # Sticky options: in the REPL the same CLIContext is reused across lines, so only
     # overwrite when the user actually supplied the flag — otherwise prior values
-    # (e.g., set by `connection connect`) would be wiped on the next bare command.
+    # (e.g., set by `crm profile add`) would be wiped on the next bare command.
     if profile_name is not None:
         cli_ctx.profile_name = profile_name
     if password is not None:
         cli_ctx.password = password
-    cli_ctx.auth_scheme = auth_scheme or os.environ.get("CRM_AUTH_SCHEME")
+    cli_ctx.auth_scheme = auth_scheme
     # Sticky safety flag: once --stage-only (or CRM_STAGE_ONLY) is set, never clear it
     # back to False on a later bare REPL line that omits the token, which would silently
     # re-enable auto-publish and lose the safety guarantee.

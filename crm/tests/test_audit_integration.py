@@ -19,7 +19,6 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
     Mirrors the pattern from test_solution_targeting.py.
     """
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
-    monkeypatch.setenv("D365_PASSWORD", "pw")
     # Point dotenv at a non-existent file so resolve_credentials can't auto-load
     # a developer's real ./.env and make these tests non-hermetic (#56 class).
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
@@ -33,6 +32,7 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
         **kwargs,
     )
     session_mod.save_profile(profile)
+    session_mod.save_profile_secret_plaintext("p", "pw")
     state = session_mod.load_session("default")
     state["active_profile"] = "p"
     session_mod.save_session(state, "default")

@@ -383,28 +383,31 @@ class TestCallerObjectId:
 class TestCallerObjectIdCli:
     """End-to-end: the --as-user-object-id flag reaches the backend as CallerObjectId."""
 
+    @staticmethod
+    def _seed(monkeypatch, tmp_path, base):
+        monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))  # don't autoload repo .env
+        for k in ("CRM_AS_USER", "CRM_AS_USER_OBJECT_ID"):
+            monkeypatch.delenv(k, raising=False)
+        from crm.core import session as session_mod
+        session_mod.save_profile(ConnectionProfile(
+            name="t", url=base, domain="CONTOSO", username="alice",
+            api_version="v9.2"))
+        session_mod.save_profile_secret_plaintext("t", "pw")
+
     def test_cli_as_user_object_id_emits_callerobjectid(self, monkeypatch, tmp_path):
         from click.testing import CliRunner
         from crm.cli import cli
 
         base = "https://contoso.crm.dynamics.com"
-        monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))  # don't autoload repo .env
-        monkeypatch.setenv("D365_URL", base)
-        monkeypatch.setenv("D365_USERNAME", "alice")
-        monkeypatch.setenv("D365_PASSWORD", "pw")
-        monkeypatch.setenv("D365_DOMAIN", "CONTOSO")
-        monkeypatch.setenv("D365_AUTH", "ntlm")
-        monkeypatch.setenv("D365_API_VERSION", "v9.2")
-        for k in ("CRM_AS_USER", "CRM_AS_USER_OBJECT_ID"):
-            monkeypatch.delenv(k, raising=False)
+        self._seed(monkeypatch, tmp_path, base)
 
         guid = "44444444-4444-4444-4444-444444444444"
         rec = "55555555-5555-5555-5555-555555555555"
         with requests_mock.Mocker() as m:
             m.patch(f"{base}/api/data/v9.2/accounts({rec})", status_code=204)
             result = CliRunner().invoke(cli, [
-                "--json", "entity", "update", "accounts", rec,
+                "--json", "--profile", "t", "entity", "update", "accounts", rec,
                 "--data", '{"name": "x"}', "--allow-create",
                 "--as-user-object-id", guid,
             ])
@@ -417,22 +420,13 @@ class TestCallerObjectIdCli:
         from crm.cli import cli
 
         base = "https://contoso.crm.dynamics.com"
-        monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
-        monkeypatch.setenv("D365_URL", base)
-        monkeypatch.setenv("D365_USERNAME", "alice")
-        monkeypatch.setenv("D365_PASSWORD", "pw")
-        monkeypatch.setenv("D365_DOMAIN", "CONTOSO")
-        monkeypatch.setenv("D365_AUTH", "ntlm")
-        monkeypatch.setenv("D365_API_VERSION", "v9.2")
-        for k in ("CRM_AS_USER", "CRM_AS_USER_OBJECT_ID"):
-            monkeypatch.delenv(k, raising=False)
+        self._seed(monkeypatch, tmp_path, base)
 
         rec = "55555555-5555-5555-5555-555555555555"
         with requests_mock.Mocker() as m:
             m.patch(f"{base}/api/data/v9.2/accounts({rec})", status_code=204)
             result = CliRunner().invoke(cli, [
-                "--json", "entity", "update", "accounts", rec,
+                "--json", "--profile", "t", "entity", "update", "accounts", rec,
                 "--data", '{"name": "x"}', "--allow-create",
                 "--as-user", "11111111-1111-1111-1111-111111111111",
                 "--as-user-object-id", "22222222-2222-2222-2222-222222222222",

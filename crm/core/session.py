@@ -6,9 +6,9 @@ Layout under `~/.crm/`:
     sessions/<name>.json   — last-used profile + context (current entity, last query)
     history                — prompt_toolkit REPL history file
 
-Secrets are not persisted by default; a plaintext `_secret` may be stored opt-in
-(see save_profile_secret_plaintext). They otherwise come from env (`D365_PASSWORD`),
-`--password`, or the OS keyring.
+Secrets are saved by default (see save_profile_secret_plaintext / the OS keyring);
+the resolution order at use time is `--password` (per-run) > plaintext `_secret` >
+OS keyring > TTY prompt. There is no env-var fallback.
 """
 
 from __future__ import annotations
