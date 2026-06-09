@@ -342,9 +342,9 @@ class TestRegisterStep:
         assert out["created"] is True
         assert out["sdkmessageprocessingstepid"] == _STEP_ID
         body = _posts(m)[0].json()
-        assert body["SdkMessageId@odata.bind"] == f"/sdkmessages({_MSG_ID})"
-        assert body["PluginTypeId@odata.bind"] == f"/plugintypes({_TYPE_ID})"
-        assert body["SdkMessageFilterId@odata.bind"] == \
+        assert body["sdkmessageid@odata.bind"] == f"/sdkmessages({_MSG_ID})"
+        assert body["plugintypeid@odata.bind"] == f"/plugintypes({_TYPE_ID})"
+        assert body["sdkmessagefilterid@odata.bind"] == \
             f"/sdkmessagefilters({_FILTER_ID})"
         # default stage=postoperation(40), mode=sync(0), rank=1
         assert body["stage"] == 40
@@ -370,7 +370,7 @@ class TestRegisterStep:
                 backend, message="Create",
                 plugin_type="Contoso.Plugins.PreCreateAccount")
         body = _posts(m)[0].json()
-        assert "SdkMessageFilterId@odata.bind" not in body
+        assert "sdkmessagefilterid@odata.bind" not in body
         # no GET to sdkmessagefilters when entity is None
         assert not any("sdkmessagefilters" in r.url for r in m.request_history)
         # derived default names "any entity"

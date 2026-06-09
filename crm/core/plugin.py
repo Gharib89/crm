@@ -244,12 +244,14 @@ def register_step(
         "stage": stage_int,
         "mode": mode_int,
         "rank": rank,
-        "SdkMessageId@odata.bind": f"/sdkmessages({message_id})",
-        "PluginTypeId@odata.bind": f"/plugintypes({plugintype_id})",
+        # sdkmessageprocessingstep nav-props are lowercase logical names in
+        # $metadata; PascalCase is rejected with HTTP 400 (issue #159).
+        "sdkmessageid@odata.bind": f"/sdkmessages({message_id})",
+        "plugintypeid@odata.bind": f"/plugintypes({plugintype_id})",
     }
     if entity is not None:
         filter_id = _resolve_sdkmessagefilter_id(backend, entity, message_id)
-        body["SdkMessageFilterId@odata.bind"] = (
+        body["sdkmessagefilterid@odata.bind"] = (
             f"/sdkmessagefilters({filter_id})")
     if filtering_attributes is not None and message.lower() == "update":
         body["filteringattributes"] = filtering_attributes
