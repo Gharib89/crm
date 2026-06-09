@@ -21,9 +21,8 @@ _NULL_BACKEND_MODULE = "keyring.backends.fail"
 
 # Reused by both failure paths (import failure, no usable backend).
 _SECRET_FALLBACK = (
-    " Meanwhile, store the secret with --store-password-plaintext, or supply it "
-    "via D365_PASSWORD / D365_CLIENT_SECRET (or the CRM_PASSWORD / "
-    "CRM_CLIENT_SECRET aliases; env or .env)."
+    " Meanwhile, store the secret with `crm profile set-password "
+    "--store-password-plaintext`, or pass `--password` for a single run."
 )
 
 

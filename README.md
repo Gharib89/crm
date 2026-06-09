@@ -375,11 +375,13 @@ pip install -e .[dev]
 pytest crm/tests/test_core.py -v
 
 # E2E (requires live server credentials)
-export D365_URL=... D365_USERNAME=... D365_PASSWORD=...
+# The E2E fixture reads these env vars to SEED a temporary profile (the CLI itself
+# resolves from the saved profile, not the env).
+export D365_URL=... D365_USERNAME=... D365_PASSWORD=... D365_DOMAIN=...
 CRM_FORCE_INSTALLED=1 pytest crm/tests/ -v -s
 ```
 
-See `tests/TEST.md` for the full test plan and recorded results.
+See `crm/tests/TEST.md` for the full test plan and recorded results.
 
 ## Architecture
 

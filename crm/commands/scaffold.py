@@ -89,7 +89,7 @@ def table(
     if not prefix:
         raise click.UsageError(
             "scaffold table needs a publisher prefix to derive column schema names; "
-            "set publisher_prefix on the active profile (e.g. via crm init)."
+            "set publisher_prefix on the active profile (e.g. via crm profile edit)."
         )
 
     # --- 2. Resolve solution ---
