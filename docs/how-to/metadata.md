@@ -300,3 +300,9 @@ crm apply -f project.yaml
 `apply` ignores unknown keys, so the spec file remains apply-consumable throughout.
 Attribute types that `apply` cannot create (Owner, State, Status, and other system
 kinds) are silently skipped.
+
+**Fidelity warnings.** `export-spec` reports every custom column it cannot
+represent in the output spec — for example, a picklist whose metadata cast is
+permission-limited, or a lookup with no readable target entity. When running with
+`--json`, dropped columns and the reason are collected in `meta.warnings` so
+nothing is silently lost.

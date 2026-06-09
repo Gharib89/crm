@@ -847,3 +847,129 @@ class TestRoundTrip:
         }
         assert ent["primary_attr"]["schema_name"] == "new_Name"
         assert len(spec["optionsets"]) == 1
+
+
+class TestExportSpecWarnings:
+    def test_unmapped_type_warns(self, backend):
+        # An attribute whose AttributeTypeName.Value is not in _TYPE_NAME_TO_KIND.
+        attrs = {"value": [_shallow("new_name"), _shallow("new_weird")]}
+        weird = {
+            "SchemaName": "new_Weird",
+            "DisplayName": _label("Weird"),
+            "AttributeTypeName": {"Value": "ManagedPropertyType"},
+            "RequiredLevel": {"Value": "None"},
+        }
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_weird"), json=weird)
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        assert "attributes" not in spec["entities"][0]
+        assert len(warnings) == 1
+        assert "new_weird" in warnings[0]
+        assert "ManagedPropertyType" in warnings[0]
+
+    def test_string_missing_maxlength_warns(self, backend):
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        no_len = {
+            "SchemaName": "new_Code",
+            "DisplayName": _label("Code"),
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "None"},
+            # MaxLength deliberately absent (sparse read)
+        }
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=no_len)
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        assert "attributes" not in spec["entities"][0]
+        assert len(warnings) == 1
+        assert "new_code" in warnings[0]
+        assert "MaxLength" in warnings[0]
+
+    def test_precision_missing_warns(self, backend):
+        attrs = {"value": [_shallow("new_name"), _shallow("new_budget")]}
+        no_prec = {
+            "SchemaName": "new_Budget",
+            "DisplayName": _label("Budget"),
+            "AttributeTypeName": {"Value": "DecimalType"},
+            "RequiredLevel": {"Value": "None"},
+            # Precision absent
+        }
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_budget"), json=no_prec)
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        assert "attributes" not in spec["entities"][0]
+        assert len(warnings) == 1
+        assert "new_budget" in warnings[0]
+        assert "Precision" in warnings[0]
+
+    def test_lookup_no_target_warns(self, backend):
+        attrs = {"value": [_shallow("new_name"), _shallow("new_accountid")]}
+        no_target = {
+            "SchemaName": "new_AccountId",
+            "DisplayName": _label("Account"),
+            "AttributeTypeName": {"Value": "LookupType"},
+            "RequiredLevel": {"Value": "None"},
+            "Targets": [],
+        }
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_accountid"), json=no_target)
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        assert "attributes" not in spec["entities"][0]
+        assert len(warnings) == 1
+        assert "new_accountid" in warnings[0]
+        assert "target" in warnings[0].lower()
+
+    def test_picklist_cast_failure_warns(self, backend):
+        attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
+            # The Picklist cast read fails (e.g. 403 / not castable on this build).
+            m.get(_pick_cast_url(backend, "new_stage"), status_code=403, json={
+                "error": {"code": "0x80040220", "message": "forbidden"}
+            })
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        assert "attributes" not in spec["entities"][0]
+        assert len(warnings) == 1
+        assert "new_stage" in warnings[0]
+
+    def test_empty_options_warns(self, backend):
+        attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
+            # Cast succeeds but the local option set has no options.
+            m.get(_pick_cast_url(backend, "new_stage"), json={
+                "OptionSet": {"Options": []},
+            })
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        assert "attributes" not in spec["entities"][0]
+        assert len(warnings) == 1
+        assert "new_stage" in warnings[0]

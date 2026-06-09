@@ -467,15 +467,21 @@ def test_apply_idempotent_reapply_all_skipped(backend):
         _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner", exists=True)
         _mock_one_to_many(m, backend, schema="contoso_project_task", exists=True)
         _mock_view_create(m, backend, exists=True)
-        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        # Pre-existing optionset: add_solution_component fires to ensure membership.
+        m.post(backend.url_for("AddSolutionComponent"), json={})
+        # PublishAllXml: nothing was applied so publish does not run.
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
+    # solution-component add is reported as skipped (pre-existed; we can't tell
+    # without an extra GET whether it was already a solution member, so we don't
+    # count it as applied and don't trigger a redundant publish on every re-apply).
     assert res["applied"] == []
     assert _kinds(res["skipped"]) == [
         "publisher", "solution", "entity", "optionset",
+        "solution-component",
         "attribute", "attribute", "attribute", "relationship", "view",
     ]
-    assert _publish_hits(m, backend) == []
+    assert len(_publish_hits(m, backend)) == 0
     assert res["staged"] is False
 
 
@@ -695,6 +701,9 @@ def _mock_full(m, backend, *, exists):
     _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner", exists=exists)
     _mock_one_to_many(m, backend, schema="contoso_project_task", exists=exists)
     _mock_view_create(m, backend, exists=exists)
+    if exists:
+        # Pre-existing optionset: solution-component membership add fires.
+        m.post(backend.url_for("AddSolutionComponent"), json={})
     m.post(backend.url_for("PublishAllXml"), status_code=204)
 
 
@@ -721,9 +730,14 @@ def test_e2e_idempotent_reapply_all_skipped(backend, monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
+    # solution-component add is skipped (pre-existed); nothing applied → no publish.
     assert env["data"]["applied"] == []
-    assert _kinds(env["data"]["skipped"]) == _FULL_KINDS
-    assert _publish_hits(m, backend) == []
+    # solution-component phase runs after optionsets, before attributes.
+    _full_with_sc = (
+        _FULL_KINDS[:4] + ["solution-component"] + _FULL_KINDS[4:]
+    )
+    assert _kinds(env["data"]["skipped"]) == _full_with_sc
+    assert len(_publish_hits(m, backend)) == 0
 
 
 def test_e2e_dry_run_greenfield_plans_dependents(dry_backend, monkeypatch, tmp_path):
@@ -839,3 +853,94 @@ def test_apply_integer_attribute_no_precision_still_applies(backend):
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "attribute"]
+
+
+# ── Slice: include_referenced_optionsets — add pre-existing global to solution ─
+
+
+class TestApplyIncludeReferencedOptionsets:
+    _OS_META_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    _SOL_GUID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+    def _spec(self):
+        """Minimal spec: solution + one global optionset, no entities."""
+        return {
+            "solution": {"unique_name": "contoso_test"},
+            "optionsets": [{
+                "name": "contoso_tagset",
+                "display_name": "Tag Set",
+                "options": [{"value": 1, "label": "Alpha"}],
+            }],
+        }
+
+    def test_preexisting_global_added_to_solution_by_default(self, backend):
+        """A pre-existing optionset (skipped during create) is added to solution."""
+        spec = self._spec()
+        with requests_mock.Mocker() as m:
+            # solutions endpoint: _solution_exists ($select=solutionid) AND
+            # _require_unmanaged_solution via solution_info (no $select) both hit
+            # this same base URL; requests_mock ignores query params by default.
+            # Return a non-managed solution for _require_unmanaged_solution.
+            m.get(backend.url_for("solutions"),
+                  json={"value": [{"solutionid": self._SOL_GUID,
+                                   "uniquename": "contoso_test",
+                                   "ismanaged": False}]})
+            # GlobalOptionSetDefinitions(Name='contoso_tagset'): two calls.
+            # First: target_exists probe inside create_optionset (no $expand)
+            # Second: get_optionset call ($expand=Options)
+            # requests_mock matches base URL; use a response list to serve both.
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
+                [
+                    {"json": {"MetadataId": self._OS_META_ID, "Name": "contoso_tagset"}},
+                    {"json": {"MetadataId": self._OS_META_ID, "Name": "contoso_tagset",
+                              "Options": []}},
+                ],
+            )
+            add = m.post(backend.url_for("AddSolutionComponent"), json={})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+
+            res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=True)
+
+        assert add.called, "AddSolutionComponent was not called"
+        body = add.last_request.json()
+        assert body["ComponentType"] == 9
+        assert body["ComponentId"] == self._OS_META_ID
+        assert body["SolutionUniqueName"] == "contoso_test"
+        assert res["ok"]
+
+    def test_no_flag_skips_component_add(self, backend):
+        """include_referenced_optionsets=False skips the membership phase."""
+        spec = self._spec()
+        with requests_mock.Mocker() as m:
+            # Solution exists so create_solution skips it (no publisher resolution needed).
+            m.get(backend.url_for("solutions"),
+                  json={"value": [{"solutionid": self._SOL_GUID,
+                                   "uniquename": "contoso_test"}]})
+            m.post(backend.url_for("solutions"), status_code=204,
+                   headers={"OData-EntityId": backend.url_for(f"solutions({self._SOL_GUID})")})
+            # Optionset exists: create_optionset will skip it.
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
+                json={"MetadataId": self._OS_META_ID, "Name": "contoso_tagset"},
+            )
+            # No AddSolutionComponent mock — if it fires, NoMockAddress fails the test.
+            res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=False)
+
+        assert res["ok"]
+
+    def test_dry_run_previews_component_add(self, dry_backend):
+        """dry_run: component add is reported as planned, no HTTP beyond existence probes."""
+        backend = dry_backend
+        spec = self._spec()
+        with requests_mock.Mocker() as m:
+            # solutions probe for _solution_exists (forced-real)
+            m.get(backend.url_for("solutions"), json={"value": []})
+            # optionset EXISTS → would_skip=True → skipped → NOT in planned_names
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
+                json={"MetadataId": self._OS_META_ID, "Name": "contoso_tagset"},
+            )
+            res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=True)
+
+        assert any(e["kind"] == "solution-component" for e in res["planned"])

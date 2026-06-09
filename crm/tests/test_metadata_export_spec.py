@@ -385,3 +385,43 @@ class TestMissingEntity:
         assert env["ok"] is False
         assert "error" in env
         assert "Traceback" not in result.output
+
+
+def _pick_cast_url(backend, attr, entity="new_project") -> str:
+    return backend.url_for(
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attr}')"
+        "/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+    )
+
+
+def _local_pick_info() -> dict:
+    return {
+        "SchemaName": "new_Priority",
+        "DisplayName": _label("Priority"),
+        "AttributeTypeName": {"Value": "PicklistType"},
+        "RequiredLevel": {"Value": "None"},
+    }
+
+
+class TestExportSpecWarningsCommand:
+    def test_export_spec_emits_meta_warnings_for_dropped_picklist(
+        self, monkeypatch, backend
+    ):
+        # A custom picklist whose cast 403s -> dropped -> warning in meta.warnings.
+        _stub(monkeypatch, backend)
+        attrs = {"value": [_shallow("new_name"), _shallow("new_priority")]}
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_priority"), json=_local_pick_info())
+            m.get(_pick_cast_url(backend, "new_priority"), status_code=403, json={
+                "error": {"code": "0x0", "message": "forbidden"}
+            })
+            result = runner.invoke(cli, ["--json", "metadata", "export-spec", "new_project"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        warnings = payload["meta"]["warnings"]
+        assert any("new_priority" in w for w in warnings)

@@ -223,6 +223,7 @@ def apply_spec(
     *,
     solution: str | None = None,
     stage_only: bool = False,
+    include_referenced_optionsets: bool = True,
 ) -> dict[str, Any]:
     """Apply a desired-state spec; return {ok, applied, skipped, planned, failed, staged}."""
     validate_spec(spec)
@@ -304,6 +305,9 @@ def apply_spec(
                 planned_names.add(logical_name)
 
         # Phase: global option sets (before the attributes that reference them).
+        # Track names that were created (or planned in dry-run) to skip them in
+        # the solution-component phase below (they already carry the solution header).
+        os_created: set[str] = set()
         for os_spec in _as_list(spec.get("optionsets")):
             options = [(o.get("value"), o["label"]) for o in _as_list(os_spec.get("options"))]
             entry = {"kind": "optionset", "name": os_spec["name"]}
@@ -316,8 +320,51 @@ def apply_spec(
                 solution=solution_name,
                 if_exists="skip",
             ), failed)
-            if _classify(result, entry, applied, skipped, planned) == "planned":
+            bucket = _classify(result, entry, applied, skipped, planned)
+            if bucket == "planned":
                 planned_names.add(os_spec["name"])
+            if bucket in ("applied", "planned"):
+                os_created.add(os_spec["name"])
+
+        # Phase: ensure referenced global option sets are solution components (#146e).
+        # create_optionset adds a NEWLY created set to the solution via the
+        # MSCRM.SolutionUniqueName POST header, but a pre-existing global it skips
+        # is never made a member. Add each referenced set explicitly so a picklist's
+        # option set is not silently absent from the built solution. Default ON.
+        if include_referenced_optionsets and solution_name:
+            for os_spec in _as_list(spec.get("optionsets")):
+                os_name: str = os_spec["name"]
+                if os_name in os_created:
+                    continue  # created this run: MSCRM.SolutionUniqueName header handled it
+                comp_entry: dict[str, Any] = {"kind": "solution-component", "name": os_name}
+                if backend.dry_run:
+                    planned.append(comp_entry)
+                    continue
+                try:
+                    raw = as_dict(backend.get(
+                        f"GlobalOptionSetDefinitions(Name='{os_name}')",
+                        params={"$select": "MetadataId"},
+                    ))
+                    metadata_id = raw.get("MetadataId")
+                    if not isinstance(metadata_id, str) or not metadata_id:
+                        raise D365Error(
+                            f"option set {os_name!r} has no MetadataId; cannot add to solution."
+                        )
+                    sol_mod.add_solution_component(
+                        backend,
+                        solution=solution_name,
+                        component_id=metadata_id,
+                        component_type=sol_mod.SOLUTION_COMPONENT_TYPES["optionset"],
+                    )
+                    # Report as skipped (not applied): the optionset pre-existed so
+                    # we cannot tell without an extra GET whether it was already a
+                    # solution member. Reporting applied would trigger publish and
+                    # show a change on every re-apply even when nothing changed.
+                    skipped.append(comp_entry)
+                except D365Error as exc:
+                    # Best-effort: a membership-add failure must not abort an apply
+                    # whose entities/attrs already landed. Record, do not raise.
+                    failed.append({**comp_entry, "error": str(exc)})
 
         # Phase: attributes (across all entities; lookups delegate to a relationship).
         for ent in _as_list(spec.get("entities")):

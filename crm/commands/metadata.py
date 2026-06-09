@@ -241,11 +241,13 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
     under the standard JSON envelope (pipeable). With -o, the bare YAML spec is
     written to FILE so it is ready for `crm apply -f <file>`.
     """
+    warnings: list[str] = []
     try:
         spec = export_spec_mod.build_entity_spec(
             ctx.backend(), logical_name,
             with_views=with_views,
             with_relationships=with_relationships,
+            warnings=warnings,
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -267,10 +269,10 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
             "relationships": len(entity.get("relationships", [])),
             "views": len(entity.get("views", [])),
             "optionsets": len(spec.get("optionsets", [])),
-        })
+        }, warnings=warnings or None)
         return
 
-    ctx.emit(True, data=spec)
+    ctx.emit(True, data=spec, warnings=warnings or None)
 
 
 @metadata_group.command("dependencies")
