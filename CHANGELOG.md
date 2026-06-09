@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.1.2 (2026-06-09)
+
+### Bug Fixes
+
+- **solution**: Validate --against-org detects BPF stage GUID collisions in Workflows XAML
+  ([#163](https://github.com/Gharib89/crm/pull/163),
+  [`7059231`](https://github.com/Gharib89/crm/commit/70592315eddfe050d80a9f9f2842d0092f7efa4c))
+
+### Documentation
+
+- **out-of-scope**: Reject plugin step clone-from-existing
+  ([#169](https://github.com/Gharib89/crm/pull/169),
+  [`f734374`](https://github.com/Gharib89/crm/commit/f73437454417a5a59121941d324a09b7d016998c))
+
+
 ## v2.1.1 (2026-06-09)
 
 ### Bug Fixes
