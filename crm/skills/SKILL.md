@@ -42,38 +42,42 @@ Open a new shell so PATH updates, then verify with `crm --version`.
 ## Configure
 
 The CLI authenticates with **NTLM (Windows Integrated)** for on-prem, or
-**OAuth 2.0 client-credentials** for Dataverse online. Set env vars (canonical
-`D365_*` form **or** `CRM_*` aliases — both work, matching common on-prem tooling):
+**OAuth 2.0 client-credentials** for Dataverse online. Run **`crm profile add`**
+once to create a connection profile — it infers the auth scheme from the URL
+(`*.dynamics.com` → OAuth, anything else → NTLM), prompts for what that scheme
+needs, stores the secret, verifies with WhoAmI, and activates the profile.
+
+```bash
+crm profile add          # interactive wizard (on a terminal)
+```
+
+Or drive it non-interactively for scripting/CI:
 
 ```bash
 # On-prem (NTLM)
-export D365_URL="https://crm.contoso.local/contoso"
-export D365_USERNAME="alice"           # DOMAIN\user is parsed automatically
-export D365_PASSWORD="..."             # not persisted by default (see Hard constraints)
-export D365_DOMAIN="CONTOSO"           # optional if username is a UPN
-export D365_AUTH="ntlm"
-export D365_API_VERSION="v9.1"         # on-prem caps at v9.1; v9.2 → HTTP 501
+crm profile add --url https://crm.contoso.local/contoso \
+  --username alice --domain CONTOSO --password '...' --name onprem
 
-# Dataverse online (OAuth) — supply the app registration instead of user/pass/domain
-export D365_URL="https://contoso.crm.dynamics.com"
-export D365_AUTH="oauth"
-export D365_TENANT_ID="<aad-tenant-id>"
-export D365_CLIENT_ID="<app-registration-id>"
-export D365_CLIENT_SECRET="..."
-export D365_API_VERSION="v9.2"
+# Dataverse online (OAuth) — app registration instead of user/pass/domain
+crm profile add --url https://contoso.crm.dynamics.com \
+  --tenant-id <aad-tenant> --client-id <app-id> --password '<client-secret>' --name cloud
 ```
 
 The OAuth scope (`https://<host>/.default`) and authority
 (`https://login.microsoftonline.com/<tenant>`) are derived automatically; public
 cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json` (`0600`).
 The app registration needs an **application user** with a security role in Dynamics.
-`CRM_*` aliases (`CRM_BASE_URL`, `CRM_USERNAME`, `CRM_PASSWORD`, `CRM_API_VERSION`,
-`CRM_AUTH`, `CRM_TENANT_ID`, `CRM_CLIENT_ID`, `CRM_CLIENT_SECRET`) all work too.
 
-A `.env` file in the current directory (or its parent, or the path in `CRM_DOTENV`)
-is auto-loaded on every command; real env vars take precedence. State directory:
-`~/.crm/` (override with `CRM_HOME`). For repeat use, save a named profile with
-`crm connection connect` (NTLM) or `crm init` (interactive, OAuth or NTLM).
+**No `.env`, no credential env vars.** The CLI reads credentials and connection
+config ONLY from a saved profile (or a per-run `--password`). There is no `.env`
+autoload and no `D365_*` / `CRM_*` environment-variable reading. The one retained
+env knob is `CRM_HOME` (state-directory override; default `~/.crm/`).
+
+Switch or inspect profiles with `crm profile use [name]` (no name → interactive
+picker; `--none` clears the active profile) and `crm profile list` (marks the
+active one). On a fresh machine, any connection command with no profile drops
+into `crm profile add` automatically on a terminal (under `--json`/no-TTY it
+errors cleanly telling you to run `crm profile add`).
 
 ## On-prem vs cloud
 
@@ -82,16 +86,14 @@ against both targets.
 
 | | On-prem (NTLM) | Cloud / online (OAuth) |
 |---|---|---|
-| `D365_AUTH` | `ntlm` (also `kerberos` / `negotiate`) | `oauth` |
+| Auth scheme | NTLM (also `kerberos` / `negotiate`) | OAuth (client-credentials) |
 | API version | **v9.1 max** (`v9.2` → HTTP 501) | `v9.2` |
 | `CreateMultiple` / `UpdateMultiple` / `DeleteMultiple` | not available | available |
 | Solution import (sync + `ImportSolutionAsync` / `StageSolution`) | available | available |
 
-**Pin your profile when both credential sets are present.** If the environment
-defines both `CRM_*`/NTLM and `D365_*`/OAuth variables, a bare `crm` command lets
-the `D365_*` vars override the active profile and silently connect to cloud. Always
-pass `--profile <name>` and confirm the real target with
-`crm --json connection whoami` (check the `@odata.context` host).
+Profiles are explicit — there is no env-var override path. `crm profile list`
+shows the active profile and its target URL; `crm --json connection whoami`
+confirms the live host (check the `@odata.context`) before any mutation.
 
 ## Agent contract — JSON mode
 
@@ -164,13 +166,12 @@ non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit
   scope; OAuth targets the public cloud only.
 - **D365 CE on-prem 9.x or Dataverse online.** Same Web API; only auth differs.
 - **Real server required.** No local mocking; a live D365 server must be reachable.
-- **Secrets are not persisted by default; opt in explicitly.**
-  `connection connect --store-password` (or `set-password --profile <name>` for an
-  existing profile, including an OAuth profile from `crm init`) → OS keyring;
-  `--store-password-plaintext` → profile file (`0600` on POSIX, headless/CI fallback).
-  Keyring XOR plaintext. Works for both the NTLM password and the OAuth client secret.
-  `connection delete-password` removes it. Resolution: `--password` > env/.env >
-  stored secret > TTY prompt.
+- **Secrets are saved by default.** `crm profile add` / `crm profile set-password`
+  store the secret in the OS keyring, or a `0600` plaintext field in the profile
+  file when the keyring is unavailable (WSL/headless) or `--store-password-plaintext`
+  is passed. Keyring XOR plaintext (single store). Works for both the NTLM password
+  and the OAuth client secret. `crm profile delete-password` removes it. Resolution:
+  `--password` (per-run override) > stored secret > TTY prompt. No env-var fallback.
 
 ## Command discovery
 

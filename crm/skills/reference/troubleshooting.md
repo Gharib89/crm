@@ -2,7 +2,7 @@
 
 Classify failures, decide what is safe to retry, diagnose a broken connection, and
 inspect local session state. Flags/choices: `crm connection --help`,
-`crm session --help`.
+`crm profile --help`, `crm session --help`.
 
 ## Error taxonomy & recovery
 
@@ -17,7 +17,7 @@ only the four keys above.
 | `category` | trigger | `retryable` | recovery |
 |---|---|---|---|
 | `not_found` | 404 / code `0x80040217` | no | record doesn't exist, or wrong entity set / GUID |
-| `auth_failed` | 401 | no | NTLM: check `D365_DOMAIN\D365_USERNAME` + password. OAuth: app-registration (client id/secret, tenant) + an application user with a role |
+| `auth_failed` | 401 | no | NTLM: check the profile's domain / username + password (re-run `crm profile set-password`). OAuth: app-registration (client id/secret, tenant) + an application user with a role |
 | `forbidden` | 403 | no | the user lacks the privilege; for `security assign-role` this also fires when the role's business unit differs from the target's (roles are BU-scoped — assign one from the same BU) |
 | `concurrency_conflict` | 412 | yes | another change won the race — retrieve a fresh ETag and retry |
 | `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
@@ -67,8 +67,8 @@ plain network error — read the `meta.category` to tell auth from transport.
 The same commands hit both targets; only auth + API version differ. On-prem caps at
 API **v9.1** (`v9.2` → HTTP 501), and `CreateMultiple`/`UpdateMultiple`/`DeleteMultiple`
 are **cloud-only** — which is why bulk `data import` routes through `$batch` (see
-`reference/records.md`). When both `CRM_*`/NTLM and `D365_*`/OAuth vars are present,
-pin `--profile` and verify with `whoami` so a bare `crm` doesn't silently hit cloud.
+`reference/records.md`). The active profile selects the target; `crm profile list`
+shows it and `crm --json connection whoami` confirms the live host.
 
 ## Session & audit
 
