@@ -65,6 +65,40 @@ def retrieve(
 # ── Validate ────────────────────────────────────────────────────────────
 
 
+_NUMBER_WORDS = {
+    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+    "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+}
+
+
+def _suggest_field(field: str, valid_list: list[str]) -> str | None:
+    """Best single `did_you_mean` suggestion for an unknown field, or ``None``.
+
+    Pure and deterministic. Prefers, in order:
+      1. a trailing spelled-out number word mapped to its digit
+         (`telephoneone` → `telephone1`) that lands an exact valid member;
+      2. the closest fuzzy match — but ties (common in numbered families, where
+         `telephone1/2/3` all score equally) break to the lexicographically
+         *smallest* candidate, i.e. the lowest-numbered, most-common member.
+         `difflib.get_close_matches` breaks ties the other way (largest), which
+         is the #198 bug, so the ranking is done here.
+    """
+    for word, digit in _NUMBER_WORDS.items():
+        if field.endswith(word):
+            normalized = field[: -len(word)] + digit
+            if normalized in valid_list:
+                return normalized
+            break
+    best: tuple[float, str] | None = None
+    for cand in valid_list:
+        ratio = difflib.SequenceMatcher(None, field, cand).ratio()
+        if ratio < 0.6:
+            continue
+        if best is None or ratio > best[0] or (ratio == best[0] and cand < best[1]):
+            best = (ratio, cand)
+    return best[1] if best else None
+
+
 def validate_payload(
     backend: D365Backend,
     entity_set: str,
@@ -139,8 +173,8 @@ def validate_payload(
         for r in nav_rows
         if r.get("ReferencingEntityNavigationPropertyName")
     }
-    # Sorted so close-match tie-breaks (and thus did_you_mean) are deterministic;
-    # a set's iteration order is not stable across runs/builds.
+    # Sorted so did_you_mean is deterministic; a set's iteration order is not
+    # stable across runs/builds. `_suggest_field` ranks ties itself.
     valid_list = sorted(valid)
 
     unknown: list[str] = []
@@ -152,9 +186,9 @@ def validate_payload(
         if not field or field in valid or field in unknown:
             continue
         unknown.append(field)
-        close = difflib.get_close_matches(field, valid_list, n=1, cutoff=0.6)
-        if close:
-            did_you_mean[field] = close[0]
+        suggestion = _suggest_field(field, valid_list)
+        if suggestion:
+            did_you_mean[field] = suggestion
 
     if not unknown:
         return {"ok": True}
