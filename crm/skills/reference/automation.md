@@ -62,6 +62,39 @@ crm --json plugin unregister-assembly Contoso.Plugins --yes
 `--dry-run` skips all writes (resolution GETs still fire); the `--json` envelope
 carries `meta.dry_run: true`.
 
+### Debugging a plug-in via trace logs
+
+No dedicated trace verb — the loop runs through `entity update` (the org switch)
+and `query odata plugintracelogs` (the reader). `plugintracelogsetting` is a
+picklist on the `organizations` entity: `0` = Off (default), `1` = Exception
+(traces only on failure), `2` = All.
+
+```bash
+# 1. Enable. The single organizations row carries the switch.
+orgid=$(crm --json query odata organizations --select organizationid \
+        | jq -r '.data[0].organizationid')
+crm --json entity update organizations "$orgid" --data '{"plugintracelogsetting": 2}'
+
+# 2. Reproduce the plug-in run, then read its traces. typename = the plug-in
+# class; messageblock holds the ITracingService output. messagename/createdon
+# help when one class fires on several messages.
+crm --json query odata plugintracelogs \
+    --filter "startswith(typename,'Contoso.Plugins.AccountPostUpdate')" \
+    --select typename,messagename,createdon,messageblock
+
+# 3. Disable when done — trace rows consume org storage.
+crm --json entity update organizations "$orgid" --data '{"plugintracelogsetting": 0}'
+```
+
+Gotchas (server-side, not in `--help`):
+
+- **Read same-day.** A daily bulk-delete job purges trace rows ~24h after creation.
+- **`messageblock` caps at 10 KB** — the oldest trace lines are dropped first, so a
+  chatty plug-in can lose its early output.
+- **Traces survive transaction rollback.** When a synchronous plug-in throws and the
+  transaction rolls back, the trace rows remain — which is what makes the table useful
+  for diagnosing the failure that erased everything else.
+
 ## Workflows — `workflow`
 
 ```bash
