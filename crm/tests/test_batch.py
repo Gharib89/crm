@@ -14,6 +14,7 @@ from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
     _assemble_batch_body,
+    _extract_batch_error,
     _parse_batch_response,
 )
 
@@ -304,6 +305,26 @@ class TestParseResponse:
         assert "Record not found" in (results[0]["error"] or "")
 
 
+class TestExtractBatchError:
+    def test_invalid_utf8_in_part_does_not_raise(self):
+        # Error-path robustness: malformed bytes in a part must not raise
+        # UnicodeDecodeError and mask the original $batch failure.
+        body = (
+            b"--bx\r\n"
+            b"Content-Type: application/htt\xffp\r\n"  # invalid byte in the decoded ctype value
+            b"\r\n"
+            b"HTTP/1.1 404 Not Found\r\n"
+            b"Content-Type: application/json\r\n"
+            b"\r\n"
+            b'{"error":{"code":"0x1","message":"boom \xff"}}\r\n'
+            b"--bx--\r\n"
+        )
+        # Must return cleanly (not raise); message decoded with replacement.
+        msg, code = _extract_batch_error(body, "multipart/mixed; boundary=bx")
+        assert code == "0x1"
+        assert msg is not None and "boom" in msg
+
+
 class TestBatchMethod:
     def test_batch_round_trip_writes_only(self, backend, profile, fixed_boundaries):
         ops = [
@@ -499,6 +520,12 @@ class TestBatchMethod:
     def test_batch_requires_url(self, backend):
         with pytest.raises(D365Error, match="url"):
             backend.batch([{"method": "GET"}])
+
+    def test_batch_rejects_non_str_url(self, backend):
+        # TypedDicts aren't enforced at runtime; a non-str url must fail as a
+        # clear D365Error, not crash with AttributeError on .startswith.
+        with pytest.raises(D365Error, match="url"):
+            backend.batch([{"method": "GET", "url": 123}])
 
     def test_batch_rejects_leading_slash_url(self, backend):
         # Leading-slash URLs resolve against the host root (404), not the

@@ -704,11 +704,16 @@ class D365Backend:
                 raise D365Error(
                     f"batch op #{i}: body required on {m_upper}"
                 )
-            if op["url"].startswith("/"):
+            url = op["url"]
+            if not isinstance(url, str):  # pyright: ignore[reportUnnecessaryIsInstance]
+                raise D365Error(
+                    f"batch op #{i}: url must be a string; got {type(url).__name__}"
+                )
+            if url.startswith("/"):
                 raise D365Error(
                     f"batch op #{i}: url must be a bare relative path like "
                     f"'contacts(<id>)', not begin with '/' (a leading slash "
-                    f"resolves against the host root and 404s): {op['url']!r}"
+                    f"resolves against the host root and 404s): {url!r}"
                 )
             cid = op.get("content_id")
             if cid is not None:
@@ -1223,12 +1228,12 @@ def _extract_batch_error(body: bytes, content_type: str) -> tuple[str | None, st
     boundary = m.group(1).strip('"')
     for part in _split_mime_parts(body, boundary):
         ctype_match = re.search(rb"Content-Type:\s*([^\r\n;]+)", part, re.IGNORECASE)
-        ctype_val = ctype_match.group(1).decode("utf-8").strip().lower() if ctype_match else ""
+        ctype_val = ctype_match.group(1).decode("utf-8", errors="replace").strip().lower() if ctype_match else ""
         if ctype_val == "multipart/mixed":
             inner_m = re.search(rb"boundary=([^\r\n;]+)", part, re.IGNORECASE)
             if not inner_m:
                 continue
-            inner_boundary = inner_m.group(1).decode("utf-8").strip('"')
+            inner_boundary = inner_m.group(1).decode("utf-8", errors="replace").strip('"')
             inner_subparts = _split_mime_parts(part, inner_boundary)
         else:
             inner_subparts = [part]
