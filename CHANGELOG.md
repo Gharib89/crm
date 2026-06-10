@@ -9,6 +9,50 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.4.1 (2026-06-10)
+
+### Bug Fixes
+
+- **metadata**: Get-optionset 400 — drop invalid $expand=Options
+  ([#205](https://github.com/Gharib89/crm/pull/205),
+  [`42683e9`](https://github.com/Gharib89/crm/commit/42683e902654b72f421489a9bb7b9b54ff476b52))
+
+### Documentation
+
+- **research**: Backlog filed — issue numbers recorded
+  ([`3d597e3`](https://github.com/Gharib89/crm/commit/3d597e3a7b6ceb2785235d54df9ecb500f147c1c))
+
+- **research**: Cleanup confirmation and final criteria check
+  ([`336a2a4`](https://github.com/Gharib89/crm/commit/336a2a492328d9121082dbee361534cec13aed13))
+
+- **research**: Coverage matrix (Phase 2 complete)
+  ([`177903e`](https://github.com/Gharib89/crm/commit/177903e9942b1ead75d97366c44c2ea32326ee66))
+
+- **research**: CRM developer scenarios report (Phase 4 report)
+  ([`ca8a142`](https://github.com/Gharib89/crm/commit/ca8a14253805e595eabcc783dc7cd859670a09cb))
+
+- **research**: Draft enhancement backlog for review
+  ([`2bee836`](https://github.com/Gharib89/crm/commit/2bee836f6505268f976ce8fae0cc447c2db4c62d))
+
+- **research**: Harvest scenario candidates from five source families
+  ([`acb5566`](https://github.com/Gharib89/crm/commit/acb5566c4811ac3c11575f8c00353db070f4dd0e))
+
+- **research**: Ingest prior art into scenario harvest
+  ([`510fa70`](https://github.com/Gharib89/crm/commit/510fa7045daae399b6f70194d79fb8a9b9e465b1))
+
+- **research**: Minimal repros for trial-discovered CLI bugs
+  ([`2777245`](https://github.com/Gharib89/crm/commit/2777245d4bcf1af361a852187d356f4e42f9efe7))
+
+- **research**: Scenario catalogue (Phase 1 complete)
+  ([`d5738f4`](https://github.com/Gharib89/crm/commit/d5738f4f667cc15d3e6e929219dd129d7edea762))
+
+- **research**: Skill trial log (Phase 3 complete)
+  ([`3d18a8c`](https://github.com/Gharib89/crm/commit/3d18a8c0abdea5f273d17f3da3959a7a515a1abf))
+
+- **research**: Trial plan and environment readiness
+  ([`e7dc7b7`](https://github.com/Gharib89/crm/commit/e7dc7b7032e7ea5f359daebcae77fa296504c492))
+
+
 ## v2.4.0 (2026-06-10)
 
 ### Documentation
