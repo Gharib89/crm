@@ -886,8 +886,8 @@ class TestApplyIncludeReferencedOptionsets:
                                    "uniquename": "contoso_test",
                                    "ismanaged": False}]})
             # GlobalOptionSetDefinitions(Name='contoso_tagset'): two calls.
-            # First: target_exists probe inside create_optionset (no $expand)
-            # Second: get_optionset call ($expand=Options)
+            # First: target_exists probe inside create_optionset
+            # Second: get_optionset call (plain GET)
             # requests_mock matches base URL; use a response list to serve both.
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),

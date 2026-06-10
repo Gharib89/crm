@@ -71,7 +71,7 @@ class TestListOptionsets:
 
 
 class TestGetOptionset:
-    def test_get_expands_options(self, backend):
+    def test_get_returns_options(self, backend):
         from crm.core import optionsets as os_mod
         with requests_mock.Mocker() as m:
             m.get(
@@ -83,6 +83,21 @@ class TestGetOptionset:
             info = os_mod.get_optionset(backend, "new_priority")
         assert info["Name"] == "new_priority"
         assert info["Options"][0]["Value"] == 1
+
+    def test_get_sends_plain_request_without_expand(self, backend):
+        # $expand=Options is rejected with HTTP 400 on every target: the
+        # entity set is typed as OptionSetMetadataBase (no Options property)
+        # and Options is a complex-type collection, not a navigation
+        # property. A plain GET serializes the full derived type, Options
+        # included (issue #179).
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority", "Options": []},
+            )
+            os_mod.get_optionset(backend, "new_priority")
+        assert m.last_request.qs == {}
 
 
 class TestCreateOptionset:

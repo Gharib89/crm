@@ -953,7 +953,7 @@ def metadata_list_optionsets(ctx: CLIContext, custom_only, top):
 @click.argument("name")
 @pass_ctx
 def metadata_get_optionset(ctx: CLIContext, name):
-    """Retrieve a global option set with options expanded."""
+    """Retrieve a global option set, including its options."""
     try:
         info = os_mod.get_optionset(ctx.backend(), name)
     except D365Error as exc:
