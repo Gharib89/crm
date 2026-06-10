@@ -106,6 +106,88 @@ class TestWorkflowActivationHintWiring:
         assert called["hint"] is False
 
 
+class TestWorkflowAutoResolveNoteWiring:
+    """The redirect note emitted when set_workflow_state resolved an
+    activation-record GUID to its parent definition (issue #170)."""
+
+    @staticmethod
+    def _info(resolved: bool, *, activated: bool) -> dict:
+        return {
+            "workflow_id": _PARENT_GUID if resolved else _WF_ID,
+            "activated": activated,
+            "statecode": 1 if activated else 0,
+            "statuscode": 2 if activated else 1,
+            "resolved_from_activation_id": _WF_ID if resolved else None,
+        }
+
+    def test_deactivate_redirect_note_in_json_envelope(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import workflow as wf_cmd
+
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod, "set_workflow_state",
+            lambda backend, wid, **kw: self._info(True, activated=False),
+        )
+        from crm.cli import cli
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+        assert result.exit_code == 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        assert envelope["data"]["workflow_id"] == _PARENT_GUID
+        assert envelope["data"]["resolved_from_activation_id"] == _WF_ID
+        note = envelope["meta"]["note"]
+        assert _PARENT_GUID in note and _WF_ID in note
+
+    def test_activate_redirect_note_in_json_envelope(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import workflow as wf_cmd
+
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod, "set_workflow_state",
+            lambda backend, wid, **kw: self._info(True, activated=True),
+        )
+        from crm.cli import cli
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "workflow", "activate", _WF_ID])
+        assert result.exit_code == 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        note = envelope["meta"]["note"]
+        assert _PARENT_GUID in note and _WF_ID in note
+
+    def test_redirect_note_renders_in_human_mode(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import workflow as wf_cmd
+
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod, "set_workflow_state",
+            lambda backend, wid, **kw: self._info(True, activated=False),
+        )
+        from crm.cli import cli
+        result = CliRunner().invoke(
+            cli, ["--profile", "t", "workflow", "deactivate", _WF_ID])
+        assert result.exit_code == 0
+        assert "Operated on parent definition" in result.output
+        assert _PARENT_GUID in result.output
+
+    def test_no_note_without_redirect(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import workflow as wf_cmd
+
+        monkeypatch.setattr(
+            wf_cmd.workflow_mod, "set_workflow_state",
+            lambda backend, wid, **kw: self._info(False, activated=False),
+        )
+        from crm.cli import cli
+        result = CliRunner().invoke(
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+        assert result.exit_code == 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        assert "note" not in (envelope.get("meta") or {})
+
+
 class TestEntityDeleteActivationHintWiring:
     """`entity delete` against a workflow activation GUID (issue #161)."""
 

@@ -282,30 +282,74 @@ def set_workflow_state(
     workflow_id: str,
     *,
     activate: bool,
+    auto_resolve_parent: bool = True,
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
-    """Activate or deactivate a workflow via PATCH on statecode/statuscode."""
+    """Activate or deactivate a workflow via PATCH on statecode/statuscode.
+
+    A type=2 activation-record id is rejected by the server with `0x80045003`;
+    with `auto_resolve_parent` (default) the parent definition is resolved via
+    `parentworkflowid` and the PATCH retried against it, recorded in the
+    returned `resolved_from_activation_id` (None when no redirect happened).
+    If resolution finds no parent, the original rejection is re-raised. The
+    live path stays error-driven — no extra GET when the id is already a
+    definition. Dry-run instead resolves proactively with a real GET (the
+    short-circuited PATCH can never raise `0x80045003`), so the preview keys
+    on the GUID the live run would PATCH.
+    """
     if not workflow_id:
         raise D365Error("workflow_id is required.")
     state, status = STATE_ACTIVATED if activate else STATE_DRAFT
     body: dict[str, Any] = {"statecode": state, "statuscode": status}
-    backend.patch(
-        f"workflows({workflow_id})",
-        json_body=body,
-        etag="*",
-        caller_id=caller_id,
-        caller_object_id=caller_object_id,
-        suppress_duplicate_detection=suppress_duplicate_detection,
-        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
-    )
+
+    def _patch(target_id: str) -> None:
+        backend.patch(
+            f"workflows({target_id})",
+            json_body=body,
+            etag="*",
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
+
+    target_id = workflow_id
+    resolved_from: str | None = None
+
+    if auto_resolve_parent and backend.dry_run:
+        was_dry = backend.dry_run
+        backend.dry_run = False
+        try:
+            parent = _resolve_parent_workflow_id(
+                backend, workflow_id,
+                caller_id=caller_id, caller_object_id=caller_object_id)
+        finally:
+            backend.dry_run = was_dry
+        if parent:
+            target_id, resolved_from = parent, workflow_id
+
+    try:
+        _patch(target_id)
+    except D365Error as exc:
+        if not (auto_resolve_parent and exc.code == ACTIVATION_PATCH_ERROR_CODE):
+            raise
+        parent = _resolve_parent_workflow_id(
+            backend, workflow_id,
+            caller_id=caller_id, caller_object_id=caller_object_id)
+        if not parent:
+            raise
+        _patch(parent)
+        target_id, resolved_from = parent, workflow_id
+
     return {
-        "workflow_id": workflow_id,
+        "workflow_id": target_id,
         "activated": activate,
         "statecode": state,
         "statuscode": status,
+        "resolved_from_activation_id": resolved_from,
     }
 
 
@@ -316,17 +360,25 @@ ACTIVATION_DELETE_ERROR_CODE = "0x80045004"
 
 
 def _resolve_parent_workflow_id(
-    backend: D365Backend, workflow_id: str
+    backend: D365Backend,
+    workflow_id: str,
+    *,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
 ) -> str | None:
     """Best-effort single GET of the activation row's `parentworkflowid` lookup.
 
     Returns the parent definition GUID, or None if the GET fails or the row has
-    no parent. Never raises — used only on an already-failed error path, so it
-    must not mask the original error.
+    no parent. Never raises — callers sit on an already-failed error path (or a
+    dry-run preview), so it must not mask the original error. Impersonation
+    args keep the lookup under the same identity as the caller's state change.
     """
     try:
         row = as_dict(backend.get(
-            f"workflows({workflow_id})", params={"$select": "parentworkflowid"}
+            f"workflows({workflow_id})",
+            params={"$select": "parentworkflowid"},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
         ))
     except D365Error:
         return None

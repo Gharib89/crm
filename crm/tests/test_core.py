@@ -693,6 +693,103 @@ class TestWorkflow:
         body = json.loads(m.request_history[0].body)
         assert body == {"statecode": 0, "statuscode": 1}
 
+    def test_set_workflow_state_draft_id_no_extra_requests(self, backend):
+        """A definition id succeeds directly: one PATCH, no resolve GET, no redirect."""
+        from crm.core import workflow as wf_mod
+        wid = "11111111-1111-1111-1111-111111111111"
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"workflows({wid})"), status_code=204)
+            info = wf_mod.set_workflow_state(backend, wid, activate=True)
+        assert info["workflow_id"] == wid
+        assert info["resolved_from_activation_id"] is None
+        assert [r.method for r in m.request_history] == ["PATCH"]
+
+    def test_set_workflow_state_resolves_activation_parent(self, backend):
+        """An activation-record id (0x80045003) is resolved to its parent and the
+        PATCH retried against it, preserving body and admin headers."""
+        from crm.core import workflow as wf_mod
+        wid = "22222222-2222-2222-2222-222222222222"
+        parent_guid = "33333333-3333-3333-3333-333333333333"
+        caller = "44444444-4444-4444-4444-444444444444"
+        error_body = {"error": {"code": "0x80045003", "message": "Cannot update a workflow activation."}}
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"workflows({wid})"), status_code=400, json=error_body)
+            m.get(
+                backend.url_for(f"workflows({wid})"),
+                json={"_parentworkflowid_value": parent_guid},
+            )
+            m.patch(backend.url_for(f"workflows({parent_guid})"), status_code=204)
+            info = wf_mod.set_workflow_state(
+                backend, wid, activate=False, caller_id=caller)
+        assert info["workflow_id"] == parent_guid
+        assert info["resolved_from_activation_id"] == wid
+        assert info["activated"] is False
+        assert [r.method for r in m.request_history] == ["PATCH", "GET", "PATCH"]
+        # The resolve GET runs under the same impersonation as the state change.
+        assert m.request_history[1].headers.get("MSCRMCallerID") == caller
+        retried = m.request_history[2]
+        assert json.loads(retried.body) == {"statecode": 0, "statuscode": 1}
+        assert retried.headers.get("MSCRMCallerID") == caller
+        assert retried.headers.get("If-Match") == "*"
+
+    def test_set_workflow_state_reraises_when_parent_unresolvable(self, backend):
+        """No parent on the row → the original 0x80045003 surfaces, no retry."""
+        from crm.core import workflow as wf_mod
+        wid = "22222222-2222-2222-2222-222222222222"
+        error_body = {"error": {"code": "0x80045003", "message": "Cannot update a workflow activation."}}
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"workflows({wid})"), status_code=400, json=error_body)
+            m.get(backend.url_for(f"workflows({wid})"), json={})
+            with pytest.raises(D365Error) as exc_info:
+                wf_mod.set_workflow_state(backend, wid, activate=True)
+        assert exc_info.value.code == "0x80045003"
+        assert [r.method for r in m.request_history] == ["PATCH", "GET"]
+
+    def test_set_workflow_state_auto_resolve_opt_out(self, backend):
+        """auto_resolve_parent=False raises immediately with no resolve GET."""
+        from crm.core import workflow as wf_mod
+        wid = "22222222-2222-2222-2222-222222222222"
+        error_body = {"error": {"code": "0x80045003", "message": "Cannot update a workflow activation."}}
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"workflows({wid})"), status_code=400, json=error_body)
+            with pytest.raises(D365Error) as exc_info:
+                wf_mod.set_workflow_state(
+                    backend, wid, activate=True, auto_resolve_parent=False)
+        assert exc_info.value.code == "0x80045003"
+        assert [r.method for r in m.request_history] == ["PATCH"]
+
+    def test_set_workflow_state_dry_run_resolves_proactively(self, backend):
+        """Dry-run issues a real resolve GET (the short-circuited PATCH can never
+        raise 0x80045003) so the preview keys on the parent the live run would PATCH."""
+        from crm.core import workflow as wf_mod
+        wid = "22222222-2222-2222-2222-222222222222"
+        parent_guid = "33333333-3333-3333-3333-333333333333"
+        backend.dry_run = True
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({wid})"),
+                json={"_parentworkflowid_value": parent_guid},
+            )
+            info = wf_mod.set_workflow_state(backend, wid, activate=False)
+        assert backend.dry_run is True  # restored after the proactive GET
+        assert info["workflow_id"] == parent_guid
+        assert info["resolved_from_activation_id"] == wid
+        # The GET is the only real request; the PATCH stays a dry-run preview.
+        assert [r.method for r in m.request_history] == ["GET"]
+
+    def test_set_workflow_state_dry_run_draft_id_unchanged(self, backend):
+        """Dry-run with a definition id previews against the passed GUID."""
+        from crm.core import workflow as wf_mod
+        wid = "11111111-1111-1111-1111-111111111111"
+        backend.dry_run = True
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"workflows({wid})"), json={})
+            info = wf_mod.set_workflow_state(backend, wid, activate=True)
+        assert backend.dry_run is True
+        assert info["workflow_id"] == wid
+        assert info["resolved_from_activation_id"] is None
+        assert [r.method for r in m.request_history] == ["GET"]
+
     def test_execute_workflow_posts_bound_action(self, backend):
         from crm.core import workflow as wf_mod
         wid = "aaaa1111-1111-1111-1111-111111111111"
@@ -725,6 +822,9 @@ class TestWorkflow:
         error_body = {"error": {"code": "0x80045003", "message": "Cannot update a workflow activation."}}
         with requests_mock.Mocker() as m:
             m.patch(backend.url_for(f"workflows({wid})"), status_code=400, json=error_body)
+            # Auto-resolve attempts a parent GET; yield no parent so the
+            # original rejection surfaces and the hint path is exercised.
+            m.get(backend.url_for(f"workflows({wid})"), json={})
             with pytest.raises(D365Error) as exc_info:
                 wf_mod.set_workflow_state(backend, wid, activate=True)
         exc = exc_info.value

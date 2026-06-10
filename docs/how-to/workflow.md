@@ -16,7 +16,13 @@ crm --json workflow activate <workflow-guid>
 ```
 Sets `statecode=1, statuscode=2`; `crm workflow deactivate` reverses it.
 
-If you pass an activation-record GUID (type=2 — the compiled copy the server creates when a draft is activated), the command returns `ok: false` with a hint naming the parent draft GUID to pass instead.
+If you pass an activation-record GUID (type=2 — the compiled copy the server creates when a draft is activated), the command resolves the parent definition via the row's `parentworkflowid` lookup and applies the state change to the parent automatically. The result carries a note naming both GUIDs (in human and `--json` output alike), so you can see the redirect happened:
+
+```json
+{"ok": true, "data": {...}, "meta": {"note": "Operated on parent definition <parent-guid>; activation-record GUID <passed-guid> was passed."}}
+```
+
+Passing a draft GUID is unchanged: no note, and on a live run no extra round-trip. If the parent cannot be resolved, the command surfaces the server's original `0x80045003` rejection with a hint naming the parent definition GUID when known. Under `--dry-run` the resolution GET always runs (whichever GUID you pass), so the preview is keyed on the same GUID the live run would patch.
 
 `crm entity delete workflows <guid>` against that same activation-record GUID fails too — D365 rejects deleting activation rows directly (server code `0x80045004`). You can't delete the activation; deactivate its parent definition instead, which removes the activation. The error carries a hint: when the parent can be resolved it names the parent GUID and the exact `crm workflow deactivate <parent-guid>` command; otherwise it points you at the activation row's `parentworkflowid` lookup.
 

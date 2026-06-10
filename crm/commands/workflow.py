@@ -18,6 +18,19 @@ def workflow_group():
     """List, activate, and trigger D365 workflows."""
 
 
+def _redirect_note_meta(info: dict) -> dict | None:
+    """Meta carrying the activation-record redirect note, or None when the
+    state change ran against the GUID that was passed. The note travels via
+    meta (not gated on json_mode) so it renders in human mode too."""
+    resolved_from = info.get("resolved_from_activation_id")
+    if not resolved_from:
+        return None
+    return {"note": (
+        f"Operated on parent definition {info['workflow_id']}; "
+        f"activation-record GUID {resolved_from} was passed."
+    )}
+
+
 @workflow_group.command("list")
 @click.option("--category", type=int, help="Filter by category (0=Workflow, 4=BPF, 5=Modern Flow).")
 @click.option("--entity", "primary_entity", help="Filter by primary entity logical name.")
@@ -47,7 +60,11 @@ def workflow_list(ctx: CLIContext, category, primary_entity, activated_only, on_
 @_admin_header_options
 @pass_ctx
 def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
-    """Activate a workflow (statecode=1, statuscode=2)."""
+    """Activate a workflow (statecode=1, statuscode=2).
+
+    An activation-record GUID (type=2) is resolved to its parent definition
+    automatically and the state change is applied to the parent.
+    """
     try:
         info = workflow_mod.set_workflow_state(
             ctx.backend(), workflow_id, activate=True,
@@ -61,7 +78,7 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, 
                 if exc.code == workflow_mod.ACTIVATION_PATCH_ERROR_CODE else None)
         _handle_d365_error(ctx, exc, hint=hint)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta=_redirect_note_meta(info))
     _journal(ctx, "workflow activate", workflow_id, info)
 
 
@@ -70,7 +87,11 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, 
 @_admin_header_options
 @pass_ctx
 def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
-    """Deactivate a workflow (statecode=0, statuscode=1)."""
+    """Deactivate a workflow (statecode=0, statuscode=1).
+
+    An activation-record GUID (type=2) is resolved to its parent definition
+    automatically and the state change is applied to the parent.
+    """
     try:
         info = workflow_mod.set_workflow_state(
             ctx.backend(), workflow_id, activate=False,
@@ -84,7 +105,7 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id
                 if exc.code == workflow_mod.ACTIVATION_PATCH_ERROR_CODE else None)
         _handle_d365_error(ctx, exc, hint=hint)
         return
-    ctx.emit(True, data=info)
+    ctx.emit(True, data=info, meta=_redirect_note_meta(info))
     _journal(ctx, "workflow deactivate", workflow_id, info)
 
 

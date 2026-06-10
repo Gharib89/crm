@@ -51,7 +51,7 @@ crm --json workflow list --entity cwx_ticket --category 0   # definitions on an 
 
 crm --json workflow activate <workflow-guid>
 crm --json workflow deactivate <workflow-guid>
-# If the GUID is a type=2 activation record the command returns ok:false with a hint naming the parent draft GUID to use instead.
+# A type=2 activation-record GUID is auto-resolved to its parent definition; the result carries meta.note naming both GUIDs (check it when looping on exact ids).
 
 crm --json workflow run <workflow-guid> --target <record-guid>   # trigger on-demand
 
