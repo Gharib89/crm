@@ -175,6 +175,34 @@ via the Web API — `deactivate` returns `0x80045002` (`Cannot update a publishe
 workflow definition`); deactivate it from the classic UI instead. `deactivate`
 works normally for classic workflows (category `0`).
 
+### Migration readiness — `workflow migration-assess`
+
+Plans (does not perform) a move of classic category-0 workflows to Power
+Automate cloud flows. Read-only; no authoring — Microsoft has no supported API
+to author cloud flows, so the value is the inventory + readiness verdict.
+
+```bash
+crm --json workflow migration-assess               # all category-0 definitions
+crm --json workflow migration-assess --entity account
+```
+
+Each `data[]` row: `{id, name, primaryentity, state, mode, verdict, blockers}`.
+`verdict` is `ready` or `blocked`; `blockers` lists which of three rules fired,
+anchored to the MS capability table (no other blockers are invented):
+
+- `real_time` — `mode` is real-time (synchronous); cloud flows run async only.
+- `wait_condition` — the xaml contains a wait/wait-timeout step (`Postpone`).
+- `custom_activity` — the xaml references a workflow activity from any assembly
+  other than the out-of-box `Microsoft.Crm.Workflow` (first-party
+  `Microsoft.Dynamics.*`/`Microsoft.PowerPages.*` solution activities count as
+  custom too — they don't carry to a flow).
+
+`blocked` means **needs redesign**, not impossible — each blocker maps to an MS
+recommended pattern (switch/loop actions, recurrence trigger, changesets, custom
+connectors). Runs on **both** targets: on on-prem the report is identical but
+`meta.note` reminds you the migration target must be a Dataverse online
+environment (cloud flows don't exist on-prem). `meta.count` is the row count.
+
 ## SLAs — `sla`
 
 An SLA cannot activate until every backing workflow (one per SLA item) is

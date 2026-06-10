@@ -33,6 +33,31 @@ CATEGORY_MODERN_FLOW = 5
 TYPE_DEFINITION = 1
 TYPE_ACTIVATION = 2
 
+# `workflow.mode` values
+MODE_BACKGROUND = 0
+MODE_REALTIME = 1
+
+# Migration-readiness blocker codes (issue #199). Anchored to the MS Learn
+# capability table "Replace classic Dataverse workflows with flows": cloud
+# flows cannot run synchronously, cannot use wait conditions, and cannot run
+# custom (non-out-of-box) workflow activities.
+MIGRATION_BLOCKER_REAL_TIME = "real_time"
+MIGRATION_BLOCKER_WAIT = "wait_condition"
+MIGRATION_BLOCKER_CUSTOM_ACTIVITY = "custom_activity"
+
+# The single assembly that hosts out-of-box workflow activities. Any
+# ActivityReference whose AssemblyQualifiedName names a different assembly is a
+# custom workflow activity (verified live: first-party Microsoft.Dynamics.* /
+# Microsoft.PowerPages.* solution activities and third-party assemblies alike).
+_OOB_ACTIVITY_ASSEMBLY = "Microsoft.Crm.Workflow"
+
+# Classic wait/wait-timeout conditions compile to the `Postpone` activity in the
+# Microsoft.Xrm.Sdk.Workflow.Activities namespace (alias `mxswa`). Match the
+# element local name under any prefix; ground-truthed against live workflows.
+_WAIT_ACTIVITY_RE = re.compile(r"<\w+:Postpone[\s/>]")
+# `AssemblyQualifiedName="<type>, <assembly>, Version=..."` — capture the assembly.
+_ACTIVITY_ASSEMBLY_RE = re.compile(r'AssemblyQualifiedName="[^,"]+,\s*([^,"]+)')
+
 # Activation state pairs
 STATE_DRAFT = (0, 1)        # (statecode, statuscode)
 STATE_ACTIVATED = (1, 2)
@@ -275,6 +300,72 @@ def list_workflows(
     }
     result = backend.get("workflows", params=params)
     return as_dict(result).get("value", [])
+
+
+def assess_workflow_migration(row: dict[str, Any]) -> dict[str, Any]:
+    """Per-workflow flow-migration readiness verdict for one category-0 row.
+
+    Pure and deterministic given the row (which must include the heuristic
+    inputs `mode`, `statecode`, and `xaml`). Best-effort: blockers are
+    "needs redesign" signals from the MS capability table, not proofs of
+    impossibility.
+    """
+    xaml = row.get("xaml") or ""
+    blockers: list[str] = []
+    if row.get("mode") == MODE_REALTIME:
+        blockers.append(MIGRATION_BLOCKER_REAL_TIME)
+    if _WAIT_ACTIVITY_RE.search(xaml):
+        blockers.append(MIGRATION_BLOCKER_WAIT)
+    if any(asm.strip() != _OOB_ACTIVITY_ASSEMBLY
+           for asm in _ACTIVITY_ASSEMBLY_RE.findall(xaml)):
+        blockers.append(MIGRATION_BLOCKER_CUSTOM_ACTIVITY)
+    return {
+        "id": row.get("workflowid"),
+        "name": row.get("name"),
+        "primaryentity": row.get("primaryentity"),
+        "state": "activated" if row.get("statecode") == STATE_ACTIVATED[0] else "draft",
+        "mode": "realtime" if row.get("mode") == MODE_REALTIME else "background",
+        "verdict": "blocked" if blockers else "ready",
+        "blockers": blockers,
+    }
+
+
+_MIGRATION_ASSESS_SELECT = "workflowid,name,primaryentity,mode,statecode,xaml"
+
+
+def assess_workflow_migrations(
+    backend: D365Backend,
+    *,
+    primary_entity: str | None = None,
+    max_pages: int = 100,
+) -> list[dict[str, Any]]:
+    """Assess every category-0 workflow definition for flow-migration readiness.
+
+    Selects the definition rows (type=1, category=0) with the heuristic inputs
+    in one query and follows `@odata.nextLink` up to `max_pages` so large orgs
+    are fully covered. Returns one `assess_workflow_migration` verdict per row.
+    Read-only.
+    """
+    filters = [f"type eq {TYPE_DEFINITION}", f"category eq {CATEGORY_WORKFLOW}"]
+    if primary_entity:
+        filters.append(f"primaryentity eq '{primary_entity}'")
+    params: dict[str, str] = {
+        "$select": _MIGRATION_ASSESS_SELECT,
+        "$filter": " and ".join(filters),
+    }
+    rows: list[dict[str, Any]] = []
+    page = as_dict(backend.get("workflows", params=params))
+    pages_consumed = 1
+    while True:
+        value = page.get("value", [])
+        if isinstance(value, list):
+            rows.extend(cast(list[dict[str, Any]], value))
+        next_link = page.get("@odata.nextLink")
+        if not isinstance(next_link, str) or not next_link or pages_consumed >= max_pages:
+            break
+        page = as_dict(backend.get(next_link))
+        pages_consumed += 1
+    return [assess_workflow_migration(r) for r in rows]
 
 
 def set_workflow_state(
