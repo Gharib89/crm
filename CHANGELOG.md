@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.4.4 (2026-06-10)
+
+### Bug Fixes
+
+- **solution**: Sync ImportSolution fallback so import-result is usable on-prem
+  ([#182](https://github.com/Gharib89/crm/pull/182),
+  [`6082d77`](https://github.com/Gharib89/crm/commit/6082d77375987af24be2c01d63c21b121a4eee81))
+
+
 ## v2.4.3 (2026-06-10)
 
 ### Bug Fixes
