@@ -61,13 +61,17 @@ def list_optionsets(
 
 
 def get_optionset(backend: D365Backend, name: str) -> dict[str, Any]:
-    """Retrieve a global option set with its options expanded."""
+    """Retrieve a global option set, including its options.
+
+    Plain GET, no query parameters: ``Options`` is a complex-type collection
+    on the derived ``OptionSetMetadata`` type, so ``$expand``/``$select`` on
+    it are rejected (HTTP 400) on every target. The bare request serializes
+    the full derived type — ``Options`` for picklists, ``TrueOption``/
+    ``FalseOption`` for Boolean option sets.
+    """
     if not name:
         raise D365Error("name is required.")
-    return as_dict(backend.get(
-        f"GlobalOptionSetDefinitions(Name='{name}')",
-        params={"$expand": "Options"},
-    ))
+    return as_dict(backend.get(f"GlobalOptionSetDefinitions(Name='{name}')"))
 
 
 def create_optionset(
