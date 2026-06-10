@@ -94,11 +94,14 @@ publish the owning entity:
 ```bash
 crm --json query odata savedqueries --filter "name eq 'Active Accounts'" \
     --select name,returnedtypecode,savedqueryid
-crm entity update savedqueries <savedqueryid> \
-    --data '{"fetchxml":"<fetch>…</fetch>","layoutxml":"<grid>…</grid>"}'
+crm entity update savedqueries <savedqueryid> --data-file view.json   # {"fetchxml":"…","layoutxml":"…"}
 crm solution publish --xml \
     '<importexportxml><entities><entity>account</entity></entities></importexportxml>'
 ```
+
+Use `--data-file`, **not** inline `--data` — both blobs are XML full of double
+quotes (`version="1.0"`, `name="resultset"`), which must be JSON-escaped; a file
+keeps that escaping sane and copy-paste-safe.
 
 `returnedtypecode` is the entity **logical name** — a string like `account`, **not**
 an int — so identify the target view by `name` or by `returnedtypecode eq '<logical>'`.
