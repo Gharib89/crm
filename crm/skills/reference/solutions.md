@@ -30,7 +30,7 @@ crm --json solution set-version CRMWorx --friendly-name "CRM Worx" --description
 Add or remove an existing component to/from an **unmanaged** solution
 (`AddSolutionComponent` / `RemoveSolutionComponent`). `--type` takes a `componenttype`
 integer or a friendly name (case- and separator-insensitive: `entity`=1, `attribute`=2,
-`relationship`=3, `optionset`=9, `entityrelationship`=10, `webresource`=61, …; raw int
+`relationship`=3, `optionset`=9, `entityrelationship`=10, `role`=20, `webresource`=61, …; raw int
 for anything else). Both refuse managed targets. `remove-component` is destructive
 (`--yes` required). Gotcha: `add-component --type entity` with required-components on
 (the default) may silently pull required components into the solution beyond the one
@@ -59,6 +59,14 @@ crm solution import /tmp/snap.zip --yes
 **Gotcha:** `solution import` **OVERWRITES** unmanaged customizations in the target org by
 default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
 context aborts.
+
+**Gotcha:** importing a security **role** from a **managed** solution strips all
+*manually added* privileges of that role on the target org (privilege-level *changes*
+survive; manual *additions* are removed) — per Microsoft Learn, "how managed solutions
+are merged → merge security role privileges". Mitigation: manage every update to a given
+role from the **same** custom solution; never add privileges directly on the target org,
+and don't move a role's updates to a different solution. (On-prem v9.x always strips;
+newer Dataverse online merges role privileges instead.)
 
 The result carries `import_job_id` and `async_operation_id` — capture both; they
 drive the investigation workflow below.
