@@ -10,6 +10,7 @@ Pure stdlib: no network, no crm/D365 import — runs fast and offline on every
 Bash call. Contract: PreToolUse exit code 2 blocks the tool call and feeds
 stderr back to the agent (Claude Code hooks docs).
 """
+
 from __future__ import annotations
 
 import json
@@ -28,11 +29,17 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "metadata": {
         "delete-entity",
         "delete-optionset",
-        "delete-attribute",      # not yet implemented; gated pre-emptively
-        "delete-relationship",   # not yet implemented; gated pre-emptively
+        "delete-attribute",  # not yet implemented; gated pre-emptively
+        "delete-relationship",  # not yet implemented; gated pre-emptively
     },
     "entity": {"delete"},
-    "solution": {"job-cancel", "import", "remove-component"},
+    "solution": {
+        "job-cancel",
+        "import",
+        "remove-component",
+        "uninstall",
+        "stage-and-upgrade",
+    },
     "translation": {"import"},
     "async": {"cancel"},
     "plugin": {"unregister-assembly", "unregister-step", "unregister-image"},

@@ -135,6 +135,38 @@ crm --json solution import-result <import_job_id>
 ```
 Re-fetches a completed import job by id and runs the same parser, returning the per-component pass/fail envelope (and the same `meta.warnings` on any non-success component) without re-importing. The `<import_job_id>` is the `import_job_id` reported by `solution import`. Add `--formatted` for the Excel-format report ([#70](https://github.com/Gharib89/crm/issues/70)).
 
+## Upgrade a managed solution (clone-as-patch, stage-and-upgrade, uninstall)
+
+First-class verbs for the managed-solution lifecycle, so an agent never has to drop to the raw `CloneAsPatch`/`DeleteAndPromote` server actions. All three work on both v9.x on-prem and Dataverse online, and compose with `--dry-run` and `--json`.
+
+**Clone a parent solution to a patch** (`CloneAsPatch`):
+
+```bash
+crm --json solution clone-as-patch --solution CRMWorx
+```
+Creates a patch solution and returns `{cloned, parent_solution, display_name, version, patch_solutionid}`. When `--version` is omitted the parent's version is read and its **revision** (4th part) is bumped — e.g. a parent at `1.0.0.0` yields patch `1.0.0.1`; a patch must keep the parent's `major.minor`. `--display` defaults to the parent's friendly name. A missing parent fails before any POST.
+
+**Stage an upgrade as a holding solution** (`ImportSolution` `HoldingSolution`):
+
+```bash
+crm solution stage-and-upgrade docs/artifacts/crmworx_2_0.zip --yes
+```
+Imports the zip in *holding* mode — staged for upgrade, not yet applied — reusing the same import pipeline as `solution import` (per-component result parsing, the on-prem synchronous `ImportSolution` fallback, progress ticks). Gated as destructive: `--yes` skips the prompt for non-interactive use.
+
+**Apply the staged upgrade** with `--promote` (`DeleteAndPromote` — replaces the base solution and its patches with the holding solution):
+
+```bash
+crm solution stage-and-upgrade docs/artifacts/crmworx_2_0.zip --promote --solution CRMWorx --yes
+```
+`--promote` requires `--solution` (the unique name to promote, exit 2 otherwise). It runs only after a real, succeeded stage — never under `--dry-run` — and attaches the promote result under `data.promote`.
+
+**Uninstall a solution** (`DELETE /solutions(<id>)`):
+
+```bash
+crm solution uninstall --solution CRMWorx --yes
+```
+Resolves the solutionid, then **pre-checks `RetrieveDependenciesForUninstall`** and refuses with the blocker count unless `--force` (use [`solution dependencies`](#preview-what-blocks-uninstalling-a-managed-solution) to inspect the blockers first). For a managed base solution the server also uninstalls its patches. Gated as destructive (`--yes`).
+
 ## Publish all customizations
 
 ```bash

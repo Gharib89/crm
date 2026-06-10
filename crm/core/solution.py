@@ -10,6 +10,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from crm.core import dependencies
 from crm.core import entity
 from crm.core import metadata_cache
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -189,6 +190,122 @@ def create_solution(
         out["solution_lookup_error"] = (
             f"Could not parse solutionid from response: {result.get('entity_id_url')!r}")
     return out
+
+
+def clone_as_patch(
+    backend: D365Backend,
+    *,
+    parent_solution: str,
+    display_name: str | None = None,
+    version: str | None = None,
+) -> dict[str, Any]:
+    """Create a solution patch from a parent solution via the CloneAsPatch action.
+
+    A patch must share the parent's major.minor and have a higher build/revision.
+    When `version` is omitted the parent's version is read and its revision (the
+    4th part) is bumped by one; when `display_name` is omitted it defaults to the
+    parent's friendlyname. Both defaults need the parent record, read with a
+    forced-real GET so they resolve under --dry-run too.
+
+    Returns `{cloned, parent_solution, display_name, version, patch_solutionid}`
+    on a real run.
+    """
+    if version is None or display_name is None:
+        was_dry = backend.dry_run
+        backend.dry_run = False
+        try:
+            parent = solution_info(backend, parent_solution)
+        finally:
+            backend.dry_run = was_dry
+        if version is None:
+            version = _bump_revision(parent.get("version", ""))
+        if display_name is None:
+            display_name = parent.get("friendlyname") or parent_solution
+
+    body: dict[str, Any] = {
+        "ParentSolutionUniqueName": parent_solution,
+        "DisplayName": display_name,
+        "VersionNumber": version,
+    }
+    result = as_dict(backend.post("CloneAsPatch", json_body=body))
+    if result.get("_dry_run"):
+        return result
+    return {
+        "cloned": True,
+        "parent_solution": parent_solution,
+        "display_name": display_name,
+        "version": version,
+        "patch_solutionid": result.get("SolutionId"),
+    }
+
+
+def uninstall_solution(
+    backend: D365Backend, unique_name: str, *, force: bool = False
+) -> dict[str, Any]:
+    """Uninstall a solution: DELETE /solutions(<id>).
+
+    Resolves the solutionid with a forced-real GET (so the preview is accurate
+    under --dry-run and a missing solution fails fast before any DELETE). Unless
+    `force=True`, pre-flights RetrieveDependenciesForUninstall and refuses with
+    the blocker list when any dependency would block the uninstall — turning a
+    confusing server fault into an actionable error. Returns
+    `{uninstalled, solution, solutionid}` on a real run, or the entity.delete
+    `_dry_run` preview (plus solution / solutionid) under --dry-run.
+    """
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        info = solution_info(backend, unique_name)
+    finally:
+        backend.dry_run = was_dry
+    sol_id = info["solutionid"]
+
+    if not force:
+        deps = dependencies.retrieve_dependencies_for_uninstall(backend, unique_name)
+        if deps["count"]:
+            raise D365Error(
+                f"Solution {unique_name!r} has {deps['count']} uninstall "
+                "dependency blocker(s); resolve them or pass force=True.",
+                code="UninstallBlocked",
+            )
+
+    result = entity.delete(backend, "solutions", sol_id)
+    if result.get("_dry_run"):
+        return {**result, "solution": unique_name, "solutionid": sol_id}
+    return {"uninstalled": True, "solution": unique_name, "solutionid": sol_id}
+
+
+def delete_and_promote(backend: D365Backend, unique_name: str) -> dict[str, Any]:
+    """Replace a managed base solution with its staged holding upgrade.
+
+    Calls the DeleteAndPromote action, which deletes the base solution plus all
+    of its patches and renames the holding solution to the base's unique name.
+    Run this after a successful `stage-and-upgrade` holding import. Returns
+    `{promoted, solution, solutionid}` on a real run.
+    """
+    if not unique_name:
+        raise D365Error("solution unique name required.")
+    result = as_dict(backend.post("DeleteAndPromote", json_body={"UniqueName": unique_name}))
+    if result.get("_dry_run"):
+        return result
+    return {"promoted": True, "solution": unique_name, "solutionid": result.get("SolutionId")}
+
+
+def _bump_revision(version: str) -> str:
+    """Return `version` with its 4th part (revision) incremented by one.
+
+    A clone-as-patch version must keep the parent's major.minor and exceed its
+    build/revision; bumping the revision is the smallest valid increment. Raises
+    D365Error on a version that is not 4-part dotted numeric.
+    """
+    if not re.fullmatch(r"\d+\.\d+\.\d+\.\d+", version):
+        raise D365Error(
+            f"cannot auto-bump a non 4-part dotted version {version!r}; "
+            "pass an explicit version."
+        )
+    parts = version.split(".")
+    parts[3] = str(int(parts[3]) + 1)
+    return ".".join(parts)
 
 
 def update_solution(
@@ -769,11 +886,16 @@ def import_solution(
     *,
     publish_workflows: bool = True,
     overwrite_unmanaged_customizations: bool = True,
+    holding_solution: bool = False,
     timeout: int | None = None,
     quiet: bool = False,
     formatted: bool = False,
 ) -> dict[str, Any]:
     """Call ImportSolutionAsync and block on the resulting ImportJob.
+
+    `holding_solution=True` stages the import as a "holding" solution for a
+    managed upgrade (ImportSolution `HoldingSolution`); apply it afterwards with
+    `delete_and_promote`. This is what `crm solution stage-and-upgrade` uses.
 
     When the org rejects ImportJobId on the async action (on-prem v9.x), falls
     back to the synchronous ImportSolution action carrying the same client GUID
@@ -805,6 +927,7 @@ def import_solution(
         "CustomizationFile": encoded,
         "PublishWorkflows": publish_workflows,
         "OverwriteUnmanagedCustomizations": overwrite_unmanaged_customizations,
+        "HoldingSolution": holding_solution,
         "ImportJobId": import_job_id,
     }
 
