@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.4.3 (2026-06-10)
+
+### Bug Fixes
+
+- **solution**: Remove-component sends SolutionComponent entity-reference shape
+  ([#181](https://github.com/Gharib89/crm/pull/181),
+  [`255fcd5`](https://github.com/Gharib89/crm/commit/255fcd56ba6c4c666e01f4dbf41774fa7fa8a667))
+
+
 ## v2.4.2 (2026-06-10)
 
 ### Bug Fixes
