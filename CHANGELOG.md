@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.6.2 (2026-06-10)
+
+### Bug Fixes
+
+- **batch**: Parse inner error from failing $batch, reject leading-slash op urls
+  ([#212](https://github.com/Gharib89/crm/pull/212),
+  [`b42f0dd`](https://github.com/Gharib89/crm/commit/b42f0dd797d97e4565c45b783bd679f29a364a85))
+
+
 ## v2.6.1 (2026-06-10)
 
 ### Bug Fixes
