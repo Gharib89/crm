@@ -55,3 +55,30 @@ def test_no_repo_only_paths_in_shipped_skill():
         text = f.read_text(encoding="utf-8")
         for bad in _FORBIDDEN_PATHS:
             assert bad not in text, f"{f.name} references repo-only path '{bad}'"
+
+
+def test_solutions_reference_covers_import_investigation():
+    """#183: an agent reading only the installed skill must discover the
+    import-failure investigation verbs and the on-prem fallback path."""
+    text = (REFERENCE_DIR / "solutions.md").read_text(encoding="utf-8")
+    for token in (
+        "import-result",       # post-mortem: re-fetch + parse a prior ImportJob
+        "job-status",          # in-progress monitoring (alias for async get)
+        "async list",          # find the operation when the id wasn't captured
+        "--against-org",       # pre-import gate
+        "components",          # fallback verification: components --diff
+        "ImportSolution",      # on-prem sync-action caveat
+    ):
+        assert token in text, f"solutions.md missing '{token}'"
+
+
+def test_router_routes_import_failures_to_solutions():
+    """#183: SKILL.md's routing row for solutions.md must mention import-failure
+    investigation, so agents route there from the router alone."""
+    router = SKILL_MD.read_text(encoding="utf-8")
+    row = next(
+        line for line in router.splitlines() if "reference/solutions.md" in line
+    )
+    assert "failed import" in row, (
+        f"solutions.md routing row lacks import-failure investigation: {row!r}"
+    )

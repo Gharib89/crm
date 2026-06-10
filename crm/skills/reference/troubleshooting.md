@@ -33,6 +33,9 @@ the genuine no-response path.
 The bare OData `in` predicate is unsupported (Web API is OData 4.0) — use
 `Microsoft.Dynamics.CRM.In(PropertyName='...',PropertyValues=[...])` or `query fetchxml`.
 
+Investigating a **failed solution import** (`job-status`, `import-result`, the on-prem
+evidence hole, fallback verification): see `reference/solutions.md`.
+
 ## Retry semantics
 
 The backend **auto-retries** the `transport_error` / `throttled` (429) / `server_error`

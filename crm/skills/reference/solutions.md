@@ -60,12 +60,8 @@ crm solution import /tmp/snap.zip --yes
 default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
 context aborts.
 
-The result's `import_job_id` is always non-null — feed it to
-`crm solution import-result <id>` to (re-)inspect per-component outcomes. On
-on-prem orgs the import may run via the synchronous `ImportSolution` action
-(`action: "ImportSolution"` in the result): no progress ticks, the request
-blocks until the import finishes, and a missing-dependency import fails loudly
-instead of reporting success.
+The result carries `import_job_id` and `async_operation_id` — capture both; they
+drive the investigation workflow below.
 
 ## Source control — SolutionPackager bridge
 
@@ -98,6 +94,42 @@ BPF process-stage GUIDs (`StageId`/`NextStageId` in `Workflows/*.xaml`, probed
 against `processstages` — the `CreateProcessStage` duplicate-key class), and
 existence of referenced web resources and global option sets in the target org
 (requires a connection/profile). Use before `solution import`.
+
+## Investigating a failed import
+
+Work the timeline in order — gate, monitor, post-mortem, verify:
+
+1. **Before** — `solution validate <zip>`, plus `--against-org` against the
+   target (previous section). Offline findings are cheaper than a failed import.
+2. **During** — `crm --json solution job-status <id>` (alias for
+   `crm async get`) polls the import's async operation; the id is the import
+   envelope's `async_operation_id`. Didn't capture it? `crm --json async list`
+   finds the operation.
+3. **After** — `crm --json solution import-result <id>` re-fetches the
+   ImportJob of any prior import and parses per-component pass/fail outcomes;
+   the id is the import envelope's `import_job_id` (always non-null). Parsing
+   is best-effort: a missing or unparseable ImportJob data column degrades to a
+   `meta.warnings` note, never an error.
+
+**On-prem caveat.** On-prem orgs import via the synchronous `ImportSolution`
+action (`action: "ImportSolution"` in the import envelope): no progress ticks,
+the request blocks until the import finishes, there is no async operation to
+poll (`async_operation_id` is null), and a **declared** missing dependency
+fails the import loudly (fault `0x80048033`). Two evidence holes remain:
+per-component results may still be unavailable (the import's `meta.warnings`
+says why), and an import whose components carry **undeclared** dangling
+references can report success while leaving broken state — only read-back
+catches it.
+
+**Fallback verification — confirm components actually landed.** When
+`import-result` has nothing, or a clean result needs corroborating, read the
+target back:
+
+```bash
+# snapshot taken from the SOURCE org before export (see drift section below)
+crm --json solution components MySolution --diff expected.json
+crm --json metadata entity new_widget       # spot-check key components exist
+```
 
 ## Preview what blocks uninstalling a managed solution
 
