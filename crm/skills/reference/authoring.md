@@ -85,6 +85,11 @@ The LayoutXml `object` attribute is the entity **ObjectTypeCode (OTC)** — get 
 `metadata entity <name>` (see `reference/metadata.md`). `--column` is repeatable
 `'logical[:width]'` with order preserved.
 
+`--order` takes an optional `asc`/`desc` suffix (same `$orderby` idiom as
+`query odata --orderby`): `--order createdon` is ascending, `--order 'createdon desc'`
+sorts newest-first by writing `descending="true"` into the FetchXml at create time —
+no follow-up savedquery PATCH. Bad direction token → usage error (exit 2).
+
 ### Edit an existing view
 
 `view create` only makes new views. To change an existing one, PATCH its

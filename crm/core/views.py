@@ -32,13 +32,15 @@ def _build_layoutxml(entity: str, object_type_code: int,
 
 
 def _build_fetchxml(entity: str, columns: list[tuple[str, int]],
-                    order_by: str | None, filter_active: bool) -> str:
+                    order_by: str | None, filter_active: bool,
+                    order_desc: bool = False) -> str:
     id_attr = f"{entity}id"
     attrs = f'<attribute name={quoteattr(id_attr)} />' + "".join(
         f'<attribute name={quoteattr(name)} />' for name, _ in columns
     )
+    descending = "true" if order_desc else "false"
     order = (
-        f'<order attribute={quoteattr(order_by)} descending="false" />'
+        f'<order attribute={quoteattr(order_by)} descending="{descending}" />'
         if order_by else ""
     )
     filt = (
@@ -60,6 +62,7 @@ def create_view(
     name: str,
     columns: list[tuple[str, int]],
     order_by: str | None = None,
+    order_desc: bool = False,
     filter_active: bool = False,
     is_default: bool = False,
     publish: bool = False,
@@ -113,7 +116,8 @@ def create_view(
         "querytype": 0,
         "isdefault": is_default,
         "layoutxml": _build_layoutxml(entity, object_type_code, columns),
-        "fetchxml": _build_fetchxml(entity, columns, order_by, filter_active),
+        "fetchxml": _build_fetchxml(entity, columns, order_by, filter_active,
+                                    order_desc),
     }
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post("savedqueries", json_body=body,

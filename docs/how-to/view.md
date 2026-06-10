@@ -18,4 +18,15 @@ crm --json view create cwx_ticket --name "Tickets by Priority" --otc 10127 \
   --column "cwx_priority:120" --column "cwx_name:220" --column "cwx_severity:120" \
   --order cwx_priority --if-exists skip
 ```
-`--column` is repeatable as `logicalname[:width]` (order preserved); `--order` sets the ascending sort attribute. Use column **logical names** (e.g. `cwx_priority`), not the option-set names. Get the `--otc` value the same way: `crm --json metadata entity cwx_ticket`.
+`--column` is repeatable as `logicalname[:width]` (order preserved); `--order` sets the sort attribute. Use column **logical names** (e.g. `cwx_priority`), not the option-set names. Get the `--otc` value the same way: `crm --json metadata entity cwx_ticket`.
+
+## Sort newest-first (descending)
+
+`--order` takes an optional `asc`/`desc` suffix — the same `$orderby` idiom as `query odata --orderby`. Bare attribute = ascending.
+
+```bash
+crm --json view create cwx_ticket --name "Recent Tickets" --otc 10127 \
+  --column "cwx_name:220" --column "createdon:140" \
+  --order "createdon desc" --if-exists skip
+```
+This writes `descending="true"` into the view's FetchXml at create time — no follow-up `entity update savedqueries` PATCH. An invalid direction token (anything but `asc`/`desc`) is a usage error (exit 2).
