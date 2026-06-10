@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.8.0 (2026-06-10)
+
+### Documentation
+
+- **scope**: Record environment-admin verbs as out-of-scope
+  ([#201](https://github.com/Gharib89/crm/pull/201),
+  [`93e1adc`](https://github.com/Gharib89/crm/commit/93e1adc313bee5c0b62228ed487a5346aa24e15f))
+
+### Features
+
+- **view**: Descending sort in view create --order
+  ([#217](https://github.com/Gharib89/crm/pull/217),
+  [`9b8937f`](https://github.com/Gharib89/crm/commit/9b8937f85d748d3475232c4ad07472e076ada221))
+
+
 ## v2.7.0 (2026-06-10)
 
 ### Documentation
