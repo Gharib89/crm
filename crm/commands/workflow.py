@@ -135,12 +135,13 @@ def workflow_delete(ctx: CLIContext, workflow_id, yes,
         _handle_d365_error(ctx, exc)
         return
     # The prompt must name the resolved target: with an activation-record GUID
-    # the verb deletes a *different record* (the parent definition).
-    desc = f"{target['name']!r} ({target['workflow_id']})"
+    # the verb deletes a *different record* (the parent definition). No !r here
+    # — _confirm_destructive's default prompt already reprs the name.
+    desc = f"{target['name'] or '<unnamed>'} ({target['workflow_id']})"
     message = None
     if target["resolved_from_activation_id"]:
         message = (
-            f"This will permanently delete workflow definition {desc} — you "
+            f"This will permanently delete workflow definition {desc!r} — you "
             f"passed its activation record {workflow_id}, which the server "
             "removes with the definition. Continue?"
         )
