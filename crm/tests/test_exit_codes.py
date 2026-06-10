@@ -88,6 +88,30 @@ def test_in_command_usage_error_json_envelope():
     assert "--data" in env["error"]
 
 
+def test_malformed_data_json_envelope():
+    """Malformed --data JSON under --json → exit 2, parseable envelope, no traceback."""
+    result = CliRunner().invoke(
+        cli, ["--json", "entity", "create", "accounts", "--data", '{"bad json']
+    )
+    assert result.exit_code == 2, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert "--data" in env["error"]
+    assert "Unterminated string" in env["error"]  # the parser's own message survives
+    assert "Traceback" not in result.output
+    assert "Traceback" not in result.stderr
+
+
+def test_malformed_data_json_human_mode():
+    """Malformed --data without --json → clean Click usage error, exit 2, no traceback."""
+    result = CliRunner().invoke(
+        cli, ["entity", "create", "accounts", "--data", '{"bad json']
+    )
+    assert result.exit_code == 2, result.output
+    assert "invalid JSON in --data" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_root_level_bad_parameter_json_envelope():
     """Root-callback BadParameter (--log-level) under --json → exit 2, parseable envelope."""
     result = CliRunner().invoke(

@@ -312,9 +312,17 @@ def _resolve_schema_name(
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
     if data_file:
         with open(data_file, "r", encoding="utf-8") as f:
-            parsed = json.load(f)
+            try:
+                parsed = json.load(f)
+            except json.JSONDecodeError as exc:
+                raise click.UsageError(
+                    f"invalid JSON in --data-file: {exc}"
+                ) from exc
     elif data_json:
-        parsed = json.loads(data_json)
+        try:
+            parsed = json.loads(data_json)
+        except json.JSONDecodeError as exc:
+            raise click.UsageError(f"invalid JSON in --data: {exc}") from exc
     else:
         raise click.UsageError("Either --data or --data-file is required.")
     if not isinstance(parsed, dict):
