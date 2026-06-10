@@ -20,8 +20,8 @@ def workflow_group():
 
 def _redirect_note_meta(info: dict) -> dict | None:
     """Meta carrying the activation-record redirect note, or None when the
-    state change ran against the GUID that was passed. Unconditional meta on
-    purpose: the note renders in human mode too, not just --json."""
+    state change ran against the GUID that was passed. The note travels via
+    meta (not gated on json_mode) so it renders in human mode too."""
     resolved_from = info.get("resolved_from_activation_id")
     if not resolved_from:
         return None

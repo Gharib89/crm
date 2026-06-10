@@ -320,11 +320,12 @@ def set_workflow_state(
     resolved_from: str | None = None
 
     if auto_resolve_parent and backend.dry_run:
+        was_dry = backend.dry_run
         backend.dry_run = False
         try:
             parent = _resolve_parent_workflow_id(backend, workflow_id)
         finally:
-            backend.dry_run = True
+            backend.dry_run = was_dry
         if parent:
             target_id, resolved_from = parent, workflow_id
 
