@@ -6,6 +6,7 @@ from crm.core import workflow as workflow_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _confirm_destructive,
     _handle_d365_error,
     _admin_header_options,
     _admin_kwargs,
@@ -107,6 +108,55 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id
         return
     ctx.emit(True, data=info, meta=_redirect_note_meta(info))
     _journal(ctx, "workflow deactivate", workflow_id, info)
+
+
+@workflow_group.command("delete")
+@click.argument("workflow_id")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_admin_header_options
+@pass_ctx
+def workflow_delete(ctx: CLIContext, workflow_id, yes,
+                    as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+    """Delete a workflow definition, deactivating it first if active.
+
+    An activation-record GUID (type=2) is resolved to its parent definition;
+    deleting the definition removes the activation record server-side. Not
+    atomic: if the deactivate lands but the delete fails, the definition
+    remains a draft (no rollback).
+    """
+    admin = _admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins)
+    try:
+        target = workflow_mod.resolve_delete_target(
+            ctx.backend(), workflow_id,
+            caller_id=admin["caller_id"],
+            caller_object_id=admin["caller_object_id"],
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    # The prompt must name the resolved target: with an activation-record GUID
+    # the verb deletes a *different record* (the parent definition). desc is
+    # plain — _confirm_destructive's default prompt applies !r itself, and the
+    # custom message below adds !r explicitly so both paths render identically.
+    desc = f"{target['name'] or '<unnamed>'} ({target['workflow_id']})"
+    message = None
+    if target["resolved_from_activation_id"]:
+        message = (
+            f"This will permanently delete workflow definition {desc!r} — you "
+            f"passed its activation record {workflow_id}, which the server "
+            "removes with the definition. Continue?"
+        )
+    if not _confirm_destructive("workflow definition", desc, yes, message=message):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = workflow_mod.delete_workflow(
+            ctx.backend(), workflow_id, resolved=target, **admin)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info, meta=_redirect_note_meta(info))
+    _journal(ctx, "workflow delete", workflow_id, info)
 
 
 @workflow_group.command("run")

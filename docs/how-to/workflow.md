@@ -46,7 +46,28 @@ If you pass an activation-record GUID (type=2 — the compiled copy the server c
 
 Passing a draft GUID is unchanged: no note, and on a live run no extra round-trip. If the parent cannot be resolved, the command surfaces the server's original `0x80045003` rejection with a hint naming the parent definition GUID when known. Under `--dry-run` the resolution GET always runs (whichever GUID you pass), so the preview is keyed on the same GUID the live run would patch.
 
-`crm entity delete workflows <guid>` against that same activation-record GUID fails too — D365 rejects deleting activation rows directly (server code `0x80045004`). You can't delete the activation; deactivate its parent definition instead, which removes the activation. The error carries a hint: when the parent can be resolved it names the parent GUID and the exact `crm workflow deactivate <parent-guid>` command; otherwise it points you at the activation row's `parentworkflowid` lookup.
+`crm entity delete workflows <guid>` against that same activation-record GUID fails too — D365 rejects deleting activation rows directly (server code `0x80045004`). You can't delete the activation; deactivate its parent definition instead, which removes the activation — or use `crm workflow delete`, which handles the whole sequence (see below). The error carries a hint: when the parent can be resolved it names the parent GUID and the exact `crm workflow deactivate <parent-guid>` command; otherwise it points you at the activation row's `parentworkflowid` lookup.
+
+## Delete a workflow definition
+
+```bash
+crm --json workflow delete <workflow-guid> --yes
+```
+
+Deletes the workflow **definition** (type=1), deactivating it first when it is active. Without `--yes` the confirmation prompt names the exact definition (name + GUID) the delete will hit.
+
+Passing an activation-record GUID (type=2) works too: the command resolves the parent definition via the row's `parentworkflowid` lookup and operates on the parent — the server removes the activation record together with the definition. The prompt then says explicitly that you passed an activation record and names the definition it resolved to, and the result carries the same `meta.note` as `activate`/`deactivate`, naming both GUIDs.
+
+Two failure modes worth knowing:
+
+- **Not atomic.** Deactivate-then-delete is two requests with no transaction. If the deactivate lands and the delete then fails, there is no rollback — the error states the definition was deactivated and remains a draft.
+- **No live parent.** An activation record whose parent definition is gone (null or dangling `parentworkflowid`) has no supported Web API delete path (ADR 0003, Web API only — no SOAP); the command fails cleanly and points you at the D365 UI. In practice this case has not been observed — see issue #164.
+
+Under `--dry-run` the resolution GETs still run live, and the preview reports what would happen:
+
+```json
+{"ok": true, "data": {"_dry_run": true, "would_delete": "<definition-guid>", "would_deactivate": true, ...}}
+```
 
 ## Trigger an on-demand workflow against a record
 

@@ -61,6 +61,14 @@ crm --json workflow activate <workflow-guid>
 crm --json workflow deactivate <workflow-guid>
 # A type=2 activation-record GUID is auto-resolved to its parent definition; the result carries meta.note naming both GUIDs (check it when looping on exact ids).
 
+crm --json workflow delete <workflow-guid> --yes
+# Deactivates the definition first when active, then deletes it. A type=2
+# activation-record GUID resolves to its parent definition (the server removes
+# the activation record with it) — meta.note names both GUIDs. NOT atomic: if
+# the delete fails after the deactivate, the definition remains a draft (the
+# error says so; no rollback). An activation record with no live parent has no
+# supported Web API path — the command fails clean, pointing at the D365 UI.
+
 crm --json workflow run <workflow-guid> --target <record-guid>   # trigger on-demand
 
 # Clone a classic workflow onto another entity (xaml-retargeted; activates by default)
