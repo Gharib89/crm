@@ -157,6 +157,18 @@ class TestD365Backend:
         assert result["body"] == {"name": "Foo"}
         assert "accounts" in result["url"]
 
+    def test_request_per_call_timeout_overrides_profile(self, backend):
+        """A per-call timeout overrides profile.timeout for that request only."""
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("WhoAmI"),
+                json={"UserId": "00000000-0000-0000-0000-000000000001"},
+            )
+            backend.get("WhoAmI", timeout=900)
+            backend.get("WhoAmI")
+        assert m.request_history[0].timeout == 900
+        assert m.request_history[1].timeout == backend.profile.timeout
+
     def test_request_error_4xx_raises_d365error(self, backend):
         with requests_mock.Mocker() as m:
             m.get(
@@ -1401,7 +1413,8 @@ class TestImportSolutionAsync:
 
         assert info["async_operation_id"] == self.OP_ID
         assert info["status"] == "succeeded"
-        assert "import_job_id" in info
+        assert info["action"] == "ImportSolutionAsync"
+        assert info["import_job_id"] is not None
         assert "duration_ms" in info
         assert "started_on" in info or info.get("started_on") is None  # tolerant
 
@@ -1442,69 +1455,169 @@ class TestImportSolutionAsync:
         assert info["action"] == "ImportSolutionAsync"
         assert "import_job_id" in info
 
-    RECOVERED_JOB_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    _REJECT_BODY = {
+        "error": {
+            "message": "The parameter 'ImportJobId' in the request payload "
+                       "is not a valid parameter for the operation 'ImportSolutionAsync'."
+        }
+    }
+    _DATA_SUCCESS = (
+        '<importexportxml><solutionManifests><solutionManifest>'
+        '<UniqueName>Sol</UniqueName>'
+        '<result result="success" errorcode="0" errortext="" />'
+        '</solutionManifest></solutionManifests></importexportxml>'
+    )
 
-    def test_import_job_id_rejected_retries_without_it(
+    def test_import_job_id_rejected_falls_back_to_sync_import(
         self, backend, tmp_path, monkeypatch
     ):
-        """On-prem rejects ImportJobId → retry without it → recover id from asyncop."""
+        """On-prem rejects ImportJobId on the async action → retry with the
+        synchronous ImportSolution carrying the SAME client GUID, so the
+        importjobs read-back works and import-result stays usable (#182)."""
         import time as _t
         monkeypatch.setattr(_t, "sleep", lambda s: None)
         zip_path = tmp_path / "in.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
 
-        call_count: dict[str, int] = {"n": 0}
-
-        def _post_handler(request, context):  # type: ignore[return]
-            call_count["n"] += 1
-            body = request.json()
-            if call_count["n"] == 1:
-                # First call: reject ImportJobId
-                assert "ImportJobId" in body
-                context.status_code = 400
-                return {
-                    "error": {
-                        "message": "The parameter 'ImportJobId' in the request payload "
-                                   "is not a valid parameter for the operation 'ImportSolutionAsync'."
-                    }
-                }
-            # Second call: ImportJobId must be absent
-            assert "ImportJobId" not in body
-            context.status_code = 200
-            return {"AsyncOperationId": self.OP_ID}
-
         with requests_mock.Mocker() as m:
-            m.post(backend.url_for("ImportSolutionAsync"), json=_post_handler)
-            # asyncop poll returns completed with _regardingobjectid_value set
-            m.get(
-                requests_mock.ANY,
-                [
-                    {
-                        "json": {
-                            "statecode": 3,
-                            "statuscode": 30,
-                            "message": "Done",
-                            "_regardingobjectid_value": self.RECOVERED_JOB_ID,
-                        }
-                    },
-                    # importjobs GET after recovery
-                    {
-                        "json": {
-                            "progress": 100.0,
-                            "startedon": "2024-01-01T00:00:00Z",
-                            "completedon": "2024-01-01T00:01:00Z",
-                            "data": None,
-                        }
-                    },
-                ],
-            )
+            m.post(backend.url_for("ImportSolutionAsync"),
+                   status_code=400, json=self._REJECT_BODY)
+            m.post(backend.url_for("ImportSolution"), status_code=204, text="")
+            m.get(requests_mock.ANY, json={
+                "progress": 100.0,
+                "startedon": "2024-01-01T00:00:00Z",
+                "completedon": "2024-01-01T00:01:00Z",
+                "data": self._DATA_SUCCESS,
+            })
             from crm.core import solution as sol_mod
             info = sol_mod.import_solution(backend, zip_path, quiet=True)
 
-        assert call_count["n"] == 2
-        assert info["import_job_id"] == self.RECOVERED_JOB_ID
-        assert info["async_operation_id"] == self.OP_ID
+        async_req = next(
+            r for r in m.request_history if r.url.endswith("ImportSolutionAsync")
+        )
+        sync_req = next(
+            r for r in m.request_history if r.url.endswith("ImportSolution")
+        )
+        sent_id = json.loads(async_req.body)["ImportJobId"]
+        assert json.loads(sync_req.body)["ImportJobId"] == sent_id
+        assert info["import_job_id"] == sent_id
+        assert info["async_operation_id"] is None
         assert info["status"] == "succeeded"
+        assert info["action"] == "ImportSolution"
+        assert info["result"] == "success"
+        assert "warnings" not in info
+        # read-back hit importjobs with the client GUID
+        jobs_req = next(r for r in m.request_history if "importjobs(" in r.url)
+        assert sent_id in jobs_req.url
+
+    def test_sync_fallback_uses_long_read_timeout(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """The sync import runs in one HTTP request → its read timeout follows
+        --timeout (else profile.async_timeout); other calls keep the default."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        def _run(timeout, expected):
+            with requests_mock.Mocker() as m:
+                m.post(backend.url_for("ImportSolutionAsync"),
+                       status_code=400, json=self._REJECT_BODY)
+                m.post(backend.url_for("ImportSolution"), status_code=204, text="")
+                m.get(requests_mock.ANY, json={"progress": 100.0, "data": None})
+                from crm.core import solution as sol_mod
+                sol_mod.import_solution(backend, zip_path, quiet=True,
+                                        timeout=timeout)
+            async_req = next(r for r in m.request_history
+                             if r.url.endswith("ImportSolutionAsync"))
+            sync_req = next(r for r in m.request_history
+                            if r.url.endswith("ImportSolution"))
+            assert async_req.timeout == backend.profile.timeout
+            assert sync_req.timeout == expected
+
+        _run(timeout=1234, expected=1234)
+        _run(timeout=None, expected=backend.profile.async_timeout)
+
+    def test_sync_fallback_dependency_failure_raises_loudly(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """A missing-dependency import on the sync path faults synchronously —
+        never a bare status:succeeded — and names the import job id (#182)."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"),
+                   status_code=400, json=self._REJECT_BODY)
+            m.post(backend.url_for("ImportSolution"), status_code=400, json={
+                "error": {"code": "0x80048033",
+                          "message": "The dependent component Entity (Id=foo) "
+                                     "does not exist."}
+            })
+            from crm.core import solution as sol_mod
+            with pytest.raises(D365Error, match="dependent component") as ex:
+                sol_mod.import_solution(backend, zip_path, quiet=True)
+        assert "import_job_id=" in str(ex.value)
+
+    @pytest.mark.parametrize("job_row_resp", [
+        {"json": {"progress": 100.0, "startedon": None,
+                  "completedon": None, "data": None}},
+        {"status_code": 404,
+         "json": {"error": {"message": "importjob Does Not Exist"}}},
+    ], ids=["empty-data", "no-row"])
+    def test_sync_fallback_missing_results_warns_about_platform(
+        self, backend, tmp_path, monkeypatch, job_row_resp
+    ):
+        """A successful sync import with no per-component results (empty data
+        column or no importjob row) still succeeds, with an explicit warning
+        explaining the platform gap (#182)."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"),
+                   status_code=400, json=self._REJECT_BODY)
+            m.post(backend.url_for("ImportSolution"), status_code=204, text="")
+            m.get(requests_mock.ANY, **job_row_resp)
+            from crm.core import solution as sol_mod
+            info = sol_mod.import_solution(backend, zip_path, quiet=True)
+
+        assert info["status"] == "succeeded"
+        assert info["import_job_id"] is not None
+        warnings = info.get("warnings") or []
+        assert any("per-component" in w and "platform" in w for w in warnings)
+
+    def test_sync_fallback_formatted_with_unreadable_row_still_succeeds(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """--formatted with an unreadable importjob row must not crash a
+        succeeded sync import: the formatted fetch is skipped (#182)."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"),
+                   status_code=400, json=self._REJECT_BODY)
+            m.post(backend.url_for("ImportSolution"), status_code=204, text="")
+            m.get(requests_mock.ANY, status_code=404,
+                  json={"error": {"message": "importjob Does Not Exist"}})
+            from crm.core import solution as sol_mod
+            info = sol_mod.import_solution(backend, zip_path, quiet=True,
+                                           formatted=True)
+
+        assert info["status"] == "succeeded"
+        assert "formatted_results" not in info
+        warnings = info.get("warnings") or []
+        assert any("per-component" in w for w in warnings)
+        # no RetrieveFormattedImportJobResults round-trip was attempted
+        assert not any("RetrieveFormatted" in r.url for r in m.request_history)
 
     def test_import_other_d365_error_reraised(
         self, backend, tmp_path, monkeypatch
@@ -1529,49 +1642,6 @@ class TestImportSolutionAsync:
                 sol_mod.import_solution(backend, zip_path, quiet=True)
 
         assert call_count["n"] == 1
-
-    def test_import_no_regardingobjectid_skips_job_row(
-        self, backend, tmp_path, monkeypatch
-    ):
-        """If _regardingobjectid_value is absent, import_job_id stays None and
-        the importjobs GET is skipped (no KeyError, no extra HTTP call)."""
-        import time as _t
-        monkeypatch.setattr(_t, "sleep", lambda s: None)
-        zip_path = tmp_path / "in.zip"
-        zip_path.write_bytes(b"PK\x03\x04stub")
-
-        call_count: dict[str, int] = {"post": 0, "get": 0}
-
-        def _post_handler(request, context):  # type: ignore[return]
-            call_count["post"] += 1
-            body = request.json()
-            if call_count["post"] == 1:
-                context.status_code = 400
-                return {
-                    "error": {
-                        "message": "The parameter 'ImportJobId' is not a valid parameter "
-                                   "for the operation 'ImportSolutionAsync'."
-                    }
-                }
-            assert "ImportJobId" not in body
-            context.status_code = 200
-            return {"AsyncOperationId": self.OP_ID}
-
-        def _get_handler(request, context):
-            call_count["get"] += 1
-            # asyncop only — no _regardingobjectid_value
-            return {"statecode": 3, "statuscode": 30, "message": "Done"}
-
-        with requests_mock.Mocker() as m:
-            m.post(backend.url_for("ImportSolutionAsync"), json=_post_handler)
-            m.get(requests_mock.ANY, json=_get_handler)
-            from crm.core import solution as sol_mod
-            info = sol_mod.import_solution(backend, zip_path, quiet=True)
-
-        assert info["import_job_id"] is None
-        assert info["status"] == "succeeded"
-        assert call_count["get"] == 1  # only the asyncop poll, no importjobs GET
-
 
 class TestLoadPayload:
     def test_rejects_json_list_with_typename(self):

@@ -526,6 +526,80 @@ def _import_job_id_rejected(exc: D365Error) -> bool:  # pyright: ignore[reportUn
     )
 
 
+def _import_solution_sync(
+    backend: D365Backend,
+    body: dict[str, Any],
+    import_job_id: str,
+    *,
+    managed: bool | None,
+    started: float,
+    timeout: int | None,
+    formatted: bool,
+) -> dict[str, Any]:
+    """Synchronous fallback: ImportSolution runs the whole import in one request.
+
+    On-prem v9.x rejects ImportJobId on ImportSolutionAsync and never creates an
+    ImportJob row for the async action, leaving import-result unusable (#182).
+    The sync ImportSolution action accepts the same client GUID, so the
+    importjobs(<id>) read-back and per-component result parsing work unchanged,
+    and dependency failures surface as a synchronous fault instead of a silent
+    success. The whole import runs inside one HTTP request — the read timeout
+    follows the command's --timeout (else profile.async_timeout), leaving the
+    global request default untouched.
+    """
+    import time as _time
+    read_timeout = timeout if timeout is not None else backend.profile.async_timeout
+    try:
+        backend.post("ImportSolution", json_body=body, timeout=read_timeout)
+    except D365Error as exc:
+        # Name the job id so `import-result <id>` can fetch any partial
+        # per-component results the server recorded before the fault.
+        raise D365Error(
+            f"{exc} (import_job_id={import_job_id})",
+            status=exc.status, code=exc.code, response_body=exc.response_body,
+        ) from exc
+
+    try:
+        job_row = as_dict(backend.get(
+            f"importjobs({import_job_id})",
+            params={"$select": "progress,startedon,completedon,data"},
+        ))
+        detail = "the importjob data column was empty"
+    except D365Error as exc:
+        # The import itself already succeeded; a missing/unreadable importjob
+        # row must not fail it after the fact.
+        job_row = {}
+        detail = f"the importjob row could not be read ({exc})"
+    duration_ms = int((_time.monotonic() - started) * 1000)
+    prog = job_row.get("progress")
+    out: dict[str, Any] = {
+        "import_job_id": import_job_id,
+        "async_operation_id": None,
+        "status": "succeeded",
+        "progress": float(prog) if prog is not None else 100.0,
+        "started_on": job_row.get("startedon"),
+        "completed_on": job_row.get("completedon"),
+        "duration_ms": duration_ms,
+        "managed": managed,
+        "action": "ImportSolution",
+    }
+    data_xml = job_row.get("data")
+    if data_xml:
+        _attach_import_results(out, data_xml)
+    else:
+        out["warnings"] = [
+            "per-component import results are unavailable on this platform: "
+            f"{detail}; the synchronous ImportSolution import itself succeeded."
+        ]
+
+    # Skip the formatted-report round-trip when the row was unreadable — it
+    # would fail the same way and crash an import that already succeeded.
+    if formatted and job_row:
+        out["formatted_results"] = _formatted_import_results(backend, import_job_id)
+
+    return out
+
+
 def _write_export_file(output_path: str | Path, encoded: str) -> tuple[Path, int]:
     data = base64.b64decode(encoded)
     out = Path(output_path)
@@ -701,6 +775,10 @@ def import_solution(
 ) -> dict[str, Any]:
     """Call ImportSolutionAsync and block on the resulting ImportJob.
 
+    When the org rejects ImportJobId on the async action (on-prem v9.x), falls
+    back to the synchronous ImportSolution action carrying the same client GUID
+    so the importjob row exists and `import-result` stays usable (#182).
+
     Returns a dict with import_job_id, async_operation_id, status='succeeded',
     progress percent, started_on / completed_on (from the importjobs row), and
     total wall-clock duration in ms. The final read also pulls the importjob
@@ -736,10 +814,14 @@ def import_solution(
     except D365Error as exc:
         if not _import_job_id_rejected(exc):
             raise
-        # On-prem D365 CE doesn't accept ImportJobId — retry without it.
-        body.pop("ImportJobId", None)
-        import_job_id = None
-        resp = as_dict(backend.post("ImportSolutionAsync", json_body=body))
+        # On-prem D365 CE rejects ImportJobId on the async action and never
+        # creates an ImportJob row for it — fall back to the synchronous
+        # ImportSolution, which accepts the same client GUID (#182).
+        return _import_solution_sync(
+            backend, body, import_job_id,
+            managed=managed, started=started,
+            timeout=timeout, formatted=formatted,
+        )
 
     if "_dry_run" in resp:
         return {**resp, "action": "ImportSolutionAsync", "import_job_id": import_job_id,
@@ -768,11 +850,11 @@ def import_solution(
         _sys.stderr.write(f"[crm] import progress={pct:.1f}% status={msg}\n")
 
     try:
-        op = backend.poll_async_operation(
+        backend.poll_async_operation(
             async_op_id,
             timeout=timeout,
-            import_job_id=None if (quiet or import_job_id is None) else import_job_id,
-            on_progress=None if (quiet or import_job_id is None) else _on_progress,
+            import_job_id=None if quiet else import_job_id,
+            on_progress=None if quiet else _on_progress,
         )
     except D365Error as exc:
         raise D365Error(
@@ -780,20 +862,12 @@ def import_solution(
             status=exc.status, code=exc.code, response_body=exc.response_body,
         ) from exc
 
-    # When ImportJobId was omitted (on-prem fallback), recover the server-assigned
-    # importjob GUID from the asyncop's regarding-object lookup field.
-    if import_job_id is None:
-        import_job_id = op.get("_regardingobjectid_value") or None
-
     # Final importjobs read for the canonical progress + timestamps + the per-
     # component result envelope (data column).
-    if import_job_id is not None:
-        job_row = as_dict(backend.get(
-            f"importjobs({import_job_id})",
-            params={"$select": "progress,startedon,completedon,data"},
-        ))
-    else:
-        job_row = {}
+    job_row = as_dict(backend.get(
+        f"importjobs({import_job_id})",
+        params={"$select": "progress,startedon,completedon,data"},
+    ))
     duration_ms = int((_time.monotonic() - started) * 1000)
     prog = job_row.get("progress")
     out: dict[str, Any] = {
@@ -805,13 +879,14 @@ def import_solution(
         "completed_on": job_row.get("completedon"),
         "duration_ms": duration_ms,
         "managed": managed,
+        "action": "ImportSolutionAsync",
     }
 
     # The import already succeeded (statuscode 30); parsing the post-hoc report
     # is best-effort (missing/unparseable data → warning, never an error).
     _attach_import_results(out, job_row.get("data"))
 
-    if formatted and import_job_id is not None:
+    if formatted:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
 
     return out
