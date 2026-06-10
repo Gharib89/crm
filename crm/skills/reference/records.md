@@ -151,10 +151,10 @@ objects**, each `{"method", "url", "body"}`:
 
 **Gotcha — `url` must not begin with `/`.** A leading slash resolves against the host
 root, not the Web API path, and 404s. `crm batch` blocks it client-side before any
-request with a `validation` error (`url must be a bare relative path … not begin with
-'/'`) — fix the file, don't retry.
+request with a `validation` error telling you the `url` must be a bare relative path —
+fix the file, don't retry.
 
-Minimal bulk delete — two contacts in one transactional changeset:
+Minimal bulk delete — two contacts, atomic (see grouping note below):
 
 ```bash
 cat > bulk-delete.json <<'EOF'
@@ -167,8 +167,12 @@ crm --json batch bulk-delete.json
 # -> data: [{...,"status":204},{...,"status":204}], meta: {total, success, failed}
 ```
 
-Default is one transactional changeset (all-or-nothing rollback). `--no-transaction`
-sends each op as a top-level operation; `--continue-on-error` (which requires
+Transaction grouping (default mode): each run of **consecutive writes**
+(`POST`/`PATCH`/`DELETE`) is wrapped in one atomic changeset (all-or-nothing rollback),
+while every `GET` stays a top-level op and breaks the run — so a file that interleaves
+reads and writes produces *several* changesets, not one. An all-write file like the
+bulk-delete above is therefore a single atomic unit. `--no-transaction` drops the
+changesets and sends every op top-level; `--continue-on-error` (which requires
 `--no-transaction`) keeps going past a failed op. **Exit code is 0 even when some ops
 fail** — read each result's `status` and `meta.failed`, don't rely on `$?`.
 
