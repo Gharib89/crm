@@ -54,6 +54,7 @@ a = Analysis(
         'crm.commands.skill',
         'crm.commands.sla',
         'crm.commands.solution',
+        'crm.commands.translation',
         'crm.commands.view',
         'crm.commands.webresource',
         'crm.commands.workflow',

@@ -33,6 +33,7 @@ DESTRUCTIVE: dict[str, set[str]] = {
     },
     "entity": {"delete"},
     "solution": {"job-cancel", "import", "remove-component"},
+    "translation": {"import"},
     "async": {"cancel"},
     "plugin": {"unregister-assembly", "unregister-step", "unregister-image"},
 }

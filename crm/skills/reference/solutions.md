@@ -63,6 +63,33 @@ context aborts.
 The result carries `import_job_id` and `async_operation_id` — capture both; they
 drive the investigation workflow below.
 
+## Translate display labels — `crm translation export` / `import`
+
+Translation is **solution-scoped** (the `ExportTranslation` / `ImportTranslation`
+actions take a solution, not an entity) — to translate one entity, put it in a
+solution. Dual-target: on-prem v9.x and Dataverse online.
+
+```bash
+crm --json translation export --solution CRMWorx -o labels.zip
+# labels.zip = CrmTranslations.xml (Excel-openable spreadsheet) + [Content_Types].xml;
+# translator adds a column per language code (e.g. 1034) and fills it in
+
+crm --json translation import labels.zip --yes   # re-zipped edited files, NOT the bare XML
+crm --json solution publish-all                  # labels do NOT surface until published
+```
+
+Gotchas: import fails on any translated string **>500 chars**; labels for
+languages **not provisioned** on the target are discarded with a warning;
+customization happens only in the base language. The import envelope carries
+`import_job_id` (results via `crm solution import-result <id>`) and a
+`meta.warnings` publish reminder.
+
+Do **not** reach for `crm action invoke ExportTranslation` — it returns the zip
+as a base64 blob inside the JSON body (manual decode + unpack); the
+`translation` verbs are that plumbing. The GUI alternatives are the native
+**Translations → Export/Import translations** menu and XrmToolBox
+**Easy Translator** (community tool, on-prem + online).
+
 ## Source control — SolutionPackager bridge
 
 Put a solution under source control with the offline SolutionPackager bridge (no

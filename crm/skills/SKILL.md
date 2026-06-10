@@ -157,6 +157,7 @@ non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit
 | `crm solution job-cancel <id>` | A running async job |
 | `crm solution import <zip>` | OVERWRITES unmanaged customizations in the target org |
 | `crm solution remove-component --solution <name> --type <int\|name> --id <guid>` | Removes a component from an unmanaged solution |
+| `crm translation import <zip>` | OVERWRITES localized labels in the target org |
 | `crm async cancel <id>` | A pending/suspended async operation |
 
 ## Hard constraints
@@ -198,7 +199,7 @@ cannot: workflows, gotchas, and the JSON contract. For per-domain detail:
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, bulk import/export, ad-hoc `action` | `reference/records.md` |
 | metadata: browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache | `reference/metadata.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
-| solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift | `reference/solutions.md` |
+| solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift, label translation export/import | `reference/solutions.md` |
 | customizations: model-driven apps, web resources, ribbon, forms, sitemap | `reference/customizations.md` |
 | automation: plug-in assemblies & steps, workflows, SLA activation | `reference/automation.md` |
 | security: roles & assignment | `reference/security.md` |
