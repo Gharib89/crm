@@ -95,6 +95,39 @@ Gotchas (server-side, not in `--help`):
   transaction rolls back, the trace rows remain — which is what makes the table useful
   for diagnosing the failure that erased everything else.
 
+### Generating early-bound classes
+
+There is no `crm codegen` verb — early-bound .NET class generation is an external
+Microsoft toolchain, and which tool you use depends on the target:
+
+- **On-prem v9.x → `CrmSvcUtil.exe`** is the only Microsoft-supported path; the
+  Power Platform CLI is not available for Dynamics 365 CE (on-premises). It ships in
+  the [`Microsoft.CrmSdk.CoreTools`](https://www.nuget.org/packages/Microsoft.CrmSdk.CoreTools)
+  NuGet package — the same one that provides SolutionPackager.
+- **Dataverse online → `pac modelbuilder build`** (Power Platform CLI) is the
+  recommended tool. It is **online-only** — it cannot target on-prem. `CrmSvcUtil.exe`
+  still works against online too, but Microsoft recommends `pac modelbuilder` there.
+- **XrmToolBox Early Bound Generator V2** is a UI that writes a `builderSettings.json`
+  and *calls `pac modelbuilder build`* under the hood — so it inherits the
+  **online-only** constraint. It is not an on-prem path (only the older SDK-based EBG was).
+
+Credential boundary: never put a stored profile secret on a codegen command line
+(process-list leak; secrets live in the keyring / 0600 file, never on the CLI). On
+on-prem, use `CrmSvcUtil.exe /interactivelogin`, which collects the server URL and
+credentials in a dialog — every other connection parameter on the command line is
+ignored. Look up the org URL to enter from the active profile:
+
+```bash
+# org URL to type into the interactive-login dialog:
+crm profile list --json | jq -r '.data[] | select(.active).url'
+
+# on-prem early-bound classes (server + credentials entered in the dialog):
+CrmSvcUtil.exe /interactivelogin /out:EarlyBound.cs /namespace:Xrm
+```
+
+See MS Learn "Create early-bound entity classes with the Code Generation tool" and the
+`pac modelbuilder build` reference for the full parameter set.
+
 ## Workflows — `workflow`
 
 ```bash
