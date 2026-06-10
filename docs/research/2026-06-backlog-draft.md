@@ -1,7 +1,7 @@
 # CRM Developer Scenarios — Issue Backlog Draft
 
 **Date:** 2026-06-10
-**Provenance:** drafted from 2026-06-crm-dev-scenarios-report.md §6 — pending user review, not yet filed
+**Provenance:** drafted from 2026-06-crm-dev-scenarios-report.md §6 — user-approved and filed 2026-06-10 as issues #179–#204
 
 **Tally:**
 
@@ -19,6 +19,8 @@
 
 ## P1 | bug | Fix `metadata get-optionset` 400 on v9.1 with derived-type cast
 
+**Issue:** [#179](https://github.com/Gharib89/crm/issues/179)
+
 **Rec ID:** B1
 **Labels:** needs-triage
 **Evidence:** TRIAL-2 (cli-bug; reproduced twice — trial and BUG-1 minimal repro); BUG-1 repro: `metadata get-optionset cwx_repro1` → `Could not find a property named 'Options' on type 'Microsoft.Dynamics.CRM.OptionSetMetadataBase'` (status 400, code 0x0); `list-optionsets` and generic `entity get GlobalOptionSetDefinitions <MetadataId>` both succeed on the same org.
@@ -31,6 +33,8 @@
 ---
 
 ## P1 | bug | Wrap `_load_payload` JSON parse failure in the `{ok:false}` envelope
+
+**Issue:** [#180](https://github.com/Gharib89/crm/issues/180)
 
 **Rec ID:** B2
 **Labels:** needs-triage
@@ -45,6 +49,8 @@
 
 ## P1 | bug | Fix `solution remove-component` invalid parameter shape on v9.1
 
+**Issue:** [#181](https://github.com/Gharib89/crm/issues/181)
+
 **Rec ID:** B3
 **Labels:** needs-triage
 **Evidence:** TRIAL-3 cleanup (cli-bug; reproduced twice — cleanup and BUG-3 minimal repro); BUG-3 repro: `solution remove-component --solution <s> --type entity --id <id>` → HTTP 400 `The parameter 'ComponentId' in the request payload is not a valid parameter for the operation 'RemoveSolutionComponent'` on v9.1; verified workaround: `action invoke RemoveSolutionComponent --body '{"SolutionComponent":{"solutioncomponentid":"<objectid>","@odata.type":"Microsoft.Dynamics.CRM.solutioncomponent"},"ComponentType":<n>,"SolutionUniqueName":"<name>"}'` exits 0. The verb is completely broken on v9.1.
@@ -58,6 +64,8 @@
 
 ## P1 | bug | Pass/generate ImportJobId on import so `import-result` is usable on-prem
 
+**Issue:** [#182](https://github.com/Gharib89/crm/issues/182)
+
 **Rec ID:** B4
 **Labels:** needs-triage
 **Evidence:** PROBE repro (skill-trial-log.md §Bug repros): `solution import <file> --yes` on v9.1 returns `import_job_id: null`; `query odata importjobs` shows no row for any CLI import; a missing-dependency import reports `ok:true, status:succeeded` while leaving a broken state; `solution import-result <id>` is structurally unusable without an id. SCN-053 (skill-gap: import-result/job-status absent from skill). Cross-reference: skill recipe for the on-prem fallback verification path is addressed by S1.
@@ -70,6 +78,8 @@
 ---
 
 ## P1 | skill | Add "Investigating a failed import" recipe to solutions.md
+
+**Issue:** [#183](https://github.com/Gharib89/crm/issues/183)
 
 **Rec ID:** S1
 **Labels:** needs-triage
@@ -85,6 +95,8 @@
 
 ## P1 | skill | Add one-line records-verb router to SKILL.md
 
+**Issue:** [#184](https://github.com/Gharib89/crm/issues/184)
+
 **Rec ID:** S4
 **Labels:** needs-triage
 **Evidence:** TRIAL-1, TRIAL-2, TRIAL-3 — the identical wrong-verb guess (`entity list`, `entity query`, root `odata`) appeared in 3 of 8 trials, the single largest agent-error cluster. Root cause: agents arrive expecting resource-style verbs; the real verbs are `query odata` / `metadata list-*`.
@@ -98,6 +110,8 @@
 
 ## P1 | cli-build | Return clean validation error instead of bare HTTP 400 for OData URL args
 
+**Issue:** [#185](https://github.com/Gharib89/crm/issues/185)
+
 **Rec ID:** C8 — Error clarity
 **Labels:** needs-triage
 **Evidence:** TRIAL-1 (cli-behavior): `query odata "solutions?$select=…"` → bare `HTTP 400`, `code: null`, no hint that the entity-set arg must be a bare set name. The server 400 passthrough gives agents no recovery signal. Overlaps B2 in the error-envelope-hygiene family; this entry covers the OData-URL passthrough case specifically.
@@ -110,6 +124,8 @@
 ---
 
 ## P1 | cli-build | Parse inner error from multipart blob for batch leading-slash 404s
+
+**Issue:** [#186](https://github.com/Gharib89/crm/issues/186)
 
 **Rec ID:** C11 — Error clarity
 **Labels:** needs-triage
@@ -126,6 +142,8 @@
 
 ## P2 | skill | Add plugin trace-debugging recipe to automation.md or troubleshooting.md
 
+**Issue:** [#187](https://github.com/Gharib89/crm/issues/187)
+
 **Rec ID:** S2
 **Labels:** needs-triage
 **Evidence:** SCN-052 (skill-gap: automation.md stops at registration; neither automation.md nor troubleshooting.md names `plugintracelogs` or the `plugintracelogsetting` org setting); Plugin Trace Viewer 608k+ lifetime downloads proxies the daily frequency of this loop.
@@ -140,6 +158,8 @@
 
 ## P2 | skill | Add edit-existing-view recipe to authoring.md
 
+**Issue:** [#188](https://github.com/Gharib89/crm/issues/188)
+
 **Rec ID:** S3
 **Labels:** needs-triage
 **Evidence:** SCN-011 (skill-gap: `view create` taught; edit-existing path absent from every reference file); TRIAL-3 (agent found the untaught path autonomously but cost ~7 extra discovery commands; a taught recipe would halve the call count); community: https://community.dynamics.com/blogs/post/?postid=ef44c4f2-0e6a-45ac-8464-5a8bdd3312cc.
@@ -152,6 +172,8 @@
 ---
 
 ## P2 | skill | Document `crm batch` standalone command in records.md
+
+**Issue:** [#189](https://github.com/Gharib89/crm/issues/189)
 
 **Rec ID:** S5
 **Labels:** needs-triage
@@ -166,6 +188,8 @@
 
 ## P2 | skill | Add two gotchas to solutions.md for cross-env role moves
 
+**Issue:** [#190](https://github.com/Gharib89/crm/issues/190)
+
 **Rec ID:** S6
 **Labels:** needs-triage
 **Evidence:** SCN-047 (covered; two gotchas untaught: `role` not named in `add-component --type` friendly-name examples; managed-import privilege-stripping silent); community: https://github.com/MicrosoftDocs/power-platform/blob/main/power-platform/alm/how-managed-solutions-merged.md.
@@ -177,6 +201,8 @@
 ---
 
 ## P2 | skill | State validate-first as the default for unattended writes
+
+**Issue:** [#191](https://github.com/Gharib89/crm/issues/191)
 
 **Rec ID:** S7
 **Labels:** needs-triage
@@ -191,6 +217,8 @@
 
 ## P2 | skill | Document on-prem caveat: business rules cannot be deactivated via the Web API
 
+**Issue:** [#192](https://github.com/Gharib89/crm/issues/192)
+
 **Rec ID:** S8
 **Labels:** needs-triage
 **Evidence:** TRIAL-5 (verified on two rules: `workflow deactivate <business-rule-id>` → 0x80045002 `Cannot update a published workflow definition` on v9.1; classic workflows and BPFs unaffected); SCN-021/023.
@@ -203,6 +231,8 @@
 ---
 
 ## P2 | cli-build | Build plugin step-image registration verbs
+
+**Issue:** [#193](https://github.com/Gharib89/crm/issues/193)
 
 **Rec ID:** C4 — ergonomics
 **Labels:** needs-triage
@@ -218,6 +248,8 @@
 
 ## P2 | cli-adopt | Document or thin-wrap early-bound class generation tools
 
+**Issue:** [#194](https://github.com/Gharib89/crm/issues/194)
+
 **Rec ID:** C5 — adopt/wrap
 **Labels:** needs-triage
 **Evidence:** SCN-019 (cli-gap: no codegen verbs; dual-target tools exist — XrmToolBox Early Bound Generator (SDK, on-prem + online), CrmSvcUtil.exe (.NET Full Framework, both); `pac modelbuilder` is online-only and cannot help on-prem).
@@ -231,6 +263,8 @@
 
 ## P2 | cli-adopt | Document or thin-wrap display-label export/translate/import
 
+**Issue:** [#195](https://github.com/Gharib89/crm/issues/195)
+
 **Rec ID:** C6 — adopt/wrap
 **Labels:** needs-triage
 **Evidence:** SCN-008 (cli-gap: no translation verbs; dual-target tools exist — XrmToolBox Easy Translator (SDK, on-prem + online), native Export Translations XML (both); the `action invoke ExportTranslation/ImportTranslation` escape hatch is a base64-zip-in-action-body trap, same shape as SCN-035's agent-infeasible hatch).
@@ -243,6 +277,8 @@
 ---
 
 ## P2 | cli-build | Build managed-lifecycle verbs (clone-as-patch, stage-and-upgrade, uninstall)
+
+**Issue:** [#196](https://github.com/Gharib89/crm/issues/196)
 
 **Rec ID:** C7
 **Labels:** needs-triage
@@ -259,6 +295,8 @@
 
 ## P2 | cli-build | Add descending-order support to `view create --order`
 
+**Issue:** [#197](https://github.com/Gharib89/crm/issues/197)
+
 **Rec ID:** C10 — ergonomics
 **Labels:** needs-triage
 **Evidence:** TRIAL-3 (cli-behavior): `--order` on `view create` is ascending-only; "newest first" forced an immediate savedquery PATCH of a view that had just been created, requiring the untaught edit path even at create time. SCN-011.
@@ -271,6 +309,8 @@
 ---
 
 ## P2 | cli-build | Improve `did_you_mean` suggestion ranking for field-name typos
+
+**Issue:** [#198](https://github.com/Gharib89/crm/issues/198)
 
 **Rec ID:** C12 — ergonomics
 **Labels:** needs-triage
@@ -286,6 +326,8 @@
 
 ## P3 | cli-build | Build workflow-to-flow migration inventory and readiness assessment
 
+**Issue:** [#199](https://github.com/Gharib89/crm/issues/199)
+
 **Rec ID:** C1 — build
 **Labels:** needs-triage
 **Evidence:** SCN-022 (cli-gap: best external tool — Power Automate designer + MS migration tooling — is online-only; cloud flows do not exist on-prem; realistic CLI scope is migration inventory + readiness assessment, not authoring). `workflow list --category 5` can already inventory modern flows (online).
@@ -299,6 +341,8 @@
 
 ## P3 | cli-build | Build unmanaged-layer conflict detection for on-prem
 
+**Issue:** [#200](https://github.com/Gharib89/crm/issues/200)
+
 **Rec ID:** C2 — build
 **Labels:** needs-triage
 **Evidence:** SCN-054 (cli-gap: best external tool — XrmToolBox Solution Layers Explorer — needs `msdyn_componentlayer` which does not exist on-prem; on-prem users have zero detection path; community frequency: every long-lived org accumulates unmanaged-layer drift). On-prem cliff: strongest build candidate for the no-scriptable-path-anywhere class.
@@ -311,6 +355,8 @@
 ---
 
 ## P3 | cli-build | Build environment admin verbs (online-only gap, no dual-target tool)
+
+**Issue:** [#201](https://github.com/Gharib89/crm/issues/201)
 
 **Rec ID:** C3 — build (lower priority)
 **Labels:** needs-triage
@@ -326,6 +372,8 @@
 
 ## P3 | cli-build | Build `query fetchxml` optional ENTITY_SET positional
 
+**Issue:** [#202](https://github.com/Gharib89/crm/issues/202)
+
 **Rec ID:** C9 — ergonomics
 **Labels:** needs-triage
 **Evidence:** TRIAL-1 (cli-behavior): `query fetchxml` requires both `--xml` (even when XML is the only payload) AND a separate `ENTITY_SET` positional even though the fetch XML already names the entity via `<fetch><entity name="…">`. Two failed attempts before discovering the correct shape.
@@ -339,6 +387,8 @@
 
 ## P3 | cli-build | Hint singular logical name when metadata 404 receives a set name
 
+**Issue:** [#203](https://github.com/Gharib89/crm/issues/203)
+
 **Rec ID:** C13 — ergonomics (minor)
 **Labels:** needs-triage
 **Evidence:** TRIAL-7 (cli-behavior nit): `metadata describe accounts` (set name) → 404 `LogicalName='accounts' does not exist`; singular `account` required. Mirrors TRIAL-4's `webresources`/`webresourceset` confusion. Agent-error class seen in 2 of 8 trials.
@@ -351,6 +401,8 @@
 ---
 
 ## P3 | cli-build | Accept friendly names on `workflow list --category`
+
+**Issue:** [#204](https://github.com/Gharib89/crm/issues/204)
 
 **Rec ID:** C14 — ergonomics (minor)
 **Labels:** needs-triage
