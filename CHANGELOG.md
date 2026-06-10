@@ -9,6 +9,24 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.5.0 (2026-06-10)
+
+### Documentation
+
+- **skill**: Add failed-import investigation recipe to solutions reference
+  ([#183](https://github.com/Gharib89/crm/pull/183),
+  [`c72f4d4`](https://github.com/Gharib89/crm/commit/c72f4d43d94417bf34f5c273813d63493334aa72))
+
+- **skill**: Add records-verb router to command discovery
+  ([#184](https://github.com/Gharib89/crm/pull/184),
+  [`7153e53`](https://github.com/Gharib89/crm/commit/7153e53558c9e00c86fdf1bbe2bb49d779ec507e))
+
+### Features
+
+- **plugin**: Add step-image registration verbs ([#193](https://github.com/Gharib89/crm/pull/193),
+  [`f1560d7`](https://github.com/Gharib89/crm/commit/f1560d7bd79674aadce3452e5745bcc9fd71e46e))
+
+
 ## v2.4.4 (2026-06-10)
 
 ### Bug Fixes
