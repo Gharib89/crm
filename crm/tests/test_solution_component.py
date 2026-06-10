@@ -1,9 +1,9 @@
 """Unit tests for crm.core.solution add/remove_solution_component (#71).
 
 The AddSolutionComponent / RemoveSolutionComponent Web API action contract
-(unbound actions; ComponentId / ComponentType / SolutionUniqueName /
-AddRequiredComponents / DoNotIncludeSubcomponents) and the `componenttype`
-global optionset integer values are verified against the Dataverse Web API docs.
+(unbound actions; add takes ComponentId, remove takes a SolutionComponent
+entity reference — see #181) and the `componenttype` global optionset integer
+values are verified against the Dataverse Web API docs.
 All HTTP is mocked via requests_mock; no live D365 server.
 """
 # pyright: basic
@@ -136,9 +136,16 @@ class TestRemoveSolutionComponent:
         assert out["removed"] is True
         assert out["solution"] == "CRMWorx"
         body = _posts(m)[0].json()
-        assert body["ComponentId"] == _COMP_ID
+        # RemoveSolutionComponent takes a SolutionComponent entity reference —
+        # the component objectid goes in as solutioncomponentid (live-verified
+        # contract, #181); there is no ComponentId parameter on this action.
+        assert body["SolutionComponent"] == {
+            "solutioncomponentid": _COMP_ID,
+            "@odata.type": "Microsoft.Dynamics.CRM.solutioncomponent",
+        }
         assert body["ComponentType"] == 61
         assert body["SolutionUniqueName"] == "CRMWorx"
+        assert "ComponentId" not in body
 
     def test_refuses_managed_no_post(self, backend):
         with requests_mock.Mocker() as m:
@@ -199,6 +206,35 @@ class TestComponentCommands:
         assert captured["component_type"] == 61
         assert captured["add_required_components"] is False
         assert captured["do_not_include_subcomponents"] is True
+
+    def test_add_component_entity_emits_required_components_note(self, monkeypatch):
+        monkeypatch.setattr("crm.core.solution.add_solution_component",
+                            lambda backend, **kw: {"added": True})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "add-component",
+            "--solution", "CRMWorx", "--type", "entity", "--id", _GUID,
+        ])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert "required components" in payload["meta"]["note"]
+
+    @pytest.mark.parametrize("argv_extra", [
+        ["--type", "entity", "--no-add-required"],   # entity but required-add off
+        ["--type", "webresource"],                   # non-entity type
+    ])
+    def test_add_component_no_note_when_not_entity_with_required(self, monkeypatch,
+                                                                 argv_extra):
+        monkeypatch.setattr("crm.core.solution.add_solution_component",
+                            lambda backend, **kw: {"added": True})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "add-component",
+            "--solution", "CRMWorx", "--id", _GUID, *argv_extra,
+        ])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert "note" not in payload.get("meta", {})
 
     def test_add_component_unknown_type_exit_1(self, monkeypatch):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())

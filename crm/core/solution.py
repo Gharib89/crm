@@ -374,8 +374,15 @@ def remove_solution_component(
     """
     _require_unmanaged_solution(backend, solution, verb="removed from")
 
+    # Unlike AddSolutionComponent, the RemoveSolutionComponent Web API action
+    # has no ComponentId parameter — it takes a SolutionComponent entity
+    # reference whose solutioncomponentid carries the component objectid
+    # (live-verified contract, #181).
     body: dict[str, Any] = {
-        "ComponentId": component_id,
+        "SolutionComponent": {
+            "solutioncomponentid": component_id,
+            "@odata.type": "Microsoft.Dynamics.CRM.solutioncomponent",
+        },
         "ComponentType": component_type,
         "SolutionUniqueName": solution,
     }

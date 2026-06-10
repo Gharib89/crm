@@ -32,7 +32,9 @@ Add or remove an existing component to/from an **unmanaged** solution
 integer or a friendly name (case- and separator-insensitive: `entity`=1, `attribute`=2,
 `relationship`=3, `optionset`=9, `entityrelationship`=10, `webresource`=61, …; raw int
 for anything else). Both refuse managed targets. `remove-component` is destructive
-(`--yes` required):
+(`--yes` required). Gotcha: `add-component --type entity` with required-components on
+(the default) may silently pull required components into the solution beyond the one
+you asked for — the server does not report them (the CLI emits a `meta.note` reminder):
 
 ```bash
 crm --json solution add-component --solution CRMWorx --type webresource --id <guid>

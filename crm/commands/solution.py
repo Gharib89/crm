@@ -289,7 +289,12 @@ def solution_add_component(ctx: CLIContext, solution, type_, component_id,
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    ctx.emit(True, data=info)
+    meta = None
+    if component_type == 1 and not no_add_required:  # entity + AddRequiredComponents
+        meta = {"note": ("AddRequiredComponents was enabled: the server may have "
+                         "silently added required components beyond the requested "
+                         "entity; the response does not report them.")}
+    ctx.emit(True, data=info, meta=meta)
     _journal(ctx, "solution add-component", solution, info)
 
 
