@@ -132,6 +132,11 @@ skipped.
 crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
 ```
 
+**Validate-first is the recommended default for unattended writes.** On a record
+create/update, an unknown field otherwise returns raw OData server noise the agent
+cannot act on; validating first turns that into a clean `unknown_fields` envelope
+(see `reference/records.md`).
+
 **`--yes`** skips interactive confirmations; always pass it when invoking
 destructive verbs non-interactively (and only after confirming intent).
 

@@ -101,6 +101,13 @@ before the write. It runs 1-3 read-only metadata GETs and blocks unknown fields 
 not flagged. It composes with `--dry-run`. Scope is field-**name** only — option-set
 values are not validated (look them up first; see `reference/metadata.md`).
 
+**For unattended writes, validate-first is the recommended default.** Without
+`--validate`, an unknown field surfaces only as raw OData server noise (e.g.
+`Does not support untyped value in non-open type`) instead of the clean
+`unknown_fields`/`did_you_mean` envelope — so an agent gets a cryptic failure it
+cannot act on. Prefer validate-first (optionally with `--dry-run`) for any
+agent-driven create/update.
+
 ## Bulk CSV export
 
 ```bash

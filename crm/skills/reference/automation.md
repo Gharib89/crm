@@ -137,6 +137,11 @@ Category values: `0`=Workflow, `1`=Dialog, `2`=BusinessRule, `3`=Action, `4`=BPF
 fail loudly. (This is the same constraint the entity-clone `--with-workflows` flag
 hits; see `reference/metadata.md`.)
 
+On on-prem v9.1, a published business rule (category `2`) cannot be deactivated
+via the Web API — `deactivate` returns `0x80045002` (`Cannot update a published
+workflow definition`); deactivate it from the classic UI instead. `deactivate`
+works normally for classic workflows (category `0`).
+
 ## SLAs — `sla`
 
 An SLA cannot activate until every backing workflow (one per SLA item) is
