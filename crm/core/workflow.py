@@ -443,6 +443,158 @@ def activation_delete_hint(
     )
 
 
+_DELETE_RESOLVE_SELECT = "name,type,statecode,parentworkflowid"
+
+
+def resolve_delete_target(
+    backend: D365Backend,
+    workflow_id: str,
+    *,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+) -> dict[str, Any]:
+    """Resolve the definition a `workflow delete` operates on.
+
+    GETs the row; a type=2 activation record is resolved via its
+    `parentworkflowid` lookup to the live parent definition (deleting the
+    definition removes the activation record server-side). Returns
+    ``{workflow_id, name, statecode, resolved_from_activation_id}`` for the
+    definition to delete. An activation record whose parent is null or
+    dangling has no supported Web API delete path (ADR 0003) and raises a
+    clean operational error before any mutation.
+
+    The GETs run live even under dry-run (the short-circuit is toggled off
+    around them) so the preview keys on the GUID a live run would delete.
+    """
+    if not workflow_id:
+        raise D365Error("workflow_id is required.")
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        return _resolve_delete_target_live(
+            backend, workflow_id,
+            caller_id=caller_id, caller_object_id=caller_object_id,
+        )
+    finally:
+        backend.dry_run = was_dry
+
+
+def _resolve_delete_target_live(
+    backend: D365Backend,
+    workflow_id: str,
+    *,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+) -> dict[str, Any]:
+    row = as_dict(backend.get(
+        f"workflows({workflow_id})",
+        params={"$select": _DELETE_RESOLVE_SELECT},
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
+    ))
+    if row.get("type") != TYPE_ACTIVATION:
+        return {
+            "workflow_id": workflow_id,
+            "name": row.get("name"),
+            "statecode": row.get("statecode"),
+            "resolved_from_activation_id": None,
+        }
+    no_parent = D365Error(
+        f"{workflow_id} is an activation record with no live parent "
+        "definition; there is no supported Web API path to delete it — "
+        "use the D365 UI."
+    )
+    parent = row.get("_parentworkflowid_value") or row.get("parentworkflowid")
+    if not parent:
+        raise no_parent
+    try:
+        parent_row = as_dict(backend.get(
+            f"workflows({parent})",
+            params={"$select": "name,type,statecode"},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+        ))
+    except D365Error as exc:
+        if exc.status == 404:
+            raise no_parent from exc
+        raise
+    return {
+        "workflow_id": parent,
+        "name": parent_row.get("name"),
+        "statecode": parent_row.get("statecode"),
+        "resolved_from_activation_id": workflow_id,
+    }
+
+
+def delete_workflow(
+    backend: D365Backend,
+    workflow_id: str,
+    *,
+    resolved: dict[str, Any] | None = None,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
+) -> dict[str, Any]:
+    """Delete a workflow definition, deactivating it first when active.
+
+    An activation-record GUID resolves to its parent definition via
+    `resolve_delete_target`; `resolved` lets the command layer pass the
+    result it already fetched for the confirmation prompt, skipping a second
+    lookup. Not atomic: when the deactivate lands but the delete fails there
+    is no rollback — the raised error states the definition was deactivated
+    and remains a draft. Dry-run resolves live and returns a preview
+    (`{_dry_run, would_delete, would_deactivate, ...}`) without mutating.
+    """
+    target = resolved or resolve_delete_target(
+        backend, workflow_id,
+        caller_id=caller_id, caller_object_id=caller_object_id,
+    )
+    target_id = target["workflow_id"]
+    needs_deactivate = target.get("statecode") == STATE_ACTIVATED[0]
+    if backend.dry_run:
+        return {
+            "_dry_run": True,
+            "would_delete": target_id,
+            "would_deactivate": needs_deactivate,
+            "workflow_id": target_id,
+            "name": target.get("name"),
+            "resolved_from_activation_id": target.get("resolved_from_activation_id"),
+        }
+    deactivated = False
+    if needs_deactivate:
+        set_workflow_state(
+            backend, target_id, activate=False, auto_resolve_parent=False,
+            caller_id=caller_id, caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
+        deactivated = True
+    try:
+        backend.delete(
+            f"workflows({target_id})",
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
+    except D365Error as exc:
+        if not deactivated:
+            raise
+        raise D365Error(
+            f"Workflow definition {target_id} was deactivated but the delete "
+            f"failed; it remains a draft (no rollback). {exc}",
+            status=exc.status, code=exc.code, response_body=exc.response_body,
+        ) from exc
+    return {
+        "deleted": True,
+        "workflow_id": target_id,
+        "name": target.get("name"),
+        "deactivated": deactivated,
+        "resolved_from_activation_id": target.get("resolved_from_activation_id"),
+    }
+
+
 def execute_workflow(
     backend: D365Backend,
     workflow_id: str,

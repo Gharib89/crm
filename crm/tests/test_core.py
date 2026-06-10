@@ -927,6 +927,212 @@ class TestWorkflow:
         assert len(m.request_history) == 0
 
 
+class TestWorkflowDelete:
+    """`delete_workflow` — deactivate-then-delete resolving activation records
+    to their definition (issue #164)."""
+
+    _DEF_ID = "11111111-1111-1111-1111-111111111111"
+
+    def test_delete_draft_definition_directly(self, backend):
+        """A draft definition (type=1, statecode=0) is deleted with no state change."""
+        from crm.core import workflow as wf_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({self._DEF_ID})"),
+                json={"workflowid": self._DEF_ID, "name": "Auto-set Owner",
+                      "type": 1, "statecode": 0},
+            )
+            m.delete(backend.url_for(f"workflows({self._DEF_ID})"), status_code=204)
+            info = wf_mod.delete_workflow(backend, self._DEF_ID)
+        assert info["deleted"] is True
+        assert info["workflow_id"] == self._DEF_ID
+        assert info["name"] == "Auto-set Owner"
+        assert info["deactivated"] is False
+        assert info["resolved_from_activation_id"] is None
+        assert [r.method for r in m.request_history] == ["GET", "DELETE"]
+
+    def test_delete_active_definition_deactivates_first(self, backend):
+        """An active definition is deactivated (statecode=0) before the DELETE,
+        under the caller's impersonation."""
+        from crm.core import workflow as wf_mod
+        caller = "44444444-4444-4444-4444-444444444444"
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({self._DEF_ID})"),
+                json={"workflowid": self._DEF_ID, "name": "Auto-set Owner",
+                      "type": 1, "statecode": 1},
+            )
+            m.patch(backend.url_for(f"workflows({self._DEF_ID})"), status_code=204)
+            m.delete(backend.url_for(f"workflows({self._DEF_ID})"), status_code=204)
+            info = wf_mod.delete_workflow(backend, self._DEF_ID, caller_id=caller)
+        assert info["deleted"] is True
+        assert info["deactivated"] is True
+        assert [r.method for r in m.request_history] == ["GET", "PATCH", "DELETE"]
+        patch_req = m.request_history[1]
+        assert json.loads(patch_req.body) == {"statecode": 0, "statuscode": 1}
+        assert patch_req.headers.get("MSCRMCallerID") == caller
+        assert m.request_history[2].headers.get("MSCRMCallerID") == caller
+
+    def test_delete_activation_record_operates_on_parent_definition(self, backend):
+        """A type=2 activation-record GUID resolves via parentworkflowid to the
+        live parent definition; deactivate+delete run against the parent."""
+        from crm.core import workflow as wf_mod
+        act_id = "22222222-2222-2222-2222-222222222222"
+        parent_guid = "33333333-3333-3333-3333-333333333333"
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({act_id})"),
+                json={"workflowid": act_id, "name": "Auto-set Owner",
+                      "type": 2, "statecode": 1,
+                      "_parentworkflowid_value": parent_guid},
+            )
+            m.get(
+                backend.url_for(f"workflows({parent_guid})"),
+                json={"workflowid": parent_guid, "name": "Auto-set Owner",
+                      "type": 1, "statecode": 1},
+            )
+            m.patch(backend.url_for(f"workflows({parent_guid})"), status_code=204)
+            m.delete(backend.url_for(f"workflows({parent_guid})"), status_code=204)
+            info = wf_mod.delete_workflow(backend, act_id)
+        assert info["deleted"] is True
+        assert info["workflow_id"] == parent_guid
+        assert info["resolved_from_activation_id"] == act_id
+        assert info["deactivated"] is True
+        assert [r.method for r in m.request_history] == ["GET", "GET", "PATCH", "DELETE"]
+
+    def test_delete_activation_record_without_live_parent_fails_clean(self, backend):
+        """No supported Web API path when the parent definition is gone (ADR 0003):
+        null parentworkflowid or a dangling parent GUID both fail with a clean
+        operational error before any mutation."""
+        from crm.core import workflow as wf_mod
+        act_id = "22222222-2222-2222-2222-222222222222"
+        parent_guid = "33333333-3333-3333-3333-333333333333"
+
+        # Null parent.
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({act_id})"),
+                json={"workflowid": act_id, "type": 2, "statecode": 1,
+                      "_parentworkflowid_value": None},
+            )
+            with pytest.raises(D365Error) as exc_info:
+                wf_mod.delete_workflow(backend, act_id)
+        assert "no live parent definition" in str(exc_info.value)
+        assert "D365 UI" in str(exc_info.value)
+        assert [r.method for r in m.request_history] == ["GET"]
+
+        # Dangling parent (404).
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({act_id})"),
+                json={"workflowid": act_id, "type": 2, "statecode": 1,
+                      "_parentworkflowid_value": parent_guid},
+            )
+            m.get(
+                backend.url_for(f"workflows({parent_guid})"),
+                status_code=404,
+                json={"error": {"code": "0x80040217", "message": "Does Not Exist"}},
+            )
+            with pytest.raises(D365Error) as exc_info:
+                wf_mod.delete_workflow(backend, act_id)
+        assert "no live parent definition" in str(exc_info.value)
+        assert [r.method for r in m.request_history] == ["GET", "GET"]
+
+    def test_delete_failure_after_deactivate_reports_draft_no_rollback(self, backend):
+        """Deactivate lands, DELETE fails: no rollback — the error states the
+        definition was deactivated and remains a draft, keeping the server code."""
+        from crm.core import workflow as wf_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({self._DEF_ID})"),
+                json={"workflowid": self._DEF_ID, "name": "Auto-set Owner",
+                      "type": 1, "statecode": 1},
+            )
+            m.patch(backend.url_for(f"workflows({self._DEF_ID})"), status_code=204)
+            m.delete(
+                backend.url_for(f"workflows({self._DEF_ID})"),
+                status_code=400,
+                json={"error": {"code": "0x80048d19", "message": "Delete blocked."}},
+            )
+            with pytest.raises(D365Error) as exc_info:
+                wf_mod.delete_workflow(backend, self._DEF_ID)
+        exc = exc_info.value
+        assert "deactivated" in str(exc)
+        assert "draft" in str(exc)
+        assert exc.code == "0x80048d19"
+        assert exc.status == 400
+        # PATCH ran, DELETE failed, nothing after (no rollback re-activate).
+        assert [r.method for r in m.request_history] == ["GET", "PATCH", "DELETE"]
+
+    def test_delete_failure_without_deactivate_propagates_unchanged(self, backend):
+        """A failed DELETE on an already-draft definition surfaces as-is."""
+        from crm.core import workflow as wf_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({self._DEF_ID})"),
+                json={"workflowid": self._DEF_ID, "name": "Auto-set Owner",
+                      "type": 1, "statecode": 0},
+            )
+            m.delete(
+                backend.url_for(f"workflows({self._DEF_ID})"),
+                status_code=400,
+                json={"error": {"code": "0x80048d19", "message": "Delete blocked."}},
+            )
+            with pytest.raises(D365Error) as exc_info:
+                wf_mod.delete_workflow(backend, self._DEF_ID)
+        assert "deactivated" not in str(exc_info.value)
+        assert exc_info.value.code == "0x80048d19"
+
+    def test_delete_dry_run_previews_with_live_resolve(self, backend):
+        """Dry-run issues real resolve GETs (the house rule: pre-flight reads
+        bypass the short-circuit) and returns a preview envelope — no PATCH,
+        no DELETE, dry_run restored."""
+        from crm.core import workflow as wf_mod
+        act_id = "22222222-2222-2222-2222-222222222222"
+        parent_guid = "33333333-3333-3333-3333-333333333333"
+        backend.dry_run = True
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({act_id})"),
+                json={"workflowid": act_id, "name": "Auto-set Owner",
+                      "type": 2, "statecode": 1,
+                      "_parentworkflowid_value": parent_guid},
+            )
+            m.get(
+                backend.url_for(f"workflows({parent_guid})"),
+                json={"workflowid": parent_guid, "name": "Auto-set Owner",
+                      "type": 1, "statecode": 1},
+            )
+            info = wf_mod.delete_workflow(backend, act_id)
+        assert backend.dry_run is True
+        assert info["_dry_run"] is True
+        assert info["would_delete"] == parent_guid
+        assert info["would_deactivate"] is True
+        assert info["workflow_id"] == parent_guid
+        assert info["resolved_from_activation_id"] == act_id
+        assert "deleted" not in info
+        # Only the resolve GETs hit the wire.
+        assert [r.method for r in m.request_history] == ["GET", "GET"]
+
+    def test_delete_dry_run_draft_definition(self, backend):
+        """Dry-run on a draft definition previews would_deactivate=False."""
+        from crm.core import workflow as wf_mod
+        backend.dry_run = True
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(f"workflows({self._DEF_ID})"),
+                json={"workflowid": self._DEF_ID, "name": "Auto-set Owner",
+                      "type": 1, "statecode": 0},
+            )
+            info = wf_mod.delete_workflow(backend, self._DEF_ID)
+        assert backend.dry_run is True
+        assert info["_dry_run"] is True
+        assert info["would_delete"] == self._DEF_ID
+        assert info["would_deactivate"] is False
+        assert info["resolved_from_activation_id"] is None
+        assert [r.method for r in m.request_history] == ["GET"]
+
+
 class TestCountEntitySet:
     def test_count_returns_int_from_text_plain(self, backend):
         with requests_mock.Mocker() as m:
