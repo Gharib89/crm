@@ -136,6 +136,42 @@ Output: `{imported, failed, chunks, entity_set, mode, dry_run, format}`. `failed
 surfaces a `meta.warnings` advisory; **exit code is 0 on partial failure** — scan
 `meta.warnings`, don't rely on `$?`.
 
+## Raw `$batch` — `crm batch`
+
+`crm batch <file.json>` runs a hand-authored `$batch` directly — the escape hatch for
+mixed/cross-entity bulk work that `data import` (single-entity) can't express, e.g.
+deleting many records in one round-trip. The file is a **JSON array of operation
+objects**, each `{"method", "url", "body"}`:
+
+- `method` — `GET` | `POST` | `PATCH` | `DELETE`.
+- `url` — a **bare relative path** (`contacts(<guid>)`, `accounts`), no leading slash.
+- `body` — JSON object; **required** on `POST`/`PATCH`, **rejected** on `GET`/`DELETE`.
+- optional `headers` (object of string values) and `content_id` (str/int, to reference a
+  just-created record from a later op in the same changeset via `$<content_id>`).
+
+**Gotcha — `url` must not begin with `/`.** A leading slash resolves against the host
+root, not the Web API path, and 404s. `crm batch` blocks it client-side before any
+request with a `validation` error (`url must be a bare relative path … not begin with
+'/'`) — fix the file, don't retry.
+
+Minimal bulk delete — two contacts in one transactional changeset:
+
+```bash
+cat > bulk-delete.json <<'EOF'
+[
+  {"method": "DELETE", "url": "contacts(00000000-0000-0000-0000-000000000001)"},
+  {"method": "DELETE", "url": "contacts(00000000-0000-0000-0000-000000000002)"}
+]
+EOF
+crm --json batch bulk-delete.json
+# -> data: [{...,"status":204},{...,"status":204}], meta: {total, success, failed}
+```
+
+Default is one transactional changeset (all-or-nothing rollback). `--no-transaction`
+sends each op as a top-level operation; `--continue-on-error` (which requires
+`--no-transaction`) keeps going past a failed op. **Exit code is 0 even when some ops
+fail** — read each result's `status` and `meta.failed`, don't rely on `$?`.
+
 ## Ad-hoc OData function / action
 
 ```bash
