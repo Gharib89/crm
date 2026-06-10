@@ -11,10 +11,11 @@ crm --json query odata cwx_tickets \
 ```
 Returns matching rows under `data.value`; queries the entity-set (plural) name.
 
-The entity-set argument must be a bare set name — pass OData options through
+The entity-set argument carries the URL path only — pass OData options through
 `--select`/`--filter`/etc., not baked into the path. A `?` or `$` in the
 argument (e.g. `solutions?$select=uniquename`) is rejected client-side with a
 `validation` error before the request, instead of a bare server `HTTP 400`.
+Bound-function paths like `RetrieveAppComponents(…)` (below) are unaffected.
 
 The bare `in` operator (`workflowid in ('a','b')`) is **OData 4.01** and the
 Dataverse Web API (OData 4.0) rejects it — `query odata` detects it and errors
