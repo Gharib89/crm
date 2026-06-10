@@ -47,6 +47,12 @@ class TestAssessOneWorkflow:
         assert out["verdict"] == "blocked"
         assert out["blockers"] == [workflow.MIGRATION_BLOCKER_WAIT]
 
+    def test_wait_condition_detected_without_namespace_prefix(self):
+        # A default-namespaced <Postpone> (no prefix) is still a wait condition.
+        out = workflow.assess_workflow_migration(
+            _row(xaml='<Activity><Postpone /></Activity>'))
+        assert out["blockers"] == [workflow.MIGRATION_BLOCKER_WAIT]
+
     def test_step_named_wait_without_postpone_is_not_blocked(self):
         # A step merely *named* "Wait ..." (DisplayName) is not a wait condition.
         xaml = '<Activity><mxswa:CreateEntity DisplayName="Wait for owner" /></Activity>'

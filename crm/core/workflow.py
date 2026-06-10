@@ -52,9 +52,11 @@ MIGRATION_BLOCKER_CUSTOM_ACTIVITY = "custom_activity"
 _OOB_ACTIVITY_ASSEMBLY = "Microsoft.Crm.Workflow"
 
 # Classic wait/wait-timeout conditions compile to the `Postpone` activity in the
-# Microsoft.Xrm.Sdk.Workflow.Activities namespace (alias `mxswa`). Match the
-# element local name under any prefix; ground-truthed against live workflows.
-_WAIT_ACTIVITY_RE = re.compile(r"<\w+:Postpone[\s/>]")
+# Microsoft.Xrm.Sdk.Workflow.Activities namespace (alias `mxswa` in practice).
+# Match the element local name with or without a namespace prefix so a
+# default-namespaced `<Postpone>` is still caught; ground-truthed against live
+# workflows (which always carry the `mxswa:` prefix).
+_WAIT_ACTIVITY_RE = re.compile(r"<(?:\w+:)?Postpone[\s/>]")
 # `AssemblyQualifiedName="<type>, <assembly>, Version=..."` — capture the assembly.
 _ACTIVITY_ASSEMBLY_RE = re.compile(r'AssemblyQualifiedName="[^,"]+,\s*([^,"]+)')
 
