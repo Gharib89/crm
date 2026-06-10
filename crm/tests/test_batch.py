@@ -14,6 +14,7 @@ from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
     _assemble_batch_body,
+    _extract_batch_error,
     _parse_batch_response,
 )
 
@@ -304,6 +305,26 @@ class TestParseResponse:
         assert "Record not found" in (results[0]["error"] or "")
 
 
+class TestExtractBatchError:
+    def test_invalid_utf8_in_part_does_not_raise(self):
+        # Error-path robustness: malformed bytes in a part must not raise
+        # UnicodeDecodeError and mask the original $batch failure.
+        body = (
+            b"--bx\r\n"
+            b"Content-Type: application/htt\xffp\r\n"  # invalid byte in the decoded ctype value
+            b"\r\n"
+            b"HTTP/1.1 404 Not Found\r\n"
+            b"Content-Type: application/json\r\n"
+            b"\r\n"
+            b'{"error":{"code":"0x1","message":"boom \xff"}}\r\n'
+            b"--bx--\r\n"
+        )
+        # Must return cleanly (not raise); message decoded with replacement.
+        msg, code = _extract_batch_error(body, "multipart/mixed; boundary=bx")
+        assert code == "0x1"
+        assert msg is not None and "boom" in msg
+
+
 class TestBatchMethod:
     def test_batch_round_trip_writes_only(self, backend, profile, fixed_boundaries):
         ops = [
@@ -348,6 +369,150 @@ class TestBatchMethod:
             results[0]["headers"].get("OData-EntityId", "")
         )
 
+    def test_batch_whole_failure_extracts_aspnet_message(self, backend, profile):
+        # Whole-$batch non-2xx with a flat multipart body carrying the ASP.NET
+        # routing shape {"Message": ...}: the raised error must carry the inner
+        # message, never the raw --batchresponse_ boundary blob.
+        resp_body = (
+            "--batchresponse_x\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"Message":"No HTTP resource was found that matches the request URI '
+            "'http://host/contacts?$top=1'.\"}\r\n"
+            "--batchresponse_x--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresponse_x"},
+                status_code=404,
+            )
+            with pytest.raises(D365Error) as exc:
+                backend.batch([{"method": "GET", "url": "contacts?$top=1"}])
+        assert "No HTTP resource was found" in str(exc.value)
+        assert "--batchresponse" not in str(exc.value)
+        # Full raw body preserved for debugging.
+        assert "--batchresponse_x" in (exc.value.response_body or "")
+
+    def test_batch_whole_failure_extracts_odata_message_and_code(self, backend, profile):
+        # Bare-URL DELETE on a nonexistent GUID in a transactional batch rolls
+        # back the whole $batch → non-2xx with a nested changesetresponse
+        # carrying the OData {"error":{"code","message"}} shape. The code must
+        # propagate to D365Error.code (→ meta.code in the envelope).
+        resp_body = (
+            "--batchresponse_x\r\n"
+            "Content-Type: multipart/mixed; boundary=changesetresponse_y\r\n"
+            "\r\n"
+            "--changesetresponse_y\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"error":{"code":"0x80040217","message":"contact With Id = '
+            '00000000-0000-0000-0000-000000000099 Does Not Exist"}}\r\n'
+            "--changesetresponse_y--\r\n"
+            "--batchresponse_x--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresponse_x"},
+                status_code=404,
+            )
+            with pytest.raises(D365Error) as exc:
+                backend.batch([
+                    {"method": "DELETE",
+                     "url": "contacts(00000000-0000-0000-0000-000000000099)"},
+                ])
+        assert "Does Not Exist" in str(exc.value)
+        assert "--batchresponse" not in str(exc.value)
+        assert exc.value.code == "0x80040217"
+
+    def test_batch_whole_failure_code_without_message(self, backend, profile):
+        # Inner error carries a code but an empty message: the code must still
+        # reach D365Error.code, and the raw boundary blob must not leak.
+        resp_body = (
+            "--batchresponse_x\r\n"
+            "Content-Type: multipart/mixed; boundary=changesetresponse_y\r\n"
+            "\r\n"
+            "--changesetresponse_y\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 400 Bad Request\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"error":{"code":"0x80040203","message":""}}\r\n'
+            "--changesetresponse_y--\r\n"
+            "--batchresponse_x--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresponse_x"},
+                status_code=400,
+            )
+            with pytest.raises(D365Error) as exc:
+                backend.batch([{"method": "POST", "url": "accounts", "body": {"x": 1}}])
+        assert exc.value.code == "0x80040203"
+        assert "--batchresponse" not in str(exc.value)
+
+    def test_batch_whole_failure_unparseable_body_falls_back(self, backend, profile):
+        # No parseable inner error → readable truncated body text, not a crash.
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                text="500 Internal Server Error (plain text, not multipart)",
+                headers={"Content-Type": "text/plain"},
+                status_code=500,
+            )
+            with pytest.raises(D365Error) as exc:
+                backend.batch([{"method": "GET", "url": "contacts"}])
+        assert "Internal Server Error" in str(exc.value)
+        assert exc.value.code is None
+
+    def test_batch_whole_failure_inner_message_not_truncated(self, backend, profile):
+        # The inner message must be parsed in full, never amputated by the
+        # 500-char raw-body cap that bit the old code.
+        long_msg = "Record not found: " + "x" * 700
+        resp_body = (
+            "--batchresponse_x\r\n"
+            "Content-Type: multipart/mixed; boundary=changesetresponse_y\r\n"
+            "\r\n"
+            "--changesetresponse_y\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 404 Not Found\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"error":{"code":"0x80040217","message":"' + long_msg + '"}}\r\n'
+            "--changesetresponse_y--\r\n"
+            "--batchresponse_x--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresponse_x"},
+                status_code=404,
+            )
+            with pytest.raises(D365Error) as exc:
+                backend.batch([
+                    {"method": "DELETE",
+                     "url": "contacts(00000000-0000-0000-0000-000000000099)"},
+                ])
+        assert long_msg in str(exc.value)
+
     def test_batch_validates_method(self, backend):
         with pytest.raises(D365Error, match="method"):
             backend.batch([{"method": "POKE", "url": "accounts"}])
@@ -355,6 +520,24 @@ class TestBatchMethod:
     def test_batch_requires_url(self, backend):
         with pytest.raises(D365Error, match="url"):
             backend.batch([{"method": "GET"}])
+
+    def test_batch_rejects_non_str_url(self, backend):
+        # TypedDicts aren't enforced at runtime; a non-str url must fail as a
+        # clear D365Error, not crash with AttributeError on .startswith.
+        with pytest.raises(D365Error, match="url"):
+            backend.batch([{"method": "GET", "url": 123}])
+
+    def test_batch_rejects_leading_slash_url(self, backend):
+        # Leading-slash URLs resolve against the host root (404), not the
+        # service root — reject client-side with a bare-relative-path hint.
+        with pytest.raises(D365Error, match="relative"):
+            backend.batch([{"method": "GET", "url": "/contacts(00000000-0000-0000-0000-000000000001)"}])
+
+    def test_batch_rejects_leading_slash_url_in_dry_run(self, profile):
+        # Validation runs before the dry-run branch, so the check fires there too.
+        b = D365Backend(profile, password="pw", dry_run=True)
+        with pytest.raises(D365Error, match="relative"):
+            b.batch([{"method": "GET", "url": "/contacts"}])
 
     def test_batch_rejects_body_on_get(self, backend):
         with pytest.raises(D365Error, match="body"):
