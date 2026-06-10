@@ -182,6 +182,11 @@ For exact flags, choices, and defaults, **never guess** — interrogate the CLI:
 - `crm <group> --help` — per-command options.
 - `crm --json connection whoami` — confirm the live target before any mutation.
 
+Verb router: to **list or query records** use `crm query odata` (the `entity` group
+is single-record CRUD only — there is no `entity list` or `entity query`); to
+**browse metadata** use `crm metadata entities` / `crm metadata attributes` /
+`crm metadata list-*`.
+
 ## Where to look
 
 For exact flags, choices, and defaults, run `crm describe <group>` or
