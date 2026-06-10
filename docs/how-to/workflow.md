@@ -9,6 +9,28 @@ crm --json workflow list --entity cwx_ticket --category 0
 ```
 `--category` filters by kind (`0`=Workflow, `4`=BPF, `5`=Modern Flow); `--on-demand` restricts to on-demand workflows.
 
+## Find duplicate workflow definitions
+
+After repeated solution imports (especially a failed import that gets retried), an org can accumulate multiple workflow *definitions* sharing one name. There is no dedicated flag for this — it is a client-side group-by over what `list` already returns:
+
+```bash
+crm --json workflow list \
+  | jq '[.data | group_by(.name)[] | select(length > 1)
+         | {name: .[0].name, count: length,
+            rows: [.[] | {workflowid, statecode, statuscode}]}]'
+```
+
+Any `list` filter composes as a pre-filter, since the grouping runs over whatever `list` returns:
+
+```bash
+crm --json workflow list --entity cwx_ticket \
+  | jq '[.data | group_by(.name)[] | select(length > 1)
+         | {name: .[0].name, count: length,
+            rows: [.[] | {workflowid, statecode, statuscode}]}]'
+```
+
+Why group over `list` output specifically: `list` is restricted to **definitions** (`type=1`). Activating any workflow makes the server spawn a same-name `type=2` activation copy, so grouping raw `workflow` rows by name would flag every *activated* workflow as a duplicate. Because `list` excludes activation copies, every name this recipe surfaces is a genuine duplicate definition. `parentworkflowid` is not needed here — it is always null on definitions; its only use is distinguishing activation copies, which are already excluded.
+
 ## Activate a workflow
 
 ```bash

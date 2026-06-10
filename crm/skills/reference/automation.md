@@ -49,6 +49,14 @@ carries `meta.dry_run: true`.
 ```bash
 crm --json workflow list --entity cwx_ticket --category 0   # definitions on an entity
 
+# Find duplicate definitions (same name, >1 row — e.g. after retried solution imports):
+# group `list` output by name client-side. `list` returns only type=1 definitions, so the
+# server-made same-name type=2 activation copies never false-flag activated workflows.
+crm --json workflow list \
+  | jq '[.data | group_by(.name)[] | select(length > 1)
+         | {name: .[0].name, count: length,
+            rows: [.[] | {workflowid, statecode, statuscode}]}]'
+
 crm --json workflow activate <workflow-guid>
 crm --json workflow deactivate <workflow-guid>
 # A type=2 activation-record GUID is auto-resolved to its parent definition; the result carries meta.note naming both GUIDs (check it when looping on exact ids).
