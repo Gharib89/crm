@@ -31,6 +31,36 @@ crm --json workflow list --entity cwx_ticket \
 
 Why group over `list` output specifically: `list` is restricted to **definitions** (`type=1`). Activating any workflow makes the server spawn a same-name `type=2` activation copy, so grouping raw `workflow` rows by name would flag every *activated* workflow as a duplicate. Because `list` excludes activation copies, every name this recipe surfaces is a genuine duplicate definition. `parentworkflowid` is not needed here — it is always null on definitions; its only use is distinguishing activation copies, which are already excluded.
 
+## Assess classic workflows for migration to cloud flows
+
+Inventory category-0 (classic) workflow definitions and flag the ones that can't be rebuilt as a Power Automate cloud flow as-is:
+
+```bash
+crm --json workflow migration-assess
+crm --json workflow migration-assess --entity account   # scope to one entity
+```
+
+Read-only. Each row reports `verdict` (`ready`/`blocked`) and a `blockers` list naming which of three rules fired, anchored to Microsoft's [capability table](https://learn.microsoft.com/power-automate/replace-workflows-with-flows):
+
+- `real_time` — the workflow runs synchronously (real-time); cloud flows can't.
+- `wait_condition` — the definition uses a wait/wait-timeout condition (a `Postpone` step); cloud flows can't.
+- `custom_activity` — the definition references a custom (non-out-of-box) workflow activity; cloud flows can't run them.
+
+A `blocked` verdict means **needs redesign**, not impossible — Microsoft's guide lists a recommended pattern for each blocker (switch/looping actions, the recurrence trigger, changesets, custom connectors). A `ready` workflow uses only flow-capable primitives; background mode, on-demand, and child/subprocess workflows are all fine.
+
+Cloud flows live only on Dataverse online. On an on-prem profile the command still runs and returns the same report, with an advisory `meta.note` reminding you the migration target must be an online environment:
+
+```json
+{"ok": true, "data": [...], "meta": {"count": 10, "note": "Cloud flows don't exist on on-prem; the migration target must be a Dataverse online environment. This report assesses readiness only."}}
+```
+
+Filter the report client-side with `jq`, e.g. only the blocked ones:
+
+```bash
+crm --json workflow migration-assess \
+  | jq '[.data[] | select(.verdict == "blocked")]'
+```
+
 ## Activate a workflow
 
 ```bash

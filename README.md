@@ -336,7 +336,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml |
 | `plugin`     | Register/update/unregister plug-in assemblies, SDK message processing steps, and step entity images |
 | `security`   | List and assign security roles to users or teams           |
-| `workflow`   | List, activate/deactivate, delete, trigger, clone, export, and import D365 workflow definitions |
+| `workflow`   | List, activate/deactivate, delete, trigger, clone, export, import, and migration-assess (classic-workflow → cloud-flow readiness) D365 workflow definitions |
 | `sla`        | Activate an SLA and its backing workflows, with structured per-step compile-error reporting |
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |
 | `action`     | Call arbitrary OData functions and actions                 |

@@ -56,6 +56,34 @@ def workflow_list(ctx: CLIContext, category, primary_entity, activated_only, on_
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 
+@workflow_group.command("migration-assess")
+@click.option("--entity", "primary_entity", help="Filter by primary entity logical name.")
+@pass_ctx
+def workflow_migration_assess(ctx: CLIContext, primary_entity):
+    """Assess classic workflows for migration to cloud (Power Automate) flows.
+
+    Inventories category-0 workflow definitions and flags blockers from the MS
+    capability table: real-time (synchronous) mode, wait conditions, and custom
+    workflow activities. Read-only. Blockers are "needs redesign" signals, not
+    verdicts of impossibility. On an on-prem profile the report still runs and
+    carries an advisory note (cloud flows live only on Dataverse online).
+    """
+    try:
+        backend = ctx.backend()
+        items = workflow_mod.assess_workflow_migrations(
+            backend, primary_entity=primary_entity)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    meta: dict[str, object] = {"count": len(items)}
+    if backend.profile.auth_scheme != "oauth":
+        meta["note"] = (
+            "Cloud flows don't exist on on-prem; the migration target must be a "
+            "Dataverse online environment. This report assesses readiness only."
+        )
+    ctx.emit(True, data=items, meta=meta)
+
+
 @workflow_group.command("activate")
 @click.argument("workflow_id")
 @_admin_header_options
