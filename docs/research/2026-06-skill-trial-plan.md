@@ -128,3 +128,13 @@ All eight returned `ok: true, created: true`, version `1.0.0.0`, publisherid `66
 | TRIAL-8 | failed (substantively) | premise false (controller construction error) and agent fabricated a wrong diagnosis instead of detecting it; `import-result`/`job-status` never discovered |
 
 Full stumble tables: `2026-06-skill-trial-log.md`.
+
+---
+
+## Cleanup confirmation (Task 10, 2026-06-10)
+
+Org sweep on `crmworx` after filing the backlog:
+
+- All 8 `agtrial*` solutions verified **component-free** (`solution components` count 0 each), then deleted via `entity delete solutions <solutionid>`; read-back filter `startswith(uniquename,'agtrial')` returns **0 rows**.
+- No trial-created stragglers: `savedqueries`, `userqueries`, `webresourceset`, `workflows`, `accounts`, `contacts` all return 0 rows for trial-name filters; trial entities (`cwx_ghostchild`/`cwx_ghostparent`), optionsets (`cwx_maintenancepriority`, `cwx_repro1`) confirmed absent from metadata.
+- Kept intentionally: the pre-existing `crmworx` demo schema (`cwx_ticket`/`cwx_sla` family + its optionsets, referenced by `docs/guides/crmworx-walkthrough.md` and the how-to docs) and the `crmworx` publisher.

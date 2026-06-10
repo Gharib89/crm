@@ -276,3 +276,17 @@ Two lessons for future agent-driven research, both earned from this run:
 
 1. **Envelope parsing must check `ok:` first.** The phantom `workflow list --category` "bug" was manufactured by a controller probe wrapper that read `data`/`meta.count` without checking `ok:` — a clean exit-2 usage error was misread as "0 rows," inventing a CLI bug that did not exist (TRIAL-5; reclassified in the NOT-A-BUG repro). Any harness consuming `crm --json` output must branch on `ok:` before touching `data`.
 2. **Trial premises need a contradiction check.** TRIAL-8's premise ("this zip fails to import") was false because the controller's export auto-included the required parent entity. The agent never reconciled `ok:true, status:succeeded` against "this file fails to import," and instead fabricated a confident, internally-coherent, wrong root cause from collisions its own import had just created. Both agent and controller must validate that a task's stated premise actually holds before acting on it — and (cross-trial pattern 3) transcript review, not agent self-report, is the only reliable evaluation signal.
+
+---
+
+## Success-criteria check (spec `2026-06-10-crm-developer-scenarios-research-design.md`, recorded at Task 10)
+
+| # | Criterion | Result |
+|---|-----------|--------|
+| 1 | Scenario catalogue ≥ 30 scenarios, each with at least one source | **PASS** — 59 scenarios (SCN-001–059), every row carries ≥1 source link; verified at Task 3 review |
+| 2 | Every catalogue scenario classified in the matrix | **PASS** — matrix tally sums to 59 (covered 35 / cli-gap 20 / skill-gap 3 / out-of-scope-challenge 1) |
+| 3 | 6–8 trial scenarios run e2e with transcripts and a stumble log | **PASS** — 8 trials run against `crmworx` v9.1, every trial evaluated from its full transcript; per-trial stumble tables in `2026-06-skill-trial-log.md` (7/8 task completion; TRIAL-8's substantive failure analyzed, not hidden) |
+| 4 | Report complete with all six sections | **PASS** — sections 1–6 plus methodology coda; both review stages passed |
+| 5 | Backlog drafted → user review → filed | **PASS** — 26 entries drafted, user approved all 26 on 2026-06-10, filed as Gharib89/crm#179–#204 with `needs-triage`, issue numbers back-filled |
+
+Cleanup confirmation: see `2026-06-skill-trial-plan.md` §Cleanup confirmation — all `agtrial*` solutions and trial-created components removed from the org, read-backs clean.
