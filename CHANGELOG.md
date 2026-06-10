@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.6.1 (2026-06-10)
+
+### Bug Fixes
+
+- Reject OData params in query odata entity-set arg client-side
+  ([#185](https://github.com/Gharib89/crm/pull/185),
+  [`056c5b2`](https://github.com/Gharib89/crm/commit/056c5b2d580e15c312fbe8a8f7672028a41f76bd))
+
+
 ## v2.6.0 (2026-06-10)
 
 ### Features
