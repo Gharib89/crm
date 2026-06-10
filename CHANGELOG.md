@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.2.0 (2026-06-10)
+
+### Documentation
+
+- Add ADR 0003 (Web API only, no SOAP) + workflow record glossary
+  ([`1ab94e1`](https://github.com/Gharib89/crm/commit/1ab94e13764f870438a5b06e1ebd4b936fb008ee))
+
+### Features
+
+- **workflow**: Auto-resolve activation-record GUIDs to parent definition
+  ([#176](https://github.com/Gharib89/crm/pull/176),
+  [`8d966c7`](https://github.com/Gharib89/crm/commit/8d966c7250838b5ca1b0408bc5998ce9637a697e))
+
+
 ## v2.1.2 (2026-06-09)
 
 ### Bug Fixes
