@@ -311,13 +311,13 @@ def _resolve_schema_name(
 
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
     if data_file:
-        with open(data_file, "r", encoding="utf-8") as f:
-            try:
+        try:
+            with open(data_file, "r", encoding="utf-8") as f:
                 parsed = json.load(f)
-            except json.JSONDecodeError as exc:
-                raise click.UsageError(
-                    f"invalid JSON in --data-file: {exc}"
-                ) from exc
+        except OSError as exc:
+            raise click.UsageError(f"cannot read --data-file: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise click.UsageError(f"invalid JSON in --data-file: {exc}") from exc
     elif data_json:
         try:
             parsed = json.loads(data_json)

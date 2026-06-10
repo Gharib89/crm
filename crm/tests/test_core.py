@@ -1618,6 +1618,15 @@ class TestLoadPayload:
         ):
             _load_payload(None, str(bad))
 
+    def test_unreadable_data_file_raises_usage_error(self, tmp_path):
+        import click
+        from crm.commands._helpers import _load_payload
+
+        # a directory passes Click's exists=True at the CLI layer in callers
+        # without dir_okay=False, and open() on it raises OSError
+        with pytest.raises(click.UsageError, match=r"cannot read --data-file:"):
+            _load_payload(None, str(tmp_path))
+
 
 class TestErrorEnvelope:
     def test_error_envelope_null_when_status_missing(self, capsys):
