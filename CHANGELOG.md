@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.4.2 (2026-06-10)
+
+### Bug Fixes
+
+- **commands**: Wrap _load_payload JSON parse failure as UsageError
+  ([#206](https://github.com/Gharib89/crm/pull/206),
+  [`8bc4582`](https://github.com/Gharib89/crm/commit/8bc4582d82b4d8ed25a78050c3b5d21b85b3dc04))
+
+
 ## v2.4.1 (2026-06-10)
 
 ### Bug Fixes
