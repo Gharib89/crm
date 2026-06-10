@@ -155,6 +155,25 @@ class TestTranslationCommands:
         assert result.exit_code == 0, result.output
         assert captured["solution"] == "CRMWorx"
 
+    def test_export_command_oserror_emits_clean_envelope(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import translation as tr_cmd
+
+        def _boom(backend, solution, output, **kw):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(tr_cmd.translation_mod, "export_translation", _boom)
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "--json", "translation", "export",
+            "--solution", "CRMWorx", "-o", str(tmp_path / "labels.zip"),
+        ])
+        assert result.exit_code == 1
+        import json
+        envelope = json.loads(result.stdout)
+        assert envelope["ok"] is False
+        assert "disk full" in envelope["error"]
+
     def test_import_command_requires_confirmation(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         src = _write_translations_zip(tmp_path / "labels.zip")

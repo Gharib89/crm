@@ -41,6 +41,9 @@ def translation_export_cmd(ctx: CLIContext, solution, output, timeout, no_retry)
         except D365Error as exc:
             _handle_d365_error(ctx, exc)
             return
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output}: {exc}")
+            return
         ctx.emit(True, data=info)
 
 
@@ -69,6 +72,9 @@ def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes):
             )
         except D365Error as exc:
             _handle_d365_error(ctx, exc)
+            return
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not read {zip_path}: {exc}")
             return
         ctx.emit(True, data=info, warnings=[
             "Imported labels do not surface until published — run "
