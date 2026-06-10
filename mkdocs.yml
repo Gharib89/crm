@@ -128,6 +128,7 @@ nav:
       - skill: how-to/skill.md
       - workflow: how-to/workflow.md
       - sla: how-to/sla.md
+      - translation: how-to/translation.md
   - Reference:
       - CLI: reference/cli.md
       - Changelog: changelog.md
