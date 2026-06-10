@@ -337,6 +337,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `plugin`     | Register/update/unregister plug-in assemblies and SDK message processing steps |
 | `security`   | List and assign security roles to users or teams           |
 | `workflow`   | List, activate/deactivate, delete, trigger, clone, export, and import D365 workflow definitions |
+| `sla`        | Activate an SLA and its backing workflows, with structured per-step compile-error reporting |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state, command history, and audit journal    |
 

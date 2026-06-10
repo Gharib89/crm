@@ -327,6 +327,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "security": "crm.commands.security:security_group",
         "session": "crm.commands.session:session_group",
         "skill": "crm.commands.skill:skill_group",
+        "sla": "crm.commands.sla:sla_group",
         "solution": "crm.commands.solution:solution_group",
         "view": "crm.commands.view:view_group",
         "webresource": "crm.commands.webresource:webresource_group",

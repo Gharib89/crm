@@ -127,6 +127,7 @@ nav:
       - session: how-to/session.md
       - skill: how-to/skill.md
       - workflow: how-to/workflow.md
+      - sla: how-to/sla.md
   - Reference:
       - CLI: reference/cli.md
       - Changelog: changelog.md

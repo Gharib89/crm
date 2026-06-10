@@ -52,6 +52,7 @@ a = Analysis(
         'crm.commands.security',
         'crm.commands.session',
         'crm.commands.skill',
+        'crm.commands.sla',
         'crm.commands.solution',
         'crm.commands.view',
         'crm.commands.webresource',

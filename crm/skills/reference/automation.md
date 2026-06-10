@@ -1,7 +1,8 @@
-# Automation — plug-ins and workflows
+# Automation — plug-ins, workflows, and SLAs
 
-Register plug-in assemblies and processing steps; manage classic workflows and
-business rules. Groups: `plugin`, `workflow`. Flags/choices: `crm <group> --help`.
+Register plug-in assemblies and processing steps; manage classic workflows,
+business rules, and SLA activation. Groups: `plugin`, `workflow`, `sla`.
+Flags/choices: `crm <group> --help`.
 
 ## Plug-ins — `plugin` (assembly + step lifecycle)
 
@@ -85,3 +86,31 @@ Category values: `0`=Workflow, `1`=Dialog, `2`=BusinessRule, `3`=Action, `4`=BPF
 `5`=ModernFlow. **Clone supports only `0` and `2`** — action/BPF/dialog/modern-flow
 fail loudly. (This is the same constraint the entity-clone `--with-workflows` flag
 hits; see `reference/metadata.md`.)
+
+## SLAs — `sla`
+
+An SLA cannot activate until every backing workflow (one per SLA item) is
+active. `sla activate <sla-guid>` orchestrates the whole sequence: backing
+workflows first (already-active ones skipped — re-running is safe), then the
+SLA record itself.
+
+```bash
+crm --json sla activate <sla-guid>
+# data.workflows[] reports per-workflow status: activated | already_active | failed
+```
+
+Gotchas:
+
+- **Compile errors block the API path.** After a solution import, backing
+  workflows can fail activation with `InvalidEntity`/`InvalidRelationship`
+  compile errors. The command parses the platform's raw
+  `ErrorMap Details: {Step: Err, ...}` string into structured
+  `data.workflows[].errors` = `[{"step": ..., "errors": [...]}]` (raw message
+  kept in `.error` either way). When that happens the SLA is NOT touched,
+  exit is non-zero, and `data.ui_activation_required` is true — the only fix
+  is the D365 UI (Settings → Service Level Agreements → open the SLA →
+  Activate). Workflows already activated in the run stay active; re-run after
+  fixing to pick up where it left off.
+- `--dry-run` resolves the plan with live GETs and returns
+  `{_dry_run, would_activate, already_active, would_activate_sla}` — nothing
+  is PATCHed.

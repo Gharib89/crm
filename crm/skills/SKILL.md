@@ -16,7 +16,7 @@ live D365 server is a hard runtime dependency.
 - Run OData v4 (`$filter`/`$select`/`$top`) or FetchXML queries.
 - Browse schema metadata (entity / attribute / relationship definitions).
 - Author schema declaratively, export/import D365 solutions (`.zip`).
-- Manage web resources, ribbons, forms, model-driven apps, plug-ins, workflows, roles.
+- Manage web resources, ribbons, forms, model-driven apps, plug-ins, workflows, SLAs, roles.
 - Pull bulk datasets to CSV/JSON, or import CSV/JSONL records in bulk.
 - Anything you'd otherwise script against the SOAP Organization Service.
 
@@ -195,7 +195,7 @@ cannot: workflows, gotchas, and the JSON contract. For per-domain detail:
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
 | solutions: create/export/import, packager extract/pack, validate, component drift | `reference/solutions.md` |
 | customizations: model-driven apps, web resources, ribbon, forms, sitemap | `reference/customizations.md` |
-| automation: plug-in assemblies & steps, workflows | `reference/automation.md` |
+| automation: plug-in assemblies & steps, workflows, SLA activation | `reference/automation.md` |
 | security: roles & assignment | `reference/security.md` |
 | errors, retries, connection diagnostics, session/audit, on-prem vs cloud | `reference/troubleshooting.md` |
 | reporting a bug / requesting a feature | `reference/feedback.md` |
