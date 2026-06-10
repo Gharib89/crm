@@ -1598,6 +1598,35 @@ class TestLoadPayload:
 
         assert _load_payload('{"name":"x"}', None) == {"name": "x"}
 
+    def test_malformed_data_json_raises_usage_error(self):
+        import click
+        from crm.commands._helpers import _load_payload
+
+        with pytest.raises(
+            click.UsageError, match=r"invalid JSON in --data: .*Expecting"
+        ):
+            _load_payload('{"name": "x", bad}', None)
+
+    def test_malformed_data_file_raises_usage_error(self, tmp_path):
+        import click
+        from crm.commands._helpers import _load_payload
+
+        bad = tmp_path / "payload.json"
+        bad.write_text('{"name": "x", bad}', encoding="utf-8")
+        with pytest.raises(
+            click.UsageError, match=r"invalid JSON in --data-file: .*Expecting"
+        ):
+            _load_payload(None, str(bad))
+
+    def test_unreadable_data_file_raises_usage_error(self, tmp_path):
+        import click
+        from crm.commands._helpers import _load_payload
+
+        # a directory passes Click's exists=True at the CLI layer in callers
+        # without dir_okay=False, and open() on it raises OSError
+        with pytest.raises(click.UsageError, match=r"cannot read --data-file:"):
+            _load_payload(None, str(tmp_path))
+
 
 class TestErrorEnvelope:
     def test_error_envelope_null_when_status_missing(self, capsys):
