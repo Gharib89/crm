@@ -85,6 +85,24 @@ The LayoutXml `object` attribute is the entity **ObjectTypeCode (OTC)** — get 
 `metadata entity <name>` (see `reference/metadata.md`). `--column` is repeatable
 `'logical[:width]'` with order preserved.
 
+### Edit an existing view
+
+`view create` only makes new views. To change an existing one, PATCH its
+`savedquery` row — locate the GUID by name, update `fetchxml`/`layoutxml`, then
+publish the owning entity:
+
+```bash
+crm --json query odata savedqueries --filter "name eq 'Active Accounts'" \
+    --select name,returnedtypecode,savedqueryid
+crm entity update savedqueries <savedqueryid> \
+    --data '{"fetchxml":"<fetch>…</fetch>","layoutxml":"<grid>…</grid>"}'
+crm solution publish --xml \
+    '<importexportxml><entities><entity>account</entity></entities></importexportxml>'
+```
+
+`returnedtypecode` is the entity **logical name** — a string like `account`, **not**
+an int — so identify the target view by `name` or by `returnedtypecode eq '<logical>'`.
+
 ## Stage many changes, then publish once
 
 By default each create/update metadata command auto-publishes. The global
