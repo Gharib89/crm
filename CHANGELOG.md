@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.6.0 (2026-06-10)
+
+### Features
+
+- **translation**: Add translation export/import verbs
+  ([#210](https://github.com/Gharib89/crm/pull/210),
+  [`c5355e7`](https://github.com/Gharib89/crm/commit/c5355e717f3315f140ddf2ec545b92dc1a412c33))
+
+
 ## v2.5.0 (2026-06-10)
 
 ### Documentation
