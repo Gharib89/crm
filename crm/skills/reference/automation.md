@@ -4,10 +4,11 @@ Register plug-in assemblies and processing steps; manage classic workflows,
 business rules, and SLA activation. Groups: `plugin`, `workflow`, `sla`.
 Flags/choices: `crm <group> --help`.
 
-## Plug-ins — `plugin` (assembly + step lifecycle)
+## Plug-ins — `plugin` (assembly + step + image lifecycle)
 
 The full workflow is **upload assembly → verify the platform-generated types →
-register a step** against one of those types:
+register a step** against one of those types, then optionally attach entity
+images to the step:
 
 ```bash
 # register-assembly: .dll bytes are base64'd into `content`. --solution sends
@@ -35,6 +36,22 @@ crm --json plugin register-step \
 ```
 
 ```bash
+# register-image: --step takes the step GUID or exact name. messagepropertyname
+# is derived from the step's message (Send is ambiguous — pass
+# --message-property-name FaxId|EmailId|TemplateId). Always pass --attributes:
+# omitting it snapshots ALL columns (documented performance anti-pattern).
+# Rejected client-side: pre-image on Create, post-image on Delete, post-image
+# on a non-PostOperation step, messages that don't support images.
+crm --json plugin register-image \
+    --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
+    --type pre --alias preimg --attributes name,telephone1
+```
+
+```bash
+# unregister-image: by name or GUID; only needed to remove an image while
+# keeping the step — deleting a step cascades its images.
+crm --json plugin unregister-image preimg --yes
+
 # unregister-step: by name or GUID; an ambiguous name errors (use the GUID).
 crm --json plugin unregister-step "Contoso.Plugins.AccountPostUpdate: Update of account" --yes
 

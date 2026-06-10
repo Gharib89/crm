@@ -334,7 +334,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
 | `webresource` | Create/update/get/list web resources (HTML/JS/CSS/images); set as app icons |
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml |
-| `plugin`     | Register/update/unregister plug-in assemblies and SDK message processing steps |
+| `plugin`     | Register/update/unregister plug-in assemblies, SDK message processing steps, and step entity images |
 | `security`   | List and assign security roles to users or teams           |
 | `workflow`   | List, activate/deactivate, delete, trigger, clone, export, and import D365 workflow definitions |
 | `sla`        | Activate an SLA and its backing workflows, with structured per-step compile-error reporting |

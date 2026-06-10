@@ -31,8 +31,9 @@ set-lookup/clear-lookup; all metadata create/update/delete-*; solution create/
 create-publisher/set-version/add-component/remove-component/publish/publish-all/
 import/job-cancel; batch; workflow activate/deactivate/run; action invoke;
 webresource create/update; app create/add-components/build-sitemap/set-sitemap;
-view create; data import; plugin register-assembly/register-step/unregister-assembly/
-unregister-step; security assign-role; async cancel; apply) appends one line to the
+view create; data import; plugin register-assembly/register-step/register-image/
+unregister-assembly/unregister-step/unregister-image; security assign-role;
+async cancel; apply) appends one line to the
 audit journal on success.
 Read, query, get, list, and export verbs never write to the journal.
 

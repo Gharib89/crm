@@ -1,7 +1,8 @@
 # How-to: plugin
 
-Register and manage Dynamics 365 plug-in assemblies and processing steps via the
-Dataverse Web API (`pluginassemblies`, `plugintypes`, `sdkmessageprocessingsteps`).
+Register and manage Dynamics 365 plug-in assemblies, processing steps, and step
+entity images via the Dataverse Web API (`pluginassemblies`, `plugintypes`,
+`sdkmessageprocessingsteps`, `sdkmessageprocessingstepimages`).
 See the [CLI reference](../reference/cli.md) for every flag.
 
 ## Register an assembly
@@ -88,6 +89,49 @@ crm --json plugin register-step \
     --mode sync \
     --filtering-attributes name,telephone1
 ```
+
+## Register a step image
+
+Step entity images snapshot the record before (`pre`) or after (`post`) the
+core operation; plug-in code reads them from `PreEntityImages` /
+`PostEntityImages` under the alias:
+
+```bash
+crm --json plugin register-image \
+    --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
+    --type pre \
+    --alias preimg \
+    --attributes name,telephone1
+```
+
+Key points:
+
+- `--step` accepts the step GUID or its exact name (an ambiguous name errors —
+  use the GUID).
+- `--alias` is the key your plug-in uses to read the image; `--name` defaults
+  to the alias.
+- `--attributes` (comma-separated) limits the columns captured in the image.
+  Omitting it captures **all** columns — a documented performance
+  anti-pattern; always pass a list.
+- `messagepropertyname` is derived from the step's message automatically
+  (`Target` for Assign/Create/Delete/Merge/Route/Update, `EmailId` for
+  DeliverIncoming/DeliverPromote, `EntityMoniker` for SetState). `Send` steps
+  are ambiguous (`FaxId`, `EmailId`, or `TemplateId`) and require an explicit
+  `--message-property-name`; messages outside that table do not support
+  images and are rejected client-side.
+- Platform validity rules are enforced before any write: no pre-image on a
+  `Create` step, no post-image on a `Delete` step, and post-images require a
+  step registered in the **PostOperation** stage.
+
+## Unregister a step image
+
+```bash
+crm --json plugin unregister-image preimg --yes
+```
+
+Resolves by image name or GUID; an ambiguous name errors — use the GUID.
+Deleting a step cascades its images automatically, so this is only needed to
+remove an image while keeping the step.
 
 ## Unregister a step
 
