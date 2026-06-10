@@ -774,7 +774,12 @@ class D365Backend:
             inner_msg, inner_code = _extract_batch_error(
                 resp.content, resp.headers.get("Content-Type", ""),
             )
-            detail = inner_msg if inner_msg is not None else resp.text[:500]
+            if inner_msg:
+                detail = inner_msg
+            elif inner_code:
+                detail = f"error code {inner_code}"
+            else:
+                detail = resp.text[:500]
             raise D365Error(
                 f"$batch failed: HTTP {resp.status_code}: {detail}",
                 status=resp.status_code,
@@ -1229,7 +1234,7 @@ def _extract_batch_error(body: bytes, content_type: str) -> tuple[str | None, st
             inner_subparts = [part]
         for sub in inner_subparts:
             msg, code = _inner_error_from_json(_parse_http_subpart(sub).get("body"))
-            if msg:
+            if msg or code:
                 return msg, code
     return None, None
 

@@ -415,6 +415,36 @@ class TestBatchMethod:
         assert "--batchresponse" not in str(exc.value)
         assert exc.value.code == "0x80040217"
 
+    def test_batch_whole_failure_code_without_message(self, backend, profile):
+        # Inner error carries a code but an empty message: the code must still
+        # reach D365Error.code, and the raw boundary blob must not leak.
+        resp_body = (
+            "--batchresponse_x\r\n"
+            "Content-Type: multipart/mixed; boundary=changesetresponse_y\r\n"
+            "\r\n"
+            "--changesetresponse_y\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 400 Bad Request\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"error":{"code":"0x80040203","message":""}}\r\n'
+            "--changesetresponse_y--\r\n"
+            "--batchresponse_x--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresponse_x"},
+                status_code=400,
+            )
+            with pytest.raises(D365Error) as exc:
+                backend.batch([{"method": "POST", "url": "accounts", "body": {"x": 1}}])
+        assert exc.value.code == "0x80040203"
+        assert "--batchresponse" not in str(exc.value)
+
     def test_batch_whole_failure_unparseable_body_falls_back(self, backend, profile):
         # No parseable inner error → readable truncated body text, not a crash.
         with requests_mock.Mocker() as m:
