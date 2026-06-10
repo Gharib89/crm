@@ -54,7 +54,7 @@ def sla_activate(ctx: CLIContext, sla_id, as_user, as_user_object_id,
     report explains why UI activation is required.
     """
     try:
-        sla_mod.validate_sla_id(sla_id)
+        sla_id = sla_mod.validate_sla_id(sla_id)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return

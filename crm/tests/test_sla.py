@@ -184,6 +184,40 @@ class TestActivateSla:
                 activate_sla(backend, "not-a-guid")
         assert m.request_history == []
 
+    def test_braced_uppercase_guid_is_normalized(self, backend):
+        """A braced/uppercase GUID is canonicalized before hitting any URL or
+        $filter, and the result reports the canonical form."""
+        with requests_mock.Mocker() as m:
+            _mock_sla_reads(m, backend, wf_states=(1, 1))
+            m.patch(backend.url_for(f"slas({_SLA_ID})"), status_code=204)
+            result = activate_sla(backend, "{" + _SLA_ID.upper() + "}")
+
+        assert result["sla_id"] == _SLA_ID
+        first_get = m.request_history[0]
+        assert f"slas({_SLA_ID})".lower() in first_get.url.lower()
+        assert "{" not in first_get.url and "%7B" not in first_get.url
+
+    def test_slaitems_paging_follows_next_link(self, backend):
+        """slaitems beyond the server page size are still part of the plan."""
+        wf3 = "33333333-3333-3333-3333-333333333333"
+        next_url = backend.url_for("slaitems") + "?$skiptoken=page2"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"slas({_SLA_ID})"), json=_sla_row())
+            m.get(backend.url_for("slaitems"), [
+                {"json": {**_items_payload(), "@odata.nextLink": next_url}},
+            ])
+            for wid in (_WF1, _WF2, wf3):
+                m.get(backend.url_for(f"workflows({wid})"),
+                      json=_wf_row(wid, 1))
+            # second page registered on the same matcher via query string
+            m.get(next_url, json={"value": [
+                {"slaitemid": "0000000c-000c-000c-000c-00000000000c",
+                 "name": "Page 2 item", "_workflowid_value": wf3}]})
+            m.patch(backend.url_for(f"slas({_SLA_ID})"), status_code=204)
+            result = activate_sla(backend, _SLA_ID)
+
+        assert [w["workflow_id"] for w in result["workflows"]] == [_WF1, _WF2, wf3]
+
 
 # ── Command layer ────────────────────────────────────────────────────────
 

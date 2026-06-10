@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from crm.core.workflow import STATE_ACTIVATED, set_workflow_state
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -51,11 +51,13 @@ def parse_error_map(message: str) -> list[dict[str, Any]] | None:
 _SLA_ACTIVE = (1, 2)
 
 
-def validate_sla_id(sla_id: str) -> None:
-    """Raise D365Error if sla_id is not a GUID. Client-side only — the command
-    layer calls this before building a backend."""
+def validate_sla_id(sla_id: str) -> str:
+    """Return the canonical (lowercase, brace-free) form of sla_id, raising
+    D365Error if it is not a GUID. Client-side only — the command layer calls
+    this before building a backend; the canonical form keeps OData paths and
+    $filter expressions stable."""
     try:
-        uuid.UUID(sla_id)
+        return str(uuid.UUID(sla_id))
     except (ValueError, TypeError) as exc:
         raise D365Error(f"Invalid GUID for sla_id: {sla_id!r}") from exc
 
@@ -73,14 +75,25 @@ def _fetch_plan(
         f"slas({sla_id})", params={"$select": "slaid,name,statecode"},
         caller_id=caller_id, caller_object_id=caller_object_id,
     ))
-    items = as_dict(backend.get(
+    items: list[dict[str, Any]] = []
+    page = as_dict(backend.get(
         "slaitems",
         params={
             "$select": "slaitemid,name,_workflowid_value",
             "$filter": f"_slaid_value eq {sla_id}",
         },
         caller_id=caller_id, caller_object_id=caller_object_id,
-    )).get("value", [])
+    ))
+    while True:
+        value = page.get("value", [])
+        if isinstance(value, list):
+            items.extend(cast("list[dict[str, Any]]", value))
+        next_link = page.get("@odata.nextLink")
+        if not isinstance(next_link, str) or not next_link:
+            break
+        # Absolute URL — backend.get accepts and returns the full URL via url_for.
+        page = as_dict(backend.get(
+            next_link, caller_id=caller_id, caller_object_id=caller_object_id))
     workflow_ids: list[str] = []
     for item in items:
         wid = item.get("_workflowid_value")
@@ -117,7 +130,7 @@ def activate_sla(
     resolves the plan with live GETs and returns a
     `{_dry_run, would_activate, ...}` preview without mutating.
     """
-    validate_sla_id(sla_id)
+    sla_id = validate_sla_id(sla_id)
 
     # Dry-run short-circuits ALL requests including GETs, so the plan is
     # always resolved live; the toggle is restored before any mutation.
