@@ -17,6 +17,10 @@ crm --json query odata contacts \
     --filter "statecode eq 0" --select fullname,emailaddress1 --top 5
 ```
 
+The entity-set arg is a **bare set name**; put OData options in `--select`/`--filter`/etc.
+A `?` or `$` in it (e.g. `contacts?$select=fullname`) returns a `validation` error
+client-side — recover by moving the params onto flags, not by retrying the URL.
+
 `--minimal` strips OData annotation keys (`@odata.etag`, `*@FormattedValue`,
 `*@...lookuplogicalname`) from each `--json` record, keeping business fields,
 `_*_value` lookup GUIDs, and the primary id — **the form to chain downstream.** It is

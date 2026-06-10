@@ -35,6 +35,16 @@ def odata_query(
 
     Returns the raw response dict (with `value` array + optional `@odata.nextLink`).
     """
+    # `entity_set` must be a bare set name. A `?` or `$` means the caller baked
+    # OData params into the path (e.g. `solutions?$select=uniquename`), which the
+    # server bounces as a bare HTTP 400 with no recovery signal — reject it here.
+    if "?" in entity_set or "$" in entity_set:
+        raise D365Error(
+            "entity-set arg must be a bare set name (e.g. `solutions`); "
+            "use --select/--filter for OData parameters",
+            code="InvalidEntitySet",
+        )
+
     params: dict[str, Any] = {}
     if select:
         params["$select"] = ",".join(select)
