@@ -33,6 +33,25 @@ def _parse_column(raw: str) -> tuple[str, int]:
     return name, width
 
 
+def _parse_order(raw: str) -> tuple[str, bool]:
+    """Parse '<attribute> [asc|desc]' → (attribute, descending).
+
+    Mirrors the OData `$orderby` idiom (`query odata --orderby`). Direction
+    token is case-insensitive; default ascending. Anything else is a usage error.
+    """
+    parts = raw.split()
+    if len(parts) == 1:
+        return parts[0], False
+    if len(parts) == 2:
+        direction = parts[1].lower()
+        if direction == "asc":
+            return parts[0], False
+        if direction == "desc":
+            return parts[0], True
+    raise click.UsageError(
+        f"--order must be '<attribute>' or '<attribute> asc|desc': {raw!r}")
+
+
 @view_group.command("create")
 @click.argument("entity")
 @click.option("--name", required=True, help="View display name.")
@@ -40,7 +59,9 @@ def _parse_column(raw: str) -> tuple[str, int]:
               help="Entity ObjectTypeCode (from `metadata entity <name>`).")
 @click.option("--column", "columns", multiple=True, required=True,
               help="Repeatable 'logicalname[:width]'. Order preserved.")
-@click.option("--order", "order_by", default=None, help="Attribute to sort by (ascending).")
+@click.option("--order", "order_by", default=None,
+              help="Sort attribute, optional 'asc'/'desc' suffix "
+                   "(e.g. 'createdon desc'). Default: ascending.")
 @click.option("--filter-active", is_flag=True, help="Filter to statecode=0 (active) rows.")
 @click.option("--default", "is_default", is_flag=True, help="Mark as the default view.")
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
@@ -53,13 +74,16 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
                 solution, require_solution, publish):
     """Create a public system view on ENTITY."""
     parsed = [_parse_column(c) for c in columns]
+    order_desc = False
+    if order_by is not None:
+        order_by, order_desc = _parse_order(order_by)
     solution, warning = _resolve_solution(
         ctx, solution, require=_require_solution(require_solution))
     publish = _resolve_publish(ctx, publish)
     try:
         info = views_mod.create_view(
             ctx.backend(), entity=entity, object_type_code=object_type_code,
-            name=name, columns=parsed, order_by=order_by,
+            name=name, columns=parsed, order_by=order_by, order_desc=order_desc,
             filter_active=filter_active, is_default=is_default,
             solution=solution, if_exists=if_exists, publish=publish,
         )

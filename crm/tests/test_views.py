@@ -61,6 +61,38 @@ class TestCreateView:
         assert 'value="0"' in body["fetchxml"]
         assert 'attribute="cwx_name"' in body["fetchxml"]
 
+    def test_descending_order_emits_descending_true(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": view_url})
+            m.get(view_url, json={"savedqueryid": _VIEW_ID, "name": "Recent"})
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="Recent", columns=[("cwx_name", 220)],
+                order_by="createdon", order_desc=True,
+            )
+        body = _post_body(m)
+        assert 'attribute="createdon" descending="true"' in body["fetchxml"]
+
+    def test_ascending_order_emits_descending_false(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": view_url})
+            m.get(view_url, json={"savedqueryid": _VIEW_ID, "name": "Oldest"})
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="Oldest", columns=[("cwx_name", 220)],
+                order_by="createdon",
+            )
+        body = _post_body(m)
+        assert 'attribute="createdon" descending="false"' in body["fetchxml"]
+
     def test_existing_view_skips(self, backend):
         from crm.core import views
         with requests_mock.Mocker() as m:
@@ -157,6 +189,50 @@ class TestViewCommand:
         assert captured["columns"] == [("cwx_name", 220), ("cwx_priority", 120)]
         assert captured["order_by"] == "cwx_name"
         assert captured["filter_active"] is True
+
+    def test_view_create_parses_descending_order(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.views.create_view",
+            lambda backend, **kw: captured.update(kw) or {"created": True, "name": kw["name"]})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+            "--column", "cwx_name:220", "--order", "createdon desc", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["order_by"] == "createdon"
+        assert captured["order_desc"] is True
+
+    def test_view_create_ascending_order_default(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.views.create_view",
+            lambda backend, **kw: captured.update(kw) or {"created": True, "name": kw["name"]})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+            "--column", "cwx_name:220", "--order", "createdon", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["order_by"] == "createdon"
+        assert captured["order_desc"] is False
+
+    def test_view_create_invalid_direction_exits_2(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+            "--column", "cwx_name:220", "--order", "createdon banana", "--no-publish",
+        ])
+        assert result.exit_code == 2, result.output
+        combined = result.output + result.stderr
+        assert "asc" in combined and "desc" in combined
 
     def test_view_create_strips_column_whitespace(self, monkeypatch):
         from click.testing import CliRunner
