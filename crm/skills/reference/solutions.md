@@ -60,13 +60,13 @@ crm solution import /tmp/snap.zip --yes
 default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
 context aborts.
 
-**Gotcha:** importing a security **role** from a **managed** solution strips all
-*manually added* privileges of that role on the target org (privilege-level *changes*
-survive; manual *additions* are removed) — per Microsoft Learn, "how managed solutions
-are merged → merge security role privileges". Mitigation: manage every update to a given
+**Gotcha:** importing a security **role** from a **managed** solution. On on-prem v9.x
+this strips all *manually added* privileges of that role on the target org (privilege-level
+*changes* survive; manual *additions* are removed); newer Dataverse online instead *merges*
+role privileges and keeps them — per Microsoft Learn, "how managed solutions are merged →
+merge security role privileges". Either way, mitigate by managing every update to a given
 role from the **same** custom solution; never add privileges directly on the target org,
-and don't move a role's updates to a different solution. (On-prem v9.x always strips;
-newer Dataverse online merges role privileges instead.)
+and don't move a role's updates to a different solution.
 
 The result carries `import_job_id` and `async_operation_id` — capture both; they
 drive the investigation workflow below.
