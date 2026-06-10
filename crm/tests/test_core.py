@@ -1592,6 +1592,33 @@ class TestImportSolutionAsync:
         warnings = info.get("warnings") or []
         assert any("per-component" in w and "platform" in w for w in warnings)
 
+    def test_sync_fallback_formatted_with_unreadable_row_still_succeeds(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """--formatted with an unreadable importjob row must not crash a
+        succeeded sync import: the formatted fetch is skipped (#182)."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"),
+                   status_code=400, json=self._REJECT_BODY)
+            m.post(backend.url_for("ImportSolution"), status_code=204, text="")
+            m.get(requests_mock.ANY, status_code=404,
+                  json={"error": {"message": "importjob Does Not Exist"}})
+            from crm.core import solution as sol_mod
+            info = sol_mod.import_solution(backend, zip_path, quiet=True,
+                                           formatted=True)
+
+        assert info["status"] == "succeeded"
+        assert "formatted_results" not in info
+        warnings = info.get("warnings") or []
+        assert any("per-component" in w for w in warnings)
+        # no RetrieveFormattedImportJobResults round-trip was attempted
+        assert not any("RetrieveFormatted" in r.url for r in m.request_history)
+
     def test_import_other_d365_error_reraised(
         self, backend, tmp_path, monkeypatch
     ):

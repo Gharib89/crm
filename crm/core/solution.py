@@ -585,7 +585,9 @@ def _import_solution_sync(
             f"{detail}; the synchronous ImportSolution import itself succeeded."
         ]
 
-    if formatted:
+    # Skip the formatted-report round-trip when the row was unreadable — it
+    # would fail the same way and crash an import that already succeeded.
+    if formatted and job_row:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
 
     return out
