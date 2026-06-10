@@ -141,7 +141,7 @@ surfaces a `meta.warnings` advisory; **exit code is 0 on partial failure** — s
 `crm batch <file.json>` runs a hand-authored `$batch` directly — the escape hatch for
 mixed/cross-entity bulk work that `data import` (single-entity) can't express, e.g.
 deleting many records in one round-trip. The file is a **JSON array of operation
-objects**, each `{"method", "url", "body"}`:
+objects**, each carrying a `method` and `url` (plus a `body` on writes):
 
 - `method` — `GET` | `POST` | `PATCH` | `DELETE`.
 - `url` — a **bare relative path** (`contacts(<guid>)`, `accounts`), no leading slash.
