@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.3.0 (2026-06-10)
+
+### Documentation
+
+- **plans**: CRM developer scenarios research implementation plan
+  ([`694cd59`](https://github.com/Gharib89/crm/commit/694cd5984374453d7c81ccc7ce666c244189dd42))
+
+- **specs**: Add CRM developer scenarios research design
+  ([`68f45fc`](https://github.com/Gharib89/crm/commit/68f45fcba24525f3195a353a1e9c90f4ca421cd1))
+
+- **workflow**: Add duplicate-definition detection recipe
+  ([#165](https://github.com/Gharib89/crm/pull/165),
+  [`ecde5ce`](https://github.com/Gharib89/crm/commit/ecde5ce6132788d2a25a7716fcb4b18f16a64364))
+
+### Features
+
+- **workflow**: Add delete verb resolving activation records to their definition
+  ([#164](https://github.com/Gharib89/crm/pull/164),
+  [`7f5d6de`](https://github.com/Gharib89/crm/commit/7f5d6de5b894f97ca8cbaee22cba2a0031bd8782))
+
+
 ## v2.2.0 (2026-06-10)
 
 ### Documentation
