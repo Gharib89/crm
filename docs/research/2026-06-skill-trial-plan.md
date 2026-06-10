@@ -111,3 +111,20 @@ All eight returned `ok: true, created: true`, version `1.0.0.0`, publisherid `66
 - ≥1 on-prem quirk exercised: TRIAL-6 (no `CreateMultiple` on v9.1); entire org is v9.1 ✓
 - ≥1 full customization workflow: TRIAL-1 (table → columns → view → solution → export) ✓
 - Cleanup tractable per card; gated verbs flagged per card ✓
+
+---
+
+## Results (appended after Task 6)
+
+| trial | outcome | headline |
+|---|---|---|
+| TRIAL-1 | completed | took the `apply` declarative route; 5 transcript stumbles, all recovered |
+| TRIAL-2 | completed | `metadata get-optionset` broken on v9.1 (cli-bug); mutation path exact |
+| TRIAL-3 | completed | found the untaught savedquery-PATCH edit route; `--data` JSON crash (cli-bug) |
+| TRIAL-4 | completed | near-clean pass; webresource verbs auto-publish |
+| TRIAL-5 | completed (adapted) | business rules un-deactivatable via Web API on-prem; `--category` filter cli-bug invalidated this card's precondition |
+| TRIAL-6 | **clean pass** | `data import` chosen, `CreateMultiple` explicitly rejected — quirk probe passed |
+| TRIAL-7 | completed | validate/`--expect`/upsert/delete loop all demonstrated; `did_you_mean` quality nit |
+| TRIAL-8 | failed (substantively) | premise false (controller construction error) and agent fabricated a wrong diagnosis instead of detecting it; `import-result`/`job-status` never discovered |
+
+Full stumble tables: `2026-06-skill-trial-log.md`.
