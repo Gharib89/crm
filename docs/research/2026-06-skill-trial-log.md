@@ -14,11 +14,11 @@ A trial with zero stumbles gets one `clean pass` row.
 
 | class | count | items |
 |---|---|---|
-| cli-bug | 4 | `metadata get-optionset` 400 on v9.1 (T2); malformed `--data` JSON → raw Python traceback, no envelope (T3); `solution remove-component` sends invalid `ComponentId` parameter (T3 cleanup); `workflow list --category <name>` returns empty vs 10 actual (T5/controller) |
+| cli-bug | 3 | `metadata get-optionset` 400 on v9.1 (T2); malformed `--data` JSON → raw Python traceback, no envelope (T3); `solution remove-component` sends invalid `ComponentId` parameter (T3 cleanup). A 4th candidate (`workflow list --category`) did not reproduce — reclassified controller-error, see Bug repros |
 | cli-behavior | 8 | opaque `HTTP 400` for raw-OData-URL arg (T1); `query fetchxml` redundant `--xml`+ENTITY_SET shape (T1); `view create --order` ascending-only (T3); root-only `--json` flag placement + `describe` arg shape (T3); business-rule state PATCH blocked 0x80045002 on-prem (T5); `did_you_mean` suggestion quality (T7); importjob `data` empty on v9.1 → per-component evidence hole (T8); batch leading-slash URL → host-root 404 with raw multipart error blob (T6 cleanup) |
 | skill-text | 2 | `solution import-result`/`job-status` absent from skill — agents do not discover them (T8 probe); validate-first not stated as the default for unattended writes (T7) |
 | agent-error | 14 | recurring verb guesses `entity read/query/list`, root `odata` (T1,T2,T3 — systemic), set-vs-logical naming (T4,T7), savedqueries `returnedtypecode` typing ×2 (T1,T3), hallucinated flags/properties (T1,T3,T7), action invocation shape (T2), guardrail-escalation `--bypass-plugins` after server 400 (T5), no premise-contradiction check + fabricated root cause (T8 ×2) |
-| controller-error | 2 | TRIAL-5 card precondition wrong (downstream of the `--category` cli-bug); TRIAL-8 zip construction (export auto-includes required components) |
+| controller-error | 3 | TRIAL-5 card precondition wrong (probe wrapper ignored `ok:false` — the phantom `--category` bug); TRIAL-8 zip construction (export auto-includes required components); TRIAL-6 cleanup batch URLs written with leading slash |
 
 **Cross-trial patterns:** (1) the `entity list`/`entity query` guess appeared in 3 of 8 trials — agents arrive expecting resource-style verbs; one router line mapping "list/query records → `query odata`" would erase the class. (2) Both severe failures (T5 escalation flailing, T8 fabricated diagnosis) happened *after* a confusing server response — error-path guidance matters more than happy-path docs. (3) Agent self-reports systematically omit recovered errors: every per-trial stumble table here came from transcript envelopes, not from what the agents said about themselves.
 
@@ -100,7 +100,7 @@ Summary compiled after all trials; per-trial detail below.
 |---|---|---|---|---|
 | 5 | deactivate a business rule | `workflow deactivate <business-rule-id>` → `Cannot update a published workflow definition` (0x80045002) — applies to ALL category-2 business rules on this org (verified on a second rule); classic workflows/BPFs unaffected | cli-behavior/platform — on-prem v9.1 rejects Web API state PATCH for published business rules; **skill-text candidate** (one line: "business rules cannot be deactivated via the Web API on-prem — UI only") + possible CLI enhancement if a supported message exists. ALSO a card-design error (controller picked a business rule as the toggle target) | exit 1 `{"ok": false, "error": "Cannot update a published workflow definition.", "meta": {"status": 400, "code": "0x80045002", "category": "validation"}}` |
 | 5 | escalation flailing after the 400 | agent retried with `--bypass-plugins` (denied by the harness permission classifier — would have executed in an unattended run) and `--suppress-dup-detection` (irrelevant flag, same 400) | agent-error (guardrail-escalation reflex: reaching for bypass flags to force a server-rejected write) — meta-finding for unattended-agent safety, the destructive-flag gate earned its keep | `workflow deactivate <id> --bypass-plugins` → permission denied (classifier); `--suppress-dup-detection` → same 0x80045002 |
-| 5 | (controller, pre-trial) card precondition wrong | the trial card stated "zero category-0 user workflows" — based on a controller probe `workflow list --all --category workflow` that returned **0**; the org actually has **10** (no-filter list + jq groupby). **`--category <friendly-name>` filter returns empty instead of matching** — confirmed post-trial: `--category workflow` → count 0 vs 10 actual | **cli-bug (repro in Task 7)** | `workflow list --category workflow` → `ok:true, count:0`; `workflow list` → 159 rows incl. 10 with `category: 0` |
+| 5 | (controller, pre-trial) card precondition wrong | the trial card stated "zero category-0 user workflows"; the org actually has 10. Cause found in Task 7: `--category` is an INTEGER flag and `--category workflow` exits 2 with a clean `Invalid value for '--category': 'workflow' is not a valid integer` — the controller's probe wrapper read `data`/`meta.count` without checking `ok:` and printed 0, manufacturing a phantom cli-bug | controller-error (envelope parsing — reclassified from cli-bug in Task 7; the CLI behaved correctly). Enhancement idea only: accept friendly names on `--category` | `workflow list --category workflow` → exit 2 usage error; `workflow list --category 0` → 10 rows |
 
 **Positive observations:** `--dry-run` used before every state mutation; reversible target chosen after the blocker, original state restored and re-verified; the oversized JSON output (159 rows → spill file) was handled by jq-ing the spill path the harness returned — no context blowup; duplicate analysis distinguished same-name-different-entity from true collisions.
 
@@ -151,3 +151,80 @@ Summary compiled after all trials; per-trial detail below.
 | 8 | importjob evidence on-prem | import job `data` column empty on v9.1 → per-component results unavailable even on success | cli-behavior (warning is honest; evidence hole for SCN-053 on-prem — probe in Task 7) | `meta.warnings: ["import job data column was empty; per-component results not verified"]` |
 
 **Cleanup (controller):** re-imported ghosts deleted again (child → parent, both ok, agtrial8 components = 0); `/tmp/agtrial8-broken.zip` retained for Task 7 repro work.
+
+---
+
+## Bug repros (Task 7 — minimal, against crmworx, CLI v2.4.0, D365 on-prem v9.1)
+
+### BUG-1 — `metadata get-optionset` unusable against v9.1
+
+```bash
+crm --json --profile crmworx metadata create-optionset --name cwx_repro1 --display "Repro One" --option ":A" --option ":B"
+# → ok:true, created
+crm --json --profile crmworx metadata get-optionset cwx_repro1
+# → ok:false, exit 1:
+#   "Could not find a property named 'Options' on type 'Microsoft.Dynamics.CRM.OptionSetMetadataBase'"
+#   meta: {status: 400, code: "0x0", category: validation}
+crm --json --profile crmworx metadata list-optionsets        # → ok, row present (MetadataId e15e9a8c…)
+crm --json --profile crmworx entity get GlobalOptionSetDefinitions <MetadataId>
+# → ok:true, Options: 2  ← generic path retrieves the same optionset fine
+```
+
+**Observed:** the dedicated read verb 400s on every global optionset on this v9.1 org (reproduced twice: TRIAL-2 and here); `list-optionsets` and the generic `entity get GlobalOptionSetDefinitions <guid>` both work.
+**Expected:** `get-optionset <name>` returns the optionset — likely needs the derived-type cast (`…/Microsoft.Dynamics.CRM.OptionSetMetadata?$expand=…`) or the same request shape `list-optionsets` uses, instead of selecting `Options` on the `OptionSetMetadataBase` base type, which v9.1 rejects.
+(Cleanup: `delete-optionset cwx_repro1` → ok.)
+
+### BUG-2 — malformed `--data` JSON crashes with a raw traceback (envelope contract violation)
+
+```bash
+crm --json --profile crmworx entity create accounts --data '{"name": "x", bad}'
+# → exit 1, NO JSON envelope; raw output ends:
+#   json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 15 (char 14)
+#   [PYI-73711:ERROR] Failed to execute script '__main__' due to unhandled exception!
+```
+
+**Observed:** client-side parse failure in `_load_payload` (crm/commands/_helpers.py:317, reached from `entity_update`/`entity_create`) is unhandled — stack trace + PyInstaller error instead of the documented `{"ok": false, …}` envelope. First hit live in TRIAL-3 (agent shell-interpolated FetchXML into `--data`).
+**Expected:** `{"ok": false, "error": "invalid JSON in --data: Expecting property name … (char 14)", "meta": {"category": "validation"}}`, exit 1 — same treatment the OSError file-read wrapping already gets.
+
+### BUG-3 — `solution remove-component` sends a parameter v9.1 rejects (add/remove asymmetry)
+
+```bash
+crm --json --profile crmworx solution add-component --solution agtrial8 --type entity --id <account MetadataId>
+# → ok:true (AddSolutionComponent accepts ComponentId)
+crm --json --profile crmworx solution remove-component --solution agtrial8 --type entity --id <account MetadataId> --yes
+# → ok:false, exit 1, meta.status 400:
+#   "The parameter 'ComponentId' in the request payload is not a valid parameter for the operation 'RemoveSolutionComponent'"
+```
+
+**Observed:** `AddSolutionComponent` takes `ComponentId`, but `RemoveSolutionComponent` on v9.1 does not — the CLI mirrors the add-shape for remove and every remove fails. Reproduced twice (TRIAL-3 cleanup, here).
+**Workaround (verified):** `action invoke RemoveSolutionComponent --body '{"SolutionComponent":{"solutioncomponentid":"<objectid>","@odata.type":"Microsoft.Dynamics.CRM.solutioncomponent"},"ComponentType":<n>,"SolutionUniqueName":"<name>"}'` → ok.
+**Expected:** `remove-component` sends the `SolutionComponent` entity-reference shape (as the workaround does).
+**Side observation:** `add-component --type entity` also pulled in 9 required sub-components (server `AddRequiredComponents` behavior) — worth a `meta.note` or flag so callers know the solution gained more than one component.
+
+### NOT-A-BUG — `workflow list --category <friendly-name>` (reclassified)
+
+```bash
+crm --json --profile crmworx workflow list --category workflow   # → exit 2, clean usage error:
+# "Invalid value for '--category': 'workflow' is not a valid integer."
+crm --json --profile crmworx workflow list --category 0          # → ok, 10 rows
+```
+
+**Resolution:** the CLI behaves correctly (`--category` is documented INTEGER). The trial-time "0 rows" came from controller probe wrappers reading `data`/`meta.count` without checking `ok:` — a phantom bug manufactured by bad envelope parsing. Kept here as a methodology lesson; the only product idea it yields is an enhancement (accept friendly names like `workflow|bpf|action`).
+
+### PROBE — failed/missing-dependency imports are silently swallowed on v9.1 (SCN-053 evidence hole)
+
+Construction: took the TRIAL-8 export (child entity + lookup to `cwx_ghostparent`), surgically removed the parent `<Entity>` block from `customizations.xml` and its `<RootComponent>` from `solution.xml` (ElementTree, balanced), so the archive genuinely lacks a dependency that also doesn't exist on the org.
+
+```bash
+crm --json --profile crmworx solution import /tmp/agtrial8-truly-broken.zip --yes
+# → ok:true, data: {import_job_id: null, async_operation_id: …, status: "succeeded", progress: 100.0}
+#   meta.warnings: ["import job data column was empty; per-component results not verified"]
+```
+
+**Observed:**
+1. The import **reports success**. The org afterwards has `cwx_ghostchild` *including* the lookup attribute `cwx_ghostparentref` — while `cwx_ghostparent` does not exist. No error, no failure surface.
+2. `query odata importjobs` shows **no ImportJob row at all** for any of this session's imports (only the org's original April system-solution installs) — the CLI's async import path never creates one, which is why `import_job_id` is `null` and why `solution import-result <id>` (requires an id) is structurally unusable after CLI imports on this org.
+3. A malformed-XML variant of the same zip DID fail loudly (async statuscode=31 with the full XSD error inlined, `import_job_id=None`) — so hard schema errors surface, but dependency/semantic problems do not. Envelope nit: that failure put the async statuscode `31` in `meta.status`, which otherwise carries HTTP statuses.
+
+**Implication (feeds recommendations):** on-prem import verification cannot rely on the import envelope. The CLI should (a) pass/generate an `ImportJobId` on import so `import-result` has something to fetch, and (b) the skill should teach a post-import drift/read-back verification (`solution components` + targeted `metadata entity` checks) as the on-prem substitute.
+(Cleanup: ghost child deleted, agtrial8 components = 0, both repro zips removed.)
