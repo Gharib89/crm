@@ -348,23 +348,32 @@ def assess_workflow_migrations(
     """
     filters = [f"type eq {TYPE_DEFINITION}", f"category eq {CATEGORY_WORKFLOW}"]
     if primary_entity:
-        filters.append(f"primaryentity eq '{primary_entity}'")
+        escaped = primary_entity.replace("'", "''")
+        filters.append(f"primaryentity eq '{escaped}'")
     params: dict[str, str] = {
         "$select": _MIGRATION_ASSESS_SELECT,
         "$filter": " and ".join(filters),
     }
     rows: list[dict[str, Any]] = []
-    page = as_dict(backend.get("workflows", params=params))
-    pages_consumed = 1
-    while True:
-        value = page.get("value", [])
-        if isinstance(value, list):
-            rows.extend(cast(list[dict[str, Any]], value))
-        next_link = page.get("@odata.nextLink")
-        if not isinstance(next_link, str) or not next_link or pages_consumed >= max_pages:
-            break
-        page = as_dict(backend.get(next_link))
-        pages_consumed += 1
+    # Read-only: the GETs must run live even under --dry-run, or the
+    # short-circuited backend would return a preview dict (no `value`) and the
+    # report would be silently empty.
+    was_dry = backend.dry_run
+    backend.dry_run = False
+    try:
+        page = as_dict(backend.get("workflows", params=params))
+        pages_consumed = 1
+        while True:
+            value = page.get("value", [])
+            if isinstance(value, list):
+                rows.extend(cast(list[dict[str, Any]], value))
+            next_link = page.get("@odata.nextLink")
+            if not isinstance(next_link, str) or not next_link or pages_consumed >= max_pages:
+                break
+            page = as_dict(backend.get(next_link))
+            pages_consumed += 1
+    finally:
+        backend.dry_run = was_dry
     return [assess_workflow_migration(r) for r in rows]
 
 

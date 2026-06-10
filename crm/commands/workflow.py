@@ -68,8 +68,8 @@ def workflow_migration_assess(ctx: CLIContext, primary_entity):
     verdicts of impossibility. On an on-prem profile the report still runs and
     carries an advisory note (cloud flows live only on Dataverse online).
     """
-    backend = ctx.backend()
     try:
+        backend = ctx.backend()
         items = workflow_mod.assess_workflow_migrations(
             backend, primary_entity=primary_entity)
     except D365Error as exc:

@@ -129,6 +129,29 @@ class TestAssessWorkflowMigrations:
             sent = m.request_history[0]
         assert "primaryentity eq 'account'" in sent.qs["$filter"][0]
 
+    def test_entity_filter_escapes_single_quote(self, backend):
+        url = backend.url_for("workflows")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"value": []})
+            workflow.assess_workflow_migrations(backend, primary_entity="o'brien")
+            sent = m.request_history[0]
+        assert "primaryentity eq 'o''brien'" in sent.qs["$filter"][0]
+
+    def test_runs_get_live_under_dry_run(self):
+        # Read-only assessment must fetch real rows even under --dry-run, not the
+        # short-circuited preview dict (which would yield a silently empty report).
+        profile = ConnectionProfile(
+            name="testp", url="https://crm.contoso.local/contoso",
+            domain="CONTOSO", username="alice", api_version="v9.2", verify_ssl=False,
+        )
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        url = dry_backend.url_for("workflows")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"value": [_row(workflowid="a" * 36, mode=1)]})
+            out = workflow.assess_workflow_migrations(dry_backend)
+        assert [r["verdict"] for r in out] == ["blocked"]
+        assert dry_backend.dry_run is True  # restored afterwards
+
     def test_follows_odata_nextlink_pagination(self, backend):
         url = backend.url_for("workflows")
         next_link = url + "?$skiptoken=page2"
