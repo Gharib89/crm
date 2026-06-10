@@ -58,6 +58,13 @@ crm solution import /tmp/snap.zip --yes
 default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
 context aborts.
 
+The result's `import_job_id` is always non-null — feed it to
+`crm solution import-result <id>` to (re-)inspect per-component outcomes. On
+on-prem orgs the import may run via the synchronous `ImportSolution` action
+(`action: "ImportSolution"` in the result): no progress ticks, the request
+blocks until the import finishes, and a missing-dependency import fails loudly
+instead of reporting success.
+
 ## Source control — SolutionPackager bridge
 
 Put a solution under source control with the offline SolutionPackager bridge (no

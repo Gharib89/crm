@@ -126,6 +126,8 @@ On completion the result parses the import job's `data` column into a solution-l
 
 The result also includes a `managed` field: `true` if the imported solution is managed, `false` if unmanaged, or `null` when the flag could not be read (e.g. a corrupt zip). This is sniffed from `solution.xml` inside the zip before the upload and is present in dry-run results too ([#91](https://github.com/Gharib89/crm/issues/91)).
 
+On on-prem orgs that reject `ImportJobId` on `ImportSolutionAsync` (v9.x), the command transparently retries with the synchronous `ImportSolution` action carrying the same id (`action: "ImportSolution"` in the result), so `import_job_id` is always non-null and `import-result` works there too ([#182](https://github.com/Gharib89/crm/issues/182)). On that path the whole import runs inside one HTTP request — the read timeout follows `--timeout` (default: the profile's `async_timeout`), and no progress ticks are emitted. A missing-dependency import fails loudly as a synchronous error (naming the `import_job_id`) instead of reporting a bare `status: succeeded`; if the platform still provides no per-component results after a successful import, `meta.warnings` says so explicitly.
+
 ## Verify a prior import
 
 ```bash

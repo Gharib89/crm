@@ -503,12 +503,16 @@ class D365Backend:
         suppress_duplicate_detection: bool | None = None,
         bypass_custom_plugin_execution: bool | None = None,
         etag: str | None = None,
+        timeout: int | None = None,
     ) -> dict[str, Any] | str | None:
         """Issue an HTTP request and return parsed JSON (or None for 204).
 
         Retries on 429, idempotent 5xx, and retryable transport errors per the
         backend's profile + env config. Honors self.dry_run by returning a
         preview dict instead of issuing the call.
+
+        timeout overrides profile.timeout for this call only (long-running
+        synchronous actions, e.g. the on-prem ImportSolution fallback).
 
         caller_id tri-state:
           - None (default): use the CRM_AS_USER env default (self._default_caller_id).
@@ -616,7 +620,7 @@ class D365Backend:
                     params=params,
                     data=json.dumps(json_body) if json_body is not None else None,
                     headers=headers,
-                    timeout=self.profile.timeout,
+                    timeout=timeout if timeout is not None else self.profile.timeout,
                 )
             except requests.RequestException as exc:
                 # Non-idempotent POST (#84): a lost response may have committed,
