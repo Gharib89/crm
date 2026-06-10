@@ -125,6 +125,50 @@ class TestDidYouMean:
         assert result["meta"]["did_you_mean"] == {}
 
 
+_ATTRS_PHONE = {"value": [
+    {"LogicalName": "name"},
+    {"LogicalName": "telephone1"},
+    {"LogicalName": "telephone2"},
+    {"LogicalName": "telephone3"},
+    {"LogicalName": "accountnumber"},
+    {"LogicalName": "accountid"},
+]}
+
+
+def _mock_phone(m, backend) -> None:
+    m.get(_sets_url(backend), json=_SETS)
+    m.get(_attrs_url(backend), json=_ATTRS_PHONE)
+
+
+class TestNumberedFamilyRanking:
+    def test_number_word_resolves_to_matching_member(self, backend):
+        # `telephoneone` must suggest `telephone1`, not the lexicographically
+        # largest fuzzy tie `telephone3` (#198).
+        from crm.core import entity as ent
+        with requests_mock.Mocker() as m:
+            _mock_phone(m, backend)
+            result = ent.validate_payload(backend, "accounts", {"telephoneone": "555"})
+        assert result["ok"] is False
+        assert result["meta"]["did_you_mean"] == {"telephoneone": "telephone1"}
+
+    def test_equal_ratio_tie_picks_lowest_member(self, backend):
+        # A typo equidistant from a numbered family resolves to the lowest member.
+        from crm.core import entity as ent
+        attrs = {"value": [{"LogicalName": f"field{n}"} for n in (1, 2, 3)]}
+        with requests_mock.Mocker() as m:
+            m.get(_sets_url(backend), json=_SETS)
+            m.get(_attrs_url(backend), json=attrs)
+            result = ent.validate_payload(backend, "accounts", {"fieldz": "x"})
+        assert result["meta"]["did_you_mean"] == {"fieldz": "field1"}
+
+    def test_unique_typo_not_regressed(self, backend):
+        from crm.core import entity as ent
+        with requests_mock.Mocker() as m:
+            _mock_phone(m, backend)
+            result = ent.validate_payload(backend, "accounts", {"accountnumbr": "x"})
+        assert result["meta"]["did_you_mean"] == {"accountnumbr": "accountnumber"}
+
+
 class TestControlAnnotations:
     def test_control_annotation_key_ignored_and_skips_relationships(self, backend):
         from crm.core import entity as ent
