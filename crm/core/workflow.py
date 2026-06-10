@@ -323,7 +323,9 @@ def set_workflow_state(
         was_dry = backend.dry_run
         backend.dry_run = False
         try:
-            parent = _resolve_parent_workflow_id(backend, workflow_id)
+            parent = _resolve_parent_workflow_id(
+                backend, workflow_id,
+                caller_id=caller_id, caller_object_id=caller_object_id)
         finally:
             backend.dry_run = was_dry
         if parent:
@@ -334,7 +336,9 @@ def set_workflow_state(
     except D365Error as exc:
         if not (auto_resolve_parent and exc.code == ACTIVATION_PATCH_ERROR_CODE):
             raise
-        parent = _resolve_parent_workflow_id(backend, workflow_id)
+        parent = _resolve_parent_workflow_id(
+            backend, workflow_id,
+            caller_id=caller_id, caller_object_id=caller_object_id)
         if not parent:
             raise
         _patch(parent)
@@ -356,17 +360,25 @@ ACTIVATION_DELETE_ERROR_CODE = "0x80045004"
 
 
 def _resolve_parent_workflow_id(
-    backend: D365Backend, workflow_id: str
+    backend: D365Backend,
+    workflow_id: str,
+    *,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
 ) -> str | None:
     """Best-effort single GET of the activation row's `parentworkflowid` lookup.
 
     Returns the parent definition GUID, or None if the GET fails or the row has
     no parent. Never raises — callers sit on an already-failed error path (or a
-    dry-run preview), so it must not mask the original error.
+    dry-run preview), so it must not mask the original error. Impersonation
+    args keep the lookup under the same identity as the caller's state change.
     """
     try:
         row = as_dict(backend.get(
-            f"workflows({workflow_id})", params={"$select": "parentworkflowid"}
+            f"workflows({workflow_id})",
+            params={"$select": "parentworkflowid"},
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
         ))
     except D365Error:
         return None

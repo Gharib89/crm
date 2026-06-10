@@ -725,6 +725,8 @@ class TestWorkflow:
         assert info["resolved_from_activation_id"] == wid
         assert info["activated"] is False
         assert [r.method for r in m.request_history] == ["PATCH", "GET", "PATCH"]
+        # The resolve GET runs under the same impersonation as the state change.
+        assert m.request_history[1].headers.get("MSCRMCallerID") == caller
         retried = m.request_history[2]
         assert json.loads(retried.body) == {"statecode": 0, "statuscode": 1}
         assert retried.headers.get("MSCRMCallerID") == caller
