@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.7.0 (2026-06-10)
+
+### Documentation
+
+- **skill**: Add `crm batch` standalone section to records.md
+  ([#189](https://github.com/Gharib89/crm/pull/189),
+  [`bc4cd98`](https://github.com/Gharib89/crm/commit/bc4cd985a617ac081d050f20e4ac574e20accff5))
+
+- **skill**: Add edit-existing-view recipe to authoring.md
+  ([#188](https://github.com/Gharib89/crm/pull/188),
+  [`0d1ea0c`](https://github.com/Gharib89/crm/commit/0d1ea0cf914db06332c9b82d6bd1ede627078f0a))
+
+- **skill**: Add plug-in trace-log debugging recipe to automation.md
+  ([`2770f1d`](https://github.com/Gharib89/crm/commit/2770f1d9f4191c665cbb69a3e63ad2433f11c338))
+
+- **skill**: Teach early-bound codegen toolchain + ADR no-wrapper
+  ([#194](https://github.com/Gharib89/crm/pull/194),
+  [`2664786`](https://github.com/Gharib89/crm/commit/2664786efe01c2fc9e661efd390357132dc014b7))
+
+- **skill**: Teach role component-type + managed-import privilege strip
+  ([#190](https://github.com/Gharib89/crm/pull/190),
+  [`caa0326`](https://github.com/Gharib89/crm/commit/caa0326b7575eb9c8c76ebfc9a7be1fa863d002b))
+
+- **skill**: Validate-first default + on-prem business-rule deactivate caveat
+  ([`b6c91a3`](https://github.com/Gharib89/crm/commit/b6c91a37460f2525b4d154f91ee4451102a5a1d5))
+
+### Features
+
+- **solution**: Managed-lifecycle verbs clone-as-patch, stage-and-upgrade, uninstall
+  ([#216](https://github.com/Gharib89/crm/pull/216),
+  [`a42fa32`](https://github.com/Gharib89/crm/commit/a42fa32d0afca1578d1c88215a1f63a0540ee2f6))
+
+
 ## v2.6.2 (2026-06-10)
 
 ### Bug Fixes
