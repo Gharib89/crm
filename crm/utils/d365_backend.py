@@ -704,6 +704,12 @@ class D365Backend:
                 raise D365Error(
                     f"batch op #{i}: body required on {m_upper}"
                 )
+            if op["url"].startswith("/"):
+                raise D365Error(
+                    f"batch op #{i}: url must be a bare relative path like "
+                    f"'contacts(<id>)', not begin with '/' (a leading slash "
+                    f"resolves against the host root and 404s): {op['url']!r}"
+                )
             cid = op.get("content_id")
             if cid is not None:
                 if isinstance(cid, bool) or not isinstance(cid, (str, int)):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -765,9 +771,14 @@ class D365Backend:
             break
 
         if not (200 <= resp.status_code < 300):
+            inner_msg, inner_code = _extract_batch_error(
+                resp.content, resp.headers.get("Content-Type", ""),
+            )
+            detail = inner_msg if inner_msg is not None else resp.text[:500]
             raise D365Error(
-                f"$batch failed: HTTP {resp.status_code}: {resp.text[:500]}",
+                f"$batch failed: HTTP {resp.status_code}: {detail}",
                 status=resp.status_code,
+                code=inner_code,
                 response_body=resp.text,
             )
 
@@ -1168,6 +1179,59 @@ def _split_mime_parts(body: bytes, boundary: str) -> list[bytes]:
             c = c[:-2]
         parts.append(c)
     return parts
+
+
+def _inner_error_from_json(obj: Any) -> tuple[str | None, str | None]:
+    """Extract (message, code) from an inner batch error JSON body.
+
+    Handles both observed shapes: the standard OData error
+    ``{"error": {"code": ..., "message": ...}}`` and the ASP.NET routing
+    error ``{"Message": ...}`` (host-root 404s). Returns (None, None) when
+    no parseable inner message is present.
+    """
+    if not isinstance(obj, dict):
+        return None, None
+    d = cast(dict[str, Any], obj)
+    err = d.get("error")
+    if isinstance(err, dict):
+        e = cast(dict[str, Any], err)
+        msg = e.get("message")
+        code = e.get("code")
+        return (msg if isinstance(msg, str) else None,
+                code if isinstance(code, str) else None)
+    msg = d.get("Message")
+    if isinstance(msg, str):
+        return msg, None
+    return None, None
+
+
+def _extract_batch_error(body: bytes, content_type: str) -> tuple[str | None, str | None]:
+    """Scan a failed $batch multipart body for the first inner error.
+
+    Walks both flat ``application/http`` parts and nested ``multipart/mixed``
+    changeset parts, returning the first (message, code) it can parse. Returns
+    (None, None) when the body has no boundary or no parseable inner error.
+    """
+    m = re.search(r'boundary=([^;\s]+)', content_type)
+    if not m:
+        return None, None
+    boundary = m.group(1).strip('"')
+    for part in _split_mime_parts(body, boundary):
+        ctype_match = re.search(rb"Content-Type:\s*([^\r\n;]+)", part, re.IGNORECASE)
+        ctype_val = ctype_match.group(1).decode("utf-8").strip().lower() if ctype_match else ""
+        if ctype_val == "multipart/mixed":
+            inner_m = re.search(rb"boundary=([^\r\n;]+)", part, re.IGNORECASE)
+            if not inner_m:
+                continue
+            inner_boundary = inner_m.group(1).decode("utf-8").strip('"')
+            inner_subparts = _split_mime_parts(part, inner_boundary)
+        else:
+            inner_subparts = [part]
+        for sub in inner_subparts:
+            msg, code = _inner_error_from_json(_parse_http_subpart(sub).get("body"))
+            if msg:
+                return msg, code
+    return None, None
 
 
 def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
