@@ -415,3 +415,57 @@ class TestSpecDMetadataWriteLive:
             publish=False,
         )
         assert info["created"] is True
+
+
+@pytest.mark.skipif(not _have_live_env(), reason="Live env required")
+class TestPluginImageE2E:
+    def test_image_register_read_unregister_roundtrip(self, backend, request):
+        """register_image -> read back -> unregister_image on a live org.
+
+        Mocked tests cannot catch @odata.bind key casing (the #159 lesson), so
+        the POST must hit a real org. Attaches a pre-image to any existing
+        unmanaged Update-message step (pre-images are valid in every stage) and
+        removes it again; skips when the org has no such step.
+        """
+        from crm.core import plugin as plugin_mod
+
+        msg = backend.get("sdkmessages", params={
+            "$filter": "name eq 'Update'", "$select": "sdkmessageid"})
+        msg_rows = msg.get("value", [])
+        assert msg_rows, "Update sdkmessage missing from org"
+        msg_id = msg_rows[0]["sdkmessageid"]
+        steps = backend.get("sdkmessageprocessingsteps", params={
+            "$filter": (f"_sdkmessageid_value eq {msg_id} "
+                        "and ismanaged eq false"),
+            "$select": "sdkmessageprocessingstepid", "$top": "1"})
+        step_rows = steps.get("value", [])
+        if not step_rows:
+            pytest.skip("No unmanaged Update-message plug-in step on this org")
+        step_id = step_rows[0]["sdkmessageprocessingstepid"]
+
+        out = plugin_mod.register_image(
+            backend, step=step_id, image_type="pre",
+            alias=f"e2eimg{os.getpid()}", attributes="name")
+        assert out["created"] is True
+        iid = out["sdkmessageprocessingstepimageid"]
+        assert iid, f"no image id parsed: {out}"
+
+        def _cleanup():
+            # Safety net for mid-test failure; the happy path already deleted.
+            try:
+                backend.delete(f"sdkmessageprocessingstepimages({iid})")
+            except Exception:
+                pass
+        request.addfinalizer(_cleanup)
+
+        got = backend.get(
+            f"sdkmessageprocessingstepimages({iid})",
+            params={"$select": "name,entityalias,imagetype,"
+                               "messagepropertyname,attributes"})
+        assert got["imagetype"] == 0
+        assert got["messagepropertyname"] == "Target"
+        assert got["attributes"] == "name"
+        assert got["entityalias"] == f"e2eimg{os.getpid()}"
+
+        deleted = plugin_mod.unregister_image(backend, iid)
+        assert deleted["deleted"] is True

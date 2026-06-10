@@ -785,6 +785,298 @@ class TestUnregisterAssembly:
         assert out["deleted_step_ids"] == [_STEP_A]
 
 
+_IMG_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+
+def _mock_image_resolution(m, backend, *, step_id=_STEP_ID, stage=20,
+                           message="Update"):
+    """Mock the step-info and sdkmessage-name resolution GETs for images."""
+    m.get(backend.url_for("sdkmessageprocessingsteps"),
+          json={"value": [{"sdkmessageprocessingstepid": step_id,
+                           "stage": stage, "_sdkmessageid_value": _MSG_ID}]})
+    m.get(backend.url_for("sdkmessages"),
+          json={"value": [{"sdkmessageid": _MSG_ID, "name": message}]})
+
+
+class TestRegisterImage:
+    def test_pre_image_posts_required_fields_with_lowercase_bind(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg")
+        assert out["created"] is True
+        assert out["sdkmessageprocessingstepimageid"] == _IMG_ID
+        body = _posts(m)[0].json()
+        # nav-prop is the lowercase logical name (issue #159 lesson)
+        assert body["sdkmessageprocessingstepid@odata.bind"] == \
+            f"/sdkmessageprocessingsteps({_STEP_ID})"
+        assert body["imagetype"] == 0
+        assert body["entityalias"] == "preimg"
+        # name defaults to the alias (PRT does the same)
+        assert body["name"] == "preimg"
+        # messagepropertyname derived from the step's message (Update -> Target)
+        assert body["messagepropertyname"] == "Target"
+        assert out["entityalias"] == "preimg"
+        assert out["imagetype"] == 0
+        assert out["messagepropertyname"] == "Target"
+        assert out["sdkmessageprocessingstepid"] == _STEP_ID
+
+    def test_step_resolved_by_exact_name(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step="My Step", image_type="pre", alias="preimg")
+        assert out["created"] is True
+        # resolved by exact name, selecting stage and message for derivation
+        resolve = next(r for r in m.request_history
+                       if r.url.split("?")[0].endswith(
+                           "sdkmessageprocessingsteps"))
+        assert resolve.qs["$filter"] == ["name eq 'my step'"]
+        # the bind targets the resolved id
+        assert _posts(m)[0].json()["sdkmessageprocessingstepid@odata.bind"] == \
+            f"/sdkmessageprocessingsteps({_STEP_ID})"
+
+    def test_post_image_on_postoperation_step(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="post", alias="postimg")
+        assert out["created"] is True
+        assert _posts(m)[0].json()["imagetype"] == 1
+        assert out["imagetype"] == 1
+
+    def test_post_image_requires_postoperation_stage(self, backend):
+        # MS Learn: post-images only exist for PostOperation-stage steps.
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=20)
+            with pytest.raises(D365Error, match="[Pp]ost.*PostOperation"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="post", alias="postimg")
+        assert not _posts(m)
+
+    def test_pre_image_on_create_step_raises(self, backend):
+        # MS Learn: no pre-image on Create — the record does not exist yet.
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40, message="Create")
+            with pytest.raises(D365Error, match="[Pp]re-image.*Create"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="pre", alias="preimg")
+        assert not _posts(m)
+
+    def test_post_image_on_delete_step_raises(self, backend):
+        # MS Learn: no post-image on Delete — the record no longer exists.
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40, message="Delete")
+            with pytest.raises(D365Error, match="[Pp]ost-image.*Delete"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="post", alias="postimg")
+        assert not _posts(m)
+
+    def test_unsupported_message_without_override_raises(self, backend):
+        # Send is ambiguous (FaxId/EmailId/TemplateId) so it is absent from the
+        # derivation table; without an explicit property the call must fail
+        # clean, naming the escape hatch.
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40, message="Send")
+            with pytest.raises(D365Error, match="message_property_name"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="pre", alias="preimg")
+        assert not _posts(m)
+
+    def test_message_property_override_wins(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40, message="Send")
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg",
+                message_property_name="EmailId")
+        assert _posts(m)[0].json()["messagepropertyname"] == "EmailId"
+        assert out["messagepropertyname"] == "EmailId"
+
+    def test_attributes_filter_passed_through(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg",
+                attributes="name,telephone1")
+        assert _posts(m)[0].json()["attributes"] == "name,telephone1"
+        assert out["attributes"] == "name,telephone1"
+
+    def test_attributes_omitted_means_all_columns(self, backend):
+        # Omitting the column = all columns (documented anti-pattern but valid).
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg")
+        assert "attributes" not in _posts(m)[0].json()
+
+    def test_explicit_name_wins_over_alias_default(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg",
+                name="My Image")
+        assert _posts(m)[0].json()["name"] == "My Image"
+        assert out["name"] == "My Image"
+
+    def test_unknown_image_type_raises_no_http(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="image type"):
+                plugin.register_image(
+                    backend, step=_STEP_ID, image_type="bogus", alias="a")
+        # validation happens before any HTTP call
+        assert m.request_history == []
+
+    def test_step_not_found_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingsteps"),
+                  json={"value": []})
+            with pytest.raises(D365Error, match="not found"):
+                plugin.register_image(
+                    backend, step="Nope", image_type="pre", alias="preimg")
+        assert not _posts(m)
+
+    def test_ambiguous_step_name_raises_no_post(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingsteps"),
+                  json={"value": [
+                      {"sdkmessageprocessingstepid": _STEP_A, "stage": 40,
+                       "_sdkmessageid_value": _MSG_ID},
+                      {"sdkmessageprocessingstepid": _STEP_B, "stage": 40,
+                       "_sdkmessageid_value": _MSG_ID}]})
+            with pytest.raises(D365Error, match="Multiple plug-in steps"):
+                plugin.register_image(
+                    backend, step="Dupe", image_type="pre", alias="preimg")
+        assert not _posts(m)
+
+    def test_unparseable_id_sets_lookup_error(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204,
+                   headers={"OData-EntityId":
+                            "https://x/sdkmessageprocessingstepimages(bogus)"})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg")
+        assert out["created"] is True
+        assert out["sdkmessageprocessingstepimageid"] is None
+        assert "sdkmessageprocessingstepimage_lookup_error" in out
+
+    def test_dry_run_force_reads_resolution_no_post(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            # step + message resolution force-read even under dry-run so the
+            # validity rules and messagepropertyname derivation still run
+            _mock_image_resolution(m, dry)
+            out = plugin.register_image(
+                dry, step=_STEP_ID, image_type="pre", alias="preimg")
+        assert out["_dry_run"] is True
+        assert not _posts(m)
+        gets = [r for r in m.request_history if r.method == "GET"]
+        assert len(gets) == 2
+
+
+class TestUnregisterImage:
+    def test_guid_deletes_directly(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.delete(
+                backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})"),
+                status_code=204)
+            out = plugin.unregister_image(backend, _IMG_ID)
+        assert out["deleted"] is True
+        assert out["sdkmessageprocessingstepimageid"] == _IMG_ID
+        # no resolution GET when a GUID is passed directly
+        assert not any(r.method == "GET" for r in m.request_history)
+        assert len(_deletes(m)) == 1
+
+    def test_resolves_by_name_then_deletes(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingstepimages"),
+                  json={"value": [
+                      {"sdkmessageprocessingstepimageid": _IMG_ID}]})
+            m.delete(
+                backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})"),
+                status_code=204)
+            out = plugin.unregister_image(backend, "My Image")
+        assert out["deleted"] is True
+        assert out["sdkmessageprocessingstepimageid"] == _IMG_ID
+        resolve = next(r for r in m.request_history if r.method == "GET")
+        assert resolve.qs["$filter"] == ["name eq 'my image'"]
+        dels = _deletes(m)
+        assert len(dels) == 1
+        assert f"sdkmessageprocessingstepimages({_IMG_ID})" in dels[0].url
+
+    def test_not_found_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingstepimages"),
+                  json={"value": []})
+            with pytest.raises(D365Error, match="not found"):
+                plugin.unregister_image(backend, "Nope")
+        assert not _deletes(m)
+
+    def test_ambiguous_name_raises_no_delete(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessageprocessingstepimages"),
+                  json={"value": [
+                      {"sdkmessageprocessingstepimageid": _STEP_A},
+                      {"sdkmessageprocessingstepimageid": _STEP_B}]})
+            with pytest.raises(D365Error,
+                               match="Multiple plug-in step images"):
+                plugin.unregister_image(backend, "Dupe")
+        assert not _deletes(m)
+
+    def test_dry_run_force_reads_id_no_delete(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(dry.url_for("sdkmessageprocessingstepimages"),
+                  json={"value": [
+                      {"sdkmessageprocessingstepimageid": _IMG_ID}]})
+            out = plugin.unregister_image(dry, "My Image")
+        assert out["_dry_run"] is True
+        assert not _deletes(m)
+
+
 class TestUnregisterCommands:
     def _runner(self):
         from click.testing import CliRunner
@@ -836,6 +1128,46 @@ class TestUnregisterCommands:
         ])
         assert result.exit_code == 1
         assert '"error": "aborted by user"' in result.output
+
+    def test_unregister_image_yes_skips_prompt(self, monkeypatch):
+        from crm.cli import cli
+        called = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.unregister_image",
+            lambda backend, image: called.setdefault("i", image)
+            or {"deleted": True, "sdkmessageprocessingstepimageid": _IMG_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-image", _IMG_ID, "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert called["i"] == _IMG_ID
+
+    def test_unregister_image_no_yes_non_tty_aborts(self, monkeypatch):
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-image", _IMG_ID,
+        ])
+        assert result.exit_code == 1
+        assert '"error": "aborted by user"' in result.output
+
+    def test_unregister_image_handles_d365_error(self, monkeypatch):
+        import json
+        from crm.cli import cli
+
+        def boom(backend, image):
+            raise D365Error("boom", status=400)
+
+        monkeypatch.setattr("crm.core.plugin.unregister_image", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(cli, [
+            "--json", "plugin", "unregister-image", _IMG_ID, "--yes",
+        ])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "boom" in env["error"]
 
     def test_unregister_assembly_handles_d365_error(self, monkeypatch):
         import json
@@ -1107,6 +1439,89 @@ class TestPluginCommands:
         assert captured["filtering_attributes"] is None
         assert captured["name"] is None
         assert captured["assembly"] is None
+
+    def test_register_image_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_image(backend, **kw):
+            captured.update(kw)
+            return {"created": True,
+                    "sdkmessageprocessingstepimageid": _IMG_ID,
+                    "name": "preimg", "entityalias": "preimg", "imagetype": 0,
+                    "messagepropertyname": "Target",
+                    "sdkmessageprocessingstepid": _STEP_ID,
+                    "attributes": "name,telephone1"}
+
+        monkeypatch.setattr("crm.core.plugin.register_image", fake_image)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-image",
+            "--step", _STEP_ID, "--type", "pre", "--alias", "preimg",
+            "--attributes", "name,telephone1",
+            "--name", "My Image", "--message-property-name", "Target",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["step"] == _STEP_ID
+        assert captured["image_type"] == "pre"
+        assert captured["alias"] == "preimg"
+        assert captured["attributes"] == "name,telephone1"
+        assert captured["name"] == "My Image"
+        assert captured["message_property_name"] == "Target"
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["sdkmessageprocessingstepimageid"] == _IMG_ID
+
+    def test_register_image_command_defaults(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.register_image",
+            lambda backend, **kw: captured.update(kw) or {
+                "created": True, "sdkmessageprocessingstepimageid": _IMG_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-image",
+            "--step", _STEP_ID, "--type", "post", "--alias", "postimg",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["image_type"] == "post"
+        assert captured["attributes"] is None
+        assert captured["name"] is None
+        assert captured["message_property_name"] is None
+
+    def test_register_image_command_rejects_bad_type(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-image",
+            "--step", _STEP_ID, "--type", "both", "--alias", "a",
+        ])
+        # click.Choice rejects unknown image types with a usage error (exit 2)
+        assert result.exit_code == 2
+
+    def test_register_image_command_handles_d365_error(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+
+        def boom(backend, **kw):
+            raise D365Error("boom", status=400)
+
+        monkeypatch.setattr("crm.core.plugin.register_image", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-image",
+            "--step", _STEP_ID, "--type", "pre", "--alias", "preimg",
+        ])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "boom" in env["error"]
 
     def test_register_step_command_handles_d365_error(self, monkeypatch):
         import json

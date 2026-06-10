@@ -137,6 +137,21 @@ class TestBlocksDestructive:
         r = _run("crm plugin unregister-step 'My Step' --yes")
         assert r.returncode == 0
 
+    def test_block_plugin_unregister_image_no_yes(self):
+        r = _run("crm plugin unregister-image 'My Image'")
+        assert r.returncode == BLOCK
+        assert "unregister-image" in r.stderr
+
+    def test_allow_plugin_unregister_image_with_yes(self):
+        r = _run("crm plugin unregister-image 'My Image' --yes")
+        assert r.returncode == 0
+
+    def test_allow_plugin_register_image_passthrough(self):
+        # register-image is non-destructive: it must pass through without --yes.
+        r = _run("crm plugin register-image --step s --type pre --alias a")
+        assert r.returncode == 0
+        assert r.stderr == ""
+
     def test_allow_plugin_register_assembly_passthrough(self):
         # register-assembly is non-destructive: it must pass through without --yes.
         r = _run("crm plugin register-assembly Contoso.Plugins.dll")

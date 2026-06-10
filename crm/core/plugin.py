@@ -73,6 +73,28 @@ _MODE: dict[str, int] = {
     "sync": 0,
     "async": 1,
 }
+# Image type -> sdkmessageprocessingstepimage.imagetype option set
+# (verified MS Learn: 0=PreImage, 1=PostImage, 2=Both).
+_IMAGE_TYPE: dict[str, int] = {
+    "pre": 0,
+    "post": 1,
+}
+# Message name (lowercased) -> Request property the image snapshots, from
+# MS Learn "Register a plug-in" (messages that support entity images). Send is
+# deliberately absent: its property depends on what is sent (FaxId / EmailId /
+# TemplateId), so it requires an explicit message_property_name. Merge also
+# accepts SubordinateId; Target (the parent) is the default here.
+_MESSAGE_PROPERTY: dict[str, str] = {
+    "assign": "Target",
+    "create": "Target",
+    "delete": "Target",
+    "merge": "Target",
+    "route": "Target",
+    "update": "Target",
+    "deliverincoming": "EmailId",
+    "deliverpromote": "EmailId",
+    "setstate": "EntityMoniker",
+}
 
 
 def register_assembly(
@@ -280,6 +302,181 @@ def register_step(
             f"{entity_id_url!r}"
         )
     return out
+
+
+def register_image(
+    backend: D365Backend,
+    *,
+    step: str,
+    image_type: str,
+    alias: str,
+    attributes: str | None = None,
+    name: str | None = None,
+    message_property_name: str | None = None,
+) -> dict[str, Any]:
+    """Register an `sdkmessageprocessingstepimage` (a step entity image).
+
+    `step` is used directly when it looks like a GUID; otherwise it is resolved
+    by exact name. The step's message and stage are read to derive
+    `messagepropertyname` (see `_MESSAGE_PROPERTY`) and to enforce the platform
+    validity rules client-side.
+    """
+    if image_type not in _IMAGE_TYPE:
+        raise D365Error(
+            f"Unknown image type {image_type!r}; "
+            f"choose from {sorted(_IMAGE_TYPE)}.")
+    type_int = _IMAGE_TYPE[image_type]
+    step_id, stage_int, message_id = _step_image_info(backend, step)
+    message_name = _resolve_sdkmessage_name(backend, message_id)
+    # Platform validity rules (MS Learn "Register a plug-in"), enforced
+    # client-side so the failure is explanatory instead of raw server noise.
+    if type_int == 1 and stage_int != _STAGE["postoperation"]:
+        raise D365Error(
+            "A post-image requires a step registered in the PostOperation "
+            f"stage (step {step!r} is registered in stage {stage_int}).",
+            code="PostImageRequiresPostOperation")
+    if type_int == 0 and message_name.lower() == "create":
+        raise D365Error(
+            "A pre-image is not available on a Create-message step "
+            "(the record does not exist before the operation).",
+            code="PreImageInvalidForCreate")
+    if type_int == 1 and message_name.lower() == "delete":
+        raise D365Error(
+            "A post-image is not available on a Delete-message step "
+            "(the record no longer exists after the operation).",
+            code="PostImageInvalidForDelete")
+    mpn = message_property_name or _MESSAGE_PROPERTY.get(message_name.lower())
+    if mpn is None:
+        raise D365Error(
+            f"Cannot derive the image's message property for message "
+            f"{message_name!r}. Only "
+            f"{sorted(_MESSAGE_PROPERTY)} (and Send, via an explicit "
+            f"property) support entity images; pass message_property_name "
+            f"(--message-property-name) to override.",
+            code="MessagePropertyUnknown")
+
+    resolved_name = name or alias
+    body: dict[str, Any] = {
+        "name": resolved_name,
+        "entityalias": alias,
+        "imagetype": type_int,
+        "messagepropertyname": mpn,
+        # sdkmessageprocessingstepimage nav-props are lowercase logical names
+        # in $metadata; PascalCase is rejected with HTTP 400 (issue #159).
+        "sdkmessageprocessingstepid@odata.bind": (
+            f"/sdkmessageprocessingsteps({step_id})"),
+    }
+    # Omitting `attributes` means ALL columns are included in the image — a
+    # documented performance anti-pattern, so callers should pass a filter.
+    if attributes is not None:
+        body["attributes"] = attributes
+
+    result = as_dict(backend.post(
+        "sdkmessageprocessingstepimages", json_body=body))
+    if result.get("_dry_run"):
+        return result
+
+    entity_id_url = result.get("_entity_id_url") or ""
+    m = re.search(
+        r"sdkmessageprocessingstepimages\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    iid = m.group(1) if m else None
+    out: dict[str, Any] = {
+        "created": True,
+        "sdkmessageprocessingstepimageid": iid,
+        "name": resolved_name,
+        "entityalias": alias,
+        "imagetype": type_int,
+        "messagepropertyname": mpn,
+        "sdkmessageprocessingstepid": step_id,
+        "attributes": attributes,
+    }
+    if not iid:
+        out["sdkmessageprocessingstepimage_lookup_error"] = (
+            "Could not parse sdkmessageprocessingstepimageid from response: "
+            f"{entity_id_url!r}"
+        )
+    return out
+
+
+def _step_image_info(
+    backend: D365Backend, step: str,
+) -> tuple[str, int, str]:
+    """Resolve a step (GUID or exact name) to (id, stage, sdkmessage id).
+
+    Force-reads so image registration can derive messagepropertyname and
+    validate stage rules even under dry-run.
+    """
+    step = step.strip()
+    if _looks_like_guid(step):
+        filt = f"sdkmessageprocessingstepid eq {step}"
+    else:
+        esc = step.replace("'", "''")
+        filt = f"name eq '{esc}'"
+    rows = _force_read_rows(
+        backend, "sdkmessageprocessingsteps",
+        {"$filter": filt,
+         "$select": "sdkmessageprocessingstepid,stage,_sdkmessageid_value"})
+    if not rows or not rows[0].get("sdkmessageprocessingstepid"):
+        raise D365Error(
+            f"Plug-in step not found: {step}", code="SdkStepNotFound")
+    if len(rows) > 1:
+        raise D365Error(
+            f"Multiple plug-in steps match name {step!r}; "
+            f"pass the step's GUID instead.",
+            code="AmbiguousStepName")
+    row = rows[0]
+    return (
+        str(row["sdkmessageprocessingstepid"]),
+        int(row.get("stage") or 0),
+        str(row.get("_sdkmessageid_value") or ""),
+    )
+
+
+def _resolve_sdkmessage_name(backend: D365Backend, message_id: str) -> str:
+    """Resolve an SDK message's name by id (force-reads)."""
+    rows = _force_read_rows(
+        backend, "sdkmessages",
+        {"$filter": f"sdkmessageid eq {message_id}", "$select": "name"})
+    if not rows or not rows[0].get("name"):
+        raise D365Error(
+            f"SDK message not found: {message_id}", code="SdkMessageNotFound")
+    return str(rows[0]["name"])
+
+
+def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
+    """Unregister (delete) an `sdkmessageprocessingstepimage` by name or id.
+
+    `image` is used directly when it looks like a GUID; otherwise it is
+    resolved by exact name (force-reads, mirrors unregister_step). Dry-run
+    passes through the backend's delete preview (no real DELETE).
+    """
+    image = image.strip()
+    image_id = image if _looks_like_guid(image) else (
+        _resolve_image_id(backend, image))
+    result = as_dict(backend.delete(
+        f"sdkmessageprocessingstepimages({image_id})"))
+    if result.get("_dry_run"):
+        return result
+    return {"deleted": True, "sdkmessageprocessingstepimageid": image_id}
+
+
+def _resolve_image_id(backend: D365Backend, name: str) -> str:
+    """Resolve an sdkmessageprocessingstepimage id by exact name (force-reads)."""
+    esc = name.replace("'", "''")
+    rows = _force_read_rows(
+        backend, "sdkmessageprocessingstepimages",
+        {"$filter": f"name eq '{esc}'",
+         "$select": "sdkmessageprocessingstepimageid"})
+    if not rows or not rows[0].get("sdkmessageprocessingstepimageid"):
+        raise D365Error(
+            f"Plug-in step image not found: {name}", code="SdkImageNotFound")
+    if len(rows) > 1:
+        # Image names are not unique across steps; refuse to guess.
+        raise D365Error(
+            f"Multiple plug-in step images match name {name!r}; "
+            f"pass the image's GUID instead.",
+            code="AmbiguousImageName")
+    return str(rows[0]["sdkmessageprocessingstepimageid"])
 
 
 def unregister_step(backend: D365Backend, step: str) -> dict[str, Any]:

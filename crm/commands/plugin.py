@@ -15,7 +15,7 @@ from crm.commands._helpers import (
 
 @click.group("plugin")
 def plugin_group():
-    """Register and manage plug-in assemblies and processing steps."""
+    """Register and manage plug-in assemblies, processing steps, and step images."""
 
 
 @plugin_group.command("register-assembly")
@@ -120,6 +120,59 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
     _emit_with_warning(ctx, info, None,
                        meta={"staged": True} if ctx.stage_only else None)
     _journal(ctx, "plugin register-step", plugin_type, info)
+
+
+@plugin_group.command("register-image")
+@click.option("--step", required=True,
+              help="Step GUID or exact step name (sdkmessageprocessingstep).")
+@click.option("--type", "image_type", type=click.Choice(["pre", "post"]),
+              required=True,
+              help="Image type (pre=0, post=1). Post-images require a "
+                   "PostOperation-stage step.")
+@click.option("--alias", required=True,
+              help="Entity alias — the key used to access the image from "
+                   "PreEntityImages/PostEntityImages in plug-in code.")
+@click.option("--attributes", default=None,
+              help="Comma-separated columns to include in the image. "
+                   "Omit for all columns (hurts performance; pass a list).")
+@click.option("--name", default=None,
+              help="Image name; defaults to the alias.")
+@click.option("--message-property-name", "message_property_name", default=None,
+              help="Override the derived request property (required for "
+                   "Send-message steps: FaxId, EmailId or TemplateId).")
+@pass_ctx
+def register_image_cmd(ctx: CLIContext, step, image_type, alias, attributes,
+                       name, message_property_name):
+    """Register a step entity image (sdkmessageprocessingstepimage)."""
+    try:
+        info = plugin_mod.register_image(
+            ctx.backend(), step=step, image_type=image_type, alias=alias,
+            attributes=attributes, name=name,
+            message_property_name=message_property_name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    _emit_with_warning(ctx, info, None,
+                       meta={"staged": True} if ctx.stage_only else None)
+    _journal(ctx, "plugin register-image", step, info)
+
+
+@plugin_group.command("unregister-image")
+@click.argument("image")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@pass_ctx
+def unregister_image_cmd(ctx: CLIContext, image, yes):
+    """Unregister a step entity image (sdkmessageprocessingstepimage, NAME or GUID)."""
+    if not _confirm_destructive("plug-in step image", image, yes):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = plugin_mod.unregister_image(ctx.backend(), image)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+    _journal(ctx, "plugin unregister-image", image, info)
 
 
 @plugin_group.command("unregister-assembly")
