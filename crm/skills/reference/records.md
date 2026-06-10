@@ -136,6 +136,46 @@ Output: `{imported, failed, chunks, entity_set, mode, dry_run, format}`. `failed
 surfaces a `meta.warnings` advisory; **exit code is 0 on partial failure** — scan
 `meta.warnings`, don't rely on `$?`.
 
+## Raw `$batch` — `crm batch`
+
+`crm batch <file.json>` runs a hand-authored `$batch` directly — the escape hatch for
+mixed/cross-entity bulk work that `data import` (single-entity) can't express, e.g.
+deleting many records in one round-trip. The file is a **JSON array of operation
+objects**, each carrying a `method` and `url` (plus a `body` on writes):
+
+- `method` — `GET` | `POST` | `PATCH` | `DELETE`.
+- `url` — a **bare relative path** (`contacts(<guid>)`, `accounts`), no leading slash.
+- `body` — JSON object; **required** on `POST`/`PATCH`, **rejected** on `GET`/`DELETE`.
+- optional `headers` (object of string values) and `content_id` (str/int, to reference a
+  just-created record from a later op in the same changeset via `$<content_id>`).
+
+**Gotcha — `url` must not begin with `/`.** A leading slash resolves against the host
+root, not the Web API path, and 404s. `crm batch` blocks it client-side before any
+request with a `validation` error telling you the `url` must be a bare relative path —
+fix the file, don't retry.
+
+Minimal bulk delete — two contacts, atomic (see grouping note below):
+
+```bash
+cat > bulk-delete.json <<'EOF'
+[
+  {"method": "DELETE", "url": "contacts(00000000-0000-0000-0000-000000000001)"},
+  {"method": "DELETE", "url": "contacts(00000000-0000-0000-0000-000000000002)"}
+]
+EOF
+crm --json batch bulk-delete.json
+# -> data: [{...,"status":204},{...,"status":204}], meta: {total, success, failed}
+```
+
+Transaction grouping (default mode): each run of **consecutive writes**
+(`POST`/`PATCH`/`DELETE`) is wrapped in one atomic changeset (all-or-nothing rollback),
+while every `GET` stays a top-level op and breaks the run — so a file that interleaves
+reads and writes produces *several* changesets, not one. An all-write file like the
+bulk-delete above is therefore a single atomic unit. `--no-transaction` drops the
+changesets and sends every op top-level; `--continue-on-error` (which requires
+`--no-transaction`) keeps going past a failed op. **Exit code is 0 even when some ops
+fail** — read each result's `status` and `meta.failed`, don't rely on `$?`.
+
 ## Ad-hoc OData function / action
 
 ```bash
