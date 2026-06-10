@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.8.1 (2026-06-10)
+
+### Bug Fixes
+
+- **entity**: Rank did_you_mean for numbered field families
+  ([#198](https://github.com/Gharib89/crm/pull/198),
+  [`903b2c1`](https://github.com/Gharib89/crm/commit/903b2c118f730cde7625ca514a02762bbeaff463))
+
+
 ## v2.8.0 (2026-06-10)
 
 ### Documentation
