@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.4.0 (2026-06-10)
+
+### Documentation
+
+- **copilot**: Add custom instructions for Copilot code review
+  ([`f50598c`](https://github.com/Gharib89/crm/commit/f50598c7a97a35bd22327df51d37afb97fffab15))
+
+### Features
+
+- **sla**: Add sla activate orchestrating backing workflows with structured compile-error reporting
+  ([#168](https://github.com/Gharib89/crm/pull/168),
+  [`9c010f1`](https://github.com/Gharib89/crm/commit/9c010f1decf527c6797037dc4e8c035218e85dec))
+
+
 ## v2.3.0 (2026-06-10)
 
 ### Documentation
