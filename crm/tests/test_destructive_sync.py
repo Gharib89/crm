@@ -71,6 +71,15 @@ class TestIsDestructive:
     def test_solution_import_is_destructive(self):
         assert core.is_destructive("solution", "import") is True
 
+    def test_solution_uninstall_is_destructive(self):
+        assert core.is_destructive("solution", "uninstall") is True
+
+    def test_solution_stage_and_upgrade_is_destructive(self):
+        assert core.is_destructive("solution", "stage-and-upgrade") is True
+
+    def test_solution_clone_as_patch_not_destructive(self):
+        assert core.is_destructive("solution", "clone-as-patch") is False
+
     def test_plugin_unregister_assembly_is_destructive(self):
         assert core.is_destructive("plugin", "unregister-assembly") is True
 

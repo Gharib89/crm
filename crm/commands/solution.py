@@ -327,6 +327,119 @@ def solution_remove_component(ctx: CLIContext, solution, type_, component_id, ye
     _journal(ctx, "solution remove-component", solution, info)
 
 
+@solution_group.command("clone-as-patch")
+@click.option("--solution", "parent_solution", required=True,
+              help="Parent solution unique name to clone a patch from.")
+@click.option("--display", "display", default=None,
+              help="Patch display name (defaults to the parent's friendly name).")
+@click.option("--version", default=None,
+              help="Patch version (4-part dotted). Must share the parent's "
+                   "major.minor; defaults to the parent version with the "
+                   "revision bumped.")
+@pass_ctx
+def solution_clone_as_patch(ctx: CLIContext, parent_solution, display, version):
+    """Create a solution patch from a parent solution (CloneAsPatch)."""
+    try:
+        info = sol_mod.clone_as_patch(
+            ctx.backend(), parent_solution=parent_solution,
+            display_name=display, version=version,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+    _journal(ctx, "solution clone-as-patch", parent_solution, info)
+
+
+@solution_group.command("uninstall")
+@click.option("--solution", "unique_name", required=True,
+              help="Unique name of the solution to uninstall.")
+@click.option("--force", is_flag=True,
+              help="Uninstall even if dependency blockers exist (skip the pre-check).")
+@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@pass_ctx
+def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
+    """Uninstall (delete) a solution (DELETE /solutions).
+
+    Pre-checks RetrieveDependenciesForUninstall and refuses with the blocker
+    list unless --force. For a managed base solution the server also uninstalls
+    its patches.
+    """
+    if not _confirm_destructive(
+        "solution", unique_name, yes,
+        message=(f"Uninstalling solution {unique_name!r} removes it (and, for a "
+                 f"managed base solution, all of its patches). Continue?"),
+    ):
+        ctx.emit(False, error="aborted by user")
+        return
+    try:
+        info = sol_mod.uninstall_solution(ctx.backend(), unique_name, force=force)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=info)
+    _journal(ctx, "solution uninstall", unique_name, info)
+
+
+@solution_group.command("stage-and-upgrade")
+@click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--promote", is_flag=True,
+              help="After staging, apply the upgrade with DeleteAndPromote "
+                   "(replaces the base solution). Requires --solution.")
+@click.option("--solution", "solution_name", default=None,
+              help="Unique name of the staged solution to promote "
+                   "(required with --promote).")
+@click.option("--no-publish", is_flag=True)
+@click.option("--no-overwrite", is_flag=True)
+@click.option("--timeout", type=int, default=None,
+              help="Async operation timeout in seconds. Overrides profile.async_timeout.")
+@click.option("--no-retry", is_flag=True,
+              help="Disable the 429/5xx retry loop for this invocation.")
+@click.option("--quiet", "-q", is_flag=True,
+              help="Suppress per-tick import-progress lines on stderr.")
+@click.option("--yes", is_flag=True, help="Skip the staging/promote confirmation prompt.")
+@pass_ctx
+def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_name,
+                                   no_publish, no_overwrite, timeout, no_retry, quiet, yes):
+    """Stage a managed-solution upgrade as a holding solution (ImportSolution HoldingSolution).
+
+    Stages only by default; pass --promote (with --solution) to also apply the
+    upgrade via DeleteAndPromote, replacing the base solution.
+    """
+    # --promote needs an explicit target (usage error, exit 2 — ADR 0001).
+    if promote and not solution_name:
+        raise click.UsageError("--promote requires --solution <unique name>.")
+
+    action = (f"Staging {zip_path!r} as a holding solution and promoting it over "
+              f"{solution_name!r} (DeleteAndPromote replaces the base solution)."
+              if promote else
+              f"Staging {zip_path!r} as a holding solution for upgrade.")
+    if not _confirm_destructive("solution", zip_path, yes,
+                                message=f"{action} Continue?"):
+        ctx.emit(False, error="aborted by user")
+        return
+
+    with _no_retry_scope(ctx, no_retry):
+        try:
+            info = sol_mod.import_solution(
+                ctx.backend(), zip_path,
+                publish_workflows=not no_publish,
+                overwrite_unmanaged_customizations=not no_overwrite,
+                holding_solution=True,
+                timeout=timeout,
+                quiet=quiet,
+            )
+            # Promote only a real, succeeded stage — never under --dry-run.
+            if promote and not info.get("_dry_run"):
+                info["promote"] = sol_mod.delete_and_promote(ctx.backend(), solution_name)
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+        warnings = info.pop("warnings", None)
+        ctx.emit(True, data=info, warnings=warnings)
+        _journal(ctx, "solution stage-and-upgrade", zip_path, info)
+
+
 @solution_group.command("export")
 @click.argument("unique_name")
 @click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))

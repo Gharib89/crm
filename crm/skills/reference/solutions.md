@@ -71,6 +71,45 @@ and don't move a role's updates to a different solution.
 The result carries `import_job_id` and `async_operation_id` — capture both; they
 drive the investigation workflow below.
 
+## Managed-solution upgrade lifecycle — `clone-as-patch` / `stage-and-upgrade` / `uninstall`
+
+First-class verbs wrapping the `CloneAsPatch`, `ImportSolution` (`HoldingSolution`),
+`DeleteAndPromote`, and solution-delete server actions — so you never drop to
+`crm action invoke CloneAsPatch/DeleteAndPromote` (agent-infeasible). All three
+work on **both** on-prem v9.x and Dataverse online.
+
+```bash
+# Small hotfix on top of a parent: clone a patch (version revision auto-bumps from the parent)
+crm --json solution clone-as-patch --solution CRMWorx
+# → {cloned, parent_solution, version, patch_solutionid}
+
+# Major upgrade: stage the new managed zip as a HOLDING solution (not yet live)…
+crm solution stage-and-upgrade /tmp/crmworx_2_0.zip --yes
+# …then apply it (DeleteAndPromote replaces the base + its patches):
+crm solution stage-and-upgrade /tmp/crmworx_2_0.zip --promote --solution CRMWorx --yes
+
+# Remove a solution (managed base also removes its patches, server-side)
+crm solution uninstall --solution CRMWorx --yes
+```
+
+**Workflow:** a holding import alone does **not** make the upgrade live — it stages
+and validates. Either promote in the same call (`--promote --solution <name>`) or
+re-run later; promotion is the destructive step that deletes the old base. The
+two-step shape lets you stage, verify with `solution import-result <id>`, then
+promote.
+
+**Gotchas:**
+- `clone-as-patch` auto-bump increments the **revision** (4th part); a patch must
+  keep the parent's `major.minor`. Pass `--version` for a specific build/revision.
+- `stage-and-upgrade` reuses the `solution import` pipeline — same per-component
+  result parsing, the on-prem synchronous-`ImportSolution` fallback, and
+  `meta.warnings` on a partial failure all apply.
+- `uninstall` **pre-checks** `RetrieveDependenciesForUninstall` and refuses (no
+  DELETE) when blockers exist; `--force` skips the check. Inspect blockers first
+  with `solution dependencies <name>`.
+- All three are gated destructive verbs (`--yes`) except `clone-as-patch` (a
+  create). `--dry-run` previews every one without mutating.
+
 ## Translate display labels — `crm translation export` / `import`
 
 Translation is **solution-scoped** (the `ExportTranslation` / `ImportTranslation`
