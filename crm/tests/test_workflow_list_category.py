@@ -2,8 +2,6 @@
 # pyright: basic
 from __future__ import annotations
 
-import json
-
 from click.testing import CliRunner
 
 from crm.core import workflow as workflow_mod
