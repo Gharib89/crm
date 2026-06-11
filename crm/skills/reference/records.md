@@ -100,6 +100,31 @@ crm entity disassociate accounts <account-guid> \
 crm entity clear-lookup contacts <contact-guid> parentcustomerid_account
 ```
 
+## Audit a record's related data — `entity children`
+
+Before cloning, deleting, or auditing a record, answer "what related data does this
+actually have?" via chunked **`$batch`** instead of one counted query per relationship
+(an account has ~130 one-to-many relationships):
+
+```bash
+crm --json entity children accounts <guid> --non-empty
+# -> data: [{"entity":"contact","attribute":"parentcustomerid","set":"contacts","count":1}, ...]
+```
+
+Enumerates the 1:N relationships where the record is the **parent** (referenced) side
+and counts child rows per relationship via chunked `$batch` (round trips are
+O(relationships / chunk), not one-per-relationship). `--non-empty` drops zero-count
+rows; `--filter-entities REGEX` restricts to matching child **logical names** before
+querying (fewer requests). Read-only — composes with `--dry-run`.
+
+**Gotcha — uncountable children.** Some system entities reject `RetrieveMultiple`
+(activity-feed types `postregarding`/`postrole`; `sharepointdocument` when SharePoint
+is off). They return `count: null` + an `error` string instead of aborting the audit,
+and `--non-empty` keeps them (unknown ≠ empty). The count uses `?$count=true&$top=1`
+(reads `@odata.count`) — **not** `/$count?$filter=`, which on-prem 9.1 rejects with
+"no property '_x_value' on type 'Edm.Int32'". M:N counts and delete-impact analysis are
+out of scope.
+
 ## Record-create payloads (`@odata.bind`)
 
 When constructing `entity create`/`update` payloads, lookup fields require an

@@ -1,6 +1,7 @@
 """Entity CRUD commands."""
 # pyright: basic
 from __future__ import annotations
+import re
 from typing import Any
 import click
 from crm.core import entity as entity_mod
@@ -216,6 +217,43 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
     if minimal and ctx.json_mode and isinstance(result, dict):
         result = _prune_annotations(result)
     ctx.emit(True, data=result)
+
+
+@entity_group.command("children")
+@click.argument("entity_set")
+@click.argument("record_id")
+@click.option("--non-empty", is_flag=True, default=False,
+              help="Drop relationships whose related-record count is 0.")
+@click.option("--filter-entities", metavar="REGEX",
+              help="Only count child entities whose logical name matches REGEX. "
+                   "Applied before querying — fewer requests, not a post-filter.")
+@pass_ctx
+def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_entities):
+    """Per-relationship related-record counts for the 1:N relationships where
+    <entity-set> <guid> is the parent. Counts go through chunked $batch (a few
+    POSTs), not one count query per relationship.
+
+    Each row: child entity logical name, referencing attribute, child entity
+    set, and count. Read-only (composes with --dry-run)."""
+    # Validate the untrusted regex before constructing a backend (house rule —
+    # mirrors --expect parsing): a bad pattern is a usage error (exit 2), no round-trip.
+    if filter_entities is not None:
+        try:
+            re.compile(filter_entities)
+        except re.error as exc:
+            raise click.BadParameter(
+                f"not a valid regular expression: {exc}", param_hint="--filter-entities"
+            )
+    try:
+        rows = entity_mod.count_children(
+            ctx.backend(), entity_set, record_id,
+            non_empty=non_empty,
+            filter_entities=filter_entities,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=rows)
 
 
 @entity_group.command("create")

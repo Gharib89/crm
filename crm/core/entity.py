@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_types import BatchOperation
 
 
 _GUID_RE = re.compile(
@@ -481,3 +482,153 @@ def clear_lookup(
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     return {"cleared": True, "id": _normalize_id(record_id), "nav": navigation_property}
+
+
+# ── Children (1:N related-record counts) ─────────────────────────────────
+
+
+def count_children(
+    backend: D365Backend,
+    entity_set: str,
+    record_id: str,
+    *,
+    non_empty: bool = False,
+    filter_entities: str | None = None,
+    batch_chunk_size: int = 100,
+) -> list[dict[str, Any]]:
+    """Count related records per 1:N relationship where this entity is the parent.
+
+    Returns one row per relationship — ``{"entity", "attribute", "set", "count"}`` —
+    where ``entity`` is the child logical name, ``attribute`` its referencing
+    lookup, and ``set`` the child entity set. Round trips are
+    O(relationships / ``batch_chunk_size``): one metadata GET for the logical↔set
+    map, one for the relationships, then ``$batch`` chunks of ``$count`` queries.
+
+    ``filter_entities`` (regex) drops non-matching child entities *before* the
+    counts are issued — fewer requests, not a post-filter. ``non_empty`` drops
+    rows whose count is 0.
+
+    Read-only: under ``--dry-run`` the counts run as direct GETs (the ``$batch``
+    POST would otherwise be short-circuited to a useless preview), so a dry-run
+    still reports real counts — sequential, but ``--dry-run`` is a preview path.
+    """
+    from crm.core import metadata as metadata_mod
+
+    guid = _normalize_id(record_id)
+    if batch_chunk_size < 1:
+        raise D365Error("batch_chunk_size must be a positive integer.")
+    # Compile the user regex before any round trip (validate-before-backend); an
+    # invalid pattern is a clean D365Error, not an uncaught re.error traceback.
+    try:
+        pattern = re.compile(filter_entities) if filter_entities else None
+    except re.error as exc:
+        raise D365Error(f"--filter-entities is not a valid regular expression: {exc}")
+
+    # Logical↔set map in one GET — resolves both the parent set→logical and each
+    # child logical→set (the sole entity-set-name resolution round trip).
+    defs = metadata_mod.list_entity_definitions(backend)
+    set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
+    logical_to_set = {d["logical"]: d["set_name"] for d in defs if d["set_name"]}
+    parent_logical = set_to_logical.get(entity_set)
+    if not parent_logical:
+        raise D365Error(
+            f"Could not resolve entity set {entity_set!r} to a logical name.",
+            code="UnknownEntitySet",
+        )
+
+    # 1:N relationships where the parent is the referenced side (one GET).
+    rels_raw: list[dict[str, Any]] = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{parent_logical}')/OneToManyRelationships",
+        params={"$select": "ReferencingEntity,ReferencingAttribute"},
+    )).get("value", [])
+
+    rels: list[dict[str, str]] = []
+    for r in rels_raw:
+        child = str(r.get("ReferencingEntity") or "")
+        attr = str(r.get("ReferencingAttribute") or "")
+        child_set = logical_to_set.get(child, "")
+        if not child or not attr or not child_set:
+            continue
+        if pattern is not None and not pattern.search(child):
+            continue
+        rels.append({"entity": child, "attribute": attr, "set": child_set})
+
+    rows: list[dict[str, Any]] = []
+    if backend.dry_run:
+        # $batch is a POST and is short-circuited under --dry-run; a read-only count
+        # must not be stubbed into uselessness (issue #234 / migration-assess
+        # precedent), so issue the side-effect-free GETs directly. Sequential, but
+        # --dry-run is a preview path where round-trip count is not the concern.
+        for rel in rels:
+            rows.append(_count_via_get(backend, rel, guid))
+        if non_empty:
+            rows = [row for row in rows if row["count"] != 0]
+        return rows
+
+    for start in range(0, len(rels), batch_chunk_size):
+        chunk = rels[start:start + batch_chunk_size]
+        ops: list[BatchOperation] = [
+            {"method": "GET", "url": _count_url(rel["set"], rel["attribute"], guid)}
+            for rel in chunk
+        ]
+        # Non-transactional + continue-on-error: an account's 1:N set can include
+        # child entities that reject RetrieveMultiple (activity-feed system types
+        # like postregarding). A transactional batch would abort the whole audit on
+        # the first such row; here each count is independent and an uncountable one
+        # is reported as count=null + error rather than dropped or fatal.
+        results = backend.batch(ops, transactional=False, continue_on_error=True)
+        for rel, res in zip(chunk, results):
+            err = res.get("error")
+            if err:
+                rows.append({**rel, "count": None, "error": str(err)})
+            else:
+                rows.append({**rel, "count": _odata_count(res.get("body"))})
+
+    if non_empty:
+        rows = [row for row in rows if row["count"] != 0]
+    return rows
+
+
+def _count_url(child_set: str, attribute: str, guid: str) -> str:
+    """Relative URL counting child rows that reference `guid` via `attribute`.
+
+    `?$count=true&$top=1` not `/$count?$filter=`: on-prem v9.1 binds a $filter on
+    the `/$count` path segment to the Edm.Int32 result and 400s ("no property
+    '_x_value' on type 'Edm.Int32'"). $count=true returns the full @odata.count
+    regardless of $top (live-verified both targets); $top=1 caps the row count.
+
+    `$select=_<attr>_value` keeps each returned row to the one lookup column the
+    filter already names (only @odata.count is consumed) instead of every column,
+    shrinking each $batch sub-response. The `_<attr>_value` form is required —
+    on-prem rejects $select on the bare lookup name (`parentid` → 404 property).
+    """
+    from urllib.parse import quote
+
+    value_attr = f"_{attribute}_value"
+    return (
+        f"{child_set}?$filter="
+        + quote(f"{value_attr} eq {guid}", safe="")
+        + f"&$count=true&$top=1&$select={value_attr}"
+    )
+
+
+def _count_via_get(backend: D365Backend, rel: dict[str, str], guid: str) -> dict[str, Any]:
+    """Count one relationship via a direct GET (the --dry-run / non-batched path).
+
+    Mirrors the batch path's degradation: a child entity that rejects the read
+    (e.g. RetrieveMultiple-unsupported system types) becomes count=null + error.
+    """
+    try:
+        body = as_dict(backend.get(_count_url(rel["set"], rel["attribute"], guid)))
+        return {**rel, "count": _odata_count(body)}
+    except D365Error as exc:
+        return {**rel, "count": None, "error": str(exc)}
+
+
+def _odata_count(body: "dict[str, Any] | str | None") -> int:
+    """Read `@odata.count` from a successful `$count=true` response body."""
+    if isinstance(body, dict):
+        n = body.get("@odata.count")
+        if n is not None:
+            return int(n)
+    raise D365Error(f"Unexpected count response: {body!r}")

@@ -114,3 +114,30 @@ Lookup bindings (`field@odata.bind`) are not matched and will not appear in
 crm --json entity create savedqueries --data-file /tmp/cwx_view_active_tickets.json
 ```
 Use `--data-file` for payloads with embedded double quotes (e.g. `savedquery` or `systemform` rows whose columns contain XML). Add `--no-return` for rows that aren't readable until published (appmodule/sitemap, §11).
+
+## Audit a record's related data before clone/delete (`entity children`)
+
+```bash
+crm --json entity children accounts 00000000-0000-0000-0000-000000000001 --non-empty
+```
+`entity children` answers "what related data does this record actually have?" — it enumerates the 1:N relationships where the entity is the **parent** (referenced) side and reports the related-record count per relationship through **chunked `$batch`** (a handful of POSTs) instead of one counted query per relationship (an account has ~130 one-to-many relationships). One row per relationship:
+
+```json
+{"ok": true, "data": [
+  {"entity": "contact", "attribute": "parentcustomerid", "set": "contacts", "count": 1},
+  {"entity": "cwx_ticket", "attribute": "cwx_customerid", "set": "cwx_tickets", "count": 1}
+]}
+```
+
+- `--non-empty` drops relationships whose count is 0.
+- `--filter-entities REGEX` restricts to child entities whose **logical name** matches the regex, applied *before* the counts are issued (fewer requests, not a display filter).
+
+Counts go through `$batch` in chunks, so round trips are O(relationships / chunk-size), not one per relationship. Read-only — composes with `--dry-run` (the GETs run for real). Self-referential relationships (e.g. account `parentaccountid` → account) are ordinary rows.
+
+**Uncountable child entities.** Some system entities reject `RetrieveMultiple` (activity-feed types like `postregarding`/`postrole`, or `sharepointdocument` when SharePoint integration is off). These surface with `count: null` and an `error` string rather than aborting the whole audit:
+
+```json
+{"entity": "postregarding", "attribute": "regardingobjectid", "set": "postregardings", "count": null, "error": "The 'RetrieveMultiple' method does not support entities of type 'postregarding'."}
+```
+
+`--non-empty` keeps these null rows (unknown ≠ empty). The count itself is issued as `?$count=true&$top=1` (reading `@odata.count`), **not** `/$count?$filter=` — on-prem 9.1 rejects a `$filter` on the `/$count` path segment ("no property '_x_value' on type 'Edm.Int32'"). Scope is 1:N only — many-to-many counts and cascade/delete-impact analysis are out of scope.

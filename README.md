@@ -347,7 +347,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | Group        | Purpose                                                    |
 |--------------|------------------------------------------------------------|
 | `connection` | Profiles, WhoAmI, preflight diagnostic (`doctor`), reachability checks |
-| `entity`     | Record CRUD (get/create/update/upsert/delete)              |
+| `entity`     | Record CRUD (get/create/update/upsert/delete); `children` (per-1:N related-record counts via chunked `$batch`, not one query per relationship) |
 | `query`      | OData v4 and FetchXML queries                              |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
