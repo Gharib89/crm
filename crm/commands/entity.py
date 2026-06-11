@@ -164,7 +164,7 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
-        _handle_d365_error(ctx, exc)
+        _handle_d365_error(ctx, exc, warnings=validate_warnings or None)
         return
     ctx.emit(True, data=result, warnings=validate_warnings or None)
     _journal(ctx, "entity create", entity_set, result)

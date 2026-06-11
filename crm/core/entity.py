@@ -202,8 +202,7 @@ def validate_payload(
 
     warnings: list[str] = []
     if is_create and primary_id_attr:
-        payload_fields = {key.split("@", 1)[0] for key in payload if key.split("@", 1)[0]}
-        if primary_id_attr in payload_fields:
+        if any(key.split("@", 1)[0] == primary_id_attr for key in payload):
             warnings.append(
                 f"payload contains primary id {primary_id_attr!r} — "
                 "remove it unless you intend to create with an explicit GUID"

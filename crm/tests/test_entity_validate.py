@@ -384,6 +384,31 @@ class TestPrimaryIdWarnCommand:
         assert result.stderr is not None
         assert "payload contains primary id 'accountid'" in result.stderr
 
+    def test_create_with_primary_id_warns_even_on_server_error(self, monkeypatch, backend):
+        """Warning appears in meta even when the POST fails (e.g. duplicate-key)."""
+        self._stub(monkeypatch, backend)
+        guid = "11111111-1111-1111-1111-111111111111"
+        error_body = {
+            "error": {
+                "code": "0x80040237",
+                "message": "A record with matching key values already exists.",
+            }
+        }
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            post_url = backend.url_for("accounts")
+            m.post(post_url, status_code=412, json=error_body)
+            result = CliRunner().invoke(cli, [
+                "--json", "entity", "create", "accounts",
+                "--data", json.dumps({"accountid": guid, "name": "Contoso"}),
+                "--validate",
+            ])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "warnings" in env.get("meta", {})
+        assert any("accountid" in w for w in env["meta"]["warnings"])
+
     def test_update_with_primary_id_no_warn(self, monkeypatch, backend):
         """entity update --validate never warns about primary id (update path unchanged)."""
         self._stub(monkeypatch, backend)
