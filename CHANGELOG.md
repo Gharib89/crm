@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.11.0 (2026-06-11)
+
+### Build System
+
+- **docs**: Cap mkdocs deps below 2.0 to keep strict build reproducible
+  ([`2b38ee9`](https://github.com/Gharib89/crm/commit/2b38ee95949fe84b95dc9029f663062672eeeda0))
+
+### Documentation
+
+- **adr**: Record self-update refreshes installed skills
+  ([#225](https://github.com/Gharib89/crm/pull/225),
+  [`902a03a`](https://github.com/Gharib89/crm/commit/902a03a17f2e5825825cfb045a6318767c62ac39))
+
+- **adr**: Record stay-on-Material-9x, ProperDocs when forced
+  ([#224](https://github.com/Gharib89/crm/pull/224),
+  [`f8bf24f`](https://github.com/Gharib89/crm/commit/f8bf24f35fc385710de429288e7be68e0acbff9b))
+
+### Features
+
+- **profile**: Inline questionary pickers + --client-secret alias
+  ([#226](https://github.com/Gharib89/crm/pull/226),
+  [`48d3d06`](https://github.com/Gharib89/crm/commit/48d3d066be65857e71cd0d5f1536f0be81aad77f))
+
+
 ## v2.10.0 (2026-06-11)
 
 ### Features
