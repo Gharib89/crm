@@ -108,13 +108,14 @@ def validate_payload(
 ) -> dict[str, Any]:
     """Field-NAME pre-write validation for a create/update payload (#72, #233).
 
-    Three pure GETs build the set of valid payload keys:
+    One to three pure GETs build the set of valid payload keys:
       1. resolve the entity-SET name to its LOGICAL name (also fetches
          `PrimaryIdAttribute` for the create-path warning — no extra round-trip);
       2. the entity's logical attribute names;
       3. the ManyToOne navigation-property names
          (`ReferencingEntityNavigationPropertyName`) — these are the `<nav>` in a
          `<nav>@odata.bind` deep-link, so a bound lookup is NOT a bogus field.
+         GET #3 is skipped when the payload contains no `@odata.bind` keys.
 
     Valid keys are the UNION of (2) and (3). Each payload key is stripped of its
     `@odata.bind` / `@odata.type` suffix before the membership check; control
