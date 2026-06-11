@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_types import BatchOperation, BatchResult
 
 
 _GUID_RE = re.compile(
@@ -481,3 +482,107 @@ def clear_lookup(
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     return {"cleared": True, "id": _normalize_id(record_id), "nav": navigation_property}
+
+
+# ── Children (1:N related-record counts) ─────────────────────────────────
+
+
+def count_children(
+    backend: D365Backend,
+    entity_set: str,
+    record_id: str,
+    *,
+    non_empty: bool = False,
+    filter_entities: str | None = None,
+    batch_chunk_size: int = 100,
+) -> list[dict[str, Any]]:
+    """Count related records per 1:N relationship where this entity is the parent.
+
+    Returns one row per relationship — ``{"entity", "attribute", "set", "count"}`` —
+    where ``entity`` is the child logical name, ``attribute`` its referencing
+    lookup, and ``set`` the child entity set. Round trips are
+    O(relationships / ``batch_chunk_size``): one metadata GET for the logical↔set
+    map, one for the relationships, then ``$batch`` chunks of ``$count`` queries.
+
+    ``filter_entities`` (regex) drops non-matching child entities *before* the
+    counts are issued — fewer requests, not a post-filter. ``non_empty`` drops
+    rows whose count is 0.
+    """
+    from urllib.parse import quote
+    from crm.core import metadata as metadata_mod
+
+    guid = _normalize_id(record_id)
+
+    # Logical↔set map in one GET — resolves both the parent set→logical and each
+    # child logical→set (the sole entity-set-name resolution round trip).
+    defs = metadata_mod.list_entity_definitions(backend)
+    set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
+    logical_to_set = {d["logical"]: d["set_name"] for d in defs if d["set_name"]}
+    parent_logical = set_to_logical.get(entity_set)
+    if not parent_logical:
+        raise D365Error(
+            f"Could not resolve entity set {entity_set!r} to a logical name.",
+            code="UnknownEntitySet",
+        )
+
+    # 1:N relationships where the parent is the referenced side (one GET).
+    rels_raw: list[dict[str, Any]] = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{parent_logical}')/OneToManyRelationships",
+        params={"$select": "ReferencingEntity,ReferencingAttribute"},
+    )).get("value", [])
+
+    pattern = re.compile(filter_entities) if filter_entities else None
+    rels: list[dict[str, str]] = []
+    for r in rels_raw:
+        child = str(r.get("ReferencingEntity") or "")
+        attr = str(r.get("ReferencingAttribute") or "")
+        child_set = logical_to_set.get(child, "")
+        if not child or not attr or not child_set:
+            continue
+        if pattern is not None and not pattern.search(child):
+            continue
+        rels.append({"entity": child, "attribute": attr, "set": child_set})
+
+    rows: list[dict[str, Any]] = []
+    for start in range(0, len(rels), batch_chunk_size):
+        chunk = rels[start:start + batch_chunk_size]
+        ops: list[BatchOperation] = [
+            {
+                "method": "GET",
+                # `?$count=true&$top=1` not `/$count?$filter=`: on-prem v9.1 binds a
+                # $filter on the `/$count` path segment to the Edm.Int32 result and
+                # 400s ("no property '_x_value' on type 'Edm.Int32'"). $count=true
+                # returns the full @odata.count regardless of $top (live-verified
+                # both targets); $top=1 keeps the row payload to one record.
+                "url": f"{rel['set']}?$filter="
+                + quote(f"_{rel['attribute']}_value eq {guid}", safe="")
+                + "&$count=true&$top=1",
+            }
+            for rel in chunk
+        ]
+        # Non-transactional + continue-on-error: an account's 1:N set can include
+        # child entities that reject RetrieveMultiple (activity-feed system types
+        # like postregarding). A transactional batch would abort the whole audit on
+        # the first such row; here each count is independent and an uncountable one
+        # is reported as count=null + error rather than dropped or fatal.
+        results = backend.batch(ops, transactional=False, continue_on_error=True)
+        for rel, res in zip(chunk, results):
+            err = res.get("error")
+            if err:
+                rows.append({**rel, "count": None, "error": str(err)})
+            else:
+                rows.append({**rel, "count": _odata_count(res)})
+
+    if non_empty:
+        rows = [row for row in rows if row["count"] != 0]
+    return rows
+
+
+def _odata_count(result: BatchResult) -> int:
+    """Read `@odata.count` from a successful `$count=true` $batch sub-result."""
+    body = result.get("body")
+    if isinstance(body, dict):
+        n = body.get("@odata.count")
+        if n is not None:
+            return int(n)
+    raise D365Error(f"Unexpected count response: {body!r}")

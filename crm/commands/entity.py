@@ -218,6 +218,33 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
     ctx.emit(True, data=result)
 
 
+@entity_group.command("children")
+@click.argument("entity_set")
+@click.argument("record_id")
+@click.option("--non-empty", is_flag=True, default=False,
+              help="Drop relationships whose related-record count is 0.")
+@click.option("--filter-entities", metavar="REGEX",
+              help="Only count child entities whose logical name matches REGEX. "
+                   "Applied before querying — fewer requests, not a post-filter.")
+@pass_ctx
+def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_entities):
+    """Per-relationship related-record counts for the 1:N relationships where
+    <entity-set> <guid> is the parent. One batched call instead of N counts.
+
+    Each row: child entity logical name, referencing attribute, child entity
+    set, and count. Read-only (composes with --dry-run)."""
+    try:
+        rows = entity_mod.count_children(
+            ctx.backend(), entity_set, record_id,
+            non_empty=non_empty,
+            filter_entities=filter_entities,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    ctx.emit(True, data=rows)
+
+
 @entity_group.command("create")
 @click.argument("entity_set")
 @click.option("--data", "data_json", help="JSON object as string.")
