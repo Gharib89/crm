@@ -144,6 +144,7 @@ def _local_pick_info():
     return {
         "SchemaName": "new_Stage",
         "DisplayName": _label("Stage"),
+        "AttributeType": "Picklist",
         "AttributeTypeName": {"Value": "PicklistType"},
         "RequiredLevel": {"Value": "None"},
     }
@@ -153,6 +154,7 @@ def _global_pick_info(schema):
     return {
         "SchemaName": schema,
         "DisplayName": _label(schema),
+        "AttributeType": "Picklist",
         "AttributeTypeName": {"Value": "PicklistType"},
         "RequiredLevel": {"Value": "None"},
     }

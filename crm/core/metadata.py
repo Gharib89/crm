@@ -75,22 +75,36 @@ def picklist_options(
     *,
     global_optionset: bool = True,
 ) -> dict[str, Any]:
-    """Retrieve option set values for a picklist / state / status / boolean attribute.
+    """Retrieve option set values for a picklist / state / status attribute.
 
-    Casts to `Microsoft.Dynamics.CRM.PicklistAttributeMetadata` and expands
-    `OptionSet` (local) + `GlobalOptionSet` (global, when present).
+    Fetches the attribute's `AttributeType` first, then selects the correct
+    OData cast segment from `_OPTION_SET_CASTS`. Raises `D365Error` for
+    attribute types that do not carry an option set.
 
     Returns `{ "LogicalName": ..., "OptionSet": {...}, "GlobalOptionSet": {...} }`.
-    Per MS Learn: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/query-metadata-web-api#retrieve-attributes
     """
     if not logical_name or not attribute:
         raise D365Error("logical_name and attribute are required.")
-    cast = "Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+    info = attribute_info(backend, logical_name, attribute)
+    attr_type: str = info.get("AttributeType") or ""
+    cast_entry = next(
+        (e for e in _OPTION_SET_CASTS if e[0] == attr_type),
+        None,
+    )
+    if cast_entry is None:
+        supported = ", ".join(e[0] for e in _OPTION_SET_CASTS)
+        raise D365Error(
+            f"Attribute '{attribute}' has type '{attr_type}', which does not "
+            f"carry an option set. Supported: {supported}."
+        )
+    _, cast_subtype, expand = cast_entry
+    if not global_optionset:
+        expand = "OptionSet"
     path = (
         f"EntityDefinitions(LogicalName='{logical_name}')"
-        f"/Attributes(LogicalName='{attribute}')/{cast}"
+        f"/Attributes(LogicalName='{attribute}')/"
+        f"Microsoft.Dynamics.CRM.{cast_subtype}"
     )
-    expand = "OptionSet" + (",GlobalOptionSet" if global_optionset else "")
     return as_dict(backend.get(
         path,
         params={"$select": "LogicalName", "$expand": expand},

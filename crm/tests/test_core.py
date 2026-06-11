@@ -444,23 +444,29 @@ class TestSavedAndUserQuery:
 class TestPicklistMetadata:
     def test_picklist_options_casts_and_expands(self, backend):
         from crm.core import metadata as meta_mod_local
+        attr_info_url = backend.url_for(
+            "EntityDefinitions(LogicalName='account')/Attributes(LogicalName='industrycode')"
+        )
+        cast_url = backend.url_for(
+            "EntityDefinitions(LogicalName='account')/Attributes(LogicalName='industrycode')"
+            "/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+        )
         with requests_mock.Mocker() as m:
-            m.get(
-                requests_mock.ANY,
-                json={
-                    "LogicalName": "industrycode",
-                    "OptionSet": {"Options": [
-                        {"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}},
-                        {"Value": 2, "Label": {"UserLocalizedLabel": {"Label": "Agri"}}},
-                    ]},
-                },
-            )
+            m.get(attr_info_url, json={"LogicalName": "industrycode", "AttributeType": "Picklist"})
+            m.get(cast_url, json={
+                "LogicalName": "industrycode",
+                "OptionSet": {"Options": [
+                    {"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}},
+                    {"Value": 2, "Label": {"UserLocalizedLabel": {"Label": "Agri"}}},
+                ]},
+            })
             info = meta_mod_local.picklist_options(backend, "account", "industrycode")
         assert info["LogicalName"] == "industrycode"
         assert info["OptionSet"]["Options"][0]["Value"] == 1
-        url = m.request_history[0].url
-        assert "PicklistAttributeMetadata" in url
-        assert "%24expand=OptionSet" in url or "$expand=OptionSet" in url
+        # Second request is the typed cast GET; first is the attribute-type probe.
+        cast_req = m.request_history[1]
+        assert "PicklistAttributeMetadata" in cast_req.url
+        assert "%24expand=OptionSet" in cast_req.url or "$expand=OptionSet" in cast_req.url
 
 
 class TestCreateEntity:

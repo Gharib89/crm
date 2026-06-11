@@ -21,16 +21,19 @@ crm --json metadata attribute account industrycode --expect AttributeType=Pickli
 A record write with a bad option-set value is rejected by the server — **look the
 values up first.**
 
+Works for Picklist, State (`statecode`), and Status (`statuscode`) attributes:
+
 ```bash
-crm --json metadata picklist account industrycode
-# data: raw {"OptionSet": {"Options": [{"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Accounting"}}}, ...]}}
-# meta.options: flattened [{"value": 1, "label": "Accounting"}, ...] — same for `metadata get-optionset <name>`
+crm --json metadata picklist account industrycode    # Picklist
+crm --json metadata picklist account statecode       # State
+crm --json metadata picklist account statuscode      # Status
+# data: raw {"OptionSet": {"Options": [{"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Active"}}}, ...]}}
+# meta.options: flattened [{"value": 1, "label": "Active"}, ...] — same for `metadata get-optionset <name>`
 ```
 
 `meta.options` (JSON mode only) flattens the nested labels to `[{value, label}]` so
 you need not dig through `Label.UserLocalizedLabel.Label`; raw `data` is unchanged.
-Boolean attributes have no `Options` array (`TrueOption` / `FalseOption` instead), so
-`meta.options` is empty for them — read the raw `TrueOption`/`FalseOption` fields.
+Unsupported types (Boolean, String, etc.) return `ok: false` with a clear error.
 
 ## Write-readiness brief — one call before writing a record
 

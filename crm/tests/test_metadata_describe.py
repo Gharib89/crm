@@ -330,6 +330,12 @@ class TestPicklistMetaOptions:
     def _stub(self, monkeypatch, backend):
         monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
+    def _attr_info_url(self, backend) -> str:
+        return backend.url_for(
+            "EntityDefinitions(LogicalName='account')"
+            "/Attributes(LogicalName='industrycode')"
+        )
+
     def _picklist_url(self, backend) -> str:
         return backend.url_for(
             "EntityDefinitions(LogicalName='account')"
@@ -345,6 +351,8 @@ class TestPicklistMetaOptions:
             "GlobalOptionSet": None,
         }
         with requests_mock.Mocker() as m:
+            m.get(self._attr_info_url(backend),
+                  json={"LogicalName": "industrycode", "AttributeType": "Picklist"})
             m.get(self._picklist_url(backend), json=raw)
             result = CliRunner().invoke(
                 cli, ["--json", "metadata", "picklist", "account", "industrycode"]
@@ -368,6 +376,8 @@ class TestPicklistMetaOptions:
             "GlobalOptionSet": {"Options": [_opt(10, "Low"), _opt(20, "High")]},
         }
         with requests_mock.Mocker() as m:
+            m.get(self._attr_info_url(backend),
+                  json={"LogicalName": "industrycode", "AttributeType": "Picklist"})
             m.get(self._picklist_url(backend), json=raw)
             result = CliRunner().invoke(
                 cli, ["--json", "metadata", "picklist", "account", "industrycode"]
@@ -383,6 +393,12 @@ class TestPicklistMetaOptions:
 
 class TestPicklistTableLabels:
     """`metadata picklist` human (table) mode resolves labels via the full fallback."""
+
+    def _attr_info_url(self, backend) -> str:
+        return backend.url_for(
+            "EntityDefinitions(LogicalName='account')"
+            "/Attributes(LogicalName='industrycode')"
+        )
 
     def _picklist_url(self, backend) -> str:
         return backend.url_for(
@@ -403,6 +419,8 @@ class TestPicklistTableLabels:
             "GlobalOptionSet": None,
         }
         with requests_mock.Mocker() as m:
+            m.get(self._attr_info_url(backend),
+                  json={"LogicalName": "industrycode", "AttributeType": "Picklist"})
             m.get(self._picklist_url(backend), json=raw)
             result = CliRunner().invoke(
                 cli, ["metadata", "picklist", "account", "industrycode"]
