@@ -65,7 +65,7 @@ those values onto `--select`, `--filter`, etc.
 **Bound function — unquoted GUID parameter (§11):**
 
 ```bash
-crm --json query odata "RetrieveAppComponents(AppModuleId=79bdfbec-725e-f111-b65d-00155d467b90)"
+crm --json query odata "RetrieveAppComponents(AppModuleId=00000000-0000-0000-0000-000000000001)"
 ```
 
 For `Edm.Guid` parameters, embed the GUID directly in the path — quoting it causes the

@@ -90,7 +90,7 @@ def test_envelope_classifies_malformed_set_as_validation(monkeypatch):
 _PATH_SHAPED = [
     "solutions",                                                                   # bare entity set
     "EntityDefinitions(LogicalName='account')/Keys",                               # metadata path
-    "RetrieveAppComponents(AppModuleId=79bdfbec-725e-f111-b65d-00155d467b90)",     # bound-function
+    "RetrieveAppComponents(AppModuleId=00000000-0000-0000-0000-000000000001)",     # bound-function
 ]
 
 
