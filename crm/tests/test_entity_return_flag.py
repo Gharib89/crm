@@ -33,7 +33,10 @@ class RecordingBackend:
 
 
 def _prefers_representation(backend: RecordingBackend) -> bool:
-    return bool(backend.headers) and backend.headers.get("Prefer") == "return=representation"
+    if not backend.headers:
+        return False
+    directives = [d.strip() for d in backend.headers.get("Prefer", "").split(",")]
+    return "return=representation" in directives
 
 
 # ── resolver unit table ───────────────────────────────────────────────────

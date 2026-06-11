@@ -32,7 +32,7 @@ crm --json entity upsert cwx_tickets c8c8f8e4-c05d-f111-b65d-00155d467b90 \
 ```
 `update` is a PATCH; `upsert` is a PATCH that creates the record if missing. Both return `{"ok": true}`.
 
-Both `create` and `update` accept `--return-record` (echo the full row back) and `--no-return` (a minimal ack, no echoed row) — only the default differs: `create` echoes unless you pass `--no-return`, `update` stays silent unless you pass `--return-record`. Passing both at once is a usage error.
+Both `create` and `update` accept `--return-record` (echo the full row back) and `--no-return` (a minimal ack, no echoed row) — only the default differs: `create` echoes the row unless you pass `--no-return`, `update` does not echo the record unless you pass `--return-record` (it still returns the standard `{"ok": true}` ack). Passing both at once is a usage error.
 
 ## Catch typo'd field names before the write (`--validate`)
 
