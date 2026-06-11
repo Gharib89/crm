@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import click
+import pytest
 
 # Command modules that must load only when their subcommand is invoked.
 LAZY_MODULES = {
@@ -22,6 +23,81 @@ LAZY_MODULES = {
     "crm.commands.skill", "crm.commands.solution", "crm.commands.view",
     "crm.commands.workflow", "crm.utils.d365_backend",
 }
+
+# HTTP-transport modules that must NOT load until an authenticated session is
+# actually built (issue #247). requests + the NTLM chain (requests_ntlm →
+# spnego → cryptography) cost ~1.6s at import; local-only commands never need them.
+TRANSPORT_MODULES = ("requests", "requests_ntlm", "spnego", "cryptography")
+
+# The NTLM-only sub-chain. An OAuth (Dataverse online) session uses msal alone
+# and must never pull these in.
+NTLM_CHAIN_MODULES = ("requests_ntlm", "spnego")
+
+
+def test_building_oauth_session_does_not_import_ntlm_chain():
+    """Building a backend for an OAuth profile must not import the NTLM auth
+    chain (requests_ntlm → spnego → cryptography) — msal alone authenticates
+    the cloud path. Run in a subprocess so sys.modules starts clean; msal is
+    faked so no live creds / network are needed (#247 AC)."""
+    probe = (
+        "import sys, types, json, os, tempfile\n"
+        "os.environ['CRM_HOME'] = tempfile.mkdtemp()\n"
+        # Fake msal: _make_oauth_auth only needs SerializableTokenCache at build
+        # time (the ConfidentialClientApplication is built lazily on first request).
+        "fake = types.ModuleType('msal')\n"
+        "class _Cache:\n"
+        "    def __init__(self): self.has_state_changed = False\n"
+        "    def serialize(self): return ''\n"
+        "    def deserialize(self, blob): pass\n"
+        "fake.SerializableTokenCache = _Cache\n"
+        "sys.modules['msal'] = fake\n"
+        "from crm.utils.d365_backend import D365Backend, ConnectionProfile\n"
+        "p = ConnectionProfile(name='t', url='https://contoso.crm.dynamics.com',\n"
+        "                      domain='', username='', auth_scheme='oauth',\n"
+        "                      tenant_id='tid', client_id='cid', verify_ssl=False)\n"
+        "D365Backend(p, password='secret')\n"
+        f"chain = {list(NTLM_CHAIN_MODULES)!r}\n"
+        "leaked = sorted(m for m in chain if m in sys.modules)\n"
+        "print(json.dumps({'leaked': leaked}))\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["leaked"] == [], (
+        f"OAuth session build imported the NTLM chain: {data['leaked']}"
+    )
+
+
+@pytest.mark.parametrize("argv", [
+    ["--version"],
+    ["--json", "profile", "list"],
+    ["--help"],
+])
+def test_local_commands_do_not_import_transport_stack(argv):
+    """Local-only commands (no network I/O) must not import the HTTP-transport
+    stack. `--help` is the strict case: it imports EVERY command module to render
+    short help, so this proves the laziness holds below the command layer, not
+    just around it. Run in a fresh interpreter (subprocess) so sys.modules is
+    clean and an unrelated test's `import requests` can't mask a leak (#247 AC)."""
+    probe = (
+        "import sys, json, os, tempfile\n"
+        "os.environ['CRM_HOME'] = tempfile.mkdtemp()\n"
+        "from click.testing import CliRunner\n"
+        "from crm.cli import cli\n"
+        f"result = CliRunner().invoke(cli, {argv!r})\n"
+        f"transport = {list(TRANSPORT_MODULES)!r}\n"
+        "leaked = sorted(m for m in transport if m in sys.modules)\n"
+        "print(json.dumps({'exit': result.exit_code, 'leaked': leaked}))\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["exit"] == 0, f"{argv} exited {data['exit']}"
+    assert data["leaked"] == [], (
+        f"{argv} imported transport modules it never uses: {data['leaked']}"
+    )
 
 
 def test_version_does_not_import_command_modules_or_backend():
