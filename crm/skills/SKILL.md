@@ -60,7 +60,7 @@ crm profile add --url https://crm.contoso.local/contoso \
 
 # Dataverse online (OAuth) — app registration instead of user/pass/domain
 crm profile add --url https://contoso.crm.dynamics.com \
-  --tenant-id <aad-tenant> --client-id <app-id> --password '<client-secret>' --name cloud
+  --tenant-id <aad-tenant> --client-id <app-id> --client-secret '<secret>' --name cloud
 ```
 
 The OAuth scope (`https://<host>/.default`) and authority

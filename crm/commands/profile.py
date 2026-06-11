@@ -35,6 +35,17 @@ def profile_group():
     """Create, switch, and manage connection profiles."""
 
 
+def _resolve_secret_flag(password_opt, client_secret_opt):
+    """Collapse the --password / --client-secret aliases into one secret.
+
+    The two name the same field (NTLM password vs OAuth client secret); passing
+    both is a usage error (exit 2 per the house rule for mutually-exclusive flags)
+    rather than a silent last-wins."""
+    if password_opt is not None and client_secret_opt is not None:
+        raise click.UsageError("--password and --client-secret are mutually exclusive.")
+    return password_opt if password_opt is not None else client_secret_opt
+
+
 @profile_group.command("add")
 @click.option("--url", default=None, help="Server URL, e.g. https://crm.contoso.local/org "
               "or https://org.crm.dynamics.com")
@@ -47,7 +58,9 @@ def profile_group():
 @click.option("--tenant-id", default=None, help="OAuth: Azure AD tenant id.")
 @click.option("--client-id", default=None, help="OAuth: application (client) id.")
 @click.option("--password", "password_opt", default=None,
-              help="Secret (NTLM password or OAuth client secret). Prompted if omitted on a TTY.")
+              help="NTLM password (or OAuth client secret). Prompted if omitted on a TTY.")
+@click.option("--client-secret", "client_secret_opt", default=None,
+              help="OAuth client secret — alias for --password (mutually exclusive).")
 @click.option("--api-version", default=None,
               help="Web API version. Omit to auto-negotiate (v9.2 → v9.1 on on-prem).")
 @click.option("--no-verify-ssl", is_flag=True, help="Skip SSL certificate verification.")
@@ -58,12 +71,14 @@ def profile_group():
 @click.option("--yes", "-y", is_flag=True, help="Skip the overwrite-confirm prompt.")
 @pass_ctx
 def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
-                tenant_id, client_id, password_opt, api_version, no_verify_ssl,
-                default_solution, publisher_prefix, store_password_plaintext, yes):
+                tenant_id, client_id, password_opt, client_secret_opt, api_version,
+                no_verify_ssl, default_solution, publisher_prefix,
+                store_password_plaintext, yes):
     """Create a profile, save its secret, test the connection, and activate it.
 
     Run with no flags for an interactive wizard; pass flags for scripting/CI.
     """
+    password_opt = _resolve_secret_flag(password_opt, client_secret_opt)
     interactive = _stdin_is_tty() and not ctx.json_mode
     if not url:
         if not interactive:
@@ -71,9 +86,13 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         url = click.prompt("Server URL (e.g. https://crm.corp/org or https://org.crm.dynamics.com)")
     auth_scheme = auth_opt or infer_auth_scheme(url)
     if interactive and auth_opt is None:
-        auth_scheme = click.prompt(
-            "Auth scheme", type=click.Choice(["ntlm", "kerberos", "negotiate", "oauth"]),
-            default=auth_scheme)
+        schemes = ["ntlm", "kerberos", "negotiate", "oauth"]
+        chosen = select_one("Auth scheme", [(s, s) for s in schemes],
+                            default=auth_scheme)
+        if chosen is None:
+            ctx.emit(False, error="aborted by user")
+            return
+        auth_scheme = chosen
 
     if auth_scheme == "oauth":
         if not tenant_id:
@@ -103,7 +122,8 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         label = "Client secret" if auth_scheme == "oauth" else "Password"
         secret = click.prompt(label, hide_input=True, default="", show_default=False) or None
     if not secret:
-        raise click.UsageError("--password is required (no TTY to prompt for it).")
+        raise click.UsageError(
+            "--password (or --client-secret) is required (no TTY to prompt for it).")
 
     if name in session_mod.list_profiles() and not yes:
         if not _confirm_destructive("profile", name, yes,
@@ -348,10 +368,14 @@ def profile_rm(ctx: CLIContext, name, yes):
 @profile_group.command("set-password")
 @click.option("--profile", "profile_name", required=True, help="Profile to store the secret for.")
 @click.option("--password", "password_opt", default=None, help="Secret to store (else prompted on a TTY).")
+@click.option("--client-secret", "client_secret_opt", default=None,
+              help="OAuth client secret — alias for --password (mutually exclusive).")
 @click.option("--store-password-plaintext", is_flag=True, help="Force plaintext storage.")
 @pass_ctx
-def profile_set_password(ctx: CLIContext, profile_name, password_opt, store_password_plaintext):
+def profile_set_password(ctx: CLIContext, profile_name, password_opt,
+                         client_secret_opt, store_password_plaintext):
     """Store/replace the secret for an existing profile."""
+    password_opt = _resolve_secret_flag(password_opt, client_secret_opt)
     try:
         profile = session_mod.load_profile(profile_name)
     except FileNotFoundError:
@@ -363,7 +387,7 @@ def profile_set_password(ctx: CLIContext, profile_name, password_opt, store_pass
         label = "client secret" if profile.auth_scheme == "oauth" else "password"
         secret = getpass.getpass(f"D365 {label} for profile {profile_name!r}: ") or None
     if not secret:
-        ctx.emit(False, error="No secret supplied. Pass --password.")
+        ctx.emit(False, error="No secret supplied. Pass --password (or --client-secret).")
         return
     try:
         where = conn_mod.save_secret(profile_name, secret, force_plaintext=store_password_plaintext)

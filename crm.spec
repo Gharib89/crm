@@ -19,6 +19,9 @@ a = Analysis(
     hiddenimports=[
         'requests_ntlm',
         'prompt_toolkit',
+        # questionary is lazy-imported inside _helpers.select_one (inline pickers);
+        # list it so the frozen bundle ships it despite no module-level reference.
+        'questionary',
         # msal is lazy-imported inside D365Backend._make_oauth_auth (oauth scheme);
         # list it so the frozen bundle ships it despite no module-level reference.
         'msal',

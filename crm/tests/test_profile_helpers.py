@@ -65,25 +65,46 @@ class TestSelectOne:
 
     def test_returns_selected_value(self, monkeypatch):
         monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
-        # Stub the prompt_toolkit dialog so the test never opens a real TUI.
-        class _FakeDialog:
-            def run(self):
+        # Stub questionary.select so the test never opens a real TUI.
+        class _FakeSelect:
+            def ask(self):
                 return "b"
-        # select_one imports radiolist_dialog lazily from prompt_toolkit.shortcuts
-        # (kept off the fast-startup path), so patch it at the source module.
-        monkeypatch.setattr(
-            "prompt_toolkit.shortcuts.radiolist_dialog",
-            lambda **kw: _FakeDialog(),
-        )
+        # select_one imports questionary lazily (kept off the fast-startup
+        # path), so patch select at the source module.
+        monkeypatch.setattr("questionary.select", lambda *a, **kw: _FakeSelect())
         assert select_one("Pick one", [("a", "label a"), ("b", "label b")]) == "b"
 
     def test_cancel_returns_none(self, monkeypatch):
+        # questionary.select.ask() returns None on Esc / Ctrl-C.
         monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
-        class _FakeDialog:
-            def run(self):
-                return None  # user hit Esc / Ctrl-C
-        monkeypatch.setattr(
-            "prompt_toolkit.shortcuts.radiolist_dialog",
-            lambda **kw: _FakeDialog(),
-        )
+        class _FakeSelect:
+            def ask(self):
+                return None
+        monkeypatch.setattr("questionary.select", lambda *a, **kw: _FakeSelect())
         assert select_one("Pick one", [("a", "label a")]) is None
+
+    def test_default_not_among_choices_raises_value_error(self, monkeypatch):
+        # A default that matches no item value is a contract violation — fail
+        # loudly rather than silently dropping preselection.
+        monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
+        with pytest.raises(ValueError, match="not among the choices"):
+            select_one("Pick one", [("a", "label a"), ("b", "label b")], default="z")
+
+    def test_default_preselects_matching_choice(self, monkeypatch):
+        # The optional default is forwarded to questionary.select so the wizard
+        # can preselect the URL-inferred scheme; choices keep (value, label).
+        monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
+        captured = {}
+        class _FakeSelect:
+            def ask(self):
+                return "oauth"
+        def _fake_select(message, choices=None, default=None, **kw):
+            captured["default"] = default
+            captured["values"] = [c.value for c in (choices or [])]
+            return _FakeSelect()
+        monkeypatch.setattr("questionary.select", _fake_select)
+        out = select_one("Auth scheme", [("ntlm", "ntlm"), ("oauth", "oauth")],
+                         default="oauth")
+        assert out == "oauth"
+        assert captured["default"] == "oauth"
+        assert captured["values"] == ["ntlm", "oauth"]

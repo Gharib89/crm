@@ -88,6 +88,93 @@ class TestAddScriptable:
         result = runner.invoke(cli, ["--json", "profile", "add", "--name", "x"])
         assert result.exit_code == 2, result.output
 
+    def test_add_client_secret_alias_stores_secret(self, crm_home):
+        # --client-secret reads naturally when scripting an OAuth profile; it is
+        # an alias for --password and must store the secret identically.
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://org.crm.dynamics.com",
+                "--tenant-id", "t1", "--client-id", "c1",
+                "--client-secret", "sekret", "--name", "cloud", "--yes",
+            ])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile_secret("cloud") == "sekret"
+
+    def test_add_password_and_client_secret_mutually_exclusive(self, crm_home):
+        # Both forms of the same secret is a usage error (exit 2), not a silent
+        # last-wins — house rule for mutually-exclusive flags.
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "add",
+            "--url", "https://org.crm.dynamics.com",
+            "--tenant-id", "t1", "--client-id", "c1",
+            "--password", "pw", "--client-secret", "cs", "--name", "cloud", "--yes",
+        ])
+        assert result.exit_code == 2, result.output
+        assert "exclusive" in result.output.lower()
+
+
+class TestAddWizard:
+    """Interactive (TTY) wizard: the auth-scheme step is an inline picker."""
+
+    def test_auth_scheme_inline_picker_preselects_inferred(self, crm_home, monkeypatch):
+        # On a TTY with no --auth-scheme, the wizard shows select_one with the
+        # URL-inferred scheme preselected; the user's pick wins.
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        captured = {}
+        def _fake_select(title, items, default=None):
+            captured["default"] = default
+            captured["values"] = [v for v, _ in items]
+            return "oauth"  # user arrow-keys to oauth
+        monkeypatch.setattr("crm.commands.profile.select_one", _fake_select)
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "profile", "add",
+                "--url", "https://crm.contoso.local/contoso",
+                "--tenant-id", "t1", "--client-id", "c1",
+                "--password", "pw", "--name", "wiz", "--yes",
+            ])
+        assert result.exit_code == 0, result.output
+        assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
+        assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth"]
+        assert session_mod.load_profile("wiz").auth_scheme == "oauth"
+
+    def test_auth_scheme_picker_cancel_aborts(self, crm_home, monkeypatch):
+        # Esc/Ctrl-C at the picker (select_one -> None) aborts cleanly; no
+        # profile is written.
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: None)
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "profile", "add", "--url", "https://crm.contoso.local/c",
+            "--username", "u", "--domain", "D", "--password", "pw",
+            "--name", "wiz2", "--yes"])
+        assert result.exit_code == 1, result.output  # operational failure (ADR 0001)
+        assert "aborted by user" in result.output.lower()
+        assert "wiz2" not in session_mod.list_profiles()
+
+    def test_explicit_auth_scheme_skips_picker(self, crm_home, monkeypatch):
+        # --auth-scheme given -> no picker, even on a TTY.
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        def _boom(*a, **k):
+            raise AssertionError("picker must not run when --auth-scheme is given")
+        monkeypatch.setattr("crm.commands.profile.select_one", _boom)
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "profile", "add", "--auth-scheme", "ntlm",
+                "--url", "https://crm.contoso.local/c",
+                "--username", "u", "--domain", "D", "--password", "pw",
+                "--name", "wiz3", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("wiz3").auth_scheme == "ntlm"
+
 
 class TestUse:
     def _seed(self, name):
@@ -215,6 +302,37 @@ class TestSetDeletePassword:
             "--password", "pw"])
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") == "pw"
+
+    def test_set_password_client_secret_alias(self, crm_home):
+        self._seed()
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "set-password", "--profile", "a",
+            "--client-secret", "cs"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile_secret("a") == "cs"
+
+    def test_set_password_missing_secret_oauth_hints_client_secret(self, crm_home):
+        # On an OAuth profile the missing-secret error must point at the alias,
+        # not only --password, so the oauth flag is discoverable when scripting.
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name="cloud", url="https://org.crm.dynamics.com", domain="",
+            username="", auth_scheme="oauth", tenant_id="t", client_id="c"))
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "set-password", "--profile", "cloud"])
+        assert result.exit_code == 1, result.output
+        assert "--client-secret" in json.loads(result.output)["error"]
+
+    def test_set_password_both_secret_flags_mutually_exclusive(self, crm_home):
+        self._seed()
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "set-password", "--profile", "a",
+            "--password", "pw", "--client-secret", "cs"])
+        assert result.exit_code == 2, result.output
+        assert "exclusive" in result.output.lower()
 
     def test_delete_password_removes_secret(self, crm_home):
         self._seed()
