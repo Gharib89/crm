@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.11.1 (2026-06-11)
+
+### Bug Fixes
+
+- **self-update**: Suppress upgrade notice after self-update runs
+  ([`c63890f`](https://github.com/Gharib89/crm/commit/c63890f1cfa9bb26ee10e0380caeda6748b6dce9))
+
+
 ## v2.11.0 (2026-06-11)
 
 ### Build System
