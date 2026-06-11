@@ -137,6 +137,24 @@ which crm
 crm --version
 ```
 
+### Keeping crm up to date
+
+On an interactive terminal, `crm` checks at most once a day whether a newer
+release exists and prints a one-line notice after a command finishes. The check
+runs in the background against the release server, never blocks the command, and
+is silent under `--json`, when stderr is not a terminal, when `CI` is set, or when
+`CRM_NO_UPDATE_CHECK` is set.
+
+For binaries installed via the install script (Option 1), upgrade in place:
+
+```bash
+crm self-update           # download, checksum-verify, and swap the binary
+crm self-update --check   # report current vs latest version, change nothing
+```
+
+`pip`/`uv`/source installs aren't modified by `self-update` — it points you at
+`pip install -U crm` (or re-running `uv tool install`) instead.
+
 ## Configure
 
 Credentials live in a saved **profile** — there is no `.env` file and no credential
@@ -341,6 +359,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state, command history, and audit journal    |
+| `self-update` | Upgrade a frozen (install-script) binary in place; `--check` reports current vs latest |
 
 The `metadata` group covers both browsing and write verbs. `metadata describe
 <entity>` returns a one-shot, read-only write-readiness brief — entity set, primary

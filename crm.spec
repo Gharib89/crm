@@ -50,6 +50,7 @@ a = Analysis(
         'crm.commands.ribbon',
         'crm.commands.scaffold',
         'crm.commands.security',
+        'crm.commands.self_update',
         'crm.commands.session',
         'crm.commands.skill',
         'crm.commands.sla',

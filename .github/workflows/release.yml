@@ -112,9 +112,14 @@ jobs:
             npx --yes wrangler@4.97.0 r2 object put "$bucket/latest/$f" \
               --file="artifacts/$f" --content-type="$ct" --remote
           done
+          # Plain-text VERSION marker so `crm self-update` can learn the latest
+          # version with one cheap GET (no GitHub API / rate limits).
+          printf '%s\n' "${TAG}" > artifacts/VERSION
           for prefix in "${TAG}" latest; do
             npx --yes wrangler@4.97.0 r2 object put "$bucket/${prefix}/SHA256SUMS" \
               --file="artifacts/SHA256SUMS" --content-type="text/plain; charset=utf-8" --remote
+            npx --yes wrangler@4.97.0 r2 object put "$bucket/${prefix}/VERSION" \
+              --file="artifacts/VERSION" --content-type="text/plain; charset=utf-8" --remote
           done
           npx --yes wrangler@4.97.0 r2 object put "$bucket/install.ps1" \
             --file=scripts/install.ps1 --content-type="text/plain; charset=utf-8" --remote
