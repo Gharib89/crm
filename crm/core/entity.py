@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.utils.d365_types import BatchOperation, BatchResult
+from crm.utils.d365_types import BatchOperation
 
 
 _GUID_RE = re.compile(
@@ -507,11 +507,22 @@ def count_children(
     ``filter_entities`` (regex) drops non-matching child entities *before* the
     counts are issued — fewer requests, not a post-filter. ``non_empty`` drops
     rows whose count is 0.
+
+    Read-only: under ``--dry-run`` the counts run as direct GETs (the ``$batch``
+    POST would otherwise be short-circuited to a useless preview), so a dry-run
+    still reports real counts — sequential, but ``--dry-run`` is a preview path.
     """
-    from urllib.parse import quote
     from crm.core import metadata as metadata_mod
 
     guid = _normalize_id(record_id)
+    if batch_chunk_size < 1:
+        raise D365Error("batch_chunk_size must be a positive integer.")
+    # Compile the user regex before any round trip (validate-before-backend); an
+    # invalid pattern is a clean D365Error, not an uncaught re.error traceback.
+    try:
+        pattern = re.compile(filter_entities) if filter_entities else None
+    except re.error as exc:
+        raise D365Error(f"--filter-entities is not a valid regular expression: {exc}")
 
     # Logical↔set map in one GET — resolves both the parent set→logical and each
     # child logical→set (the sole entity-set-name resolution round trip).
@@ -531,7 +542,6 @@ def count_children(
         params={"$select": "ReferencingEntity,ReferencingAttribute"},
     )).get("value", [])
 
-    pattern = re.compile(filter_entities) if filter_entities else None
     rels: list[dict[str, str]] = []
     for r in rels_raw:
         child = str(r.get("ReferencingEntity") or "")
@@ -544,20 +554,21 @@ def count_children(
         rels.append({"entity": child, "attribute": attr, "set": child_set})
 
     rows: list[dict[str, Any]] = []
+    if backend.dry_run:
+        # $batch is a POST and is short-circuited under --dry-run; a read-only count
+        # must not be stubbed into uselessness (issue #234 / migration-assess
+        # precedent), so issue the side-effect-free GETs directly. Sequential, but
+        # --dry-run is a preview path where round-trip count is not the concern.
+        for rel in rels:
+            rows.append(_count_via_get(backend, rel, guid))
+        if non_empty:
+            rows = [row for row in rows if row["count"] != 0]
+        return rows
+
     for start in range(0, len(rels), batch_chunk_size):
         chunk = rels[start:start + batch_chunk_size]
         ops: list[BatchOperation] = [
-            {
-                "method": "GET",
-                # `?$count=true&$top=1` not `/$count?$filter=`: on-prem v9.1 binds a
-                # $filter on the `/$count` path segment to the Edm.Int32 result and
-                # 400s ("no property '_x_value' on type 'Edm.Int32'"). $count=true
-                # returns the full @odata.count regardless of $top (live-verified
-                # both targets); $top=1 keeps the row payload to one record.
-                "url": f"{rel['set']}?$filter="
-                + quote(f"_{rel['attribute']}_value eq {guid}", safe="")
-                + "&$count=true&$top=1",
-            }
+            {"method": "GET", "url": _count_url(rel["set"], rel["attribute"], guid)}
             for rel in chunk
         ]
         # Non-transactional + continue-on-error: an account's 1:N set can include
@@ -571,16 +582,45 @@ def count_children(
             if err:
                 rows.append({**rel, "count": None, "error": str(err)})
             else:
-                rows.append({**rel, "count": _odata_count(res)})
+                rows.append({**rel, "count": _odata_count(res.get("body"))})
 
     if non_empty:
         rows = [row for row in rows if row["count"] != 0]
     return rows
 
 
-def _odata_count(result: BatchResult) -> int:
-    """Read `@odata.count` from a successful `$count=true` $batch sub-result."""
-    body = result.get("body")
+def _count_url(child_set: str, attribute: str, guid: str) -> str:
+    """Relative URL counting child rows that reference `guid` via `attribute`.
+
+    `?$count=true&$top=1` not `/$count?$filter=`: on-prem v9.1 binds a $filter on
+    the `/$count` path segment to the Edm.Int32 result and 400s ("no property
+    '_x_value' on type 'Edm.Int32'"). $count=true returns the full @odata.count
+    regardless of $top (live-verified both targets); $top=1 caps the row payload.
+    """
+    from urllib.parse import quote
+
+    return (
+        f"{child_set}?$filter="
+        + quote(f"_{attribute}_value eq {guid}", safe="")
+        + "&$count=true&$top=1"
+    )
+
+
+def _count_via_get(backend: D365Backend, rel: dict[str, str], guid: str) -> dict[str, Any]:
+    """Count one relationship via a direct GET (the --dry-run / non-batched path).
+
+    Mirrors the batch path's degradation: a child entity that rejects the read
+    (e.g. RetrieveMultiple-unsupported system types) becomes count=null + error.
+    """
+    try:
+        body = as_dict(backend.get(_count_url(rel["set"], rel["attribute"], guid)))
+        return {**rel, "count": _odata_count(body)}
+    except D365Error as exc:
+        return {**rel, "count": None, "error": str(exc)}
+
+
+def _odata_count(body: "dict[str, Any] | str | None") -> int:
+    """Read `@odata.count` from a successful `$count=true` response body."""
     if isinstance(body, dict):
         n = body.get("@odata.count")
         if n is not None:

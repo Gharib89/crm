@@ -12,7 +12,7 @@ from click.testing import CliRunner
 from crm import cli as crm_cli
 from crm.cli import CLIContext
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 _GUID = "11111111-2222-3333-4444-555555555555"
 
@@ -330,6 +330,44 @@ class TestCountChildren:
         assert methods.count("POST") == 2          # ceil(3 / 2) batches
         assert count_gets == []                    # no per-relationship sequential GETs
         assert [row["count"] for row in rows] == [5, 6, 7]
+
+
+class TestCountChildrenGuards:
+    def test_dry_run_issues_real_get_counts_not_batch(self, profile):
+        # Read-only: under --dry-run the $batch POST would be short-circuited, so
+        # counts must run as direct GETs and report REAL numbers, not a preview stub.
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            _stub_defs(m, dry, [
+                ("account", "accounts"),
+                ("contact", "contacts"),
+                ("contoso_invoice", "contoso_invoices"),
+            ])
+            _stub_one_to_many(m, dry, "account", [
+                ("contact", "parentaccountid"),
+                ("contoso_invoice", "contoso_account"),
+            ])
+            m.get(dry.url_for("contacts"), json={"@odata.count": 4, "value": [{}]})
+            m.get(dry.url_for("contoso_invoices"), json={"@odata.count": 0, "value": []})
+            rows = entity_mod.count_children(dry, "accounts", _GUID)
+            methods = [r.method for r in m.request_history]
+        assert "POST" not in methods  # no $batch under dry-run
+        assert rows == [
+            {"entity": "contact", "attribute": "parentaccountid",
+             "set": "contacts", "count": 4},
+            {"entity": "contoso_invoice", "attribute": "contoso_account",
+             "set": "contoso_invoices", "count": 0},
+        ]
+
+    def test_invalid_filter_regex_raises_before_any_request(self, backend):
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="regular expression"):
+                entity_mod.count_children(backend, "accounts", _GUID, filter_entities="[")
+            assert m.request_history == []  # validated before any round trip
+
+    def test_non_positive_chunk_size_raises(self, backend):
+        with pytest.raises(D365Error, match="positive"):
+            entity_mod.count_children(backend, "accounts", _GUID, batch_chunk_size=0)
 
 
 class TestChildrenCommand:
