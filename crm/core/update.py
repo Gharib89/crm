@@ -181,10 +181,18 @@ def is_check_enabled(
 
 
 def refresh_cache(now: float, base_url: str | None = None) -> None:
-    """Background-thread body: probe latest and persist it; silent on failure."""
-    latest = fetch_latest_version(base_url or default_base_url())
-    if latest:
-        write_cache(latest, now)
+    """Background-thread body: probe latest and persist it; silent on failure.
+
+    Runs on a daemon thread, so any error (including an OSError from a read-only
+    CRM_HOME) must be swallowed — an unhandled traceback here would break the
+    fail-silent / no-noise guarantee of the passive notice.
+    """
+    try:
+        latest = fetch_latest_version(base_url or default_base_url())
+        if latest:
+            write_cache(latest, now)
+    except Exception:
+        pass
 
 
 def pending_notice(current: str, *, frozen: bool = False) -> str | None:
@@ -261,24 +269,49 @@ def check_for_update(base_url: str | None = None) -> dict[str, Any]:
 
 
 def _download_archive(base_url: str, version: str, archive: str) -> bytes:
+    # (connect, read) timeout: bound the connect so an unreachable network fails
+    # fast rather than appearing to hang. Network/HTTP errors become UpdateError
+    # so the command layer emits a clean envelope instead of a traceback.
     url = f"{base_url}/{version}/{archive}"
-    resp = requests.get(url, timeout=30)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, timeout=(_INTERACTIVE_TIMEOUT, 30))
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise UpdateError(f"Failed to download {url}: {exc}") from exc
     return resp.content
 
 
 def _fetch_sha256sums(base_url: str, version: str) -> dict[str, str]:
     url = f"{base_url}/{version}/SHA256SUMS"
-    resp = requests.get(url, timeout=_INTERACTIVE_TIMEOUT)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, timeout=(_INTERACTIVE_TIMEOUT, _INTERACTIVE_TIMEOUT))
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise UpdateError(f"Failed to fetch checksums from {url}: {exc}") from exc
     return parse_sha256sums(resp.text)
 
 
+def _is_safe_member(name: str) -> bool:
+    """Reject absolute paths and any `..` traversal (zip-slip / tar-slip)."""
+    if name.startswith(("/", "\\")) or os.path.isabs(name):
+        return False
+    parts = name.replace("\\", "/").split("/")
+    return ".." not in parts
+
+
 def _extract(archive: str, data: bytes, dest: Path) -> None:
-    """Extract a release archive (tar.gz on posix, zip on Windows) into `dest`."""
+    """Extract a release archive (tar.gz on posix, zip on Windows) into `dest`.
+
+    Members are validated against path traversal before extraction. The bundle is
+    checksum-verified upstream, but this is defense-in-depth against a compromised
+    distribution endpoint — and the 3.9 floor lacks tarfile's `filter=` guard.
+    """
     dest.mkdir(parents=True, exist_ok=True)
     if archive.endswith(".zip"):
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            for name in zf.namelist():
+                if not _is_safe_member(name):
+                    raise UpdateError(f"Unsafe path in archive (traversal): {name!r}")
             zf.extractall(dest)
     else:
         # `filter="data"` is the safe extractor, but it only exists on 3.12+
@@ -288,6 +321,9 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
         if sys.version_info >= (3, 12):
             extract_kwargs["filter"] = "data"
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+            for name in tar.getnames():
+                if not _is_safe_member(name):
+                    raise UpdateError(f"Unsafe path in archive (traversal): {name!r}")
             tar.extractall(dest, **extract_kwargs)
 
 
@@ -348,6 +384,13 @@ def perform_update(
     try:
         _extract(archive, data, staged)
         swap_bundle(install_dir, staged, windows=sys.platform.startswith("win"))
+    except UpdateError:
+        raise
+    except Exception as exc:
+        # Unexpected filesystem error (rename/permission/AV lock). swap_bundle
+        # restores the original install before re-raising, so the install stays
+        # intact; surface it as UpdateError for a clean command-layer envelope.
+        raise UpdateError(f"Update failed during install: {exc}") from exc
     finally:
         if staged.exists():
             shutil.rmtree(staged, ignore_errors=True)

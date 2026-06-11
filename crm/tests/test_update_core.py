@@ -207,6 +207,16 @@ class TestRefreshCache:
         refresh_cache(now=555.0)
         assert read_cache() is None
 
+    def test_write_error_is_swallowed_in_background(
+        self, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # CRM_HOME on a read-only fs: the daemon thread must never raise.
+        monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v9.9.9")
+        def boom(*a, **k):
+            raise OSError("read-only filesystem")
+        monkeypatch.setattr(update_mod, "write_cache", boom)
+        refresh_cache(now=1.0)  # must not raise
+
 
 class TestSha256Sums:
     """Mirror the install scripts' SHA256SUMS contract (two-space, CRLF-tolerant)."""
@@ -380,6 +390,57 @@ class TestPerformUpdate:
 
         assert result["updated"] is False
         assert (install / "crm").read_text(encoding="utf-8") == "OLD"
+
+    def test_download_network_error_becomes_update_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import requests
+        monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
+        monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v3.0.0")
+        monkeypatch.setattr(update_mod.sys, "platform", "linux")
+
+        def boom(url, **kw):
+            raise requests.ConnectionError("dead")
+        monkeypatch.setattr(update_mod.requests, "get", boom)
+
+        install = tmp_path / "crm"; install.mkdir()
+        (install / "crm").write_text("OLD", encoding="utf-8")
+        with pytest.raises(UpdateError):
+            perform_update(install_dir=install)
+        assert (install / "crm").read_text(encoding="utf-8") == "OLD"
+
+    def test_zip_slip_member_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import hashlib
+        archive = _make_targz({"../evil": b"pwned", "crm": b"x"})
+        sums = {"crm-linux-x86_64.tar.gz": hashlib.sha256(archive).hexdigest()}
+        self._wire(monkeypatch, archive, sums)
+
+        install = tmp_path / "crm"; install.mkdir()
+        (install / "crm").write_text("OLD", encoding="utf-8")
+        with pytest.raises(UpdateError, match="(?i)unsafe|traversal|path"):
+            perform_update(install_dir=install)
+        assert (install / "crm").read_text(encoding="utf-8") == "OLD"
+        assert not (tmp_path / "evil").exists()
+
+    def test_swap_oserror_becomes_update_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import hashlib
+        archive = _make_targz({"crm": b"NEW"})
+        sums = {"crm-linux-x86_64.tar.gz": hashlib.sha256(archive).hexdigest()}
+        self._wire(monkeypatch, archive, sums)
+        def boom(*a, **k):
+            raise OSError("rename failed / locked")
+        monkeypatch.setattr(update_mod, "swap_bundle", boom)
+
+        install = tmp_path / "crm"; install.mkdir()
+        (install / "crm").write_text("OLD", encoding="utf-8")
+        with pytest.raises(UpdateError):
+            perform_update(install_dir=install)
+        # staging cleaned up, no leftover dirs
+        assert not list(tmp_path.glob("*.new-*"))
 
 
 class TestOrchestrators:
