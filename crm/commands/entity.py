@@ -333,15 +333,30 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
                    "logical name drops the bind it produced.")
 @click.option("--no-return", is_flag=True,
               help="Don't request the record back; return just the new GUID.")
+@click.option("--with-children", is_flag=True,
+              help="Also clone the direct child rows of every custom 1:N relationship "
+                   "where this record is the parent (one level deep). --override/--unset "
+                   "apply to the parent only.")
+@click.option("--skip-child-entity", "skip_child_entity", multiple=True, metavar="LOGICAL",
+              help="Repeatable. With --with-children, exclude this child entity (logical "
+                   "name) from cloning — e.g. an org-specific plugin-derived table.")
 @pass_ctx
-def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields, no_return):
-    """Clone a single record.
+def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields, no_return,
+                 with_children, skip_child_entity):
+    """Clone a single record, optionally its children.
 
     Copies <entity-set> <guid>'s values minus the never-copy set (ids,
     state/status, owner), rebinding each lookup to the same parent. --override
     and --unset adjust the new record before it is written; --dry-run previews
     the fully resolved create body without writing (all lookup/field resolution
-    still runs, so the preview is the complete fix list against an untouched org)."""
+    still runs, so the preview is the complete fix list against an untouched org).
+
+    --with-children also clones the direct child rows of every custom 1:N
+    relationship where this record is the parent (one level — no recursion). A
+    child create that fails does not roll back or abort: the rest continue and
+    the envelope reports ok=false with meta.created (parent + per-entity child
+    ids) and data.failures (entity, source id, reason). Recover by cloning the
+    failed rows individually — never re-run the whole verb."""
     parsed_overrides = _parse_overrides(overrides)
     # Validate untrusted input before constructing a backend (house rule): a
     # malformed GUID must fail fast, before any credential resolution / token
@@ -357,17 +372,34 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
             overrides=parsed_overrides,
             unset=list(unset_fields),
             return_record=not no_return,
+            with_children=with_children,
+            skip_child_entities=list(skip_child_entity),
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    # Emit the result as-is: under --dry-run that is the {_dry_run, would_create}
-    # preview (sentinel retained per ADR 0002 / test_dry_run_meta), else the
-    # created record. emit() stamps meta.dry_run from the flag. Journal/touch in
-    # both modes, like entity create (_journal records ctx.dry_run).
-    ctx.emit(True, data=result)
+
     _journal(ctx, "entity clone", entity_set, result)
     _touch_session(ctx, entity_set)
+
+    # --with-children on a live run carries a {created, failures} summary: per
+    # ADR 0007 the created ids live in meta.created and the failures (if any)
+    # flip the envelope to ok=false. Dry-run (a read-only preview) and the
+    # single-record path emit the result as-is — emit() stamps meta.dry_run.
+    if with_children and not ctx.dry_run:
+        created, failures = result["created"], result["failures"]
+        meta = {"created": created}
+        if failures:
+            n_children = sum(len(ids) for ids in created["children"].values())
+            ctx.emit(False, data={"failures": failures}, meta=meta,
+                     error=f"{len(failures)} child row(s) failed to clone; parent and "
+                           f"{n_children} child row(s) created (no rollback — clone the "
+                           "failed rows individually).")
+            return
+        ctx.emit(True, data={"failures": failures}, meta=meta)
+        return
+
+    ctx.emit(True, data=result)
 
 
 @entity_group.command("update")

@@ -157,8 +157,31 @@ Success matches `entity create` (`data` = created record, or `{"id"}` with `--no
 a status, `entity update <set> <newid> --data '{"statuscode":N}'` *after* the clone.
 On **on-prem**, a status in the create body is ignored, so passing it via `--override` is
 a no-op there. Re-add any never-copy field (or override a cloned value) with
-`--override`; its key passes raw, so an `@odata.bind` key works. Cloning child rows
-(`--with-children`) is a separate follow-up — this verb is single-record.
+`--override`; its key passes raw, so an `@odata.bind` key works.
+
+**`--with-children`.** Also clones the direct child rows of every *custom* 1:N
+relationship where the record is the parent (one level, no recursion; custom = the
+`IsCustomRelationship` metadata flag, so a custom lookup on a system entity counts).
+Child rows follow the same never-copy/lookup rules, plus: **every** child lookup whose
+value equals the source parent is repointed to the *new* parent (not just the
+relationship's own attribute); other lookups copy as-is. `--override`/`--unset` hit the
+parent only.
+
+**Contract + gotcha — no rollback (ADR 0007).** Parent-create failure → clean
+`{ok:false}`, nothing else done. A *child*-create failure neither aborts nor deletes
+what's already made — it is recorded and the rest continue. The envelope then carries the
+created ids in `meta.created` and the problems in `data.failures`, and `ok` flips to false:
+
+```json
+{"ok": false,
+ "data": {"failures": [{"entity": "contoso_line", "source_id": "<src>", "reason": "..."}]},
+ "meta": {"created": {"parent": "<new-id>", "children": {"contoso_invoice": ["<id>"]}}}}
+```
+
+Recover by cloning the named failed rows individually — **never re-run the whole verb**
+(the parent already exists). `--dry-run` is read-only: the parent keeps `would_create`
+and a `children` list reports per-entity counts (`{"entity","would_create":N}`), skipped
+entities marked `{"entity","skipped":true}`.
 
 ## Record-create payloads (`@odata.bind`)
 

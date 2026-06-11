@@ -167,4 +167,30 @@ crm --json --dry-run entity clone accounts 00000000-0000-0000-0000-000000000001
 # -> {"ok": true, "data": {"_dry_run": true, "would_create": {"entity_set": "accounts", "body": { ... }}}, "meta": {"dry_run": true}}
 ```
 
-The success envelope matches `entity create` — `data` is the created record, or just `{"id": "<guid>"}` with `--no-return`. To clone into a specific status, run `entity update <set> <newid> --data '{"statuscode": N}'` after the clone (on **on-prem** create does not honor a status passed in the create body, so `--override statuscode=N` is a documented no-op there). This is a single-record clone; cloning a record together with its child rows (`--with-children`) is a separate follow-up.
+The success envelope matches `entity create` — `data` is the created record, or just `{"id": "<guid>"}` with `--no-return`. To clone into a specific status, run `entity update <set> <newid> --data '{"statuscode": N}'` after the clone (on **on-prem** create does not honor a status passed in the create body, so `--override statuscode=N` is a documented no-op there).
+
+## Clone a record with its children (`entity clone --with-children`)
+
+```bash
+crm --json entity clone accounts 00000000-0000-0000-0000-000000000001 --with-children
+```
+
+`--with-children` clones the parent, then the **direct child rows** of every **custom** 1:N relationship where this record is the parent — one level deep, no recursion. "Custom" is a pure metadata signal (`IsCustomRelationship == true`), so a custom lookup on a system entity still qualifies and no entity-name lists are baked in. `--skip-child-entity <logical>` (repeatable) prunes a child entity from that default — this is how you exclude an org-specific, plugin-derived table the CLI can't know about.
+
+Each child row is cloned with the same never-copy and lookup-rebind rules as the parent, with one addition: **every** lookup on a child whose value equals the source parent is repointed to the **new** parent (not just the relationship's own referencing attribute); other lookups copy as-is. `--override`/`--unset` apply to the **parent only**.
+
+There is **no rollback** (ADR 0007). If the parent create fails, nothing else happens and the run is a clean failure. If a *child* create fails, the verb does not abort and does not delete what it already made — it records the failure and continues. The envelope then reports `ok: false` with the ids it did create in `meta.created` (the parent plus per-entity child ids) and the problems in `data.failures` (each `{entity, source_id, reason}`):
+
+```bash
+crm --json entity clone accounts <id> --with-children
+# ok:false ->
+# "data":   { "failures": [{"entity": "contoso_line", "source_id": "<src>", "reason": "..."}] }
+# "meta":   { "created": { "parent": "<new-id>", "children": { "contoso_invoice": ["<id>", "<id>"] } } }
+```
+
+Recover by cloning the named failed rows individually — **never re-run the whole verb**, since the parent already exists. `--dry-run` previews everything read-only: the parent keeps its full `would_create` body and a `children` list reports the per-entity row counts (`{"entity": ..., "would_create": N}`), with skipped entities marked `{"entity": ..., "skipped": true}` so the preview shows what won't happen too:
+
+```bash
+crm --json --dry-run entity clone accounts <id> --with-children --skip-child-entity contoso_note
+# -> "children": [{"entity": "contoso_invoice", "would_create": 7}, {"entity": "contoso_note", "skipped": true}]
+```

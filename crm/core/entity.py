@@ -658,48 +658,15 @@ _ASSOC_NAV_ANNOTATION = "Microsoft.Dynamics.CRM.associatednavigationproperty"
 _LOOKUP_LOGICAL_ANNOTATION = "Microsoft.Dynamics.CRM.lookuplogicalname"
 
 
-def clone_record(
-    backend: D365Backend,
-    entity_set: str,
-    record_id: str,
-    *,
-    overrides: dict[str, Any] | None = None,
-    unset: list[str] | None = None,
-    return_record: bool = True,
-) -> dict[str, Any]:
-    """Clone a single record over the Web API (#255).
+def _plan_from_attrs(attrs: list[dict[str, Any]]) -> tuple[dict[str, str], set[str]]:
+    """Reduce a list of attribute-metadata rows to the clone's attribute plan.
 
-    Start from the source's `IsValidForCreate` attributes, drop the never-copy
-    set, convert each set lookup to a `<nav>@odata.bind` (nav + target taken
-    from the record's own annotations), then apply `unset`/`overrides`. All
-    resolution runs as a clone pre-flight before the single create write; on a
-    pre-flight failure the org is untouched. Returns the created record (or just
-    its id with `return_record=False`); under `--dry-run`, returns
-    `{_dry_run, would_create: {entity_set, body}}` with the resolved payload.
+    Returns ``(create_attrs, all_attr_names)``: `create_attrs` maps logical name
+    -> AttributeType for every attribute valid for create and not in the
+    never-copy set (Uniqueidentifier dropped by type — covers primary + address
+    child ids); `all_attr_names` is every attribute (any validity) so `unset` is
+    validated against the full schema, not just the copied subset.
     """
-    from crm.core import metadata as metadata_mod
-
-    overrides = overrides or {}
-    unset = unset or []
-    # Validate-before-backend: reject a bad record id before any metadata GET so
-    # a typo costs no round-trip (mirrors count_children); reuse it from here on.
-    record_id = _normalize_id(record_id)
-
-    defs = metadata_mod.list_entity_definitions(backend)
-    set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
-    logical_to_set = {d["logical"]: d["set_name"] for d in defs if d["set_name"]}
-    logical_name = set_to_logical.get(entity_set)
-    if not logical_name:
-        raise D365Error(f"Unknown entity set: {entity_set!r}")
-
-    attrs = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
-        params={"$select": "LogicalName,AttributeType,IsValidForCreate"},
-    )).get("value", [])
-    # logical_name -> AttributeType for every attribute valid for create and not
-    # in the never-copy set; this is the canonical column set the clone copies.
-    # `all_attr_names` is every attribute (any validity) so `unset` can be
-    # validated against the real schema, not just the copied subset.
     create_attrs: dict[str, str] = {}
     all_attr_names: set[str] = set()
     for a in attrs:
@@ -713,15 +680,38 @@ def clone_record(
         if attr_type == "Uniqueidentifier" or name in _NEVER_COPY_NAMES:
             continue
         create_attrs[name] = attr_type
+    return create_attrs, all_attr_names
 
-    source = retrieve(backend, entity_set, record_id, include_annotations=True)
 
+def _build_clone_body(
+    source: dict[str, Any],
+    create_attrs: dict[str, str],
+    all_attr_names: set[str],
+    logical_to_set: dict[str, str],
+    entity_logical: str,
+    *,
+    overrides: dict[str, Any],
+    unset: list[str],
+    repoint: tuple[str, str] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Build a clone create body from a source record + its attribute plan.
+
+    Converts each set lookup to a `<nav>@odata.bind` (nav + target from the
+    record's own annotations), applies `unset` then `overrides`, and returns
+    ``(body, errors)``. `errors` is batched so the caller sees every offending
+    field at once; the caller decides whether to raise (parent pre-flight) or
+    record a per-row failure (a child row).
+
+    `repoint=(source_parent_guid, new_parent_id)` rebinds **any** lookup whose
+    current value equals the source parent to the new parent instead (the
+    child→new-parent rule) — the navigation property and target set are
+    unchanged, only the bound id. `None` (the parent's own clone) binds every
+    lookup to its existing target.
+    """
     body: dict[str, Any] = {}
     # logical lookup name -> the `<nav>@odata.bind` key it produced, so an
     # `unset` of the lookup's logical name finds and drops the right key.
     lookup_bind_keys: dict[str, str] = {}
-    # Clone pre-flight failures, batched so the caller sees every offending
-    # field at once; raised before any write, so the org is untouched.
     errors: list[str] = []
     for name, attr_type in create_attrs.items():
         if attr_type in _LOOKUP_TYPES:
@@ -739,11 +729,14 @@ def clone_record(
                     f"with --unset {name}, or re-add it with the lookup's "
                     "case-sensitive navigation property as --override "
                     "'<nav>@odata.bind=/<set>(<id>)' (get <nav> from "
-                    f"`crm metadata describe {logical_name}`)"
+                    f"`crm metadata describe {entity_logical}`)"
                 )
                 continue
+            bind_guid = guid
+            if repoint is not None and str(guid).lower() == repoint[0].lower():
+                bind_guid = repoint[1]
             bind_key = f"{nav}@odata.bind"
-            body[bind_key] = f"/{target_set}({guid})"
+            body[bind_key] = f"/{target_set}({bind_guid})"
             lookup_bind_keys[name] = bind_key
         else:
             value = source.get(name)
@@ -752,12 +745,12 @@ def clone_record(
 
     # Drop unset fields by logical name (a lookup's logical name removes the
     # `<nav>@odata.bind` key it produced). Unsetting a field the schema does not
-    # have is a pre-flight failure, not a silent no-op, so a typo surfaces.
+    # have is a failure, not a silent no-op, so a typo surfaces.
     for field in unset:
         if field not in all_attr_names:
             errors.append(
                 f"{field}: --unset names a field that is not an attribute of "
-                f"{entity_set}"
+                f"{entity_logical}"
             )
             continue
         body.pop(field, None)
@@ -771,6 +764,68 @@ def clone_record(
     for key, value in overrides.items():
         body[key] = value
 
+    return body, errors
+
+
+def clone_record(
+    backend: D365Backend,
+    entity_set: str,
+    record_id: str,
+    *,
+    overrides: dict[str, Any] | None = None,
+    unset: list[str] | None = None,
+    return_record: bool = True,
+    with_children: bool = False,
+    skip_child_entities: list[str] | None = None,
+) -> dict[str, Any]:
+    """Clone a single record over the Web API (#255), optionally its children (#256).
+
+    Start from the source's `IsValidForCreate` attributes, drop the never-copy
+    set, convert each set lookup to a `<nav>@odata.bind` (nav + target taken
+    from the record's own annotations), then apply `unset`/`overrides`. All
+    resolution runs as a clone pre-flight before the single create write; on a
+    pre-flight failure the org is untouched. Returns the created record (or just
+    its id with `return_record=False`); under `--dry-run`, returns
+    `{_dry_run, would_create: {entity_set, body}}` with the resolved payload.
+
+    With `with_children`, after the parent is created the verb also clones the
+    direct child rows of every **custom** 1:N relationship where this entity is
+    the parent (`skip_child_entities` prunes child entities by logical name).
+    `overrides`/`unset` apply to the parent only. Each child row's lookups that
+    point at the source parent are repointed to the new parent; other lookups
+    copy as-is. A child create that fails does not roll back or abort — it is
+    recorded and the rest continue (ADR 0007); the return is
+    ``{created: {parent, children: {logical: [ids]}}, failures: [...]}``. Under
+    `--dry-run`, the parent preview gains a `children` list of per-entity counts
+    (with skipped entities marked), all from read-only GETs.
+    """
+    from crm.core import metadata as metadata_mod
+
+    overrides = overrides or {}
+    unset = unset or []
+    skip = set(skip_child_entities or [])
+    # Validate-before-backend: reject a bad record id before any metadata GET so
+    # a typo costs no round-trip (mirrors count_children); reuse it from here on.
+    record_id = _normalize_id(record_id)
+
+    defs = metadata_mod.list_entity_definitions(backend)
+    set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
+    logical_to_set = {d["logical"]: d["set_name"] for d in defs if d["set_name"]}
+    logical_name = set_to_logical.get(entity_set)
+    if not logical_name:
+        raise D365Error(f"Unknown entity set: {entity_set!r}")
+
+    attrs = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
+        params={"$select": "LogicalName,AttributeType,IsValidForCreate"},
+    )).get("value", [])
+    create_attrs, all_attr_names = _plan_from_attrs(attrs)
+
+    source = retrieve(backend, entity_set, record_id, include_annotations=True)
+    body, errors = _build_clone_body(
+        source, create_attrs, all_attr_names, logical_to_set, logical_name,
+        overrides=overrides, unset=unset,
+    )
     if errors:
         raise D365Error(
             f"Clone pre-flight failed for {entity_set}({record_id}):\n  - "
@@ -781,7 +836,159 @@ def clone_record(
         # Pre-flight has already run against a live org (the reads execute under
         # dry-run); surface the fully resolved create body instead of letting
         # the backend's generic POST short-circuit return an opaque echo.
-        return {"_dry_run": True,
-                "would_create": {"entity_set": entity_set, "body": body}}
+        preview: dict[str, Any] = {
+            "_dry_run": True,
+            "would_create": {"entity_set": entity_set, "body": body},
+        }
+        if with_children:
+            preview["children"] = _preview_children(
+                backend, logical_name, logical_to_set, record_id, skip
+            )
+        return preview
 
-    return create(backend, entity_set, body, return_record=return_record)
+    if not with_children:
+        return create(backend, entity_set, body, return_record=return_record)
+
+    # Parent first. A parent create failure raises (clean operational failure,
+    # no children attempted). Create id-only so the new parent id is always
+    # available for repointing, regardless of the caller's return_record.
+    parent_result = create(backend, entity_set, body, return_record=False)
+    new_parent_id = str(parent_result.get("id") or "")
+    children, failures = _clone_children(
+        backend, logical_name, logical_to_set,
+        source_parent_guid=record_id, new_parent_id=new_parent_id, skip=skip,
+    )
+    return {
+        "created": {"parent": new_parent_id, "children": children},
+        "failures": failures,
+    }
+
+
+def _custom_child_relationships(
+    backend: D365Backend,
+    parent_logical: str,
+    logical_to_set: dict[str, str],
+    skip: set[str],
+) -> tuple[list[dict[str, str]], list[str]]:
+    """Custom 1:N relationships where `parent_logical` is the parent.
+
+    Returns ``(rels, skipped)`` where each rel is ``{entity, attribute, set}``.
+    Only `IsCustomRelationship == true` relationships qualify (a custom lookup
+    on a system entity still counts — it is a pure metadata signal, no
+    entity-name lists). `skip` (child logical names) prunes within that default;
+    a pruned child is listed once in `skipped`.
+    """
+    rels_raw: list[dict[str, Any]] = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{parent_logical}')/OneToManyRelationships",
+        params={"$select": "ReferencingEntity,ReferencingAttribute,IsCustomRelationship"},
+    )).get("value", [])
+    rels: list[dict[str, str]] = []
+    skipped: list[str] = []
+    for r in rels_raw:
+        if not r.get("IsCustomRelationship"):
+            continue
+        child = str(r.get("ReferencingEntity") or "")
+        attr = str(r.get("ReferencingAttribute") or "")
+        child_set = logical_to_set.get(child, "")
+        if not child or not attr or not child_set:
+            continue
+        if child in skip:
+            if child not in skipped:
+                skipped.append(child)
+            continue
+        rels.append({"entity": child, "attribute": attr, "set": child_set})
+    return rels, skipped
+
+
+def _clone_children(
+    backend: D365Backend,
+    parent_logical: str,
+    logical_to_set: dict[str, str],
+    *,
+    source_parent_guid: str,
+    new_parent_id: str,
+    skip: set[str],
+) -> tuple[dict[str, list[str]], list[dict[str, Any]]]:
+    """Clone every direct child row of the custom 1:N relationships (live path).
+
+    Per relationship: one entity-def GET (the child's PrimaryIdAttribute +
+    create attributes in a single `$expand`), one annotated collection GET of
+    the rows that reference the source parent, then a create per row. A row that
+    fails to build or create is recorded in `failures` and the rest continue
+    (ADR 0007: no rollback, no abort). Returns ``(children, failures)`` where
+    `children` maps child logical name -> created ids.
+    """
+    rels, _ = _custom_child_relationships(backend, parent_logical, logical_to_set, skip)
+    children: dict[str, list[str]] = {}
+    failures: list[dict[str, Any]] = []
+    # Child entity may appear in more than one relationship; fetch its attribute
+    # plan once.
+    plan_cache: dict[str, tuple[str, dict[str, str], set[str]]] = {}
+    for rel in rels:
+        child_logical, child_set, attr = rel["entity"], rel["set"], rel["attribute"]
+        if child_logical not in plan_cache:
+            entdef = as_dict(backend.get(
+                f"EntityDefinitions(LogicalName='{child_logical}')",
+                params={
+                    "$select": "PrimaryIdAttribute",
+                    "$expand": "Attributes($select=LogicalName,AttributeType,IsValidForCreate)",
+                },
+            ))
+            child_create, child_all = _plan_from_attrs(entdef.get("Attributes") or [])
+            plan_cache[child_logical] = (
+                str(entdef.get("PrimaryIdAttribute") or ""), child_create, child_all,
+            )
+        primary_id, child_create, child_all = plan_cache[child_logical]
+
+        rows = as_dict(backend.get(
+            child_set,
+            params={"$filter": f"_{attr}_value eq {source_parent_guid}"},
+            extra_headers={"Prefer": 'odata.include-annotations="*"'},
+        )).get("value", [])
+
+        for row in rows:
+            src_child_id = str(row.get(primary_id) or "")
+            child_body, child_errors = _build_clone_body(
+                row, child_create, child_all, logical_to_set, child_logical,
+                overrides={}, unset=[],
+                repoint=(source_parent_guid, new_parent_id),
+            )
+            if child_errors:
+                failures.append({"entity": child_logical, "source_id": src_child_id,
+                                 "reason": "; ".join(child_errors)})
+                continue
+            try:
+                created = create(backend, child_set, child_body, return_record=False)
+            except D365Error as exc:
+                failures.append({"entity": child_logical, "source_id": src_child_id,
+                                 "reason": str(exc)})
+                continue
+            children.setdefault(child_logical, []).append(str(created.get("id") or ""))
+    return children, failures
+
+
+def _preview_children(
+    backend: D365Backend,
+    parent_logical: str,
+    logical_to_set: dict[str, str],
+    source_parent_guid: str,
+    skip: set[str],
+) -> list[dict[str, Any]]:
+    """Dry-run child preview: per-entity row counts + skipped entities.
+
+    Read-only — counts run as direct GETs (the on-prem-safe `$count=true` form
+    `_count_via_get` uses), never a write. Each entry is
+    ``{entity, would_create: N}`` for a relationship that would be cloned, or
+    ``{entity, skipped: True}`` for one pruned by `skip`, so the preview shows
+    what won't happen too.
+    """
+    rels, skipped = _custom_child_relationships(
+        backend, parent_logical, logical_to_set, skip
+    )
+    preview: list[dict[str, Any]] = [
+        {"entity": rel["entity"],
+         "would_create": _count_via_get(backend, rel, source_parent_guid)["count"]}
+        for rel in rels
+    ]
+    preview.extend({"entity": s, "skipped": True} for s in skipped)
+    return preview
