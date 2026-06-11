@@ -1,6 +1,7 @@
 """Entity CRUD commands."""
 # pyright: basic
 from __future__ import annotations
+from typing import Any
 import click
 from crm.core import entity as entity_mod
 from crm.utils.d365_backend import D365Error
@@ -64,7 +65,7 @@ def entity_group():
 def _validate_or_emit(
     ctx: CLIContext,
     entity_set: str,
-    payload: dict,
+    payload: dict[str, Any],
     *,
     is_create: bool = False,
 ) -> list[str] | None:

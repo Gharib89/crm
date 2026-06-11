@@ -379,8 +379,10 @@ class TestPrimaryIdWarnCommand:
                 "--validate",
             ])
         assert result.exit_code == 0, result.output
-        # skin.warning writes to stderr; CliRunner captures both by default.
-        assert "accountid" in result.output
+        # skin.warning writes via print(file=sys.stderr); CliRunner captures it in
+        # result.stderr (Click 8.2+ separates streams) and also in result.output.
+        assert result.stderr is not None
+        assert "payload contains primary id 'accountid'" in result.stderr
 
     def test_update_with_primary_id_no_warn(self, monkeypatch, backend):
         """entity update --validate never warns about primary id (update path unchanged)."""
