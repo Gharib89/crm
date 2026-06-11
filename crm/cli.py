@@ -325,6 +325,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "service-document": "crm.commands.batch:service_document_cmd",
         "scaffold": "crm.commands.scaffold:scaffold_group",
         "security": "crm.commands.security:security_group",
+        "self-update": "crm.commands.self_update:self_update_cmd",
         "session": "crm.commands.session:session_group",
         "skill": "crm.commands.skill:skill_group",
         "sla": "crm.commands.sla:sla_group",
@@ -464,6 +465,12 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     if ctx.get_parameter_source("session_name") == ParameterSource.COMMANDLINE:
         cli_ctx.session_name = session_name
 
+    # Kick off the background update check (frozen-install upgrade notice). Cheap
+    # guards run inline so machine/CI/--json paths never import the update module
+    # (and its requests dependency) — keeping CLI startup lean. The authoritative
+    # guard set lives in crm.core.update.is_check_enabled.
+    _maybe_update_check(json_mode)
+
     if ctx.invoked_subcommand is None:
         if _suppress_bare_repl(json_mode):
             msg = "no subcommand given; run crm --help to list commands"
@@ -474,6 +481,43 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
             raise click.exceptions.Exit(2)
         from crm.commands.repl import repl
         ctx.invoke(repl)
+
+
+def _update_check_eligible(json_mode: bool) -> bool:
+    """Cheap pre-check mirroring update.is_check_enabled, to gate the lazy import."""
+    if json_mode:
+        return False
+    # A closed/detached stderr raises on isatty(); treat any failure as not-a-TTY
+    # so the passive notice can never break an otherwise-unrelated command.
+    try:
+        if not sys.stderr.isatty():
+            return False
+    except Exception:
+        return False
+    return not (os.environ.get("CRM_NO_UPDATE_CHECK") or os.environ.get("CI"))
+
+
+def _maybe_update_check(json_mode: bool) -> None:
+    if not _update_check_eligible(json_mode):
+        return
+    import time
+    from crm.core import update as update_mod
+    update_mod.run_background_check(
+        json_mode=json_mode, stderr_isatty=True, env=os.environ, now=time.time(),
+    )
+
+
+@cli.result_callback()
+def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
+    """Print the one-line update notice (from cache) after a command completes."""
+    ctx = click.get_current_context()
+    json_mode = bool(getattr(ctx.obj, "json_mode", False))
+    if not _update_check_eligible(json_mode):
+        return
+    from crm.core import update as update_mod
+    update_mod.emit_pending_notice(
+        json_mode=json_mode, stderr_isatty=True, env=os.environ,
+    )
 
 
 if __name__ == "__main__":
