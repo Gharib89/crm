@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.12.0 (2026-06-11)
+
+### Features
+
+- **skill**: Default install to claude, confirm-overwrite, refresh on self-update
+  ([`3f12923`](https://github.com/Gharib89/crm/commit/3f12923f756c6c8f7174581e147a3652f98dfb84))
+
+
 ## v2.11.1 (2026-06-11)
 
 ### Bug Fixes
