@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.1.0 (2026-06-11)
+
+### Documentation
+
+- Record-clone glossary terms + ADR 0007 (no rollback)
+  ([#231](https://github.com/Gharib89/crm/pull/231),
+  [`89956a3`](https://github.com/Gharib89/crm/commit/89956a38d34f1b33253e58ca4d71b1dd28c289f2))
+
+### Features
+
+- **solution**: Add layer-conflicts to detect unmanaged-layer overlap
+  ([#239](https://github.com/Gharib89/crm/pull/239),
+  [`93599ce`](https://github.com/Gharib89/crm/commit/93599ce4f0f721efe4b9c87f374fd5c232976a6d))
+
+
 ## v3.0.0 (2026-06-11)
 
 ### Documentation
