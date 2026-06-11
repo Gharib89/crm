@@ -18,6 +18,9 @@ setup(
         "requests>=2.28",
         "requests_ntlm>=1.2",
         "prompt_toolkit>=3.0",
+        # Inline arrow-key pickers (profile use / add wizard). Builds on
+        # prompt_toolkit (above); lazy-imported so it stays off the fast path.
+        "questionary>=2.0",
         "msal>=1.20",
         "PyYAML>=6.0",
         # Core (not an extra): the binary and `uv tool install` distribution

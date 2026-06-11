@@ -556,24 +556,25 @@ def _stdin_is_tty() -> bool:
     return _impl()
 
 
-def select_one(title: str, items: list[tuple[str, str]]) -> str | None:
-    """Show an arrow-key single-select picker; return the chosen value (the first
-    element of the chosen tuple) or None if the user cancelled.
+def select_one(title: str, items: list[tuple[str, str]],
+               default: str | None = None) -> str | None:
+    """Show an inline arrow-key single-select picker; return the chosen value
+    (the first element of the chosen tuple) or None if the user cancelled.
 
-    `items` is a list of (value, label) pairs. Raises ValueError on empty input
-    and RuntimeError when stdin is not a TTY (scripts/CI must pass an explicit
-    choice instead of relying on the picker)."""
+    `items` is a list of (value, label) pairs. `default`, if given, is a value
+    that should be pre-selected (must match one of the item values). Raises
+    ValueError on empty input and RuntimeError when stdin is not a TTY
+    (scripts/CI must pass an explicit choice instead of relying on the picker)."""
     if not items:
         raise ValueError("select_one: no choices to display")
     if not _stdin_is_tty():
         raise RuntimeError(
             "select_one: no interactive terminal — pass an explicit choice instead"
         )
-    # Lazy import: prompt_toolkit is heavy; keep it off the `crm --version`
-    # fast path (_helpers is imported by cli.py). Only the picker pays the cost.
-    from prompt_toolkit.shortcuts import radiolist_dialog
-    return radiolist_dialog(
-        title=title,
-        text="Use ↑/↓ then Enter; Esc to cancel.",
-        values=[(value, label) for value, label in items],
-    ).run()
+    # Lazy import: questionary (and its prompt_toolkit backend) is heavy; keep
+    # it off the `crm --version` fast path (_helpers is imported by cli.py).
+    # questionary.select renders inline (↑/↓ + Enter confirms, Esc cancels) —
+    # no alternate-screen modal — and .ask() returns None on cancel.
+    import questionary
+    choices = [questionary.Choice(title=label, value=value) for value, label in items]
+    return questionary.select(title, choices=choices, default=default).ask()

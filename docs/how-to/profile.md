@@ -38,12 +38,15 @@ crm profile add \
 crm profile add \
     --url https://contoso.crm.dynamics.com \
     --tenant-id <aad-tenant-id> --client-id <app-registration-id> \
-    --password "$CLIENT_SECRET" \
+    --client-secret "$CLIENT_SECRET" \
     --name online
 ```
 
-`--name` defaults to the URL host label. Override the inferred scheme with
-`--auth-scheme` when the URL doesn't match the heuristic. Omit `--api-version` to
+`--client-secret` is an alias for `--password` (the two are mutually exclusive) so
+OAuth scripting reads naturally; either works. `--name` defaults to the URL host
+label. Override the inferred scheme with `--auth-scheme` when the URL doesn't match
+the heuristic — the interactive wizard offers the same choice as an inline arrow-key
+picker (↑/↓ then Enter, Esc to cancel) with the inferred scheme preselected. Omit `--api-version` to
 **auto-negotiate** — on-prem is capped at v9.1 (v9.2 returns HTTP 501), so the CLI
 steps down automatically. Attach a default solution and schema-name prefix so
 metadata commands target them without per-command flags:
@@ -100,8 +103,9 @@ the flag-driven form both save it. Use `set-password` to store or replace it for
 profile that already exists, and `delete-password` to remove it:
 
 ```bash
-crm profile set-password --profile prod              # prompts for the secret on a TTY
+crm profile set-password --profile prod                       # prompts for the secret on a TTY
 crm profile set-password --profile prod --password "$SECRET"
+crm profile set-password --profile online --client-secret "$CLIENT_SECRET"  # OAuth alias
 crm profile delete-password --profile prod
 ```
 
