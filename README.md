@@ -20,6 +20,7 @@ optimized for AI agents or shell scripting. This harness gives you:
 - `--cache-metadata` for a persistent per-profile entity-definition cache
   (speeds up repeated one-shot agent calls; env: `CRM_CACHE_METADATA=1`)
 - `crm ribbon` to read and edit entity command-bar buttons (export / list / add-button / remove) without manual solution-XML editing
+- `crm solution layer-conflicts` to detect components shared by a managed and an unmanaged solution (unmanaged-layer conflicts) — works on-prem too, where XrmToolBox's layer explorer can't
 
 ## Documentation
 

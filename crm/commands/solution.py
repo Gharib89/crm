@@ -178,6 +178,62 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 
+@solution_group.command("layer-conflicts")
+@click.option("--solution", "managed_name", required=True,
+              help="Managed solution unique name.")
+@click.option("--unmanaged-solution", "unmanaged_name", required=True,
+              help="Unmanaged solution unique name.")
+@pass_ctx
+def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
+    """Report components present in BOTH a managed and an unmanaged solution.
+
+    Those are managed components that also carry unmanaged-layer customizations —
+    the potential unmanaged-layer conflicts. Read-only; works identically on v9.x
+    on-prem and Dataverse online. Matching is at solution-component granularity: a
+    customized subcomponent (e.g. one attribute) of a whole-table managed component
+    is its own component and will not show as a conflict.
+    """
+    try:
+        backend = ctx.backend()
+        managed_info = sol_mod.solution_info(backend, managed_name)
+        unmanaged_info = sol_mod.solution_info(backend, unmanaged_name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+
+    # Kind validation is data-dependent (`ismanaged` comes from the server), so a
+    # mismatch is an in-command validation failure (exit 1, ADR 0001), not a Click
+    # usage error. Check before fetching components / comparing.
+    if not managed_info.get("ismanaged"):
+        ctx.emit(False, error=f"--solution {managed_name!r} is not a managed solution.")
+        return
+    if unmanaged_info.get("ismanaged"):
+        ctx.emit(False, error=f"--unmanaged-solution {unmanaged_name!r} is not an unmanaged solution.")
+        return
+
+    try:
+        managed_comps = sol_mod.solution_components(backend, managed_name)
+        unmanaged_comps = sol_mod.solution_components(backend, unmanaged_name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    conflicts = sol_mod.layer_conflicts(managed_comps, unmanaged_comps)
+
+    meta = {"count": len(conflicts)}
+    if ctx.json_mode:
+        ctx.emit(True, data=conflicts, meta=meta)
+        return
+    if not conflicts:
+        ctx.emit(True, data={"message": "no conflicts found"}, meta=meta)
+        return
+    headers = ["type", "type_name", "objectid", "managed_rcb", "unmanaged_rcb"]
+    rows = [[str(c["componenttype"]), c["type_name"], c["objectid"],
+             str(c["managed_rootcomponentbehavior"]),
+             str(c["unmanaged_rootcomponentbehavior"])]
+            for c in conflicts]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+
+
 @solution_group.command("create-publisher")
 @click.option("--name", required=True, help="Publisher unique name, e.g. 'crmworx'.")
 @click.option("--display", "display", default=None,

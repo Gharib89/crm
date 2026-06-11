@@ -590,6 +590,64 @@ def diff_components(
     }
 
 
+# Reverse of SOLUTION_COMPONENT_TYPES for friendly-name display. The forward map's
+# values are unique, so the inversion is lossless; unmapped types fall back to the
+# raw int as a string.
+_COMPONENT_TYPE_NAMES: dict[int, str] = {v: k for k, v in SOLUTION_COMPONENT_TYPES.items()}
+
+
+def component_type_name(componenttype: int) -> str:
+    """Friendly name for a ``componenttype`` int (e.g. 1 → 'entity'), or its string
+    form when the type is not in SOLUTION_COMPONENT_TYPES."""
+    return _COMPONENT_TYPE_NAMES.get(componenttype, str(componenttype))
+
+
+def layer_conflicts(
+    managed: list[dict[str, Any]],
+    unmanaged: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Components present in BOTH a managed and an unmanaged solution.
+
+    A managed component that also appears in an unmanaged solution carries
+    unmanaged-layer customizations — the potential unmanaged-layer conflict. Keyed
+    on ``(componenttype, objectid)``, deliberately IGNORING ``rootcomponentbehavior``
+    (the same component included with a different behavior is still an overlap).
+
+    Each conflict row::
+
+        {
+            "componenttype": int,
+            "type_name": str,                          # friendly name or str(int)
+            "objectid": str,
+            "managed_rootcomponentbehavior": int | None,
+            "unmanaged_rootcomponentbehavior": int | None,
+        }
+
+    Sorted by ``(componenttype, objectid)``.
+    """
+    norm_managed = normalize_components(managed)
+    norm_unmanaged = normalize_components(unmanaged)
+
+    def _key(c: dict[str, Any]) -> tuple[int, str]:
+        return (c["componenttype"], c["objectid"])
+
+    unmanaged_by_key = {_key(c): c for c in norm_unmanaged}
+    conflicts: list[dict[str, Any]] = []
+    for c in norm_managed:
+        match = unmanaged_by_key.get(_key(c))
+        if match is None:
+            continue
+        conflicts.append({
+            "componenttype": c["componenttype"],
+            "type_name": component_type_name(c["componenttype"]),
+            "objectid": c["objectid"],
+            "managed_rootcomponentbehavior": c["rootcomponentbehavior"],
+            "unmanaged_rootcomponentbehavior": match["rootcomponentbehavior"],
+        })
+    conflicts.sort(key=lambda c: (c["componenttype"], c["objectid"]))
+    return conflicts
+
+
 def _async_export_unavailable(exc: D365Error) -> bool:
     """True when the org lacks the ExportSolutionAsync action (older on-prem)."""
     msg = str(exc).lower()
