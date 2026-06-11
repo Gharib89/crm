@@ -59,6 +59,20 @@ def test_corrupt_file_reads_as_empty(tmp_path):
     assert reg.read_skills() == []
 
 
+def test_read_propagates_unexpected_io_error(monkeypatch):
+    # A real I/O fault (e.g. PermissionError) is NOT corruption — it must surface,
+    # not be silently swallowed as an empty registry (would clobber state on write).
+    from crm.commands import skill_registry as reg
+    from pathlib import Path
+
+    def boom(*a, **k):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    with pytest.raises(PermissionError):
+        reg.read_skills()
+
+
 def _make_src(tmp_path):
     src = tmp_path / "src"
     (src / "reference").mkdir(parents=True)

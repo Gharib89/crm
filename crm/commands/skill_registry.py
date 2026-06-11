@@ -33,10 +33,18 @@ def registry_path() -> Path:
 
 
 def read_skills() -> list[dict[str, Any]]:
-    """The recorded install entries, or [] if the file is missing/corrupt."""
+    """The recorded install entries, or [] if the file is missing/corrupt.
+
+    Tolerant only of *missing* (FileNotFoundError) and *corrupt* (bad JSON /
+    decode) files — a genuine I/O fault (e.g. PermissionError) propagates so the
+    caller surfaces a clean error instead of silently treating it as empty and
+    clobbering the registry on the next write.
+    """
     try:
         raw = json.loads(registry_path().read_text(encoding="utf-8"))
-    except Exception:
+    except FileNotFoundError:
+        return []
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
         return []
     skills = raw.get("skills") if isinstance(raw, dict) else None
     return skills if isinstance(skills, list) else []

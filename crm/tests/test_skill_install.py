@@ -90,6 +90,40 @@ def test_uninstall_removes_registry_entry(tmp_path: Path, monkeypatch):
     assert reg.read_skills() == []
 
 
+def test_install_io_error_is_clean_envelope(tmp_path: Path, monkeypatch):
+    import json
+
+    import crm.commands.skill as skill_mod
+
+    def boom(*a, **k):
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(skill_mod.skill_registry, "install_tree", boom)
+    result = _runner(tmp_path, monkeypatch).invoke(
+        cli, ["--json", "skill", "install", "--dest", str(tmp_path / "crm"), "--force"]
+    )
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.output)["ok"] is False
+
+
+def test_uninstall_io_error_is_clean_envelope(tmp_path: Path, monkeypatch):
+    import json
+
+    import crm.commands.skill as skill_mod
+
+    dest = tmp_path / "crm"
+    runner = _runner(tmp_path, monkeypatch)
+    runner.invoke(cli, ["--json", "skill", "install", "--dest", str(dest), "--force"])
+
+    def boom(*a, **k):
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(skill_mod.skill_registry, "remove_install", boom)
+    result = runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)])
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.output)["ok"] is False
+
+
 def test_uninstall_removes_tree(tmp_path: Path, monkeypatch):
     dest = tmp_path / "crm"
     runner = _runner(tmp_path, monkeypatch)

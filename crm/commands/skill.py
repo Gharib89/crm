@@ -81,9 +81,13 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
                 meta={"target": target, "dest": str(dest_dir)},
             )
 
-    skill_registry.install_tree(src_dir, dest_dir)
-    target_label = "custom" if dest else target
-    skill_registry.record_install(target_label, str(dest_dir), __version__)
+    try:
+        skill_registry.install_tree(src_dir, dest_dir)
+        target_label = "custom" if dest else target
+        skill_registry.record_install(target_label, str(dest_dir), __version__)
+    except (OSError, shutil.Error) as exc:
+        ctx.emit(False, error=f"Failed to install skill to {dest_dir}: {exc}")
+        return
     refs = sorted((dest_dir / "reference").glob("*.md")) if (dest_dir / "reference").is_dir() else []
     ctx.emit(
         True,
@@ -110,16 +114,20 @@ def skill_uninstall(ctx: CLIContext, target: str, dest: str | None):
     """Remove the installed skill (SKILL.md + reference/, and the directory if empty)."""
     dest_dir = _resolve_skill_dest(target, dest)
     dest_file = dest_dir / "SKILL.md"
-    skill_registry.remove_install(str(dest_dir))
-    if not dest_file.exists():
-        ctx.emit(True, data={"removed": False, "reason": "not installed", "dest": str(dest_file)})
-        return
-    ref_dir = dest_dir / "reference"
-    if ref_dir.is_dir():
-        shutil.rmtree(ref_dir)
-    dest_file.unlink()
     try:
-        dest_dir.rmdir()
-    except OSError:
-        pass
+        skill_registry.remove_install(str(dest_dir))
+        if not dest_file.exists():
+            ctx.emit(True, data={"removed": False, "reason": "not installed", "dest": str(dest_file)})
+            return
+        ref_dir = dest_dir / "reference"
+        if ref_dir.is_dir():
+            shutil.rmtree(ref_dir)
+        dest_file.unlink()
+        try:
+            dest_dir.rmdir()
+        except OSError:
+            pass
+    except (OSError, shutil.Error) as exc:
+        ctx.emit(False, error=f"Failed to uninstall skill at {dest_dir}: {exc}")
+        return
     ctx.emit(True, data={"removed": True, "dest": str(dest_dir)})
