@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.1.5 (2026-06-11)
+
+### Bug Fixes
+
+- **self-update**: Fall back to current_version() when frozen install is up-to-date
+  ([#245](https://github.com/Gharib89/crm/pull/245),
+  [`b809468`](https://github.com/Gharib89/crm/commit/b8094685a9e1b9c0de9c75085119f4ea1485cfe6))
+
+- **self-update**: Progress messages, clear version labels, expanded skills output
+  ([#245](https://github.com/Gharib89/crm/pull/245),
+  [`b809468`](https://github.com/Gharib89/crm/commit/b8094685a9e1b9c0de9c75085119f4ea1485cfe6))
+
+- **self-update**: Show progress, fix misleading version label, expand skills output
+  ([#245](https://github.com/Gharib89/crm/pull/245),
+  [`b809468`](https://github.com/Gharib89/crm/commit/b8094685a9e1b9c0de9c75085119f4ea1485cfe6))
+
+
 ## v3.1.4 (2026-06-11)
 
 ### Bug Fixes
