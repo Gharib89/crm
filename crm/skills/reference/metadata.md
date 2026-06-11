@@ -71,6 +71,11 @@ level, lookup `@odata.bind` keys + resolvable targets, and inline option values.
 it hands you the exact `bind_key` and `global_optionset_id` you'd otherwise assemble
 manually (see the `@odata.bind` notes in `reference/records.md`).
 
+**Gotcha — logical name, not entity-set name:** `metadata describe` takes the singular
+logical name (e.g. `account`), NOT the entity-set name (`accounts`) or a pluralized
+form (`webresources`). Passing a set name returns a 404 with `meta.did_you_mean`
+suggesting the correct logical name.
+
 ## Entity-definition cache (speed up repeated agent calls)
 
 Pass `--cache-metadata` (or set `CRM_CACHE_METADATA=1`) to serve `metadata entities`

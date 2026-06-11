@@ -242,7 +242,20 @@ def metadata_describe(ctx: CLIContext, logical_name):
     try:
         brief = meta_mod.describe_entity(ctx.backend(), logical_name)
     except D365Error as exc:
-        _handle_d365_error(ctx, exc)
+        extra: dict | None = None
+        hint_text: str | None = None
+        if exc.status == 404:
+            suggestion = meta_mod.suggest_logical_name(ctx.backend(), logical_name)
+            if suggestion:
+                hint_text = (
+                    f"`metadata describe` takes the logical name (singular), not the "
+                    f"entity-set name. Did you mean `{suggestion['logical_name']}`?"
+                    if suggestion["reason"] == "exact-set"
+                    else f"Did you mean `{suggestion['logical_name']}`?"
+                )
+                extra = {"did_you_mean": suggestion["logical_name"]}
+        _handle_d365_error(ctx, exc, extra_meta=extra,
+                           hint=hint_text if extra else None)
         return
     ctx.emit(True, data=brief, meta={
         "writable_attributes": len(brief["writable_attributes"]),
