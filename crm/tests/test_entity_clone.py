@@ -392,8 +392,23 @@ class TestCommand:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["meta"]["dry_run"] is True
-        assert env["data"]["entity_set"] == "accounts"
-        assert env["data"]["body"] == {"name": "Contoso", "telephone1": "555-0100"}
+        # Emitted as-is: the {_dry_run, would_create} preview shape (sentinel
+        # retained per ADR 0002), not unwrapped to bare would_create.
+        assert env["data"]["_dry_run"] is True
+        assert env["data"]["would_create"]["entity_set"] == "accounts"
+        assert env["data"]["would_create"]["body"] == {
+            "name": "Contoso", "telephone1": "555-0100",
+        }
+
+    def test_cli_bad_guid_fails_before_backend(self, monkeypatch):
+        # Validate-before-backend: a malformed GUID must fail without ever
+        # constructing a backend (no credential resolution / token acquisition).
+        def _boom(self):
+            raise AssertionError("backend() must not be called for a bad GUID")
+        monkeypatch.setattr(CLIContext, "backend", _boom)
+        result = CliRunner().invoke(cli, ["--json", "entity", "clone", "accounts", "not-a-guid"])
+        assert result.exit_code == 1
+        assert json.loads(result.output)["ok"] is False
 
     def test_cli_preflight_failure_exits_one(self, backend, monkeypatch):
         self._patch_backend(monkeypatch, backend)

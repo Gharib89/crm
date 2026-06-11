@@ -148,7 +148,7 @@ silently dropped. `--dry-run` runs the same pre-flight and returns the resolved 
 instead of writing:
 
 ```json
-{"ok": true, "data": {"entity_set": "accounts", "body": {...}}, "meta": {"dry_run": true}}
+{"ok": true, "data": {"_dry_run": true, "would_create": {"entity_set": "accounts", "body": {...}}}, "meta": {"dry_run": true}}
 ```
 
 Success matches `entity create` (`data` = created record, or `{"id"}` with `--no-return`).

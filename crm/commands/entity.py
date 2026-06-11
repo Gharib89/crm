@@ -343,6 +343,14 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
     the fully resolved create body without writing (all lookup/field resolution
     still runs, so the preview is the complete fix list against an untouched org)."""
     parsed_overrides = _parse_overrides(overrides)
+    # Validate untrusted input before constructing a backend (house rule): a
+    # malformed GUID must fail fast, before any credential resolution / token
+    # acquisition (msal does network at backend construction for cloud).
+    try:
+        record_id = entity_mod._normalize_id(record_id)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
     try:
         result = entity_mod.clone_record(
             ctx.backend(), entity_set, record_id,
@@ -353,12 +361,12 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    # Under --dry-run the data is the would_create preview; otherwise the created
-    # record. Emit once, then journal/touch in both modes (like entity create) —
-    # _journal records ctx.dry_run, so the audit trail still distinguishes previews.
-    data = result["would_create"] if result.get("_dry_run") else result
-    ctx.emit(True, data=data)
-    _journal(ctx, "entity clone", entity_set, data)
+    # Emit the result as-is: under --dry-run that is the {_dry_run, would_create}
+    # preview (sentinel retained per ADR 0002 / test_dry_run_meta), else the
+    # created record. emit() stamps meta.dry_run from the flag. Journal/touch in
+    # both modes, like entity create (_journal records ctx.dry_run).
+    ctx.emit(True, data=result)
+    _journal(ctx, "entity clone", entity_set, result)
     _touch_session(ctx, entity_set)
 
 

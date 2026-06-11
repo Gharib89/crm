@@ -164,7 +164,7 @@ All lookup resolution and `--unset` validation run as a **clone pre-flight** bef
 
 ```bash
 crm --json --dry-run entity clone accounts 00000000-0000-0000-0000-000000000001
-# -> {"ok": true, "data": {"entity_set": "accounts", "body": { ... }}, "meta": {"dry_run": true}}
+# -> {"ok": true, "data": {"_dry_run": true, "would_create": {"entity_set": "accounts", "body": { ... }}}, "meta": {"dry_run": true}}
 ```
 
 The success envelope matches `entity create` — `data` is the created record, or just `{"id": "<guid>"}` with `--no-return`. To clone into a specific status, run `entity update <set> <newid> --data '{"statuscode": N}'` after the clone (on **on-prem** create does not honor a status passed in the create body, so `--override statuscode=N` is a documented no-op there). This is a single-record clone; cloning a record together with its child rows (`--with-children`) is a separate follow-up.
