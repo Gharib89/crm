@@ -31,6 +31,8 @@ code `0x80060892`), the error envelope gains `meta.alternate_keys` showing each 
 its attributes, and the colliding `payload_values` from the submitted payload.
 If the payload also includes the primary-key attribute, a `meta.primary_id_hint`
 is added (the same error code fires for primary-key collisions too).
+`payload_values` covers plain scalar fields only — lookup bindings
+(`field@odata.bind`) are not matched.
 
 ## Picklist / option set values (critical before writing a record)
 

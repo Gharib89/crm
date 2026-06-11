@@ -68,6 +68,8 @@ def enrich_duplicate_key_error(
     ``payload``; lookup columns surfaced as ``field@odata.bind`` are NOT
     matched (v1 limitation — plain names only).
     """
+    if not _is_alternate_key_error(exc):
+        return {}
     try:
         safe_set = entity_set.replace("'", "''")
         result = as_dict(backend.get(

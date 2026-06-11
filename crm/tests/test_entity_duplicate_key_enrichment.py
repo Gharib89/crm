@@ -462,4 +462,4 @@ def test_entity_create_enrichment_failure_passes_original_error(runner, backend,
     data = json.loads(result.output)
     assert data["ok"] is False
     # Still gets the original error message
-    assert "Entity Key" in data["error"] or "violated" in data["error"].lower() or data["ok"] is False
+    assert "Entity Key" in data["error"] or "violated" in data["error"].lower()

@@ -96,6 +96,10 @@ collision.
 
 List the alternate keys for any entity with `crm metadata keys <entity>`.
 
+**v1 limitation:** `payload_values` is populated from plain scalar payload fields only.
+Lookup bindings (`field@odata.bind`) are not matched and will not appear in
+`payload_values` even if a lookup is part of the alternate key.
+
 ## Create from a JSON file (avoid shell-quoting XML payloads)
 
 ```bash
