@@ -20,7 +20,7 @@ def query_group():
 
 
 @query_group.command("odata")
-@click.argument("entity_set")
+@click.argument("entity_set", metavar="ENTITY_SET|BOUND_FUNC|METADATA_PATH")
 @click.option("--select", multiple=True)
 @click.option("--filter", "filter_", help="OData $filter expression.")
 @click.option("--top", type=int)
@@ -36,7 +36,17 @@ def query_group():
 @pass_ctx
 def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expand,
                 count, page_size, annotations, minimal):
-    """OData v4 query over an entity set."""
+    """OData v4 GET — entity set, bound-function path, or metadata path.
+
+    \b
+    Accepted forms:
+      contacts                                         bare entity set
+      RetrieveAppComponents(AppModuleId=<guid>)        bound-function path
+      EntityDefinitions(LogicalName='account')/Keys    metadata path
+
+    OData query options go through --select/--filter/etc., never inline.
+    A '?' or '$' in the positional arg is rejected client-side before the request.
+    """
     try:
         result = query_mod.odata_query(
             ctx.backend(), entity_set,

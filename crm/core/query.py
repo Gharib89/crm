@@ -38,12 +38,13 @@ def odata_query(
     # The entity-set arg carries the URL path only — OData options go through the
     # query-option kwargs below. A `?` or `$` means the caller baked params into
     # the path (e.g. `solutions?$select=uniquename`), which the server bounces as
-    # a bare HTTP 400 with no recovery signal — reject it here. Set names and
-    # bound-function paths (`RetrieveAppComponents(...)`) carry neither, so pass.
+    # a bare HTTP 400 with no recovery signal — reject it here. Bare entity-set
+    # names, bound-function paths (`RetrieveAppComponents(...)`), and metadata paths
+    # (`EntityDefinitions(...)/Keys`) all carry neither, so they pass through.
     if "?" in entity_set or "$" in entity_set:
         raise D365Error(
-            "entity-set arg must be a bare set name (e.g. `solutions`); "
-            "use --select/--filter for OData parameters",
+            "entity-set arg must be a bare path (entity set, bound-function, or metadata path); "
+            "use --select/--filter for OData parameters — do not embed '?' or '$' in the path",
             code="InvalidEntitySet",
         )
 
