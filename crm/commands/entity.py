@@ -1,6 +1,7 @@
 """Entity CRUD commands."""
 # pyright: basic
 from __future__ import annotations
+from typing import Any
 import click
 from crm.core import entity as entity_mod
 from crm.utils.d365_backend import D365Error
@@ -61,25 +62,33 @@ def entity_group():
     """Record CRUD against entity sets (accounts, contacts, ...)."""
 
 
-def _validate_or_emit(ctx: CLIContext, entity_set, payload) -> bool:
-    """Run the pre-write field-name gate (#72). Return True to proceed.
+def _validate_or_emit(
+    ctx: CLIContext,
+    entity_set: str,
+    payload: dict[str, Any],
+    *,
+    is_create: bool = False,
+) -> list[str] | None:
+    """Run the pre-write field-name gate (#72, #233).
 
-    On a validation miss, emits the `{ok:false, meta:{unknown_fields, did_you_mean}}`
-    failure envelope (which raises Exit per ADR 0001) and returns False so the
-    caller skips the write. A D365Error from the metadata probe is routed through
-    the standard error handler.
+    Returns a list of warnings (possibly empty) to proceed, or None to abort.
+    On a validation miss, emits the failure envelope and returns None. On success
+    with a create-path primary-id warning, returns that warning for the caller to
+    surface in the final emit.
     """
     try:
-        verdict = entity_mod.validate_payload(ctx.backend(), entity_set, payload)
+        verdict = entity_mod.validate_payload(
+            ctx.backend(), entity_set, payload, is_create=is_create
+        )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
-        return False
-    if verdict["ok"]:
-        return True
-    meta = verdict["meta"]
-    unknown = ", ".join(meta["unknown_fields"])
-    ctx.emit(False, error=f"Unknown field(s) for {entity_set}: {unknown}", meta=meta)
-    return False
+        return None
+    if not verdict["ok"]:
+        meta = verdict["meta"]
+        unknown = ", ".join(meta["unknown_fields"])
+        ctx.emit(False, error=f"Unknown field(s) for {entity_set}: {unknown}", meta=meta)
+        return None
+    return list(verdict.get("meta", {}).get("warnings") or [])
 
 
 @entity_group.command("get")
@@ -142,8 +151,12 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
     """POST a new record."""
     return_record = _resolve_return_record(no_return, return_record, default=True)
     payload = _load_payload(data_json, data_file)
-    if validate and not _validate_or_emit(ctx, entity_set, payload):
-        return
+    validate_warnings: list[str] = []
+    if validate:
+        result_warnings = _validate_or_emit(ctx, entity_set, payload, is_create=True)
+        if result_warnings is None:
+            return
+        validate_warnings = result_warnings
     try:
         result = entity_mod.create(
             ctx.backend(), entity_set, payload,
@@ -151,9 +164,9 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
-        _handle_d365_error(ctx, exc)
+        _handle_d365_error(ctx, exc, warnings=validate_warnings or None)
         return
-    ctx.emit(True, data=result)
+    ctx.emit(True, data=result, warnings=validate_warnings or None)
     _journal(ctx, "entity create", entity_set, result)
     _touch_session(ctx, entity_set)
 
@@ -187,7 +200,7 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
         )
     return_record = _resolve_return_record(no_return, return_record, default=False)
     payload = _load_payload(data_json, data_file)
-    if validate and not _validate_or_emit(ctx, entity_set, payload):
+    if validate and _validate_or_emit(ctx, entity_set, payload) is None:
         return
     try:
         result = entity_mod.update(

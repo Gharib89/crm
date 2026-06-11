@@ -103,15 +103,19 @@ def validate_payload(
     backend: D365Backend,
     entity_set: str,
     payload: dict[str, Any],
+    *,
+    is_create: bool = False,
 ) -> dict[str, Any]:
-    """Field-NAME pre-write validation for a create/update payload (#72).
+    """Field-NAME pre-write validation for a create/update payload (#72, #233).
 
-    Three pure GETs build the set of valid payload keys:
-      1. resolve the entity-SET name to its LOGICAL name;
+    One to three pure GETs build the set of valid payload keys:
+      1. resolve the entity-SET name to its LOGICAL name (also fetches
+         `PrimaryIdAttribute` for the create-path warning — no extra round-trip);
       2. the entity's logical attribute names;
       3. the ManyToOne navigation-property names
          (`ReferencingEntityNavigationPropertyName`) — these are the `<nav>` in a
          `<nav>@odata.bind` deep-link, so a bound lookup is NOT a bogus field.
+         GET #3 is skipped when the payload contains no `@odata.bind` keys.
 
     Valid keys are the UNION of (2) and (3). Each payload key is stripped of its
     `@odata.bind` / `@odata.type` suffix before the membership check; control
@@ -121,6 +125,10 @@ def validate_payload(
     `{"ok": False, "meta": {"unknown_fields": [...], "did_you_mean": {...}}}`.
     `did_you_mean` maps an unknown field to its closest valid key, when one is
     close enough. Scope is FIELD-NAME only: option-set VALUES are not checked.
+
+    When `is_create=True` and the payload contains the entity's primary id
+    attribute, `ok` is still True but a warning is added:
+    `{"ok": True, "meta": {"warnings": ["payload contains primary id '...' — ..."]}}`
 
     The probe is always real GETs even when the backend is in dry-run mode (it
     never mutates) so `--validate --dry-run` composes — mirrors `target_exists`.
@@ -137,7 +145,7 @@ def validate_payload(
     sets = as_dict(backend.get(
         "EntityDefinitions",
         params={
-            "$select": "LogicalName,EntitySetName",
+            "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
             "$filter": f"EntitySetName eq '{safe_set}'",
         },
     ))
@@ -147,6 +155,7 @@ def validate_payload(
     logical_name = matches[0].get("LogicalName")
     if not logical_name:
         raise D365Error(f"Unknown entity set: {entity_set!r}")
+    primary_id_attr: str | None = matches[0].get("PrimaryIdAttribute") or None
 
     attrs = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
@@ -185,12 +194,23 @@ def validate_payload(
         if suggestion:
             did_you_mean[field] = suggestion
 
-    if not unknown:
-        return {"ok": True}
-    return {
-        "ok": False,
-        "meta": {"unknown_fields": unknown, "did_you_mean": did_you_mean},
-    }
+    if unknown:
+        return {
+            "ok": False,
+            "meta": {"unknown_fields": unknown, "did_you_mean": did_you_mean},
+        }
+
+    warnings: list[str] = []
+    if is_create and primary_id_attr:
+        if any(key.split("@", 1)[0] == primary_id_attr for key in payload):
+            warnings.append(
+                f"payload contains primary id {primary_id_attr!r} — "
+                "remove it unless you intend to create with an explicit GUID"
+            )
+
+    if warnings:
+        return {"ok": True, "meta": {"warnings": warnings}}
+    return {"ok": True}
 
 
 # ── Create ──────────────────────────────────────────────────────────────
