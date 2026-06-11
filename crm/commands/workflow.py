@@ -13,6 +13,38 @@ from crm.commands._helpers import (
     _journal,
 )
 
+_CATEGORY_NAMES = {
+    "workflow": workflow_mod.CATEGORY_WORKFLOW,
+    "dialog": workflow_mod.CATEGORY_DIALOG,
+    "businessrule": workflow_mod.CATEGORY_BUSINESS_RULE,
+    "action": workflow_mod.CATEGORY_ACTION,
+    "bpf": workflow_mod.CATEGORY_BPF,
+    "flow": workflow_mod.CATEGORY_MODERN_FLOW,
+}
+
+_CATEGORY_NAMES_LIST = ", ".join(_CATEGORY_NAMES)
+
+
+class _WorkflowCategoryType(click.ParamType):
+    name = "category"
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, int):
+            return value
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            pass
+        lower = value.lower()
+        if lower in _CATEGORY_NAMES:
+            return _CATEGORY_NAMES[lower]
+        self.fail(
+            f"{value!r} is not a valid category. "
+            f"Use an integer or one of: {_CATEGORY_NAMES_LIST}.",
+            param,
+            ctx,
+        )
+
 
 @click.group("workflow")
 def workflow_group():
@@ -33,7 +65,9 @@ def _redirect_note_meta(info: dict) -> dict | None:
 
 
 @workflow_group.command("list")
-@click.option("--category", type=int, help="Filter by category (0=Workflow, 4=BPF, 5=Modern Flow).")
+@click.option("--category", type=_WorkflowCategoryType(),
+              help="Filter by category. Accepts an integer (0–5) or a friendly name: "
+                   "workflow, dialog, businessrule, action, bpf, flow.")
 @click.option("--entity", "primary_entity", help="Filter by primary entity logical name.")
 @click.option("--activated/--all", "activated_only", default=False,
               help="Restrict to activated workflows. Default returns all states.")

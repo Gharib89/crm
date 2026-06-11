@@ -47,6 +47,14 @@ crm --json entity create cwx_tickets --validate --data '{"cwx_naem":"typo"}'
 
 Valid `<nav>@odata.bind` keys are checked against the navigation-property names, so a bound lookup is never a false positive. It's opt-in (the GETs cost 1-3 round-trips) and composes with `--dry-run`: the validation GETs run for real, then the write is previewed. Scope is field-**name** only — option-set values are not validated. Works the same on `entity update`.
 
+On **`entity create`**, `--validate` also warns when the payload contains the entity's primary id attribute (e.g. `accountid`). The warning does not block the write — creating with an explicit GUID is intentional in some workflows — but it catches the common footgun of copying a record whose primary id was carried over from `metadata describe`:
+
+```json
+{"ok": true, "data": {...}, "meta": {"warnings": ["payload contains primary id 'accountid' — remove it unless you intend to create with an explicit GUID"]}}
+```
+
+This warning is not emitted for `entity update` (setting the primary id on an update is silently ignored by the server, not a footgun).
+
 ## Assert a field value after a write (`--expect`)
 
 ```bash

@@ -104,12 +104,12 @@ class CLIContext:
                 raise click.exceptions.Exit(FAILURE_EXIT_CODE)
             return
 
+        for w in warnings or []:
+            self.skin.warning(w)
+
         if not ok:
             self.skin.error(error or "Operation failed.")
             raise click.exceptions.Exit(FAILURE_EXIT_CODE)
-
-        for w in warnings or []:
-            self.skin.warning(w)
 
         if table:
             headers = table.get("headers", [])
