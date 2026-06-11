@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.1.4 (2026-06-11)
+
+### Bug Fixes
+
+- **query**: Widen error message and test matrix to cover all three path forms
+  ([#243](https://github.com/Gharib89/crm/pull/243),
+  [`51a1687`](https://github.com/Gharib89/crm/commit/51a168720cf5f8fa9421514b1dee6b1f0c7b3360))
+
+### Code Style
+
+- **tests,docs**: Replace real-looking GUID with obvious placeholder
+  ([#243](https://github.com/Gharib89/crm/pull/243),
+  [`51a1687`](https://github.com/Gharib89/crm/commit/51a168720cf5f8fa9421514b1dee6b1f0c7b3360))
+
+### Documentation
+
+- **query**: Promote odata path-arg contract to documented, tested behavior
+  ([#243](https://github.com/Gharib89/crm/pull/243),
+  [`51a1687`](https://github.com/Gharib89/crm/commit/51a168720cf5f8fa9421514b1dee6b1f0c7b3360))
+
+
 ## v3.1.3 (2026-06-11)
 
 ### Bug Fixes
