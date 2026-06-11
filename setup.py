@@ -33,8 +33,10 @@ setup(
         # any existing `crm[keyring]` install command still resolves.
         "keyring": [],
         "docs": [
-            "mkdocs>=1.6",
-            "mkdocs-material>=9.5",
+            # Upper-bounded against the breaking mkdocs 2.0 rewrite (incompatible
+            # with Material, removes the plugin system) — see docs/adr/0005.
+            "mkdocs>=1.6,<2",
+            "mkdocs-material>=9.5,<10",
             "mkdocs-click>=0.8",
             "mkdocs-include-markdown-plugin>=7",
             "mkdocs-llmstxt>=0.2",
