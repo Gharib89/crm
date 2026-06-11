@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.1.1 (2026-06-11)
+
+### Bug Fixes
+
+- **metadata**: Derive bind_key from referencing nav property, not referenced
+  ([#240](https://github.com/Gharib89/crm/pull/240),
+  [`e8fdb5e`](https://github.com/Gharib89/crm/commit/e8fdb5ebf17273cdfde088cb4015d529e5a0d988))
+
+### Documentation
+
+- **claude**: Mandate worktree-per-feature for shared checkout
+  ([`59a7d97`](https://github.com/Gharib89/crm/commit/59a7d97551164d4b4d071c2bbeed7da8314c0d28))
+
+
 ## v3.1.0 (2026-06-11)
 
 ### Documentation
