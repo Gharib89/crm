@@ -402,7 +402,18 @@ class D365Backend:
         if profile.auth_scheme != "oauth" and not profile.username:
             raise D365Error("Profile is missing the username.")
 
-        import requests  # deferred: importing this module must not import requests (#247)
+        # Deferred transport import (#247). Surface a broken/partial install
+        # (requests absent) as a clean D365Error — the contract the lazy command
+        # loader gave when this import lived at module top — not a raw ImportError
+        # traceback. This is the single gate: request()/batch() run only on a
+        # constructed backend, so requests is guaranteed importable past here.
+        try:
+            import requests
+        except ImportError as exc:
+            raise D365Error(
+                "The 'requests' HTTP library is required but not installed. "
+                "Reinstall crm (e.g. `pip install --force-reinstall crm`)."
+            ) from exc
 
         self.profile = profile
         self._dry_run = dry_run
