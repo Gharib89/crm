@@ -101,7 +101,8 @@ def self_update_cmd(ctx: CLIContext, check_only: bool) -> None:
         return
     # After the bundle swap the new skill tree is on disk under the install dir;
     # the running process is still the old version, so refresh to `to_version`.
-    new_version = str(result.get("to_version", ""))
+    # Fall back to current_version() when already up-to-date (no `to_version` key).
+    new_version = str(result.get("to_version") or update_mod.current_version())
     skills = _refresh_skills(new_version, _frozen_skill_src(target))
     if ctx.json_mode:
         result["skills"] = skills

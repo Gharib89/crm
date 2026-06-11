@@ -179,6 +179,24 @@ class TestSkillRefresh:
         assert result.exit_code == 0
         assert seen["version"] == "3.0.0"  # to_version, already v-stripped — not the old running version
 
+    def test_frozen_up_to_date_uses_current_version(self, monkeypatch, tmp_path):
+        install = tmp_path / "crm"
+        skills = install / "_internal" / "crm" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "SKILL.md").write_text("SAME", encoding="utf-8")
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(update_mod, "install_dir", lambda: install)
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        monkeypatch.setattr(update_mod, "perform_update",
+                            lambda *a, **k: {"updated": False, "current": "3.0.0", "latest": "v3.0.0",
+                                             "reason": "up-to-date"})
+        seen = {}
+        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
+                            lambda version, src: seen.update(version=version) or [])
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        assert seen.get("version") == update_mod.current_version()  # never ""
+
 
 class TestFrozenUpdate:
     """Frozen install runs the swap; surfaces a clean error on failure."""
