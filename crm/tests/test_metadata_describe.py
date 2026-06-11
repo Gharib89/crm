@@ -114,10 +114,17 @@ class TestLookupBindEnrichment:
             _attr("new_name", "String", required="ApplicationRequired"),
             _attr("new_accountid", "Lookup"),
         ]}
+        # All three names differ so asserting the wrong field cannot pass:
+        #  - attribute logical name      : new_accountid
+        #  - referencing nav prop (CORRECT, single-valued, case-preserved,
+        #    used in @odata.bind)         : new_AccountId
+        #  - referenced nav prop (WRONG, collection-valued on the OTHER entity,
+        #    rejected by the server)      : new_project_AccountId
         m2o = {"value": [{
             "ReferencingAttribute": "new_accountid",
             "ReferencedEntity": "account",
-            "ReferencedEntityNavigationPropertyName": "new_AccountId",
+            "ReferencingEntityNavigationPropertyName": "new_AccountId",
+            "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
         }]}
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
@@ -132,13 +139,64 @@ class TestLookupBindEnrichment:
 
         by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
         lookup = by_name["new_accountid"]
-        # Bind key is the navigation property + @odata.bind, self-derived from
-        # the ManyToOne relationship joined on ReferencingAttribute.
+        # Bind key is the single-valued navigation property on THIS entity
+        # (ReferencingEntityNavigationPropertyName) + @odata.bind, self-derived
+        # from the ManyToOne relationship joined on ReferencingAttribute. The
+        # case is preserved exactly (server rejects a lower-cased nav name).
         assert lookup["bind_key"] == "new_AccountId@odata.bind"
         assert lookup["targets"] == [{"logical": "account", "set_name": "accounts"}]
         # A non-lookup attribute carries neither enrichment key.
         assert "bind_key" not in by_name["new_name"]
         assert "targets" not in by_name["new_name"]
+
+    def test_describe_bind_key_round_trips_through_entity_validate(self, backend):
+        """describe's `bind_key` must be accepted by `entity create --validate`.
+
+        Both code paths key off `ReferencingEntityNavigationPropertyName`; this
+        drives them off ONE mocked metadata view and asserts the bind key
+        describe emits is in the valid-key set validate builds. The nav name
+        (`new_AccountId`) is deliberately distinct from the attribute logical
+        name and the collection (referenced) nav name, so the pre-#228 code —
+        which emitted the referenced name — would produce a key validate
+        rejects, failing this test. Guards against the two paths drifting.
+        """
+        from crm.core import entity as ent
+        from crm.core import metadata as meta
+        attrs = {"value": [
+            _attr("new_name", "String", required="ApplicationRequired"),
+            _attr("new_accountid", "Lookup"),
+        ]}
+        m2o = {"value": [{
+            "ReferencingAttribute": "new_accountid",
+            "ReferencedEntity": "account",
+            "ReferencingEntityNavigationPropertyName": "new_AccountId",
+            "ReferencedEntityNavigationPropertyName": "new_project_AccountId",
+        }]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_m2o_url(backend), json=m2o)
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')"),
+                json={"EntitySetName": "accounts"},
+            )
+            brief = meta.describe_entity(backend, "new_project")
+            lookup = next(
+                a for a in brief["writable_attributes"]
+                if a["logical_name"] == "new_accountid"
+            )
+            # Set-name resolution for validate's entity-set -> logical lookup.
+            m.get(
+                backend.url_for("EntityDefinitions"),
+                json={"value": [{
+                    "LogicalName": "new_project",
+                    "EntitySetName": "new_projects",
+                }]},
+            )
+            payload = {lookup["bind_key"]: "/accounts(00000000-0000-0000-0000-000000000000)"}
+            result = ent.validate_payload(backend, "new_projects", payload)
+
+        assert result == {"ok": True}
 
 
 class TestPicklistLocalOptions:
