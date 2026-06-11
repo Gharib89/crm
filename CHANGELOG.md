@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.5.0 (2026-06-11)
+
+### Features
+
+- **metadata**: Hint did_you_mean on describe 404 for set-name mistakes
+  ([#249](https://github.com/Gharib89/crm/pull/249),
+  [`ad7ca98`](https://github.com/Gharib89/crm/commit/ad7ca984cafcb049f60d7215d38fc6865a39b4f1))
+
+
 ## v3.4.0 (2026-06-11)
 
 ### Bug Fixes
