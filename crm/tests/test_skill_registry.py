@@ -3,6 +3,8 @@
 """Unit tests for the installed-skill registry (${CRM_HOME}/installed-skills.json)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 
@@ -11,12 +13,18 @@ def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
 
 
+def _norm(p: str) -> str:
+    # The registry stores the resolved absolute path; on Windows "/a" → "D:\\a",
+    # so expected values must be normalized the same way to stay OS-portable.
+    return str(Path(p).resolve())
+
+
 def test_record_then_read():
     from crm.commands import skill_registry as reg
 
     reg.record_install("claude", "/abs/path", "2.10.0")
     skills = reg.read_skills()
-    assert skills == [{"target": "claude", "dest": "/abs/path", "installed_version": "2.10.0"}]
+    assert skills == [{"target": "claude", "dest": _norm("/abs/path"), "installed_version": "2.10.0"}]
 
 
 def test_reinstall_same_dest_updates_in_place():
@@ -37,7 +45,7 @@ def test_record_dedups_by_resolved_path():
     skills = reg.read_skills()
     assert len(skills) == 1
     assert skills[0]["installed_version"] == "2.11.0"
-    assert skills[0]["dest"] == "/a/b"  # stored normalized
+    assert skills[0]["dest"] == _norm("/a/b")  # stored normalized
 
 
 def test_remove_matches_unresolved_spelling():
@@ -53,7 +61,7 @@ def test_distinct_dests_accumulate():
 
     reg.record_install("claude", "/a", "2.10.0")
     reg.record_install("copilot", "/b", "2.10.0")
-    assert {s["dest"] for s in reg.read_skills()} == {"/a", "/b"}
+    assert {s["dest"] for s in reg.read_skills()} == {_norm("/a"), _norm("/b")}
 
 
 def test_remove_install_drops_matching_dest():
@@ -62,7 +70,7 @@ def test_remove_install_drops_matching_dest():
     reg.record_install("claude", "/a", "2.10.0")
     reg.record_install("copilot", "/b", "2.10.0")
     reg.remove_install("/a")
-    assert [s["dest"] for s in reg.read_skills()] == ["/b"]
+    assert [s["dest"] for s in reg.read_skills()] == [_norm("/b")]
 
 
 def test_missing_file_reads_as_empty():

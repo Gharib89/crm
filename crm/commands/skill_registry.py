@@ -9,8 +9,12 @@ Format is a top-level object so future keys land without a break::
 
     {"skills": [{"target": "claude", "dest": "/abs/path", "installed_version": "2.10.0"}]}
 
-Read tolerantly (missing/corrupt → empty list) and written atomically (temp +
-os.replace), since CRM_HOME is shared across concurrent invocations.
+Read tolerantly (missing/corrupt → empty list) and written atomically (a unique
+temp file + os.replace) so a reader never sees a torn/partial file. The atomic
+write is NOT a lock: two processes doing a simultaneous read-modify-write could
+still drop one update. That is acceptable here — `skill install`/`uninstall` are
+rare, interactive, one-shot operations, not a concurrent hot path — so we keep
+the write torn-free without the cross-platform cost of a real lockfile.
 """
 # pyright: basic
 from __future__ import annotations
@@ -57,8 +61,9 @@ def read_skills() -> list[dict[str, Any]]:
 
 
 def _write_skills(skills: list[dict[str, Any]]) -> None:
-    # Unique temp name in the same dir (CRM_HOME is shared across concurrent
-    # invocations) → a fixed `.tmp` would let two writers clobber each other.
+    # Unique temp name in the same dir → a fixed `.tmp` would let two concurrent
+    # writers clobber each other's temp file mid-write. os.replace is atomic, so a
+    # reader sees either the old or the new file, never a partial one.
     path = registry_path()
     fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     tmp = Path(tmp_name)

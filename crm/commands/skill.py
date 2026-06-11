@@ -115,8 +115,9 @@ def skill_uninstall(ctx: CLIContext, target: str, dest: str | None):
     dest_dir = _resolve_skill_dest(target, dest)
     dest_file = dest_dir / "SKILL.md"
     try:
-        skill_registry.remove_install(str(dest_dir))
         if not dest_file.exists():
+            # Already gone — prune any stale registry entry and report it.
+            skill_registry.remove_install(str(dest_dir))
             ctx.emit(True, data={"removed": False, "reason": "not installed", "dest": str(dest_file)})
             return
         ref_dir = dest_dir / "reference"
@@ -127,6 +128,9 @@ def skill_uninstall(ctx: CLIContext, target: str, dest: str | None):
             dest_dir.rmdir()
         except OSError:
             pass
+        # Drop the registry entry only after the files are gone, so a failed
+        # delete leaves both the skill and its registry record intact.
+        skill_registry.remove_install(str(dest_dir))
     except (OSError, shutil.Error) as exc:
         ctx.emit(False, error=f"Failed to uninstall skill at {dest_dir}: {exc}")
         return

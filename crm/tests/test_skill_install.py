@@ -124,6 +124,25 @@ def test_uninstall_io_error_is_clean_envelope(tmp_path: Path, monkeypatch):
     assert json.loads(result.output)["ok"] is False
 
 
+def test_uninstall_keeps_registry_when_file_delete_fails(tmp_path: Path, monkeypatch):
+    # If the filesystem removal fails, the registry entry must NOT be pruned —
+    # else self-update would stop refreshing a skill that is still on disk.
+    from crm.commands import skill_registry as reg
+    import crm.commands.skill as skill_mod
+
+    dest = tmp_path / "crm"
+    runner = _runner(tmp_path, monkeypatch)
+    runner.invoke(cli, ["--json", "skill", "install", "--dest", str(dest), "--force"])
+
+    def boom(*a, **k):
+        raise PermissionError("locked")
+
+    monkeypatch.setattr(skill_mod.shutil, "rmtree", boom)
+    result = runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)])
+    assert result.exit_code == 1, result.output
+    assert len(reg.read_skills()) == 1  # entry preserved
+
+
 def test_uninstall_removes_tree(tmp_path: Path, monkeypatch):
     dest = tmp_path / "crm"
     runner = _runner(tmp_path, monkeypatch)
