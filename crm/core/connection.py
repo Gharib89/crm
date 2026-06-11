@@ -14,8 +14,10 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
-import requests
-
+# requests is imported lazily inside the doctor probes (the only functions here
+# that touch the wire) so importing this module never imports the transport
+# stack — `crm profile`/`connection` command modules import it for D365Error,
+# DEFAULT_HEADERS and credential resolution, none of which need requests (#247).
 from crm.utils.d365_backend import (
     ConnectionProfile,
     D365Backend,
@@ -221,6 +223,8 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
     Works regardless of ``backend.dry_run`` (raw session GETs ignore dry_run),
     which is the correct behaviour for a diagnostic.
     """
+    import requests  # deferred transport import (#247)
+
     profile = backend.profile
     parsed = urllib.parse.urlparse(profile.url)
     host = parsed.hostname or ""
@@ -384,6 +388,8 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
 
 
 def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
+    import requests  # deferred transport import (#247)
+
     try:
         # share the client's standard OData headers so the diagnostic stays
         # faithful to a real request (some Dataverse endpoints 406/415 / return
@@ -420,6 +426,8 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
 
 
 def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
+    import requests  # deferred transport import (#247)
+
     try:
         # share the client's standard OData headers (see _doctor_version).
         resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]

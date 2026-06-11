@@ -19,22 +19,22 @@ import time
 import urllib.parse
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Sequence, cast
+from typing import TYPE_CHECKING, Any, Callable, Literal, Sequence, cast
 
 import logging as _logging
 
-import requests
-from requests.auth import AuthBase
-from requests.structures import CaseInsensitiveDict
-
 from crm.utils.d365_types import BatchOperation, BatchResult
 
-_http_logger = _logging.getLogger("crm.http")
+if TYPE_CHECKING:
+    # Type-only: deferred so importing this module never imports requests. The
+    # transport stack loads only when an authenticated session is actually built
+    # (issue #247) — requests inside D365Backend.__init__/request()/batch(), the
+    # NTLM chain in the ntlm branch of _make_auth, AuthBase in the OAuth factory.
+    import requests
+    from requests.auth import AuthBase
+    from requests.structures import CaseInsensitiveDict
 
-try:
-    from requests_ntlm import HttpNtlmAuth
-except ImportError:
-    HttpNtlmAuth = None  # type: ignore
+_http_logger = _logging.getLogger("crm.http")
 
 
 class D365Error(RuntimeError):
@@ -282,89 +282,111 @@ def _oauth_cache_path() -> str | None:
     return _os.path.join(root, "msal_token_cache.json")
 
 
-class _OAuthBearerAuth(AuthBase):
-    """Injects an AAD bearer token (client-credentials) on every request.
+# Lazily-built, cached OAuth bearer-auth class. Its base (requests' AuthBase) is
+# deferred behind this factory so importing the module never imports requests; by
+# the time an OAuth session is built, D365Backend.__init__ has already imported
+# requests, so the import here is free (issue #247).
+_oauth_auth_cls: "Callable[..., AuthBase] | None" = None
 
-    Token acquisition is delegated to msal, which serves a valid token from
-    its cache and only round-trips to AAD when none is available. The cache is
-    persisted to disk (0600) so the token survives across `crm` invocations.
+
+def _oauth_bearer_auth_cls() -> "Callable[..., AuthBase]":
+    """Define (once) and return the AAD bearer-token auth class.
+
+    The class subclasses requests' ``AuthBase``, so its definition is deferred to
+    first OAuth-session construction rather than run at module import.
     """
+    global _oauth_auth_cls
+    if _oauth_auth_cls is not None:
+        return _oauth_auth_cls
 
-    def __init__(self, msal_mod: Any, client_id: str, authority: str, secret: str,
-                 scope: str, cache: Any = None, cache_path: str | None = None) -> None:
-        self._msal = msal_mod
-        self._client_id = client_id
-        self._authority = authority
-        self._secret = secret
-        self._scope = scope
-        self._cache = cache
-        self._cache_path = cache_path
-        self._app: Any = None
+    from requests.auth import AuthBase
 
-    def _ensure_app(self) -> Any:
-        # Built lazily on first request: msal validates the authority over the
-        # network at construction, so this must not run when the backend is built.
-        if self._app is None:
+    class _OAuthBearerAuth(AuthBase):
+        """Injects an AAD bearer token (client-credentials) on every request.
+
+        Token acquisition is delegated to msal, which serves a valid token from
+        its cache and only round-trips to AAD when none is available. The cache is
+        persisted to disk (0600) so the token survives across `crm` invocations.
+        """
+
+        def __init__(self, msal_mod: Any, client_id: str, authority: str, secret: str,
+                     scope: str, cache: Any = None, cache_path: str | None = None) -> None:
+            self._msal = msal_mod
+            self._client_id = client_id
+            self._authority = authority
+            self._secret = secret
+            self._scope = scope
+            self._cache = cache
+            self._cache_path = cache_path
+            self._app: Any = None
+
+        def _ensure_app(self) -> Any:
+            # Built lazily on first request: msal validates the authority over the
+            # network at construction, so this must not run when the backend is built.
+            if self._app is None:
+                try:
+                    self._app = self._msal.ConfidentialClientApplication(
+                        self._client_id,
+                        authority=self._authority,
+                        client_credential=self._secret,
+                        token_cache=self._cache,
+                    )
+                except Exception as exc:
+                    raise D365Error(
+                        f"OAuth setup failed: {exc}\n"
+                        "Verify the profile's tenant_id (crm profile edit) and that the "
+                        "org URL is a reachable public-cloud Dataverse host.",
+                        status=401,
+                    ) from exc
+            return self._app
+
+        def __call__(self, request: "requests.PreparedRequest") -> "requests.PreparedRequest":
+            app = self._ensure_app()
             try:
-                self._app = self._msal.ConfidentialClientApplication(
-                    self._client_id,
-                    authority=self._authority,
-                    client_credential=self._secret,
-                    token_cache=self._cache,
-                )
+                result: dict[str, Any] = app.acquire_token_for_client(scopes=[self._scope])
             except Exception as exc:
+                raise D365Error(f"OAuth token acquisition failed: {exc}", status=401) from exc
+            token = result.get("access_token")
+            if not token:
+                err = result.get("error", "unknown_error")
+                desc = result.get("error_description", "")
+                # No automatic refresh-retry: a rejected credential is operational.
                 raise D365Error(
-                    f"OAuth setup failed: {exc}\n"
-                    "Verify the profile's tenant_id (crm profile edit) and that the "
-                    "org URL is a reachable public-cloud Dataverse host.",
+                    f"OAuth token acquisition failed ({err}). {desc}\n"
+                    "Check the app registration (client id/secret, tenant) and that "
+                    "an application user for this app exists in Dynamics with the "
+                    "right security role.",
                     status=401,
-                ) from exc
-        return self._app
+                )
+            request.headers["Authorization"] = f"Bearer {token}"
+            self._persist_cache()
+            return request
 
-    def __call__(self, request: requests.PreparedRequest) -> requests.PreparedRequest:
-        app = self._ensure_app()
-        try:
-            result: dict[str, Any] = app.acquire_token_for_client(scopes=[self._scope])
-        except Exception as exc:
-            raise D365Error(f"OAuth token acquisition failed: {exc}", status=401) from exc
-        token = result.get("access_token")
-        if not token:
-            err = result.get("error", "unknown_error")
-            desc = result.get("error_description", "")
-            # No automatic refresh-retry: a rejected credential is operational.
-            raise D365Error(
-                f"OAuth token acquisition failed ({err}). {desc}\n"
-                "Check the app registration (client id/secret, tenant) and that "
-                "an application user for this app exists in Dynamics with the "
-                "right security role.",
-                status=401,
-            )
-        request.headers["Authorization"] = f"Bearer {token}"
-        self._persist_cache()
-        return request
-
-    def _persist_cache(self) -> None:
-        cache = self._cache
-        path = self._cache_path
-        if cache is None or path is None or not getattr(cache, "has_state_changed", False):
-            return
-        # Write to a pid-unique temp file then atomically replace, so concurrent
-        # `crm` invocations sharing CRM_HOME can't leave a torn cache file.
-        tmp = f"{path}.{_os.getpid()}.tmp"
-        try:
-            fd = _os.open(tmp, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+        def _persist_cache(self) -> None:
+            cache = self._cache
+            path = self._cache_path
+            if cache is None or path is None or not getattr(cache, "has_state_changed", False):
+                return
+            # Write to a pid-unique temp file then atomically replace, so concurrent
+            # `crm` invocations sharing CRM_HOME can't leave a torn cache file.
+            tmp = f"{path}.{_os.getpid()}.tmp"
             try:
-                _os.write(fd, cache.serialize().encode("utf-8"))
-            finally:
-                _os.close(fd)
-            _os.chmod(tmp, 0o600)  # enforce 0600 regardless of umask
-            _os.replace(tmp, path)
-        except OSError:
-            try:
-                _os.unlink(tmp)
+                fd = _os.open(tmp, _os.O_WRONLY | _os.O_CREAT | _os.O_TRUNC, 0o600)
+                try:
+                    _os.write(fd, cache.serialize().encode("utf-8"))
+                finally:
+                    _os.close(fd)
+                _os.chmod(tmp, 0o600)  # enforce 0600 regardless of umask
+                _os.replace(tmp, path)
             except OSError:
-                pass
-            # best-effort: the in-memory token is still valid this run
+                try:
+                    _os.unlink(tmp)
+                except OSError:
+                    pass
+                # best-effort: the in-memory token is still valid this run
+
+    _oauth_auth_cls = _OAuthBearerAuth
+    return _oauth_auth_cls
 
 
 class D365Backend:
@@ -379,6 +401,8 @@ class D365Backend:
             raise D365Error("Profile is missing the server URL.")
         if profile.auth_scheme != "oauth" and not profile.username:
             raise D365Error("Profile is missing the username.")
+
+        import requests  # deferred: importing this module must not import requests (#247)
 
         self.profile = profile
         self._dry_run = dry_run
@@ -409,11 +433,13 @@ class D365Backend:
         """Pick the auth adapter based on profile.auth_scheme."""
         scheme = self.profile.auth_scheme
         if scheme == "ntlm":
-            if HttpNtlmAuth is None:
+            try:
+                from requests_ntlm import HttpNtlmAuth
+            except ImportError as exc:
                 raise D365Error(
                     "requests_ntlm is not installed. "
                     "Install with: pip install requests_ntlm"
-                )
+                ) from exc
             user_principal = (
                 f"{self.profile.domain}\\{self.profile.username}"
                 if self.profile.domain else self.profile.username
@@ -474,7 +500,8 @@ class D365Backend:
             except (OSError, ValueError):
                 pass  # corrupt/unreadable cache → start fresh, overwrite on next save
 
-        return _OAuthBearerAuth(_msal, client, authority, secret, scope, cache, cache_path)
+        auth_cls = _oauth_bearer_auth_cls()
+        return auth_cls(_msal, client, authority, secret, scope, cache, cache_path)
 
     # ── URL helpers ─────────────────────────────────────────────────────
 
@@ -540,6 +567,9 @@ class D365Backend:
         Raises D365Error on transport failure or non-2xx response after retries
         are exhausted.
         """
+        import requests  # deferred transport import (#247)
+        from requests.structures import CaseInsensitiveDict
+
         url = self.url_for(path)
         # CaseInsensitiveDict so the never-both / per-call-disable pops below
         # also drop differently-cased impersonation headers from extra_headers
@@ -704,6 +734,8 @@ class D365Backend:
         See spec C §4 for transactional semantics, request shape, and
         size/count limits. Returns one BatchResult per input op in input order.
         """
+        import requests  # deferred transport import (#247)
+
         validated: list[dict[str, Any]] = []
         for i, op in enumerate(operations):
             if "method" not in op or "url" not in op:
@@ -970,18 +1002,17 @@ def _is_response_retryable(resp: "requests.Response", method: str, retry_on_ambi
     return False
 
 
-_RETRYABLE_TRANSPORT_TYPES = (
-    requests.exceptions.ConnectionError,
-    requests.exceptions.Timeout,
-    requests.exceptions.ChunkedEncodingError,
-)
-
-
 def _is_transport_retryable(exc: BaseException) -> bool:
     """Return True if the transport exception is worth retrying."""
+    import requests  # deferred transport import (#247)
+
     if isinstance(exc, requests.exceptions.SSLError):
         return False
-    return isinstance(exc, _RETRYABLE_TRANSPORT_TYPES)
+    return isinstance(exc, (
+        requests.exceptions.ConnectionError,
+        requests.exceptions.Timeout,
+        requests.exceptions.ChunkedEncodingError,
+    ))
 
 
 _RATE_LIMIT_HEADER_MAP = (

@@ -23,8 +23,9 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import IO, Any
 
-import requests
-
+# requests is imported lazily inside the network functions below so that merely
+# importing this module (e.g. when `crm --help` imports the self-update command
+# module to render help) never pulls in the transport stack (#247).
 from crm import __version__
 
 
@@ -58,6 +59,8 @@ def fetch_latest_version(base_url: str, timeout: float = _NETWORK_TIMEOUT) -> st
     Returns None on any failure (timeout, connection error, non-2xx, empty body):
     the caller treats "unknown latest" as "no notice", never as an error.
     """
+    import requests  # deferred transport import (#247)
+
     try:
         resp = requests.get(f"{base_url}/latest/VERSION", timeout=timeout)
         resp.raise_for_status()
@@ -336,6 +339,8 @@ def check_for_update(base_url: str | None = None) -> dict[str, Any]:
 
 
 def _download_archive(base_url: str, version: str, archive: str) -> bytes:
+    import requests  # deferred transport import (#247)
+
     # (connect, read) timeout: bound the connect so an unreachable network fails
     # fast rather than appearing to hang. Network/HTTP errors become UpdateError
     # so the command layer emits a clean envelope instead of a traceback.
@@ -349,6 +354,8 @@ def _download_archive(base_url: str, version: str, archive: str) -> bytes:
 
 
 def _fetch_sha256sums(base_url: str, version: str) -> dict[str, str]:
+    import requests  # deferred transport import (#247)
+
     url = f"{base_url}/{version}/SHA256SUMS"
     try:
         resp = requests.get(url, timeout=(_INTERACTIVE_TIMEOUT, _INTERACTIVE_TIMEOUT))

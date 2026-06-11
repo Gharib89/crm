@@ -68,6 +68,7 @@ class TestFetchLatestVersion:
     """GET <base>/latest/VERSION, trimmed; any error returns None (fail-silent)."""
 
     def test_success_hits_latest_version_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import requests
         seen: dict[str, object] = {}
 
         def fake_get(url: str, timeout: float | None = None, **kw: object) -> _Resp:
@@ -75,7 +76,9 @@ class TestFetchLatestVersion:
             seen["timeout"] = timeout
             return _Resp("v3.1.4\n")
 
-        monkeypatch.setattr(update_mod.requests, "get", fake_get)
+        # update.py imports requests lazily inside the function (#247); patch the
+        # real module's get — the local `import requests` binds to the same object.
+        monkeypatch.setattr(requests, "get", fake_get)
         assert fetch_latest_version("https://r2.example/base") == "v3.1.4"
         assert seen["url"] == "https://r2.example/base/latest/VERSION"
         assert seen["timeout"] is not None  # a bounded timeout is always passed
@@ -85,8 +88,9 @@ class TestFetchLatestVersion:
     ) -> None:
         # A 200 with junk (proxy login page, "latest", HTML) must not be cached
         # or compared — it would crash compare_versions downstream.
+        import requests
         monkeypatch.setattr(
-            update_mod.requests, "get",
+            requests, "get",
             lambda *a, **k: _Resp("<html>nope</html>"),
         )
         assert fetch_latest_version("https://r2.example") is None
@@ -104,7 +108,7 @@ class TestFetchLatestVersion:
                 raise requests.ConnectionError("dead endpoint")
             return _Resp("nope", status=500)
 
-        monkeypatch.setattr(update_mod.requests, "get", fake_get)
+        monkeypatch.setattr(requests, "get", fake_get)
         assert fetch_latest_version("https://dead.invalid") is None
 
 
@@ -481,7 +485,7 @@ class TestPerformUpdate:
 
         def boom(url, **kw):
             raise requests.ConnectionError("dead")
-        monkeypatch.setattr(update_mod.requests, "get", boom)
+        monkeypatch.setattr(requests, "get", boom)
 
         install = tmp_path / "crm"; install.mkdir()
         (install / "crm").write_text("OLD", encoding="utf-8")
