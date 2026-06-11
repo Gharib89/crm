@@ -492,3 +492,194 @@ class TestGetOptionsetMetaOptions:
         # The flattened-options repr is emitted only via the meta status line.
         assert "{'value': 1, 'label': 'Low'}" not in result.output
         assert "options:" not in result.output
+
+
+class TestSuggestLogicalName:
+    """Unit tests for suggest_logical_name recovery helper (#203)."""
+
+    def _list_url(self, backend) -> str:
+        return backend.url_for("EntityDefinitions")
+
+    def _filter_url(self, backend, set_name: str) -> str:
+        import urllib.parse
+        filt = f"EntitySetName eq '{set_name}'"
+        params = urllib.parse.urlencode({
+            "$select": "LogicalName,EntitySetName",
+            "$filter": filt,
+        })
+        return backend.url_for("EntityDefinitions") + "?" + params
+
+    def test_exact_set_name_match_returns_logical_name(self, backend):
+        from crm.core.metadata import suggest_logical_name
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions"),
+                json={"value": [{"LogicalName": "account", "EntitySetName": "accounts"}]},
+            )
+            result = suggest_logical_name(backend, "accounts")
+        assert result is not None
+        assert result["logical_name"] == "account"
+        assert result["reason"] == "exact-set"
+
+    def test_fuzzy_match_returns_close_logical_name(self, backend):
+        from crm.core.metadata import suggest_logical_name
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions"),
+                json={"value": [
+                    {"LogicalName": "webresource", "EntitySetName": "webresourceset"},
+                ]},
+            )
+            result = suggest_logical_name(backend, "webresources")
+        assert result is not None
+        assert result["logical_name"] == "webresource"
+        assert result["reason"] == "close-match"
+
+    def test_no_match_returns_none(self, backend):
+        from crm.core.metadata import suggest_logical_name
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions"),
+                json={"value": [
+                    {"LogicalName": "account", "EntitySetName": "accounts"},
+                    {"LogicalName": "contact", "EntitySetName": "contacts"},
+                ]},
+            )
+            result = suggest_logical_name(backend, "zzzznotanentity")
+        assert result is None
+
+    def test_recovery_get_raises_returns_none(self, backend):
+        from crm.core.metadata import suggest_logical_name
+        from crm.utils.d365_backend import D365Error
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions"), status_code=500)
+            result = suggest_logical_name(backend, "accounts")
+        assert result is None
+
+    def test_exact_set_wins_over_fuzzy_when_both_match(self, backend):
+        """EntitySetName exact match takes priority over any fuzzy hit."""
+        from crm.core.metadata import suggest_logical_name
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions"),
+                json={"value": [
+                    {"LogicalName": "account", "EntitySetName": "accounts"},
+                    {"LogicalName": "accountbase", "EntitySetName": "accountbaseset"},
+                ]},
+            )
+            result = suggest_logical_name(backend, "accounts")
+        assert result is not None
+        assert result["logical_name"] == "account"
+        assert result["reason"] == "exact-set"
+
+
+class TestDescribeHint:
+    """describe command enriches 404 with did_you_mean / hint (#203)."""
+
+    def _stub(self, monkeypatch, backend):
+        monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+
+    def _entity_url(self, backend, name: str) -> str:
+        return backend.url_for(f"EntityDefinitions(LogicalName='{name}')")
+
+    def _list_url(self, backend) -> str:
+        return backend.url_for("EntityDefinitions")
+
+    def test_set_name_404_emits_did_you_mean_and_hint(self, monkeypatch, backend):
+        """`metadata describe accounts` → exit 1, meta.did_you_mean=account, hint present."""
+        self._stub(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            m.get(self._entity_url(backend, "accounts"), status_code=404)
+            m.get(self._list_url(backend), json={"value": [
+                {"LogicalName": "account", "EntitySetName": "accounts"},
+            ]})
+            # attrs GET must NOT be called (404 short-circuits)
+            result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "accounts"])
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert env["meta"]["did_you_mean"] == "account"
+        assert "hint" in env["meta"]
+        assert "logical" in env["meta"]["hint"].lower() or "singular" in env["meta"]["hint"].lower()
+
+    def test_fuzzy_404_emits_did_you_mean(self, monkeypatch, backend):
+        """`metadata describe webresources` → exit 1, meta.did_you_mean=webresource."""
+        self._stub(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            m.get(self._entity_url(backend, "webresources"), status_code=404)
+            m.get(self._list_url(backend), json={"value": [
+                {"LogicalName": "webresource", "EntitySetName": "webresourceset"},
+            ]})
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "describe", "webresources"]
+            )
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert env["meta"]["did_you_mean"] == "webresource"
+
+    def test_no_match_404_plain_envelope(self, monkeypatch, backend):
+        """`metadata describe zzzznotanentity` → exit 1, no did_you_mean."""
+        self._stub(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            m.get(self._entity_url(backend, "zzzznotanentity"), status_code=404)
+            m.get(self._list_url(backend), json={"value": [
+                {"LogicalName": "account", "EntitySetName": "accounts"},
+            ]})
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "describe", "zzzznotanentity"]
+            )
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "did_you_mean" not in env["meta"]
+
+    def test_happy_path_no_recovery_get(self, monkeypatch, backend):
+        """`metadata describe account` success → no recovery GET fired."""
+        self._stub(monkeypatch, backend)
+        attrs = {"value": [
+            {"LogicalName": "name", "AttributeType": "String",
+             "RequiredLevel": {"Value": "None"},
+             "IsValidForCreate": True, "IsValidForUpdate": True},
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(self._entity_url(backend, "account"), json={
+                "LogicalName": "account", "EntitySetName": "accounts",
+                "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name",
+            })
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')/Attributes"),
+                json=attrs,
+            )
+            result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "account"])
+            list_calls = [r for r in m.request_history
+                          if r.url == self._list_url(backend) + "?$select=LogicalName%2CEntitySetName"]
+        assert result.exit_code == 0, result.output
+        assert list_calls == []
+
+    def test_recovery_get_failure_emits_original_404(self, monkeypatch, backend):
+        """If recovery GET raises, original 404 is emitted unchanged."""
+        self._stub(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            m.get(self._entity_url(backend, "accounts"), status_code=404)
+            m.get(self._list_url(backend), status_code=500)
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "describe", "accounts"]
+            )
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert env["meta"]["status"] == 404
+        assert "did_you_mean" not in env["meta"]
+
+    def test_non_404_error_no_recovery(self, monkeypatch, backend):
+        """A 401 (or any non-404) does not trigger the recovery GET."""
+        self._stub(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            m.get(self._entity_url(backend, "account"), status_code=401)
+            # No list mock registered — requests_mock raises if it fires.
+            result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "account"])
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["meta"]["status"] == 401
+        assert "did_you_mean" not in env["meta"]

@@ -6,6 +6,7 @@ quoting/path-building behind small helpers.
 
 from __future__ import annotations
 
+import difflib
 import re
 from typing import Any
 
@@ -39,6 +40,39 @@ def list_entities(
             raise D365Error("--top must be >= 1")
         items = items[:top]
     return items
+
+
+def suggest_logical_name(
+    backend: D365Backend, wrong_name: str
+) -> dict[str, Any] | None:
+    """Return a logical-name suggestion for `wrong_name`, or None.
+
+    Two passes against a single 2-field GET (LogicalName + EntitySetName):
+    1. Exact EntitySetName match → reason "exact-set"
+    2. difflib close match over LogicalNames → reason "close-match"
+    If the recovery GET itself raises, returns None so the original error is
+    preserved by the caller.
+    """
+    try:
+        rows: list[dict[str, Any]] = as_dict(backend.get(
+            "EntityDefinitions",
+            params={"$select": "LogicalName,EntitySetName"},
+        )).get("value", [])
+    except D365Error:
+        return None
+
+    # Pass 1: exact EntitySetName match
+    for row in rows:
+        if row.get("EntitySetName") == wrong_name:
+            return {"logical_name": row["LogicalName"], "reason": "exact-set"}
+
+    # Pass 2: fuzzy over LogicalNames
+    logical_names = sorted(r["LogicalName"] for r in rows if r.get("LogicalName"))
+    matches = difflib.get_close_matches(wrong_name, logical_names, n=1, cutoff=0.6)
+    if matches:
+        return {"logical_name": matches[0], "reason": "close-match"}
+
+    return None
 
 
 def entity_info(backend: D365Backend, logical_name: str) -> dict[str, Any]:
