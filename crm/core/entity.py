@@ -732,9 +732,11 @@ def clone_record(
             if not nav or not target_set:
                 errors.append(
                     f"{name}: cannot resolve the lookup target (navigation "
-                    "property/entity set) from the source record — pass "
-                    f"--unset {name} or --override "
-                    f"'{name}@odata.bind=/<set>(<id>)'"
+                    "property + entity set) from the source record — drop it "
+                    f"with --unset {name}, or re-add it with the lookup's "
+                    "case-sensitive navigation property as --override "
+                    "'<nav>@odata.bind=/<set>(<id>)' (get <nav> from "
+                    f"`crm metadata describe {logical_name}`)"
                 )
                 continue
             bind_key = f"{nav}@odata.bind"
