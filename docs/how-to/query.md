@@ -37,7 +37,8 @@ In `--json` mode `--minimal` drops every OData annotation key (anything containi
 ## Run a FetchXML query
 
 ```bash
-crm --json query fetchxml cwx_tickets --xml '
+# ENTITY_SET can be omitted — derived from <entity name="..."> via one metadata GET
+crm --json query fetchxml --xml '
 <fetch top="20">
   <entity name="cwx_ticket">
     <attribute name="cwx_name"/>
@@ -45,8 +46,16 @@ crm --json query fetchxml cwx_tickets --xml '
     <order attribute="cwx_name"/>
   </entity>
 </fetch>'
+
+# Pass ENTITY_SET explicitly to skip the resolution GET
+crm --json query fetchxml cwx_tickets --xml '<fetch>...</fetch>'
 ```
-FetchXML is the server-side XML query language; the `<entity name>` is the logical name, while the command's entity argument is the entity-set name.
+
+FetchXML is the server-side XML query language; the `<entity name>` attribute is the
+logical name, while the entity-set name (the URL path) is the OData plural name.
+When `ENTITY_SET` is omitted, the logical name is parsed from `<entity name="...">` and
+resolved to the entity-set name via `EntityDefinitions` — one extra metadata GET.
+If the XML has no `<entity name="...">`, pass `ENTITY_SET` explicitly.
 
 ## Call a bound function or metadata path on the URL path
 

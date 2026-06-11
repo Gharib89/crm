@@ -1,10 +1,12 @@
 """Query commands (OData, FetchXML, saved/user views)."""
 # pyright: basic
 from __future__ import annotations
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import click
 from crm.core import query as query_mod
 from crm.core.query import total_record_count
+from crm.core.metadata import resolve_entity_set_name
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -12,6 +14,35 @@ from crm.commands._helpers import (
     _emit_query_result,
     _touch_session,
 )
+
+
+def _parse_entity_name_from_fetchxml(fetch_xml: str) -> str:
+    """Extract the logical entity name from a FetchXML string.
+
+    Parses the top-level <entity name="..."> attribute. Raises click.UsageError
+    (exit 2) if the XML is unparseable or the name attribute is absent — the
+    caller should pass ENTITY_SET explicitly instead.
+    """
+    try:
+        root = ET.fromstring(fetch_xml)
+    except ET.ParseError as exc:
+        raise click.UsageError(
+            f"Could not parse FetchXML: {exc}. "
+            "Pass ENTITY_SET explicitly or fix the XML."
+        )
+    entity_el = root.find("entity")
+    if entity_el is None:
+        raise click.UsageError(
+            "FetchXML has no <entity> element. "
+            "Pass ENTITY_SET explicitly or add <entity name=\"...\"> to the XML."
+        )
+    name = entity_el.get("name", "").strip()
+    if not name:
+        raise click.UsageError(
+            "FetchXML <entity> is missing the name= attribute. "
+            "Pass ENTITY_SET explicitly or add name=\"<logical-name>\" to <entity>."
+        )
+    return name
 
 
 @click.group("query")
@@ -67,7 +98,7 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
 
 
 @query_group.command("fetchxml")
-@click.argument("entity_set")
+@click.argument("entity_set", required=False, default=None)
 @click.option("--xml", "xml_inline", help="Inline FetchXML string.")
 @click.option("--file", "xml_file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a FetchXML file.")
@@ -78,7 +109,19 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
                    "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotations, minimal):
-    """Run a FetchXML query."""
+    """Run a FetchXML query.
+
+    \b
+    ENTITY_SET is the OData entity-set name (e.g. "accounts"). When omitted,
+    the logical entity name is parsed from the <entity name="..."> attribute of
+    the FetchXML and resolved to the entity-set name via one metadata GET
+    (EntityDefinitions). Pass ENTITY_SET explicitly to skip that resolution call.
+
+    \b
+    Examples:
+      crm --json query fetchxml --xml '<fetch><entity name="account">...</entity></fetch>'
+      crm --json query fetchxml accounts --xml '<fetch>...</fetch>'
+    """
     if xml_inline and xml_file:
         ctx.emit(False, error="Provide --xml or --file, not both.")
         return
@@ -86,6 +129,17 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     if not fetch_xml:
         ctx.emit(False, error="Either --xml or --file is required.")
         return
+
+    # Derive entity_set from the FetchXML when the positional is omitted.
+    # Parse raises click.UsageError (exit 2) for bad XML — escapes the D365Error try below.
+    if entity_set is None:
+        logical_name = _parse_entity_name_from_fetchxml(fetch_xml)
+        try:
+            entity_set = resolve_entity_set_name(ctx.backend(), logical_name)
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+
     try:
         result = query_mod.fetchxml_query(
             ctx.backend(), entity_set, fetch_xml,
