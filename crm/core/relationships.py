@@ -31,7 +31,13 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
     `ManyToOne` (entity is the "N"/referencing side — i.e. its own lookups), and
     `ManyToMany`. Omitting ManyToOne would hide an entity's own lookup columns.
     """
-    rel_select = "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute"
+    # ReferencingEntityNavigationPropertyName is the single-valued nav property —
+    # the `@odata.bind` key — so 1:N / N:1 rows carry it and callers can build
+    # bind payloads without a second round-trip. #228.
+    rel_select = (
+        "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute,"
+        "ReferencingEntityNavigationPropertyName"
+    )
     one_to_many = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/OneToManyRelationships",
         params={"$select": rel_select},

@@ -386,9 +386,11 @@ crm --json entity create accounts --data '{"name":"Contoso IT Dept"}'
 ```
 
 Now a ticket that **binds both lookups** with `@odata.bind`, using the SLA and account
-GUIDs from above. The bind target is the *navigation property name*, which is the
-PascalCase lookup schema name — **`cwx_SLA`** and **`cwx_CustomerId`**, not the
-lowercase logical names. If you guess wrong, read the real name from the relationship:
+GUIDs from above. The bind target is the *single-valued navigation property name* — for
+these custom lookups it is the PascalCase **`cwx_SLA`** and **`cwx_CustomerId`**, not the
+lowercase logical names (system lookups often match the lowercase attribute instead).
+The name is case-sensitive; don't guess it — `crm metadata describe <entity>` hands you
+the exact `bind_key`, or read it straight from the relationship:
 
 ```bash
 crm --json query odata \

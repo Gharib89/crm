@@ -215,11 +215,14 @@ def _enrich_lookups(
     """Attach `bind_key` + `targets[]` to each writable lookup attribute, in place.
 
     The bind key is self-derived from `ManyToOne` relationship metadata: a 1:N
-    relationship's `ReferencedEntityNavigationPropertyName` is the navigation
-    property used in a `<Nav>@odata.bind` deep-link, joined to the lookup column
-    on `ReferencingAttribute`. Each target's `EntitySetName` is resolved so the
-    agent has a usable bind VALUE (`/<set_name>(<id>)`). No-op when the entity
-    has no lookup columns.
+    relationship's `ReferencingEntityNavigationPropertyName` is the single-valued
+    navigation property on THIS (referencing) entity — the case-sensitive name
+    the server accepts in a `<Nav>@odata.bind` deep-link — joined to the lookup
+    column on `ReferencingAttribute`. (Its partner,
+    `ReferencedEntityNavigationPropertyName`, is the collection-valued property
+    on the OTHER entity and is rejected in bind payloads.) Each target's
+    `EntitySetName` is resolved so the agent has a usable bind VALUE
+    (`/<set_name>(<id>)`). No-op when the entity has no lookup columns.
     """
     lookups = [a for a in writable if a["attribute_type"] == "Lookup"]
     if not lookups:
@@ -228,7 +231,7 @@ def _enrich_lookups(
         f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
         params={"$select":
                 "ReferencingAttribute,ReferencedEntity,"
-                "ReferencedEntityNavigationPropertyName"},
+                "ReferencingEntityNavigationPropertyName"},
     ))
     rels: list[dict[str, Any]] = m2o.get("value", [])
     # ReferencingAttribute (lookup column) -> [(referenced_entity, nav_property)].
@@ -239,7 +242,7 @@ def _enrich_lookups(
             continue
         by_attr.setdefault(ref_attr, []).append((
             r.get("ReferencedEntity") or "",
-            r.get("ReferencedEntityNavigationPropertyName") or "",
+            r.get("ReferencingEntityNavigationPropertyName") or "",
         ))
 
     set_names: dict[str, str] = {}

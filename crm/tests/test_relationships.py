@@ -163,6 +163,36 @@ class TestListRelationshipsMoved:
         assert result["ManyToOne"][0]["SchemaName"] == "n_one"
         assert result["ManyToMany"][0]["SchemaName"] == "many"
 
+    def test_one_to_many_and_many_to_one_select_navigation_property_names(self, backend):
+        # The single-valued (Referencing) nav prop is the @odata.bind key (#228).
+        # The server returns ONLY the $select-ed fields, so a missing nav-prop
+        # column shows up as an absent $select term, NOT in the mocked body
+        # (requests_mock echoes the full json regardless of $select) — assert the
+        # request query, the same trap class that let the describe bug ship.
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            o2m = m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')/OneToManyRelationships"),
+                json={"value": []},
+            )
+            m2o = m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')/ManyToOneRelationships"),
+                json={"value": []},
+            )
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')/ManyToManyRelationships"),
+                json={"value": []},
+            )
+            rel.list_relationships(backend, "account")
+        # Assert against the raw (case-preserving) request URL, not `.qs`
+        # (requests_mock lower-cases the parsed query). Nav names are
+        # case-SENSITIVE on the server — the #228 bug — so lock the exact casing.
+        from urllib.parse import unquote
+        o2m_url = unquote(o2m.last_request.url)
+        m2o_url = unquote(m2o.last_request.url)
+        assert "ReferencingEntityNavigationPropertyName" in o2m_url
+        assert "ReferencingEntityNavigationPropertyName" in m2o_url
+
 
 class TestCreateManyToMany:
     def test_happy_path(self, backend):

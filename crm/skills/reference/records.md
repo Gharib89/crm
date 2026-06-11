@@ -88,8 +88,13 @@ crm entity clear-lookup contacts <contact-guid> parentcustomerid_account
 ## Record-create payloads (`@odata.bind`)
 
 When constructing `entity create`/`update` payloads, lookup fields require an
-`@odata.bind` suffix on the **navigation-property name** (the PascalCase schema name,
-e.g. `cwx_CustomerId@odata.bind`), **not** the lowercase logical attribute. A picklist
+`@odata.bind` suffix on the **single-valued navigation-property name**, **not** the
+logical attribute. That name is metadata-defined and **case-sensitive** — it is NOT a
+predictable transform of the attribute: custom lookups often surface a PascalCase
+relationship name (e.g. `cwx_CustomerId@odata.bind`) while system lookups commonly
+match the lowercase attribute (e.g. `primarycontactid@odata.bind`). Never guess it —
+take it from `crm metadata describe <entity>` (`bind_key` per lookup) or
+`crm metadata relationships <entity>` (`ReferencingEntityNavigationPropertyName`). A picklist
 bound to a global option set binds through `GlobalOptionSet@odata.bind`, and **on-prem
 9.1 requires the option set's `MetadataId` GUID there** (the `Name` alternate key is
 rejected). `crm metadata describe <entity>` hands you the exact `bind_key` per lookup
