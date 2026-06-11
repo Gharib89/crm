@@ -1,4 +1,4 @@
-"""Pre-write field-name validation for `entity create/update --validate` (#72).
+"""Pre-write field-name validation for `entity create/update --validate` (#72, #233).
 
 Mirrors the mocked-backend metadata pattern (see test_metadata_describe): a real
 D365Backend driven by requests_mock so the exact GET paths are asserted and
@@ -274,3 +274,127 @@ class TestCommandGate:
         env = json.loads(result.output)
         assert env["ok"] is False
         assert env["meta"]["unknown_fields"] == ["naem"]
+
+
+# ── Primary-id warning (#233) ─────────────────────────────────────────────────
+
+_SETS_PID = {"value": [
+    {"LogicalName": "account", "EntitySetName": "accounts", "PrimaryIdAttribute": "accountid"},
+]}
+
+
+def _mock_two_pid(m, backend) -> None:
+    """Two GETs: set→logical (with PrimaryIdAttribute) + attributes. No nav."""
+    m.get(_sets_url(backend), json=_SETS_PID)
+    m.get(_attrs_url(backend), json=_ATTRS)
+
+
+class TestPrimaryIdWarning:
+    """validate_payload(is_create=True) warns when primary id is in the payload (#233)."""
+
+    def test_primary_id_in_create_payload_warns(self, backend):
+        from crm.core import entity as ent
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            result = ent.validate_payload(
+                backend, "accounts",
+                {"accountid": "11111111-1111-1111-1111-111111111111", "name": "Contoso"},
+                is_create=True,
+            )
+        assert result["ok"] is True
+        assert result["meta"]["warnings"] == [
+            "payload contains primary id 'accountid' — "
+            "remove it unless you intend to create with an explicit GUID"
+        ]
+
+    def test_primary_id_absent_from_payload_no_warn(self, backend):
+        from crm.core import entity as ent
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            result = ent.validate_payload(
+                backend, "accounts", {"name": "Contoso"},
+                is_create=True,
+            )
+        assert result == {"ok": True}
+
+    def test_is_create_false_primary_id_no_warn(self, backend):
+        from crm.core import entity as ent
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            result = ent.validate_payload(
+                backend, "accounts",
+                {"accountid": "11111111-1111-1111-1111-111111111111", "name": "Contoso"},
+                is_create=False,
+            )
+        assert result == {"ok": True}
+
+    def test_no_extra_get_for_primary_id_check(self, backend):
+        """PrimaryIdAttribute comes from widened $select on existing sets GET — no new round-trip."""
+        from crm.core import entity as ent
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            ent.validate_payload(
+                backend, "accounts", {"name": "Contoso"},
+                is_create=True,
+            )
+            paths = [r.path for r in m.request_history]
+        assert len(paths) == 2
+        assert not any("ManyToOneRelationships" in p for p in paths)
+
+
+class TestPrimaryIdWarnCommand:
+    """Command-level: entity create --validate warns on primary id (#233)."""
+
+    def _stub(self, monkeypatch, backend):
+        monkeypatch.setattr(CLIContext, "backend", lambda _self: backend)
+
+    def test_create_with_primary_id_warns_in_json_mode(self, monkeypatch, backend):
+        self._stub(monkeypatch, backend)
+        guid = "11111111-1111-1111-1111-111111111111"
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            post_url = backend.url_for("accounts")
+            m.post(post_url, json={"accountid": guid, "name": "Contoso"})
+            result = CliRunner().invoke(cli, [
+                "--json", "entity", "create", "accounts",
+                "--data", json.dumps({"accountid": guid, "name": "Contoso"}),
+                "--validate",
+            ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert "warnings" in env.get("meta", {})
+        assert any("accountid" in w for w in env["meta"]["warnings"])
+
+    def test_create_with_primary_id_warns_in_human_mode(self, monkeypatch, backend):
+        self._stub(monkeypatch, backend)
+        guid = "11111111-1111-1111-1111-111111111111"
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            post_url = backend.url_for("accounts")
+            m.post(post_url, json={"accountid": guid, "name": "Contoso"})
+            result = CliRunner().invoke(cli, [
+                "entity", "create", "accounts",
+                "--data", json.dumps({"accountid": guid, "name": "Contoso"}),
+                "--validate",
+            ])
+        assert result.exit_code == 0, result.output
+        # skin.warning writes to stderr; CliRunner captures both by default.
+        assert "accountid" in result.output
+
+    def test_update_with_primary_id_no_warn(self, monkeypatch, backend):
+        """entity update --validate never warns about primary id (update path unchanged)."""
+        self._stub(monkeypatch, backend)
+        guid = "11111111-1111-1111-1111-111111111111"
+        with requests_mock.Mocker() as m:
+            _mock_two_pid(m, backend)
+            patch_url = backend.url_for(f"accounts({guid})")
+            m.patch(patch_url, status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "entity", "update", "accounts", guid,
+                "--data", json.dumps({"accountid": guid, "name": "x"}), "--validate",
+            ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env.get("meta", {}).get("warnings") is None

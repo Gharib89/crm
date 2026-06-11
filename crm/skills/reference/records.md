@@ -113,6 +113,15 @@ before the write. It runs 1-3 read-only metadata GETs and blocks unknown fields 
 not flagged. It composes with `--dry-run`. Scope is field-**name** only — option-set
 values are not validated (look them up first; see `reference/metadata.md`).
 
+On **`entity create`** only, `--validate` additionally warns when the payload contains
+the entity's primary id (e.g. `accountid`). The write still proceeds — explicit-GUID
+creates are intentional — but the warning flags the copy-a-record footgun where
+`metadata describe` carries the primary id into the payload:
+
+```json
+{"ok": true, "data": {...}, "meta": {"warnings": ["payload contains primary id 'accountid' — remove it unless you intend to create with an explicit GUID"]}}
+```
+
 **For unattended writes, validate-first is the recommended default.** Without
 `--validate`, an unknown field surfaces only as raw OData server noise (e.g.
 `Does not support untyped value in non-open type`) instead of the clean
