@@ -1,3 +1,3 @@
 """crm — Stateful CLI for Dynamics 365 CE on-prem 9.x Web API."""
 
-__version__ = "3.5.0"
+__version__ = "3.6.0"

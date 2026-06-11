@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.6.0 (2026-06-11)
+
+### Chores
+
+- **test**: Remove unused imports (call, D365Backend) in fetchxml test
+  ([#250](https://github.com/Gharib89/crm/pull/250),
+  [`0d70d73`](https://github.com/Gharib89/crm/commit/0d70d73884fa5ba2ef955f9a476243ccdafd0223))
+
+### Features
+
+- **query**: Make ENTITY_SET optional on fetchxml — derive from XML
+  ([#250](https://github.com/Gharib89/crm/pull/250),
+  [`0d70d73`](https://github.com/Gharib89/crm/commit/0d70d73884fa5ba2ef955f9a476243ccdafd0223))
+
+- **query**: Make ENTITY_SET optional on fetchxml — derive from XML (#202)
+  ([#250](https://github.com/Gharib89/crm/pull/250),
+  [`0d70d73`](https://github.com/Gharib89/crm/commit/0d70d73884fa5ba2ef955f9a476243ccdafd0223))
+
+### Refactoring
+
+- **query**: Guard empty logical_name in resolver; drop type: ignore in fetchxml cmd
+  ([#250](https://github.com/Gharib89/crm/pull/250),
+  [`0d70d73`](https://github.com/Gharib89/crm/commit/0d70d73884fa5ba2ef955f9a476243ccdafd0223))
+
+### Testing
+
+- **query**: Strengthen fetchxml tests per round-3 review
+  ([#250](https://github.com/Gharib89/crm/pull/250),
+  [`0d70d73`](https://github.com/Gharib89/crm/commit/0d70d73884fa5ba2ef955f9a476243ccdafd0223))
+
+
 ## v3.5.0 (2026-06-11)
 
 ### Features
