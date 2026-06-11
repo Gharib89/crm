@@ -53,7 +53,9 @@ def _short_repr(v: Any, limit: int = 80) -> str:
     return s if len(s) <= limit else s[: limit - 3] + "..."
 
 
-def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = None) -> None:
+def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *,
+                       hint: str | None = None,
+                       extra_meta: dict | None = None) -> None:
     # Local import: this only runs after the backend already raised a D365Error,
     # so d365_backend is loaded — keeps it off the `crm --version` fast path.
     from crm.utils.d365_backend import classify_d365_error
@@ -81,6 +83,8 @@ def _handle_d365_error(ctx: "CLIContext", exc: D365Error, *, hint: str | None = 
         meta["failed_stage"] = exc.stage
     if hint and ctx.json_mode:
         meta["hint"] = hint
+    if extra_meta:
+        meta.update(extra_meta)
     message = f"{exc}\nHint: {hint}" if hint else str(exc)
     ctx.emit(False, error=message, meta=meta)
 

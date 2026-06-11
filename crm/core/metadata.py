@@ -672,3 +672,31 @@ def list_entity_definitions(backend: D365Backend) -> list[dict[str, str]]:
 def list_entity_names(backend: D365Backend) -> list[str]:
     """Return entity logical names (backward-compat wrapper)."""
     return [d["logical"] for d in list_entity_definitions(backend)]
+
+
+def list_entity_keys(backend: D365Backend, logical_name: str) -> list[dict[str, Any]]:
+    """Return the alternate keys defined on `logical_name`.
+
+    Fetches ``EntityDefinitions(LogicalName='...')/Keys`` and normalises each
+    item to ``{logical_name, schema_name, key_attributes, index_status}``.
+    Returns an empty list for entities that have no alternate keys — that is
+    not an error. Raises ``D365Error`` for any backend failure (including 404
+    for an unknown entity).
+    """
+    if not logical_name:
+        raise D365Error("logical_name is required.")
+    path = f"EntityDefinitions(LogicalName='{logical_name}')/Keys"
+    result = as_dict(backend.get(
+        path,
+        params={"$select": "LogicalName,SchemaName,KeyAttributes,EntityKeyIndexStatus"},
+    ))
+    rows: list[dict[str, Any]] = result.get("value", [])
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append({
+            "logical_name": r.get("LogicalName") or "",
+            "schema_name": r.get("SchemaName") or "",
+            "key_attributes": r.get("KeyAttributes") or [],
+            "index_status": r.get("EntityKeyIndexStatus") or "",
+        })
+    return out

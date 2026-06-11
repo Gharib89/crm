@@ -144,6 +144,31 @@ def metadata_attributes(ctx: CLIContext, logical_name):
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
+@metadata_group.command("keys")
+@click.argument("logical_name")
+@pass_ctx
+def metadata_keys(ctx: CLIContext, logical_name):
+    """List alternate keys defined on an entity."""
+    try:
+        keys = meta_mod.list_entity_keys(ctx.backend(), logical_name)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if ctx.json_mode:
+        ctx.emit(True, data=keys, meta={"count": len(keys)})
+        return
+    if not keys:
+        ctx.emit(True, data=None, meta={"count": 0})
+        return
+    headers = ["LogicalName", "SchemaName", "KeyAttributes", "Status"]
+    rows = [
+        [k["logical_name"], k["schema_name"],
+         ", ".join(k["key_attributes"]), k["index_status"]]
+        for k in keys
+    ]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(keys)})
+
+
 @metadata_group.command("attribute")
 @click.argument("logical_name")
 @click.argument("attribute_name")

@@ -16,6 +16,22 @@ crm --json metadata attribute account industrycode
 crm --json metadata attribute account industrycode --expect AttributeType=Picklist
 ```
 
+## Alternate keys (`metadata keys`)
+
+```bash
+crm --json metadata keys account
+```
+
+Returns `data: [{logical_name, schema_name, key_attributes, index_status}]`.
+Empty `data: []` means no alternate keys are defined — not an error.
+`index_status` values: `Active`, `Pending`, `Failed`, `InProgress`.
+
+When `entity create` or `entity update` hits an alternate-key collision (HTTP 412,
+code `0x80060892`), the error envelope gains `meta.alternate_keys` showing each key,
+its attributes, and the colliding `payload_values` from the submitted payload.
+If the payload also includes the primary-key attribute, a `meta.primary_id_hint`
+is added (the same error code fires for primary-key collisions too).
+
 ## Picklist / option set values (critical before writing a record)
 
 A record write with a bad option-set value is rejected by the server — **look the
