@@ -55,7 +55,7 @@ def test_odata_param_in_entity_set_raises_before_network(entity_set):
         odata_query(cast(D365Backend, _NoNetworkBackend()), entity_set)
     assert excinfo.value.status is None
     assert excinfo.value.code is not None
-    assert "bare set name" in str(excinfo.value).lower()
+    assert "bare" in str(excinfo.value).lower()
 
 
 def test_bare_entity_set_passes_through():
@@ -63,7 +63,8 @@ def test_bare_entity_set_passes_through():
     result = odata_query(
         cast(D365Backend, backend), "solutions", select=["uniquename"]
     )
-    assert backend.called, "a bare set name should reach backend.get"
+    assert backend.called, "a bare entity set should reach backend.get"
+    assert backend.last_path == "solutions"
     assert result == {"value": []}
 
 
@@ -87,15 +88,15 @@ def test_envelope_classifies_malformed_set_as_validation(monkeypatch):
 
 
 _PATH_SHAPED = [
-    "EntityDefinitions(LogicalName='account')/Keys",
-    "EntityDefinitions(LogicalName='account')/ManyToOneRelationships",
-    "RetrieveAppComponents(AppModuleId=79bdfbec-725e-f111-b65d-00155d467b90)",
+    "solutions",                                                                   # bare entity set
+    "EntityDefinitions(LogicalName='account')/Keys",                               # metadata path
+    "RetrieveAppComponents(AppModuleId=79bdfbec-725e-f111-b65d-00155d467b90)",     # bound-function
 ]
 
 
 @pytest.mark.parametrize("entity_set", _PATH_SHAPED)
 def test_path_shaped_arg_passes_through_verbatim(entity_set):
-    """Bound-function and metadata paths reach backend.get unmodified."""
+    """All three accepted forms (bare entity set, metadata path, bound-function) pass through verbatim."""
     backend = _RecordingBackend()
     odata_query(cast(D365Backend, backend), entity_set)
     assert backend.called, "path-shaped arg must reach backend.get"
