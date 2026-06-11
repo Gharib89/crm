@@ -353,12 +353,12 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
-    if result.get("_dry_run"):
-        # emit stamps meta.dry_run from the --dry-run flag; surface the payload.
-        ctx.emit(True, data=result["would_create"])
-        return
-    ctx.emit(True, data=result)
-    _journal(ctx, "entity clone", entity_set, result)
+    # Under --dry-run the data is the would_create preview; otherwise the created
+    # record. Emit once, then journal/touch in both modes (like entity create) —
+    # _journal records ctx.dry_run, so the audit trail still distinguishes previews.
+    data = result["would_create"] if result.get("_dry_run") else result
+    ctx.emit(True, data=data)
+    _journal(ctx, "entity clone", entity_set, data)
     _touch_session(ctx, entity_set)
 
 

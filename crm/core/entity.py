@@ -681,6 +681,9 @@ def clone_record(
 
     overrides = overrides or {}
     unset = unset or []
+    # Validate-before-backend: reject a bad record id before any metadata GET so
+    # a typo costs no round-trip (mirrors count_children); reuse it from here on.
+    record_id = _normalize_id(record_id)
 
     defs = metadata_mod.list_entity_definitions(backend)
     set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
@@ -770,8 +773,7 @@ def clone_record(
 
     if errors:
         raise D365Error(
-            "Clone pre-flight failed for "
-            f"{entity_set}({_normalize_id(record_id)}):\n  - "
+            f"Clone pre-flight failed for {entity_set}({record_id}):\n  - "
             + "\n  - ".join(errors)
         )
 

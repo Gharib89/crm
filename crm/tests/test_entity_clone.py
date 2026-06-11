@@ -314,6 +314,16 @@ class TestDryRunAndReturn:
                 entity_mod.clone_record(backend, "widgets", _SRC)
         assert "widgets" in str(exc.value)
 
+    def test_invalid_guid_fails_fast_without_backend_calls(self, backend):
+        # A bad record id is validate-before-backend: it must raise before any
+        # metadata GET, so a typo never costs a round-trip (mirrors count_children).
+        with requests_mock.Mocker() as m:
+            m.get(_defs_url(backend), json=_DEFS)
+
+            with pytest.raises(D365Error):
+                entity_mod.clone_record(backend, "accounts", "not-a-guid")
+            assert m.call_count == 0
+
 
 class TestParseOverrides:
     def test_value_parsed_as_json_with_string_fallback(self):
