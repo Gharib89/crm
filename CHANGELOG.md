@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.6.1 (2026-06-11)
+
+### Performance Improvements
+
+- Lazy-load the HTTP-transport stack so local commands skip the import tax
+  ([`d88c754`](https://github.com/Gharib89/crm/commit/d88c754d02dc28f07f86f902820f597eb5acaf0a))
+
+
 ## v3.6.0 (2026-06-11)
 
 ### Chores
