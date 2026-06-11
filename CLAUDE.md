@@ -12,6 +12,10 @@ Setup is `crm profile add` (interactive wizard on a TTY; flag-driven for scripti
 - `crm/commands/*` — thin Click wrappers, one per `crm <group>`; `crm/cli.py` wires them; `crm/__main__.py` is the entry.
 - `crm/skills/` — agent skill shipped in the wheel: a thin `SKILL.md` router + `reference/*.md` loaded on demand (kept in sync with the CLI — see below).
 
+## Branch & worktree discipline
+
+The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions — **never develop in it directly**. Any feature or bug fix happens in a **git worktree on a fresh branch**: `EnterWorktree` (or `git worktree add`), rename the auto branch to a clean name (`git branch -m feat/<topic>`), do all work + commits there, PR from that branch, remove the worktree after merge. Worktrees have no `.venv` — verify with `PYTHONPATH=$WT <main-venv>/bin/python -m pytest` (the main venv's editable install points at the main checkout otherwise). In the shared checkout itself: read-only work and small docs-only commits to `main` (via a throwaway worktree if the dir is on someone else's branch). Before **any** git mutation anywhere: `git branch --show-current && git status -sb` first, and stage with explicit paths, never `git add -A`.
+
 ## Commands
 
 ```bash
