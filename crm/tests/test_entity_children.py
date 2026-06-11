@@ -295,6 +295,8 @@ class TestCountChildren:
         assert "contoso_invoices?$filter" in body
         assert "contacts?$filter" not in body
         assert "tasks?$filter" not in body
+        # narrow $select keeps each counted row to the one lookup column
+        assert "$select=_contoso_account_value" in body
         assert rows == [
             {"entity": "contoso_invoice", "attribute": "contoso_account",
              "set": "contoso_invoices", "count": 7},
@@ -450,3 +452,16 @@ class TestChildrenCommand:
         env = json.loads(result.output)
         assert [row["entity"] for row in env["data"]] == ["contoso_invoice"]
         assert "contacts?$filter" not in body  # pre-filter reached core
+
+    def test_invalid_filter_regex_is_usage_error_before_backend(self, monkeypatch):
+        # Untrusted regex validated at the CLI boundary: usage error (exit 2),
+        # backend never constructed (ctx.backend would raise if called).
+        def _boom(self):
+            raise AssertionError("backend constructed before regex validation")
+        monkeypatch.setattr(CLIContext, "backend", _boom)
+        result = CliRunner().invoke(
+            crm_cli.cli,
+            ["--json", "entity", "children", "accounts", _GUID, "--filter-entities", "["],
+        )
+        assert result.exit_code == 2
+        assert "filter-entities" in result.output

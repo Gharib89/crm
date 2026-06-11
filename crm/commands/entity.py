@@ -1,6 +1,7 @@
 """Entity CRUD commands."""
 # pyright: basic
 from __future__ import annotations
+import re
 from typing import Any
 import click
 from crm.core import entity as entity_mod
@@ -233,6 +234,15 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
 
     Each row: child entity logical name, referencing attribute, child entity
     set, and count. Read-only (composes with --dry-run)."""
+    # Validate the untrusted regex before constructing a backend (house rule —
+    # mirrors --expect parsing): a bad pattern is a usage error (exit 2), no round-trip.
+    if filter_entities is not None:
+        try:
+            re.compile(filter_entities)
+        except re.error as exc:
+            raise click.BadParameter(
+                f"not a valid regular expression: {exc}", param_hint="--filter-entities"
+            )
     try:
         rows = entity_mod.count_children(
             ctx.backend(), entity_set, record_id,

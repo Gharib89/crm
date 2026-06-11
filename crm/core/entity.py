@@ -595,14 +595,20 @@ def _count_url(child_set: str, attribute: str, guid: str) -> str:
     `?$count=true&$top=1` not `/$count?$filter=`: on-prem v9.1 binds a $filter on
     the `/$count` path segment to the Edm.Int32 result and 400s ("no property
     '_x_value' on type 'Edm.Int32'"). $count=true returns the full @odata.count
-    regardless of $top (live-verified both targets); $top=1 caps the row payload.
+    regardless of $top (live-verified both targets); $top=1 caps the row count.
+
+    `$select=_<attr>_value` keeps each returned row to the one lookup column the
+    filter already names (only @odata.count is consumed) instead of every column,
+    shrinking each $batch sub-response. The `_<attr>_value` form is required —
+    on-prem rejects $select on the bare lookup name (`parentid` → 404 property).
     """
     from urllib.parse import quote
 
+    value_attr = f"_{attribute}_value"
     return (
         f"{child_set}?$filter="
-        + quote(f"_{attribute}_value eq {guid}", safe="")
-        + "&$count=true&$top=1"
+        + quote(f"{value_attr} eq {guid}", safe="")
+        + f"&$count=true&$top=1&$select={value_attr}"
     )
 
 
