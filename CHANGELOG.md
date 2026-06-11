@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.0.0 (2026-06-11)
+
+### Documentation
+
+- **out-of-scope**: Reject raw http passthrough verb
+  ([#235](https://github.com/Gharib89/crm/pull/235),
+  [`512275a`](https://github.com/Gharib89/crm/commit/512275ac1909c6647686cefeb2d239497c908c3a))
+
+### Features
+
+- Dry-run previews only mutations; reads execute ([#236](https://github.com/Gharib89/crm/pull/236),
+  [`fb347fa`](https://github.com/Gharib89/crm/commit/fb347fa95ef2c47ed5511662fd09df4938482da8))
+
+### Breaking Changes
+
+- Read verbs under --dry-run (query odata, entity get, action function, …) now execute the real GET
+  and return live data instead of returning the {_dry_run, method, url, …} request echo. The
+  envelope still carries meta.dry_run: true. The root --dry-run help ("Preview HTTP request without
+  issuing it") was a documented contract, so this is a breaking change.
+
+
 ## v2.12.0 (2026-06-11)
 
 ### Features
