@@ -69,6 +69,45 @@ The repeatable `--expect ATTR=VALUE` flag turns the retrieve into a self-checkin
 
 When every pair matches, the command exits **0** and emits the record as usual. The check runs against the **full** record, before any `--minimal` projection. A malformed `--expect` (no `=`) is a usage error (exit 2) raised before the GET.
 
+## Alternate-key duplicate errors (`meta.alternate_keys`)
+
+When `entity create` or `entity update` fails with an alternate-key uniqueness
+violation (HTTP 412, error code `0x80060892`), the error envelope gains a
+`meta.alternate_keys` array showing each key, its attributes, and the values
+from your payload that collided:
+
+```json
+{
+  "ok": false,
+  "error": "Entity Key Code Key violated. A record with the same value ...",
+  "meta": {
+    "status": 412,
+    "code": "0x80060892",
+    "category": "duplicate_detected",
+    "retryable": false,
+    "alternate_keys": [
+      {
+        "name": "account_code_ak",
+        "schema_name": "Account_Code_AK",
+        "attributes": ["accountnumber"],
+        "payload_values": {"accountnumber": "ACC-001"}
+      }
+    ]
+  }
+}
+```
+
+If your payload also contains the entity's primary-key attribute (`accountid`
+for `account`), a `meta.primary_id_hint` field is added — the server returns
+the same `0x80060892` error for a primary-key collision as for an alternate-key
+collision.
+
+List the alternate keys for any entity with `crm metadata keys <entity>`.
+
+**v1 limitation:** `payload_values` is populated from plain scalar payload fields only.
+Lookup bindings (`field@odata.bind`) are not matched and will not appear in
+`payload_values` even if a lookup is part of the alternate key.
+
 ## Create from a JSON file (avoid shell-quoting XML payloads)
 
 ```bash

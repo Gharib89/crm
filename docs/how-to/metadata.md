@@ -32,6 +32,34 @@ One read-only call returns everything needed to build a valid create/update payl
 
 Pure GETs — gated so only the attribute kinds the entity actually uses cost a round-trip.
 
+## List alternate keys on an entity
+
+```bash
+crm --json metadata keys account
+```
+
+Returns `data: [{logical_name, schema_name, key_attributes, index_status}]` for every
+alternate key defined on the entity.  An entity with no keys returns `data: []` — that
+is not an error.
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "logical_name": "account_code_ak",
+      "schema_name": "Account_Code_AK",
+      "key_attributes": ["accountnumber"],
+      "index_status": "Active"
+    }
+  ],
+  "meta": {"count": 1}
+}
+```
+
+`index_status` mirrors `EntityKeyIndexStatus` from the Dataverse Web API —
+typical values are `Active`, `Pending`, `Failed`, `InProgress`.
+
 ## Read option set values (flattened)
 
 ```bash

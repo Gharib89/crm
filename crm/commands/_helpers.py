@@ -58,6 +58,7 @@ def _handle_d365_error(
     exc: D365Error,
     *,
     hint: str | None = None,
+    extra_meta: dict | None = None,
     warnings: list[str] | None = None,
 ) -> None:
     # Local import: this only runs after the backend already raised a D365Error,
@@ -87,6 +88,8 @@ def _handle_d365_error(
         meta["failed_stage"] = exc.stage
     if hint and ctx.json_mode:
         meta["hint"] = hint
+    if extra_meta:
+        meta.update(extra_meta)
     message = f"{exc}\nHint: {hint}" if hint else str(exc)
     ctx.emit(False, error=message, meta=meta, warnings=warnings)
 

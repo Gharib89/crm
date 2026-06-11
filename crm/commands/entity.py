@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 import click
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
@@ -25,6 +25,91 @@ from crm.commands._helpers import (
 # collection name that precedes any key, so 'EntityDefinitions(...)' counts.
 _METADATA_SETS = frozenset(("entitydefinitions", "attributemetadata"))
 _OPTIONSET_SETS = frozenset(("globaloptionsetdefinitions",))
+
+# D365 error code for alternate-key uniqueness violation (DuplicateRecordEntityKey).
+# Live-verified on both on-prem v9.1 and Dataverse cloud v9.2: response body
+# {"error": {"code": "0x80060892", ...}} with HTTP 412. Distinct from 0x80040237
+# (DuplicateRecord / SQL integrity) and 0x80040333 (duplicate-detection-rules).
+_ALT_KEY_ERROR_CODE = "0x80060892"
+
+
+def _is_alternate_key_error(exc: D365Error) -> bool:
+    """Return True when exc is an alternate-key uniqueness violation.
+
+    Checks exc.code first (set correctly after the _parse_response fix).
+    Falls back to response_body in case the code was overwritten by an older
+    version of the backend or a test that creates exc directly.
+    """
+    if exc.code == _ALT_KEY_ERROR_CODE:
+        return True
+    body = exc.response_body
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict) and err.get("code") == _ALT_KEY_ERROR_CODE:
+            return True
+    return False
+
+
+def enrich_duplicate_key_error(
+    backend: D365Backend,
+    entity_set: str,
+    payload: dict[str, Any],
+    exc: D365Error,
+) -> dict[str, Any]:
+    """Try to enrich a duplicate-key error with alternate-key metadata.
+
+    Returns a dict suitable for ``extra_meta`` in ``_handle_d365_error``:
+    ``{"alternate_keys": [...], "primary_id_hint": "..."}`` on success, or
+    ``{}`` if enrichment fails for any reason. The original ``exc`` is never
+    masked — all exceptions from the backend are swallowed here.
+
+    Each key entry: ``{name, schema_name, attributes, payload_values}``.
+    ``payload_values`` is the plain-name intersection of key attributes with
+    ``payload``; lookup columns surfaced as ``field@odata.bind`` are NOT
+    matched (v1 limitation — plain names only).
+    """
+    if not _is_alternate_key_error(exc):
+        return {}
+    try:
+        safe_set = entity_set.replace("'", "''")
+        result = as_dict(backend.get(
+            "EntityDefinitions",
+            params={
+                "$select": "LogicalName,PrimaryIdAttribute",
+                "$filter": f"EntitySetName eq '{safe_set}'",
+            },
+        ))
+        matches: list[dict[str, Any]] = result.get("value", [])
+        if not matches:
+            return {}
+        logical_name: str = matches[0].get("LogicalName") or ""
+        primary_id: str = matches[0].get("PrimaryIdAttribute") or ""
+        if not logical_name:
+            return {}
+
+        from crm.core import metadata as meta_mod
+        keys = meta_mod.list_entity_keys(backend, logical_name)
+
+        enriched: list[dict[str, Any]] = []
+        for k in keys:
+            key_attrs: list[str] = k["key_attributes"]
+            payload_values = {a: payload[a] for a in key_attrs if a in payload}
+            enriched.append({
+                "name": k["logical_name"],
+                "schema_name": k["schema_name"],
+                "attributes": key_attrs,
+                "payload_values": payload_values,
+            })
+
+        out: dict[str, Any] = {"alternate_keys": enriched}
+        if primary_id and primary_id in payload:
+            out["primary_id_hint"] = (
+                f"Payload contains the primary key attribute '{primary_id}'. "
+                "The server returns the same error for a primary-key collision."
+            )
+        return out
+    except Exception:
+        return {}
 
 
 def _resolve_return_record(no_return: bool, return_record: bool, *, default: bool) -> bool:
@@ -164,7 +249,9 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
-        _handle_d365_error(ctx, exc, warnings=validate_warnings or None)
+        extra_meta = (enrich_duplicate_key_error(ctx.backend(), entity_set, payload, exc)
+                      if _is_alternate_key_error(exc) and ctx.json_mode else None)
+        _handle_d365_error(ctx, exc, extra_meta=extra_meta, warnings=validate_warnings or None)
         return
     ctx.emit(True, data=result, warnings=validate_warnings or None)
     _journal(ctx, "entity create", entity_set, result)
@@ -211,7 +298,9 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
-        _handle_d365_error(ctx, exc, hint=_metadata_set_hint(entity_set))
+        extra_meta = (enrich_duplicate_key_error(ctx.backend(), entity_set, payload, exc)
+                      if _is_alternate_key_error(exc) and ctx.json_mode else None)
+        _handle_d365_error(ctx, exc, hint=_metadata_set_hint(entity_set), extra_meta=extra_meta)
         return
     data = result or {"updated": True, "id": record_id}
     ctx.emit(True, data=data)

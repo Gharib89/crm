@@ -126,7 +126,7 @@ def classify_d365_error(
         return ("validation", False)
 
     haystack = f"{code or ''} {message or ''}".lower()
-    if "0x80040237" in haystack or "duplicaterecord" in haystack:
+    if "0x80040237" in haystack or "0x80060892" in haystack or "duplicaterecord" in haystack:
         return ("duplicate_detected", False)
     if "0x80040217" in haystack:
         return ("not_found", False)
@@ -931,7 +931,7 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
         body = resp.text
         message = f"HTTP {resp.status_code}: {resp.text[:500]}"
 
-    if resp.status_code == 412:
+    if resp.status_code == 412 and not code:
         code = "PreconditionFailed"
 
     raise D365Error(message, status=resp.status_code, code=code, response_body=body)

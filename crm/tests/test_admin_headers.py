@@ -489,8 +489,27 @@ class TestEtag:
 
 
 class TestErrorMapping:
-    def test_412_maps_to_precondition_failed(self, backend, profile):
+    def test_412_preserves_body_code(self, backend, profile):
+        """412 with a D365 code in the body preserves it; PreconditionFailed is
+        the fallback only when the body carries no code (#232)."""
         body = {"error": {"code": "0x80048d04", "message": "Concurrency mismatch"}}
+        with requests_mock.Mocker() as m:
+            m.patch(
+                f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
+                status_code=412, json=body,
+            )
+            with pytest.raises(D365Error) as exc_info:
+                backend.patch(
+                    "accounts(00000000-0000-0000-0000-000000000001)",
+                    json_body={"name": "a"},
+                    etag='W/"1"',
+                )
+            assert exc_info.value.status == 412
+            assert exc_info.value.code == "0x80048d04"
+
+    def test_412_no_body_code_falls_back_to_precondition_failed(self, backend, profile):
+        """412 with no D365 code in the body falls back to PreconditionFailed."""
+        body = {"error": {"code": "", "message": "Concurrency mismatch"}}
         with requests_mock.Mocker() as m:
             m.patch(
                 f"{profile.api_base}accounts(00000000-0000-0000-0000-000000000001)",
