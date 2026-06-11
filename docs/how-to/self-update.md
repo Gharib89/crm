@@ -41,7 +41,10 @@ It is silent — and skips the network entirely — in any of these cases:
 - `--json` output mode (machine-readable output is never polluted),
 - stderr is not a terminal (pipes, redirects, agents),
 - the `CI` environment variable is set,
-- the `CRM_NO_UPDATE_CHECK` environment variable is set.
+- the `CRM_NO_UPDATE_CHECK` environment variable is set,
+- the command being run is `self-update` itself (it owns its own update messaging;
+  the running process still reports the pre-update version, so the notice would
+  otherwise tell you to upgrade to the release you just installed).
 
 Set `CRM_NO_UPDATE_CHECK=1` to opt out permanently:
 

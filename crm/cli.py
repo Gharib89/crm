@@ -511,6 +511,11 @@ def _maybe_update_check(json_mode: bool) -> None:
 def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
     """Print the one-line update notice (from cache) after a command completes."""
     ctx = click.get_current_context()
+    # self-update owns its own update messaging; the running process still reports the
+    # pre-update version, so the cached-version comparison would re-print the upgrade
+    # notice right after a successful upgrade.
+    if ctx.invoked_subcommand == "self-update":
+        return
     json_mode = bool(getattr(ctx.obj, "json_mode", False))
     if not _update_check_eligible(json_mode):
         return

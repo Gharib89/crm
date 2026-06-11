@@ -91,6 +91,32 @@ class TestEligibilityIsFailSilent:
         assert _update_check_eligible(json_mode=False) is False
 
 
+class TestNoticeSuppressedForSelfUpdate:
+    """The passive upgrade notice must not fire after `self-update` runs — the running
+    process still reports the pre-update version, so the notice would tell the user to
+    upgrade to the version they just installed."""
+
+    @pytest.fixture
+    def _force_eligible(self, monkeypatch):
+        import crm.cli as cli_mod
+        monkeypatch.setattr(cli_mod, "_update_check_eligible", lambda *a, **k: True)
+        calls = []
+        monkeypatch.setattr(update_mod, "emit_pending_notice", lambda *a, **k: calls.append(k))
+        return calls
+
+    def test_self_update_does_not_emit_notice(self, monkeypatch, _force_eligible):
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        monkeypatch.setattr(update_mod, "perform_update", lambda *a, **k: None)
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert _force_eligible == []
+
+    def test_other_command_still_emits_notice(self, _force_eligible):
+        result = CliRunner().invoke(cli, ["describe", "profile"])
+        assert result.exit_code == 0
+        assert len(_force_eligible) == 1
+
+
 class TestFrozenUpdate:
     """Frozen install runs the swap; surfaces a clean error on failure."""
 
