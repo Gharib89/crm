@@ -43,6 +43,20 @@ def _refresh_skills(target_version: str, src_dir: Path | None) -> list[dict[str,
                  "status": "error", "error": str(exc)}]
 
 
+def _emit_skills(ctx: CLIContext, skills: list[dict[str, Any]]) -> None:
+    """Print skill refresh results as individual status lines (human mode only)."""
+    for s in skills:
+        dest = s.get("dest") or "?"
+        name = Path(dest).name if dest != "?" else "?"
+        status = s.get("status", "?")
+        frm = s.get("from_version") or "?"
+        to = s.get("to_version") or "?"
+        if status == "error":
+            ctx.skin.warning(f"skill {name}: {s.get('error', 'unknown error')}")
+        else:
+            ctx.skin.status(f"  skill {name}", f"{frm} → {to} ({status})")
+
+
 @click.command("self-update")
 @click.option("--check", "check_only", is_flag=True,
               help="Report current vs latest version and exit without modifying anything.")
@@ -61,26 +75,37 @@ def self_update_cmd(ctx: CLIContext, check_only: bool) -> None:
     if not update_mod.is_frozen():
         # pip/uv: the binary is not touched, but the running wheel may already be
         # newer than the last `skill install` — re-sync from the running package.
-        ctx.emit(True, data={
+        skills = _refresh_skills(
+            update_mod.current_version(), skill_registry.bundled_skill_dir()
+        )
+        data: dict[str, Any] = {
             "updated": False,
             "current": update_mod.current_version(),
             "reason": "not a frozen install",
             "hint": "Run `pip install -U crm` to upgrade this installation.",
-            "skills": _refresh_skills(
-                update_mod.current_version(), skill_registry.bundled_skill_dir()
-            ),
-        })
+        }
+        if ctx.json_mode:
+            data["skills"] = skills
+        ctx.emit(True, data=data)
+        if not ctx.json_mode:
+            _emit_skills(ctx, skills)
         return
 
+    progress_cb = (lambda msg: click.echo(msg)) if not ctx.json_mode else None
     target = update_mod.install_dir()
     update_mod.cleanup_stale_updates(target)
     try:
-        result = update_mod.perform_update(install_dir=target)
+        result = update_mod.perform_update(install_dir=target, progress=progress_cb)
     except update_mod.UpdateError as exc:
         ctx.emit(False, error=str(exc))
         return
     # After the bundle swap the new skill tree is on disk under the install dir;
-    # the running process is still the old version, so refresh to `latest`.
-    new_version = str(result.get("latest", "")).lstrip("vV")
-    result["skills"] = _refresh_skills(new_version, _frozen_skill_src(target))
+    # the running process is still the old version, so refresh to `to_version`.
+    # Fall back to current_version() when already up-to-date (no `to_version` key).
+    new_version = str(result.get("to_version") or update_mod.current_version())
+    skills = _refresh_skills(new_version, _frozen_skill_src(target))
+    if ctx.json_mode:
+        result["skills"] = skills
     ctx.emit(True, data=result)
+    if not ctx.json_mode:
+        _emit_skills(ctx, skills)

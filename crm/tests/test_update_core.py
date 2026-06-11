@@ -429,11 +429,17 @@ class TestPerformUpdate:
         install.mkdir()
         (install / "crm").write_text("OLD", encoding="utf-8")
 
-        result = perform_update(install_dir=install)
+        messages: list[str] = []
+        result = perform_update(install_dir=install, progress=messages.append)
 
         assert result["updated"] is True
+        assert result["from_version"] == "2.9.0"
+        assert result["to_version"] == "3.0.0"
         assert (install / "crm").read_bytes() == b"NEW-BINARY"
         assert (install / "lib.so").exists()
+        assert any("Downloading" in m for m in messages)
+        assert any("Verifying" in m for m in messages)
+        assert any("Installing" in m for m in messages)
 
     def test_checksum_mismatch_leaves_install_intact(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -171,13 +171,31 @@ class TestSkillRefresh:
         monkeypatch.setattr(update_mod, "install_dir", lambda: install)
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
         monkeypatch.setattr(update_mod, "perform_update",
-                            lambda *a, **k: {"updated": True, "current": "2.9.0", "latest": "v3.0.0"})
+                            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"})
         seen = {}
         monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
                             lambda version, src: seen.update(version=version) or [])
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
-        assert seen["version"] == "3.0.0"  # latest, v-stripped — not the old running version
+        assert seen["version"] == "3.0.0"  # to_version, already v-stripped — not the old running version
+
+    def test_frozen_up_to_date_uses_current_version(self, monkeypatch, tmp_path):
+        install = tmp_path / "crm"
+        skills = install / "_internal" / "crm" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "SKILL.md").write_text("SAME", encoding="utf-8")
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(update_mod, "install_dir", lambda: install)
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        monkeypatch.setattr(update_mod, "perform_update",
+                            lambda *a, **k: {"updated": False, "current": "3.0.0", "latest": "v3.0.0",
+                                             "reason": "up-to-date"})
+        seen = {}
+        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
+                            lambda version, src: seen.update(version=version) or [])
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        assert seen.get("version") == update_mod.current_version()  # never ""
 
 
 class TestFrozenUpdate:
@@ -189,11 +207,44 @@ class TestFrozenUpdate:
         monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
         monkeypatch.setattr(
             update_mod, "perform_update",
-            lambda *a, **k: {"updated": True, "current": "2.9.0", "latest": "v3.0.0"},
+            lambda *a, **k: {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"},
         )
         result = CliRunner().invoke(cli, ["self-update"])
         assert result.exit_code == 0
         assert "3.0.0" in result.output
+
+    def test_progress_shown_in_human_mode(self, monkeypatch):
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm"))
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        captured: list[str] = []
+
+        def fake_update(*a, progress=None, **k):
+            if progress:
+                progress("Downloading crm v3.0.0...")
+                progress("Verifying checksum...")
+                progress("Installing...")
+            return {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"}
+
+        monkeypatch.setattr(update_mod, "perform_update", fake_update)
+        result = CliRunner().invoke(cli, ["self-update"])
+        assert result.exit_code == 0
+        assert "Downloading" in result.output
+        assert "Verifying" in result.output
+        assert "Installing" in result.output
+
+    def test_progress_absent_in_json_mode(self, monkeypatch):
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(update_mod, "install_dir", lambda: __import__("pathlib").Path("/tmp/crm"))
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+
+        def fake_update(*a, progress=None, **k):
+            assert progress is None, "progress callback must not be set in json mode"
+            return {"updated": True, "from_version": "2.9.0", "to_version": "3.0.0"}
+
+        monkeypatch.setattr(update_mod, "perform_update", fake_update)
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
 
     def test_checksum_failure_exits_nonzero(self, monkeypatch):
         monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
