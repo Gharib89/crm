@@ -90,6 +90,8 @@ def resolve_entity_set_name(backend: D365Backend, logical_name: str) -> str:
     The entity-set name is metadata-defined and must not be guessed (e.g. pluralised).
     Raises D365Error if the logical name is unknown or EntitySetName is absent.
     """
+    if not logical_name:
+        raise D365Error("logical_name is required.")
     safe = logical_name.replace("'", "''")
     path = f"EntityDefinitions(LogicalName='{safe}')"
     result = as_dict(backend.get(path, params={"$select": "EntitySetName"}))

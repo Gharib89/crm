@@ -131,14 +131,16 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
         return
 
     # Derive entity_set from the FetchXML when the positional is omitted.
-    # _parse_entity_name_from_fetchxml raises click.UsageError (exit 2) for bad XML.
-    logical_name: str | None = None
+    # Parse raises click.UsageError (exit 2) for bad XML — escapes the D365Error try below.
     if entity_set is None:
         logical_name = _parse_entity_name_from_fetchxml(fetch_xml)
+        try:
+            entity_set = resolve_entity_set_name(ctx.backend(), logical_name)
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
 
     try:
-        if entity_set is None:
-            entity_set = resolve_entity_set_name(ctx.backend(), logical_name)  # type: ignore[arg-type]
         result = query_mod.fetchxml_query(
             ctx.backend(), entity_set, fetch_xml,
             include_annotations=annotations,
