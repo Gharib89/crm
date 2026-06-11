@@ -14,7 +14,7 @@ optimized for AI agents or shell scripting. This harness gives you:
   introspection, solution lifecycle, and plug-in assembly + step registration
 - A stateful REPL for ad-hoc admin work
 - `--json` everywhere for agent consumption
-- `--dry-run` to preview the HTTP request before issuing it
+- `--dry-run` to preview writes without issuing them (reads still run for real)
 - An append-only JSONL audit journal (`~/.crm/audit/<session>.jsonl`) of every
   mutating command; `crm session audit` to review it
 - `--cache-metadata` for a persistent per-profile entity-definition cache

@@ -109,12 +109,7 @@ def _read(backend: D365Backend, path: str, **kw: Any) -> dict[str, Any]:
     Reads are side-effect free, so a dry-run still performs the GET in order to
     compute the merged PUT body and diff; only the PUT is suppressed.
     """
-    saved = backend.dry_run
-    backend.dry_run = False
-    try:
-        return as_dict(backend.get(path, **kw))
-    finally:
-        backend.dry_run = saved
+    return as_dict(backend.get(path, **kw))
 
 
 def _retrieve_merge_write(

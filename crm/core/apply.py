@@ -58,8 +58,6 @@ def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
     lands them. Only a 404 (entity not yet created) maps to None — any other error
     (401/403/5xx) is re-raised so real failures are not silently masked.
     """
-    was_dry = backend.dry_run
-    backend.dry_run = False
     try:
         rb = as_dict(backend.get(
             f"EntityDefinitions(LogicalName='{logical}')",
@@ -68,8 +66,6 @@ def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
         if exc.status == 404:
             return None
         raise
-    finally:
-        backend.dry_run = was_dry
     otc = rb.get("ObjectTypeCode")
     return otc if isinstance(otc, int) and otc > 0 else None
 
@@ -175,15 +171,10 @@ def validate_spec(spec: Any) -> None:
 def _solution_exists(backend: D365Backend, name: str) -> bool:
     """Forced-real existence check for a solution by uniquename (dry-run safe)."""
     lit = name.replace("'", "''")
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        rows = as_dict(backend.get(
-            "solutions",
-            params={"$filter": f"uniquename eq '{lit}'", "$select": "solutionid"},
-        )).get("value", [])
-    finally:
-        backend.dry_run = was_dry
+    rows = as_dict(backend.get(
+        "solutions",
+        params={"$filter": f"uniquename eq '{lit}'", "$select": "solutionid"},
+    )).get("value", [])
     return bool(rows)
 
 

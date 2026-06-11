@@ -132,15 +132,8 @@ def activate_sla(
     """
     sla_id = validate_sla_id(sla_id)
 
-    # Dry-run short-circuits ALL requests including GETs, so the plan is
-    # always resolved live; the toggle is restored before any mutation.
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        sla, workflow_rows = _fetch_plan(
-            backend, sla_id, caller_id=caller_id, caller_object_id=caller_object_id)
-    finally:
-        backend.dry_run = was_dry
+    sla, workflow_rows = _fetch_plan(
+        backend, sla_id, caller_id=caller_id, caller_object_id=caller_object_id)
 
     if backend.dry_run:
         def _brief(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

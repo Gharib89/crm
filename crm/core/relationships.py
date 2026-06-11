@@ -195,14 +195,9 @@ def delete_relationship(
     if not schema_name:
         raise D365Error("schema_name is required.")
     path = f"RelationshipDefinitions(SchemaName='{schema_name}')"
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        rb = as_dict(backend.get(
-            path, params={"$select": "IsCustomRelationship,IsManaged,MetadataId"},
-        ))
-    finally:
-        backend.dry_run = was_dry
+    rb = as_dict(backend.get(
+        path, params={"$select": "IsCustomRelationship,IsManaged,MetadataId"},
+    ))
     if rb.get("IsCustomRelationship") is False:
         raise D365Error(
             f"{schema_name!r} is not a custom relationship; refusing to delete.",

@@ -78,19 +78,12 @@ def create_publisher(
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
-    # Force a real read even under dry-run: idempotent, and an accurate preview
-    # (_exists/would_skip) needs the live answer (cf. appmodule.create_app).
     un_lit = name.replace("'", "''")
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        existing = as_dict(backend.get(
-            "publishers",
-            params={"$filter": f"uniquename eq '{un_lit}'",
-                    "$select": "publisherid,uniquename"},
-        )).get("value", [])
-    finally:
-        backend.dry_run = was_dry
+    existing = as_dict(backend.get(
+        "publishers",
+        params={"$filter": f"uniquename eq '{un_lit}'",
+                "$select": "publisherid,uniquename"},
+    )).get("value", [])
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"Publisher {name!r} already exists.", code="AlreadyExists")
@@ -143,27 +136,22 @@ def create_solution(
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
     sol_lit = name.replace("'", "''")
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        existing = as_dict(backend.get(
-            "solutions",
-            params={"$filter": f"uniquename eq '{sol_lit}'",
-                    "$select": "solutionid,uniquename"},
-        )).get("value", [])
-        # The skip/error short-circuit below only fires on a real (non-dry) run. Every
-        # path that reaches the POST — including the dry-run preview — needs the
-        # publisher id to build the bind, so resolve it now under the forced-real read
-        # unless we already know we'll short-circuit.
-        will_short_circuit = bool(existing) and not was_dry
-        pub_id = publisher_id
-        if not will_short_circuit and not pub_id:
-            if not publisher_unique_name:
-                raise D365Error(
-                    "a publisher is required: pass publisher_unique_name or publisher_id.")
-            pub_id = _resolve_publisher_id(backend, publisher_unique_name)
-    finally:
-        backend.dry_run = was_dry
+    existing = as_dict(backend.get(
+        "solutions",
+        params={"$filter": f"uniquename eq '{sol_lit}'",
+                "$select": "solutionid,uniquename"},
+    )).get("value", [])
+    # The skip/error short-circuit below only fires on a real (non-dry) run. Every
+    # path that reaches the POST — including the dry-run preview — needs the
+    # publisher id to build the bind, so resolve it now unless we already know
+    # we'll short-circuit.
+    will_short_circuit = bool(existing) and not backend.dry_run
+    pub_id = publisher_id
+    if not will_short_circuit and not pub_id:
+        if not publisher_unique_name:
+            raise D365Error(
+                "a publisher is required: pass publisher_unique_name or publisher_id.")
+        pub_id = _resolve_publisher_id(backend, publisher_unique_name)
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"Solution {name!r} already exists.", code="AlreadyExists")
@@ -211,12 +199,7 @@ def clone_as_patch(
     on a real run.
     """
     if version is None or display_name is None:
-        was_dry = backend.dry_run
-        backend.dry_run = False
-        try:
-            parent = solution_info(backend, parent_solution)
-        finally:
-            backend.dry_run = was_dry
+        parent = solution_info(backend, parent_solution)
         if version is None:
             version = _bump_revision(parent.get("version", ""))
         if display_name is None:
@@ -252,12 +235,7 @@ def uninstall_solution(
     `{uninstalled, solution, solutionid}` on a real run, or the entity.delete
     `_dry_run` preview (plus solution / solutionid) under --dry-run.
     """
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        info = solution_info(backend, unique_name)
-    finally:
-        backend.dry_run = was_dry
+    info = solution_info(backend, unique_name)
     sol_id = info["solutionid"]
 
     if not force:
@@ -331,14 +309,7 @@ def update_solution(
             f"version must be a 4-part dotted numeric (e.g. 1.0.0.0); got {version!r}."
         )
 
-    # Force a real read even under dry-run: idempotent, and resolving the id +
-    # reading ismanaged/parentsolutionid must work in the preview too (cf. create_solution).
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        info = solution_info(backend, unique_name)
-    finally:
-        backend.dry_run = was_dry
+    info = solution_info(backend, unique_name)
     sol_id = info["solutionid"]
     # Fail fast before the PATCH: the server rejects a version/metadata change on a
     # managed solution, and on a patch with CannotUpdateSolutionPatch.
@@ -428,12 +399,7 @@ def _require_unmanaged_solution(
 ) -> None:
     """Forced-real solution_info pre-flight (works under dry-run too); raise if the
     target is managed. `verb` is the action phrase, e.g. 'added to'."""
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        info = solution_info(backend, solution)
-    finally:
-        backend.dry_run = was_dry
+    info = solution_info(backend, solution)
     if info.get("ismanaged"):
         raise D365Error(
             f"Solution {solution!r} is managed; components can only be {verb} an "

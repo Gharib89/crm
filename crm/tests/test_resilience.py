@@ -465,10 +465,13 @@ class TestRetryLoop:
         assert slept == []
 
     def test_dry_run_skips_retry(self, profile, monkeypatch):
+        # A previewed mutation never touches the wire, so it cannot retry.
+        # (GETs run for real under dry-run — the reads-execute rule — so they
+        # are not the case to assert here.)
         be = D365Backend(profile, password="pw", dry_run=True)
         slept: list[float] = []
         monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
-        result = be.get("WhoAmI")
+        result = be.post("accounts", {"name": "Acme"})
         assert isinstance(result, dict)
         assert result["_dry_run"] is True
         assert slept == []

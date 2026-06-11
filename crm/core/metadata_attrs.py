@@ -411,14 +411,9 @@ def delete_attribute(
         f"EntityDefinitions(LogicalName='{entity}')"
         f"/Attributes(LogicalName='{attribute}')"
     )
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        rb = as_dict(backend.get(path, params={
-            "$select": "IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf,MetadataId",
-        }))
-    finally:
-        backend.dry_run = was_dry
+    rb = as_dict(backend.get(path, params={
+        "$select": "IsCustomAttribute,IsManaged,IsPrimaryId,IsPrimaryName,AttributeOf,MetadataId",
+    }))
     if rb.get("IsCustomAttribute") is False:
         raise D365Error(
             f"{attribute!r} is not a custom attribute; refusing to delete.",

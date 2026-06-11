@@ -120,13 +120,12 @@ carries `meta.completed_steps` and `meta.failed_stage`.
 
 Non-zero = the operation did not take effect.
 
-**`--dry-run`** previews the HTTP request (method/URL/headers/body) without issuing
-it — the safe way to validate a mutation before commit. In `--json` mode every
-dry-run carries `meta.dry_run: true`, the canonical signal for detecting a preview.
-Caveat: `--dry-run` stubs HTTP, so a command's pre-flight existence/validation GETs
-may silently no-op; some commands deliberately force their resolution GETs to fire
-anyway (called out per-command in the reference files). Either way the final write is
-skipped.
+**`--dry-run`** previews mutations without issuing them — the safe way to validate a
+write before commit. Reads (GET) always run for real under `--dry-run` ("no writes",
+not "no traffic"), so a mutation's preview reports live facts (`_exists`,
+`would_skip`) rather than guesses, and read verbs (`query`, `entity get`, …) return
+real data. In `--json` mode every dry-run carries `meta.dry_run: true`, the canonical
+signal for detecting a preview.
 
 ```bash
 crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'

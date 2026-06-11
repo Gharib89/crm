@@ -195,19 +195,13 @@ def list_webresources(
 def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
     """Resolve a web resource's id by exact name.
 
-    Forces a real read even under dry-run (a PATCH preview needs the real id;
-    mirrors appmodule.create_app).
+    A PATCH preview needs the real id, so resolve it via a live read.
     """
     esc = name.replace("'", "''")
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        rows: list[dict[str, Any]] = as_dict(backend.get(
-            "webresourceset",
-            params={"$filter": f"name eq '{esc}'", "$select": "webresourceid"},
-        )).get("value", [])
-    finally:
-        backend.dry_run = was_dry
+    rows: list[dict[str, Any]] = as_dict(backend.get(
+        "webresourceset",
+        params={"$filter": f"name eq '{esc}'", "$select": "webresourceid"},
+    )).get("value", [])
     if not rows:
         raise D365Error(f"Web resource not found: {name}", code="WebResourceNotFound")
     wid = rows[0].get("webresourceid")

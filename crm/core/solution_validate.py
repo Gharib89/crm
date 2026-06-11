@@ -163,12 +163,7 @@ def _force_get(backend: D365Backend, path: str, params: dict[str, str]) -> dict[
     answer; a preview/empty dry-run response would surface false findings.
     Mirrors metadata.target_exists / plugin._force_read_rows.
     """
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        return as_dict(backend.get(path, params=params))
-    finally:
-        backend.dry_run = was_dry
+    return as_dict(backend.get(path, params=params))
 
 
 def _webresource_exists_in_org(backend: D365Backend, name: str) -> bool:

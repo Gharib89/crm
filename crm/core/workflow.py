@@ -357,25 +357,17 @@ def assess_workflow_migrations(
         "$filter": " and ".join(filters),
     }
     rows: list[dict[str, Any]] = []
-    # Read-only: the GETs must run live even under --dry-run, or the
-    # short-circuited backend would return a preview dict (no `value`) and the
-    # report would be silently empty.
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        page = as_dict(backend.get("workflows", params=params))
-        pages_consumed = 1
-        while True:
-            value = page.get("value", [])
-            if isinstance(value, list):
-                rows.extend(cast(list[dict[str, Any]], value))
-            next_link = page.get("@odata.nextLink")
-            if not isinstance(next_link, str) or not next_link or pages_consumed >= max_pages:
-                break
-            page = as_dict(backend.get(next_link))
-            pages_consumed += 1
-    finally:
-        backend.dry_run = was_dry
+    page = as_dict(backend.get("workflows", params=params))
+    pages_consumed = 1
+    while True:
+        value = page.get("value", [])
+        if isinstance(value, list):
+            rows.extend(cast(list[dict[str, Any]], value))
+        next_link = page.get("@odata.nextLink")
+        if not isinstance(next_link, str) or not next_link or pages_consumed >= max_pages:
+            break
+        page = as_dict(backend.get(next_link))
+        pages_consumed += 1
     return [assess_workflow_migration(r) for r in rows]
 
 
@@ -422,14 +414,9 @@ def set_workflow_state(
     resolved_from: str | None = None
 
     if auto_resolve_parent and backend.dry_run:
-        was_dry = backend.dry_run
-        backend.dry_run = False
-        try:
-            parent = _resolve_parent_workflow_id(
-                backend, workflow_id,
-                caller_id=caller_id, caller_object_id=caller_object_id)
-        finally:
-            backend.dry_run = was_dry
+        parent = _resolve_parent_workflow_id(
+            backend, workflow_id,
+            caller_id=caller_id, caller_object_id=caller_object_id)
         if parent:
             target_id, resolved_from = parent, workflow_id
 
@@ -570,15 +557,10 @@ def resolve_delete_target(
     """
     if not workflow_id:
         raise D365Error("workflow_id is required.")
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        return _resolve_delete_target_live(
-            backend, workflow_id,
-            caller_id=caller_id, caller_object_id=caller_object_id,
-        )
-    finally:
-        backend.dry_run = was_dry
+    return _resolve_delete_target_live(
+        backend, workflow_id,
+        caller_id=caller_id, caller_object_id=caller_object_id,
+    )
 
 
 def _resolve_delete_target_live(

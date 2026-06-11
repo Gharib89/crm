@@ -327,8 +327,6 @@ def target_exists(backend: D365Backend, path: str) -> bool:
     it never mutates, and idempotency checks need the live answer to build an
     accurate preview.
     """
-    was_dry = backend.dry_run
-    backend.dry_run = False
     try:
         backend.get(path, params={"$select": "MetadataId"})
         return True
@@ -336,8 +334,6 @@ def target_exists(backend: D365Backend, path: str) -> bool:
         if exc.status == 404:
             return False
         raise
-    finally:
-        backend.dry_run = was_dry
 
 
 def maybe_publish(backend: D365Backend, info: dict[str, Any], publish: bool) -> dict[str, Any]:
@@ -536,15 +532,10 @@ def delete_entity(
     if not logical_name:
         raise D365Error("logical_name is required.")
     path = f"EntityDefinitions(LogicalName='{logical_name}')"
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        rb = as_dict(backend.get(
-            path,
-            params={"$select": "IsCustomEntity,IsManaged,MetadataId"},
-        ))
-    finally:
-        backend.dry_run = was_dry
+    rb = as_dict(backend.get(
+        path,
+        params={"$select": "IsCustomEntity,IsManaged,MetadataId"},
+    ))
     if rb.get("IsCustomEntity") is False:
         raise D365Error(
             f"{logical_name!r} is not a custom entity; refusing to delete.",
