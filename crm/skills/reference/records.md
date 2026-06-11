@@ -52,8 +52,13 @@ crm --json entity delete contacts <guid> --yes
 
 ## FetchXML query
 
+`ENTITY_SET` is optional — omit it and the entity-set name is derived from
+`<entity name="...">` via one extra metadata GET (EntityDefinitions).
+Pass it explicitly to skip that call.
+
 ```bash
-crm --json query fetchxml accounts --xml '
+# No ENTITY_SET — derived at runtime (one extra GET)
+crm --json query fetchxml --xml '
 <fetch top="10">
   <entity name="account">
     <attribute name="name"/>
@@ -61,6 +66,9 @@ crm --json query fetchxml accounts --xml '
     <filter><condition attribute="statecode" operator="eq" value="0"/></filter>
   </entity>
 </fetch>'
+
+# Explicit ENTITY_SET — no extra GET
+crm --json query fetchxml accounts --xml '<fetch>...</fetch>'
 ```
 
 ## Execute a saved system view by GUID

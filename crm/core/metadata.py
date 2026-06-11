@@ -83,6 +83,25 @@ def entity_info(backend: D365Backend, logical_name: str) -> dict[str, Any]:
     return as_dict(backend.get(path))
 
 
+def resolve_entity_set_name(backend: D365Backend, logical_name: str) -> str:
+    """Resolve a logical entity name to its OData entity-set name.
+
+    Performs one GET: EntityDefinitions(LogicalName='<name>')?$select=EntitySetName.
+    The entity-set name is metadata-defined and must not be guessed (e.g. pluralised).
+    Raises D365Error if the logical name is unknown or EntitySetName is absent.
+    """
+    safe = logical_name.replace("'", "''")
+    path = f"EntityDefinitions(LogicalName='{safe}')"
+    result = as_dict(backend.get(path, params={"$select": "EntitySetName"}))
+    entity_set_name: str | None = result.get("EntitySetName") or None
+    if not entity_set_name:
+        raise D365Error(
+            f"Could not resolve entity-set name for logical name {logical_name!r}",
+            code="UnknownEntityLogicalName",
+        )
+    return entity_set_name
+
+
 def list_attributes(backend: D365Backend, logical_name: str) -> list[dict[str, Any]]:
     """List attributes for an entity (logical name)."""
     path = f"EntityDefinitions(LogicalName='{logical_name}')/Attributes"
