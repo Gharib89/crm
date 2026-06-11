@@ -11,11 +11,11 @@ crm --json query odata cwx_tickets \
 ```
 Returns matching rows under `data.value`; queries the entity-set (plural) name.
 
-The entity-set argument carries the URL path only — pass OData options through
-`--select`/`--filter`/etc., not baked into the path. A `?` or `$` in the
-argument (e.g. `solutions?$select=uniquename`) is rejected client-side with a
-`validation` error before the request, instead of a bare server `HTTP 400`.
-Bound-function paths like `RetrieveAppComponents(…)` (below) are unaffected.
+The positional argument is the URL path and accepts three forms: a bare entity-set name
+(e.g. `contacts`), a bound-function path (e.g. `RetrieveAppComponents(...)`), or a
+metadata path (e.g. `EntityDefinitions(LogicalName='account')/Keys`). OData query options
+go through `--select`/`--filter`/etc., never inline — a `?` or `$` in the argument is
+rejected client-side with a `validation` error before the request.
 
 The bare `in` operator (`workflowid in ('a','b')`) is **OData 4.01** and the
 Dataverse Web API (OData 4.0) rejects it — `query odata` detects it and errors
@@ -48,9 +48,35 @@ crm --json query fetchxml cwx_tickets --xml '
 ```
 FetchXML is the server-side XML query language; the `<entity name>` is the logical name, while the command's entity argument is the entity-set name.
 
-## Call a bound function on the URL path (unquoted GUID)
+## Call a bound function or metadata path on the URL path
+
+`query odata` accepts three forms for its positional argument — all pass through to the
+Web API as the URL path; OData query options always go through the flags:
+
+| Form | Example |
+|------|---------|
+| bare entity set | `contacts`, `solutions` |
+| bound-function path | `RetrieveAppComponents(AppModuleId=<guid>)` |
+| metadata path | `EntityDefinitions(LogicalName='account')/Keys` |
+
+A `?` or `$` in the positional arg is rejected client-side before the request — move
+those values onto `--select`, `--filter`, etc.
+
+**Bound function — unquoted GUID parameter (§11):**
 
 ```bash
 crm --json query odata "RetrieveAppComponents(AppModuleId=79bdfbec-725e-f111-b65d-00155d467b90)"
 ```
-For functions whose parameter is an `Edm.Guid`, embed it in the URL path so it stays unquoted — `--params` would quote it and the server rejects that (§11).
+
+For `Edm.Guid` parameters, embed the GUID directly in the path — quoting it causes the
+server to reject it.
+
+**Metadata path — list an entity's lookup relationships:**
+
+```bash
+crm --json query odata "EntityDefinitions(LogicalName='account')/ManyToOneRelationships" \
+  --select ReferencedEntity,ReferencingAttribute
+```
+
+Metadata navigation paths (`/Keys`, `/ManyToOneRelationships`, `/Attributes`, …) are
+forwarded verbatim to the Web API.
