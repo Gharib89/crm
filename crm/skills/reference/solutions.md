@@ -239,3 +239,32 @@ Each component entry: `{"componenttype": <int>, "objectid": "<guid-lowercase>",
 `(componenttype, objectid, rootcomponentbehavior)` — `missing` = in expected not live;
 `unexpected` = in live not expected. **Exits 1 on drift.** The flags are mutually
 exclusive; bare `components <name>` lists components unchanged.
+
+## Unmanaged-layer conflicts — `layer-conflicts`
+
+Find managed components that *also* carry unmanaged-layer customizations (the
+classic source of upgrade surprises). The on-prem detection path that XrmToolBox's
+Solution Layers Explorer can't give you — it needs the online-only
+`msdyn_componentlayer`; this verb needs only `solutioncomponents`, so it runs
+identically on v9.x on-prem and Dataverse online.
+
+```bash
+crm --json solution layer-conflicts --solution MyManagedSln --unmanaged-solution MyDevSln
+# overlap:  {"ok": true, "data": [{"componenttype": 1, "type_name": "entity",
+#            "objectid": "…", "managed_rootcomponentbehavior": 0,
+#            "unmanaged_rootcomponentbehavior": 0}], "meta": {"count": 1}}
+# none:     {"ok": true, "data": [], "meta": {"count": 0}}   (human: "no conflicts found")
+```
+
+The result is the **intersection** of the two solutions' components, keyed on
+`(componenttype, objectid)` — `rootcomponentbehavior` is *ignored* for matching (the
+row carries both sides' values for inspection). **Always exits 0** when the flags
+resolve to the right kinds, conflicts or not — this is a report, not a gate (contrast
+`components --diff`, which exits 1 on drift). Kind is validated client-side: a
+wrong-kind flag (managed where unmanaged is expected, or vice versa) fails with
+`{ok:false}`, exit 1, naming the offending flag — before any comparison.
+
+**Granularity limit:** matching is per solution-component. A table added whole to the
+managed solution whose single attribute was customized in the unmanaged solution shows
+**no** conflict — the attribute is a separate component (own `objectid`/type).
+Subcomponent correlation is out of scope.

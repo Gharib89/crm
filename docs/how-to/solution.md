@@ -35,6 +35,18 @@ crm --json solution components CRMWorx --diff components.json
 
 The two flags are mutually exclusive; bare `components <name>` is unchanged. The round-trip `--save` then `--diff` against the same org reports no drift ([#82](https://github.com/Gharib89/crm/issues/82)).
 
+## Detect unmanaged-layer conflicts across two solutions
+
+```bash
+crm --json solution layer-conflicts --solution MyManagedSln --unmanaged-solution MyDevSln
+```
+
+Reports components present in **both** a managed and an unmanaged solution — i.e. managed components that also carry unmanaged-layer customizations, the potential unmanaged-layer conflicts. The result is the **intersection** of the two solutions' `solutioncomponents`, keyed on `(componenttype, objectid)` and deliberately ignoring `rootcomponentbehavior` (the same component included with a different behavior is still an overlap). Each row carries `componenttype`, the friendly `type_name` (or the raw int as a string for an unmapped type), `objectid`, and both sides' `managed_rootcomponentbehavior` / `unmanaged_rootcomponentbehavior`.
+
+Works identically on v9.x on-prem and Dataverse online — it needs only `solutioncomponents` (present since CRM 2011), not the online-only `msdyn_componentlayer`, so on-prem gets a detection path it otherwise lacks. Read-only: `--solution` must resolve to a **managed** solution and `--unmanaged-solution` to an **unmanaged** one (validated client-side; a wrong-kind flag fails with `{ok:false}` and exit 1 naming the offending flag). **Always exits 0** when both kinds are valid — conflicts found or not (reporting, not failure, unlike `components --diff`); zero conflicts emits an explicit "no conflicts found" message and an empty list with `meta.count = 0`.
+
+**Limitation:** matching is at solution-component granularity. A table added whole to the managed solution whose single *attribute* was customized and added to the unmanaged solution intersects on nothing — the attribute is its own component with its own `objectid`/type. Subcomponent-level correlation is out of scope ([#200](https://github.com/Gharib89/crm/issues/200)).
+
 ## Add or remove a component
 
 ```bash
