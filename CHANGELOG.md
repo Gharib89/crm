@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v2.10.0 (2026-06-11)
+
+### Features
+
+- **self-update**: Add crm self-update + passive update notice
+  ([#219](https://github.com/Gharib89/crm/pull/219),
+  [`9959404`](https://github.com/Gharib89/crm/commit/9959404e6e1dffe6ded6e30529d678d40d3bdffd))
+
+
 ## v2.9.0 (2026-06-10)
 
 ### Features
