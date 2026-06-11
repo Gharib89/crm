@@ -19,7 +19,7 @@ import tarfile
 import threading
 import time
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import IO, Any
 
@@ -440,7 +440,8 @@ def cleanup_stale_updates(install_dir: Path) -> None:
 
 
 def perform_update(
-    *, install_dir: Path, base_url: str | None = None
+    *, install_dir: Path, base_url: str | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Download, checksum-verify, and swap the bundle. Mismatch leaves it intact."""
     base = base_url or default_base_url()
@@ -457,7 +458,11 @@ def perform_update(
                 "reason": "up-to-date"}
 
     archive = platform_archive()
+    if progress:
+        progress(f"Downloading crm {latest}...")
     data = _download_archive(base, latest, archive)
+    if progress:
+        progress("Verifying checksum...")
     sums = _fetch_sha256sums(base, latest)
     expected = sums.get(archive)
     if not expected or not verify_sha256(data, expected):
@@ -468,6 +473,8 @@ def perform_update(
     staged = install_dir.parent / f"{install_dir.name}.new-{os.getpid()}"
     if staged.exists():
         shutil.rmtree(staged, ignore_errors=True)
+    if progress:
+        progress("Installing...")
     try:
         _extract(archive, data, staged)
         swap_bundle(install_dir, staged, windows=sys.platform.startswith("win"))
@@ -481,4 +488,5 @@ def perform_update(
     finally:
         if staged.exists():
             shutil.rmtree(staged, ignore_errors=True)
-    return {"updated": True, "current": current, "latest": latest}
+    to_version = latest.lstrip("vV")
+    return {"updated": True, "from_version": current, "to_version": to_version}
