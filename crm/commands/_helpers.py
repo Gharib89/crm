@@ -562,11 +562,14 @@ def select_one(title: str, items: list[tuple[str, str]],
     (the first element of the chosen tuple) or None if the user cancelled.
 
     `items` is a list of (value, label) pairs. `default`, if given, is a value
-    that should be pre-selected (must match one of the item values). Raises
-    ValueError on empty input and RuntimeError when stdin is not a TTY
-    (scripts/CI must pass an explicit choice instead of relying on the picker)."""
+    that should be pre-selected and must match one of the item values. Raises
+    ValueError on empty input or a default that isn't among the choices, and
+    RuntimeError when stdin is not a TTY (scripts/CI must pass an explicit
+    choice instead of relying on the picker)."""
     if not items:
         raise ValueError("select_one: no choices to display")
+    if default is not None and default not in {value for value, _ in items}:
+        raise ValueError(f"select_one: default {default!r} is not among the choices")
     if not _stdin_is_tty():
         raise RuntimeError(
             "select_one: no interactive terminal — pass an explicit choice instead"

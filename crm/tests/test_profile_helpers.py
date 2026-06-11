@@ -83,6 +83,13 @@ class TestSelectOne:
         monkeypatch.setattr("questionary.select", lambda *a, **kw: _FakeSelect())
         assert select_one("Pick one", [("a", "label a")]) is None
 
+    def test_default_not_among_choices_raises_value_error(self, monkeypatch):
+        # A default that matches no item value is a contract violation — fail
+        # loudly rather than silently dropping preselection.
+        monkeypatch.setattr("crm.commands._helpers._stdin_is_tty", lambda: True)
+        with pytest.raises(ValueError, match="not among the choices"):
+            select_one("Pick one", [("a", "label a"), ("b", "label b")], default="z")
+
     def test_default_preselects_matching_choice(self, monkeypatch):
         # The optional default is forwarded to questionary.select so the wizard
         # can preselect the URL-inferred scheme; choices keep (value, label).
