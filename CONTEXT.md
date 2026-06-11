@@ -52,6 +52,36 @@ ids minted) and `meta.failed_stage`. The error text states the recovery path;
 re-running the whole verb is usually wrong once a stage has written.
 _Avoid_: partial failure (ambiguous about whether anything was written).
 
+### Cloning
+
+**Schema clone**:
+A copy of a *definition* — entity schema (`metadata clone-entity`), form
+(`form clone`), workflow (`workflow clone`). Operates on customization
+metadata; never touches record data.
+_Avoid_: bare "clone" without a qualifier.
+
+**Record clone**:
+A copy of a single *data row* (`entity clone`) — new record with the source's
+attribute values, minus the never-copy set. Never touches schema.
+_Avoid_: bare "clone" without a qualifier, duplicate, copy record.
+
+**Clone pre-flight**:
+Everything a record clone resolves and validates *before its first write* —
+lookup target resolution (including polymorphic targets), override/unset field
+validation. All failures are batched into one operational failure naming every
+offending field; `--dry-run` runs the same pre-flight, so the preview is the
+complete fix list against an untouched org. Scoped to the parent record:
+child rows (`--with-children`) are validated per-row at clone time, and a
+child failure is a multi-stage failure, not a pre-flight failure.
+_Avoid_: validation pass, pre-check.
+
+**Never-copy set**:
+Attributes a record clone never copies even when metadata says they are
+writable: row identities (Uniqueidentifier-typed), state/status (server
+default wins on create), provenance- or privilege-gated fields
+(`overriddencreatedon`), and `ownerid` (a clone is owned by its creator, like
+any created record). Anything dropped is re-addable explicitly via `--override`.
+
 ### Workflow records
 
 **Workflow definition**:
@@ -72,6 +102,8 @@ _Avoid_: activation copy, activation row.
   raw Click text; under `--json` the root group renders it as an `{ok: false, error}`
   envelope on stdout (still exit `2`, never `1`) — it does not flow through `emit`.
 - The **exit-code contract** is the union: `{0 success, 1 operational failure, 2 usage error}`.
+- A **clone pre-flight** failure is an **operational failure** (exit `1`) that
+  occurs before any write — the org is untouched.
 - An **activation record** always belongs to exactly one **workflow definition**
   (its parent); deleting or deactivating the definition removes it.
 - A **dry-run preview** is a successful **emit envelope** (`ok: true`, exit `0`)
