@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.1.3 (2026-06-11)
+
+### Bug Fixes
+
+- **metadata**: Picklist command returns options for State/Status attributes (#229)
+  ([#242](https://github.com/Gharib89/crm/pull/242),
+  [`c82909c`](https://github.com/Gharib89/crm/commit/c82909c7a97fb6c7a7cbb39df927933907678e64))
+
+
 ## v3.1.2 (2026-06-11)
 
 ### Bug Fixes
