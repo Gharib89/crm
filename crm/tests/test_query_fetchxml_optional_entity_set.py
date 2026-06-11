@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.core.metadata import resolve_entity_set_name
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Error
 
 
 # ── Resolver unit tests ─────────────────────────────────────────────────────
