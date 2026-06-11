@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.2.0 (2026-06-11)
+
+### Bug Fixes
+
+- **emit**: Print warnings before error in human mode
+  ([#244](https://github.com/Gharib89/crm/pull/244),
+  [`f093b4f`](https://github.com/Gharib89/crm/commit/f093b4fc133464d123aa4b7c4527a162d922d22c))
+
+- **entity**: Thread validate warnings through create D365Error path; simplify payload check
+  ([#244](https://github.com/Gharib89/crm/pull/244),
+  [`f093b4f`](https://github.com/Gharib89/crm/commit/f093b4fc133464d123aa4b7c4527a162d922d22c))
+
+- **entity**: Tighten human-mode warning test; annotate payload type
+  ([#244](https://github.com/Gharib89/crm/pull/244),
+  [`f093b4f`](https://github.com/Gharib89/crm/commit/f093b4fc133464d123aa4b7c4527a162d922d22c))
+
+### Documentation
+
+- **entity**: Clarify validate_payload docstring — 1-3 GETs not always 3
+  ([#244](https://github.com/Gharib89/crm/pull/244),
+  [`f093b4f`](https://github.com/Gharib89/crm/commit/f093b4fc133464d123aa4b7c4527a162d922d22c))
+
+### Features
+
+- **entity**: Warn when create payload contains the primary id
+  ([#244](https://github.com/Gharib89/crm/pull/244),
+  [`f093b4f`](https://github.com/Gharib89/crm/commit/f093b4fc133464d123aa4b7c4527a162d922d22c))
+
+- **entity**: Warn when create payload contains the primary id (#233)
+  ([#244](https://github.com/Gharib89/crm/pull/244),
+  [`f093b4f`](https://github.com/Gharib89/crm/commit/f093b4fc133464d123aa4b7c4527a162d922d22c))
+
+
 ## v3.1.5 (2026-06-11)
 
 ### Bug Fixes
