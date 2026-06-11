@@ -45,6 +45,13 @@ Under `--dry-run`, only mutations are previewed; reads (GET) always execute for
 real. This is what lets a preview state live facts (`_exists`, `would_skip`)
 instead of guesses. `--dry-run` means "no writes", not "no traffic".
 
+**Multi-stage failure**:
+An operational failure partway through a verb that writes in stages — the
+envelope carries `meta.completed_steps` (what already happened, including any
+ids minted) and `meta.failed_stage`. The error text states the recovery path;
+re-running the whole verb is usually wrong once a stage has written.
+_Avoid_: partial failure (ambiguous about whether anything was written).
+
 ### Cloning
 
 **Schema clone**:
@@ -57,6 +64,14 @@ _Avoid_: bare "clone" without a qualifier.
 A copy of a single *data row* (`entity clone`) — new record with the source's
 attribute values, minus the never-copy set. Never touches schema.
 _Avoid_: bare "clone" without a qualifier, duplicate, copy record.
+
+**Clone pre-flight**:
+Everything a record clone resolves and validates *before its first write* —
+lookup target resolution, key-suffix length checks, override field/type
+validation. All failures are batched into one operational failure naming every
+offending field; `--dry-run` runs the same pre-flight, so the preview is the
+complete fix list against an untouched org.
+_Avoid_: validation pass, pre-check.
 
 **Never-copy set**:
 Attributes a record clone never copies even when metadata says they are
@@ -85,6 +100,8 @@ _Avoid_: activation copy, activation row.
   raw Click text; under `--json` the root group renders it as an `{ok: false, error}`
   envelope on stdout (still exit `2`, never `1`) — it does not flow through `emit`.
 - The **exit-code contract** is the union: `{0 success, 1 operational failure, 2 usage error}`.
+- A **clone pre-flight** failure is an **operational failure** (exit `1`) that
+  occurs before any write — the org is untouched.
 - An **activation record** always belongs to exactly one **workflow definition**
   (its parent); deleting or deactivating the definition removes it.
 - A **dry-run preview** is a successful **emit envelope** (`ok: true`, exit `0`)

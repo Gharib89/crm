@@ -46,7 +46,7 @@ class TestReadsExecute:
     def test_mutations_preview_under_dry_run(self, dry_backend: D365Backend, verb: str):
         """Each write verb returns the preview echo and issues no HTTP."""
         call = getattr(dry_backend, verb)
-        args = ("accounts",) if verb in ("get", "delete") else ("accounts", {"name": "Acme"})
+        args = ("accounts",) if verb == "delete" else ("accounts", {"name": "Acme"})
         with requests_mock.Mocker() as m:
             result = call(*args)
         assert isinstance(result, dict)

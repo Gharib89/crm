@@ -519,8 +519,9 @@ class D365Backend:
         """Issue an HTTP request and return parsed JSON (or None for 204).
 
         Retries on 429, idempotent 5xx, and retryable transport errors per the
-        backend's profile + env config. Honors self.dry_run by returning a
-        preview dict instead of issuing the call.
+        backend's profile + env config. Under self.dry_run, non-GET methods
+        return a preview dict instead of issuing the call; GETs always run for
+        real (the reads-execute rule).
 
         timeout overrides profile.timeout for this call only (long-running
         synchronous actions, e.g. the on-prem ImportSolution fallback).
