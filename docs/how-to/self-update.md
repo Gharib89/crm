@@ -24,8 +24,31 @@ the install script uses), and swaps the bundle in place — the `crm` launcher o
 your PATH keeps working. A checksum mismatch or download failure leaves the
 existing install untouched and exits non-zero.
 
-For `pip` / `uv` / source installs, `self-update` changes nothing and points you
-at `pip install -U crm` (or re-running `uv tool install`).
+For `pip` / `uv` / source installs, `self-update` does not touch the binary and
+points you at `pip install -U crm` (or re-running `uv tool install`).
+
+## Keeping installed skills in sync
+
+Every non-`--check` `self-update` re-syncs the agent skills you installed with
+[`crm skill install`](skill.md), so the shipped `SKILL.md` never lags the CLI. It
+reads the install registry (`${CRM_HOME:-~/.crm}/installed-skills.json`) and, for
+each recorded destination whose version is stale, re-copies the bundled skill
+tree. This fires on both install types — after a frozen bundle swap, and on a
+`pip`/`uv` install once the upgraded wheel is in place.
+
+The per-destination outcome is reported under `data.skills` (a list of
+`{dest, from_version, to_version, status}`, `status ∈ refreshed | skipped |
+pruned | error`):
+
+- **refreshed** — the skill was re-copied to the current version.
+- **skipped** — already current; no copy.
+- **pruned** — the folder was deleted out-of-band, so its registry entry is
+  dropped (the folder is *not* recreated).
+- **error** — copying that destination failed (e.g. permissions); the entry is
+  kept for a later retry.
+
+A skill-refresh failure never aborts the binary update — the command still
+reports `ok:true` when the upgrade itself succeeded.
 
 ## The passive update notice
 

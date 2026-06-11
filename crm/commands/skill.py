@@ -4,7 +4,10 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 import click
-from crm.cli import CLIContext, pass_ctx
+from crm import __version__
+from crm.cli import CLIContext, pass_ctx, _stdin_is_tty
+from crm.commands import skill_registry
+from crm.commands.skill_registry import bundled_skill_dir as _bundled_skill_dir
 
 
 SKILL_TARGETS: dict[str, Path] = {
@@ -14,16 +17,10 @@ SKILL_TARGETS: dict[str, Path] = {
 }
 
 
-def _bundled_skill_dir() -> Path:
-    """Return the directory of the skill bundle shipped inside the installed package."""
-    import crm as _crm_pkg
-    return Path(_crm_pkg.__file__).resolve().parent / "skills"
-
-
 def _resolve_skill_dest(target: str | None, dest: str | None) -> Path:
     if dest:
         return Path(dest).expanduser().resolve()
-    return SKILL_TARGETS[target or "copilot"]
+    return SKILL_TARGETS[target or "claude"]
 
 
 @click.group("skill")
@@ -44,7 +41,7 @@ def skill_path(ctx: CLIContext):
 @click.option(
     "--target",
     type=click.Choice(sorted(SKILL_TARGETS.keys())),
-    default="copilot",
+    default="claude",
     show_default=True,
     help="Where to install the skill. Ignored if --dest is given.",
 )
@@ -66,25 +63,27 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
     dest_dir = _resolve_skill_dest(target, dest)
     dest_file = dest_dir / "SKILL.md"
 
-    if dest_file.exists() and not force:
-        ctx.emit(
-            False,
-            error=f"{dest_file} already exists. Use --force to overwrite.",
-            meta={"target": target, "dest": str(dest_dir)},
-        )
+    overwrite = force
+    if dest_file.exists() and not overwrite:
+        # TTY-gated confirm: prompt only on an interactive human terminal. Under
+        # --json / non-TTY (agent/CI) keep the clean "already exists" error — never
+        # prompt (the no-prompt-under-json invariant). Decided on the gate directly,
+        # not via _confirm_destructive (its non-TTY path emits "aborted by user").
+        if _stdin_is_tty() and not ctx.json_mode:
+            if not click.confirm(f"Skill already exists at {dest_dir}; overwrite?", default=False):
+                ctx.emit(False, error="aborted by user")
+                return
+            overwrite = True
+        else:
+            ctx.emit(
+                False,
+                error=f"{dest_file} already exists. Use --force to overwrite.",
+                meta={"target": target, "dest": str(dest_dir)},
+            )
 
-    if force and dest_dir.exists():
-        ref_dir = dest_dir / "reference"
-        if ref_dir.is_dir():
-            shutil.rmtree(ref_dir)
-        if dest_file.exists():
-            dest_file.unlink()
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        src_dir, dest_dir,
-        dirs_exist_ok=True,
-        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-    )
+    skill_registry.install_tree(src_dir, dest_dir)
+    target_label = "custom" if dest else target
+    skill_registry.record_install(target_label, str(dest_dir), __version__)
     refs = sorted((dest_dir / "reference").glob("*.md")) if (dest_dir / "reference").is_dir() else []
     ctx.emit(
         True,
@@ -102,7 +101,7 @@ def skill_install(ctx: CLIContext, target: str, dest: str | None, force: bool):
 @click.option(
     "--target",
     type=click.Choice(sorted(SKILL_TARGETS.keys())),
-    default="copilot",
+    default="claude",
     show_default=True,
 )
 @click.option("--dest", type=click.Path(file_okay=False), default=None)
@@ -111,6 +110,7 @@ def skill_uninstall(ctx: CLIContext, target: str, dest: str | None):
     """Remove the installed skill (SKILL.md + reference/, and the directory if empty)."""
     dest_dir = _resolve_skill_dest(target, dest)
     dest_file = dest_dir / "SKILL.md"
+    skill_registry.remove_install(str(dest_dir))
     if not dest_file.exists():
         ctx.emit(True, data={"removed": False, "reason": "not installed", "dest": str(dest_file)})
         return
