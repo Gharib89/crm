@@ -125,6 +125,41 @@ and `--non-empty` keeps them (unknown ≠ empty). The count uses `?$count=true&$
 "no property '_x_value' on type 'Edm.Int32'". M:N counts and delete-impact analysis are
 out of scope.
 
+## Clone a record (`entity clone`)
+
+```bash
+crm --json entity clone accounts <guid>
+```
+
+Copies one record into a new one. The copied columns are the source's create-valid
+attributes minus the **never-copy set**: every `Uniqueidentifier`-typed column (primary
+id + `address1_addressid`-class child ids, dropped by type so no per-entity lists),
+`statecode`/`statuscode`, `ownerid`, `overriddencreatedon`. The clone lands in the
+server-default state, owned by the caller. Set lookups are rebound to the **same parent**
+— resolution is annotation-driven (the source is retrieved with annotations; the
+per-value `associatednavigationproperty` gives the exact case-sensitive nav and
+`lookuplogicalname` gives the target set), so single-target and polymorphic lookups both
+bind without guessing nav casing.
+
+**Contract.** All lookup/`--unset` resolution is a **clone pre-flight** that runs before
+the one create write: failures (an unresolvable lookup, an `--unset` of a non-attribute)
+are batched into a single `{ok:false}` and the org is untouched — a lookup is never
+silently dropped. `--dry-run` runs the same pre-flight and returns the resolved body
+instead of writing:
+
+```json
+{"ok": true, "data": {"_dry_run": true, "would_create": {"entity_set": "accounts", "body": {...}}}, "meta": {"dry_run": true}}
+```
+
+Success matches `entity create` (`data` = created record, or `{"id"}` with `--no-return`).
+
+**Gotcha — status on clone.** The clone always lands in the server-default state; to set
+a status, `entity update <set> <newid> --data '{"statuscode":N}'` *after* the clone.
+On **on-prem**, a status in the create body is ignored, so passing it via `--override` is
+a no-op there. Re-add any never-copy field (or override a cloned value) with
+`--override`; its key passes raw, so an `@odata.bind` key works. Cloning child rows
+(`--with-children`) is a separate follow-up — this verb is single-record.
+
 ## Record-create payloads (`@odata.bind`)
 
 When constructing `entity create`/`update` payloads, lookup fields require an

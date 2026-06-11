@@ -632,3 +632,156 @@ def _odata_count(body: "dict[str, Any] | str | None") -> int:
         if n is not None:
             return int(n)
     raise D365Error(f"Unexpected count response: {body!r}")
+
+
+# ── Record clone (#255) ───────────────────────────────────────────────────
+
+# Attributes a record clone never copies even when metadata marks them writable.
+# Uniqueidentifier-typed columns are dropped generically by type (covers the
+# primary id AND address1_addressid-class child ids — no per-entity lists); the
+# rest are dropped by name. All are re-addable via `overrides`.
+_NEVER_COPY_NAMES = frozenset(
+    {"statecode", "statuscode", "ownerid", "overriddencreatedon"}
+)
+# Attribute types whose value is carried as a `_<name>_value` lookup property
+# and must be rebound with `<nav>@odata.bind`, not copied verbatim. `ownerid`
+# itself is in the never-copy set, but `Owner` stays here so any other
+# owner-typed column is rebound rather than silently dropped as a plain field.
+_LOOKUP_TYPES = frozenset({"Lookup", "Customer", "Owner"})
+
+# Per-value lookup annotations (present on an annotated retrieve). The first is
+# the exact case-sensitive single-valued navigation property for the value
+# currently set — authoritative for both single-target and polymorphic lookups
+# (avoids guessing nav-prop casing, the #228 hazard); the second is the target
+# table's logical name, which selects its entity set for the bind URL.
+_ASSOC_NAV_ANNOTATION = "Microsoft.Dynamics.CRM.associatednavigationproperty"
+_LOOKUP_LOGICAL_ANNOTATION = "Microsoft.Dynamics.CRM.lookuplogicalname"
+
+
+def clone_record(
+    backend: D365Backend,
+    entity_set: str,
+    record_id: str,
+    *,
+    overrides: dict[str, Any] | None = None,
+    unset: list[str] | None = None,
+    return_record: bool = True,
+) -> dict[str, Any]:
+    """Clone a single record over the Web API (#255).
+
+    Start from the source's `IsValidForCreate` attributes, drop the never-copy
+    set, convert each set lookup to a `<nav>@odata.bind` (nav + target taken
+    from the record's own annotations), then apply `unset`/`overrides`. All
+    resolution runs as a clone pre-flight before the single create write; on a
+    pre-flight failure the org is untouched. Returns the created record (or just
+    its id with `return_record=False`); under `--dry-run`, returns
+    `{_dry_run, would_create: {entity_set, body}}` with the resolved payload.
+    """
+    from crm.core import metadata as metadata_mod
+
+    overrides = overrides or {}
+    unset = unset or []
+    # Validate-before-backend: reject a bad record id before any metadata GET so
+    # a typo costs no round-trip (mirrors count_children); reuse it from here on.
+    record_id = _normalize_id(record_id)
+
+    defs = metadata_mod.list_entity_definitions(backend)
+    set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
+    logical_to_set = {d["logical"]: d["set_name"] for d in defs if d["set_name"]}
+    logical_name = set_to_logical.get(entity_set)
+    if not logical_name:
+        raise D365Error(f"Unknown entity set: {entity_set!r}")
+
+    attrs = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
+        params={"$select": "LogicalName,AttributeType,IsValidForCreate"},
+    )).get("value", [])
+    # logical_name -> AttributeType for every attribute valid for create and not
+    # in the never-copy set; this is the canonical column set the clone copies.
+    # `all_attr_names` is every attribute (any validity) so `unset` can be
+    # validated against the real schema, not just the copied subset.
+    create_attrs: dict[str, str] = {}
+    all_attr_names: set[str] = set()
+    for a in attrs:
+        name = a.get("LogicalName")
+        if not name:
+            continue
+        all_attr_names.add(name)
+        if not a.get("IsValidForCreate"):
+            continue
+        attr_type = a.get("AttributeType") or ""
+        if attr_type == "Uniqueidentifier" or name in _NEVER_COPY_NAMES:
+            continue
+        create_attrs[name] = attr_type
+
+    source = retrieve(backend, entity_set, record_id, include_annotations=True)
+
+    body: dict[str, Any] = {}
+    # logical lookup name -> the `<nav>@odata.bind` key it produced, so an
+    # `unset` of the lookup's logical name finds and drops the right key.
+    lookup_bind_keys: dict[str, str] = {}
+    # Clone pre-flight failures, batched so the caller sees every offending
+    # field at once; raised before any write, so the org is untouched.
+    errors: list[str] = []
+    for name, attr_type in create_attrs.items():
+        if attr_type in _LOOKUP_TYPES:
+            value_key = f"_{name}_value"
+            guid = source.get(value_key)
+            if not guid:
+                continue
+            nav = source.get(f"{value_key}@{_ASSOC_NAV_ANNOTATION}")
+            target_logical = source.get(f"{value_key}@{_LOOKUP_LOGICAL_ANNOTATION}")
+            target_set = logical_to_set.get(target_logical or "")
+            if not nav or not target_set:
+                errors.append(
+                    f"{name}: cannot resolve the lookup target (navigation "
+                    "property + entity set) from the source record — drop it "
+                    f"with --unset {name}, or re-add it with the lookup's "
+                    "case-sensitive navigation property as --override "
+                    "'<nav>@odata.bind=/<set>(<id>)' (get <nav> from "
+                    f"`crm metadata describe {logical_name}`)"
+                )
+                continue
+            bind_key = f"{nav}@odata.bind"
+            body[bind_key] = f"/{target_set}({guid})"
+            lookup_bind_keys[name] = bind_key
+        else:
+            value = source.get(name)
+            if value is not None:
+                body[name] = value
+
+    # Drop unset fields by logical name (a lookup's logical name removes the
+    # `<nav>@odata.bind` key it produced). Unsetting a field the schema does not
+    # have is a pre-flight failure, not a silent no-op, so a typo surfaces.
+    for field in unset:
+        if field not in all_attr_names:
+            errors.append(
+                f"{field}: --unset names a field that is not an attribute of "
+                f"{entity_set}"
+            )
+            continue
+        body.pop(field, None)
+        bind_key = lookup_bind_keys.get(field)
+        if bind_key:
+            body.pop(bind_key, None)
+
+    # Overrides apply last and pass raw: the key is used verbatim (so an
+    # `@odata.bind` key re-adds a never-copy lookup) and an override wins over a
+    # cloned value. Override keys are deliberately not field-name validated.
+    for key, value in overrides.items():
+        body[key] = value
+
+    if errors:
+        raise D365Error(
+            f"Clone pre-flight failed for {entity_set}({record_id}):\n  - "
+            + "\n  - ".join(errors)
+        )
+
+    if backend.dry_run:
+        # Pre-flight has already run against a live org (the reads execute under
+        # dry-run); surface the fully resolved create body instead of letting
+        # the backend's generic POST short-circuit return an opaque echo.
+        return {"_dry_run": True,
+                "would_create": {"entity_set": entity_set, "body": body}}
+
+    return create(backend, entity_set, body, return_record=return_record)
