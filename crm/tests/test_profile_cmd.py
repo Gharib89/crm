@@ -154,6 +154,7 @@ class TestAddWizard:
             "profile", "add", "--url", "https://crm.contoso.local/c",
             "--username", "u", "--domain", "D", "--password", "pw",
             "--name", "wiz2", "--yes"])
+        assert result.exit_code == 1, result.output  # operational failure (ADR 0001)
         assert "aborted by user" in result.output.lower()
         assert "wiz2" not in session_mod.list_profiles()
 
