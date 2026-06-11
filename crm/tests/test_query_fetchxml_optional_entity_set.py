@@ -25,14 +25,16 @@ from crm.utils.d365_backend import D365Error
 # ── Resolver unit tests ─────────────────────────────────────────────────────
 
 class _ResolverBackend:
-    """Records calls and returns configured responses per path."""
+    """Records calls (path + params) and returns configured responses per path."""
 
     def __init__(self, responses: dict[str, Any]) -> None:
         self.calls: list[str] = []
+        self.params: list[Any] = []
         self._responses = responses
 
     def get(self, path: str, *, params: Any = None, **_kw: Any) -> Any:
         self.calls.append(path)
+        self.params.append(params)
         if path in self._responses:
             return self._responses[path]
         raise AssertionError(f"Unexpected backend.get call: {path!r}")
@@ -48,6 +50,8 @@ def test_resolve_entity_set_name_returns_set_name():
     result = resolve_entity_set_name(backend, "account")  # type: ignore[arg-type]
     assert result == "accounts"
     assert backend.calls == [_ENTITY_DEF_PATH]
+    # Verify the $select=EntitySetName projection is used (not a full entity fetch).
+    assert backend.params[0] == {"$select": "EntitySetName"}
 
 
 def test_resolve_entity_set_name_raises_on_missing():
@@ -134,6 +138,25 @@ def test_no_positional_derives_entity_set(monkeypatch: pytest.MonkeyPatch):
     assert len(query_calls) == 1
 
 
+def test_no_positional_file_path_derives_entity_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+):
+    """--file path with no positional also derives entity set via resolver."""
+    xml_file = tmp_path / "query.xml"  # type: ignore[operator]
+    xml_file.write_text(_FETCH_ACCOUNT, encoding="utf-8")
+    calls: list[str] = []
+    _make_backend(monkeypatch, calls)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "query", "fetchxml", "--file", str(xml_file)],
+    )
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is True
+    assert any("EntityDefinitions" in c for c in calls)
+    assert any(c == "accounts" for c in calls)
+
+
 def test_no_positional_result_uses_resolved_name(monkeypatch: pytest.MonkeyPatch):
     """The resolved entity set name flows into the result envelope's entity_set field."""
     _make_backend(monkeypatch)
@@ -206,7 +229,8 @@ def test_error_message_names_both_remedies(monkeypatch: pytest.MonkeyPatch):
         ["query", "fetchxml", "--xml", _FETCH_NO_NAME],
     )
     assert result.exit_code == 2
-    # Message should mention passing the positional AND the name= attribute
+    # Assert against the specific UsageError text (not Click's usage line).
+    # The message must name both fixes: pass ENTITY_SET explicitly + add name=.
     output = result.output.lower()
-    assert "entity_set" in output or "positional" in output or "entity set" in output
-    assert "name=" in output or "name attribute" in output or "<entity" in output
+    assert "pass entity_set explicitly" in output
+    assert 'name="' in result.output or "name=" in result.output
