@@ -1,6 +1,7 @@
 """Entity CRUD commands."""
 # pyright: basic
 from __future__ import annotations
+import json
 import re
 from typing import Any
 import click
@@ -111,6 +112,30 @@ def enrich_duplicate_key_error(
         return out
     except Exception:
         return {}
+
+
+def _parse_overrides(pairs: tuple[str, ...]) -> dict[str, Any]:
+    """Parse repeatable --override FIELD=VALUE flags into a clone payload dict.
+
+    Split on the FIRST '=' so a VALUE may itself contain '='. The KEY is used
+    verbatim (so an `@odata.bind` key survives); the VALUE is parsed as JSON,
+    falling back to the raw string when it is not valid JSON — so `creditlimit=5000`
+    is a number, `donotemail=true` a bool, and `name=Acme` or a `/set(id)` deep-link
+    stay strings. A pair missing '=' or with an empty field is a usage error
+    (exit 2); validated before any backend call so a typo never costs a round-trip.
+    """
+    out: dict[str, Any] = {}
+    for raw in pairs:
+        key, sep, value = raw.partition("=")
+        if not sep or not key.strip():
+            raise click.UsageError(
+                f"--override must be FIELD=VALUE with a non-empty field, got {raw!r}"
+            )
+        try:
+            out[key.strip()] = json.loads(value)
+        except json.JSONDecodeError:
+            out[key.strip()] = value
+    return out
 
 
 def _resolve_return_record(no_return: bool, return_record: bool, *, default: bool) -> bool:
@@ -293,6 +318,47 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
         return
     ctx.emit(True, data=result, warnings=validate_warnings or None)
     _journal(ctx, "entity create", entity_set, result)
+    _touch_session(ctx, entity_set)
+
+
+@entity_group.command("clone")
+@click.argument("entity_set")
+@click.argument("record_id")
+@click.option("--override", "overrides", multiple=True, metavar="FIELD=VALUE",
+              help="Repeatable. Set/replace a field on the clone. VALUE is parsed as "
+                   "JSON, else taken as a string. The key passes raw, so "
+                   "'ownerid@odata.bind=/systemusers(<id>)' re-adds a never-copy field.")
+@click.option("--unset", "unset_fields", multiple=True, metavar="FIELD",
+              help="Repeatable. Drop a field (logical name) from the clone; a lookup's "
+                   "logical name drops the bind it produced.")
+@click.option("--no-return", is_flag=True,
+              help="Don't request the record back; return just the new GUID.")
+@pass_ctx
+def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields, no_return):
+    """Clone a single record.
+
+    Copies <entity-set> <guid>'s values minus the never-copy set (ids,
+    state/status, owner), rebinding each lookup to the same parent. --override
+    and --unset adjust the new record before it is written; --dry-run previews
+    the fully resolved create body without writing (all lookup/field resolution
+    still runs, so the preview is the complete fix list against an untouched org)."""
+    parsed_overrides = _parse_overrides(overrides)
+    try:
+        result = entity_mod.clone_record(
+            ctx.backend(), entity_set, record_id,
+            overrides=parsed_overrides,
+            unset=list(unset_fields),
+            return_record=not no_return,
+        )
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if result.get("_dry_run"):
+        # emit stamps meta.dry_run from the --dry-run flag; surface the payload.
+        ctx.emit(True, data=result["would_create"])
+        return
+    ctx.emit(True, data=result)
+    _journal(ctx, "entity clone", entity_set, result)
     _touch_session(ctx, entity_set)
 
 

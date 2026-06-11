@@ -141,3 +141,30 @@ Counts go through `$batch` in chunks, so round trips are O(relationships / chunk
 ```
 
 `--non-empty` keeps these null rows (unknown ≠ empty). The count itself is issued as `?$count=true&$top=1` (reading `@odata.count`), **not** `/$count?$filter=` — on-prem 9.1 rejects a `$filter` on the `/$count` path segment ("no property '_x_value' on type 'Edm.Int32'"). Scope is 1:N only — many-to-many counts and cascade/delete-impact analysis are out of scope.
+
+## Clone a single record (`entity clone`)
+
+```bash
+crm --json entity clone accounts 00000000-0000-0000-0000-000000000001
+```
+
+`entity clone` copies one record's values into a new record. It starts from the source's create-valid attributes and drops the **never-copy set** — every `Uniqueidentifier`-typed column (the primary id, plus `address1_addressid`-class child ids, generically — no per-entity lists), `statecode`/`statuscode`, `ownerid`, and `overriddencreatedon`. Each lookup that is set on the source is rebound to the **same parent**: the source is retrieved with annotations, and the per-value `@Microsoft.Dynamics.CRM.associatednavigationproperty` (the exact case-sensitive nav property) and `@...lookuplogicalname` (the target table) are turned into a `<nav>@odata.bind` deep-link — so single-target and polymorphic lookups both bind correctly without guessing nav-property casing. The new record lands in the server-default state and is owned by the caller.
+
+Adjust the new record with `--override FIELD=VALUE` (repeatable) and `--unset FIELD` (repeatable):
+
+```bash
+crm --json entity clone accounts 00000000-0000-0000-0000-000000000001 \
+    --override name='Contoso (copy)' \
+    --unset primarycontactid
+```
+
+`--override` re-adds anything from the never-copy set and wins over the cloned value; its key passes raw, so a bind key works too: `--override 'ownerid@odata.bind=/systemusers(<id>)'`. The value is read as JSON when possible (`creditlimit=5000` → number, `donotemail=true` → bool), otherwise as a string. `--unset` drops a field by **logical name** — a lookup's logical name drops the bind it produced.
+
+All lookup resolution and `--unset` validation run as a **clone pre-flight** before the single create write: every offending field (an unresolvable lookup, an `--unset` of a non-existent attribute) is batched into one failure and **the org is untouched**. A lookup is never silently dropped. `--dry-run` runs the same pre-flight and returns the fully resolved create body without writing — the complete fix list against an untouched org:
+
+```bash
+crm --json --dry-run entity clone accounts 00000000-0000-0000-0000-000000000001
+# -> {"ok": true, "data": {"entity_set": "accounts", "body": { ... }}, "meta": {"dry_run": true}}
+```
+
+The success envelope matches `entity create` — `data` is the created record, or just `{"id": "<guid>"}` with `--no-return`. To clone into a specific status, run `entity update <set> <newid> --data '{"statuscode": N}'` after the clone (on **on-prem** create does not honor a status passed in the create body, so `--override statuscode=N` is a documented no-op there). This is a single-record clone; cloning a record together with its child rows (`--with-children`) is a separate follow-up.
