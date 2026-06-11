@@ -26,6 +26,24 @@ _METADATA_SETS = frozenset(("entitydefinitions", "attributemetadata"))
 _OPTIONSET_SETS = frozenset(("globaloptionsetdefinitions",))
 
 
+def _resolve_return_record(no_return: bool, return_record: bool, *, default: bool) -> bool:
+    """Reconcile the symmetric echo flags into the core ``return_record`` bool.
+
+    Both verbs accept ``--no-return`` and ``--return-record``; each keeps its own
+    default (create echoes, update is silent). Passing both is a usage error (#230).
+    """
+    if no_return and return_record:
+        raise click.UsageError(
+            "--no-return and --return-record are mutually exclusive: one suppresses the "
+            "echoed record, the other requests it."
+        )
+    if no_return:
+        return False
+    if return_record:
+        return True
+    return default
+
+
 def _metadata_set_hint(entity_set: str) -> str | None:
     """Return a hint for EntityMetadata PATCH operations, None for regular entities."""
     head = entity_set.split("(", 1)[0].strip().lower()
@@ -112,21 +130,24 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a JSON file with the record body.")
 @click.option("--no-return", is_flag=True, help="Don't request the record back; just GUID.")
+@click.option("--return-record", is_flag=True,
+              help="Ask server to return the created row (the default for create).")
 @click.option("--validate", is_flag=True,
               help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
                    "fields with did-you-mean. Composable with --dry-run.")
 @_admin_header_options
 @pass_ctx
-def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, validate,
-                  as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, return_record,
+                  validate, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """POST a new record."""
+    return_record = _resolve_return_record(no_return, return_record, default=True)
     payload = _load_payload(data_json, data_file)
     if validate and not _validate_or_emit(ctx, entity_set, payload):
         return
     try:
         result = entity_mod.create(
             ctx.backend(), entity_set, payload,
-            return_record=not no_return,
+            return_record=return_record,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     except D365Error as exc:
@@ -143,7 +164,10 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
 @click.option("--data", "data_json", help="JSON object as string.")
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--allow-create", is_flag=True, help="Permit upsert (skip If-Match header).")
-@click.option("--return-record", is_flag=True, help="Ask server to return the updated row.")
+@click.option("--return-record", is_flag=True,
+              help="Ask server to return the updated row (update is silent by default).")
+@click.option("--no-return", is_flag=True,
+              help="Don't request the record back (the default for update).")
 @click.option("--if-match", "if_match", metavar="ETAG", default=None,
               help='Optimistic concurrency etag. Example (POSIX): --if-match \'W/"123"\'. '
                    'Use --if-match "*" to require any current version.')
@@ -153,7 +177,7 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
 @_admin_header_options
 @pass_ctx
 def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, allow_create,
-                  return_record, if_match, validate, as_user, as_user_object_id,
+                  return_record, no_return, if_match, validate, as_user, as_user_object_id,
                   suppress_dup_detection, bypass_plugins):
     """PATCH an existing record."""
     if allow_create and if_match:
@@ -161,6 +185,7 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
             "--allow-create and --if-match are mutually exclusive: --allow-create permits "
             "upsert (no If-Match), while --if-match enforces optimistic concurrency."
         )
+    return_record = _resolve_return_record(no_return, return_record, default=False)
     payload = _load_payload(data_json, data_file)
     if validate and not _validate_or_emit(ctx, entity_set, payload):
         return
