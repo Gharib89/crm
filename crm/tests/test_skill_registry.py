@@ -29,6 +29,25 @@ def test_reinstall_same_dest_updates_in_place():
     assert skills[0]["installed_version"] == "2.11.0"
 
 
+def test_record_dedups_by_resolved_path():
+    from crm.commands import skill_registry as reg
+
+    reg.record_install("claude", "/a/b", "2.10.0")
+    reg.record_install("claude", "/a/./b", "2.11.0")  # same dir, different spelling
+    skills = reg.read_skills()
+    assert len(skills) == 1
+    assert skills[0]["installed_version"] == "2.11.0"
+    assert skills[0]["dest"] == "/a/b"  # stored normalized
+
+
+def test_remove_matches_unresolved_spelling():
+    from crm.commands import skill_registry as reg
+
+    reg.record_install("claude", "/a/b", "2.10.0")
+    reg.remove_install("/a/./b")  # different spelling still removes
+    assert reg.read_skills() == []
+
+
 def test_distinct_dests_accumulate():
     from crm.commands import skill_registry as reg
 
@@ -138,9 +157,11 @@ def test_refresh_error_continues_and_keeps_entry(tmp_path):
 
     results = reg.refresh_skills("2.0.0", src)
 
-    by_dest = {r["dest"]: r["status"] for r in results}
-    assert by_dest[str(bad)] == "error"
-    assert by_dest[str(good)] == "refreshed"
+    by_dest = {r["dest"]: r for r in results}
+    assert by_dest[str(bad)]["status"] == "error"
+    # error reports the intended target so callers see what it tried to reach.
+    assert by_dest[str(bad)]["to_version"] == "2.0.0"
+    assert by_dest[str(good)]["status"] == "refreshed"
     # The failed entry is kept (still stale) so a later run retries it.
     versions = {s["dest"]: s["installed_version"] for s in reg.read_skills()}
     assert versions[str(bad)] == "1.0.0"

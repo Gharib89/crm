@@ -136,6 +136,21 @@ class TestSkillRefresh:
         assert (dest / "SKILL.md").exists()  # real bundled skill copied in
         assert reg.read_skills()[0]["installed_version"] == update_mod.current_version()
 
+    def test_global_refresh_failure_surfaces_error_not_silence(self, monkeypatch):
+        # An unexpected refresh failure (e.g. unreadable registry) must surface in
+        # data.skills as an error, not be silently dropped — and must not fail the
+        # command (the binary side already succeeded).
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+
+        def boom(*a, **k):
+            raise PermissionError("registry unreadable")
+
+        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills", boom)
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        skills = json.loads(result.output)["data"]["skills"]
+        assert any(s.get("status") == "error" for s in skills)
+
     def test_check_does_not_touch_skills(self, monkeypatch):
         spy = {"calls": 0}
         monkeypatch.setattr(update_mod, "check_for_update",

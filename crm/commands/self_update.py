@@ -31,13 +31,16 @@ def _frozen_skill_src(install_dir: Path) -> Path | None:
 
 def _refresh_skills(target_version: str, src_dir: Path | None) -> list[dict[str, Any]]:
     """Re-sync recorded skills, never raising — a skill failure must not fail the
-    binary update. A missing source tree → no refresh."""
+    binary update. A missing source tree → no refresh. A genuine failure (e.g. an
+    unreadable registry) is surfaced as an error entry in `data.skills` rather than
+    silently dropped, so the reported outcome never falsely reads as 'nothing to do'."""
     if src_dir is None or not (src_dir / "SKILL.md").exists():
         return []
     try:
         return skill_registry.refresh_skills(target_version, src_dir)
-    except Exception:
-        return []
+    except Exception as exc:
+        return [{"dest": None, "from_version": None, "to_version": target_version,
+                 "status": "error", "error": str(exc)}]
 
 
 @click.command("self-update")

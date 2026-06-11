@@ -18,8 +18,14 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
+
+
+def _normalize(dest: str) -> str:
+    """Canonical absolute path used as the dedup/match key for a destination."""
+    return str(Path(dest).expanduser().resolve())
 
 
 def _crm_home() -> Path:
@@ -51,22 +57,32 @@ def read_skills() -> list[dict[str, Any]]:
 
 
 def _write_skills(skills: list[dict[str, Any]]) -> None:
+    # Unique temp name in the same dir (CRM_HOME is shared across concurrent
+    # invocations) → a fixed `.tmp` would let two writers clobber each other.
     path = registry_path()
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps({"skills": skills}, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"skills": skills}, indent=2))
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def record_install(target: str, dest: str, installed_version: str) -> None:
     """Add or update the entry for `dest` (dedup by resolved dest path)."""
-    skills = [s for s in read_skills() if s.get("dest") != dest]
-    skills.append({"target": target, "dest": dest, "installed_version": installed_version})
+    key = _normalize(dest)
+    skills = [s for s in read_skills() if s.get("dest") != key]
+    skills.append({"target": target, "dest": key, "installed_version": installed_version})
     _write_skills(skills)
 
 
 def remove_install(dest: str) -> None:
-    """Drop the entry matching `dest`, if any."""
-    _write_skills([s for s in read_skills() if s.get("dest") != dest])
+    """Drop the entry matching `dest` (by resolved path), if any."""
+    key = _normalize(dest)
+    _write_skills([s for s in read_skills() if s.get("dest") != key])
 
 
 # ── Skill tree copy + self-update refresh ───────────────────────────────
@@ -127,8 +143,10 @@ def refresh_skills(target_version: str, src_dir: Path) -> list[dict[str, Any]]:
         try:
             install_tree(src_dir, Path(dest))
         except Exception:
+            # Report the intended target so callers see what the refresh aimed
+            # for; the entry is kept (still stale) for a later retry.
             results.append({"dest": dest, "from_version": from_v,
-                            "to_version": from_v, "status": "error"})
+                            "to_version": target_version, "status": "error"})
             kept.append(entry)
             continue
         kept.append({**entry, "installed_version": target_version})
