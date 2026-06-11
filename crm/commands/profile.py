@@ -387,7 +387,8 @@ def profile_set_password(ctx: CLIContext, profile_name, password_opt,
         label = "client secret" if profile.auth_scheme == "oauth" else "password"
         secret = getpass.getpass(f"D365 {label} for profile {profile_name!r}: ") or None
     if not secret:
-        ctx.emit(False, error="No secret supplied. Pass --password.")
+        flag = "--client-secret" if profile.auth_scheme == "oauth" else "--password"
+        ctx.emit(False, error=f"No secret supplied. Pass {flag}.")
         return
     try:
         where = conn_mod.save_secret(profile_name, secret, force_plaintext=store_password_plaintext)

@@ -93,7 +93,7 @@ class TestSelectOne:
                 return "oauth"
         def _fake_select(message, choices=None, default=None, **kw):
             captured["default"] = default
-            captured["values"] = [c.value for c in choices]
+            captured["values"] = [c.value for c in (choices or [])]
             return _FakeSelect()
         monkeypatch.setattr("questionary.select", _fake_select)
         out = select_one("Auth scheme", [("ntlm", "ntlm"), ("oauth", "oauth")],

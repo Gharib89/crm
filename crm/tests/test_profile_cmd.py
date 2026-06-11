@@ -311,6 +311,19 @@ class TestSetDeletePassword:
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") == "cs"
 
+    def test_set_password_missing_secret_oauth_hints_client_secret(self, crm_home):
+        # On an OAuth profile the missing-secret error must point at the alias,
+        # not only --password, so the oauth flag is discoverable when scripting.
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name="cloud", url="https://org.crm.dynamics.com", domain="",
+            username="", auth_scheme="oauth", tenant_id="t", client_id="c"))
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "set-password", "--profile", "cloud"])
+        assert result.exit_code == 1, result.output
+        assert "--client-secret" in json.loads(result.output)["error"]
+
     def test_set_password_both_secret_flags_mutually_exclusive(self, crm_home):
         self._seed()
         runner = CliRunner()
