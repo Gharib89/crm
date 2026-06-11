@@ -31,7 +31,10 @@ at `pip install -U crm` (or re-running `uv tool install`).
 
 On an interactive terminal, `crm` checks at most once every 24 hours whether a
 newer release exists and prints a one-line notice on stderr after a command
-finishes. The probe runs in the background and never delays a command.
+finishes — at most once per 24 hours (tracked via `notified_at` in the cache),
+so it does not reprint on every command. A newly discovered version resets that
+gate so the new release is surfaced promptly. The probe runs in the background
+and never delays a command.
 
 It is silent — and skips the network entirely — in any of these cases:
 

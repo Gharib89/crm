@@ -17,6 +17,7 @@ import shutil
 import sys
 import tarfile
 import threading
+import time
 import zipfile
 from collections.abc import Mapping
 from pathlib import Path
@@ -63,7 +64,11 @@ def fetch_latest_version(base_url: str, timeout: float = _NETWORK_TIMEOUT) -> st
     except Exception:
         return None
     text = resp.text.strip()
-    return text or None
+    if not text or not _is_version(text):
+        # A 200 with junk (proxy login page, HTML error, "latest") must never
+        # be cached or compared — it would raise in compare_versions downstream.
+        return None
+    return text
 
 
 # ── Update-check cache (throttle) ───────────────────────────────────────
@@ -88,14 +93,33 @@ def read_cache() -> dict[str, Any] | None:
         return None
 
 
-def write_cache(latest: str, now: float) -> None:
-    """Atomically record the latest-version probe result (tmp + replace)."""
+def _write_cache_dict(data: dict[str, Any]) -> None:
     path = _cache_path()
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps({"checked_at": now, "latest": latest}), encoding="utf-8"
-    )
+    tmp.write_text(json.dumps(data), encoding="utf-8")
     tmp.replace(path)
+
+
+def write_cache(latest: str, now: float) -> None:
+    """Atomically record the latest-version probe result (tmp + replace).
+
+    Preserves an existing `notified_at` gate only when `latest` is unchanged —
+    a newly discovered version drops the gate so the notice fires again.
+    """
+    data: dict[str, Any] = {"checked_at": now, "latest": latest}
+    existing = read_cache() or {}
+    if existing.get("latest") == latest and isinstance(
+        existing.get("notified_at"), (int, float)
+    ):
+        data["notified_at"] = existing["notified_at"]
+    _write_cache_dict(data)
+
+
+def mark_notified(now: float) -> None:
+    """Record that the passive notice was shown, to gate it to once per interval."""
+    data = read_cache() or {}
+    data["notified_at"] = now
+    _write_cache_dict(data)
 
 
 def should_refresh(now: float) -> bool:
@@ -136,9 +160,21 @@ def verify_sha256(data: bytes, expected: str) -> bool:
 
 
 def _parse(version: str) -> tuple[int, ...]:
-    """`vX.Y.Z` / `X.Y.Z` -> int tuple. A leading `v` is tolerated on either side."""
+    """`vX.Y.Z` / `X.Y.Z` -> int tuple. A leading `v` is tolerated on either side.
+
+    Raises ValueError on a non-numeric component — callers that handle untrusted
+    input (cache, server payload) must guard or pre-validate via `_is_version`.
+    """
     core = version.strip().lstrip("vV").split("+", 1)[0].split("-", 1)[0]
     return tuple(int(part) for part in core.split("."))
+
+
+def _is_version(text: str) -> bool:
+    """True if `text` parses as a dotted numeric version (so compare won't raise)."""
+    try:
+        return bool(_parse(text))
+    except ValueError:
+        return False
 
 
 def compare_versions(current: str, latest: str) -> int:
@@ -195,14 +231,31 @@ def refresh_cache(now: float, base_url: str | None = None) -> None:
         pass
 
 
-def pending_notice(current: str, *, frozen: bool = False) -> str | None:
-    """One-line notice from the cache (no network) if a newer version is known."""
+def pending_notice(
+    current: str, *, frozen: bool = False, now: float | None = None
+) -> str | None:
+    """One-line notice from the cache (no network) if a newer version is known.
+
+    Read-only and fail-silent: a malformed cached `latest` never raises, and the
+    notice is gated to once per `_CHECK_INTERVAL` via the cached `notified_at`
+    stamp so a new process per command does not reprint on every invocation.
+    """
     cache = read_cache()
     if cache is None:
         return None
     latest = cache.get("latest")
-    if not isinstance(latest, str) or compare_versions(current, latest) >= 0:
+    if not isinstance(latest, str):
         return None
+    try:
+        if compare_versions(current, latest) >= 0:
+            return None
+    except ValueError:
+        return None  # junk cache (partial write / manual edit) — stay silent
+    notified_at = cache.get("notified_at")
+    if isinstance(notified_at, (int, float)):
+        ref = time.time() if now is None else now
+        if (ref - notified_at) < _CHECK_INTERVAL:
+            return None
     how = "crm self-update" if frozen else "pip install -U crm"
     return f"A new crm release is available: {current} → {latest}. Run `{how}` to upgrade."
 
@@ -236,19 +289,29 @@ def run_background_check(
 
 def emit_pending_notice(
     *, json_mode: bool, stderr_isatty: bool, env: Mapping[str, str],
-    stream: "IO[str] | None" = None,
+    stream: "IO[str] | None" = None, now: float | None = None,
 ) -> bool:
-    """Print the cached update notice once per process, if enabled. Returns printed?"""
+    """Print the cached update notice, if enabled and due. Returns printed?
+
+    Gated both per-process (`_notified`, for the REPL) and per-interval (a
+    persisted `notified_at`, so a fresh process per command shows it at most
+    once a day rather than on every invocation).
+    """
     global _notified
     if _notified:
         return False
     if not is_check_enabled(json_mode=json_mode, stderr_isatty=stderr_isatty, env=env):
         return False
-    message = pending_notice(current_version(), frozen=is_frozen())
+    ref = time.time() if now is None else now
+    message = pending_notice(current_version(), frozen=is_frozen(), now=ref)
     if message is None:
         return False
     _notified = True
     print(message, file=stream if stream is not None else sys.stderr)
+    try:
+        mark_notified(ref)
+    except Exception:
+        pass  # stamping is best-effort; never let it break the command
     return True
 
 
@@ -261,10 +324,14 @@ def check_for_update(base_url: str | None = None) -> dict[str, Any]:
     latest = fetch_latest_version(base_url or default_base_url(), _INTERACTIVE_TIMEOUT)
     if latest is None:
         raise UpdateError("Could not determine the latest version (network unreachable).")
+    try:
+        available = compare_versions(current, latest) < 0
+    except ValueError as exc:
+        raise UpdateError(f"Unexpected version format from release server: {latest!r}") from exc
     return {
         "current": current,
         "latest": latest,
-        "update_available": compare_versions(current, latest) < 0,
+        "update_available": available,
     }
 
 
@@ -381,7 +448,11 @@ def perform_update(
     latest = fetch_latest_version(base, _INTERACTIVE_TIMEOUT)
     if latest is None:
         raise UpdateError("Could not determine the latest version (network unreachable).")
-    if compare_versions(current, latest) >= 0:
+    try:
+        outdated = compare_versions(current, latest) >= 0
+    except ValueError as exc:
+        raise UpdateError(f"Unexpected version format from release server: {latest!r}") from exc
+    if outdated:
         return {"updated": False, "current": current, "latest": latest,
                 "reason": "up-to-date"}
 

@@ -140,7 +140,8 @@ crm --version
 ### Keeping crm up to date
 
 On an interactive terminal, `crm` checks at most once a day whether a newer
-release exists and prints a one-line notice after a command finishes. The check
+release exists and prints a one-line notice (at most once a day) after a command
+finishes. The check
 runs in the background against the release server, never blocks the command, and
 is silent under `--json`, when stderr is not a terminal, when `CI` is set, or when
 `CRM_NO_UPDATE_CHECK` is set.

@@ -80,6 +80,17 @@ class TestFetchLatestVersion:
         assert seen["url"] == "https://r2.example/base/latest/VERSION"
         assert seen["timeout"] is not None  # a bounded timeout is always passed
 
+    def test_non_semver_payload_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A 200 with junk (proxy login page, "latest", HTML) must not be cached
+        # or compared — it would crash compare_versions downstream.
+        monkeypatch.setattr(
+            update_mod.requests, "get",
+            lambda *a, **k: _Resp("<html>nope</html>"),
+        )
+        assert fetch_latest_version("https://r2.example") is None
+
     @pytest.mark.parametrize("exc", ["timeout", "conn", "http500"])
     def test_any_network_error_is_silent_none(
         self, monkeypatch: pytest.MonkeyPatch, exc: str
@@ -187,6 +198,30 @@ class TestPendingNotice:
         assert msg is not None
         assert "pip install -U" in msg
 
+    def test_malformed_cached_latest_no_crash(self, crm_home: Path) -> None:
+        # A partial write / manual edit / cached junk must not raise (fail-silent).
+        (crm_home / "update-check.json").write_text(
+            '{"checked_at": 1.0, "latest": "garbage"}', encoding="utf-8"
+        )
+        assert pending_notice(current="2.9.0") is None
+
+    def test_suppressed_within_24h_of_last_notice(self, crm_home: Path) -> None:
+        write_cache("v3.0.0", now=1000.0)
+        update_mod.mark_notified(now=1000.0)
+        assert pending_notice(current="2.9.0", now=1000.0 + _DAY - 1) is None
+
+    def test_shown_again_after_24h(self, crm_home: Path) -> None:
+        write_cache("v3.0.0", now=1000.0)
+        update_mod.mark_notified(now=1000.0)
+        assert pending_notice(current="2.9.0", now=1000.0 + _DAY + 1) is not None
+
+    def test_new_version_resets_notice_gate(self, crm_home: Path) -> None:
+        write_cache("v3.0.0", now=1000.0)
+        update_mod.mark_notified(now=1000.0)
+        # a refresh that finds a NEWER version drops the gate → notify again
+        write_cache("v3.1.0", now=1001.0)
+        assert pending_notice(current="2.9.0", now=1001.0) is not None
+
 
 class TestRefreshCache:
     """Background-thread body (sync): probe + persist; silent on failure."""
@@ -281,6 +316,14 @@ class TestCheckForUpdate:
         monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v2.9.0")
         assert check_for_update()["update_available"] is False
+
+    def test_malformed_latest_becomes_update_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
+        monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "garbage")
+        with pytest.raises(UpdateError):
+            check_for_update()
 
     def test_raises_when_latest_unreachable(
         self, monkeypatch: pytest.MonkeyPatch
@@ -551,3 +594,16 @@ class TestOrchestrators:
         )
         assert printed is False
         assert stream.getvalue() == ""
+
+    def test_emit_stamps_notified_at_for_daily_gate(
+        self, crm_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import io as _io
+
+        monkeypatch.setattr(update_mod, "current_version", lambda: "2.9.0")
+        write_cache("v3.0.0", now=1.0)
+        stream = _io.StringIO()
+        assert emit_pending_notice(
+            json_mode=False, stderr_isatty=True, env={}, stream=stream, now=5000.0
+        ) is True
+        assert read_cache()["notified_at"] == 5000.0  # type: ignore[index]
