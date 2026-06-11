@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.4.0 (2026-06-11)
+
+### Bug Fixes
+
+- **entity**: Address Copilot review comments on duplicate-key enrichment
+  ([#248](https://github.com/Gharib89/crm/pull/248),
+  [`8aadbe7`](https://github.com/Gharib89/crm/commit/8aadbe76f86562b8e4a81d5f7ca285eb2a68c9f8))
+
+### Features
+
+- **metadata**: Add metadata keys command + enrich duplicate-key errors
+  ([#248](https://github.com/Gharib89/crm/pull/248),
+  [`8aadbe7`](https://github.com/Gharib89/crm/commit/8aadbe76f86562b8e4a81d5f7ca285eb2a68c9f8))
+
+
 ## v3.3.0 (2026-06-11)
 
 ### Features
