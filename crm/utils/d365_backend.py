@@ -381,7 +381,7 @@ class D365Backend:
             raise D365Error("Profile is missing the username.")
 
         self.profile = profile
-        self.dry_run = dry_run
+        self._dry_run = dry_run
         self._session: requests.Session = requests.Session()
         self._session.auth = self._make_auth(password)
         self._session.verify = profile.verify_ssl
@@ -391,6 +391,17 @@ class D365Backend:
         self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
         self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
         self._retry_on_ambiguous = retry_on_ambiguous or _resolve_bool_env("CRM_RETRY_ON_AMBIGUOUS")
+
+    @property
+    def dry_run(self) -> bool:
+        """Whether mutations are previewed instead of issued (constructor-only).
+
+        Read-only: there is no setter, so assignment raises AttributeError. The
+        old save-flag/set-False/restore toggle is impossible — under the
+        reads-execute rule, pre-flight GETs already run for real (see request()),
+        so callers never need to suspend dry-run.
+        """
+        return self._dry_run
 
     # ── Auth helpers ─────────────────────────────────────────────────────
 
@@ -508,8 +519,9 @@ class D365Backend:
         """Issue an HTTP request and return parsed JSON (or None for 204).
 
         Retries on 429, idempotent 5xx, and retryable transport errors per the
-        backend's profile + env config. Honors self.dry_run by returning a
-        preview dict instead of issuing the call.
+        backend's profile + env config. Under self.dry_run, non-GET methods
+        return a preview dict instead of issuing the call; GETs always run for
+        real (the reads-execute rule).
 
         timeout overrides profile.timeout for this call only (long-running
         synchronous actions, e.g. the on-prem ImportSolution fallback).
@@ -599,7 +611,10 @@ class D365Backend:
                 raise D365Error(f"etag not valid on {method.upper()}")
             headers["If-Match"] = etag
 
-        if self.dry_run:
+        if self.dry_run and method.upper() != "GET":
+            # Reads-execute rule: --dry-run means "no writes", not "no traffic".
+            # GETs (side-effect-free per OData v4) fall through to the wire so
+            # previews can state live facts; only mutations return the echo.
             return {
                 "_dry_run": True,
                 "method": method,

@@ -3,7 +3,8 @@
 Entry point: `crm` (installed) or `python -m crm`.
 
 Running with no subcommand drops into the REPL. Each command supports `--json` for
-machine-readable output. `--dry-run` previews the HTTP request without issuing it.
+machine-readable output. `--dry-run` previews writes without issuing them; reads
+(GET) still run for real.
 """
 # pyright: basic
 
@@ -372,7 +373,8 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 
 @click.group(cls=_LazyJsonAwareGroup, name="crm", invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
-@click.option("--dry-run", is_flag=True, help="Preview HTTP request without issuing it.")
+@click.option("--dry-run", is_flag=True,
+              help="Preview writes without issuing them; reads run normally.")
 @click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
 @click.option("--password", help="Secret for this run (overrides the profile's stored secret).")
 @click.option("--log-level",

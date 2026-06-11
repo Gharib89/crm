@@ -186,7 +186,7 @@ class TestFormClone:
         assert data["ok"] is True
         # No real POST issued under dry-run
         assert not any(r.method == "POST" for r in m.request_history)
-        # dry_run flag restored after the forced-real read
+        # dry_run stays set throughout — reads execute, only the POST is previewed
         assert dry_backend.dry_run is True
 
     def test_clone_unknown_form_errors_no_post(self, backend, monkeypatch):

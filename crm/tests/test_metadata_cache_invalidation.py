@@ -311,7 +311,7 @@ class TestUpdateOptionsetInvalidatesCache:
         from crm.core import optionsets as os_mod
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
-            # dry-run temporarily toggles dry_run off to fetch the current options
+            # dry-run still fetches the current options via a live GET (reads execute)
             m.get(
                 dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json={"Name": "new_priority", "Options": []},

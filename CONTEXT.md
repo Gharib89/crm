@@ -31,6 +31,27 @@ The promise that `0` = success, `1` = operational failure, `2` = usage error —
 the signal a coding agent loops on. Detail beyond the code lives in the emit
 envelope.
 
+### Dry-run
+
+**Dry-run preview**:
+What a mutation returns under the global `--dry-run` flag instead of executing —
+`data` carries `_dry_run: true` plus `would_*`/`_exists` keys describing the
+skipped write (never the bare success key), and the envelope carries
+`meta.dry_run: true`.
+_Avoid_: request echo, stub response.
+
+**Reads-execute rule**:
+Under `--dry-run`, only mutations are previewed; reads (GET) always execute for
+real. This is what lets a preview state live facts (`_exists`, `would_skip`)
+instead of guesses. `--dry-run` means "no writes", not "no traffic".
+
+**Multi-stage failure**:
+An operational failure partway through a verb that writes in stages — the
+envelope carries `meta.completed_steps` (what already happened, including any
+ids minted) and `meta.failed_stage`. The error text states the recovery path;
+re-running the whole verb is usually wrong once a stage has written.
+_Avoid_: partial failure (ambiguous about whether anything was written).
+
 ### Workflow records
 
 **Workflow definition**:
@@ -53,6 +74,8 @@ _Avoid_: activation copy, activation row.
 - The **exit-code contract** is the union: `{0 success, 1 operational failure, 2 usage error}`.
 - An **activation record** always belongs to exactly one **workflow definition**
   (its parent); deleting or deactivating the definition removes it.
+- A **dry-run preview** is a successful **emit envelope** (`ok: true`, exit `0`)
+  with `meta.dry_run: true` — a previewed write is not an **operational failure**.
 
 ## Example dialogue
 
@@ -65,3 +88,7 @@ _Avoid_: activation copy, activation row.
   in-command rejection like `--bind-set without --bind-id` (emit, exit 1).
   Resolved: the former is a **usage error**; the latter is an **operational
   failure**.
+- "preview" meant both the request echo a read returned under `--dry-run` and
+  the would-write description a mutation returned. Resolved by the
+  **reads-execute rule**: reads are never previewed; **dry-run preview** refers
+  only to mutations.

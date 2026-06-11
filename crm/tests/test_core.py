@@ -770,30 +770,30 @@ class TestWorkflow:
         assert exc_info.value.code == "0x80045003"
         assert [r.method for r in m.request_history] == ["PATCH"]
 
-    def test_set_workflow_state_dry_run_resolves_proactively(self, backend):
+    def test_set_workflow_state_dry_run_resolves_proactively(self, profile):
         """Dry-run issues a real resolve GET (the short-circuited PATCH can never
         raise 0x80045003) so the preview keys on the parent the live run would PATCH."""
         from crm.core import workflow as wf_mod
         wid = "22222222-2222-2222-2222-222222222222"
         parent_guid = "33333333-3333-3333-3333-333333333333"
-        backend.dry_run = True
+        backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"workflows({wid})"),
                 json={"_parentworkflowid_value": parent_guid},
             )
             info = wf_mod.set_workflow_state(backend, wid, activate=False)
-        assert backend.dry_run is True  # restored after the proactive GET
+        assert backend.dry_run is True
         assert info["workflow_id"] == parent_guid
         assert info["resolved_from_activation_id"] == wid
         # The GET is the only real request; the PATCH stays a dry-run preview.
         assert [r.method for r in m.request_history] == ["GET"]
 
-    def test_set_workflow_state_dry_run_draft_id_unchanged(self, backend):
+    def test_set_workflow_state_dry_run_draft_id_unchanged(self, profile):
         """Dry-run with a definition id previews against the passed GUID."""
         from crm.core import workflow as wf_mod
         wid = "11111111-1111-1111-1111-111111111111"
-        backend.dry_run = True
+        backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"workflows({wid})"), json={})
             info = wf_mod.set_workflow_state(backend, wid, activate=True)
@@ -1095,14 +1095,13 @@ class TestWorkflowDelete:
         assert "deactivated" not in str(exc_info.value)
         assert exc_info.value.code == "0x80048d19"
 
-    def test_delete_dry_run_previews_with_live_resolve(self, backend):
-        """Dry-run issues real resolve GETs (the house rule: pre-flight reads
-        bypass the short-circuit) and returns a preview envelope — no PATCH,
-        no DELETE, dry_run restored."""
+    def test_delete_dry_run_previews_with_live_resolve(self, profile):
+        """Dry-run issues real resolve GETs (the reads-execute rule) and returns
+        a preview envelope — no PATCH, no DELETE."""
         from crm.core import workflow as wf_mod
         act_id = "22222222-2222-2222-2222-222222222222"
         parent_guid = "33333333-3333-3333-3333-333333333333"
-        backend.dry_run = True
+        backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"workflows({act_id})"),
@@ -1126,10 +1125,10 @@ class TestWorkflowDelete:
         # Only the resolve GETs hit the wire.
         assert [r.method for r in m.request_history] == ["GET", "GET"]
 
-    def test_delete_dry_run_draft_definition(self, backend):
+    def test_delete_dry_run_draft_definition(self, profile):
         """Dry-run on a draft definition previews would_deactivate=False."""
         from crm.core import workflow as wf_mod
-        backend.dry_run = True
+        backend = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"workflows({self._DEF_ID})"),

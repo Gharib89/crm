@@ -131,39 +131,34 @@ def validate_payload(
     # the documented cost at 1-3 GETs rather than a flat 3.
     needs_nav = any(key.endswith("@odata.bind") for key in payload)
 
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        # Double single quotes per OData literal escaping so an entity set with an
-        # apostrophe cannot break (or alter) the $filter expression.
-        safe_set = entity_set.replace("'", "''")
-        sets = as_dict(backend.get(
-            "EntityDefinitions",
-            params={
-                "$select": "LogicalName,EntitySetName",
-                "$filter": f"EntitySetName eq '{safe_set}'",
-            },
-        ))
-        matches: list[dict[str, Any]] = sets.get("value", [])
-        if not matches:
-            raise D365Error(f"Unknown entity set: {entity_set!r}")
-        logical_name = matches[0].get("LogicalName")
-        if not logical_name:
-            raise D365Error(f"Unknown entity set: {entity_set!r}")
+    # Double single quotes per OData literal escaping so an entity set with an
+    # apostrophe cannot break (or alter) the $filter expression.
+    safe_set = entity_set.replace("'", "''")
+    sets = as_dict(backend.get(
+        "EntityDefinitions",
+        params={
+            "$select": "LogicalName,EntitySetName",
+            "$filter": f"EntitySetName eq '{safe_set}'",
+        },
+    ))
+    matches: list[dict[str, Any]] = sets.get("value", [])
+    if not matches:
+        raise D365Error(f"Unknown entity set: {entity_set!r}")
+    logical_name = matches[0].get("LogicalName")
+    if not logical_name:
+        raise D365Error(f"Unknown entity set: {entity_set!r}")
 
-        attrs = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
-            params={"$select": "LogicalName"},
+    attrs = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
+        params={"$select": "LogicalName"},
+    ))
+    nav_rows: list[dict[str, Any]] = []
+    if needs_nav:
+        m2o = as_dict(backend.get(
+            f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
+            params={"$select": "ReferencingEntityNavigationPropertyName"},
         ))
-        nav_rows: list[dict[str, Any]] = []
-        if needs_nav:
-            m2o = as_dict(backend.get(
-                f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
-                params={"$select": "ReferencingEntityNavigationPropertyName"},
-            ))
-            nav_rows = m2o.get("value", [])
-    finally:
-        backend.dry_run = was_dry
+        nav_rows = m2o.get("value", [])
 
     valid: set[str] = {
         a["LogicalName"] for a in attrs.get("value", []) if a.get("LogicalName")

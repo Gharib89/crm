@@ -5,8 +5,8 @@ Resolves a metadata target (entity, attribute, optionset, relationship) to its
 `RetrieveDependenciesForDelete` or `RetrieveDependentComponents` to check whether
 the component can be safely deleted or to enumerate its dependents.
 
-All GETs in this module fire even when the backend is in dry-run mode (the
-dry-run-off trick from metadata.target_exists) so previews reflect live state.
+All GETs in this module fire even when the backend is in dry-run mode (reads
+always execute — the reads-execute rule) so previews reflect live state.
 """
 
 from __future__ import annotations
@@ -95,9 +95,7 @@ def _resolve_path(kind: str, target: str) -> str:
 
 
 def _get_metadata_id(backend: D365Backend, path: str, kind: str, target: str) -> str:
-    """GET path with dry-run-off; return MetadataId or raise D365Error."""
-    was_dry = backend.dry_run
-    backend.dry_run = False
+    """GET path (runs live even under dry-run); return MetadataId or raise D365Error."""
     try:
         result = as_dict(backend.get(path, params={"$select": "MetadataId"}))
         metadata_id = result.get("MetadataId")
@@ -112,8 +110,6 @@ def _get_metadata_id(backend: D365Backend, path: str, kind: str, target: str) ->
             raise D365Error(f"{kind} {target!r} not found", code="NotFound",
                             status=exc.status, response_body=exc.response_body) from exc
         raise
-    finally:
-        backend.dry_run = was_dry
 
 
 # ── public surface ────────────────────────────────────────────────────────
@@ -204,12 +200,7 @@ def dependencies_by_id(
     Returns the same shape as ``retrieve_dependencies``.
     """
     path = build_dependency_path(metadata_id, component_type, for_=for_)
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        result = as_dict(backend.get(path))
-    finally:
-        backend.dry_run = was_dry
+    result = as_dict(backend.get(path))
 
     records: list[dict[str, Any]] = result.get("value") or []
     blockers = [_map_blocker(r) for r in records]
@@ -284,12 +275,7 @@ def retrieve_dependencies_for_uninstall(
     if not name:
         raise D365Error("solution unique name is required.")
     path = build_uninstall_dependency_path(name)
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        result = as_dict(backend.get(path))
-    finally:
-        backend.dry_run = was_dry
+    result = as_dict(backend.get(path))
 
     records: list[dict[str, Any]] = result.get("value") or []
     blockers = [_map_blocker(r) for r in records]

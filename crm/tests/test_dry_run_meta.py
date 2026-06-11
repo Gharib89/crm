@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 
+import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
@@ -106,3 +107,22 @@ class TestDryRunMetaEndToEnd:
         env = json.loads(result.output)
         assert env["meta"]["dry_run"] is True
         assert env["meta"]["total"] == 1
+
+    def test_read_verb_dry_run_executes_and_returns_real_data(self, tmp_path, monkeypatch):
+        """Reads-execute rule: a read verb under --dry-run runs the real GET and
+        returns live data (NOT the request echo); the envelope still flags
+        meta.dry_run=true."""
+        _seed_profile(tmp_path, monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json={"value": [{"name": "Acme Corp"}]})
+            result = CliRunner().invoke(
+                cli,
+                ["--json", "--profile", "t", "--dry-run", "query", "odata", "accounts"],
+            )
+            assert [r.method for r in m.request_history] == ["GET"]
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["meta"]["dry_run"] is True
+        # Live data, not the {_dry_run, method, url, ...} echo.
+        assert env["data"] == {"value": [{"name": "Acme Corp"}]}
+        assert "_dry_run" not in env["data"]

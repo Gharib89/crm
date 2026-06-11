@@ -229,7 +229,7 @@ class TestRetrieveDependencies:
         assert result["component_type"] == 1
 
     def test_dry_run_still_issues_get(self, dry_backend: D365Backend) -> None:
-        """dry-run-off trick: read-only GETs must fire even under dry_run=True."""
+        """reads-execute rule: read-only GETs must fire even under dry_run=True."""
         with req_mock.Mocker() as m:
             url = dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')")
             m.get(url, json={"MetadataId": ENTITY_ID})
@@ -333,7 +333,7 @@ class TestRetrieveDependenciesForUninstall:
         assert b["dependent_parent_id"] == DEP_PARENT_ID
 
     def test_dry_run_still_issues_get(self, dry_backend: D365Backend) -> None:
-        """dry-run-off trick: the read GET must fire even under dry_run=True."""
+        """reads-execute rule: the read GET must fire even under dry_run=True."""
         with req_mock.Mocker() as m:
             _mock_uninstall_function(m, dry_backend, records=[])
             result = dep_mod.retrieve_dependencies_for_uninstall(dry_backend, "MySolution")

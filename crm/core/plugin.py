@@ -597,12 +597,7 @@ def _force_read_rows(
     A step is POSTed only after its bound ids are resolved, so the resolution
     GETs must run for real even in dry-run (mirrors `_resolve_id_by_name`).
     """
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        return as_dict(backend.get(entity_set, params=params)).get("value", [])
-    finally:
-        backend.dry_run = was_dry
+    return as_dict(backend.get(entity_set, params=params)).get("value", [])
 
 
 def _resolve_sdkmessage_id(backend: D365Backend, message: str) -> str:

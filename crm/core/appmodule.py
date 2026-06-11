@@ -60,19 +60,12 @@ def create_app(
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
-    # Force a real read even in dry-run: idempotent, and an accurate preview
-    # (_exists/would_skip) needs the live answer (cf. metadata.target_exists).
     un_lit = unique_name.replace("'", "''")
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        existing = as_dict(backend.get(
-            "appmodules",
-            params={"$filter": f"uniquename eq '{un_lit}'",
-                    "$select": "appmoduleid,uniquename"},
-        )).get("value", [])
-    finally:
-        backend.dry_run = was_dry
+    existing = as_dict(backend.get(
+        "appmodules",
+        params={"$filter": f"uniquename eq '{un_lit}'",
+                "$select": "appmoduleid,uniquename"},
+    )).get("value", [])
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"App {unique_name!r} already exists.", code="AlreadyExists")

@@ -258,13 +258,8 @@ def update_optionset(
                 raise _exc
 
     if backend.dry_run:
-        # Force a real GET to build the before/after diff (writes stay suppressed).
-        was_dry = backend.dry_run
-        backend.dry_run = False
-        try:
-            current_os = get_optionset(backend, name)
-        finally:
-            backend.dry_run = was_dry
+        # Real GET to build the before/after diff (writes stay suppressed).
+        current_os = get_optionset(backend, name)
         current_opts: list[dict[str, Any]] = current_os.get("Options") or []
 
         actions: list[dict[str, Any]] = []
@@ -378,14 +373,9 @@ def delete_optionset(
     if not name:
         raise D365Error("name is required.")
     path = f"GlobalOptionSetDefinitions(Name='{name}')"
-    was_dry = backend.dry_run
-    backend.dry_run = False
-    try:
-        rb = as_dict(backend.get(
-            path, params={"$select": "IsCustomOptionSet,IsManaged,MetadataId"},
-        ))
-    finally:
-        backend.dry_run = was_dry
+    rb = as_dict(backend.get(
+        path, params={"$select": "IsCustomOptionSet,IsManaged,MetadataId"},
+    ))
     if rb.get("IsCustomOptionSet") is False:
         raise D365Error(
             f"{name!r} is not a custom option set; refusing to delete.",
