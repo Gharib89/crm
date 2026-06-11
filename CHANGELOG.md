@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.7.0 (2026-06-11)
+
+### Bug Fixes
+
+- **entity**: Narrow children $select; validate --filter-entities at CLI boundary
+  ([#254](https://github.com/Gharib89/crm/pull/254),
+  [`9a9cdd0`](https://github.com/Gharib89/crm/commit/9a9cdd00d98d79614e161fd43d7560427afa018b))
+
+- **entity**: Run children counts under --dry-run; validate regex + chunk size
+  ([#254](https://github.com/Gharib89/crm/pull/254),
+  [`9a9cdd0`](https://github.com/Gharib89/crm/commit/9a9cdd00d98d79614e161fd43d7560427afa018b))
+
+### Documentation
+
+- **entity**: Say children uses chunked $batch, not "one batched call"
+  ([#254](https://github.com/Gharib89/crm/pull/254),
+  [`9a9cdd0`](https://github.com/Gharib89/crm/commit/9a9cdd00d98d79614e161fd43d7560427afa018b))
+
+### Features
+
+- **entity**: Add children — per-1:N related-record counts via $batch
+  ([#254](https://github.com/Gharib89/crm/pull/254),
+  [`9a9cdd0`](https://github.com/Gharib89/crm/commit/9a9cdd00d98d79614e161fd43d7560427afa018b))
+
+- **entity**: Add children — per-1:N related-record counts via $batch (#234)
+  ([#254](https://github.com/Gharib89/crm/pull/254),
+  [`9a9cdd0`](https://github.com/Gharib89/crm/commit/9a9cdd00d98d79614e161fd43d7560427afa018b))
+
+### Testing
+
+- **e2e**: Seed custom solution + xfail bigint kind
+  ([#252](https://github.com/Gharib89/crm/pull/252),
+  [`d04f32e`](https://github.com/Gharib89/crm/commit/d04f32e346e4b2a512d7195b829ca2f7bd85dd66))
+
+
 ## v3.6.1 (2026-06-11)
 
 ### Performance Improvements
