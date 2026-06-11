@@ -117,6 +117,69 @@ class TestNoticeSuppressedForSelfUpdate:
         assert len(_force_eligible) == 1
 
 
+class TestSkillRefresh:
+    """Non-`--check` self-update re-syncs recorded skills; `--check` never does."""
+
+    def test_pip_path_refreshes_recorded_skill(self, tmp_path, monkeypatch):
+        from crm.commands import skill_registry as reg
+
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+        dest = tmp_path / "claude-skill"
+        dest.mkdir()
+        reg.record_install("claude", str(dest), "0.0.1")  # stale → must refresh
+
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        skills = payload["data"]["skills"]
+        assert [s["status"] for s in skills] == ["refreshed"]
+        assert (dest / "SKILL.md").exists()  # real bundled skill copied in
+        assert reg.read_skills()[0]["installed_version"] == update_mod.current_version()
+
+    def test_global_refresh_failure_surfaces_error_not_silence(self, monkeypatch):
+        # An unexpected refresh failure (e.g. unreadable registry) must surface in
+        # data.skills as an error, not be silently dropped — and must not fail the
+        # command (the binary side already succeeded).
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
+
+        def boom(*a, **k):
+            raise PermissionError("registry unreadable")
+
+        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills", boom)
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        skills = json.loads(result.output)["data"]["skills"]
+        assert any(s.get("status") == "error" for s in skills)
+
+    def test_check_does_not_touch_skills(self, monkeypatch):
+        spy = {"calls": 0}
+        monkeypatch.setattr(update_mod, "check_for_update",
+                            lambda *a, **k: {"current": "2.9.0", "latest": "v3.0.0", "update_available": True})
+        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
+                            lambda *a, **k: spy.__setitem__("calls", spy["calls"] + 1))
+        result = CliRunner().invoke(cli, ["--json", "self-update", "--check"])
+        assert result.exit_code == 0
+        assert spy["calls"] == 0
+
+    def test_frozen_refresh_uses_new_version(self, monkeypatch, tmp_path):
+        install = tmp_path / "crm"
+        # Mimic the swapped bundle layout: skills under _internal/crm/skills.
+        skills = install / "_internal" / "crm" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "SKILL.md").write_text("NEW", encoding="utf-8")
+        monkeypatch.setattr(update_mod, "is_frozen", lambda: True)
+        monkeypatch.setattr(update_mod, "install_dir", lambda: install)
+        monkeypatch.setattr(update_mod, "cleanup_stale_updates", lambda *a, **k: None)
+        monkeypatch.setattr(update_mod, "perform_update",
+                            lambda *a, **k: {"updated": True, "current": "2.9.0", "latest": "v3.0.0"})
+        seen = {}
+        monkeypatch.setattr("crm.commands.skill_registry.refresh_skills",
+                            lambda version, src: seen.update(version=version) or [])
+        result = CliRunner().invoke(cli, ["--json", "self-update"])
+        assert result.exit_code == 0
+        assert seen["version"] == "3.0.0"  # latest, v-stripped — not the old running version
+
+
 class TestFrozenUpdate:
     """Frozen install runs the swap; surfaces a clean error on failure."""
 
