@@ -330,6 +330,37 @@ class TestSwapBundle:
         assert list(tmp_path.glob("crm.old*")) == []
 
 
+class TestExtractRejectsLinks:
+    """Defense-in-depth: link members can escape `dest` even without `..`."""
+
+    def test_tar_symlink_member_rejected(self, tmp_path: Path) -> None:
+        import io, tarfile
+        from crm.core.update import _extract
+
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            ti = tarfile.TarInfo("lib")
+            ti.type = tarfile.SYMTYPE
+            ti.linkname = "/etc"
+            tar.addfile(ti)
+        with pytest.raises(UpdateError, match="(?i)link|unsafe"):
+            _extract("crm-linux-x86_64.tar.gz", buf.getvalue(), tmp_path / "out")
+        assert not (tmp_path / "out" / "lib").exists()
+
+    def test_zip_symlink_member_rejected(self, tmp_path: Path) -> None:
+        import io, zipfile
+
+        from crm.core.update import _extract
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zi = zipfile.ZipInfo("evil")
+            zi.external_attr = 0o120777 << 16  # S_IFLNK
+            zf.writestr(zi, "/etc/passwd")
+        with pytest.raises(UpdateError, match="(?i)link|unsafe"):
+            _extract("crm-windows-x86_64.zip", buf.getvalue(), tmp_path / "out")
+
+
 class TestPerformUpdate:
     """Full download → verify → swap, driven against a tmp install dir."""
 

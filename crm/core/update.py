@@ -309,21 +309,37 @@ def _extract(archive: str, data: bytes, dest: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     if archive.endswith(".zip"):
         with zipfile.ZipFile(io.BytesIO(data)) as zf:
-            for name in zf.namelist():
-                if not _is_safe_member(name):
-                    raise UpdateError(f"Unsafe path in archive (traversal): {name!r}")
+            for info in zf.infolist():
+                if not _is_safe_member(info.filename):
+                    raise UpdateError(
+                        f"Unsafe path in archive (traversal): {info.filename!r}"
+                    )
+                # A symlink entry (S_IFLNK in the high external-attr bits) can point
+                # outside dest and be followed by a later member — reject it.
+                if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise UpdateError(
+                        f"Unsafe link member in archive: {info.filename!r}"
+                    )
             zf.extractall(dest)
     else:
         # `filter="data"` is the safe extractor, but it only exists on 3.12+
         # (our floor is 3.9) — pass it conditionally via kwargs so the older
-        # signature is not referenced directly.
+        # signature is not referenced directly. We additionally reject link/special
+        # members up front so the <3.12 path (no filter) is also safe: a symlink
+        # like `lib -> /etc` followed by `lib/x` escapes dest even with no `..`.
         extract_kwargs: dict[str, Any] = {}
         if sys.version_info >= (3, 12):
             extract_kwargs["filter"] = "data"
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-            for name in tar.getnames():
-                if not _is_safe_member(name):
-                    raise UpdateError(f"Unsafe path in archive (traversal): {name!r}")
+            for member in tar.getmembers():
+                if not _is_safe_member(member.name):
+                    raise UpdateError(
+                        f"Unsafe path in archive (traversal): {member.name!r}"
+                    )
+                if not (member.isfile() or member.isdir()):
+                    raise UpdateError(
+                        f"Unsafe non-regular member in archive: {member.name!r}"
+                    )
             tar.extractall(dest, **extract_kwargs)
 
 

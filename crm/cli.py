@@ -485,7 +485,14 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
 
 def _update_check_eligible(json_mode: bool) -> bool:
     """Cheap pre-check mirroring update.is_check_enabled, to gate the lazy import."""
-    if json_mode or not sys.stderr.isatty():
+    if json_mode:
+        return False
+    # A closed/detached stderr raises on isatty(); treat any failure as not-a-TTY
+    # so the passive notice can never break an otherwise-unrelated command.
+    try:
+        if not sys.stderr.isatty():
+            return False
+    except Exception:
         return False
     return not (os.environ.get("CRM_NO_UPDATE_CHECK") or os.environ.get("CI"))
 

@@ -75,6 +75,22 @@ class TestPipInstall:
         assert called["perform"] == 0
 
 
+class TestEligibilityIsFailSilent:
+    """The notice gate must never break a command (e.g. closed/detached stderr)."""
+
+    def test_isatty_raising_is_treated_as_not_tty(self, monkeypatch):
+        import sys
+        from crm.cli import _update_check_eligible
+
+        class _BadStderr:
+            def isatty(self):
+                raise ValueError("I/O operation on closed file")
+
+        monkeypatch.setattr(sys, "stderr", _BadStderr())
+        # Must not raise; a stderr that can't report TTY-ness → skip the check.
+        assert _update_check_eligible(json_mode=False) is False
+
+
 class TestFrozenUpdate:
     """Frozen install runs the swap; surfaces a clean error on failure."""
 
