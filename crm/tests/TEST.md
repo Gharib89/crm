@@ -132,7 +132,7 @@ operations missing from the first cut. All have dedicated unit tests.
 | `entity associate / disassociate`       | https://learn.microsoft.com/power-apps/developer/data-platform/webapi/associate-disassociate-entities-using-web-api    |
 | `entity set-lookup / clear-lookup`      | `@odata.bind` single-valued navigation property update                                                                 |
 | `query saved` / `query user`            | `?savedQuery=<guid>` / `?userQuery=<guid>` predefined-query execution                                                  |
-| `metadata picklist`                     | Cast to `Microsoft.Dynamics.CRM.PicklistAttributeMetadata` + `$expand=OptionSet`                                       |
+| `metadata picklist`                     | Type-aware cast: `PicklistAttributeMetadata` / `StateAttributeMetadata` / `StatusAttributeMetadata` (#229)             |
 | `solution publish-all` / `publish`      | `PublishAllXml` / `PublishXml` actions                                                                                 |
 | `service-document`                      | `GET /api/data/v9.x/` — root service document, all entity sets                                                         |
 | `.env` autoload + `CRM_*` env aliases   | Matches Contoso-style PowerShell tooling (`CRM_BASE_URL`, `CRM_USERNAME`, ...)                                            |
