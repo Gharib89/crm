@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.3.0 (2026-06-11)
+
+### Features
+
+- **workflow**: Accept friendly names for --category on workflow list
+  ([#246](https://github.com/Gharib89/crm/pull/246),
+  [`d51e87f`](https://github.com/Gharib89/crm/commit/d51e87f365827aa48f4b266e8b0c3c19d92d58bb))
+
+
 ## v3.2.0 (2026-06-11)
 
 ### Bug Fixes
