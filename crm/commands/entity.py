@@ -230,7 +230,8 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
 @pass_ctx
 def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_entities):
     """Per-relationship related-record counts for the 1:N relationships where
-    <entity-set> <guid> is the parent. One batched call instead of N counts.
+    <entity-set> <guid> is the parent. Counts go through chunked $batch (a few
+    POSTs), not one count query per relationship.
 
     Each row: child entity logical name, referencing attribute, child entity
     set, and count. Read-only (composes with --dry-run)."""

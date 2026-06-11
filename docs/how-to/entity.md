@@ -120,7 +120,7 @@ Use `--data-file` for payloads with embedded double quotes (e.g. `savedquery` or
 ```bash
 crm --json entity children accounts 00000000-0000-0000-0000-000000000001 --non-empty
 ```
-`entity children` answers "what related data does this record actually have?" — it enumerates the 1:N relationships where the entity is the **parent** (referenced) side and reports the related-record count per relationship, all in **one batched call** instead of one counted query per relationship (an account has ~130 one-to-many relationships). One row per relationship:
+`entity children` answers "what related data does this record actually have?" — it enumerates the 1:N relationships where the entity is the **parent** (referenced) side and reports the related-record count per relationship through **chunked `$batch`** (a handful of POSTs) instead of one counted query per relationship (an account has ~130 one-to-many relationships). One row per relationship:
 
 ```json
 {"ok": true, "data": [

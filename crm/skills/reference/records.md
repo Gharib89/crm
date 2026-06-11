@@ -103,7 +103,7 @@ crm entity clear-lookup contacts <contact-guid> parentcustomerid_account
 ## Audit a record's related data — `entity children`
 
 Before cloning, deleting, or auditing a record, answer "what related data does this
-actually have?" in **one batched call** instead of one counted query per relationship
+actually have?" via chunked **`$batch`** instead of one counted query per relationship
 (an account has ~130 one-to-many relationships):
 
 ```bash
