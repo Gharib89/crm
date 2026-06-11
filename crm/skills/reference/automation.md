@@ -166,7 +166,8 @@ crm --json workflow import --file ./wf.json --activate
 ```
 
 Category values: `0`=Workflow, `1`=Dialog, `2`=BusinessRule, `3`=Action, `4`=BPF,
-`5`=ModernFlow. **Clone supports only `0` and `2`** — action/BPF/dialog/modern-flow
+`5`=ModernFlow. `--category` also accepts friendly names (`workflow`, `dialog`,
+`businessrule`, `action`, `bpf`, `flow`), case-insensitive. **Clone supports only `0` and `2`** — action/BPF/dialog/modern-flow
 fail loudly. (This is the same constraint the entity-clone `--with-workflows` flag
 hits; see `reference/metadata.md`.)
 

@@ -7,7 +7,7 @@ Common `crm workflow` recipes. See the [CLI reference](../reference/cli.md) for 
 ```bash
 crm --json workflow list --entity cwx_ticket --category 0
 ```
-`--category` filters by kind (`0`=Workflow, `4`=BPF, `5`=Modern Flow); `--on-demand` restricts to on-demand workflows.
+`--category` filters by kind. Accepts an integer (`0`–`5`) or a friendly name: `workflow`, `dialog`, `businessrule`, `action`, `bpf`, `flow` (case-insensitive). `--on-demand` restricts to on-demand workflows.
 
 ## Find duplicate workflow definitions
 
