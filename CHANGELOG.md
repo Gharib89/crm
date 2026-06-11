@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.8.0 (2026-06-11)
+
+### Features
+
+- **entity**: Add `entity clone` — single-record clone with overrides
+  ([#255](https://github.com/Gharib89/crm/pull/255),
+  [`dc757d2`](https://github.com/Gharib89/crm/commit/dc757d271ab443d8fcb2d613a5eac14c07ead517))
+
+
 ## v3.7.0 (2026-06-11)
 
 ### Bug Fixes
