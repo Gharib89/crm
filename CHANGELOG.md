@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.1.2 (2026-06-11)
+
+### Bug Fixes
+
+- **entity**: Accept both --no-return and --return-record on create and update
+  ([#241](https://github.com/Gharib89/crm/pull/241),
+  [`ddfb1a9`](https://github.com/Gharib89/crm/commit/ddfb1a97e0bbff4736145ee7b6963ecebfc6ade6))
+
+
 ## v3.1.1 (2026-06-11)
 
 ### Bug Fixes
