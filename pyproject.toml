@@ -21,3 +21,13 @@ match = "(main|master)"
 
 [tool.semantic_release.changelog]
 mode = "update"
+
+[tool.pytest.ini_options]
+testpaths = ["crm/tests"]
+markers = [
+    "e2e: live test requiring a reachable D365 server (opt-in via D365_E2E=1)",
+    "requires_cloud: only runs against an OAuth/Dataverse target",
+    "requires_onprem: only runs against an NTLM/on-prem target",
+    "slow: long-running op (metadata publish, solution async import/export)",
+]
+addopts = "-m 'not e2e'"

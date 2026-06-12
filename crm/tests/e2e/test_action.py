@@ -1,0 +1,37 @@
+# pyright: basic
+"""E2E tests for the action group (OData function/action calls)."""
+from __future__ import annotations
+
+import json
+
+from crm.tests.e2e.coverage import covers
+
+
+@covers("action function")
+def test_action_function_whoami(cli):
+    """WhoAmI is a zero-side-effect unbound OData function present on every D365 org."""
+    result = cli(["--json", "action", "function", "WhoAmI"])
+    data = json.loads(result.stdout)
+    assert data["ok"] is True, f"action function WhoAmI failed: {data}"
+    assert "UserId" in data["data"], f"UserId missing from WhoAmI response: {data['data']}"
+
+
+@covers("action invoke")
+def test_action_invoke_publish_all_xml(cli):
+    """PublishAllXml is a zero-side-effect* unbound OData action on every D365 org.
+
+    `action invoke` issues a POST; PublishAllXml accepts an empty body and
+    returns 204 No Content (mapped to ok=True, data={}). It is the safest
+    always-present POST-accepting action: it runs a publish even with no pending
+    changes (idempotent), returns no payload, and works on both on-prem v9.1
+    and Dataverse cloud.
+
+    *Side effect is negligible: publishing with nothing pending is a no-op.
+    """
+    result = cli(["--json", "action", "invoke", "PublishAllXml"])
+    data = json.loads(result.stdout)
+    assert data["ok"] is True, f"action invoke PublishAllXml failed: {data}"
+    # 204 No Content maps to an empty dict; asserting ok=True is sufficient
+    assert isinstance(data["data"], dict), (
+        f"expected dict data from PublishAllXml, got: {data['data']}"
+    )
