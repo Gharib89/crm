@@ -19,6 +19,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 import os
+import re
 import warnings
 
 # Names of the env vars the live_profile fixture reads to SEED a throwaway profile.
@@ -28,11 +29,19 @@ _E_USERNAME = "D365_USERNAME"
 _E_PW = "D365_PASSWORD"
 _E_CLIENT_ID = "D365_CLIENT_ID"
 _E_CLIENT_SECRET = "D365_CLIENT_SECRET"
+_E_TENANT_ID = "D365_TENANT_ID"
 
-_REQUIRED = (_E_URL, _E_USERNAME, _E_PW)        # NTLM / on-prem
-_REQUIRED_OAUTH = (_E_URL, _E_CLIENT_ID)        # when D365_AUTH=oauth
+_REQUIRED = (_E_URL, _E_USERNAME, _E_PW)                    # NTLM / on-prem
+# OAuth/Dataverse hard-requires tenant_id + client_id (D365Backend raises
+# otherwise) — list it here so a missing value fails fast at opt-in instead
+# of crashing the suite mid-run with a less actionable auth error.
+_REQUIRED_OAUTH = (_E_URL, _E_CLIENT_ID, _E_TENANT_ID)     # when D365_AUTH=oauth
 # Hosts that must never receive a destructive e2e run. Extend per environment.
-_PROD_HOST_MARKERS = ("prod", "live", ".crm.dynamics.com")  # gov/online prod patterns
+_PROD_HOST_MARKERS = ("prod", "live")
+# Dataverse online prod hosts: <org>.crm.dynamics.com AND regional variants
+# <org>.crm4.dynamics.com / .crm2. / .crm11. etc. A plain ".crm.dynamics.com"
+# substring misses the numbered regions, so match the family with a regex.
+_PROD_HOST_RE = re.compile(r"\.crm\d*\.dynamics\.com")
 
 
 def _e2e_opted_in() -> bool:
@@ -53,13 +62,15 @@ def _assert_not_production(url: str) -> None:
     allow = os.environ.get("D365_E2E_ALLOW_HOST", "").lower()
     if allow and allow == host:
         return
-    for marker in _PROD_HOST_MARKERS:
-        if marker in host:
-            raise RuntimeError(
-                f"Refusing to run destructive e2e against host {host!r} "
-                f"(matched {marker!r}). Set D365_E2E_ALLOW_HOST to the exact "
-                f"host {host!r} to override."
-            )
+    matched = next((m for m in _PROD_HOST_MARKERS if m in host), None)
+    if matched is None and _PROD_HOST_RE.search(host):
+        matched = "*.crm*.dynamics.com"
+    if matched is not None:
+        raise RuntimeError(
+            f"Refusing to run destructive e2e against host {host!r} "
+            f"(matched {matched!r}). Set D365_E2E_ALLOW_HOST to the exact "
+            f"host {host!r} to override."
+        )
 
 
 _LIVE_PROFILE = "e2e"
@@ -74,7 +85,8 @@ def live_profile(tmp_path_factory):
         pytest.skip(
             "e2e opt-in required: set D365_E2E=1 plus credentials — "
             "NTLM: D365_URL/D365_USERNAME/D365_PASSWORD; "
-            "OAuth: D365_AUTH=oauth + D365_URL/D365_CLIENT_ID + D365_CLIENT_SECRET"
+            "OAuth: D365_AUTH=oauth + D365_URL/D365_CLIENT_ID/D365_TENANT_ID "
+            "+ D365_CLIENT_SECRET"
         )
     from crm.core import session as session_mod
     from crm.utils.d365_backend import ConnectionProfile
@@ -93,8 +105,8 @@ def live_profile(tmp_path_factory):
         username="" if auth == "oauth" else os.environ.get("D365_USERNAME", ""),
         api_version=api_version,
         auth_scheme=auth,
-        tenant_id=os.environ.get("D365_TENANT_ID"),
-        client_id=os.environ.get("D365_CLIENT_ID"),
+        tenant_id=os.environ.get(_E_TENANT_ID),
+        client_id=os.environ.get(_E_CLIENT_ID),
     )
     session_mod.save_profile(profile)
     session_mod.save_profile_secret_plaintext(_LIVE_PROFILE, secret)
