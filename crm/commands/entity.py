@@ -388,20 +388,27 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
     _touch_session(ctx, entity_set)
 
     # --with-children on a live run carries a {created, failures} summary: per
-    # ADR 0007 the created ids live in meta.created and the failures (if any)
-    # flip the envelope to ok=false. Dry-run (a read-only preview) and the
-    # single-record path emit the result as-is — emit() stamps meta.dry_run.
+    # ADR 0007 the created ids belong in meta.created and the failures (if any)
+    # flip the envelope to ok=false. emit() renders meta in human mode too, and
+    # meta.created is a JSON-contract field, so gate it on json_mode and fold the
+    # created ids into data for human output instead. Dry-run (a read-only
+    # preview) and the single-record path emit the result as-is.
     if with_children and not ctx.dry_run:
         created, failures = result["created"], result["failures"]
-        meta = {"created": created}
+        if ctx.json_mode:
+            meta: dict | None = {"created": created}
+            data: dict = {"failures": failures}
+        else:
+            meta = None
+            data = {"created": created, "failures": failures}
         if failures:
             n_children = sum(len(ids) for ids in created["children"].values())
-            ctx.emit(False, data={"failures": failures}, meta=meta,
+            ctx.emit(False, data=data, meta=meta,
                      error=f"{len(failures)} child row(s) failed to clone; parent and "
                            f"{n_children} child row(s) created (no rollback — clone the "
                            "failed rows individually).")
             return
-        ctx.emit(True, data={"failures": failures}, meta=meta)
+        ctx.emit(True, data=data, meta=meta)
         return
 
     ctx.emit(True, data=result)

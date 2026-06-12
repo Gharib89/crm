@@ -224,6 +224,31 @@ class TestChildLookupRepoint:
         assert "contoso_invoiceid" not in body
 
 
+class TestMultiRelationship:
+    def test_same_child_via_two_custom_relationships_is_cloned_once(self, backend):
+        # A child entity with two custom 1:N lookups back to the parent matches
+        # both relationship fetches; the source row must be cloned once, not
+        # duplicated (dedup by entity + source primary id).
+        row = {"contoso_invoiceid": _CHILD_SRC}
+        _lookup(row, "contoso_account", _SRC, "account")
+        _lookup(row, "contoso_secondaccount", _SRC, "account")
+        with requests_mock.Mocker() as m:
+            _stub_parent(m, backend)
+            _stub_relationships(m, backend, "account", [
+                ("contoso_invoice", "contoso_account", True),
+                ("contoso_invoice", "contoso_secondaccount", True),
+            ])
+            _stub_child_entitydef(m, backend, "contoso_invoice", "contoso_invoiceid",
+                                  _ATTRS_INVOICE_3LOOKUP)
+            m.get(_u(backend, "contoso_invoices"), json={"value": [row]})
+            child_post = _stub_child_create(m, backend, "contoso_invoices", _NEW_CHILD)
+
+            result = entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
+
+        assert child_post.call_count == 1
+        assert result["created"]["children"] == {"contoso_invoice": [_NEW_CHILD]}
+
+
 class TestSkipChildEntity:
     def test_skip_prunes_a_custom_child(self, backend):
         with requests_mock.Mocker() as m:
@@ -294,6 +319,23 @@ class TestFailureBehavior:
             paths = {r.path for r in m.request_history}
         # No child enumeration happened — the parent create failure ended it.
         assert not any("OneToManyRelationships" in p for p in paths)
+
+    def test_child_without_parsable_id_is_a_failure_not_a_created_id(self, backend):
+        # A child create whose response carries no id must not be recorded as a
+        # created "" — it is a per-row failure (meta.created stays trustworthy).
+        with requests_mock.Mocker() as m:
+            _stub_parent(m, backend)
+            _stub_relationships(m, backend, "account",
+                                [("contoso_invoice", "contoso_account", True)])
+            _stub_child_entitydef(m, backend, "contoso_invoice", "contoso_invoiceid", _ATTRS_INVOICE)
+            m.get(_u(backend, "contoso_invoices"), json={"value": [_invoice_row()]})
+            m.post(_u(backend, "contoso_invoices"), status_code=204)  # no OData-EntityId
+
+            result = entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
+
+        assert result["created"]["children"] == {}
+        assert result["failures"][0]["entity"] == "contoso_invoice"
+        assert result["failures"][0]["source_id"] == _CHILD_SRC
 
     def test_unreadable_parent_id_fails_fast_before_children(self, backend):
         # Parent create "succeeds" but the response carries no parsable id (no
@@ -436,6 +478,23 @@ class TestCommand:
         assert parent_body["name"] == "Renamed"
         # The override never leaks onto the child rows.
         assert "name" not in child_body
+
+    def test_human_mode_surfaces_created_ids_without_json_meta(self, backend, monkeypatch):
+        # meta.created is a JSON-contract field, but emit() renders meta in human
+        # mode too — so in human mode the created ids are surfaced via data, and
+        # the new parent id is visible to the user.
+        self._bind(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            _stub_parent(m, backend)
+            _stub_relationships(m, backend, "account",
+                                [("contoso_invoice", "contoso_account", True)])
+            _stub_child_entitydef(m, backend, "contoso_invoice", "contoso_invoiceid", _ATTRS_INVOICE)
+            m.get(_u(backend, "contoso_invoices"), json={"value": [_invoice_row()]})
+            _stub_child_create(m, backend, "contoso_invoices", _NEW_CHILD)
+            res = CliRunner().invoke(  # no --json
+                cli, ["entity", "clone", "accounts", _SRC, "--with-children"])
+        assert res.exit_code == 0, res.output
+        assert _NEW_PARENT in res.output
 
     def test_skip_child_entity_without_with_children_is_usage_error(self, monkeypatch):
         # --skip-child-entity is meaningless without --with-children; rather than

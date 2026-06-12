@@ -933,6 +933,10 @@ def _clone_children(
     # Child entity may appear in more than one relationship; fetch its attribute
     # plan once.
     plan_cache: dict[str, tuple[str, dict[str, str], set[str]]] = {}
+    # A child row can satisfy >1 custom relationship to the same parent (two
+    # lookup attributes); clone each source row at most once, keyed by
+    # (child entity, source primary id).
+    seen: set[tuple[str, str]] = set()
     for rel in rels:
         child_logical, child_set, attr = rel["entity"], rel["set"], rel["attribute"]
         if child_logical not in plan_cache:
@@ -957,6 +961,11 @@ def _clone_children(
 
         for row in rows:
             src_child_id = str(row.get(primary_id) or "")
+            if src_child_id:
+                key = (child_logical, src_child_id)
+                if key in seen:
+                    continue
+                seen.add(key)
             child_body, child_errors = _build_clone_body(
                 row, child_create, child_all, logical_to_set, child_logical,
                 overrides={}, unset=[],
@@ -972,7 +981,15 @@ def _clone_children(
                 failures.append({"entity": child_logical, "source_id": src_child_id,
                                  "reason": str(exc)})
                 continue
-            children.setdefault(child_logical, []).append(str(created.get("id") or ""))
+            new_child_id = str(created.get("id") or "")
+            if not new_child_id:
+                # Created but no parsable id (no OData-EntityId) — record a
+                # failure rather than poison meta.created with an empty id.
+                failures.append({"entity": child_logical, "source_id": src_child_id,
+                                 "reason": "child created but its new id was not in "
+                                           "the create response (no OData-EntityId)"})
+                continue
+            children.setdefault(child_logical, []).append(new_child_id)
     return children, failures
 
 
