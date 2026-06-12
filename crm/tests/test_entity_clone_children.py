@@ -328,6 +328,22 @@ class TestDryRunChildren:
             {"entity": "contoso_note", "skipped": True},
         ]
 
+    def test_preview_surfaces_uncountable_child_error(self, dry_backend):
+        # A child that rejects the count read (permissions / RetrieveMultiple-
+        # unsupported) is reported as would_create:null + the error, not a bare
+        # null the caller can't explain (mirrors `entity children`).
+        with requests_mock.Mocker() as m:
+            _stub_parent_reads(m, dry_backend)
+            _stub_relationships(m, dry_backend, "account",
+                                [("contoso_invoice", "contoso_account", True)])
+            m.get(_u(dry_backend, "contoso_invoices"), status_code=400,
+                  json={"error": {"code": "0x0",
+                                  "message": "RetrieveMultiple not supported"}})
+            result = entity_mod.clone_record(dry_backend, "accounts", _SRC, with_children=True)
+        child = result["children"][0]
+        assert child["would_create"] is None
+        assert "RetrieveMultiple" in child["error"]
+
 
 class TestCommand:
     def _bind(self, monkeypatch, b):
@@ -407,3 +423,15 @@ class TestCommand:
         assert parent_body["name"] == "Renamed"
         # The override never leaks onto the child rows.
         assert "name" not in child_body
+
+    def test_skip_child_entity_without_with_children_is_usage_error(self, monkeypatch):
+        # --skip-child-entity is meaningless without --with-children; rather than
+        # silently ignore it, fail as a usage error (exit 2) before any backend.
+        def _boom(self):
+            raise AssertionError("backend must not be built for a usage error")
+        monkeypatch.setattr(CLIContext, "backend", _boom)
+        res = CliRunner().invoke(cli, [
+            "--json", "entity", "clone", "accounts", _SRC,
+            "--skip-child-entity", "contoso_note"])
+        assert res.exit_code == 2
+        assert "with-children" in res.output

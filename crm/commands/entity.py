@@ -358,6 +358,11 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
     ids) and data.failures (entity, source id, reason). Recover by cloning the
     failed rows individually — never re-run the whole verb."""
     parsed_overrides = _parse_overrides(overrides)
+    # --skip-child-entity is meaningless without --with-children; a silent no-op
+    # would hide the mistake, so reject the combination as a usage error (exit 2)
+    # before any backend work.
+    if skip_child_entity and not with_children:
+        raise click.UsageError("--skip-child-entity requires --with-children.")
     # Validate untrusted input before constructing a backend (house rule): a
     # malformed GUID must fail fast, before any credential resolution / token
     # acquisition (msal does network at backend construction for cloud).

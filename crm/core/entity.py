@@ -985,10 +985,14 @@ def _preview_children(
     rels, skipped = _custom_child_relationships(
         backend, parent_logical, logical_to_set, skip
     )
-    preview: list[dict[str, Any]] = [
-        {"entity": rel["entity"],
-         "would_create": _count_via_get(backend, rel, source_parent_guid)["count"]}
-        for rel in rels
-    ]
+    preview: list[dict[str, Any]] = []
+    for rel in rels:
+        row = _count_via_get(backend, rel, source_parent_guid)
+        entry: dict[str, Any] = {"entity": rel["entity"], "would_create": row["count"]}
+        # A child that rejects the count read surfaces as would_create:null + the
+        # reason, not a bare null (mirrors count_children's degradation).
+        if row.get("error"):
+            entry["error"] = row["error"]
+        preview.append(entry)
     preview.extend({"entity": s, "skipped": True} for s in skipped)
     return preview
