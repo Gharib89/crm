@@ -13,7 +13,10 @@ import pytest
 
 def pytest_collection_modifyitems(config, items):
     for item in items:
-        path = str(item.fspath).replace("\\", "/")
+        # pytest>=7 exposes item.path (pathlib); item.fspath is deprecated and
+        # warns on newer pytest. Prefer path, fall back for older versions.
+        raw = getattr(item, "path", None) or item.fspath
+        path = str(raw).replace("\\", "/")
         if "/crm/tests/e2e/" in path:
             item.add_marker(pytest.mark.e2e)
 
