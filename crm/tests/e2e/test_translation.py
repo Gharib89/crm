@@ -25,6 +25,9 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
         "--output", str(zip_path),
     ])
     import json as _json
+    assert result.returncode == 0, (
+        f"translation export failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     export_data = _json.loads(result.stdout)
     assert export_data["ok"] is True, (
         f"translation export failed for {ephemeral_solution}: {export_data}"
@@ -39,6 +42,9 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
         "--yes",
         str(zip_path),
     ])
+    assert result.returncode == 0, (
+        f"translation import failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
     import_data = _json.loads(result.stdout)
     assert import_data["ok"] is True, (
         f"translation import failed for {ephemeral_solution}: {import_data}"

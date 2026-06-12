@@ -118,7 +118,8 @@ def test_workflow_export(backend, cli, tmp_path):
     # Written file must contain valid JSON with workflowid field.
     import os
     assert os.path.exists(out_file)
-    saved = json.loads(open(out_file, encoding="utf-8").read())
+    with open(out_file, encoding="utf-8") as fh:
+        saved = json.load(fh)
     assert saved["workflowid"] == wf_id
 
 

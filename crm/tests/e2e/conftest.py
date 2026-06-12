@@ -48,14 +48,17 @@ def _e2e_opted_in() -> bool:
 
 def _assert_not_production(url: str) -> None:
     host = url.split("//", 1)[-1].split("/", 1)[0].lower()
+    # Exact host match only — substring matching let a short value like "crm"
+    # whitelist many unintended hosts and silently bypass the guard.
     allow = os.environ.get("D365_E2E_ALLOW_HOST", "").lower()
-    if allow and allow in host:
+    if allow and allow == host:
         return
     for marker in _PROD_HOST_MARKERS:
         if marker in host:
             raise RuntimeError(
                 f"Refusing to run destructive e2e against host {host!r} "
-                f"(matched {marker!r}). Set D365_E2E_ALLOW_HOST to override."
+                f"(matched {marker!r}). Set D365_E2E_ALLOW_HOST to the exact "
+                f"host {host!r} to override."
             )
 
 
@@ -68,7 +71,11 @@ def live_profile(tmp_path_factory):
     activate it. The CLI resolves from THIS profile, never the developer's real
     CRM_HOME. Hard-skips unless D365_E2E=1 and credentials are present."""
     if not _e2e_opted_in():
-        pytest.skip("e2e opt-in required: set D365_E2E=1 and D365_URL/USERNAME/PASSWORD")
+        pytest.skip(
+            "e2e opt-in required: set D365_E2E=1 plus credentials — "
+            "NTLM: D365_URL/D365_USERNAME/D365_PASSWORD; "
+            "OAuth: D365_AUTH=oauth + D365_URL/D365_CLIENT_ID + D365_CLIENT_SECRET"
+        )
     from crm.core import session as session_mod
     from crm.utils.d365_backend import ConnectionProfile
 
