@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.9.0 (2026-06-12)
+
+### Features
+
+- **entity**: Add `entity clone --with-children` (#256)
+  ([#258](https://github.com/Gharib89/crm/pull/258),
+  [`a053a89`](https://github.com/Gharib89/crm/commit/a053a89930f7e0da97923c486807a83f0c4c99a4))
+
+
 ## v3.8.0 (2026-06-11)
 
 ### Features
