@@ -854,6 +854,15 @@ def clone_record(
     # available for repointing, regardless of the caller's return_record.
     parent_result = create(backend, entity_set, body, return_record=False)
     new_parent_id = str(parent_result.get("id") or "")
+    if not new_parent_id:
+        # Parent was created but its id was not in the response (no
+        # OData-EntityId). Repointing children to /<set>() would fail every row;
+        # fail fast and clear instead of emitting a confusing partial failure.
+        raise D365Error(
+            f"Cloned {entity_set} but could not read the new record's id from the "
+            "create response (no OData-EntityId); children were not cloned. Find "
+            "the new parent and clone its children separately."
+        )
     children, failures = _clone_children(
         backend, logical_name, logical_to_set,
         source_parent_guid=record_id, new_parent_id=new_parent_id, skip=skip,

@@ -295,6 +295,19 @@ class TestFailureBehavior:
         # No child enumeration happened — the parent create failure ended it.
         assert not any("OneToManyRelationships" in p for p in paths)
 
+    def test_unreadable_parent_id_fails_fast_before_children(self, backend):
+        # Parent create "succeeds" but the response carries no parsable id (no
+        # OData-EntityId). Binding children to /accounts() would fail every row;
+        # instead fail fast with a clear error before any child is attempted.
+        with requests_mock.Mocker() as m:
+            _stub_parent_reads(m, backend)
+            m.post(_u(backend, "accounts"), status_code=204)   # no OData-EntityId
+            # No relationship/child mocks: children must never be reached.
+            with pytest.raises(D365Error, match="id"):
+                entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
+            paths = {r.path for r in m.request_history}
+        assert not any("OneToManyRelationships" in p for p in paths)
+
 
 class TestDryRunChildren:
     def test_preview_counts_children_and_marks_skipped_without_writing(self, dry_backend):
