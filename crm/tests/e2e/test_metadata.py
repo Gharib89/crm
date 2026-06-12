@@ -1,0 +1,82 @@
+# pyright: basic
+"""E2E tests for metadata commands."""
+from __future__ import annotations
+
+import uuid
+
+import pytest
+
+from crm.tests.e2e.coverage import covers
+from crm.utils.d365_backend import D365Error
+
+
+@covers("metadata entities")
+def test_metadata_list_entities(backend):
+    # EntityDefinitions does NOT support $top server-side on v9.1 on-prem;
+    # use the helper, which slices client-side.
+    from crm.core import metadata as md
+    items = md.list_entities(backend)
+    names = [it.get("LogicalName") for it in items]
+    assert "account" in names, f"Did not see 'account' in: {names[:10]}..."
+
+
+@covers("metadata create-entity")
+def test_e2e_create_custom_entity_reads_back_set_name(backend):
+    """§3.3: create a unique custom entity, assert returned entity_set_name resolves via metadata.list_entities."""
+    from crm.core import metadata as meta_mod
+    suffix = uuid.uuid4().hex[:8]
+    schema = f"new_SpecAReadback{suffix}"
+    try:
+        info = meta_mod.create_entity(
+            backend,
+            schema_name=schema,
+            display_name=f"SpecA Readback {suffix}",
+        )
+        assert info["created"] is True
+        assert info["entity_set_name"] is not None
+        entities = meta_mod.list_entities(backend, custom_only=True)
+        by_logical = {e.get("LogicalName"): e for e in entities}
+        assert schema.lower() in by_logical
+        server_set_name = by_logical[schema.lower()].get("EntitySetName")
+        assert info["entity_set_name"] == server_set_name
+    finally:
+        # Best-effort cleanup; ignore failure (entity stays for manual cleanup).
+        try:
+            backend.delete(f"EntityDefinitions(LogicalName='{schema.lower()}')")
+        except Exception:
+            pass
+
+
+# One param per attribute kind so a kind the SDK legitimately refuses
+# records its own `xfailed` instead of failing the whole class. bigint is
+# system-managed ("BigIntAttributeMetadata cannot be created through the
+# SDK") — expect the server 4xx as a D365Error. multiselect/image/file may
+# be feature-gated on some builds; add them here as xfail params likewise.
+@covers("metadata add-attribute", "metadata delete-entity")
+@pytest.mark.parametrize("kind,extra", [
+    ("string", {"max_length": 100}),
+    ("memo", {"max_length": 1000}),
+    ("integer", {"min_value": 0, "max_value": 100}),
+    pytest.param("bigint", {}, marks=pytest.mark.xfail(
+        raises=D365Error, strict=False,
+        reason="BigInt attributes are system-managed; not creatable through the SDK.",
+    )),
+    ("decimal", {"precision": 2}),
+    ("double", {"precision": 3}),
+    ("money", {"precision": 2}),
+    ("boolean", {}),
+    ("datetime", {}),
+    ("picklist", {"options": [(1, "A"), (2, "B")]}),
+])
+def test_add_attribute_each_kind(backend, ephemeral_entity, kind, extra):
+    from crm.core import metadata_attrs as ma
+    info = ma.add_attribute(
+        backend,
+        entity=ephemeral_entity,
+        kind=kind,
+        schema_name=f"new_E2E{kind.capitalize()}",
+        display_name=f"E2E {kind}",
+        publish=False,
+        **extra,
+    )
+    assert info.get("created") or info.get("kind") == "OneToMany", info

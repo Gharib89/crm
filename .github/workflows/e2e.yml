@@ -1,0 +1,37 @@
+name: e2e-live
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # weekly Monday 03:00 UTC; remove if undesired
+
+concurrency:
+  group: e2e-live
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # Runs against ONE target per dispatch (whichever the secrets point at).
+      # NTLM needs D365_USERNAME/D365_PASSWORD; OAuth needs D365_AUTH=oauth +
+      # D365_CLIENT_ID + D365_CLIENT_SECRET (or D365_PASSWORD) + D365_TENANT_ID.
+      # Full union coverage = run once per target; capability-gated tests skip on
+      # the non-matching target.
+      - name: Run live e2e suite
+        env:
+          D365_E2E: "1"
+          D365_URL: ${{ secrets.D365_URL }}
+          D365_USERNAME: ${{ secrets.D365_USERNAME }}
+          D365_PASSWORD: ${{ secrets.D365_PASSWORD }}
+          D365_AUTH: ${{ secrets.D365_AUTH }}
+          D365_TENANT_ID: ${{ secrets.D365_TENANT_ID }}
+          D365_CLIENT_ID: ${{ secrets.D365_CLIENT_ID }}
+          D365_CLIENT_SECRET: ${{ secrets.D365_CLIENT_SECRET }}
+          D365_E2E_ALLOW_HOST: ${{ secrets.D365_E2E_ALLOW_HOST }}
+          CRM_FORCE_INSTALLED: "1"
+        run: pytest -m e2e -v
