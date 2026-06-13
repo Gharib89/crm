@@ -19,14 +19,6 @@ from crm.utils.d365_backend import ConnectionProfile, D365Backend
 _JOB_ID = "33333333-3333-3333-3333-333333333333"
 
 
-@pytest.fixture
-def backend() -> D365Backend:
-    profile = ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso", domain="C",
-        username="u", api_version="v9.2", verify_ssl=False,
-    )
-    return D365Backend(profile, password="pw", dry_run=False)
-
 # A real op-9-1 ImportJob.data document (MS docs "Work with solutions" sample):
 # a managed solution carrying a single global option set, everything succeeded.
 _DATA_SUCCESS = """<importexportxml start="634224017519682730" stop="634224017609764033" progress="80" processed="true">
