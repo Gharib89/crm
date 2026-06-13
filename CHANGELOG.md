@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.9.4 (2026-06-13)
+
+### Bug Fixes
+
+- **metadata**: Update-relationship writes to un-cast RelationshipDefinitions path
+  ([#278](https://github.com/Gharib89/crm/pull/278),
+  [`dac4ecc`](https://github.com/Gharib89/crm/commit/dac4ecc409b548a294b38150b661f347f1e2dbdb))
+
+
 ## v3.9.3 (2026-06-13)
 
 ### Bug Fixes
