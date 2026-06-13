@@ -28,6 +28,20 @@ import pytest
 
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
+# Legacy credential env vars (v2.0.0 removed env-derived credentials). No code
+# path reads these any more, but a developer's stray export must never sway a
+# test, so isolated_home scrubs them for the duration of each test.
+_LEGACY_CRED_ENV = (
+    "D365_URL", "CRM_BASE_URL", "CRM_URL",
+    "D365_USERNAME", "CRM_USERNAME", "CRM_USER",
+    "D365_PASSWORD", "CRM_PASSWORD", "CRM_PASS",
+    "D365_DOMAIN", "CRM_DOMAIN",
+    "D365_AUTH", "CRM_AUTH",
+    "D365_TENANT_ID", "CRM_TENANT_ID",
+    "D365_CLIENT_ID", "CRM_CLIENT_ID",
+    "D365_CLIENT_SECRET", "CRM_CLIENT_SECRET",
+)
+
 
 # --------------------------------------------------------------------------- #
 # Connection profile + real backend
@@ -78,6 +92,8 @@ def isolated_home(tmp_path: Path) -> Iterator[Path]:
     saved = dict(os.environ)
     os.environ["CRM_HOME"] = str(tmp_path / ".crm")
     os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
+    for key in _LEGACY_CRED_ENV:
+        os.environ.pop(key, None)
     try:
         yield tmp_path
     finally:
@@ -118,14 +134,6 @@ class FakeBackend:
     convenience accessors ``called``, ``last_path``, ``count(verb=None)``.
     """
 
-    _DEFAULTS: dict[str, Any] = {
-        "get": {"value": []},
-        "post": None,
-        "patch": None,
-        "put": None,
-        "delete": None,
-    }
-
     def __init__(
         self,
         *,
@@ -153,6 +161,13 @@ class FakeBackend:
             return len(self.calls)
         return sum(1 for v, _p, _k in self.calls if v == verb)
 
+    @staticmethod
+    def _default(verb: str) -> Any:
+        # Fresh object per call: the GET default is a mutable dict, so a caller
+        # that mutates the result must not be able to leak state across calls
+        # or tests.
+        return {"value": []} if verb == "get" else None
+
     def _dispatch(self, verb: str, path: Any, kwargs: dict[str, Any]) -> Any:
         if verb in self._forbid:
             raise AssertionError(
@@ -161,8 +176,10 @@ class FakeBackend:
         self.calls.append((verb, path, kwargs))
         if verb in self._errors:
             raise self._errors[verb]
-        resp = self._responses.get(verb, self._DEFAULTS[verb])
-        return resp(path) if callable(resp) else resp
+        if verb in self._responses:
+            resp = self._responses[verb]
+            return resp(path) if callable(resp) else resp
+        return self._default(verb)
 
     def get(
         self, path: Any = None, *_args: Any, params: Any = None, **kwargs: Any

@@ -65,21 +65,9 @@ def _oauth_profile():
     )
 
 
-@pytest.fixture(autouse=True)
-def _isolate_env(isolated_home, monkeypatch):
-    """No inherited D365_*/CRM_* creds leaking into oauth tests (isolated_home
-    handles CRM_HOME / CRM_DOTENV + .env autoload)."""
-    for k in (
-        "D365_URL", "CRM_BASE_URL", "CRM_URL",
-        "D365_USERNAME", "CRM_USERNAME", "CRM_USER",
-        "D365_PASSWORD", "CRM_PASSWORD", "CRM_PASS",
-        "D365_DOMAIN", "CRM_DOMAIN",
-        "D365_AUTH", "CRM_AUTH",
-        "D365_TENANT_ID", "CRM_TENANT_ID",
-        "D365_CLIENT_ID", "CRM_CLIENT_ID",
-        "D365_CLIENT_SECRET", "CRM_CLIENT_SECRET",
-    ):
-        monkeypatch.delenv(k, raising=False)
+# isolated_home isolates CRM_HOME / CRM_DOTENV and scrubs the legacy
+# D365_*/CRM_* credential env so none leaks into these oauth tests.
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 class TestMakeOAuthAuth:
