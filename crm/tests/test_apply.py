@@ -17,7 +17,7 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import D365Error
 
 _GUID = "11111111-1111-1111-1111-111111111111"
 _GUID2 = "22222222-2222-2222-2222-222222222222"
@@ -25,32 +25,6 @@ _ENT_ID = "33333333-3333-3333-3333-333333333333"
 _OS_ID = "44444444-4444-4444-4444-444444444444"
 _ATTR_ID = "55555555-5555-5555-5555-555555555555"
 _REL_ID = "66666666-6666-6666-6666-666666666666"
-
-
-@pytest.fixture
-def backend() -> D365Backend:
-    profile = ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-    return D365Backend(profile, password="pw", dry_run=False)
-
-
-@pytest.fixture
-def dry_backend() -> D365Backend:
-    profile = ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-    return D365Backend(profile, password="pw", dry_run=True)
 
 
 def _mock_publisher_create(m, backend, *, exists=False):

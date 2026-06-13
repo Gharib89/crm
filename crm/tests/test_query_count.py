@@ -10,16 +10,6 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core.query import total_record_count
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
-
-
-@pytest.fixture
-def backend():
-    profile = ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", verify_ssl=False,
-    )
-    return D365Backend(profile, password="pw")
 
 
 class TestCoreHelper:

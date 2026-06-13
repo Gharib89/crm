@@ -2,11 +2,9 @@
 # pyright: basic
 from __future__ import annotations
 
-import pytest
 import requests_mock
 
 from crm.core.metadata import list_actions, list_functions
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
 
 _SAMPLE_METADATA_XML = """<?xml version="1.0" encoding="utf-8"?>
@@ -27,15 +25,6 @@ _SAMPLE_METADATA_XML = """<?xml version="1.0" encoding="utf-8"?>
   </edmx:DataServices>
 </edmx:Edmx>
 """
-
-
-@pytest.fixture
-def backend():
-    profile = ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", verify_ssl=False,
-    )
-    return D365Backend(profile, password="pw")
 
 
 def _mock_metadata(m: requests_mock.Mocker) -> None:

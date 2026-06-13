@@ -16,24 +16,7 @@ import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
-
-
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
+from crm.utils.d365_backend import D365Error
 
 
 def _sets_url(backend) -> str:
@@ -216,11 +199,6 @@ class TestUnknownEntitySet:
             m.get(_sets_url(backend), json={"value": []})
             with pytest.raises(D365Error, match="Unknown entity set"):
                 ent.validate_payload(backend, "nopes", {"name": "x"})
-
-
-@pytest.fixture
-def dry_backend(profile):
-    return D365Backend(profile, password="pw", dry_run=True)
 
 
 class TestCommandGate:

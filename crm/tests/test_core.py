@@ -32,23 +32,6 @@ from crm.core import (
 
 
 @pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
-
-
-@pytest.fixture
 def isolated_home(monkeypatch, tmp_path):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".d365"))
     return tmp_path / ".d365"

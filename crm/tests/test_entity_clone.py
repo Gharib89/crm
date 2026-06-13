@@ -18,35 +18,13 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.commands.entity import _parse_overrides
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import D365Error
 
 _SRC = "11111111-1111-1111-1111-111111111111"
 _NEW = "99999999-9999-9999-9999-999999999999"
 
 _LLN = "Microsoft.Dynamics.CRM.lookuplogicalname"
 _ANP = "Microsoft.Dynamics.CRM.associatednavigationproperty"
-
-
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
-
-
-@pytest.fixture
-def dry_backend(profile):
-    return D365Backend(profile, password="pw", dry_run=True)
 
 
 # ── mocked endpoints ──────────────────────────────────────────────────────
