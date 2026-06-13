@@ -5,10 +5,15 @@ Reference: https://learn.microsoft.com/power-apps/developer/data-platform/asynch
 
 from __future__ import annotations
 
-import uuid
 from typing import Any, cast
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    odata_literal,
+)
 from crm.utils.d365_types import AsyncOperationRow
 
 _SELECT = (
@@ -32,13 +37,11 @@ def list_async_operations(
     if state is not None:
         filters.append(f"statecode eq {int(state)}")
     if message_name is not None:
-        escaped = message_name.replace("'", "''")
-        filters.append(f"messagename eq '{escaped}'")
+        filters.append(f"messagename eq {odata_literal(message_name)}")
     if owner_id is not None:
-        try:
-            normalized = str(uuid.UUID(owner_id))
-        except ValueError as exc:
-            raise D365Error(f"owner_id must be a GUID; got {owner_id!r}") from exc
+        normalized = normalize_guid(owner_id)
+        if normalized is None:
+            raise D365Error(f"owner_id must be a GUID; got {owner_id!r}")
         filters.append(f"_ownerid_value eq {normalized}")
 
     params: dict[str, Any] = {
@@ -98,18 +101,15 @@ def list_all_async_operations(
     @odata.nextLink. Stops when the server stops emitting nextLink or
     when max_pages is reached.
     """
-    out: list[AsyncOperationRow] = []
     filters: list[str] = []
     if state is not None:
         filters.append(f"statecode eq {int(state)}")
     if message_name is not None:
-        escaped = message_name.replace("'", "''")
-        filters.append(f"messagename eq '{escaped}'")
+        filters.append(f"messagename eq {odata_literal(message_name)}")
     if owner_id is not None:
-        try:
-            normalized = str(uuid.UUID(owner_id))
-        except ValueError as exc:
-            raise D365Error(f"owner_id must be a GUID; got {owner_id!r}") from exc
+        normalized = normalize_guid(owner_id)
+        if normalized is None:
+            raise D365Error(f"owner_id must be a GUID; got {owner_id!r}")
         filters.append(f"_ownerid_value eq {normalized}")
 
     params: dict[str, Any] = {
@@ -120,18 +120,5 @@ def list_all_async_operations(
     if filters:
         params["$filter"] = " and ".join(filters)
 
-    page = as_dict(backend.get("asyncoperations", params=params))
-    pages_consumed = 1
-    while True:
-        value: Any = page.get("value", [])
-        if isinstance(value, list):
-            out.extend(cast(list[AsyncOperationRow], value))
-        next_link = page.get("@odata.nextLink")
-        if not isinstance(next_link, str) or not next_link:
-            break
-        if pages_consumed >= max_pages:
-            break
-        # Absolute URL — backend.get accepts and returns the full URL via url_for.
-        page = as_dict(backend.get(next_link))
-        pages_consumed += 1
-    return out
+    out = backend.get_collection("asyncoperations", params=params, max_pages=max_pages)
+    return [cast(AsyncOperationRow, r) for r in out]

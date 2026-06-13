@@ -28,7 +28,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    odata_literal,
+)
 
 # Isolation mode -> pluginassembly isolationmode option set (verified MS Learn).
 _ISOLATION_MODE: dict[str, int] = {
@@ -159,9 +164,7 @@ def register_assembly(
     if result.get("_dry_run"):
         return result
 
-    entity_id_url = result.get("_entity_id_url") or ""
-    m = re.search(r"pluginassemblies\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    pid = m.group(1) if m else None
+    pid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True,
         "name": resolved_name,
@@ -171,6 +174,7 @@ def register_assembly(
         "solution": solution,
     }
     if not pid:
+        entity_id_url = result.get("_entity_id_url") or ""
         out["pluginassembly_lookup_error"] = (
             f"Could not parse pluginassemblyid from response: {entity_id_url!r}"
         )
@@ -201,8 +205,7 @@ def list_types(
     if assembly is not None:
         pid = _resolve_id_by_name(backend, assembly)
         params["$filter"] = f"_pluginassemblyid_value eq {pid}"
-    rows: list[dict[str, Any]] = as_dict(backend.get(
-        "plugintypes", params=params)).get("value", [])
+    rows = backend.get_collection("plugintypes", params=params)
     return {"value": rows}
 
 
@@ -282,10 +285,7 @@ def register_step(
     if result.get("_dry_run"):
         return result
 
-    entity_id_url = result.get("_entity_id_url") or ""
-    m = re.search(
-        r"sdkmessageprocessingsteps\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    sid = m.group(1) if m else None
+    sid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True,
         "sdkmessageprocessingstepid": sid,
@@ -297,6 +297,7 @@ def register_step(
         "plugintype": plugin_type,
     }
     if not sid:
+        entity_id_url = result.get("_entity_id_url") or ""
         out["sdkmessageprocessingstep_lookup_error"] = (
             "Could not parse sdkmessageprocessingstepid from response: "
             f"{entity_id_url!r}"
@@ -376,10 +377,7 @@ def register_image(
     if result.get("_dry_run"):
         return result
 
-    entity_id_url = result.get("_entity_id_url") or ""
-    m = re.search(
-        r"sdkmessageprocessingstepimages\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    iid = m.group(1) if m else None
+    iid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True,
         "sdkmessageprocessingstepimageid": iid,
@@ -391,6 +389,7 @@ def register_image(
         "attributes": attributes,
     }
     if not iid:
+        entity_id_url = result.get("_entity_id_url") or ""
         out["sdkmessageprocessingstepimage_lookup_error"] = (
             "Could not parse sdkmessageprocessingstepimageid from response: "
             f"{entity_id_url!r}"
@@ -410,8 +409,7 @@ def _step_image_info(
     if _looks_like_guid(step):
         filt = f"sdkmessageprocessingstepid eq {step}"
     else:
-        esc = step.replace("'", "''")
-        filt = f"name eq '{esc}'"
+        filt = f"name eq {odata_literal(step)}"
     rows = _force_read_rows(
         backend, "sdkmessageprocessingsteps",
         {"$filter": filt,
@@ -462,10 +460,9 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
 
 def _resolve_image_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstepimage id by exact name (force-reads)."""
-    esc = name.replace("'", "''")
     rows = _force_read_rows(
         backend, "sdkmessageprocessingstepimages",
-        {"$filter": f"name eq '{esc}'",
+        {"$filter": f"name eq {odata_literal(name)}",
          "$select": "sdkmessageprocessingstepimageid"})
     if not rows or not rows[0].get("sdkmessageprocessingstepimageid"):
         raise D365Error(
@@ -546,10 +543,9 @@ def unregister_assembly(
 
 def _resolve_step_id(backend: D365Backend, name: str) -> str:
     """Resolve an sdkmessageprocessingstep id by exact name (force-reads)."""
-    esc = name.replace("'", "''")
     rows = _force_read_rows(
         backend, "sdkmessageprocessingsteps",
-        {"$filter": f"name eq '{esc}'",
+        {"$filter": f"name eq {odata_literal(name)}",
          "$select": "sdkmessageprocessingstepid"})
     if not rows or not rows[0].get("sdkmessageprocessingstepid"):
         raise D365Error(
@@ -597,19 +593,18 @@ def _force_read_rows(
     A step is POSTed only after its bound ids are resolved, so the resolution
     GETs must run for real even in dry-run (mirrors `_resolve_id_by_name`).
     """
-    return as_dict(backend.get(entity_set, params=params)).get("value", [])
+    return backend.get_collection(entity_set, params=params, max_pages=1)
 
 
 def _resolve_sdkmessage_id(backend: D365Backend, message: str) -> str:
     """Resolve an SDK message id by exact name (e.g. Create/Update/Delete)."""
-    esc = message.replace("'", "''")
-    rows = _force_read_rows(
-        backend, "sdkmessages",
-        {"$filter": f"name eq '{esc}'", "$select": "sdkmessageid,name"})
-    if not rows or not rows[0].get("sdkmessageid"):
+    mid = backend.resolve_id_by_name(
+        "sdkmessages", filter_field="name", id_field="sdkmessageid",
+        value=message)
+    if not mid:
         raise D365Error(
             f"SDK message not found: {message}", code="SdkMessageNotFound")
-    return str(rows[0]["sdkmessageid"])
+    return mid
 
 
 def _resolve_plugintype_id(
@@ -621,8 +616,7 @@ def _resolve_plugintype_id(
     `pluginassemblyid` and ANDed into the filter to disambiguate. Without it the
     first matching row is used.
     """
-    esc = typename.replace("'", "''")
-    filt = f"typename eq '{esc}'"
+    filt = f"typename eq {odata_literal(typename)}"
     if assembly is not None:
         pid = _resolve_id_by_name(backend, assembly)
         filt += f" and _pluginassemblyid_value eq {pid}"
@@ -643,8 +637,7 @@ def _resolve_sdkmessagefilter_id(
     Raises D365Error when the message does not support the entity (no filter
     row), since binding one is required for an entity-scoped step.
     """
-    esc = entity.replace("'", "''")
-    filt = (f"primaryobjecttypecode eq '{esc}' "
+    filt = (f"primaryobjecttypecode eq {odata_literal(entity)} "
             f"and _sdkmessageid_value eq {message_id}")
     rows = _force_read_rows(
         backend, "sdkmessagefilters",
@@ -688,15 +681,10 @@ def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
     Forces a real read even under dry-run (a PATCH preview needs the real id;
     mirrors webresource._resolve_id_by_name).
     """
-    esc = name.replace("'", "''")
-    rows = _force_read_rows(
-        backend, "pluginassemblies",
-        {"$filter": f"name eq '{esc}'", "$select": "pluginassemblyid"})
-    if not rows:
-        raise D365Error(
-            f"Plug-in assembly not found: {name}", code="PluginAssemblyNotFound")
-    pid = rows[0].get("pluginassemblyid")
+    pid = backend.resolve_id_by_name(
+        "pluginassemblies", filter_field="name", id_field="pluginassemblyid",
+        value=name)
     if not pid:
         raise D365Error(
             f"Plug-in assembly not found: {name}", code="PluginAssemblyNotFound")
-    return str(pid)
+    return pid

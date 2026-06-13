@@ -9,7 +9,6 @@ attribute fields. Lookup short-circuits to `create_one_to_many`.
 
 from __future__ import annotations
 
-import re
 from typing import Any, Callable
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -360,13 +359,6 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 ATTRIBUTE_KINDS = frozenset(_BUILDERS) | {"lookup"}
 
 
-def _parse_attribute_id(entity_id_url: str | None) -> str | None:
-    if not entity_id_url:
-        return None
-    match = re.search(r"Attributes\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    return match.group(1) if match else None
-
-
 def _resolve_global_optionset_id(backend: D365Backend, name: str) -> str:
     """Return the MetadataId GUID of a global option set, looked up by Name.
 
@@ -591,7 +583,7 @@ def add_attribute(
         return result
 
     entity_id_url = result.get("_entity_id_url")
-    attr_id = _parse_attribute_id(entity_id_url)
+    attr_id: str | None = result.get("_entity_id")
     attr_logical: str | None = None
     attr_type: str | None = None
     lookup_error: str | None = None

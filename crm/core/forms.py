@@ -14,7 +14,7 @@ import uuid
 from typing import Any
 
 from crm.core.metadata import maybe_publish
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 FORM_TYPE_MAIN = 2
 
@@ -115,13 +115,12 @@ def read_entity_forms(
     """
     if not form_types:
         raise D365Error("form_types must not be empty.")
-    entity_lit = entity_logical_name.replace("'", "''")
     type_clause = " or ".join(f"type eq {t}" for t in form_types)
-    filt = f"objecttypecode eq '{entity_lit}' and ({type_clause})"
-    rows = as_dict(backend.get(
+    filt = f"objecttypecode eq {odata_literal(entity_logical_name)} and ({type_clause})"
+    rows = backend.get_collection(
         "systemforms",
         params={"$select": _FORM_SELECT, "$filter": filt},
-    )).get("value", [])
+    )
     result: list[dict[str, Any]] = []
     for row in rows:
         result.append({
@@ -170,8 +169,7 @@ def clone_form_to_entity(
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""
-    match = re.search(r"systemforms\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    formid = match.group(1) if match else None
+    formid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True,
         "name": form.get("name", ""),

@@ -13,11 +13,10 @@ Reference:
 from __future__ import annotations
 
 import re
-import uuid
-from typing import Any, cast
+from typing import Any
 
 from crm.core.workflow import STATE_ACTIVATED, set_workflow_state
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
 
 
 # `ErrorMap Details: {Step1: ErrA, ErrB; Step2: ErrC}` — the platform's
@@ -56,10 +55,10 @@ def validate_sla_id(sla_id: str) -> str:
     D365Error if it is not a GUID. Client-side only — the command layer calls
     this before building a backend; the canonical form keeps OData paths and
     $filter expressions stable."""
-    try:
-        return str(uuid.UUID(sla_id))
-    except (ValueError, TypeError) as exc:
-        raise D365Error(f"Invalid GUID for sla_id: {sla_id!r}") from exc
+    rid = normalize_guid(sla_id)
+    if rid is None:
+        raise D365Error(f"Invalid GUID for sla_id: {sla_id!r}")
+    return rid
 
 
 def _fetch_plan(
@@ -75,25 +74,14 @@ def _fetch_plan(
         f"slas({sla_id})", params={"$select": "slaid,name,statecode"},
         caller_id=caller_id, caller_object_id=caller_object_id,
     ))
-    items: list[dict[str, Any]] = []
-    page = as_dict(backend.get(
+    items = backend.get_collection(
         "slaitems",
         params={
             "$select": "slaitemid,name,_workflowid_value",
             "$filter": f"_slaid_value eq {sla_id}",
         },
         caller_id=caller_id, caller_object_id=caller_object_id,
-    ))
-    while True:
-        value = page.get("value", [])
-        if isinstance(value, list):
-            items.extend(cast("list[dict[str, Any]]", value))
-        next_link = page.get("@odata.nextLink")
-        if not isinstance(next_link, str) or not next_link:
-            break
-        # Absolute URL — backend.get accepts and returns the full URL via url_for.
-        page = as_dict(backend.get(
-            next_link, caller_id=caller_id, caller_object_id=caller_object_id))
+    )
     workflow_ids: list[str] = []
     for item in items:
         wid = item.get("_workflowid_value")

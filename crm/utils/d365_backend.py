@@ -732,6 +732,82 @@ class D365Backend:
     def delete(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("DELETE", path, expect_json=False, **kw)
 
+    # ── Response-shape verbs ─────────────────────────────────────────────
+
+    def get_collection(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        max_pages: int | None = None,
+        **admin_kw: Any,
+    ) -> list[dict[str, Any]]:
+        """GET a collection, unwrap ``value``, and follow ``@odata.nextLink``.
+
+        Issues the GET on *path* (forwarding admin kwargs such as ``caller_id``),
+        flattens each page's ``value`` array, and follows ``@odata.nextLink``
+        until the server stops emitting one or *max_pages* pages have been read.
+        The next-link is an absolute URL whose query is already baked in, so
+        *params* applies only to the first page. ``max_pages=None`` (default)
+        follows to exhaustion; *max_pages* counts pages including the first, so
+        ``max_pages=1`` issues a single GET and never follows.
+
+        GETs run for real even under dry-run (the reads-execute rule), so this is
+        safe to call from a preview path that needs live rows.
+        """
+        if max_pages is not None and max_pages < 1:
+            raise D365Error(
+                f"get_collection max_pages must be >= 1, got {max_pages!r}"
+            )
+        rows: list[dict[str, Any]] = []
+        page = as_dict(self.get(path, params=params, **admin_kw))
+        pages_consumed = 1
+        while True:
+            value = page.get("value", [])
+            if isinstance(value, list):
+                rows.extend(cast("list[dict[str, Any]]", value))
+            next_link = page.get("@odata.nextLink")
+            if not isinstance(next_link, str) or not next_link:
+                break
+            if max_pages is not None and pages_consumed >= max_pages:
+                break
+            page = as_dict(self.get(next_link, **admin_kw))
+            pages_consumed += 1
+        return rows
+
+    def resolve_id_by_name(
+        self,
+        entity_set: str,
+        *,
+        filter_field: str,
+        id_field: str,
+        value: str,
+        **admin_kw: Any,
+    ) -> str | None:
+        """Resolve a record id by an exact match on a name-ish field.
+
+        Issues a filtered GET (``$filter=<filter_field> eq '<escaped value>'``,
+        ``$select=<id_field>``) and returns the first row's *id_field*, or
+        ``None`` when no row matches. Callers keep their own domain-specific
+        not-found raise so per-domain error codes/messages stay local.
+
+        The read runs for real even under dry-run (the reads-execute rule), so a
+        preview path that needs the resolved id gets it.
+        """
+        rows = self.get_collection(
+            entity_set,
+            params={
+                "$filter": f"{filter_field} eq {odata_literal(value)}",
+                "$select": id_field,
+            },
+            max_pages=1,
+            **admin_kw,
+        )
+        if not rows:
+            return None
+        rid = rows[0].get(id_field)
+        return rid if isinstance(rid, str) else None
+
     def batch(
         self,
         operations: "Sequence[BatchOperation]",
@@ -956,7 +1032,11 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
         if resp.status_code == 204 or not resp.content:
             entity_id = resp.headers.get("OData-EntityId")
             if entity_id:
-                return {"_entity_id_url": entity_id}
+                result: dict[str, Any] = {"_entity_id_url": entity_id}
+                guid_match = re.search(r"\(([0-9a-fA-F-]{36})\)", entity_id)
+                if guid_match:
+                    result["_entity_id"] = guid_match.group(1)
+                return result
             return None
         if not expect_json:
             # Return text/plain and XML bodies as a stripped string; otherwise None.
@@ -1503,3 +1583,39 @@ def as_dict(result: dict[str, Any] | str | None) -> dict[str, Any]:
     `result or {}` idiom in a type-safe way under pyright strict.
     """
     return result if isinstance(result, dict) else {}
+
+
+def odata_literal(value: Any) -> str:
+    """Render *value* as an OData v4 ``$filter`` literal.
+
+    Booleans become ``true``/``false`` and numbers are emitted verbatim;
+    everything else is rendered as a single-quoted string with embedded single
+    quotes doubled per the OData escaping rule. This is the canonical escaping
+    that the inline ``replace("'", "''")`` sites and ``commands/_helpers``
+    delegate to.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def normalize_guid(value: str) -> str | None:
+    """Normalize a user-supplied GUID to canonical lowercase hyphenated form.
+
+    Accepts a hyphenated or bare 32-hex GUID in any case, optionally wrapped in
+    ``{}`` or ``()``, and returns the canonical lowercase hyphenated string
+    (e.g. ``00000000-0000-0000-0000-000000000000``). Returns ``None`` when
+    *value* is not a GUID. The accepted input is a superset of every per-domain
+    regex it replaces, so adopting it never narrows a caller's accepted input.
+    """
+    s = value.strip()
+    if len(s) >= 2 and (
+        (s[0] == "{" and s[-1] == "}") or (s[0] == "(" and s[-1] == ")")
+    ):
+        s = s[1:-1].strip()
+    try:
+        return str(uuid.UUID(s))
+    except ValueError:
+        return None

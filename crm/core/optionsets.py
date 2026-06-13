@@ -9,7 +9,6 @@ so callers can inspect what already landed — no rollback.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
@@ -30,13 +29,6 @@ def _option_label(label_obj: dict[str, Any]) -> str | None:
     if locs:
         return str(locs[0].get("Label") or "") or None
     return None
-
-
-def _parse_optionset_id(entity_id_url: str | None) -> str | None:
-    if not entity_id_url:
-        return None
-    match = re.search(r"GlobalOptionSetDefinitions\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    return match.group(1) if match else None
 
 
 def list_optionsets(
@@ -139,7 +131,7 @@ def create_optionset(
         return result
 
     entity_id_url = result.get("_entity_id_url")
-    os_id = _parse_optionset_id(entity_id_url)
+    os_id = result.get("_entity_id")
     lookup_error: str | None = None
     name_readback: str | None = None
     if not os_id:

@@ -23,7 +23,7 @@ from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.core import solution as sol_mod
 from crm.core import views as views_mod
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 Entry = dict[str, Any]
 
@@ -170,11 +170,10 @@ def validate_spec(spec: Any) -> None:
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
     """Forced-real existence check for a solution by uniquename (dry-run safe)."""
-    lit = name.replace("'", "''")
-    rows = as_dict(backend.get(
+    rows = backend.get_collection(
         "solutions",
-        params={"$filter": f"uniquename eq '{lit}'", "$select": "solutionid"},
-    )).get("value", [])
+        params={"$filter": f"uniquename eq {odata_literal(name)}", "$select": "solutionid"},
+    )
     return bool(rows)
 
 

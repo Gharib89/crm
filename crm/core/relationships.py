@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any, cast
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.core.metadata import label, label_text, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
@@ -38,22 +38,22 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
         "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute,"
         "ReferencingEntityNavigationPropertyName"
     )
-    one_to_many = as_dict(backend.get(
+    one_to_many = backend.get_collection(
         f"EntityDefinitions(LogicalName='{logical_name}')/OneToManyRelationships",
         params={"$select": rel_select},
-    ))
-    many_to_one = as_dict(backend.get(
+    )
+    many_to_one = backend.get_collection(
         f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
         params={"$select": rel_select},
-    ))
-    many_to_many = as_dict(backend.get(
+    )
+    many_to_many = backend.get_collection(
         f"EntityDefinitions(LogicalName='{logical_name}')/ManyToManyRelationships",
         params={"$select": "SchemaName,Entity1LogicalName,Entity2LogicalName,IntersectEntityName"},
-    ))
+    )
     return {
-        "OneToMany": one_to_many.get("value", []),
-        "ManyToOne": many_to_one.get("value", []),
-        "ManyToMany": many_to_many.get("value", []),
+        "OneToMany": one_to_many,
+        "ManyToOne": many_to_one,
+        "ManyToMany": many_to_many,
     }
 
 
@@ -109,9 +109,8 @@ def read_entity_relationships(
 
     Returns ``[]`` when the entity has no custom 1:N relationships.
     """
-    entity_lit = entity_logical_name.replace("'", "''")
     raw = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{entity_lit}')/OneToManyRelationships",
+        f"EntityDefinitions(LogicalName={odata_literal(entity_logical_name)})/OneToManyRelationships",
         params={
             "$select": (
                 "SchemaName,ReferencedEntity,ReferencingEntity,"
@@ -172,13 +171,6 @@ def read_entity_relationships(
         result.append(rel_dict)
 
     return result
-
-
-def _parse_relationship_id(entity_id_url: str | None) -> str | None:
-    if not entity_id_url:
-        return None
-    match = re.search(r"RelationshipDefinitions\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    return match.group(1) if match else None
 
 
 def delete_relationship(
@@ -362,7 +354,7 @@ def create_one_to_many(
         return result
 
     entity_id_url = result.get("_entity_id_url")
-    relationship_id = _parse_relationship_id(entity_id_url)
+    relationship_id = result.get("_entity_id")
     schema_readback: str | None = None
     referencing_attr: str | None = None
     lookup_error: str | None = None
@@ -491,7 +483,7 @@ def create_many_to_many(
         return result
 
     entity_id_url = result.get("_entity_id_url")
-    relationship_id = _parse_relationship_id(entity_id_url)
+    relationship_id = result.get("_entity_id")
     schema_readback: str | None = None
     intersect_readback: str | None = None
     lookup_error: str | None = None
