@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import os
 
-import pytest
-
 from crm.tests.e2e.coverage import covers
 
 
@@ -77,20 +75,7 @@ def test_metadata_relationships(cli):
     assert total > 0
 
 
-# KNOWN BUG: `metadata list-actions`/`list-functions` fetch the $metadata CSDL
-# document, which the Web API serves as XML — but the command sends an
-# `Accept: application/json` header, so the server answers HTTP 415 on BOTH
-# on-prem v9.1 AND cloud v9.2. xfail (non-strict) so the test runs live, documents
-# the defect, and auto-flips to xpass the moment the command's Accept header is
-# fixed. The @covers stamp keeps the verb counted by the coverage gate.
-_METADATA_XML_415 = (
-    "metadata list-actions/list-functions request the $metadata CSDL endpoint with a "
-    "JSON Accept header → HTTP 415 on every target (command bug, tracked separately)"
-)
-
-
 @covers("metadata list-actions")
-@pytest.mark.xfail(reason=_METADATA_XML_415, strict=False)
 def test_metadata_list_actions(cli):
     r = cli(["--json", "metadata", "list-actions"], check=False)
     assert r.returncode == 0, r.stderr
@@ -101,7 +86,6 @@ def test_metadata_list_actions(cli):
 
 
 @covers("metadata list-functions")
-@pytest.mark.xfail(reason=_METADATA_XML_415, strict=False)
 def test_metadata_list_functions(cli):
     r = cli(["--json", "metadata", "list-functions"], check=False)
     assert r.returncode == 0, r.stderr
