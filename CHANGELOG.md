@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.9.3 (2026-06-13)
+
+### Bug Fixes
+
+- **metadata**: Request $metadata CSDL with XML Accept header (#266)
+  ([#277](https://github.com/Gharib89/crm/pull/277),
+  [`5974c7c`](https://github.com/Gharib89/crm/commit/5974c7c40bdd741612b8eca55807df2a4d5e4fa2))
+
+### Documentation
+
+- Name agent-on-prem/agent-cloud as the live profiles, document Copilot auto-review
+  ([`6e67adc`](https://github.com/Gharib89/crm/commit/6e67adcc891c66202a29dc2b495c120eba417880))
+
+
 ## v3.9.2 (2026-06-13)
 
 ### Bug Fixes
