@@ -311,6 +311,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "apply": "crm.commands.apply:apply_cmd",
         "async": "crm.commands.async_ops:async_group",
         "batch": "crm.commands.batch:batch_cmd",
+        "completion": "crm.commands.completion:completion_group",
         "connection": "crm.commands.connection:connection_group",
         "data": "crm.commands.data:data_group",
         "describe": "crm.commands.describe:describe_cmd",

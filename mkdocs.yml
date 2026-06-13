@@ -125,6 +125,7 @@ nav:
       - security: how-to/security.md
       - async: how-to/async.md
       - session: how-to/session.md
+      - completion: how-to/completion.md
       - self-update: how-to/self-update.md
       - skill: how-to/skill.md
       - workflow: how-to/workflow.md
