@@ -659,7 +659,11 @@ _D365_NAMESPACE = "Microsoft.Dynamics.CRM"
 
 def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
     """GET $metadata and parse as XML. Returns all <Schema> elements."""
-    raw = backend.get("$metadata", expect_json=False)
+    # $metadata is served only as CSDL XML; the default Accept: application/json
+    # makes Dataverse answer HTTP 415 (#266). Override Accept for this call only.
+    raw = backend.get(
+        "$metadata", expect_json=False, extra_headers={"Accept": "application/xml"}
+    )
     if not isinstance(raw, str):
         raise D365Error("$metadata response was not text/xml")
     try:

@@ -2,10 +2,10 @@
 
 Four real defects were surfaced while building the live e2e coverage
 (`crm/tests/e2e/`). None are test bugs — each reproduces through the normal CLI
-against a live org. #1 and #2 remain product defects documented in-suite as an
+against a live org. #2 remains a product defect documented in-suite as an
 `xfail(strict=False)` (or a capability gate), so the suite stays green **and**
-auto-flips to a failure/xpass the moment the underlying command is fixed. #3 turned
-out to be a **client-side** bug in the CLI and is now fixed; **#4 is now FIXED
+auto-flips to a failure/xpass the moment the underlying command is fixed. #1 and #3
+turned out to be **client-side** bugs in the CLI and are now fixed; **#4 is now FIXED
 (#269)** — its `xfail` is removed and the test passes live on both targets (see below).
 
 Repro uses a saved profile directly (`--profile`); no e2e harness needed. Targets
@@ -13,39 +13,40 @@ referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
 
 | # | Bug | Tracking issue |
 |---|-----|----------------|
-| 1 | `metadata list-actions` / `list-functions` → HTTP 415 | Gharib89/crm#266 |
+| 1 | `metadata list-actions` / `list-functions` → HTTP 415 → ✅ fixed (client-side) | Gharib89/crm#266 (FIXED) |
 | 2 | `metadata update-relationship` → HTTP 405 | Gharib89/crm#267 |
 | 3 | `form clone` reused internal form ids on on-prem → ✅ fixed (client-side) | Gharib89/crm#268 |
 | 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269 (FIXED) |
 
 ---
 
-## 1. `metadata list-actions` / `metadata list-functions` → HTTP 415 (both targets)
+## 1. `metadata list-actions` / `metadata list-functions` → HTTP 415 — ✅ FIXED (client-side, #266)
+
+**This was a client-side bug in the CLI, not a product defect** — the command, not the
+server, requested the wrong content type. Now fixed; the entry is kept as a record.
 
 **Symptom**
 ```
-$ crm --profile crmworx --json metadata list-functions
+$ crm --profile <org> --json metadata list-functions
 {"ok": false,
  "error": "A supported MIME type could not be found that matches the acceptable MIME types for the request.",
  "meta": {"status": 415, "code": "0x80060888", "category": "validation"}}
 ```
-Same 415 on cloud (v9.2). Affects both `list-actions` and `list-functions`.
+Same 415 on cloud (v9.2). Affected both `list-actions` and `list-functions`.
 
 **Root cause** — both verbs read the OData `$metadata` CSDL document to enumerate
-actions/functions. That endpoint is served as **XML (CSDL)**, but the request is sent
-with `Accept: application/json`, so Dataverse rejects it with 415.
+actions/functions. That endpoint is served only as **XML (CSDL)**, but `_fetch_csdl`
+issued the GET with the backend default `Accept: application/json`, so Dataverse
+rejected it with 415 on every target.
 
-**Fix** — send `Accept: application/xml` (and parse CSDL XML) for the `$metadata`
-request path specifically; the rest of the Web API stays JSON.
+**Fix (shipped)** — `crm.core.metadata._fetch_csdl` now passes
+`extra_headers={"Accept": "application/xml"}` on the `$metadata` GET only; all other
+Web API traffic stays JSON. The CSDL parse side already returned XML bodies as text.
 
 **Test** — `crm/tests/e2e/test_metadata_read.py::test_metadata_list_actions` /
-`::test_metadata_list_functions` (`xfail`, reason cites this 415).
-
-**Repro**
-```
-crm --profile crmworx --json metadata list-actions      # → 415
-crm --profile cloud    --json metadata list-functions   # → 415
-```
+`::test_metadata_list_functions` (`xfail` removed; assert `ok: true` live on both
+targets). Offline header coverage:
+`test_metadata_actions_functions.py::TestAcceptHeader`.
 
 ---
 
@@ -148,7 +149,7 @@ crm --profile crmworx ribbon add-button <custom_entity> --label "E2E" --command-
 ---
 
 ### Severity / notes
-- #1 and #2 make their verbs **completely non-functional** on every target — highest priority.
+- #2 makes its verb **completely non-functional** on every target — highest priority; #1 was the same until fixed (#266).
 - #4 made ribbon **write** verbs non-functional on every target (ribbon read/export worked) — **FIXED (#269)**; the `xfail` is removed and the e2e lifecycle passes live on both targets.
 - #3 is on-prem-only and intermittent (only collides on a repeat clone of the same source form).
 - All four are in **product code** (`crm/core/*`), out of scope for the test-completeness
