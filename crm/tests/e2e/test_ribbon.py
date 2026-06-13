@@ -90,21 +90,8 @@ def test_ribbon_list_ephemeral(cli, backend, ephemeral_entity, ephemeral_solutio
 # ── ribbon add-button + ribbon remove (lifecycle) ─────────────────────────────
 
 
-_RIBBON_VALIDATION_BUG = (
-    "ribbon add-button fails pre-import validation on BOTH on-prem v9.1 and cloud v9.2. "
-    "Root cause: apply_ribbon_change calls validate_solution(backend=backend), which runs "
-    "_check_org_collisions — a check designed for *new* solution installs. It flags every "
-    "systemform id in the exported solution as a collision because those forms already exist "
-    "on the org (they are the entity's existing forms, not new ones). For a round-trip "
-    "ribbon-edit mutation (export→mutate→re-import), existing form IDs are expected state, "
-    "not collisions. SUSPECTED PRODUCT BUG: validate_solution/apply_ribbon_change should "
-    "skip or bypass the guid-collision check when performing a ribbon update import."
-)
-
-
 @covers("ribbon add-button", "ribbon remove")
 @pytest.mark.slow
-@pytest.mark.xfail(reason=_RIBBON_VALIDATION_BUG, strict=False)
 def test_ribbon_add_and_remove_button(
     cli, backend, ephemeral_entity, ephemeral_solution, unique, request, tmp_path
 ):

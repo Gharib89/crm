@@ -240,8 +240,9 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
         _make_solution_zip(output_path, CUST_XML)
         return {"output": str(output_path), "bytes": 1}
 
-    def fake_validate(zip_path, *, backend=None):
+    def fake_validate(zip_path, *, backend=None, check_collisions=True):
         # read back the rewritten customizations so the test can assert on it
+        captured["check_collisions"] = check_collisions
         import zipfile as zf
         with zf.ZipFile(zip_path) as z:
             captured["customizations"] = z.read("customizations.xml").decode()
@@ -275,6 +276,10 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
     assert result["status"] == "succeeded"
     assert captured["published"] is True
     assert "cwx_ticket.form.Validate.Button" in captured["customizations"]  # type: ignore[operator]
+    # #269: a ribbon edit is a round-trip update-import; existing form GUIDs are
+    # expected state, so the GUID-collision checks must be skipped (but backend is
+    # still passed so the web-resource-ref check runs against the org).
+    assert captured["check_collisions"] is False
 
 
 def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
@@ -282,7 +287,7 @@ def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
         _make_solution_zip(output_path, CUST_XML)
         return {"output": str(output_path)}
 
-    def fake_validate(zip_path, *, backend=None):
+    def fake_validate(zip_path, *, backend=None, check_collisions=True):
         return {"valid": False,
                 "findings": [{"severity": "error", "message": "bad ribbon"}],
                 "checks_run": ["package"]}

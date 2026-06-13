@@ -448,12 +448,20 @@ def validate_solution(
     zip_path: str | Path,
     *,
     backend: D365Backend | None = None,
+    check_collisions: bool = True,
 ) -> dict[str, Any]:
     """Statically validate a solution package; return a report envelope.
 
     {"valid": bool, "findings": [Finding-as-dict, ...], "checks_run": [str, ...]}.
     `valid` is False iff any finding has severity "error". When `backend` is given
     (the --against-org path), also runs online collision/existence checks.
+
+    `check_collisions` (default True) gates only the GUID-collision checks
+    (`_check_org_collisions` + `_check_xaml_stage_collisions`). Set it False for a
+    round-trip update-import (e.g. a ribbon edit: export→mutate→re-import), where
+    the package legitimately re-carries the entity's *existing* form/view/stage
+    GUIDs — they are expected state, not fresh-install collisions. The other
+    backend-dependent checks (`webresource-ref`, `optionset-binding`) still run.
     """
     sol_root, cust_root, findings = _load(zip_path)
     checks_run = ["package"]
@@ -464,7 +472,7 @@ def validate_solution(
         findings += _check_webresource_refs(cust_root, backend)
         checks_run.append("optionset-binding")
         findings += _check_optionset_bindings(cust_root, backend)
-        if backend is not None:
+        if backend is not None and check_collisions:
             checks_run.append("guid-collision")
             findings += _check_org_collisions(cust_root, backend)
             # BPF stage GUIDs live in Workflows/*.xaml, not the manifests — same

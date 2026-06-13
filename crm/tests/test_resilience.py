@@ -615,6 +615,49 @@ class TestPollAsyncOperation:
         assert calls[0][0] == 50.0
         assert calls[1][0] == 100.0
 
+    def test_progress_read_tolerates_transient_missing_importjob(self, backend, monkeypatch):
+        # #269: right after ImportSolutionAsync the importjob row may not be
+        # committed yet, so the progress-only read of importjobs(<id>) can 404
+        # (0x80040217 "Does Not Exist"). That read is cosmetic — the
+        # asyncoperation statecode is authoritative — so a transient 404 must NOT
+        # abort a healthy import. The missing tick is skipped; a later tick where
+        # the row exists still reports progress.
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        calls: list[tuple[float, str]] = []
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), [
+                {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
+                {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
+            ])
+            m.get(self._job_url(backend), [
+                {"status_code": 404, "json": {"error": {
+                    "code": "0x80040217",
+                    "message": ("Entity 'importjob' With Id = "
+                                f"{self.JOB_ID} Does Not Exist")}}},
+                {"json": {"progress": 100.0, "solutionname": "MySol"}},
+            ])
+            result = backend.poll_async_operation(
+                self.OP_ID, import_job_id=self.JOB_ID,
+                on_progress=lambda pct, msg: calls.append((pct, msg)),
+            )
+        assert result["statecode"] == 3        # import completed; no raise
+        assert calls == [(100.0, "Done")]      # 404 tick skipped, later tick reported
+
+    def test_progress_read_non_404_error_still_propagates(self, backend, monkeypatch):
+        # Only a not-found (404) on the progress read is tolerated; a genuine
+        # error (e.g. 500) must still surface rather than be silently swallowed.
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), json={
+                "statecode": 0, "statuscode": 0, "message": "Working"})
+            m.get(self._job_url(backend), status_code=500,
+                  json={"error": {"code": "x", "message": "boom"}})
+            with pytest.raises(D365Error) as exc_info:
+                backend.poll_async_operation(
+                    self.OP_ID, import_job_id=self.JOB_ID,
+                    on_progress=lambda pct, msg: None, timeout=2)
+        assert exc_info.value.status == 500 or "boom" in str(exc_info.value)
+
     def test_no_progress_callback_skips_job_fetch(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:

@@ -285,7 +285,12 @@ def apply_ribbon_change(
             return export_result
         _rewrite_customizations(src, dst, mutate)
         if validate:
-            report = validate_solution(dst, backend=backend)
+            # A ribbon edit is a round-trip update-import: the exported package
+            # re-carries the entity's existing form/view GUIDs, which the
+            # fresh-install GUID-collision check would flag as false positives and
+            # abort the import (#269). Skip only those checks; keep `backend` so
+            # the web-resource-ref check (the new button's JS) still runs.
+            report = validate_solution(dst, backend=backend, check_collisions=False)
             if not report["valid"]:
                 errs = [f for f in report["findings"]
                         if f.get("severity") == "error"]

@@ -2,10 +2,11 @@
 
 Four real defects were surfaced while building the live e2e coverage
 (`crm/tests/e2e/`). None are test bugs — each reproduces through the normal CLI
-against a live org. Three (#1, #2, #4) are product defects documented in-suite as an
+against a live org. #1 and #2 remain product defects documented in-suite as an
 `xfail(strict=False)` (or a capability gate), so the suite stays green **and**
 auto-flips to a failure/xpass the moment the underlying command is fixed. #3 turned
-out to be a **client-side** bug in the CLI and is now fixed (see below).
+out to be a **client-side** bug in the CLI and is now fixed; **#4 is now FIXED
+(#269)** — its `xfail` is removed and the test passes live on both targets (see below).
 
 Repro uses a saved profile directly (`--profile`); no e2e harness needed. Targets
 referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
@@ -15,7 +16,7 @@ referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
 | 1 | `metadata list-actions` / `list-functions` → HTTP 415 | Gharib89/crm#266 |
 | 2 | `metadata update-relationship` → HTTP 405 | Gharib89/crm#267 |
 | 3 | `form clone` reused internal form ids on on-prem → ✅ fixed (client-side) | Gharib89/crm#268 |
-| 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269 |
+| 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269 (FIXED) |
 
 ---
 
@@ -118,24 +119,37 @@ solution → mutate `RibbonDiffXml` → re-import); the entity's existing form i
 expected state, not new components. The check produces false-positive collisions and
 aborts the import.
 
-**Fix** — `apply_ribbon_change` should call the apply path with `validate=False`, or
-`validate_solution` should accept a flag to skip the guid-collision check for
-update-imports (vs. fresh installs).
+**Fix (FIXED, #269)** — two root causes, fixed together (the second was masked
+behind the first until it was lifted):
+1. **Collision false-positive.** `validate_solution` gained `check_collisions: bool
+   = True`; `apply_ribbon_change` calls it with `check_collisions=False`, skipping
+   only `_check_org_collisions` + `_check_xaml_stage_collisions` (existing form GUIDs
+   are expected state on a round-trip update) while keeping `_check_webresource_refs`
+   + `_check_optionset_bindings` (and `backend`). Default `True` leaves fresh-install
+   validation unchanged.
+2. **importjobs progress-read race (cloud-async only).** With collisions skipped the
+   import proceeded but `poll_async_operation`'s *progress* read of `importjobs(<id>)`
+   could 404 (`0x80040217`) before Dataverse committed the row, aborting a healthy
+   import. The progress read is cosmetic — the asyncoperation statecode is
+   authoritative — so a transient 404 there is now tolerated (tick skipped); other
+   errors still propagate.
 
 **Test** — `crm/tests/e2e/test_ribbon.py::test_ribbon_add_and_remove_button`
-(`xfail`, reason cites the validation false-positive).
+(`xfail` removed; passes live on on-prem v9.1 and cloud v9.2). Offline coverage:
+`test_solution_validate.py::TestCheckCollisionsFlag` and
+`test_resilience.py::TestPollAsyncOperation::test_progress_read_tolerates_transient_missing_importjob`.
 
-**Repro**
+**Repro (pre-fix)**
 ```
 crm --profile crmworx ribbon add-button <custom_entity> --label "E2E" --command-js "alert('x')"
-# → aborts in validate_solution / _check_org_collisions
+# → aborted in validate_solution / _check_org_collisions
 ```
 
 ---
 
 ### Severity / notes
 - #1 and #2 make their verbs **completely non-functional** on every target — highest priority.
-- #4 makes ribbon **write** verbs non-functional on every target (ribbon read/export work).
+- #4 made ribbon **write** verbs non-functional on every target (ribbon read/export worked) — **FIXED (#269)**; the `xfail` is removed and the e2e lifecycle passes live on both targets.
 - #3 is on-prem-only and intermittent (only collides on a repeat clone of the same source form).
 - All four are in **product code** (`crm/core/*`), out of scope for the test-completeness
   branch that found them. The e2e suite encodes them as `xfail`/capability-gates so the
