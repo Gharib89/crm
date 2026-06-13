@@ -871,7 +871,10 @@ class D365Backend:
 
         If import_job_id is given and on_progress is set, also reads
         importjobs(<id>).progress on every tick and forwards
-        (percent, asyncoperations.message) to the callback.
+        (percent, asyncoperations.message) to the callback. That progress read
+        is cosmetic: a transient 404 (the importjob row not yet committed right
+        after ImportSolutionAsync) is tolerated — the tick is skipped, not
+        fatal — since the asyncoperation statecode is the authoritative signal.
 
         In dry-run mode this short-circuits and returns a preview dict instead
         of polling — request() can only produce a preview without statecode,
@@ -900,13 +903,27 @@ class D365Backend:
             status = op.get("statuscode")
 
             if import_job_id is not None and on_progress is not None:
-                job_row = cast(dict[str, Any], self.get(
-                    f"importjobs({import_job_id})",
-                    params={"$select": "progress,solutionname,startedon,completedon"},
-                ))
-                pct = float(job_row.get("progress") or 0.0)
-                msg = op.get("message") or ""
-                on_progress(pct, msg)
+                try:
+                    job_row = cast(dict[str, Any], self.get(
+                        f"importjobs({import_job_id})",
+                        params={"$select": "progress,solutionname,startedon,completedon"},
+                    ))
+                except D365Error as exc:
+                    # Right after ImportSolutionAsync the importjob row may not be
+                    # committed yet, so this progress-only read can come back
+                    # not-found ("Does Not Exist", 0x80040217). Progress is
+                    # cosmetic — the asyncoperation statecode is authoritative —
+                    # so a transient not-found must not abort a healthy import;
+                    # skip this tick. Classify by CATEGORY (0x80040217 rides
+                    # other statuses too, per classify_d365_error), and let every
+                    # other error propagate so a real failure is never masked.
+                    category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+                    if category != "not_found":
+                        raise
+                else:
+                    pct = float(job_row.get("progress") or 0.0)
+                    msg = op.get("message") or ""
+                    on_progress(pct, msg)
 
             if state == 3:
                 if status == 30:

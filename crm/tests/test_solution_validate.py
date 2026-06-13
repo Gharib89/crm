@@ -522,6 +522,68 @@ class TestXamlStageCollisions:
                    for f in data["data"]["findings"])
 
 
+# ── #269: skip only the collision checks for round-trip update-imports ────────
+
+
+class TestCheckCollisionsFlag:
+    """#269: a round-trip update-import (e.g. a ribbon edit: export→mutate→re-import)
+    re-imports the entity's *existing* forms/views, so the GUID-collision checks
+    fire false positives. `check_collisions=False` must skip ONLY those checks
+    (`_check_org_collisions` + `_check_xaml_stage_collisions`) while still running
+    `webresource-ref` and `optionset-binding`. Default (`True`) is unchanged."""
+
+    def test_collisions_disabled_skips_guid_checks_but_keeps_others(self, tmp_path, backend):
+        # Package carries all three: a form whose GUID collides on the org (would
+        # normally be a guid-collision error), an unresolved ribbon web-resource
+        # ref, and an undeclared global option-set binding.
+        p = tmp_path / "roundtrip.zip"
+        _make_pkg(p, _sol(), _cust(
+            entities=_form(_FORM_GUID) + _ribbon("cwx_/missing.js")
+            + _attr_global_optionset("cwx_missingset"),
+        ))
+        with requests_mock.Mocker() as m:
+            sysforms = m.get(re.compile(r"systemforms"),
+                             json={"value": [{"formid": _FORM_GUID}]})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            m.get(re.compile(r"webresourceset"), json={"value": []})
+            m.get(re.compile(r"GlobalOptionSetDefinitions"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend, check_collisions=False)
+        # collision check did not run and never probed the org
+        assert "guid-collision" not in report["checks_run"]
+        assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
+        assert not sysforms.called
+        # the other backend-dependent checks still ran and still flag problems
+        assert "webresource-ref" in report["checks_run"]
+        assert "optionset-binding" in report["checks_run"]
+        assert any(f["check"] == "webresource-ref" for f in report["findings"])
+        assert any(f["check"] == "optionset-binding" for f in report["findings"])
+
+    def test_collisions_disabled_skips_xaml_stage_check(self, tmp_path, backend):
+        # The XAML-stage collision check is part of the same guid-collision family
+        # and must also be skipped (and not probe processstages) when disabled.
+        p = tmp_path / "roundtrip_bpf.zip"
+        _make_pkg(p, _sol(), _cust(),
+                  workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)})
+        with requests_mock.Mocker() as m:
+            stages = m.get(re.compile(r"processstages"),
+                           json={"value": [{"processstageid": _STAGE_GUID}]})
+            report = sv.validate_solution(p, backend=backend, check_collisions=False)
+        assert not stages.called
+        assert "guid-collision" not in report["checks_run"]
+        assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
+
+    def test_default_keeps_collision_check(self, tmp_path, backend):
+        # Default (check_collisions=True) is unchanged: existing-caller behavior.
+        p = tmp_path / "default.zip"
+        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"systemforms"), json={"value": [{"formid": _FORM_GUID}]})
+            m.get(re.compile(r"savedqueries"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend)
+        assert "guid-collision" in report["checks_run"]
+        assert any(f["check"] == "guid-collision" for f in report["findings"])
+
+
 # ── Task 6: CLI wiring ────────────────────────────────────────────────────────
 
 class TestValidateCli:
