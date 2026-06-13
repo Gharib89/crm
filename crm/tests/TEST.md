@@ -72,17 +72,35 @@ command group). Tests are **opt-in** and excluded from the default `pytest` run 
 `addopts = -m 'not e2e'`; everything collected under `crm/tests/e2e/` is auto-marked
 `e2e`.
 
-**Opt-in:** set `D365_E2E=1` plus the target's credentials. The `live_profile` fixture
-seeds a throwaway profile from these env vars under an isolated `CRM_HOME` (the env
-values never reach the CLI directly):
+**Opt-in:** set `D365_E2E=1` plus a target. The `live_profile` fixture seeds a throwaway
+profile under an isolated `CRM_HOME` and activates it; the CLI resolves from that throwaway
+profile only. Two credential sources (#273):
 
-- on-prem (NTLM): `D365_URL`, `D365_USERNAME`, `D365_PASSWORD` (+ optional `D365_DOMAIN`).
-- cloud (OAuth): `D365_AUTH=oauth`, `D365_URL`, `D365_CLIENT_ID`, `D365_PASSWORD` (the
-  client secret, or `D365_CLIENT_SECRET`), `D365_TENANT_ID`. `D365_USERNAME` is **not**
-  required for OAuth.
+- **Named profile** — `D365_E2E_PROFILE=<name>` selects an existing profile (created via
+  `crm profile add`). Its definition + secret are read **read-only** from your real
+  `CRM_HOME` and re-seeded into the isolated home, so a run never mutates your real
+  profiles/session. The **target is inferred from the profile's auth scheme** (OAuth →
+  cloud, NTLM → on-prem) — there is no separate target flag. A missing profile / missing
+  secret fails loudly at setup. Prefer a cloud profile for general local runs (no VPN).
+- **Flat `D365_*` env** (used when `D365_E2E_PROFILE` is unset — the CI path):
+  - on-prem (NTLM): `D365_URL`, `D365_USERNAME`, `D365_PASSWORD` (+ optional `D365_DOMAIN`).
+  - cloud (OAuth): `D365_AUTH=oauth`, `D365_URL`, `D365_CLIENT_ID`, `D365_PASSWORD` (the
+    client secret, or `D365_CLIENT_SECRET`), `D365_TENANT_ID`. `D365_USERNAME` is **not**
+    required for OAuth.
 
 A production-host guard (`_assert_not_production`) refuses to run against hosts matching
-`prod`/`live`/`.crm.dynamics.com` unless `D365_E2E_ALLOW_HOST` names the target host.
+`prod`/`live`/`.crm.dynamics.com` (whether the URL came from a profile or env) unless
+`D365_E2E_ALLOW_HOST` names the target host.
+
+**Reachability (VPN):** at session setup the fixture issues one short-timeout GET to the
+service root. A connection-level failure (DNS/TCP/timeout — host unreachable, e.g. on-prem
+with the VPN down) **skips the whole session** with a "VPN down?" message instead of
+cascading errors across every test. **Any HTTP response — including 401/403 — counts as
+reachable**, so auth/server failures surface normally rather than being masked as
+"unreachable". (Edge case: a *cloud* target whose AAD authority is itself unreachable
+surfaces as an OAuth/auth error rather than a skip — an MSAL failure carries a synthetic
+401, not a transport failure. Cloud is the no-VPN target, so this is rare; the skip path
+is aimed at on-prem/VPN.)
 
 **Run forms:**
 - Full sweep:   `pytest -m e2e`
@@ -97,9 +115,24 @@ walks the lazy Click command tree and fails unless every D365-touching verb has 
 `crm/tests/e2e/coverage.py`. Local/meta groups (`profile`, `session`, `skill`,
 `self-update`, `repl`, `scaffold`) are out of scope (`LOCAL_GROUPS`).
 
+**Test classification — which bucket does a test belong to?** The single criterion is:
+*does the verb's **observable** behavior (returned fields, error codes, defaults, feature
+existence) depend on the backend?* Transport differences (NTLM vs OAuth) do **not** count.
+No new markers — the four buckets reuse what exists:
+
+| Bucket | Criterion | Mechanism |
+|--------|-----------|-----------|
+| **any** | Identical OData semantics; only transport differs (the majority — entity CRUD, query, metadata read, data import/export) | **default, no marker.** One reachable target suffices; prefer cloud (no VPN). |
+| **on-prem-only** | Only works/behaves on NTLM/on-prem | `@pytest.mark.requires_onprem` |
+| **cloud-only** | Only works on Dataverse | `@pytest.mark.requires_cloud` |
+| **both / divergent** | Works on both but **asserts different values** per target | **no marker** — branch on the `target` fixture (`"cloud"`/`"onprem"`) and assert per-target; runs on both union legs |
+
 **Capability gating & target divergence:** mark a test `@pytest.mark.requires_cloud` /
 `requires_onprem` when a verb only works on one target; the marker skips it on the other.
-Full coverage = the **union** of an on-prem run and a cloud run. A few verbs are
+For a verb that works on both but returns different values, take the `target` fixture and
+branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
+runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a
+cloud run. A few verbs are
 `E2E_SKIP`'d (e.g. `solution extract`/`pack` need the SolutionPackager .NET tool;
 `plugin register-*`/`unregister-*` need a signed test assembly; `workflow clone`/`delete`/
 `import` are blocked by org policy on the test orgs). Tests that document a live product

@@ -39,6 +39,10 @@ _REQUIRED = (_E_URL, _E_USERNAME, _E_PW)                    # NTLM / on-prem
 # otherwise) — list it here so a missing value fails fast at opt-in instead
 # of crashing the suite mid-run with a less actionable auth error.
 _REQUIRED_OAUTH = (_E_URL, _E_CLIENT_ID, _E_TENANT_ID)     # when D365_AUTH=oauth
+# Opt-in env var naming an EXISTING profile to source creds + target from. When
+# set, the target (cloud/on-prem) is intrinsic to the profile's auth scheme and
+# the flat D365_* env set is not consulted (#273). Unset → the D365_* env path.
+_E2E_PROFILE_ENV = "D365_E2E_PROFILE"
 # Hosts that must never receive a destructive e2e run. Extend per environment.
 _PROD_HOST_MARKERS = ("prod", "live")
 # Dataverse online prod hosts: <org>.crm.dynamics.com AND regional variants
@@ -50,6 +54,11 @@ _PROD_HOST_RE = re.compile(r"\.crm\d*\.dynamics\.com")
 def _e2e_opted_in() -> bool:
     if os.environ.get("D365_E2E", "").strip() != "1":
         return False
+    # Profile-sourced creds: opting in is just naming an existing profile — its
+    # secret/target are validated when loaded (a typo'd name must fail loudly at
+    # setup, not silently skip the whole suite).
+    if os.environ.get(_E2E_PROFILE_ENV, "").strip():
+        return True
     # OAuth/Dataverse authenticates via client_id + secret + tenant, NOT a
     # username — so its opt-in check must not demand D365_USERNAME.
     if os.environ.get("D365_AUTH", "ntlm").lower() == "oauth":
@@ -79,25 +88,34 @@ def _assert_not_production(url: str) -> None:
 _LIVE_PROFILE = "e2e"
 
 
-@pytest.fixture(scope="session", autouse=True)
-def live_profile(tmp_path_factory):
-    """Seed a throwaway profile from D365_* env under an isolated CRM_HOME and
-    activate it. The CLI resolves from THIS profile, never the developer's real
-    CRM_HOME. Hard-skips unless D365_E2E=1 and credentials are present."""
-    if not _e2e_opted_in():
-        pytest.skip(
-            "e2e opt-in required: set D365_E2E=1 plus credentials — "
-            "NTLM: D365_URL/D365_USERNAME/D365_PASSWORD; "
-            "OAuth: D365_AUTH=oauth + D365_URL/D365_CLIENT_ID/D365_TENANT_ID "
-            "+ D365_CLIENT_SECRET"
-        )
-    from crm.core import session as session_mod
-    from crm.utils.d365_backend import ConnectionProfile
+def _resolve_e2e_profile():
+    """Resolve the ``(ConnectionProfile, secret)`` to seed as the throwaway e2e
+    profile. The returned profile is always named ``_LIVE_PROFILE`` so both cred
+    sources converge on the same isolated-home seeding.
 
-    _assert_not_production(os.environ["D365_URL"])
-    home = tmp_path_factory.mktemp("e2e-crm")
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(home)
+    Profile path (``D365_E2E_PROFILE`` set): load that named profile + its secret
+    from the developer's REAL ``CRM_HOME`` and rename a copy — the target is
+    intrinsic to the profile's auth scheme. MUST run while ``CRM_HOME`` still
+    points at the real home (before the fixture switches it to the temp home).
+    The load is read-only; every later mutation lands in the isolated home.
+
+    Env path (unset): build the profile from the flat ``D365_*`` env set — the CI
+    path, unchanged.
+    """
+    import dataclasses
+
+    from crm.utils.d365_backend import ConnectionProfile, D365Error
+
+    name = os.environ.get(_E2E_PROFILE_ENV, "").strip()
+    if name:
+        from crm.core.connection import resolve_credentials
+
+        try:
+            resolved = resolve_credentials(name)
+        except D365Error as exc:
+            raise D365Error(f"{_E2E_PROFILE_ENV}={name!r}: {exc}") from exc
+        return dataclasses.replace(resolved.profile, name=_LIVE_PROFILE), resolved.password
+
     auth = os.environ.get("D365_AUTH", "ntlm").lower()
     secret = os.environ.get(_E_PW) or os.environ.get(_E_CLIENT_SECRET) or ""
     api_version = os.environ.get("D365_API_VERSION") or ("v9.2" if auth == "oauth" else "v9.1")
@@ -111,7 +129,81 @@ def live_profile(tmp_path_factory):
         tenant_id=os.environ.get(_E_TENANT_ID),
         client_id=os.environ.get(_E_CLIENT_ID),
     )
-    session_mod.save_profile(profile)
+    return profile, secret
+
+
+def _is_unreachable(exc: BaseException) -> bool:
+    """Classify a failed reachability probe: True iff the host never answered.
+
+    The backend wraps a connection-level failure (DNS / TCP / TLS / timeout) as a
+    status-less ``D365Error`` whose message carries the transport-failure prefix.
+    Any HTTP response — including 401/403 — sets a status, so it is *reachable*
+    and must NOT be masked as "unreachable" (auth/server errors surface normally).
+    """
+    from crm.utils.d365_backend import _TRANSPORT_FAILURE_PREFIX
+
+    return getattr(exc, "status", None) is None and str(exc).startswith(_TRANSPORT_FAILURE_PREFIX)
+
+
+# Reachability probe: short timeout so a downed VPN skips fast instead of hanging.
+_PROBE_TIMEOUT = 8
+
+
+def _probe_or_skip(profile, secret) -> None:
+    """One short-timeout GET to the service root. A connection-level failure
+    (DNS/TCP/timeout — host unreachable) skips the whole session naming the
+    likely cause; any HTTP response (incl 401/403) means the host is reachable,
+    so we proceed and let the tests surface auth/server errors normally (#273)."""
+    import dataclasses
+
+    from crm.utils.d365_backend import D365Backend, D365Error
+
+    # retry_max=0 → a single shot, so a downed host skips fast instead of paying
+    # the full retry/backoff budget. Set via the public profile field rather than
+    # the backend's private retry attr.
+    probe = D365Backend(dataclasses.replace(profile, retry_max=0), secret, dry_run=False)
+    try:
+        probe.get("", timeout=_PROBE_TIMEOUT)
+    except D365Error as exc:
+        # backend.get wraps every transport failure as a D365Error. We skip ONLY on
+        # an unreachable host; a reachable-but-failing target (auth/server error) is
+        # intentionally left unhandled here — the same GET from the `backend`
+        # fixture will raise it again, so the tests surface it with full context.
+        if _is_unreachable(exc):
+            pytest.skip(
+                f"target {profile.url!r} unreachable (VPN down / host not "
+                f"responding?) — {exc}"
+            )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def live_profile(tmp_path_factory):
+    """Seed a throwaway profile under an isolated CRM_HOME and activate it. Creds
+    come from either an existing named profile (D365_E2E_PROFILE) read from the
+    developer's REAL home, or the flat D365_* env set; the CLI then resolves from
+    the THROWAWAY profile only, never the real home. Hard-skips unless opted in,
+    and skips the whole session if the resolved target is unreachable (#273)."""
+    if not _e2e_opted_in():
+        pytest.skip(
+            "e2e opt-in required: set D365_E2E=1 plus EITHER "
+            "D365_E2E_PROFILE=<an existing profile> OR credentials — "
+            "NTLM: D365_URL/D365_USERNAME/D365_PASSWORD; "
+            "OAuth: D365_AUTH=oauth + D365_URL/D365_CLIENT_ID/D365_TENANT_ID "
+            "+ D365_CLIENT_SECRET"
+        )
+    from crm.core import session as session_mod
+
+    # Resolve creds while CRM_HOME still points at the real home (the profile
+    # path reads it read-only); the env path is home-independent.
+    profile, secret = _resolve_e2e_profile()
+    _assert_not_production(profile.url)  # resolved URL, profile or env
+
+    home = tmp_path_factory.mktemp("e2e-crm")
+    saved = dict(os.environ)
+    os.environ["CRM_HOME"] = str(home)
+    # Probe AFTER the switch so any OAuth token cache lands in the temp home.
+    _probe_or_skip(profile, secret)
+    session_mod.save_profile(profile)  # profile.name is already _LIVE_PROFILE
     session_mod.save_profile_secret_plaintext(_LIVE_PROFILE, secret)
     state = session_mod.load_session("default")
     state["active_profile"] = _LIVE_PROFILE
@@ -178,18 +270,21 @@ def unique():
 
 
 @pytest.fixture(scope="session")
-def target():
-    """'cloud' for OAuth profiles, 'onprem' for NTLM — drives capability markers.
-    Reads the same env the live_profile fixture seeds from (robust regardless of
-    whether D365Backend exposes the profile)."""
-    return "cloud" if os.environ.get("D365_AUTH", "ntlm").lower() == "oauth" else "onprem"
+def target(live_profile):
+    """'cloud' for an OAuth target, 'onprem' for NTLM — drives capability markers
+    and the in-test branching used by divergent (`both`) tests. Derived from the
+    resolved profile's auth scheme, so it is correct whether creds came from a
+    named profile (D365_E2E_PROFILE) or the D365_* env set."""
+    from crm.core import session as session_mod
+
+    return "cloud" if session_mod.load_profile(_LIVE_PROFILE).auth_scheme == "oauth" else "onprem"
 
 
 @pytest.fixture(autouse=True)
 def _enforce_capability(request):
     if not _e2e_opted_in():
         return
-    target_val = "cloud" if os.environ.get("D365_AUTH", "ntlm").lower() == "oauth" else "onprem"
+    target_val = request.getfixturevalue("target")
     if request.node.get_closest_marker("requires_cloud") and target_val != "cloud":
         pytest.skip("requires a cloud/OAuth target")
     if request.node.get_closest_marker("requires_onprem") and target_val != "onprem":
