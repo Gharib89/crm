@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.9.2 (2026-06-13)
+
+### Bug Fixes
+
+- **ribbon**: Unblock add-button/remove on round-trip solution import
+  ([#276](https://github.com/Gharib89/crm/pull/276),
+  [`cd9ea28`](https://github.com/Gharib89/crm/commit/cd9ea280cb95f83d8921334c78eb6c6e9f6ad451))
+
+### Documentation
+
+- Add worktree-e2e, host-guard, and test-target rules to CLAUDE.md
+  ([`25a77e1`](https://github.com/Gharib89/crm/commit/25a77e110f64657093fc5c8781793cccabaf8e15))
+
+
 ## v3.9.1 (2026-06-13)
 
 ### Bug Fixes
