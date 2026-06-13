@@ -910,12 +910,15 @@ class D365Backend:
                     ))
                 except D365Error as exc:
                     # Right after ImportSolutionAsync the importjob row may not be
-                    # committed yet, so this progress-only read can 404 ("Does Not
-                    # Exist", 0x80040217). Progress is cosmetic — the
-                    # asyncoperation statecode is authoritative — so a transient
-                    # 404 must not abort a healthy import; skip this tick. Any
-                    # other error still propagates (don't mask a real failure).
-                    if exc.status != 404:
+                    # committed yet, so this progress-only read can come back
+                    # not-found ("Does Not Exist", 0x80040217). Progress is
+                    # cosmetic — the asyncoperation statecode is authoritative —
+                    # so a transient not-found must not abort a healthy import;
+                    # skip this tick. Classify by CATEGORY (0x80040217 rides
+                    # other statuses too, per classify_d365_error), and let every
+                    # other error propagate so a real failure is never masked.
+                    category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+                    if category != "not_found":
                         raise
                 else:
                     pct = float(job_row.get("progress") or 0.0)

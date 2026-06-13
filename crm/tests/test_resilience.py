@@ -643,6 +643,27 @@ class TestPollAsyncOperation:
         assert result["statecode"] == 3        # import completed; no raise
         assert calls == [(100.0, "Done")]      # 404 tick skipped, later tick reported
 
+    def test_progress_read_tolerates_not_found_code_on_non_404_status(self, backend, monkeypatch):
+        # classify_d365_error maps 0x80040217 ("Does Not Exist") to not_found
+        # regardless of the HTTP status it rides on, so the progress read must
+        # tolerate it even when the server returns a non-404 status (#269 review).
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+        with requests_mock.Mocker() as m:
+            m.get(self._op_url(backend), [
+                {"json": {"statecode": 0, "statuscode": 0, "message": "Working"}},
+                {"json": {"statecode": 3, "statuscode": 30, "message": "Done"}},
+            ])
+            m.get(self._job_url(backend), [
+                {"status_code": 400, "json": {"error": {
+                    "code": "0x80040217",
+                    "message": "Entity 'importjob' With Id = x Does Not Exist"}}},
+                {"json": {"progress": 100.0}},
+            ])
+            result = backend.poll_async_operation(
+                self.OP_ID, import_job_id=self.JOB_ID,
+                on_progress=lambda pct, msg: None)
+        assert result["statecode"] == 3  # tolerated despite the non-404 status
+
     def test_progress_read_non_404_error_still_propagates(self, backend, monkeypatch):
         # Only a not-found (404) on the progress read is tolerated; a genuine
         # error (e.g. 500) must still surface rather than be silently swallowed.
