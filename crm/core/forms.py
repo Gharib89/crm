@@ -10,6 +10,7 @@ can wrap it the way `view` wraps `views.py`.
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any
 
 from crm.core.metadata import maybe_publish
@@ -32,6 +33,72 @@ def retarget_formxml(formxml: str, *, src_entity: str, dst_entity: str) -> str:
     if not formxml:
         return formxml
     return re.sub(rf"\b{re.escape(src_entity)}\b", dst_entity, formxml)
+
+
+_GUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+_ANY_GUID_RE = re.compile(_GUID)
+
+# The form-INTERNAL registration ids whose GUID values must be fresh per clone.
+# Matched by attribute name, case-sensitively and value-as-GUID only, so that:
+#   - `(?<!\w)id`  hits ANY element's lowercase `id="{GUID}"` (tab/section/cell/
+#                  control instance ids — all form-internal) but NOT `classid`
+#                  (control TYPE id), `labelid`, `uniqueid`, nor the capital `Id`
+#                  of `<Role Id="…">` (a security-role ref).
+#   - non-GUID ids (`id="WebResource_…"`, `id="new_code"`) never match.
+# Everything NOT listed here — `classid`, `Role Id`, `<ViewId>`/`<ViewIds>`,
+# `<QuickFormId>` — references an external object and is deliberately preserved;
+# the guard in regenerate_form_clone_ids is the backstop if that ever slips.
+_REGEN_ATTR_RE = re.compile(
+    r"""(?P<attr>(?<![\w])id|labelid|uniqueid|handlerUniqueId|libraryUniqueId)
+        (?P<eq>\s*=\s*)(?P<q>["'])
+        (?P<brace>\{)?(?P<guid>""" + _GUID + r""")(?(brace)\})(?P=q)""",
+    re.VERBOSE,
+)
+
+
+def regenerate_form_clone_ids(formxml: str) -> str:
+    """Give a cloned form's internal registration ids fresh GUIDs so repeat
+    clones of one source never collide on on-prem id uniqueness.
+
+    On-prem v9.x enforces org-wide uniqueness on a form's ``labelid`` and layout
+    element ``id`` GUIDs (and the per-instance ``uniqueid``/``handlerUniqueId``/
+    ``libraryUniqueId`` registrations). Cloning reuses the source's values
+    verbatim, so the create fails with ``0x8004f658`` — e.g. *"The label '…', id:
+    '…' already exists. Supply unique labelid values."* (Dataverse online silently
+    reassigns them, which is why cloud never saw this; the source ``<form>`` root
+    carries no ``id`` at all, so there is no single PK to regenerate.)
+
+    Each matched GUID is replaced with a fresh ``uuid4``, *consistently* — one new
+    value per distinct source GUID — so any intra-form reference stays intact.
+    GUIDs that point at external objects (``classid`` control types, ``<Role Id>``
+    security roles, ``<ViewId>``/``<QuickFormId>`` lookups) are left untouched. A
+    guard re-reads every GUID we did **not** target and refuses to return a form
+    whose external references changed, rather than POST a corrupt clone.
+    """
+    if not formxml:
+        return formxml
+    mapping: dict[str, str] = {}
+
+    def _repl(m: "re.Match[str]") -> str:
+        old = m.group("guid").lower()
+        if old not in mapping:
+            mapping[old] = str(uuid.uuid4())
+        brace = "{" if m.group("brace") else ""
+        close = "}" if m.group("brace") else ""
+        return (f"{m.group('attr')}{m.group('eq')}{m.group('q')}"
+                f"{brace}{mapping[old]}{close}{m.group('q')}")
+
+    new_xml = _REGEN_ATTR_RE.sub(_repl, formxml)
+    new_ids = set(mapping.values())
+    untouched_before = sorted(
+        g.lower() for g in _ANY_GUID_RE.findall(formxml) if g.lower() not in mapping)
+    untouched_after = sorted(
+        g.lower() for g in _ANY_GUID_RE.findall(new_xml) if g.lower() not in new_ids)
+    if untouched_before != untouched_after:
+        raise D365Error(
+            "form-clone id regeneration altered a non-target GUID (external "
+            "reference); refusing to POST a possibly corrupt form.")
+    return new_xml
 
 
 def read_entity_forms(
@@ -79,9 +146,11 @@ def clone_form_to_entity(
 ) -> dict[str, Any]:
     """Create a systemform on ``new_entity`` from a ``read_entity_forms`` dict.
 
-    Retargets ``formxml`` and sets ``objecttypecode`` to the clone. The server
-    assigns a fresh formid. Read-back is via the OData-EntityId header, matching
-    the view/metadata-write precedent.
+    Retargets ``formxml``, regenerates its internal registration GUIDs (so repeat
+    clones of one source never collide on on-prem id uniqueness — see
+    ``regenerate_form_clone_ids``), and sets ``objecttypecode`` to the clone.
+    Read-back is via the OData-EntityId header, matching the view/metadata-write
+    precedent.
     """
     src_entity = form.get("objecttypecode")
     if not src_entity:
@@ -90,8 +159,8 @@ def clone_form_to_entity(
         "name": form.get("name"),
         "objecttypecode": new_entity,
         "type": form.get("type"),
-        "formxml": retarget_formxml(
-            form.get("formxml", ""), src_entity=src_entity, dst_entity=new_entity),
+        "formxml": regenerate_form_clone_ids(retarget_formxml(
+            form.get("formxml", ""), src_entity=src_entity, dst_entity=new_entity)),
     }
     if form.get("description") is not None:
         body["description"] = form["description"]

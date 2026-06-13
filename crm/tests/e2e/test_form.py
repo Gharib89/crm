@@ -69,23 +69,33 @@ def test_form_export_account(cli, tmp_path):
 
 @covers("form clone")
 @pytest.mark.slow
-@pytest.mark.requires_cloud
 def test_form_clone_account_to_ephemeral(cli, backend, ephemeral_entity):
-    """Clone a Main form from 'account' into ephemeral_entity; assert created;
-    delete the clone in a finally block.
+    """Clone a Main form from 'account' into ephemeral_entity **twice** from the
+    same source; assert both succeed with distinct formids; delete both clones.
 
     We clone from account (always has forms) into the ephemeral entity so we
     never pollute real entity forms.  The ephemeral entity itself will be deleted
-    at session teardown, but we still clean up the clone immediately so the
+    at session teardown, but we still clean up the clones immediately so the
     entity can be deleted cleanly without stranded form dependencies.
     --no-publish avoids the slow PublishAllXml call.
 
-    Requires cloud (OAuth): on-prem v9.1 reuses the formid embedded in the source
-    formxml as the new record's PK, so a second run cloning the same source form
-    collides. Cloud v9.2 assigns a fresh GUID server-side. SUSPECTED PRODUCT BUG:
-    crm.core.forms.retarget_formxml does not strip/regenerate the embedded
-    <form id=...> before POST, relying on a server-side reassign that on-prem v9.1
-    does not perform.
+    Issue #268 regression guard: a source form's FormXML reuses its internal
+    registration GUIDs (``labelid`` / layout ``id`` / ``uniqueid`` / handler- &
+    library-``UniqueId``), which on-prem v9.x enforces as org-unique. Cloning the
+    *same* source twice (or even once) collided with ``0x8004f658`` — e.g. *"The
+    label '…', id '…' already exists. Supply unique labelid values."* (Dataverse
+    online silently reassigns them, which is why cloud never saw it; the ``<form>``
+    root carries no ``id`` at all, so there is no single PK to regenerate — the
+    original brief's mechanism was wrong). ``crm.core.forms.regenerate_form_clone_ids``
+    now assigns a fresh GUID to each internal id per clone while preserving
+    external references (control ``classid``, ``<Role Id>``, ``<ViewId>``,
+    ``<QuickFormId>``), so repeat clones succeed on every target — hence this runs
+    on cloud **and** on-prem (no @requires_cloud gate). A single clone could not
+    catch the repeat-collision, so we clone twice and assert two different formids.
+
+    CI executes only the cloud leg (on-prem v9.1 is local-only); the maintainer
+    runs the on-prem leg locally against the ``crmworx`` profile to confirm the
+    collision no longer occurs (verified for #268).
     """
     # Resolve a form on account to use as the source.
     r_list = cli(["--json", "form", "list", "account"])
@@ -95,29 +105,38 @@ def test_form_clone_account_to_ephemeral(cli, backend, ephemeral_entity):
         pytest.skip("no Main forms found for 'account'; cannot test form clone")
     form_name = forms[0]["name"]
 
-    clone_formid: str | None = None
+    clone_formids: list[str] = []
     try:
-        result = cli([
-            "--json", "form", "clone",
-            "account", form_name,
-            "--to", ephemeral_entity,
-            "--no-publish",
-        ])
-        assert result.returncode == 0, (
-            f"form clone failed:\n{result.stderr}\nstdout: {result.stdout}"
-        )
-        env = json.loads(result.stdout)
-        assert env["ok"], env
-        data = env["data"]
-        assert data.get("created") is True, f"expected created=True: {data}"
-        clone_formid = data.get("formid")
-        assert clone_formid, f"formid missing from clone response: {data}"
-        assert data.get("objecttypecode") == ephemeral_entity, (
-            f"objecttypecode mismatch: {data}"
+        for attempt in (1, 2):
+            result = cli([
+                "--json", "form", "clone",
+                "account", form_name,
+                "--to", ephemeral_entity,
+                "--no-publish",
+            ])
+            assert result.returncode == 0, (
+                f"form clone #{attempt} failed:\n{result.stderr}\n"
+                f"stdout: {result.stdout}"
+            )
+            env = json.loads(result.stdout)
+            assert env["ok"], env
+            data = env["data"]
+            assert data.get("created") is True, (
+                f"clone #{attempt} expected created=True: {data}"
+            )
+            formid = data.get("formid")
+            assert formid, f"formid missing from clone #{attempt} response: {data}"
+            assert data.get("objecttypecode") == ephemeral_entity, (
+                f"clone #{attempt} objecttypecode mismatch: {data}"
+            )
+            clone_formids.append(formid)
+        assert clone_formids[0] != clone_formids[1], (
+            f"repeat clones of the same source reused a formid (#268 regression): "
+            f"{clone_formids}"
         )
     finally:
-        if clone_formid:
+        for formid in clone_formids:
             try:
-                backend.delete(f"systemforms({clone_formid})")
+                backend.delete(f"systemforms({formid})")
             except Exception:
                 pass
