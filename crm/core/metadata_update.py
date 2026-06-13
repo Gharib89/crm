@@ -119,6 +119,8 @@ def _retrieve_merge_write(
     changes: dict[str, Any],
     solution: str | None,
     publish: bool,
+    write_path: str | None = None,
+    ensure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET the full definition at `path`, deep-merge `changes`, PUT it back.
 
@@ -129,15 +131,32 @@ def _retrieve_merge_write(
     `path` must be the path that returns the *complete* definition. For typed
     attributes that is the `@odata.type` cast path (the un-cast projection omits
     type-specific properties); callers resolve the cast before calling here.
+
+    `write_path` is the PUT target and defaults to `path`. Relationships read
+    their merge base from the typed cast `path` (the only projection that carries
+    CascadeConfiguration/AssociatedMenuConfiguration) but must PUT to the un-cast
+    `write_path` — Dataverse rejects a PUT to a relationship cast segment with
+    HTTP 405.
+
+    `ensure` supplies keys forced into the merge base only when the GET omitted
+    them — e.g. the `@odata.type` discriminator a minimal-metadata cast GET drops
+    but the polymorphic un-cast PUT needs. A server-returned value always wins,
+    and because these are base defaults (not `changes`) they never appear in the
+    dry-run diff.
     """
+    target = write_path or path
     current = _read(backend, path)
+    if ensure:
+        defaults = {k: v for k, v in ensure.items() if k not in current}
+        if defaults:
+            current = {**defaults, **current}
 
     if backend.dry_run:
         merged = _deep_merge(current, changes)
         return {
             "_dry_run": True,
             "method": "PUT",
-            "path": path,
+            "path": target,
             "body": merged,
             "diff": _shallow_diff(current, changes),
         }
@@ -146,9 +165,9 @@ def _retrieve_merge_write(
     write_headers = dict(_WRITE_HEADERS)
     if solution:
         write_headers["MSCRM.SolutionUniqueName"] = solution
-    backend.put(path, json_body=merged, extra_headers=write_headers)
+    backend.put(target, json_body=merged, extra_headers=write_headers)
 
-    out: dict[str, Any] = {"updated": True, "path": path, "solution": solution}
+    out: dict[str, Any] = {"updated": True, "path": target, "solution": solution}
     maybe_publish(backend, out, publish)
     if not backend.dry_run:
         metadata_cache.invalidate(backend.profile)
@@ -430,8 +449,14 @@ def update_relationship(
     """Update a relationship definition via safe retrieve-merge-write.
 
     The relationship is resolved by `SchemaName` to its `MetadataId` and
-    `@odata.type` cast (OneToMany vs ManyToMany), then retrieved and written
-    through `RelationshipDefinitions(<MetadataId>)/<cast>`.
+    `@odata.type` cast (OneToMany vs ManyToMany). The merge base is *read* from
+    the typed cast path `RelationshipDefinitions(<MetadataId>)/<cast>` — the only
+    projection that carries `CascadeConfiguration`/`AssociatedMenuConfiguration`
+    — but the merged definition is *written* (PUT) to the un-cast entity-set path
+    `RelationshipDefinitions(<MetadataId>)`, with the `@odata.type` discriminator
+    in the body. A PUT to the cast segment returns HTTP 405 on both on-prem and
+    cloud (issue #267); the un-cast path is the Web API's documented contract for
+    relationship-metadata updates.
     """
     if not schema_name:
         raise D365Error("schema_name is required.")
@@ -480,10 +505,17 @@ def update_relationship(
             "relationships (N:N side-specific menus are not supported)."
         )
 
-    path = f"RelationshipDefinitions({metadata_id})/{odata_cast}"
+    # Read the merge base from the typed cast path — it is the only projection
+    # that carries CascadeConfiguration/AssociatedMenuConfiguration — but PUT to
+    # the un-cast entity-set path: a PUT to the cast segment returns HTTP 405 on
+    # both on-prem and cloud (issue #267).
+    cast_path = f"RelationshipDefinitions({metadata_id})/{odata_cast}"
+    write_path = f"RelationshipDefinitions({metadata_id})"
 
     out = _retrieve_merge_write(
-        backend, path=path, changes=changes, solution=solution, publish=publish,
+        backend, path=cast_path, changes=changes, solution=solution,
+        publish=publish, write_path=write_path,
+        ensure={"@odata.type": f"#{odata_cast}"},
     )
     out.setdefault("schema_name", schema_name)
     return out

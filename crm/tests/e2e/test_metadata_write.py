@@ -203,29 +203,28 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique):
 # metadata update-relationship  (1:N lifecycle)
 # ---------------------------------------------------------------------------
 
-_UPDATE_REL_405 = (
-    "metadata update-relationship PUTs to RelationshipDefinitions(<id>)/"
-    "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata, which returns HTTP 405 "
-    "'does not support operation' on BOTH on-prem v9.1 (0x0) and cloud v9.2 "
-    "(0x80060888). SUSPECTED PRODUCT BUG in the command's cast-path write strategy."
-)
-
-
 @covers("metadata update-relationship")
 @pytest.mark.slow
-@pytest.mark.xfail(reason=_UPDATE_REL_405, strict=False)
 def test_update_relationship_cascade(cli, ephemeral_entity, unique):
-    """Create a 1:N from account→ephemeral_entity, update-relationship to change
-    the cascade-assign behaviour, then clean up.
+    """Create a 1:N from account→ephemeral_entity, change ONE cascade key via
+    update-relationship, then confirm from the server that the change applied
+    and an untouched cascade key survived. Cleans up.
 
-    Currently xfail: the command's PUT to the typed cast path returns HTTP 405
-    on both orgs — see _UPDATE_REL_405 above. The @covers stamp keeps the verb
-    counted by the gate. Flip to strict=True once the product bug is fixed.
+    Regression guard for #267: the command used to retrieve-merge-write through
+    the typed cast path, PUTting to
+    `RelationshipDefinitions(<id>)/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata`,
+    which Dataverse rejects with HTTP 405 on BOTH on-prem v9.1 (0x0) and cloud
+    v9.2 (0x80060888). The fix reads the merge base from the cast path but PUTs
+    the full definition to the un-cast `RelationshipDefinitions(<id>)` path with
+    the @odata.type discriminator in the body.
     """
     rel_schema = f"new_e2e1n{unique}"
     lookup_schema = f"new_e2elu{unique}"
 
     # Create a 1:N: account (referenced/1-side) → ephemeral_entity (referencing/N-side).
+    # Seed two cascade keys: Assign=NoCascade (the one we will change) and
+    # Delete=Restrict (a non-default key we will NOT touch — it must survive the
+    # update, proving the round-trip doesn't silently reset omitted keys).
     r_create = cli([
         "--json", "metadata", "create-one-to-many",
         "--schema-name", rel_schema,
@@ -234,6 +233,7 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
         "--lookup-schema", lookup_schema,
         "--lookup-display", f"E2E Account {unique}",
         "--cascade-assign", "NoCascade",
+        "--cascade-delete", "Restrict",
         "--no-publish",
     ], check=False)
     created = r_create.returncode == 0
@@ -244,7 +244,7 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
         assert env_create["ok"], env_create
         assert env_create["data"].get("created") is True
 
-        # update-relationship: flip cascade-assign to Cascade.
+        # update-relationship: flip ONLY cascade-assign to Cascade.
         r_upd = cli([
             "--json", "metadata", "update-relationship", rel_schema,
             "--cascade-assign", "Cascade",
@@ -254,6 +254,27 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
         env_upd = json.loads(r_upd.stdout)
         assert env_upd["ok"], env_upd
         assert env_upd["data"].get("updated") is True
+
+        # Read the cascade config back from the server. export-spec surfaces it
+        # via the referenced (1-side) entity's OneToManyRelationships. The
+        # changed key must be applied; the untouched key must still be Restrict.
+        r_read = cli([
+            "--json", "metadata", "export-spec", "account",
+            "--with-relationships",
+        ])
+        assert r_read.returncode == 0, r_read.stderr
+        env_read = json.loads(r_read.stdout)
+        assert env_read["ok"], env_read
+        entities = env_read["data"].get("entities") or []
+        rels = entities[0].get("relationships", []) if entities else []
+        rel = next((x for x in rels if x.get("schema_name") == rel_schema), None)
+        assert rel is not None, (
+            f"relationship {rel_schema} not found in account export; saw "
+            f"{[x.get('schema_name') for x in rels]}"
+        )
+        cascade = rel.get("cascade") or {}
+        assert cascade.get("assign") == "Cascade", cascade   # changed key applied
+        assert cascade.get("delete") == "Restrict", cascade  # untouched key survives
 
     finally:
         if created:

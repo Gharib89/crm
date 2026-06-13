@@ -371,10 +371,15 @@ class TestUpdateRelationship:
         resolve = backend.url_for(
             "RelationshipDefinitions(SchemaName='new_account_new_project')"
         )
+        # Merge base is read from the typed cast path (only the cast carries the
+        # full CascadeConfiguration/AssociatedMenuConfiguration), but the PUT
+        # must target the UN-cast entity-set path — Dataverse rejects a PUT to
+        # the cast segment with HTTP 405 (issue #267).
         cast = backend.url_for(
             f"RelationshipDefinitions({_REL_ID})"
             "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         )
+        uncast = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock.Mocker() as m:
             m.get(resolve, json={
                 "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
@@ -383,15 +388,19 @@ class TestUpdateRelationship:
                 "RelationshipType": "OneToManyRelationship",
             })
             m.get(cast, json=_FULL_ONE_TO_MANY)
-            m.put(cast, status_code=204)
+            m.put(uncast, status_code=204)
             mu.update_relationship(
                 backend, "new_account_new_project",
                 cascade={"Delete": "Restrict"},
             )
         put_req = m.request_history[-1]
         assert put_req.method == "PUT"
-        assert put_req.url == cast
+        assert put_req.url == uncast
         body = put_req.json()
+        # The polymorphic RelationshipDefinitions set needs the @odata.type
+        # discriminator in the PUT body to know which derived type to replace.
+        assert body["@odata.type"] == \
+            "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         cc = body["CascadeConfiguration"]
         assert cc["Delete"] == "Restrict"
         # All other cascade members preserved.
@@ -403,6 +412,44 @@ class TestUpdateRelationship:
         # AssociatedMenuConfiguration preserved.
         assert body["AssociatedMenuConfiguration"] == \
             _FULL_ONE_TO_MANY["AssociatedMenuConfiguration"]
+
+    def test_put_body_carries_discriminator_when_cast_get_omits_it(self, backend):
+        # Under minimal OData metadata a GET to the cast path omits @odata.type
+        # (it is inferable from the cast context), but the un-cast PUT target is
+        # a polymorphic set that needs the discriminator to know which derived
+        # type to replace. The fix injects it from the resolved cast so the PUT
+        # body is never missing it.
+        from crm.core import metadata_update as mu
+        resolve = backend.url_for(
+            "RelationshipDefinitions(SchemaName='new_account_new_project')"
+        )
+        cast = backend.url_for(
+            f"RelationshipDefinitions({_REL_ID})"
+            "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        )
+        uncast = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        cast_get_no_type = {
+            k: v for k, v in _FULL_ONE_TO_MANY.items() if k != "@odata.type"
+        }
+        with requests_mock.Mocker() as m:
+            m.get(resolve, json={
+                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                "MetadataId": _REL_ID,
+                "SchemaName": "new_account_new_project",
+                "RelationshipType": "OneToManyRelationship",
+            })
+            m.get(cast, json=cast_get_no_type)
+            m.put(uncast, status_code=204)
+            mu.update_relationship(
+                backend, "new_account_new_project",
+                cascade={"Delete": "Restrict"},
+            )
+        body = m.request_history[-1].json()
+        assert body["@odata.type"] == \
+            "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        # The change still landed and siblings survived.
+        assert body["CascadeConfiguration"]["Delete"] == "Restrict"
+        assert body["CascadeConfiguration"]["Assign"] == "NoCascade"
 
 
 _FULL_MANY_TO_MANY = {
@@ -601,7 +648,9 @@ class TestDryRun:
             f"RelationshipDefinitions({_REL_ID})"
             "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         )
+        uncast_rel = f"RelationshipDefinitions({_REL_ID})"
         cast = dry_backend.url_for(cast_rel)
+        uncast = dry_backend.url_for(uncast_rel)
         with requests_mock.Mocker() as m:
             resolve_get = m.get(resolve, json={
                 "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
@@ -610,7 +659,7 @@ class TestDryRun:
                 "RelationshipType": "OneToManyRelationship",
             })
             cast_get = m.get(cast, json=_FULL_ONE_TO_MANY)
-            put = m.put(cast, status_code=204)
+            put = m.put(uncast, status_code=204)
             out = mu.update_relationship(
                 dry_backend, "new_account_new_project",
                 cascade={"Delete": "Restrict"},
@@ -622,7 +671,10 @@ class TestDryRun:
             assert put.call_count == 0
         assert out["_dry_run"] is True
         assert out["method"] == "PUT"
-        assert out["path"] == cast_rel
+        # Dry-run preview reflects the un-cast PUT target, not the cast read path.
+        assert out["path"] == uncast_rel
+        assert out["body"]["@odata.type"] == \
+            "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         # Merged body: changed cascade member + preserved siblings.
         cc = out["body"]["CascadeConfiguration"]
         assert cc["Delete"] == "Restrict"
