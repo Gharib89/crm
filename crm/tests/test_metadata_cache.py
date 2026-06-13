@@ -6,46 +6,39 @@ import pytest
 
 from crm.commands.repl import MetadataCache, complete_entity_token
 
-
-class _FakeBackend:
-    def __init__(self):
-        self.calls = 0
-
-    def get(self, path, params=None, **kw):
-        self.calls += 1
-        return {"value": [
-            {"LogicalName": "account", "EntitySetName": "accounts"},
-            {"LogicalName": "contact", "EntitySetName": "contacts"},
-            {"LogicalName": "new_project", "EntitySetName": "new_projects"},
-        ]}
+_ENTITY_LIST = {"value": [
+    {"LogicalName": "account", "EntitySetName": "accounts"},
+    {"LogicalName": "contact", "EntitySetName": "contacts"},
+    {"LogicalName": "new_project", "EntitySetName": "new_projects"},
+]}
 
 
 class TestMetadataCache:
-    def test_first_call_fetches_entity_names(self):
-        b = _FakeBackend()
+    def test_first_call_fetches_entity_names(self, make_fake_backend):
+        b = make_fake_backend(responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
         names = cache.logical_names(b)
         assert names == ["account", "contact", "new_project"]
-        assert b.calls == 1
+        assert b.count() == 1
 
-    def test_repeated_call_uses_cache(self):
-        b = _FakeBackend()
+    def test_repeated_call_uses_cache(self, make_fake_backend):
+        b = make_fake_backend(responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
         cache.logical_names(b)
         cache.logical_names(b)
         cache.logical_names(b)
-        assert b.calls == 1
+        assert b.count() == 1
 
-    def test_set_names_uses_same_fetch(self):
-        b = _FakeBackend()
+    def test_set_names_uses_same_fetch(self, make_fake_backend):
+        b = make_fake_backend(responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
         cache.logical_names(b)          # first fetch
         sets = cache.set_names(b)       # should reuse cache
         assert sets == ["accounts", "contacts", "new_projects"]
-        assert b.calls == 1
+        assert b.count() == 1
 
-    def test_entities_backward_compat(self):
-        b = _FakeBackend()
+    def test_entities_backward_compat(self, make_fake_backend):
+        b = make_fake_backend(responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
         assert cache.entities(b) == ["account", "contact", "new_project"]
 

@@ -5,7 +5,7 @@ import json
 import pytest
 from click.testing import CliRunner
 
-from crm.cli import CLIContext, cli
+from crm.cli import cli
 from crm.utils.d365_backend import D365Error, classify_d365_error
 
 
@@ -37,14 +37,10 @@ def test_classify_maps_each_category(status, code, message, expected):
     assert classify_d365_error(status, code, message) == expected
 
 
-def test_envelope_carries_category_and_retryable(monkeypatch):
+def test_envelope_carries_category_and_retryable(make_fake_backend, inject_backend):
     """The JSON error envelope additively gains meta.category + meta.retryable,
     without dropping the existing meta.status / meta.code keys."""
-    class StubBackend:
-        def get(self, _path, **_kw):
-            raise D365Error("Record Not Found", status=404, code="0x80040217")
-
-    monkeypatch.setattr(CLIContext, "backend", lambda self: StubBackend())
+    inject_backend(make_fake_backend(errors={"get": D365Error("Record Not Found", status=404, code="0x80040217")}))
     result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])
     assert result.exit_code == 1, result.output
     meta = json.loads(result.output)["meta"]

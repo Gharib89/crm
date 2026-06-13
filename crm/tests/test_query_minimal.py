@@ -6,7 +6,7 @@ import json
 
 from click.testing import CliRunner
 
-from crm.cli import CLIContext, cli
+from crm.cli import cli
 from crm.commands._helpers import _prune_annotations
 
 
@@ -35,20 +35,16 @@ class TestPruneAnnotations:
         assert pruned["_owner_value"] == "00000000-0000-0000-0000-000000000002"
 
 
-def _stub_value_backend(monkeypatch):
-    class StubBackend:
-        def get(self, path, **kw):
-            return {
-                "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
-                "value": [_annotated_record()],
-            }
-
-    monkeypatch.setattr(CLIContext, "backend", lambda self: StubBackend())
+def _stub_value_backend(make_fake_backend, inject_backend):
+    inject_backend(make_fake_backend(responses={"get": {
+        "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
+        "value": [_annotated_record()],
+    }}))
 
 
 class TestCLIQuery:
-    def test_minimal_prunes_records(self, monkeypatch):
-        _stub_value_backend(monkeypatch)
+    def test_minimal_prunes_records(self, make_fake_backend, inject_backend):
+        _stub_value_backend(make_fake_backend, inject_backend)
         runner = CliRunner()
         result = runner.invoke(
             cli, ["--json", "query", "odata", "accounts", "--minimal"]
@@ -60,8 +56,8 @@ class TestCLIQuery:
         assert rec["_owner_value"] == "00000000-0000-0000-0000-000000000002"
         assert rec["accountid"] == "00000000-0000-0000-0000-000000000001"
 
-    def test_default_retains_annotations(self, monkeypatch):
-        _stub_value_backend(monkeypatch)
+    def test_default_retains_annotations(self, make_fake_backend, inject_backend):
+        _stub_value_backend(make_fake_backend, inject_backend)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
@@ -70,19 +66,15 @@ class TestCLIQuery:
         assert "@odata.etag" in rec
         assert "statuscode@OData.Community.Display.V1.FormattedValue" in rec
 
-    def test_minimal_preserves_top_level_envelope(self, monkeypatch):
+    def test_minimal_preserves_top_level_envelope(self, make_fake_backend, inject_backend):
         """The `{**result, "value": [...]}` rebuild must keep top-level envelope
         keys (e.g. `@odata.count` from `--count`) while still pruning per-record
         annotations."""
-        class StubBackend:
-            def get(self, path, **kw):
-                return {
-                    "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
-                    "@odata.count": 7,
-                    "value": [_annotated_record()],
-                }
-
-        monkeypatch.setattr(CLIContext, "backend", lambda self: StubBackend())
+        inject_backend(make_fake_backend(responses={"get": {
+            "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
+            "@odata.count": 7,
+            "value": [_annotated_record()],
+        }}))
         runner = CliRunner()
         result = runner.invoke(
             cli, ["--json", "query", "odata", "accounts", "--minimal", "--count"]
@@ -100,12 +92,8 @@ class TestCLIQuery:
 
 
 class TestCLIEntityGet:
-    def test_minimal_prunes_single_record(self, monkeypatch):
-        class StubBackend:
-            def get(self, path, **kw):
-                return _annotated_record()
-
-        monkeypatch.setattr(CLIContext, "backend", lambda self: StubBackend())
+    def test_minimal_prunes_single_record(self, make_fake_backend, inject_backend):
+        inject_backend(make_fake_backend(responses={"get": _annotated_record()}))
 
         runner = CliRunner()
         result = runner.invoke(

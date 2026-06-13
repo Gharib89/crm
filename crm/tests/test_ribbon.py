@@ -22,19 +22,9 @@ def test_decode_compressed_ribbon_rejects_non_zip():
         ribbon.decode_compressed_ribbon(not_a_zip)
 
 
-class _FakeBackend:
-    """Minimal D365Backend stand-in: records the GET path, returns canned JSON."""
-    def __init__(self, compressed_b64: str) -> None:
-        self.compressed_b64 = compressed_b64
-        self.last_path: str | None = None
-
-    def get(self, path: str, **kw: object) -> dict[str, object]:
-        self.last_path = path
-        return {"CompressedEntityXml": self.compressed_b64}
-
-
-def test_retrieve_entity_ribbon_uses_inline_string_literals():
-    be = _FakeBackend(FIXTURE.read_text())
+def test_retrieve_entity_ribbon_uses_inline_string_literals(make_fake_backend, inject_backend):
+    b64 = FIXTURE.read_text()
+    be = inject_backend(make_fake_backend(responses={"get": {"CompressedEntityXml": b64}}))
     root = ribbon.retrieve_entity_ribbon(be, "cwx_ticket")  # type: ignore[arg-type]
     assert root.tag == "RibbonDiffXml"
     # Verified live: inline literals, NOT parameter aliases.
