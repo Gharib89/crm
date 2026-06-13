@@ -1,10 +1,11 @@
 # Product bugs surfaced by the live e2e suite
 
-Four real product defects were found while building the live e2e coverage
+Four real defects were surfaced while building the live e2e coverage
 (`crm/tests/e2e/`). None are test bugs — each reproduces through the normal CLI
-against a live org. Each is documented in-suite as an `xfail(strict=False)` (or a
-capability gate), so the suite stays green **and** auto-flips to a failure/xpass the
-moment the underlying command is fixed.
+against a live org. Three (#1, #2, #4) are product defects documented in-suite as an
+`xfail(strict=False)` (or a capability gate), so the suite stays green **and**
+auto-flips to a failure/xpass the moment the underlying command is fixed. #3 turned
+out to be a **client-side** bug in the CLI and is now fixed (see below).
 
 Repro uses a saved profile directly (`--profile`); no e2e harness needed. Targets
 referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
@@ -13,7 +14,7 @@ referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
 |---|-----|----------------|
 | 1 | `metadata list-actions` / `list-functions` → HTTP 415 | Gharib89/crm#266 |
 | 2 | `metadata update-relationship` → HTTP 405 | Gharib89/crm#267 |
-| 3 | `form clone` reuses embedded formid (on-prem) | Gharib89/crm#268 |
+| 3 | `form clone` reused internal form ids on on-prem → ✅ fixed (client-side) | Gharib89/crm#268 |
 | 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269 |
 
 ---
@@ -74,29 +75,33 @@ crm --profile crmworx metadata update-relationship <relationship_schema> --casca
 
 ---
 
-## 3. `form clone` reuses the embedded form id on on-prem (on-prem only)
+## 3. `form clone` reused internal form ids on on-prem — ✅ FIXED (client-side, #268)
 
-**Symptom** — cloning the same source form a second time on on-prem v9.1 fails with a
-duplicate-key error (`0x8004f658`). Cloud v9.2 is unaffected.
+**This was a client-side bug in the CLI, not a product defect** — it is now fixed on
+the `form clone` path; the entry is kept as a record of the corrected diagnosis.
 
-**Root cause** — `crm.core.forms.retarget_formxml` rewrites entity-name tokens in the
-FormXML but does **not** strip/regenerate the `<form id="...">` attribute embedded in
-the XML. On-prem v9.1 reuses that embedded id as the new `systemform` record's primary
-key, so a second clone of the same source collides. Cloud assigns a fresh GUID
-server-side and hides the problem.
+**Symptom** — cloning a form into a custom entity on on-prem v9.x failed with
+`0x8004f658`, e.g. *"The label '…', id '…' already exists. Supply unique labelid
+values."* Repeat clones of the same source were guaranteed to collide. Cloud v9.2 was
+unaffected.
 
-**Fix** — strip or regenerate the `formid` inside the FormXML before POST (don't rely
-on the server to reassign the PK).
+**Root cause** — the original brief blamed an embedded root `<form id>` PK, but the
+real form's `<form>` root carries **no** id (injecting one fails on-prem with schema
+error `0x80048425`). The actual collision is on the form's **internal registration
+GUIDs** — `labelid`, layout element `id`, `uniqueid`, `handlerUniqueId`,
+`libraryUniqueId` — which on-prem enforces as org-unique. Cloning reused the source's
+values verbatim; Dataverse online silently reassigns them, hiding the problem.
+
+**Fix (shipped)** — `crm.core.forms.regenerate_form_clone_ids` regenerates each
+internal-registration GUID per clone (consistent old→new mapping) while preserving
+external references (`classid` control types, `<Role Id>` security roles,
+`<ViewId>`/`<QuickFormId>` lookups); a guard refuses to POST if any non-target GUID
+changed. Verified live: the account form clones twice on **both** on-prem and cloud
+with distinct formids.
 
 **Test** — `crm/tests/e2e/test_form.py::test_form_clone_account_to_ephemeral`
-(`@pytest.mark.requires_cloud` — verified on cloud, skipped on on-prem; docstring
-documents the on-prem defect).
-
-**Repro** (on-prem) — run twice against the same source form:
-```
-crm --profile crmworx form clone account <source_form_id> --target-entity <custom_entity>
-crm --profile crmworx form clone account <source_form_id> --target-entity <custom_entity>   # 2nd → 0x8004f658
-```
+(now runs on both targets — no `@requires_cloud` gate — and clones twice to assert
+the repeat-collision is gone; CI runs the cloud leg, the maintainer the on-prem leg).
 
 ---
 

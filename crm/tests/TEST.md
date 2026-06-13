@@ -146,7 +146,7 @@ defect are marked `xfail(strict=False)` so they auto-flip to xpass when the comm
 | 2026-06-12 | cloud (OAuth, v9.2)  | `pytest -m e2e` (full) | 85 | 5 | 4 (+1 xpass) | 14m48s |
 
 Full coverage = the **union** of the two runs. Capability-gated tests skip on the
-non-matching target (e.g. `plugin register-image` is on-prem-only; `form clone`,
+non-matching target (e.g. `plugin register-image` is on-prem-only;
 `solution layer-conflicts` are cloud-only). The `bigint` attribute test xfails on
 on-prem (system-managed) and xpasses on cloud. The 5/4 xfails are documented product
 defects — see `crm/tests/e2e/DISCOVERED_BUGS.md`. Skips (`query saved`/`query user`,

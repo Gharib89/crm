@@ -19,8 +19,12 @@ crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog
 ```
 
 The source form's `formxml` is read from `cwx_ticket`, the entity reference is
-retargeted to `new_incidentlog`, and a new `systemform` record is created via
-the Web API. No XML surgery or solution-zip is needed.
+retargeted to `new_incidentlog`, the form's internal element/label ids are
+regenerated, and a new `systemform` record is created via the Web API. No
+solution-zip is needed. Regenerating the internal ids lets you clone the same
+source form repeatedly without collisions on on-premises (which — unlike
+Dataverse online — enforces those ids as unique); references to control types,
+security roles, and subgrid views are preserved.
 
 By default the clone also runs `PublishAllXml`. To defer the publish (e.g.
 when doing multiple operations before a single publish at the end):
