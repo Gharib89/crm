@@ -38,6 +38,8 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 
 ### Running the live e2e suite (target + creds)
 
+**Project live targets — use these two profiles for all live/e2e work:** **`agent-on-prem`** (NTLM on-prem v9.1 test org) and **`agent-cloud`** (OAuth / Dataverse online). Pin `--profile <name>` on any live command and confirm the org via `crm connection whoami` before reporting target-specific facts. Prefer **`agent-cloud`** for general verification (always reachable, no VPN); use **`agent-on-prem`** for `requires_onprem` and target-divergent checks. (These supersede the older `crmworx` / `cloud` profiles.)
+
 Two ways to give the opt-in suite (`D365_E2E=1`) a live target; pick one:
 
 - **A named profile (preferred for local runs)** — `D365_E2E_PROFILE=<name>` where `<name>` is a profile you already created with `crm profile add`. Its creds + secret are read **read-only** from your real `CRM_HOME` and re-seeded into a throwaway, isolated `CRM_HOME` (your real profiles/session are never mutated). The **target is inferred from the profile's auth scheme**: an OAuth/Dataverse profile → **cloud**, an NTLM profile → **on-prem**. No `D365_*` cred env needed. Prefer a **cloud** profile for general local verification — it's always reachable (no VPN); reserve on-prem for `requires_onprem` and target-divergent tests.
@@ -79,6 +81,17 @@ Issues live in GitHub Issues at `Gharib89/crm`. Use the `gh` CLI. See `docs/agen
 ### Triage labels
 
 Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Code review
+
+Copilot code review **auto-triggers on PR creation** for ready (non-draft) PRs, via the repo ruleset *"Copilot auto review"* (target: default branch) — **round 1 fires automatically; never re-request it.** Re-review does **not** trigger on push (`review_on_push: false`, deliberate: there's no per-PR review cap, so manual rounds preserve a ~3-round ceiling). Request later rounds via REST (the `gh pr edit --add-reviewer copilot` path fails on this repo):
+
+```bash
+echo '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' | \
+  gh api -X POST repos/Gharib89/crm/pulls/<n>/requested_reviewers --input -
+```
+
+Then verify `requested_reviewers` actually populated — a bare HTTP 201 can silently no-op (passing the display name `"Copilot"` instead of the bot login is the classic trap). Review effort is **Medium** (the only model lever); house rules + a known-non-issues list live in `.github/copilot-instructions.md` (only its first 4000 chars are read).
 
 ### Domain docs
 
