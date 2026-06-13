@@ -2,15 +2,22 @@
 """Tests for `query fetchxml` with optional ENTITY_SET positional (#202).
 
 Behaviors under test:
-- resolver: LogicalName → EntitySetName via metadata GET
-- backward compat: positional provided → zero extra GETs
+- resolver: LogicalName → EntitySetName via the entity_names seam (#261)
+- backward compat: positional provided → zero resolver round-trips
 - derived path: no positional → parse XML name + resolve → query
 - error: no positional + unparseable / missing name → exit 2
 - error: no positional + unknown logical name → D365Error (exit 1)
+
+`metadata.resolve_entity_set_name` now delegates to the shared `entity_names`
+seam (#261), which loads the bidirectional name map read-through from the
+metadata cache. So the resolver reads the full ``EntityDefinitions`` collection
+via ``get_collection`` (not a per-logical row GET); tests isolate CRM_HOME and
+feed the map through ``get_collection``.
 """
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -19,46 +26,64 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.core.metadata import resolve_entity_set_name
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Error
+
+
+@pytest.fixture(autouse=True)
+def _isolate_crm_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """resolve_entity_set_name now reads the name map through the metadata cache
+    (#261); isolate CRM_HOME so a real ~/.crm is never touched and each test
+    starts with a cold cache."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+
+
+def _profile(name: str = "testp") -> ConnectionProfile:
+    return ConnectionProfile(
+        name=name,
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
+    )
 
 
 # ── Resolver unit tests ─────────────────────────────────────────────────────
 
 class _ResolverBackend:
-    """Records calls (path + params) and returns configured responses per path."""
+    """Serves the EntityDefinitions collection through ``get_collection`` (what the
+    seam's ``load_name_map`` calls) and records the paths requested."""
 
-    def __init__(self, responses: dict[str, Any]) -> None:
+    def __init__(self, defs: list[dict[str, Any]]) -> None:
+        self.profile = _profile()
         self.calls: list[str] = []
-        self.params: list[Any] = []
-        self._responses = responses
+        self._defs = defs
 
-    def get(self, path: str, *, params: Any = None, **_kw: Any) -> Any:
+    def get_collection(self, path: str, *, params: Any = None, **_kw: Any) -> list[dict[str, Any]]:
         self.calls.append(path)
-        self.params.append(params)
-        if path in self._responses:
-            return self._responses[path]
-        raise AssertionError(f"Unexpected backend.get call: {path!r}")
-
-
-_ENTITY_DEF_PATH = "EntityDefinitions(LogicalName='account')"
+        if path == "EntityDefinitions":
+            return self._defs
+        raise AssertionError(f"Unexpected get_collection call: {path!r}")
 
 
 def test_resolve_entity_set_name_returns_set_name():
-    backend = _ResolverBackend({
-        _ENTITY_DEF_PATH: {"EntitySetName": "accounts", "LogicalName": "account"},
-    })
+    backend = _ResolverBackend([{"LogicalName": "account", "EntitySetName": "accounts"}])
     result = resolve_entity_set_name(backend, "account")  # type: ignore[arg-type]
     assert result == "accounts"
-    assert backend.calls == [_ENTITY_DEF_PATH]
-    # Verify the $select=EntitySetName projection is used (not a full entity fetch).
-    assert backend.params[0] == {"$select": "EntitySetName"}
+    # Resolution reads the full collection through the seam, not a per-logical GET.
+    assert backend.calls == ["EntityDefinitions"]
 
 
 def test_resolve_entity_set_name_raises_on_missing():
-    """Server returns a record without EntitySetName → D365Error."""
-    backend = _ResolverBackend({
-        _ENTITY_DEF_PATH: {"LogicalName": "account"},  # EntitySetName absent
-    })
+    """A logical name whose row carries no EntitySetName is not addressable → D365Error."""
+    backend = _ResolverBackend([{"LogicalName": "account"}])  # EntitySetName absent
+    with pytest.raises(D365Error):
+        resolve_entity_set_name(backend, "account")  # type: ignore[arg-type]
+
+
+def test_resolve_entity_set_name_raises_on_unknown_logical_name():
+    """A logical name absent from the org's metadata → D365Error."""
+    backend = _ResolverBackend([{"LogicalName": "contact", "EntitySetName": "contacts"}])
     with pytest.raises(D365Error):
         resolve_entity_set_name(backend, "account")  # type: ignore[arg-type]
 
@@ -66,7 +91,9 @@ def test_resolve_entity_set_name_raises_on_missing():
 def test_resolve_entity_set_name_propagates_d365_error():
     """Server returns 404 → D365Error (backend raises, not swallowed)."""
     class _ErrorBackend:
-        def get(self, *_a: Any, **_kw: Any) -> Any:
+        profile = _profile()
+
+        def get_collection(self, *_a: Any, **_kw: Any) -> Any:
             raise D365Error("Not found", status=404)
 
     with pytest.raises(D365Error) as exc_info:
@@ -83,22 +110,29 @@ _NOT_XML = "this is not xml <<<"
 
 
 def _make_backend(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = None) -> MagicMock:
-    """Stub backend that records paths and returns empty value arrays."""
+    """Stub backend: records paths, resolves names via get_collection, and returns
+    empty value arrays for the fetchxml query GET."""
     mock = MagicMock()
+    mock.profile = _profile()
     recorded: list[str] = calls if calls is not None else []
 
     def _get(path: str, **_kw: Any) -> Any:
         recorded.append(path)
-        if "EntityDefinitions" in path:
-            return {"EntitySetName": "accounts", "LogicalName": "account"}
         return {"value": []}
 
+    def _get_collection(path: str, **_kw: Any) -> Any:
+        recorded.append(path)
+        if path == "EntityDefinitions":
+            return [{"LogicalName": "account", "EntitySetName": "accounts"}]
+        return []
+
     mock.get.side_effect = _get
+    mock.get_collection.side_effect = _get_collection
     monkeypatch.setattr(CLIContext, "backend", lambda self: mock)
     return mock
 
 
-# ── Backward-compat: positional provided → NO extra GET ─────────────────────
+# ── Backward-compat: positional provided → NO resolver round-trip ───────────
 
 def test_positional_provided_no_extra_metadata_get(monkeypatch: pytest.MonkeyPatch):
     """When ENTITY_SET is given, only the FetchXML query GET fires — no resolver call."""
@@ -113,13 +147,13 @@ def test_positional_provided_no_extra_metadata_get(monkeypatch: pytest.MonkeyPat
     entity_set_calls = [c for c in calls if c == "accounts"]
     metadata_calls = [c for c in calls if "EntityDefinitions" in c]
     assert len(entity_set_calls) == 1
-    assert len(metadata_calls) == 0, f"unexpected metadata GETs: {metadata_calls}"
+    assert len(metadata_calls) == 0, f"unexpected metadata reads: {metadata_calls}"
 
 
 # ── Derived path: no positional → parse + resolve → query ───────────────────
 
 def test_no_positional_derives_entity_set(monkeypatch: pytest.MonkeyPatch):
-    """Omitting ENTITY_SET derives it from XML name → one resolver GET + one query GET."""
+    """Omitting ENTITY_SET derives it from XML name → one resolver read + one query GET."""
     calls: list[str] = []
     _make_backend(monkeypatch, calls)
     result = CliRunner().invoke(
@@ -129,10 +163,9 @@ def test_no_positional_derives_entity_set(monkeypatch: pytest.MonkeyPatch):
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
-    # Resolver was called
+    # Resolver read the EntityDefinitions collection exactly once (the seam map).
     resolver_calls = [c for c in calls if "EntityDefinitions" in c]
     assert len(resolver_calls) == 1
-    assert "account" in resolver_calls[0]
     # Actual query used the resolved set name
     query_calls = [c for c in calls if c == "accounts"]
     assert len(query_calls) == 1
@@ -206,10 +239,13 @@ def test_no_positional_no_entity_element_exit2(monkeypatch: pytest.MonkeyPatch):
 def test_no_positional_unknown_logical_name_exit1(monkeypatch: pytest.MonkeyPatch):
     """Resolver raises D365Error (404) → exit 1 clean error envelope."""
     class _404Backend:
+        profile = _profile()
+
         def get(self, path: str, **_kw: Any) -> Any:
-            if "EntityDefinitions" in path:
-                raise D365Error("Not found", status=404)
             return {"value": []}
+
+        def get_collection(self, path: str, **_kw: Any) -> Any:
+            raise D365Error("Not found", status=404)
 
     monkeypatch.setattr(CLIContext, "backend", lambda self: _404Backend())
     result = CliRunner().invoke(

@@ -17,6 +17,7 @@ from crm.utils.d365_backend import D365Backend, D365Error
 _GUID = "11111111-2222-3333-4444-555555555555"
 
 
+pytestmark = pytest.mark.usefixtures("isolated_home")
 # ── multipart $batch response builders ───────────────────────────────────
 
 
