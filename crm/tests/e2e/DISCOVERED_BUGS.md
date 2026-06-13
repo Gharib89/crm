@@ -2,11 +2,10 @@
 
 Four real defects were surfaced while building the live e2e coverage
 (`crm/tests/e2e/`). None are test bugs — each reproduces through the normal CLI
-against a live org. #2 remains a product defect documented in-suite as an
-`xfail(strict=False)` (or a capability gate), so the suite stays green **and**
-auto-flips to a failure/xpass the moment the underlying command is fixed. #1 and #3
+against a live org. #1, #2, and #3
 turned out to be **client-side** bugs in the CLI and are now fixed; **#4 is now FIXED
 (#269)** — its `xfail` is removed and the test passes live on both targets (see below).
+All four are now fixed.
 
 Repro uses a saved profile directly (`--profile`); no e2e harness needed. Targets
 referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
@@ -14,7 +13,7 @@ referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
 | # | Bug | Tracking issue |
 |---|-----|----------------|
 | 1 | `metadata list-actions` / `list-functions` → HTTP 415 → ✅ fixed (client-side) | Gharib89/crm#266 (FIXED) |
-| 2 | `metadata update-relationship` → HTTP 405 | Gharib89/crm#267 |
+| 2 | `metadata update-relationship` → HTTP 405 → ✅ fixed (client-side) | Gharib89/crm#267 (FIXED) |
 | 3 | `form clone` reused internal form ids on on-prem → ✅ fixed (client-side) | Gharib89/crm#268 |
 | 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269 (FIXED) |
 
@@ -50,7 +49,10 @@ targets). Offline header coverage:
 
 ---
 
-## 2. `metadata update-relationship` → HTTP 405 (both targets)
+## 2. `metadata update-relationship` → HTTP 405 — ✅ FIXED (client-side, #267)
+
+**This was a client-side bug in the CLI, not a product defect** — the command
+targeted the wrong URL and Dataverse correctly rejected the unsupported operation.
 
 **Symptom**
 ```
@@ -58,20 +60,30 @@ HTTP 405 "does not support operation"
 on-prem v9.1 code 0x0 ; cloud v9.2 code 0x80060888
 ```
 
-**Root cause** — the command issues a PUT to the typed **cast** segment
-`RelationshipDefinitions(<id>)/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata`.
-Dataverse rejects a write to that cast path with 405 on both targets.
+**Root cause** — the command did its retrieve-merge-write entirely through the typed
+**cast** segment `RelationshipDefinitions(<id>)/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata`,
+PUTting the merged definition back to that cast path. Dataverse rejects a PUT to a
+relationship cast segment with 405 on both targets.
 
-**Fix** — update relationship metadata via the supported path (PUT/PATCH on
-`RelationshipDefinitions(<id>)` with the `@odata.type` in the body, per the Web API
-metadata-update contract), not a PUT to the type-cast URL segment.
+**Fix (shipped)** — `update_relationship` now reads its merge base from the cast path
+(the only projection that carries `CascadeConfiguration`/`AssociatedMenuConfiguration`)
+but PUTs the full merged definition to the **un-cast** `RelationshipDefinitions(<id>)`
+entity-set path, with the `@odata.type` discriminator in the body (injected if a
+minimal-metadata GET omitted it). PUT-replace only — Dataverse rejects PATCH for
+metadata. `MSCRM.MergeLabels`/`MSCRM.SolutionUniqueName` headers and the dry-run
+preview are preserved (the dry-run path now reflects the un-cast PUT target). The
+attribute (column) update path is **unchanged** — its cast-path PUT is required and
+correct.
 
 **Test** — `crm/tests/e2e/test_metadata_write.py::test_update_relationship_cascade`
-(`xfail`, reason cites the 405 cast-path write).
+(`xfail` removed; changes one cascade key, then reads the relationship back via
+`export-spec` to assert the change applied and an untouched cascade key survived).
+Offline coverage: `test_metadata_update.py::TestUpdateRelationship` +
+`::TestDryRun::test_dry_run_relationship_resolves_id_gets_no_put`.
 
-**Repro** — create a 1:N relationship (e.g. via `metadata create-one-to-many`), then:
+**Repro (pre-fix)** — create a 1:N (e.g. via `metadata create-one-to-many`), then:
 ```
-crm --profile crmworx metadata update-relationship <relationship_schema> --cascade-assign cascade
+crm metadata update-relationship <relationship_schema> --cascade-assign Cascade
 # → HTTP 405
 ```
 
@@ -149,7 +161,8 @@ crm --profile crmworx ribbon add-button <custom_entity> --label "E2E" --command-
 ---
 
 ### Severity / notes
-- #2 makes its verb **completely non-functional** on every target — highest priority; #1 was the same until fixed (#266).
+- #1 made `list-actions`/`list-functions` non-functional on every target — **FIXED (#266)**.
+- #2 made `update-relationship` non-functional on every target — **FIXED (#267)**; the `xfail` is removed and the e2e passes live on both targets (and asserts an untouched cascade key survives the round-trip).
 - #4 made ribbon **write** verbs non-functional on every target (ribbon read/export worked) — **FIXED (#269)**; the `xfail` is removed and the e2e lifecycle passes live on both targets.
 - #3 is on-prem-only and intermittent (only collides on a repeat clone of the same source form).
 - All four are in **product code** (`crm/core/*`), out of scope for the test-completeness
