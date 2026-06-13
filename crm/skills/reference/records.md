@@ -39,6 +39,23 @@ crm --json query odata contacts \
     --filter "statecode eq 0" --select fullname,emailaddress1 --top 5 --minimal
 ```
 
+## Count rows — `query count`
+
+```bash
+crm --json query count account   # -> {"ok": true, "data": {"entity": "account", "count": 5432}}
+```
+
+Takes the **entity logical name** (`account`) — **not** the entity-set name (`accounts`)
+every other `query` verb uses — because it calls `RetrieveTotalRecordCount`, which is keyed
+by logical name. The total is a server-side cached snapshot, so it can lag recent
+inserts/deletes (cheap, whole-table; there is **no `--filter`**). For an **exact or
+filtered** count, request `$count` on a live OData query instead:
+
+```bash
+crm --json query odata accounts --filter "statecode eq 0" --top 1 --count
+# the live @odata.count rides the result envelope
+```
+
 ## CRUD — create → update → delete
 
 ```bash

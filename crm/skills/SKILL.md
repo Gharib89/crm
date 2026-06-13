@@ -134,7 +134,8 @@ crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
 **Validate-first is the recommended default for unattended writes.** On a record
 create/update, an unknown field otherwise returns raw OData server noise the agent
 cannot act on; validating first turns that into a clean `unknown_fields` envelope
-(see `reference/records.md`).
+(see `reference/records.md`). `--validate` applies to **record writes only** — `metadata`,
+`solution`, and component writes have no `--validate`, so use `--dry-run` for those.
 
 **`--yes`** skips interactive confirmations; always pass it when invoking
 destructive verbs non-interactively (and only after confirming intent).
@@ -202,6 +203,7 @@ cannot: workflows, gotchas, and the JSON contract. For per-domain detail:
 
 | Working on… | Read |
 |---|---|
+| end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, bulk import/export, ad-hoc `action` | `reference/records.md` |
 | metadata: browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache | `reference/metadata.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
