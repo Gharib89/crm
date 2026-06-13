@@ -36,8 +36,20 @@ def backend(profile):
     return D365Backend(profile, password="pw", dry_run=False)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_crm_home(tmp_path, monkeypatch):
+    """Isolate CRM_HOME per test. validate_payload now resolves the entity set
+    through the read-through metadata cache (#261), so a shared real ~/.crm would
+    let one test's warm cache suppress the next test's mocked EntityDefinitions GET."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+
+
 def _sets_url(backend) -> str:
     return backend.url_for("EntityDefinitions")
+
+
+def _primary_id_url(backend) -> str:
+    return backend.url_for("EntityDefinitions(LogicalName='account')")
 
 
 def _attrs_url(backend) -> str:
@@ -65,6 +77,9 @@ def _mock_three(m, backend) -> None:
     m.get(_sets_url(backend), json=_SETS)
     m.get(_attrs_url(backend), json=_ATTRS)
     m.get(_m2o_url(backend), json=_M2O)
+    # Create-path primary-id describe GET (#261); unused on the update/no-create
+    # paths, where requests_mock simply never records it.
+    m.get(_primary_id_url(backend), json={"PrimaryIdAttribute": "accountid"})
 
 
 class TestTracer:
@@ -185,16 +200,21 @@ class TestControlAnnotations:
         assert not any("ManyToOneRelationships" in p for p in paths)
 
 
-class TestFilterEscaping:
-    def test_entity_set_with_apostrophe_is_escaped(self, backend):
+class TestApostropheSetName:
+    def test_apostrophe_set_name_resolves_via_map(self, backend):
+        """The seam resolves set→logical with a dict lookup over the full
+        EntityDefinitions collection (#261) — there is no $filter to escape, so an
+        apostrophe in the set name is just a plain key and resolution still works."""
         from crm.core import entity as ent
+        defs = {"value": [{"LogicalName": "obrien", "EntitySetName": "o'briens"}]}
         with requests_mock.Mocker() as m:
-            m.get(_sets_url(backend), json={"value": []})
-            with pytest.raises(D365Error, match="Unknown entity set"):
-                ent.validate_payload(backend, "o'brien", {"name": "x"})
-            # OData literal escaping doubles the quote in the $filter expression.
-            qs = m.request_history[0].qs
-            assert qs["$filter"] == ["entitysetname eq 'o''brien'"]
+            m.get(_sets_url(backend), json=defs)
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='obrien')/Attributes"),
+                json={"value": [{"LogicalName": "name"}]},
+            )
+            result = ent.validate_payload(backend, "o'briens", {"name": "x"})
+        assert result == {"ok": True}
 
 
 class TestDuplicateUnknown:
@@ -284,9 +304,12 @@ _SETS_PID = {"value": [
 
 
 def _mock_two_pid(m, backend) -> None:
-    """Two GETs: set→logical (with PrimaryIdAttribute) + attributes. No nav."""
+    """Mocks the create-path reads: the name-map collection GET, the attributes
+    GET, and the targeted PrimaryIdAttribute describe GET (#261). The last is hit
+    only on the create path; registering it on the update path is harmless."""
     m.get(_sets_url(backend), json=_SETS_PID)
     m.get(_attrs_url(backend), json=_ATTRS)
+    m.get(_primary_id_url(backend), json={"PrimaryIdAttribute": "accountid"})
 
 
 class TestPrimaryIdWarning:
@@ -328,8 +351,11 @@ class TestPrimaryIdWarning:
             )
         assert result == {"ok": True}
 
-    def test_no_extra_get_for_primary_id_check(self, backend):
-        """PrimaryIdAttribute comes from widened $select on existing sets GET — no new round-trip."""
+    def test_create_path_fetches_primary_id_via_targeted_get(self, backend):
+        """PrimaryIdAttribute now comes from a targeted describe GET on the create
+        path (#261): the name-map collection GET no longer carries it, since the
+        cache stores only logical/set names. Cold cache → 3 GETs (collection,
+        attributes, primary-id); no ManyToOne for a bind-free payload."""
         from crm.core import entity as ent
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
@@ -338,7 +364,8 @@ class TestPrimaryIdWarning:
                 is_create=True,
             )
             paths = [r.path for r in m.request_history]
-        assert len(paths) == 2
+        assert len(paths) == 3
+        assert any(p.endswith("/entitydefinitions(logicalname='account')") for p in paths)
         assert not any("ManyToOneRelationships" in p for p in paths)
 
 

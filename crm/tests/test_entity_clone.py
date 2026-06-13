@@ -10,6 +10,7 @@ filtering, lookup binds, override/unset) before the single create write.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 import requests_mock
@@ -18,6 +19,7 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.commands.entity import _parse_overrides
 from crm.core import entity as entity_mod
+from crm.core import metadata_cache
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 _SRC = "11111111-1111-1111-1111-111111111111"
@@ -47,6 +49,14 @@ def backend(profile):
 @pytest.fixture
 def dry_backend(profile):
     return D365Backend(profile, password="pw", dry_run=True)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_crm_home(tmp_path, monkeypatch):
+    """Isolate CRM_HOME per test. clone_record now resolves names through the
+    read-through metadata cache (#261), so a shared real ~/.crm would let one
+    test's warm cache suppress the next test's mocked EntityDefinitions GET."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
 
 
 # ── mocked endpoints ──────────────────────────────────────────────────────
@@ -122,6 +132,33 @@ class TestTracer:
         assert body == {"name": "Contoso", "telephone1": "555-0100"}
         # Default echoes the created record back (matches `entity create`).
         assert result == created
+
+
+class TestWarmCacheServesResolution:
+    """AC4 (#261): core name-resolution reads go through the read-through metadata
+    cache, so clone does not re-fetch entity definitions live when the cache is warm.
+    (--with-children reuses the same in-memory map, so a plain clone demonstrates it.)"""
+
+    def test_clone_does_not_refetch_definitions_when_cache_warm(self, backend):
+        # Warm the read-through cache for this profile (CRM_HOME is isolated to a
+        # temp dir by the autouse fixture).
+        metadata_cache.write_definitions(
+            backend.profile,
+            [{"logical": "account", "set_name": "accounts"},
+             {"logical": "contact", "set_name": "contacts"},
+             {"logical": "systemuser", "set_name": "systemusers"}],
+            now=time.time(),
+        )
+        with requests_mock.Mocker() as m:
+            defs = m.get(_defs_url(backend), json=_DEFS)
+            m.get(_attrs_url(backend), json=_ATTRS_SIMPLE)
+            m.get(_record_url(backend), json=_SOURCE_SIMPLE)
+            m.post(_post_url(backend), json={"accountid": _NEW}, status_code=201)
+
+            entity_mod.clone_record(backend, "accounts", _SRC, return_record=False)
+
+        # The name map was served from the warm cache — no live collection GET.
+        assert defs.call_count == 0
 
 
 # Account with a single-target lookup (primarycontactid -> contact) and a

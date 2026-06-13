@@ -9,8 +9,9 @@ from __future__ import annotations
 import difflib
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core import dependencies as dep_mod
+from crm.core import entity_names
 from crm.core import metadata_cache
 
 
@@ -85,15 +86,14 @@ def entity_info(backend: D365Backend, logical_name: str) -> dict[str, Any]:
 def resolve_entity_set_name(backend: D365Backend, logical_name: str) -> str:
     """Resolve a logical entity name to its OData entity-set name.
 
-    Performs one GET: EntityDefinitions(LogicalName='<name>')?$select=EntitySetName.
-    The entity-set name is metadata-defined and must not be guessed (e.g. pluralised).
-    Raises D365Error if the logical name is unknown or EntitySetName is absent.
+    Thin shim over the :mod:`crm.core.entity_names` seam: the bidirectional map is
+    served read-through from the metadata cache (warm cache → no live GET). The
+    entity-set name is metadata-defined and must not be guessed (e.g. pluralised).
+    Raises D365Error if the logical name is unknown or has no entity-set name.
     """
     if not logical_name:
         raise D365Error("logical_name is required.")
-    path = f"EntityDefinitions(LogicalName={odata_literal(logical_name)})"
-    result = as_dict(backend.get(path, params={"$select": "EntitySetName"}))
-    entity_set_name: str | None = result.get("EntitySetName") or None
+    entity_set_name = entity_names.load_name_map(backend).set_for(logical_name)
     if not entity_set_name:
         raise D365Error(
             f"Could not resolve entity-set name for logical name {logical_name!r}",
@@ -351,22 +351,16 @@ def describe_entity(backend: D365Backend, logical_name: str) -> dict[str, Any]:
         params={"$select":
                 "LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute"},
     ))
-    attrs = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
-        params={"$select":
-                "LogicalName,AttributeType,RequiredLevel,"
-                "IsValidForCreate,IsValidForUpdate"},
-    ))
-    value: list[dict[str, Any]] = attrs.get("value", [])
+    # Writable = valid for create OR update. The IsValidForCreate/IsValidForUpdate
+    # walk lives once in entity_names.attribute_specs (#261).
     writable: list[dict[str, Any]] = []
-    for a in value:
-        if not (a.get("IsValidForCreate") or a.get("IsValidForUpdate")):
+    for spec in entity_names.attribute_specs(backend, logical_name):
+        if not (spec.valid_for_create or spec.valid_for_update):
             continue
-        required: dict[str, Any] = a.get("RequiredLevel") or {}
         writable.append({
-            "logical_name": a.get("LogicalName"),
-            "attribute_type": a.get("AttributeType"),
-            "required_level": required.get("Value"),
+            "logical_name": spec.logical_name,
+            "attribute_type": spec.attribute_type,
+            "required_level": spec.required_level,
         })
 
     _enrich_lookups(backend, logical_name, writable)

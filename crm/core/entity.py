@@ -17,6 +17,7 @@ from crm.utils.d365_backend import (
     normalize_guid,
     odata_literal,
 )
+from crm.core import entity_names
 from crm.utils.d365_types import BatchOperation
 
 
@@ -110,14 +111,17 @@ def validate_payload(
 ) -> dict[str, Any]:
     """Field-NAME pre-write validation for a create/update payload (#72, #233).
 
-    One to three pure GETs build the set of valid payload keys:
-      1. resolve the entity-SET name to its LOGICAL name (also fetches
-         `PrimaryIdAttribute` for the create-path warning — no extra round-trip);
+    Pure reads build the set of valid payload keys:
+      1. resolve the entity-SET name to its LOGICAL name via the shared
+         name-resolution seam (#261) — served read-through from the metadata
+         cache, so a warm cache costs no GET;
       2. the entity's logical attribute names;
       3. the ManyToOne navigation-property names
          (`ReferencingEntityNavigationPropertyName`) — these are the `<nav>` in a
          `<nav>@odata.bind` deep-link, so a bound lookup is NOT a bogus field.
-         GET #3 is skipped when the payload contains no `@odata.bind` keys.
+         GET #3 is skipped when the payload contains no `@odata.bind` keys;
+      4. on the create path only, `PrimaryIdAttribute` for the primary-id warning
+         (a targeted describe GET).
 
     Valid keys are the UNION of (2) and (3). Each payload key is stripped of its
     `@odata.bind` / `@odata.type` suffix before the membership check; control
@@ -137,26 +141,26 @@ def validate_payload(
     """
     # Navigation-property names only matter for `<nav>@odata.bind` deep-links, so
     # the ManyToOne GET is skipped for any payload without one (a plain-attribute
-    # body, or one carrying only control annotations like `@odata.etag`) — keeping
-    # the documented cost at 1-3 GETs rather than a flat 3.
+    # body, or one carrying only control annotations like `@odata.etag`).
     needs_nav = any(key.endswith("@odata.bind") for key in payload)
 
-    # Double single quotes per OData literal escaping so an entity set with an
-    # apostrophe cannot break (or alter) the $filter expression.
-    sets = as_dict(backend.get(
-        "EntityDefinitions",
-        params={
-            "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
-            "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
-        },
-    ))
-    matches: list[dict[str, Any]] = sets.get("value", [])
-    if not matches:
-        raise D365Error(f"Unknown entity set: {entity_set!r}")
-    logical_name = matches[0].get("LogicalName")
+    # Resolve the entity-set name to its logical name through the shared seam
+    # (#261) — served read-through from the metadata cache, no per-call GET when
+    # warm. Replaces the hand-rolled `EntitySetName eq` filter GET.
+    logical_name = entity_names.load_name_map(backend).logical_for(entity_set)
     if not logical_name:
         raise D365Error(f"Unknown entity set: {entity_set!r}")
-    primary_id_attr: str | None = matches[0].get("PrimaryIdAttribute") or None
+
+    # PrimaryIdAttribute is only consumed by the create-path warning below, so
+    # fetch it lazily — and only then — with a targeted describe GET (not name
+    # resolution). The non-create path pays nothing for it.
+    primary_id_attr: str | None = None
+    if is_create:
+        ent = as_dict(backend.get(
+            f"EntityDefinitions(LogicalName={odata_literal(logical_name)})",
+            params={"$select": "PrimaryIdAttribute"},
+        ))
+        primary_id_attr = ent.get("PrimaryIdAttribute") or None
 
     attrs = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
@@ -511,8 +515,6 @@ def count_children(
     POST would otherwise be short-circuited to a useless preview), so a dry-run
     still reports real counts — sequential, but ``--dry-run`` is a preview path.
     """
-    from crm.core import metadata as metadata_mod
-
     guid = _normalize_id(record_id)
     if batch_chunk_size < 1:
         raise D365Error("batch_chunk_size must be a positive integer.")
@@ -523,12 +525,10 @@ def count_children(
     except re.error as exc:
         raise D365Error(f"--filter-entities is not a valid regular expression: {exc}")
 
-    # Logical↔set map in one GET — resolves both the parent set→logical and each
-    # child logical→set (the sole entity-set-name resolution round trip).
-    defs = metadata_mod.list_entity_definitions(backend)
-    set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
-    logical_to_set = {d["logical"]: d["set_name"] for d in defs if d["set_name"]}
-    parent_logical = set_to_logical.get(entity_set)
+    # Logical↔set map via the shared seam (#261): resolves the parent set→logical
+    # and each child logical→set, served read-through from the metadata cache.
+    name_map = entity_names.load_name_map(backend)
+    parent_logical = name_map.logical_for(entity_set)
     if not parent_logical:
         raise D365Error(
             f"Could not resolve entity set {entity_set!r} to a logical name.",
@@ -545,7 +545,7 @@ def count_children(
     for r in rels_raw:
         child = str(r.get("ReferencingEntity") or "")
         attr = str(r.get("ReferencingAttribute") or "")
-        child_set = logical_to_set.get(child, "")
+        child_set = name_map.set_for(child) or ""
         if not child or not attr or not child_set:
             continue
         if pattern is not None and not pattern.search(child):
@@ -657,28 +657,28 @@ _ASSOC_NAV_ANNOTATION = "Microsoft.Dynamics.CRM.associatednavigationproperty"
 _LOOKUP_LOGICAL_ANNOTATION = "Microsoft.Dynamics.CRM.lookuplogicalname"
 
 
-def _plan_from_attrs(attrs: list[dict[str, Any]]) -> tuple[dict[str, str], set[str]]:
-    """Reduce a list of attribute-metadata rows to the clone's attribute plan.
+def _plan_from_specs(
+    specs: list[entity_names.AttrSpec],
+) -> tuple[dict[str, str], set[str]]:
+    """Reduce normalised attribute specs to the clone's attribute plan.
 
-    Returns ``(create_attrs, all_attr_names)``: `create_attrs` maps logical name
-    -> AttributeType for every attribute valid for create and not in the
-    never-copy set (Uniqueidentifier dropped by type — covers primary + address
-    child ids); `all_attr_names` is every attribute (any validity) so `unset` is
-    validated against the full schema, not just the copied subset.
+    Consumes :class:`entity_names.AttrSpec` (the shared create/update-validity
+    walk, #261) rather than re-reading the raw ``IsValidForCreate`` flag. Returns
+    ``(create_attrs, all_attr_names)``: `create_attrs` maps logical name ->
+    AttributeType for every attribute valid for create and not in the never-copy
+    set (Uniqueidentifier dropped by type — covers primary + address child ids);
+    `all_attr_names` is every attribute (any validity) so `unset` is validated
+    against the full schema, not just the copied subset.
     """
     create_attrs: dict[str, str] = {}
     all_attr_names: set[str] = set()
-    for a in attrs:
-        name = a.get("LogicalName")
-        if not name:
+    for s in specs:
+        all_attr_names.add(s.logical_name)
+        if not s.valid_for_create:
             continue
-        all_attr_names.add(name)
-        if not a.get("IsValidForCreate"):
+        if s.attribute_type == "Uniqueidentifier" or s.logical_name in _NEVER_COPY_NAMES:
             continue
-        attr_type = a.get("AttributeType") or ""
-        if attr_type == "Uniqueidentifier" or name in _NEVER_COPY_NAMES:
-            continue
-        create_attrs[name] = attr_type
+        create_attrs[s.logical_name] = s.attribute_type
     return create_attrs, all_attr_names
 
 
@@ -798,8 +798,6 @@ def clone_record(
     `--dry-run`, the parent preview gains a `children` list of per-entity counts
     (with skipped entities marked), all from read-only GETs.
     """
-    from crm.core import metadata as metadata_mod
-
     overrides = overrides or {}
     unset = unset or []
     skip = set(skip_child_entities or [])
@@ -807,18 +805,18 @@ def clone_record(
     # a typo costs no round-trip (mirrors count_children); reuse it from here on.
     record_id = _normalize_id(record_id)
 
-    defs = metadata_mod.list_entity_definitions(backend)
-    set_to_logical = {d["set_name"]: d["logical"] for d in defs if d["set_name"]}
-    logical_to_set = {d["logical"]: d["set_name"] for d in defs if d["set_name"]}
-    logical_name = set_to_logical.get(entity_set)
+    # Logical↔set map via the shared seam (#261): the parent set→logical here, and
+    # each child logical→set is served from the same warm map below. Read-through
+    # from the metadata cache, so a warm cache costs no live GET.
+    name_map = entity_names.load_name_map(backend)
+    logical_to_set = name_map.logical_to_set
+    logical_name = name_map.logical_for(entity_set)
     if not logical_name:
         raise D365Error(f"Unknown entity set: {entity_set!r}")
 
-    attrs = backend.get_collection(
-        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
-        params={"$select": "LogicalName,AttributeType,IsValidForCreate"},
+    create_attrs, all_attr_names = _plan_from_specs(
+        entity_names.attribute_specs(backend, logical_name)
     )
-    create_attrs, all_attr_names = _plan_from_attrs(attrs)
 
     source = retrieve(backend, entity_set, record_id, include_annotations=True)
     body, errors = _build_clone_body(
@@ -946,7 +944,9 @@ def _clone_children(
                     "$expand": "Attributes($select=LogicalName,AttributeType,IsValidForCreate)",
                 },
             ))
-            child_create, child_all = _plan_from_attrs(entdef.get("Attributes") or [])
+            child_create, child_all = _plan_from_specs(
+                entity_names.specs_from_rows(entdef.get("Attributes") or [])
+            )
             plan_cache[child_logical] = (
                 str(entdef.get("PrimaryIdAttribute") or ""), child_create, child_all,
             )
