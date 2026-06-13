@@ -7,7 +7,6 @@ All HTTP is mocked via `requests_mock`. No live D365 server needed.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -26,15 +25,6 @@ from crm.core import (
     query as query_mod,
     session as session_mod,
 )
-
-
-# ── Fixtures ────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def isolated_home(monkeypatch, tmp_path):
-    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".d365"))
-    return tmp_path / ".d365"
 
 
 # ── connection.py ───────────────────────────────────────────────────────
@@ -347,7 +337,7 @@ class TestSessionStore:
         assert state["history"] == [f"cmd-{i}" for i in range(15, 20)]
 
     def test_atomic_write_replaces_file(self, isolated_home):
-        target = Path(isolated_home) / "sessions" / "x.json"
+        target = session_mod.session_path("x")
         session_mod.save_session({"name": "x", "v": 1}, "x")
         first = target.read_text()
         session_mod.save_session({"name": "x", "v": 2}, "x")

@@ -2,8 +2,6 @@
 # pyright: basic
 from __future__ import annotations
 
-import pytest
-
 from crm.commands.repl import MetadataCache, complete_entity_token
 
 _ENTITY_LIST = {"value": [
