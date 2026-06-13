@@ -9,6 +9,44 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.9.1 (2026-06-13)
+
+### Bug Fixes
+
+- **form**: Regenerate internal ids on clone to avoid on-prem collisions
+  ([#275](https://github.com/Gharib89/crm/pull/275),
+  [`7477088`](https://github.com/Gharib89/crm/commit/74770880359b48d67c0ee56865e9dcc13e387038))
+
+### Documentation
+
+- **agents**: Document priority + effort label axes
+  ([#272](https://github.com/Gharib89/crm/pull/272),
+  [`30f6384`](https://github.com/Gharib89/crm/commit/30f6384eaeefa41a5e15fb69d1306172b564f4cd))
+
+- **plans**: E2e test completeness implementation plan
+  ([`44a69b4`](https://github.com/Gharib89/crm/commit/44a69b449ea0e016b39f4e63b9a9646a795077a6))
+
+- **specs**: E2e test completeness design
+  ([`143aa5d`](https://github.com/Gharib89/crm/commit/143aa5d49a517517555207a84771a096dc044c29))
+
+- **specs**: Harden e2e design after review
+  ([`3b440fa`](https://github.com/Gharib89/crm/commit/3b440faf3e6a6eba1aadd6ab59fd84b425570a3d))
+
+### Testing
+
+- **e2e**: Complete live coverage + offline enforcement gate
+  ([#270](https://github.com/Gharib89/crm/pull/270),
+  [`75f4ae7`](https://github.com/Gharib89/crm/commit/75f4ae7e2e93a6be03c6f38026a8cef628113702))
+
+- **e2e**: Profile-based target + credential selection for live suite
+  ([#274](https://github.com/Gharib89/crm/pull/274),
+  [`df08be8`](https://github.com/Gharib89/crm/commit/df08be8348c508db38e7424ef730927b83f3e274))
+
+- **form**: Use obvious placeholder GUIDs for external-ref constants
+  ([#275](https://github.com/Gharib89/crm/pull/275),
+  [`7477088`](https://github.com/Gharib89/crm/commit/74770880359b48d67c0ee56865e9dcc13e387038))
+
+
 ## v3.9.0 (2026-06-12)
 
 ### Features
