@@ -34,6 +34,7 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 - **docs/** — matching `docs/how-to/<group>.md` and `docs/reference/cli.md`.
 - **SKILL ↔ CLI** — `crm/skills/` is the single tracked agent skill (source of truth): a thin `SKILL.md` router + `reference/*.md`. `crm skill install` copies the whole tree into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). The skill is **self-contained** — it ships to users who have only the skill, not the repo, so never link a shipped skill file to a repo path (`docs/**`, `CONTEXT.md`); inline what's needed. The skill states only what `crm describe`/`--help` cannot (workflows, gotchas, the JSON contract) — **never restate flags/choices/defaults**. Never track an in-repo `.claude/skills/` copy. See `docs/contributing/skill-and-cli.md`.
 - **E2E coverage gate** — every new/changed D365-touching command must ship a live e2e test under `crm/tests/e2e/` stamped `@covers("<group> <verb>")`, **or** an `E2E_SKIP` entry with a reason in `crm/tests/e2e/coverage.py`. The offline gate (`crm/tests/test_e2e_coverage_gate.py`) fails CI otherwise. Local/meta groups (`profile`, `session`, `skill`, `self-update`, `repl`, `scaffold`) are out of scope (`LOCAL_GROUPS`). See `crm/tests/TEST.md`.
+- **Test classification docs** — a capability-gate change (`@requires_cloud` / `@requires_onprem` added or removed on an e2e test) must update the live-run table in `crm/tests/TEST.md`; fixing or reclassifying a defect tracked in `crm/tests/e2e/DISCOVERED_BUGS.md` must update that entry in the same change.
 
 ### Running the live e2e suite (target + creds)
 
@@ -43,6 +44,21 @@ Two ways to give the opt-in suite (`D365_E2E=1`) a live target; pick one:
 - **Flat `D365_*` env** — set `D365_URL` + creds directly (NTLM: `D365_USERNAME`/`D365_PASSWORD`; OAuth: `D365_AUTH=oauth` + `D365_CLIENT_ID`/`D365_TENANT_ID`/`D365_CLIENT_SECRET`). This is how **CI** runs (secrets → env). Used automatically when `D365_E2E_PROFILE` is unset.
 
 **Both targets** = run the suite once per profile (`D365_E2E_PROFILE=<cloud>` then `=<onprem>`); coverage is the union. There is no single-process "both". **On-prem needs VPN** — if the selected target is unreachable the session **skips** with a "VPN down?" message (any HTTP response, incl 401/403, counts as reachable). Then: `pytest -m e2e`.
+
+**Running WORKTREE code through the e2e `cli` fixture.** The fixture resolves `shutil.which("crm")` → the installed **PyInstaller binary** (`~/.local/bin/crm`), which **ignores `PYTHONPATH`** (it bundles its own code), so an e2e run silently exercises the OLD installed code, not your worktree fix. The venv console-script `.venv/bin/crm` is *also* on PATH and *does* honor `PYTHONPATH`, so stripping only `~/.local/bin` isn't enough. Strip **both** crm dirs so `which` returns nothing and the fixture falls back to `[sys.executable, "-m", "crm"]` (absolute venv python + `PYTHONPATH=$WT` = guaranteed worktree code):
+
+```bash
+NEWPATH=$(echo "$PATH"|tr ':' '\n'|grep -vE '/\.local/bin|/crm/\.venv/bin'|paste -sd:)
+D365_E2E=1 D365_E2E_PROFILE=<p> PATH=$NEWPATH PYTHONPATH=$WT <main-venv>/bin/python -m pytest -m e2e <node>
+```
+
+Tripwire: an e2e that *should* pass with your fix fails **identically to pre-fix** → you're running the frozen binary, not your code.
+
+**Cloud target needs a host-guard override.** The suite refuses destructive runs against a `*.dynamics.com` host (prod-host guard); pass `D365_E2E_ALLOW_HOST=<exact host>` to opt the designated cloud test org in.
+
+**A bug reported on a specific target must be verified on THAT target — cloud-green ≠ fixed.** Cloud (Dataverse online) silently reassigns server-side ids and quietly rewrites/accepts inputs that on-prem v9.x rejects, so a cloud-green run can mask an on-prem-only failure. For an on-prem-reported bug, run the on-prem leg (`D365_E2E_PROFILE=<onprem>`), not just cloud.
+
+**Test fixtures: never embed real-org identifiers** (public repo). Don't copy GUIDs from a live export into test constants — a captured form/record/role GUID can carry the org's machine fingerprint (e.g. a `…00155d467b90` suffix). Use obvious placeholders (`1111…`, `cccc…`).
 
 `.github/workflows/docs.yml` runs `mkdocs build --strict` on any `crm/**`, `setup.py`, `docs/**`, or `mkdocs.yml` change — **stale refs / broken links fail CI.**
 
