@@ -157,7 +157,22 @@ crm self-update --check   # report current vs latest version, change nothing
 `pip`/`uv`/source installs aren't modified by `self-update` — it points you at
 `pip install -U crm` (or re-running `uv tool install`) instead. Either way,
 `self-update` also re-syncs any agent skills you installed with `crm skill
-install` so the shipped `SKILL.md` stays current with the CLI.
+install`, and any shell completion you installed with `crm completion install`
+(below), so both stay current with the CLI.
+
+### Shell completion
+
+Enable tab-completion for `crm` in bash, zsh, or fish:
+
+```bash
+crm completion install            # caches the script under ~/.crm and prints one rc line
+crm completion show --shell zsh   # or just print the script to stdout
+```
+
+`install` writes the completion script under `${CRM_HOME:-~/.crm}/completion/` and
+prints the single `source <path>` line to add to your shell rc (it never edits the
+rc file for you). `--shell` defaults to autodetecting `$SHELL`. See the
+[completion how-to](docs/how-to/completion.md) for per-shell setup.
 
 ## Configure
 
@@ -363,7 +378,8 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state, command history, and audit journal    |
-| `self-update` | Upgrade a frozen (install-script) binary in place and re-sync installed agent skills; `--check` reports current vs latest |
+| `completion` | Print or install shell completion (bash/zsh/fish); install caches the script + prints the rc line to source |
+| `self-update` | Upgrade a frozen (install-script) binary in place and re-sync installed agent skills + shell completion; `--check` reports current vs latest |
 
 The `metadata` group covers both browsing and write verbs. `metadata describe
 <entity>` returns a one-shot, read-only write-readiness brief — entity set, primary

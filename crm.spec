@@ -40,6 +40,8 @@ a = Analysis(
         'crm.commands.apply',
         'crm.commands.async_ops',
         'crm.commands.batch',
+        'crm.commands.completion',
+        'crm.commands.completion_registry',
         'crm.commands.connection',
         'crm.commands.data',
         'crm.commands.describe',
