@@ -163,13 +163,13 @@ def validate_payload(
         primary_id_attr = ent.get("PrimaryIdAttribute") or None
 
     attrs = as_dict(backend.get(
-        f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
+        f"EntityDefinitions(LogicalName={odata_literal(logical_name)})/Attributes",
         params={"$select": "LogicalName"},
     ))
     nav_rows: list[dict[str, Any]] = []
     if needs_nav:
         m2o = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
+            f"EntityDefinitions(LogicalName={odata_literal(logical_name)})/ManyToOneRelationships",
             params={"$select": "ReferencingEntityNavigationPropertyName"},
         ))
         nav_rows = m2o.get("value", [])
