@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 import requests_mock
@@ -17,19 +16,7 @@ from crm.utils.d365_backend import ConnectionProfile
 _WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001"}
 _BASE = "https://crm.contoso.local/Contoso"
 
-
-@pytest.fixture(autouse=True)
-def _isolated_home(tmp_path, monkeypatch):
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    for k in ("D365_URL", "CRM_BASE_URL", "D365_PASSWORD", "CRM_PASSWORD"):
-        os.environ.pop(k, None)
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 @pytest.fixture

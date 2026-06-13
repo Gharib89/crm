@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 from click.testing import CliRunner
@@ -11,19 +10,7 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
 
-
-# ── fixtures ──────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _isolate_dotenv():
-    saved = dict(os.environ)
-    os.environ["CRM_DOTENV"] = "/dev/null"
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────

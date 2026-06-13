@@ -7,10 +7,7 @@ from pathlib import Path
 
 import pytest
 
-
-@pytest.fixture(autouse=True)
-def _isolated_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 def _norm(p: str) -> str:

@@ -66,9 +66,9 @@ def _oauth_profile():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_env(monkeypatch, tmp_path):
-    """No .env autoload, no inherited D365_*/CRM_* leaking into oauth tests."""
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))  # authoritative, missing → loads nothing
+def _isolate_env(isolated_home, monkeypatch):
+    """No inherited D365_*/CRM_* creds leaking into oauth tests (isolated_home
+    handles CRM_HOME / CRM_DOTENV + .env autoload)."""
     for k in (
         "D365_URL", "CRM_BASE_URL", "CRM_URL",
         "D365_USERNAME", "CRM_USERNAME", "CRM_USER",
@@ -80,7 +80,6 @@ def _isolate_env(monkeypatch, tmp_path):
         "D365_CLIENT_SECRET", "CRM_CLIENT_SECRET",
     ):
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setenv("CRM_HOME", str(tmp_path / "crmhome"))
 
 
 class TestMakeOAuthAuth:

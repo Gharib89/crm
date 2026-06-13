@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 from click.testing import CliRunner
@@ -11,19 +10,11 @@ from click.testing import CliRunner
 import crm.core.update as update_mod
 from crm.cli import cli
 
-
 @pytest.fixture(autouse=True)
-def _isolated_home(tmp_path):
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    # Never let the passive notice fire during these tests.
-    os.environ["CRM_NO_UPDATE_CHECK"] = "1"
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+def _no_update_check(isolated_home, monkeypatch):
+    # isolated_home handles CRM_HOME / CRM_DOTENV; suppress the auto update
+    # check so command runs are deterministic (cf. crm/cli.py).
+    monkeypatch.setenv("CRM_NO_UPDATE_CHECK", "1")
 
 
 class TestCheck:

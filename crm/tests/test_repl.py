@@ -8,28 +8,11 @@ name that was set at REPL-launch time.
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from crm.cli import CLIContext, cli
 
-
-# ---------------------------------------------------------------------------
-# Env-isolation fixture (same pattern as test_session_audit.py)
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(autouse=True)
-def _isolated_env(tmp_path):
-    """Snapshot/restore os.environ; redirect CRM_HOME and disable .env autoload."""
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    try:
-        yield tmp_path
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 # ---------------------------------------------------------------------------
