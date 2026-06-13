@@ -7,12 +7,11 @@ create is non-fatal, matching the metadata-write precedent.
 
 from __future__ import annotations
 
-import re
-from typing import Any, cast
+from typing import Any
 from xml.etree import ElementTree
 from xml.sax.saxutils import quoteattr
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.core.metadata import maybe_publish
 
 
@@ -87,15 +86,15 @@ def create_view(
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
     # Existence guard — savedqueries has no alternate key, so query by name+type.
-    name_lit = name.replace("'", "''")
-    existing = as_dict(backend.get(
+    existing = backend.get_collection(
         "savedqueries",
         params={
-            "$filter": (f"name eq '{name_lit}' and returnedtypecode eq '{entity}' "
+            "$filter": (f"name eq {odata_literal(name)} "
+                        f"and returnedtypecode eq {odata_literal(entity)} "
                         "and querytype eq 0"),
             "$select": "savedqueryid,name",
         },
-    )).get("value", [])
+    )
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"View {name!r} on {entity} already exists.",
@@ -121,8 +120,7 @@ def create_view(
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""
-    m = re.search(r"savedqueries\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    sqid = m.group(1) if m else None
+    sqid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True, "name": name, "entity": entity,
         "savedqueryid": sqid, "solution": solution,
@@ -158,21 +156,19 @@ def read_entity_views(
     responsible for dropping views with an empty ``name`` or empty ``columns``
     before inserting them into a spec.
     """
-    entity_lit = entity_logical_name.replace("'", "''")
-    rows = as_dict(backend.get(
+    rows = backend.get_collection(
         "savedqueries",
         params={
             "$filter": (
-                f"returnedtypecode eq '{entity_lit}' and querytype eq 0"
+                f"returnedtypecode eq {odata_literal(entity_logical_name)} "
+                "and querytype eq 0"
             ),
             "$select": "name,layoutxml,fetchxml,isdefault",
         },
-    )).get("value", [])
+    )
 
     result: list[dict[str, Any]] = []
     for row in rows:
-        row = cast(dict[str, Any], row)
-
         # --- parse columns from layoutxml ---
         columns: list[dict[str, Any]] = []
         layoutxml = row.get("layoutxml") or ""

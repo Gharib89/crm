@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 # ── component type constants ─────────────────────────────────────────────
 
@@ -177,8 +177,7 @@ def build_uninstall_dependency_path(solution_unique_name: str) -> str:
     doubled per OData), unlike the unquoted GUID/int encoding in
     ``build_dependency_path``.
     """
-    escaped = solution_unique_name.replace("'", "''")
-    return f"RetrieveDependenciesForUninstall(SolutionUniqueName='{escaped}')"
+    return f"RetrieveDependenciesForUninstall(SolutionUniqueName={odata_literal(solution_unique_name)})"
 
 
 def dependencies_by_id(

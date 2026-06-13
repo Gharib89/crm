@@ -23,7 +23,7 @@ import re
 from typing import Any
 
 from crm.core.metadata import maybe_publish
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 _CHART_SELECT = (
     "savedqueryvisualizationid,name,primaryentitytypecode,"
@@ -56,12 +56,11 @@ def read_entity_charts(
     primaryentitytypecode, datadescription, presentationdescription,
     description, isdefault``.
     """
-    entity_lit = entity_logical_name.replace("'", "''")
-    filt = f"primaryentitytypecode eq '{entity_lit}'"
-    rows = as_dict(backend.get(
+    filt = f"primaryentitytypecode eq {odata_literal(entity_logical_name)}"
+    rows = backend.get_collection(
         "savedqueryvisualizations",
         params={"$select": _CHART_SELECT, "$filter": filt},
-    )).get("value", [])
+    )
     result: list[dict[str, Any]] = []
     for row in rows:
         result.append({
@@ -111,9 +110,7 @@ def clone_chart_to_entity(
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""
-    match = re.search(
-        r"savedqueryvisualizations\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    savedqueryvisualizationid = match.group(1) if match else None
+    savedqueryvisualizationid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True,
         "name": chart.get("name", ""),

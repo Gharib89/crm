@@ -10,19 +10,20 @@ import difflib
 import re
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
-from crm.utils.d365_types import BatchOperation
-
-
-_GUID_RE = re.compile(
-    r"^[{(]?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[)}]?$"
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    odata_literal,
 )
+from crm.utils.d365_types import BatchOperation
 
 
 def _normalize_id(record_id: str) -> str:
     """Strip braces and validate GUID format."""
-    rid = record_id.strip().lstrip("{(").rstrip("})")
-    if not _GUID_RE.match(rid):
+    rid = normalize_guid(record_id)
+    if rid is None:
         raise D365Error(f"Invalid record id (expected GUID): {record_id!r}")
     return rid
 
@@ -142,12 +143,11 @@ def validate_payload(
 
     # Double single quotes per OData literal escaping so an entity set with an
     # apostrophe cannot break (or alter) the $filter expression.
-    safe_set = entity_set.replace("'", "''")
     sets = as_dict(backend.get(
         "EntityDefinitions",
         params={
             "$select": "LogicalName,EntitySetName,PrimaryIdAttribute",
-            "$filter": f"EntitySetName eq '{safe_set}'",
+            "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
         },
     ))
     matches: list[dict[str, Any]] = sets.get("value", [])
@@ -259,10 +259,9 @@ def create(
 
     # 204 path: response carried OData-EntityId we surfaced through _entity_id_url
     entity_id_url = result_dict.get("_entity_id_url")
-    if entity_id_url:
-        m = re.search(r"\(([0-9a-fA-F-]{36})\)", entity_id_url)
-        if m:
-            return {"id": m.group(1), "entity_id_url": entity_id_url}
+    entity_id = result_dict.get("_entity_id")
+    if entity_id_url and entity_id:
+        return {"id": entity_id, "entity_id_url": entity_id_url}
     return result_dict
 
 
@@ -537,10 +536,10 @@ def count_children(
         )
 
     # 1:N relationships where the parent is the referenced side (one GET).
-    rels_raw: list[dict[str, Any]] = as_dict(backend.get(
+    rels_raw: list[dict[str, Any]] = backend.get_collection(
         f"EntityDefinitions(LogicalName='{parent_logical}')/OneToManyRelationships",
         params={"$select": "ReferencingEntity,ReferencingAttribute"},
-    )).get("value", [])
+    )
 
     rels: list[dict[str, str]] = []
     for r in rels_raw:
@@ -815,10 +814,10 @@ def clone_record(
     if not logical_name:
         raise D365Error(f"Unknown entity set: {entity_set!r}")
 
-    attrs = as_dict(backend.get(
+    attrs = backend.get_collection(
         f"EntityDefinitions(LogicalName='{logical_name}')/Attributes",
         params={"$select": "LogicalName,AttributeType,IsValidForCreate"},
-    )).get("value", [])
+    )
     create_attrs, all_attr_names = _plan_from_attrs(attrs)
 
     source = retrieve(backend, entity_set, record_id, include_annotations=True)
@@ -887,10 +886,10 @@ def _custom_child_relationships(
     entity-name lists). `skip` (child logical names) prunes within that default;
     a pruned child is listed once in `skipped`.
     """
-    rels_raw: list[dict[str, Any]] = as_dict(backend.get(
+    rels_raw: list[dict[str, Any]] = backend.get_collection(
         f"EntityDefinitions(LogicalName='{parent_logical}')/OneToManyRelationships",
         params={"$select": "ReferencingEntity,ReferencingAttribute,IsCustomRelationship"},
-    )).get("value", [])
+    )
     rels: list[dict[str, str]] = []
     skipped: list[str] = []
     for r in rels_raw:
@@ -953,11 +952,11 @@ def _clone_children(
             )
         primary_id, child_create, child_all = plan_cache[child_logical]
 
-        rows = as_dict(backend.get(
+        rows = backend.get_collection(
             child_set,
             params={"$filter": f"_{attr}_value eq {source_parent_guid}"},
             extra_headers={"Prefer": 'odata.include-annotations="*"'},
-        )).get("value", [])
+        )
 
         for row in rows:
             src_child_id = str(row.get(primary_id) or "")

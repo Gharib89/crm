@@ -7,10 +7,9 @@ quoting/path-building behind small helpers.
 from __future__ import annotations
 
 import difflib
-import re
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
 
@@ -54,10 +53,10 @@ def suggest_logical_name(
     preserved by the caller.
     """
     try:
-        rows: list[dict[str, Any]] = as_dict(backend.get(
+        rows: list[dict[str, Any]] = backend.get_collection(
             "EntityDefinitions",
             params={"$select": "LogicalName,EntitySetName"},
-        )).get("value", [])
+        )
     except D365Error:
         return None
 
@@ -92,8 +91,7 @@ def resolve_entity_set_name(backend: D365Backend, logical_name: str) -> str:
     """
     if not logical_name:
         raise D365Error("logical_name is required.")
-    safe = logical_name.replace("'", "''")
-    path = f"EntityDefinitions(LogicalName='{safe}')"
+    path = f"EntityDefinitions(LogicalName={odata_literal(logical_name)})"
     result = as_dict(backend.get(path, params={"$select": "EntitySetName"}))
     entity_set_name: str | None = result.get("EntitySetName") or None
     if not entity_set_name:
@@ -536,36 +534,34 @@ def create_entity(
         result["would_skip"] = exists and if_exists == "skip"
         return result
     entity_id_url: str | None = result.get("_entity_id_url")
+    metadata_id: str | None = result.get("_entity_id")
 
-    # Read-back: parse MetadataId from the OData-EntityId URL, then GET the
-    # server's authoritative EntitySetName. Failure here does NOT fail the
-    # command — the entity was created.
+    # Read-back: take the MetadataId the parser extracted from the OData-EntityId
+    # URL, then GET the server's authoritative EntitySetName. Failure here does
+    # NOT fail the command — the entity was created.
     entity_set_name: str | None = None
     entity_set_lookup_error: str | None = None
     if not entity_id_url:
         entity_set_lookup_error = "OData-EntityId header missing from create response."
+    elif not metadata_id:
+        entity_set_lookup_error = (
+            f"Could not parse MetadataId from OData-EntityId URL: {entity_id_url!r}"
+        )
     else:
-        match = re.search(r"EntityDefinitions\(([0-9a-fA-F-]{36})\)", entity_id_url)
-        if not match:
-            entity_set_lookup_error = (
-                f"Could not parse MetadataId from OData-EntityId URL: {entity_id_url!r}"
-            )
-        else:
-            metadata_id = match.group(1)
-            try:
-                rb = as_dict(backend.get(
-                    f"EntityDefinitions({metadata_id})",
-                    params={"$select": "EntitySetName,LogicalName"},
-                ))
-                name = rb.get("EntitySetName")
-                if isinstance(name, str) and name:  # pyright: ignore[reportUnnecessaryIsInstance]
-                    entity_set_name = name
-                else:
-                    entity_set_lookup_error = (
-                        f"Read-back returned no EntitySetName for MetadataId {metadata_id}."
-                    )
-            except D365Error as exc:
-                entity_set_lookup_error = f"Read-back failed: {exc}"
+        try:
+            rb = as_dict(backend.get(
+                f"EntityDefinitions({metadata_id})",
+                params={"$select": "EntitySetName,LogicalName"},
+            ))
+            name = rb.get("EntitySetName")
+            if isinstance(name, str) and name:  # pyright: ignore[reportUnnecessaryIsInstance]
+                entity_set_name = name
+            else:
+                entity_set_lookup_error = (
+                    f"Read-back returned no EntitySetName for MetadataId {metadata_id}."
+                )
+        except D365Error as exc:
+            entity_set_lookup_error = f"Read-back failed: {exc}"
 
     out: dict[str, Any] = {
         "created": True,

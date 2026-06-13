@@ -18,7 +18,7 @@ from uuid import uuid4
 
 from crm.core import entity as entity_ops
 from crm.core import solution as solution_ops
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 
 # `workflow.category` values per the SDK
@@ -291,7 +291,7 @@ def list_workflows(
     if category is not None:
         filters.append(f"category eq {category}")
     if primary_entity:
-        filters.append(f"primaryentity eq '{primary_entity}'")
+        filters.append(f"primaryentity eq {odata_literal(primary_entity)}")
     if activated_only:
         filters.append(f"statecode eq {STATE_ACTIVATED[0]}")
     if on_demand_only:
@@ -350,24 +350,12 @@ def assess_workflow_migrations(
     """
     filters = [f"type eq {TYPE_DEFINITION}", f"category eq {CATEGORY_WORKFLOW}"]
     if primary_entity:
-        escaped = primary_entity.replace("'", "''")
-        filters.append(f"primaryentity eq '{escaped}'")
+        filters.append(f"primaryentity eq {odata_literal(primary_entity)}")
     params: dict[str, str] = {
         "$select": _MIGRATION_ASSESS_SELECT,
         "$filter": " and ".join(filters),
     }
-    rows: list[dict[str, Any]] = []
-    page = as_dict(backend.get("workflows", params=params))
-    pages_consumed = 1
-    while True:
-        value = page.get("value", [])
-        if isinstance(value, list):
-            rows.extend(cast(list[dict[str, Any]], value))
-        next_link = page.get("@odata.nextLink")
-        if not isinstance(next_link, str) or not next_link or pages_consumed >= max_pages:
-            break
-        page = as_dict(backend.get(next_link))
-        pages_consumed += 1
+    rows = backend.get_collection("workflows", params=params, max_pages=max_pages)
     return [assess_workflow_migration(r) for r in rows]
 
 

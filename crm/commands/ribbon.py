@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import click
 from crm.core import ribbon as ribbon_mod
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import D365Error, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error, _journal, _confirm_destructive,
@@ -29,9 +29,8 @@ def ribbon_group():
 def ribbon_export(ctx: CLIContext, entity, output):
     """Export an entity's composed ribbon as readable XML."""
     if ctx.dry_run:
-        safe = entity.replace("'", "''")
         ctx.emit(True, data=ctx.backend().get(
-            f"RetrieveEntityRibbon(EntityName='{safe}',RibbonLocationFilter='All')"))
+            f"RetrieveEntityRibbon(EntityName={odata_literal(entity)},RibbonLocationFilter='All')"))
         return
     try:
         root = ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity)

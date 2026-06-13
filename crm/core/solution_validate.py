@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from crm.core.solution import SOLUTION_COMPONENT_TYPES as _CT
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml")
 # Cap decompression so a zip-bomb manifest can't OOM the validator (see the same
@@ -167,10 +167,10 @@ def _force_get(backend: D365Backend, path: str, params: dict[str, str]) -> dict[
 
 
 def _webresource_exists_in_org(backend: D365Backend, name: str) -> bool:
-    lit = name.replace("'", "''")
     resp = _force_get(
         backend, "webresourceset",
-        {"$select": "webresourceid", "$filter": f"name eq '{lit}'", "$top": "1"})
+        {"$select": "webresourceid", "$filter": f"name eq {odata_literal(name)}",
+         "$top": "1"})
     return bool(resp.get("value"))
 
 
@@ -203,10 +203,9 @@ def _check_webresource_refs(
 
 
 def _optionset_exists_in_org(backend: D365Backend, name: str) -> bool:
-    lit = name.replace("'", "''")
     resp = _force_get(
         backend, "GlobalOptionSetDefinitions",
-        {"$select": "Name", "$filter": f"Name eq '{lit}'", "$top": "1"})
+        {"$select": "Name", "$filter": f"Name eq {odata_literal(name)}", "$top": "1"})
     return bool(resp.get("value"))
 
 

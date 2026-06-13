@@ -6,11 +6,10 @@ responsible for formatting.
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, normalize_guid
 
 # ── Constants ────────────────────────────────────────────────────────────
 
@@ -36,12 +35,11 @@ def list_roles(
         "$orderby": "name",
     }
     if business_unit is not None:
-        try:
-            normalized_bu = str(uuid.UUID(business_unit))
-        except ValueError as exc:
-            raise D365Error(f"business_unit must be a GUID; got {business_unit!r}") from exc
+        normalized_bu = normalize_guid(business_unit)
+        if normalized_bu is None:
+            raise D365Error(f"business_unit must be a GUID; got {business_unit!r}")
         params["$filter"] = f"_businessunitid_value eq {normalized_bu}"
-    return as_dict(backend.get(_ROLES_SET, params=params)).get("value", [])
+    return backend.get_collection(_ROLES_SET, params=params)
 
 
 def list_user_roles(
@@ -54,7 +52,7 @@ def list_user_roles(
         "$select": "roleid,name",
         "$orderby": "name",
     }
-    return as_dict(backend.get(path, params=params)).get("value", [])
+    return backend.get_collection(path, params=params)
 
 
 def list_team_roles(
@@ -67,7 +65,7 @@ def list_team_roles(
         "$select": "roleid,name",
         "$orderby": "name",
     }
-    return as_dict(backend.get(path, params=params)).get("value", [])
+    return backend.get_collection(path, params=params)
 
 
 # ── Writes ───────────────────────────────────────────────────────────────

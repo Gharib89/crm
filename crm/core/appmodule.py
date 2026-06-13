@@ -15,11 +15,10 @@ Shapes verified live against D365 CE on-prem 9.1 (walkthrough §11):
 
 from __future__ import annotations
 
-import re
 from typing import Any
 from xml.sax.saxutils import quoteattr
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.core.metadata import maybe_publish
 
 # Default app-icon web resource the platform ships (MS Learn, op-9-1).
@@ -60,12 +59,11 @@ def create_app(
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
-    un_lit = unique_name.replace("'", "''")
-    existing = as_dict(backend.get(
+    existing = backend.get_collection(
         "appmodules",
-        params={"$filter": f"uniquename eq '{un_lit}'",
+        params={"$filter": f"uniquename eq {odata_literal(unique_name)}",
                 "$select": "appmoduleid,uniquename"},
-    )).get("value", [])
+    )
     if existing and not backend.dry_run:
         if if_exists == "error":
             raise D365Error(f"App {unique_name!r} already exists.", code="AlreadyExists")
@@ -89,8 +87,7 @@ def create_app(
         return result
 
     entity_id_url = result.get("_entity_id_url") or ""
-    m = re.search(r"appmodules\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    app_id = m.group(1) if m else None
+    app_id = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True, "name": name, "uniquename": unique_name,
         "appmoduleid": app_id, "solution": solution,
@@ -171,8 +168,7 @@ def set_sitemap(
     if result.get("_dry_run"):
         return result
     entity_id_url = result.get("_entity_id_url") or ""
-    m = re.search(r"sitemaps\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    smid = m.group(1) if m else None
+    smid = result.get("_entity_id")
     out: dict[str, Any] = {"created": True, "sitemapid": smid,
                            "sitemapname": sitemap_name, "solution": solution}
     if not smid:

@@ -23,9 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
-_GUID_RE = re.compile(
-    r"^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$"
-)
+from crm.utils.d365_backend import normalize_guid
 
 # Anything outside this set is replaced with '_' so a user-controlled --session
 # value (path separators, `..`) can never escape the audit directory.
@@ -79,7 +77,7 @@ def _extract_result_id(result: Any) -> str | None:
         key_lower = str(key).lower()
         if key_lower == "id" or key_lower.endswith("id"):
             candidate = str(value)
-            if _GUID_RE.match(candidate):
+            if normalize_guid(candidate) is not None:
                 return candidate
 
     return None

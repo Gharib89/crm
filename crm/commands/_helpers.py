@@ -404,12 +404,11 @@ def _touch_session(ctx: "CLIContext", entity_set: str, *,
 
 
 def _odata_literal(v: Any) -> str:
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, (int, float)):
-        return str(v)
-    s = str(v).replace("'", "''")
-    return f"'{s}'"
+    # Delegates to the canonical escaping in d365_backend; the local import keeps
+    # d365_backend off the `crm --version` fast path (this only runs once a
+    # query/action is being built, by which point the backend is loaded).
+    from crm.utils.d365_backend import odata_literal
+    return odata_literal(v)
 
 
 def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:

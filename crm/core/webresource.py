@@ -15,10 +15,15 @@ from __future__ import annotations
 
 import base64
 import os
-import re
 from typing import Any
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    odata_literal,
+)
 from crm.core.metadata import maybe_publish
 
 # Extension -> D365 webresourcetype (webresource_webresourcetype option set).
@@ -36,10 +41,6 @@ _EXT_TO_TYPE: dict[str, int] = {
     ".svg": 11,              # Vector format (SVG)
     ".resx": 12,             # String (RESX)
 }
-
-_GUID_RE = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-)
 
 
 def resolve_webresourcetype(file_name: str, override: int | None = None) -> int:
@@ -89,9 +90,7 @@ def create_webresource(
     if result.get("_dry_run"):
         return result
 
-    entity_id_url = result.get("_entity_id_url") or ""
-    m = re.search(r"webresourceset\(([0-9a-fA-F-]{36})\)", entity_id_url)
-    wid = m.group(1) if m else None
+    wid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True,
         "name": name,
@@ -100,6 +99,7 @@ def create_webresource(
         "solution": solution,
     }
     if not wid:
+        entity_id_url = result.get("_entity_id_url") or ""
         out["webresource_lookup_error"] = (
             f"Could not parse webresourceid from response: {entity_id_url!r}"
         )
@@ -152,14 +152,13 @@ def update_webresource(
 
 def get_webresource(backend: D365Backend, name: str) -> dict[str, Any]:
     """Resolve a web resource by name and return its record."""
-    esc = name.replace("'", "''")
-    rows: list[dict[str, Any]] = as_dict(backend.get(
+    rows = backend.get_collection(
         "webresourceset",
         params={
-            "$filter": f"name eq '{esc}'",
+            "$filter": f"name eq {odata_literal(name)}",
             "$select": "webresourceid,name,displayname,webresourcetype,ismanaged",
         },
-    )).get("value", [])
+    )
     if not rows:
         raise D365Error(f"Web resource not found: {name}", code="WebResourceNotFound")
     return rows[0]
@@ -187,9 +186,7 @@ def list_webresources(
         params["$filter"] = "ismanaged eq false"
     if top is not None:
         params["$top"] = str(top)
-    items: list[dict[str, Any]] = as_dict(backend.get(
-        "webresourceset", params=params)).get("value", [])
-    return items
+    return backend.get_collection("webresourceset", params=params)
 
 
 def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
@@ -197,17 +194,12 @@ def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
 
     A PATCH preview needs the real id, so resolve it via a live read.
     """
-    esc = name.replace("'", "''")
-    rows: list[dict[str, Any]] = as_dict(backend.get(
-        "webresourceset",
-        params={"$filter": f"name eq '{esc}'", "$select": "webresourceid"},
-    )).get("value", [])
-    if not rows:
-        raise D365Error(f"Web resource not found: {name}", code="WebResourceNotFound")
-    wid = rows[0].get("webresourceid")
+    wid = backend.resolve_id_by_name(
+        "webresourceset", filter_field="name", id_field="webresourceid", value=name
+    )
     if not wid:
         raise D365Error(f"Web resource not found: {name}", code="WebResourceNotFound")
-    return str(wid)
+    return wid
 
 
 def resolve_webresource_id(backend: D365Backend, name_or_guid: str) -> str:
@@ -217,6 +209,7 @@ def resolve_webresource_id(backend: D365Backend, name_or_guid: str) -> str:
     `app create --icon-webresource`.
     """
     stripped = name_or_guid.strip()
-    if _GUID_RE.match(stripped):
-        return stripped
+    rid = normalize_guid(stripped)
+    if rid is not None:
+        return rid
     return _resolve_id_by_name(backend, stripped)

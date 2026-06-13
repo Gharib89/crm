@@ -6,7 +6,7 @@ import re
 from typing import Any
 import click
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
@@ -73,12 +73,11 @@ def enrich_duplicate_key_error(
     if not _is_alternate_key_error(exc):
         return {}
     try:
-        safe_set = entity_set.replace("'", "''")
         result = as_dict(backend.get(
             "EntityDefinitions",
             params={
                 "$select": "LogicalName,PrimaryIdAttribute",
-                "$filter": f"EntitySetName eq '{safe_set}'",
+                "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
             },
         ))
         matches: list[dict[str, Any]] = result.get("value", [])

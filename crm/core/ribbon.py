@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from crm.core.solution import export_solution, import_solution, publish_all
 from crm.core.solution_validate import validate_solution
 from crm.core.webresource import resolve_webresource_id  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
+from crm.utils.d365_backend import odata_literal
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
@@ -57,8 +58,7 @@ def retrieve_entity_ribbon(backend: "D365Backend", entity: str) -> ET.Element:
     aliases are rejected by the server (verified live). Returns the full composed
     ribbon (system + custom).
     """
-    safe = entity.replace("'", "''")
-    path = (f"RetrieveEntityRibbon(EntityName='{safe}',"
+    path = (f"RetrieveEntityRibbon(EntityName={odata_literal(entity)},"
             f"RibbonLocationFilter='All')")
     resp = backend.get(path)
     if not isinstance(resp, dict) or "CompressedEntityXml" not in resp:
