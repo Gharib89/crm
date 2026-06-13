@@ -4,29 +4,11 @@ from __future__ import annotations
 
 import json
 
-import pytest
 import requests_mock as rm_module
 
 from click.testing import CliRunner
 from crm.cli import cli
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", api_version="v9.2", verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
+from crm.utils.d365_backend import D365Backend
 
 
 # Form rows used across tests

@@ -45,11 +45,6 @@ def profile() -> ConnectionProfile:
     )
 
 
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
-
-
 def _sla_row(statecode=0):
     return {"slaid": _SLA_ID, "name": "Gold SLA", "statecode": statecode}
 

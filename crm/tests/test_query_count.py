@@ -10,16 +10,6 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core.query import total_record_count
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
-
-
-@pytest.fixture
-def backend():
-    profile = ConnectionProfile(
-        name="t", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", verify_ssl=False,
-    )
-    return D365Backend(profile, password="pw")
 
 
 class TestCoreHelper:
@@ -42,17 +32,14 @@ class TestCoreHelper:
 
 
 class TestCLI:
-    def test_cli_count_json_envelope(self, monkeypatch):
-        from crm.cli import CLIContext
+    def test_cli_count_json_envelope(self, make_fake_backend, inject_backend):
+        def _count_get(path):
+            assert "RetrieveTotalRecordCount" in path
+            return {"EntityRecordCountCollection": {
+                "Keys": ["account"], "Values": [7]
+            }}
 
-        class StubBackend:
-            def get(self, path, **kw):
-                assert "RetrieveTotalRecordCount" in path
-                return {"EntityRecordCountCollection": {
-                    "Keys": ["account"], "Values": [7]
-                }}
-
-        monkeypatch.setattr(CLIContext, "backend", lambda self: StubBackend())
+        inject_backend(make_fake_backend(responses={"get": _count_get}))
 
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "query", "count", "account"])

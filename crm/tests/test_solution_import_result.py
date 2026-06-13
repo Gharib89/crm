@@ -173,9 +173,7 @@ def test_import_result_without_formatted_omits_report(backend):
     assert "warnings" not in out                  # clean success → no warnings
 
 
-def test_import_solution_surfaces_partial_failure(backend, tmp_path, monkeypatch):
-    import time as _t
-    monkeypatch.setattr(_t, "sleep", lambda s: None)
+def test_import_solution_surfaces_partial_failure(backend, tmp_path, no_sleep):
     zip_path = tmp_path / "in.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
     with requests_mock.Mocker() as m:
@@ -193,12 +191,10 @@ def test_import_solution_surfaces_partial_failure(backend, tmp_path, monkeypatch
     assert any("Account" in w for w in info["warnings"])
 
 
-def test_import_solution_warns_when_data_missing(backend, tmp_path, monkeypatch):
+def test_import_solution_warns_when_data_missing(backend, tmp_path, no_sleep):
     # No data column on the final read: per-component results can't be verified,
     # so the import must say so rather than silently omit them (an absent
     # result/components could be mistaken for "checked and clean").
-    import time as _t
-    monkeypatch.setattr(_t, "sleep", lambda s: None)
     zip_path = tmp_path / "in.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
     with requests_mock.Mocker() as m:
@@ -230,10 +226,8 @@ def _make_solution_zip(path, managed_flag):
 _ASYNC_OP_ID = "55555555-5555-5555-5555-555555555555"
 
 
-def test_import_solution_managed_field_false_on_valid_unmanaged_zip(backend, tmp_path, monkeypatch):
+def test_import_solution_managed_field_false_on_valid_unmanaged_zip(backend, tmp_path, no_sleep):
     """Real import with a valid unmanaged zip → managed is False."""
-    import time as _t
-    monkeypatch.setattr(_t, "sleep", lambda s: None)
     zip_path = tmp_path / "unmanaged.zip"
     _make_solution_zip(zip_path, "0")
     with requests_mock.Mocker() as m:
@@ -248,10 +242,8 @@ def test_import_solution_managed_field_false_on_valid_unmanaged_zip(backend, tmp
     assert info["managed"] is False
 
 
-def test_import_solution_managed_field_none_on_garbage_zip(backend, tmp_path, monkeypatch):
+def test_import_solution_managed_field_none_on_garbage_zip(backend, tmp_path, no_sleep):
     """Real import with a garbage non-zip stub → managed is None."""
-    import time as _t
-    monkeypatch.setattr(_t, "sleep", lambda s: None)
     zip_path = tmp_path / "garbage.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
     with requests_mock.Mocker() as m:

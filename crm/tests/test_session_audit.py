@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 import pytest
@@ -13,22 +12,7 @@ from crm.cli import cli
 from crm.commands._helpers import _journal
 from crm.core import audit
 
-
-# ---------------------------------------------------------------------------
-# Shared env-isolation fixture (pattern from test_connection_cmd.py)
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(autouse=True)
-def _isolated_env(tmp_path):
-    """Snapshot/restore os.environ; redirect CRM_HOME and disable .env autoload."""
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    try:
-        yield tmp_path
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 # ---------------------------------------------------------------------------

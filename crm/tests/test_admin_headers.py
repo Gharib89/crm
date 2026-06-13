@@ -20,23 +20,6 @@ from crm.utils.d365_backend import (
 )
 
 
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile) -> D365Backend:
-    return D365Backend(profile, password="pw", dry_run=False)
-
-
 class TestEnvResolution:
     def test_caller_id_from_env_accepts_valid_guid(self, monkeypatch):
         monkeypatch.setenv("CRM_AS_USER", "11111111-2222-3333-4444-555555555555")

@@ -11,7 +11,7 @@ import json
 import pytest
 import requests_mock
 
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import D365Error
 from crm.core import security as sec
 
 # ── Constants ────────────────────────────────────────────────────────────
@@ -19,26 +19,6 @@ from crm.core import security as sec
 _GUID = "11111111-2222-3333-4444-555555555555"
 _ROLE_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _BU_ID = "cccccccc-dddd-eeee-ffff-000000000000"
-
-# ── Fixtures ─────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
-
 
 # ── list_roles ───────────────────────────────────────────────────────────
 

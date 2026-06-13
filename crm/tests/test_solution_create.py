@@ -16,25 +16,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import solution as sol_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
-
-
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", api_version="v9.2", verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
-
-
-@pytest.fixture
-def dry_backend(profile):
-    return D365Backend(profile, password="pw", dry_run=True)
+from crm.utils.d365_backend import ConnectionProfile, D365Error
 
 
 _PUB_ID = "11111111-1111-1111-1111-111111111111"

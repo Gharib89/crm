@@ -3,27 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 
-
-@pytest.fixture(autouse=True)
-def _isolated_home(tmp_path):
-    # Snapshot/restore os.environ around each test so load_dotenv() inside the
-    # root CLI callback can't leak the repo's real ./.env into later tests
-    # (regression class #56). Default CRM_DOTENV to a noop path.
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 @pytest.fixture()

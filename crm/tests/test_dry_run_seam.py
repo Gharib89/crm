@@ -16,23 +16,6 @@ import requests_mock
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
 
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def dry_backend(profile: ConnectionProfile) -> D365Backend:
-    return D365Backend(profile, password="pw", dry_run=True)
-
-
 class TestReadsExecute:
     def test_get_executes_under_dry_run(self, dry_backend: D365Backend):
         """A GET runs for real under dry_run and returns live data, not the echo."""

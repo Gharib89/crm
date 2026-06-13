@@ -46,18 +46,6 @@ def _make_stub_backend(results_per_chunk: list[list[BatchResult]]) -> Any:
     return backend
 
 
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
 # ── import ───────────────────────────────────────────────────────────────────
 
 

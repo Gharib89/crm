@@ -18,27 +18,9 @@ from typing import cast
 import pytest
 from click.testing import CliRunner
 
-from crm.cli import CLIContext, cli
+from crm.cli import cli
 from crm.core.query import odata_query
 from crm.utils.d365_backend import D365Backend, D365Error
-
-
-class _NoNetworkBackend:
-    """`.get` must never be reached — the raise happens before the request."""
-
-    def get(self, *_args, **_kw):
-        raise AssertionError("backend.get must not be called for a malformed entity set")
-
-
-class _RecordingBackend:
-    def __init__(self):
-        self.called = False
-        self.last_path: str = ""
-
-    def get(self, path: str, *_args, **_kw):
-        self.called = True
-        self.last_path = path
-        return {"value": []}
 
 
 _RAISING_SETS = [
@@ -50,16 +32,16 @@ _RAISING_SETS = [
 
 
 @pytest.mark.parametrize("entity_set", _RAISING_SETS)
-def test_odata_param_in_entity_set_raises_before_network(entity_set):
+def test_odata_param_in_entity_set_raises_before_network(entity_set, make_fake_backend):
     with pytest.raises(D365Error) as excinfo:
-        odata_query(cast(D365Backend, _NoNetworkBackend()), entity_set)
+        odata_query(cast(D365Backend, make_fake_backend(forbid=("get",))), entity_set)
     assert excinfo.value.status is None
     assert excinfo.value.code is not None
     assert "bare" in str(excinfo.value).lower()
 
 
-def test_bare_entity_set_passes_through():
-    backend = _RecordingBackend()
+def test_bare_entity_set_passes_through(make_fake_backend):
+    backend = make_fake_backend()
     result = odata_query(
         cast(D365Backend, backend), "solutions", select=["uniquename"]
     )
@@ -68,10 +50,10 @@ def test_bare_entity_set_passes_through():
     assert result == {"value": []}
 
 
-def test_envelope_classifies_malformed_set_as_validation(monkeypatch):
+def test_envelope_classifies_malformed_set_as_validation(make_fake_backend, inject_backend):
     """Full CLI path: a malformed entity set surfaces as a validation error with a
     non-null code and a recovery hint, never reaching the (asserting) backend."""
-    monkeypatch.setattr(CLIContext, "backend", lambda self: _NoNetworkBackend())
+    inject_backend(make_fake_backend(forbid=("get",)))
     result = CliRunner().invoke(
         cli, ["--json", "query", "odata", "solutions?$select=uniquename"]
     )
@@ -95,9 +77,9 @@ _PATH_SHAPED = [
 
 
 @pytest.mark.parametrize("entity_set", _PATH_SHAPED)
-def test_path_shaped_arg_passes_through_verbatim(entity_set):
+def test_path_shaped_arg_passes_through_verbatim(entity_set, make_fake_backend):
     """All three accepted forms (bare entity set, metadata path, bound-function) pass through verbatim."""
-    backend = _RecordingBackend()
+    backend = make_fake_backend()
     odata_query(cast(D365Backend, backend), entity_set)
     assert backend.called, "path-shaped arg must reach backend.get"
     assert backend.last_path == entity_set, (
@@ -105,24 +87,23 @@ def test_path_shaped_arg_passes_through_verbatim(entity_set):
     )
 
 
-def test_cli_metadata_path_passes_through(monkeypatch):
+def test_cli_metadata_path_passes_through(make_fake_backend, inject_backend):
     """CLI-level: metadata path reaches backend without validation error."""
-    backend = _RecordingBackend()
-    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    b = inject_backend(make_fake_backend())
     result = CliRunner().invoke(
         cli,
         ["--json", "query", "odata", "EntityDefinitions(LogicalName='account')/Keys"],
     )
     assert result.exit_code == 0, result.output
-    assert backend.called
-    assert backend.last_path == "EntityDefinitions(LogicalName='account')/Keys"
+    assert b.called
+    assert b.last_path == "EntityDefinitions(LogicalName='account')/Keys"
 
 
-def test_rejection_error_hints_flags():
+def test_rejection_error_hints_flags(make_fake_backend):
     """The error message for ?/$ tells the user to use the flags."""
     with pytest.raises(D365Error) as excinfo:
         odata_query(
-            cast(D365Backend, _NoNetworkBackend()),
+            cast(D365Backend, make_fake_backend(forbid=("get",))),
             "solutions?$select=uniquename",
         )
     msg = str(excinfo.value).lower()

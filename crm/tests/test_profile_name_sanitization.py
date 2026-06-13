@@ -9,29 +9,12 @@ single safe basename). The validator is called at two boundaries:
 """
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from crm.utils.d365_backend import ConnectionProfile, D365Error, validate_profile_name
 from crm.core.session import profile_path, session_path, save_profile, load_profile
 
-
-# ---------------------------------------------------------------------------
-# Fixtures — env isolation (same pattern as test_session_audit.py)
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(autouse=True)
-def _isolated_env(tmp_path):
-    """Redirect CRM_HOME and disable .env autoload for every test."""
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    try:
-        yield tmp_path
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 # ---------------------------------------------------------------------------

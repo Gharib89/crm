@@ -17,13 +17,11 @@ _VERSION = {"Version": "9.1.0.1"}
 
 
 @pytest.fixture(autouse=True)
-def _isolated_home(tmp_path, monkeypatch):
-    # Seed an active NTLM profile + plaintext secret so bare `connection doctor`
-    # resolves it (env-derived credentials are gone). Pin api_version to v9.2 so
-    # api_base is deterministic — the tests register mocks against _API_BASE.
-    # CRM_DOTENV points at a noop path so the repo's real ./.env never autoloads.
-    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+def _seed_profile(isolated_home):
+    # isolated_home sets CRM_HOME / CRM_DOTENV. Seed an active NTLM profile +
+    # plaintext secret so bare `connection doctor` resolves it (env-derived
+    # credentials are gone). Pin api_version to v9.2 so api_base is
+    # deterministic — the tests register mocks against _API_BASE.
     from crm.core import session as session_mod
     from crm.utils.d365_backend import ConnectionProfile
     session_mod.save_profile(ConnectionProfile(

@@ -12,36 +12,12 @@ from click.testing import CliRunner
 from crm import cli as crm_cli
 from crm.cli import CLIContext
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error
 
 _GUID = "11111111-2222-3333-4444-555555555555"
 
 
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile):
-    return D365Backend(profile, password="pw", dry_run=False)
-
-
-@pytest.fixture(autouse=True)
-def _isolate_crm_home(tmp_path, monkeypatch):
-    """Isolate CRM_HOME per test. count_children now resolves names through the
-    read-through metadata cache (#261), so a shared real ~/.crm would let one
-    test's warm cache suppress the next test's mocked EntityDefinitions GET."""
-    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-
-
+pytestmark = pytest.mark.usefixtures("isolated_home")
 # ── multipart $batch response builders ───────────────────────────────────
 
 

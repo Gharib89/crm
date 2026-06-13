@@ -4,31 +4,13 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import D365Error
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def profile() -> ConnectionProfile:
-    return ConnectionProfile(
-        name="testp",
-        url="https://crm.contoso.local/contoso",
-        domain="CONTOSO",
-        username="alice",
-        api_version="v9.2",
-        verify_ssl=False,
-    )
-
-
-@pytest.fixture
-def backend(profile: ConnectionProfile) -> D365Backend:
-    return D365Backend(profile, password="pw", dry_run=False)
 
 
 # ── canned return values ──────────────────────────────────────────────────────

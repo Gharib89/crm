@@ -10,10 +10,7 @@ import pytest
 from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile
 
-
-@pytest.fixture(autouse=True)
-def _home(tmp_path, monkeypatch):
-    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 def _save_base_profile(name="prod"):

@@ -3,27 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
 
-
-@pytest.fixture(autouse=True)
-def _isolated_home(tmp_path):
-    # Snapshot/restore os.environ around each test and isolate CRM_HOME so no
-    # real profile/session leaks in. Default CRM_DOTENV to a noop path so the
-    # repo's real ./.env is never autoloaded (cf. #56).
-    saved = dict(os.environ)
-    os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
-    try:
-        yield
-    finally:
-        os.environ.clear()
-        os.environ.update(saved)
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 class TestMissingProfileEnvelope:
