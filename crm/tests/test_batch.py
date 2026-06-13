@@ -529,8 +529,7 @@ class TestBatchMethod:
         with pytest.raises(D365Error, match="body"):
             backend.batch([{"method": "DELETE", "url": "accounts(x)", "body": {"x": 1}}])
 
-    def test_batch_retries_on_429(self, backend, profile, fixed_boundaries, monkeypatch):
-        monkeypatch.setattr("crm.utils.d365_backend.time.sleep", lambda *_: None)
+    def test_batch_retries_on_429(self, backend, profile, fixed_boundaries, no_sleep):
         ops = [{"method": "GET", "url": "accounts"}]
         resp_body = (
             "--batchresp\r\n"
