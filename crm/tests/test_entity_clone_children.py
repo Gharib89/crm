@@ -54,6 +54,14 @@ def dry_backend(profile):
     return D365Backend(profile, password="pw", dry_run=True)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_crm_home(tmp_path, monkeypatch):
+    """Isolate CRM_HOME per test. clone_record now resolves names through the
+    read-through metadata cache (#261), so a shared real ~/.crm would let one
+    test's warm cache suppress the next test's mocked EntityDefinitions GET."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+
+
 # ── shared metadata ───────────────────────────────────────────────────────
 
 _DEFS = {"value": [

@@ -34,6 +34,14 @@ def backend(profile):
     return D365Backend(profile, password="pw", dry_run=False)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_crm_home(tmp_path, monkeypatch):
+    """Isolate CRM_HOME per test. count_children now resolves names through the
+    read-through metadata cache (#261), so a shared real ~/.crm would let one
+    test's warm cache suppress the next test's mocked EntityDefinitions GET."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+
+
 # ── multipart $batch response builders ───────────────────────────────────
 
 
