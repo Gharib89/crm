@@ -269,11 +269,14 @@ def _emit_with_warning(
 ) -> None:
     """Emit a successful result, surfacing advisories via the warnings channel.
 
-    Rolls the solution `warning` (if any) plus any `*_lookup_error` read-back
-    keys found in `data` into the structured `meta.warnings` array (#64) —
-    appending, never clobbering. The `*_lookup_error` keys stay in `data` for
-    back-compat. In human mode emit prints each via skin.warning.
+    Rolls the solution `warning` (if any), any `*_lookup_error` read-back keys,
+    and any dangling `data["references"]` entries (#281) into the structured
+    `meta.warnings` array (#64) — appending, never clobbering. The
+    `*_lookup_error` keys and the `references` array stay in `data`. In human
+    mode emit prints each via skin.warning.
     """
+    from crm.core.references import reference_warnings
+
     warnings: list[str] = []
     if warning:
         warnings.append(warning)
@@ -281,6 +284,7 @@ def _emit_with_warning(
         for key, value in data.items():
             if key.endswith("_lookup_error") and value:
                 warnings.append(str(value))
+        warnings.extend(reference_warnings(data.get("references")))
     ctx.emit(True, data=data, meta=meta, warnings=warnings or None)
 
 

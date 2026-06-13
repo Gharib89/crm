@@ -104,12 +104,18 @@ crm --dry-run --json scaffold table "Project" \
 ```
 
 Dry-run reports the entity and all columns as `planned` and makes no create
-calls. On a greenfield org (the table does not yet exist) only the entity
-existence GET fires — the columns are reported `planned` off the planned entity
-without their own probes. If the table already exists, apply also probes each
-column (and resolves any referenced option sets) to classify entries as
+calls. On a greenfield org (the table does not yet exist) the columns are
+reported `planned` off the planned entity without per-column classification
+probes; if the table already exists, apply probes each column to classify it
 `planned` vs `skipped`, so you will see additional GETs. The envelope carries
 `meta.dry_run: true`.
+
+Either way, dry-run also resolves the objects the columns *reference* — a
+lookup column's `target_entity` and a picklist/multiselect column's
+`optionset_name` — and reports each under `data.references[] = {kind, value,
+_exists}`. A reference that does not resolve keeps the preview non-failing
+(`ok: true`) and adds a `meta.warnings` advisory naming it, so a dangling target
+entity or option set is caught before the real write 400s.
 
 ### Create without publishing
 

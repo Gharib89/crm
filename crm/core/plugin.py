@@ -26,7 +26,7 @@ from __future__ import annotations
 import base64
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from crm.utils.d365_backend import (
     D365Backend,
@@ -34,6 +34,7 @@ from crm.utils.d365_backend import (
     as_dict,
     odata_literal,
 )
+from crm.core import references as ref_mod
 
 # Isolation mode -> pluginassembly isolationmode option set (verified MS Learn).
 _ISOLATION_MODE: dict[str, int] = {
@@ -259,8 +260,37 @@ def register_step(
             f"Asynchronous mode requires the postoperation stage (got {stage!r}).",
             code="AsyncRequiresPostOperation")
 
-    message_id = _resolve_sdkmessage_id(backend, message)
-    plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
+    # The same _resolve_* id lookups run for a real write and a dry-run preview
+    # (reads-execute rule). For a real write a missing message/type/filter raises;
+    # under dry-run we instead report each as a reference so a dangling one is a
+    # pre-flight finding, not a server fault (#281). An id that does resolve is
+    # reused so the preview body matches what the real write would POST.
+    references: list[ref_mod.Reference] = []
+    if backend.dry_run:
+        message_id = _resolve_or_none(
+            lambda: _resolve_sdkmessage_id(backend, message), "SdkMessageNotFound")
+        plugintype_id = _resolve_or_none(
+            lambda: _resolve_plugintype_id(backend, plugin_type, assembly),
+            "PluginTypeNotFound")
+        references.append(ref_mod.make_reference(
+            "message", message, message_id is not None))
+        references.append(ref_mod.make_reference(
+            "plugin_type", plugin_type, plugintype_id is not None))
+        filter_id: str | None = None
+        if entity is not None:
+            # The filter binds an entity to a message, so it can only resolve when
+            # the message itself does.
+            if message_id is not None:
+                filter_id = _resolve_or_none(
+                    lambda: _resolve_sdkmessagefilter_id(backend, entity, message_id),
+                    "SdkMessageFilterNotFound")
+            references.append(ref_mod.make_reference(
+                "entity", entity, filter_id is not None))
+    else:
+        message_id = _resolve_sdkmessage_id(backend, message)
+        plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
+        filter_id = (_resolve_sdkmessagefilter_id(backend, entity, message_id)
+                     if entity is not None else None)
 
     resolved_name = name or (
         f"{plugin_type}: {message} of {entity or 'any entity'}")
@@ -269,13 +299,16 @@ def register_step(
         "stage": stage_int,
         "mode": mode_int,
         "rank": rank,
-        # sdkmessageprocessingstep nav-props are lowercase logical names in
-        # $metadata; PascalCase is rejected with HTTP 400 (issue #159).
-        "sdkmessageid@odata.bind": f"/sdkmessages({message_id})",
-        "plugintypeid@odata.bind": f"/plugintypes({plugintype_id})",
     }
-    if entity is not None:
-        filter_id = _resolve_sdkmessagefilter_id(backend, entity, message_id)
+    # sdkmessageprocessingstep nav-props are lowercase logical names in $metadata;
+    # PascalCase is rejected with HTTP 400 (issue #159). For a real write the ids
+    # are always present; under dry-run a dangling reference simply omits its bind
+    # from the (echo-only) preview body.
+    if message_id is not None:
+        body["sdkmessageid@odata.bind"] = f"/sdkmessages({message_id})"
+    if plugintype_id is not None:
+        body["plugintypeid@odata.bind"] = f"/plugintypes({plugintype_id})"
+    if entity is not None and filter_id is not None:
         body["sdkmessagefilterid@odata.bind"] = (
             f"/sdkmessagefilters({filter_id})")
     if filtering_attributes is not None and message.lower() == "update":
@@ -283,6 +316,8 @@ def register_step(
 
     result = as_dict(backend.post("sdkmessageprocessingsteps", json_body=body))
     if result.get("_dry_run"):
+        if references:
+            result["references"] = references
         return result
 
     sid = result.get("_entity_id")
@@ -594,6 +629,21 @@ def _force_read_rows(
     GETs must run for real even in dry-run (mirrors `_resolve_id_by_name`).
     """
     return backend.get_collection(entity_set, params=params, max_pages=1)
+
+
+def _resolve_or_none(
+    resolve: Callable[[], str], not_found_code: str,
+) -> str | None:
+    """Run a raising ``_resolve_*`` id lookup, returning None for its documented
+    not-found code instead of raising — the dry-run reference-probe form (#281).
+    Any other ``D365Error`` (a real transport/auth failure) still propagates.
+    """
+    try:
+        return resolve()
+    except D365Error as exc:
+        if exc.code == not_found_code:
+            return None
+        raise
 
 
 def _resolve_sdkmessage_id(backend: D365Backend, message: str) -> str:

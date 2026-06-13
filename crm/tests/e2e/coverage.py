@@ -40,7 +40,6 @@ LOCAL_GROUPS = frozenset(
 # reason to be written down. Fill as the gate enumerates the gap (Task 6+).
 E2E_SKIP: dict[str, str] = {
     "plugin register-assembly": "needs a prebuilt signed test .dll; tracked in GH issue",
-    "plugin register-step": "depends on a registered assembly (see register-assembly)",
     "solution stage-and-upgrade": "needs a managed solution installed first; org-stateful",
     "workflow run": "async side effects on live records; dispatch-only not asserted",
     # async cancel modifies live job state; no safe always-present cancellable job exists
@@ -58,7 +57,7 @@ E2E_SKIP: dict[str, str] = {
     # plugin unregister-* require a registered assembly/step to delete; safe
     # setup (register-assembly + register-step) is itself in E2E_SKIP.
     "plugin unregister-assembly": "requires a registered plugin assembly to unregister; register-assembly is in E2E_SKIP (needs a prebuilt signed .dll)",
-    "plugin unregister-step": "requires a registered plugin step to unregister; register-step is in E2E_SKIP (depends on register-assembly)",
+    "plugin unregister-step": "requires a registered plugin step to unregister; creating one needs a registered assembly (register-assembly is in E2E_SKIP)",
 }
 
 

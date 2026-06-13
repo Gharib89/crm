@@ -18,6 +18,7 @@ from crm.core.metadata import label, label_text, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
 from crm.core import metadata as _meta_mod
+from crm.core import references as ref_mod
 
 _VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 _VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
@@ -351,6 +352,16 @@ def create_one_to_many(
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
+        # Resolve the entities this relationship binds so a dangling reference is
+        # a pre-flight finding instead of a server fault at real write (#281).
+        result["references"] = [
+            ref_mod.make_reference(
+                "referenced_entity", referenced_entity,
+                ref_mod.entity_exists(backend, referenced_entity)),
+            ref_mod.make_reference(
+                "referencing_entity", referencing_entity,
+                ref_mod.entity_exists(backend, referencing_entity)),
+        ]
         return result
 
     entity_id_url = result.get("_entity_id_url")

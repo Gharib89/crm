@@ -60,6 +60,17 @@ Emits the same `{applied, skipped, planned, failed}` envelope as `apply`.
 
 **Column shorthand:** `DISPLAY:KIND[:key=value,...]`.
 
+### Dry-run reference-check
+
+Under `--dry-run`, the name-taking writes — `scaffold table`, `metadata
+create-one-to-many`, and `metadata add-attribute` — resolve the server objects
+they would point at (a lookup's target entity, a picklist's global option set,
+a relationship's referenced/referencing entities) and report each under
+`data.references[] = {kind, value, _exists}`. A reference that does not resolve
+keeps the preview non-failing (`ok: true`) and adds a `meta.warnings` advisory
+naming it — so a dangling target catches before the real write 400s, even when
+the table itself is only `planned`. (`apply -f` does not yet probe references.)
+
 - `string`/`memo` take an optional `max_length` (defaults 100/2000); `max_length` on
   any other kind is an error.
 - `lookup` requires `target_entity=<logical_name>`.

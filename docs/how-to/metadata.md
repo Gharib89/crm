@@ -108,6 +108,17 @@ crm --json metadata create-one-to-many --schema-name cwx_sla_cwx_ticket \
 ```
 The response reports the `referencing_attribute` (the lookup column) the server generated on the N-side entity.
 
+### Pre-flight a referenced object with `--dry-run`
+
+These name-taking writes point at other server objects: `add-attribute --kind lookup` names a `--target-entity`, `add-attribute --kind picklist/multiselect` names an `--optionset-name`, and `create-one-to-many` names its referenced/referencing entities. Under `--dry-run` the command resolves each and reports it under `data.references[] = {kind, value, _exists}`:
+
+```bash
+crm --dry-run --json metadata add-attribute cwx_ticket --kind lookup \
+  --schema-name cwx_OwnerId --display "Owner" --target-entity cwx_missing
+```
+
+A reference that does not resolve keeps the preview non-failing (`ok: true`) and adds a `meta.warnings` advisory naming it — so a dangling target entity or option set surfaces as a pre-flight finding instead of a server 400/404 at write time.
+
 ## Verify a metadata change landed (`--expect`)
 
 A metadata change isn't readable until it's published. The repeatable `--expect ATTR=VALUE` flag on `metadata attribute` turns the read-back into a self-checking verify step — pair it with a create + publish to poll until the definition reflects the change:

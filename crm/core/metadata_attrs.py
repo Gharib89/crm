@@ -15,6 +15,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
+from crm.core import references as ref_mod
 
 _VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 # The string formats add_attribute can create. Public so export_spec can filter
@@ -509,7 +510,7 @@ def add_attribute(
                 raise D365Error(f"--{n.replace('_', '-')} is not valid for lookup.")
         from crm.core import relationships as rel
         rel_schema = relationship_schema or f"{entity}_{logical_name}"
-        return rel.create_one_to_many(
+        result = rel.create_one_to_many(
             backend,
             schema_name=rel_schema,
             referenced_entity=target_entity,
@@ -522,6 +523,17 @@ def add_attribute(
             solution=solution,
             if_exists=if_exists,
         )
+        if backend.dry_run and result.get("references"):
+            # A lookup is a 1:N under the hood; surface its one user-named
+            # reference (the target entity == the relationship's referenced
+            # entity) in --target-entity vocabulary. The referencing entity is
+            # the host table being edited, so it is dropped from the preview.
+            result["references"] = [
+                {**r, "kind": "target_entity"}
+                for r in result["references"]
+                if r["kind"] == "referenced_entity"
+            ]
+        return result
 
     builder = _BUILDERS.get(kind)
     if builder is None:
@@ -549,10 +561,22 @@ def add_attribute(
     # Resolve the global option set's MetadataId only when it is the sole source;
     # if inline options are also given, let the builder raise the mutual-exclusivity
     # error instead of making a network call first.
+    references: list[ref_mod.Reference] = []
     if kind in _PICKLIST_KINDS and optionset_name and not options:
-        opts["optionset_metadata_id"] = _resolve_global_optionset_id(
-            backend, optionset_name
-        )
+        if backend.dry_run:
+            # Under dry-run, report the referenced option set's existence rather
+            # than raising on a dangling one (#281). When present, reuse its id so
+            # the preview body matches the real write; when absent the builder
+            # falls back to the Name bind for the (echo-only) preview.
+            os_id = ref_mod.resolve_global_optionset_id(backend, optionset_name)
+            references.append(ref_mod.make_reference(
+                "optionset", optionset_name, os_id is not None))
+            if os_id is not None:
+                opts["optionset_metadata_id"] = os_id
+        else:
+            opts["optionset_metadata_id"] = _resolve_global_optionset_id(
+                backend, optionset_name
+            )
     body = builder(opts)
 
     exists = target_exists(
@@ -580,6 +604,8 @@ def add_attribute(
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
+        if references:
+            result["references"] = references
         return result
 
     entity_id_url = result.get("_entity_id_url")

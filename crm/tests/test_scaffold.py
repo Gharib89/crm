@@ -524,10 +524,15 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
 
     with requests_mock.Mocker() as m:
-        # Only the forced-real entity existence GET fires under dry-run.
+        # The forced-real entity existence GET fires under dry-run...
         m.get(
             dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
             status_code=404,
+        )
+        # ...as does the lookup column's target-entity reference probe (#281).
+        m.get(
+            dry_backend.url_for("EntityDefinitions(LogicalName='systemuser')"),
+            json={"MetadataId": "77777777-7777-7777-7777-777777777777"},
         )
 
         result = CliRunner().invoke(cli, [
@@ -541,6 +546,49 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
     assert env["ok"] is True
     assert env["data"]["applied"] == []
     assert _kinds(env["data"]["planned"]) == ["entity", "attribute", "attribute"]
+    assert _publish_hits(m, dry_backend) == []
+    # The lookup column's target entity is resolved and reported as existing.
+    refs = env["data"]["references"]
+    assert refs == [{"kind": "target_entity", "value": "systemuser", "_exists": True}]
+    # A resolvable reference adds no reference-not-found warning. (An unrelated
+    # solution-resolution advisory may or may not be present depending on the
+    # active profile's default_solution, so assert on the reference channel only.)
+    assert not any(
+        "reference not found" in w for w in env["meta"].get("warnings", []))
+
+
+# Test 2b: dry-run with a dangling reference — reported + warned, never written
+def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch):
+    _monkeypatch_profile(monkeypatch)
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+
+    with requests_mock.Mocker() as m:
+        m.get(
+            dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+            status_code=404,
+        )
+        # The picklist column names an option set that does not exist.
+        m.get(
+            dry_backend.url_for("GlobalOptionSetDefinitions(Name='ghost_set')"),
+            status_code=404,
+        )
+
+        result = CliRunner().invoke(cli, [
+            "--dry-run", "--json", "scaffold", "table", "Project",
+            "--column", "Status:picklist:optionset_name=ghost_set",
+        ])
+
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is True
+    assert env["meta"]["dry_run"] is True
+    assert env["data"]["references"] == [
+        {"kind": "optionset", "value": "ghost_set", "_exists": False}]
+    # The dangling option set is named in the warnings channel (alongside any
+    # unrelated solution-resolution advisory).
+    assert "reference not found: optionset='ghost_set'" in env["meta"]["warnings"]
+    # No write was attempted (dry-run): nothing applied, nothing published.
+    assert env["data"]["applied"] == []
     assert _publish_hits(m, dry_backend) == []
 
 
