@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.10.0 (2026-06-13)
+
+### Features
+
+- Add crm completion command + docs, auto-refresh on self-update
+  ([#279](https://github.com/Gharib89/crm/pull/279),
+  [`e666861`](https://github.com/Gharib89/crm/commit/e666861bb37b7eb53b2ebb7aa954570508e88310))
+
+
 ## v3.9.4 (2026-06-13)
 
 ### Bug Fixes
