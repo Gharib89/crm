@@ -7,16 +7,14 @@ import click
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _active_profile,
-    _handle_d365_error,
+    d365_errors,
     _journal,
-    _require_solution,
     _resolve_solution,
     _solution_option,
 )
 from crm.core import apply as apply_mod
 from crm.core import references as references_mod
 from crm.core import scaffold as scaffold_mod
-from crm.utils.d365_backend import D365Error
 
 
 @click.group("scaffold")
@@ -94,10 +92,10 @@ def table(
         )
 
     # --- 2. Resolve solution ---
-    solution, warning = _resolve_solution(ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
 
     # --- 3. Build the spec (pure, no backend) ---
-    try:
+    with d365_errors(ctx):
         spec = scaffold_mod.build_table_spec(
             display_name=display,
             columns=list(columns),
@@ -106,19 +104,13 @@ def table(
             display_collection=display_collection,
             ownership=ownership,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
     # --- 4. Apply via apply_spec ---
     backend = ctx.backend()
-    try:
+    with d365_errors(ctx):
         res = apply_mod.apply_spec(
             backend, spec, solution=solution, stage_only=ctx.stage_only
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
     # --- 5. Emit result ---
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
@@ -142,7 +134,6 @@ def table(
     if res["ok"]:
         _journal(
             ctx,
-            "scaffold table",
             spec["entities"][0]["schema_name"],
             data,
             solution=solution,

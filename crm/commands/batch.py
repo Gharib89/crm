@@ -6,20 +6,16 @@ from pathlib import Path
 import click
 from crm.core import batch as batch_mod
 from crm.core import solution as sol_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error, _journal
+from crm.commands._helpers import d365_errors, _journal
 
 
 @click.command("service-document")
 @pass_ctx
 def service_document_cmd(ctx: CLIContext):
     """GET the root service document — lists every entity set the server exposes."""
-    try:
+    with d365_errors(ctx):
         result = sol_mod.service_document(ctx.backend())
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=result, meta={"count": len((result or {}).get("value", []))})
         return
@@ -47,7 +43,7 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
             "--continue-on-error requires --no-transaction; "
             "Prefer: odata.continue-on-error is meaningless inside a changeset."
         )
-    try:
+    with d365_errors(ctx):
         ops = batch_mod.parse_batch_file(file_path)
         results = ctx.backend().batch(
             ops,  # type: ignore[arg-type]
@@ -55,9 +51,6 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
             continue_on_error=continue_on_error,
             timeout=timeout,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
     if output_path:
         try:
@@ -69,7 +62,7 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
             return
         data = {"written": output_path, **batch_mod.render_batch_summary(results)}  # type: ignore[arg-type]
         ctx.emit(True, data=data)
-        _journal(ctx, "batch", file_path, data)
+        _journal(ctx, file_path, data)
     else:
         ctx.emit(True, data=results, meta=batch_mod.render_batch_summary(results))  # type: ignore[arg-type]
-        _journal(ctx, "batch", file_path, results if isinstance(results, dict) else {"count": len(results)})
+        _journal(ctx, file_path, results if isinstance(results, dict) else {"count": len(results)})

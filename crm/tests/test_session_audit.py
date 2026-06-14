@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -29,6 +30,18 @@ class _StubCtx:
         self._backend: Any = None  # set by tests exercising resolved-profile
 
 
+def _journal_in_ctx(stub_ctx, command, target, result, **kwargs):
+    """Call `_journal` inside a synthetic Click context whose `command_path`
+    is ``crm <command>`` — so `_journal`'s Click-derived name records as
+    `command` (it no longer takes a hand-typed command argument; #264)."""
+    names = ["crm", *command.split(" ")]
+    cctx = click.Context(click.Command(names[0]), info_name=names[0])
+    for name in names[1:]:
+        cctx = click.Context(click.Command(name), info_name=name, parent=cctx)
+    with cctx:
+        _journal(stub_ctx, target, result, **kwargs)
+
+
 # ---------------------------------------------------------------------------
 # _journal helper tests
 # ---------------------------------------------------------------------------
@@ -36,7 +49,7 @@ class _StubCtx:
 class TestJournalHelper:
     def test_writes_a_readable_entry(self):
         ctx = _StubCtx(session_name="sess1")
-        _journal(ctx, "entity create", "account", {"id": "aabbccdd-0000-0000-0000-000000000001"})
+        _journal_in_ctx(ctx, "entity create", "account", {"id": "aabbccdd-0000-0000-0000-000000000001"})
         rows = audit.read("sess1")
         assert len(rows) == 1
         r = rows[0]
@@ -46,31 +59,31 @@ class TestJournalHelper:
 
     def test_staged_reflects_ctx_stage_only(self):
         ctx = _StubCtx(stage_only=True)
-        _journal(ctx, "cmd", "t", {})
+        _journal_in_ctx(ctx, "cmd", "t", {})
         rows = audit.read(ctx.session_name)
         assert rows[0]["staged"] is True
 
     def test_dry_run_reflects_ctx_dry_run(self):
         ctx = _StubCtx(dry_run=True)
-        _journal(ctx, "cmd", "t", {})
+        _journal_in_ctx(ctx, "cmd", "t", {})
         rows = audit.read(ctx.session_name)
         assert rows[0]["dry_run"] is True
 
     def test_explicit_staged_overrides_ctx_stage_only(self):
         ctx = _StubCtx(stage_only=False)
-        _journal(ctx, "cmd", "t", {}, staged=True)
+        _journal_in_ctx(ctx, "cmd", "t", {}, staged=True)
         rows = audit.read(ctx.session_name)
         assert rows[0]["staged"] is True
 
     def test_explicit_solution_is_recorded(self):
         ctx = _StubCtx()
-        _journal(ctx, "cmd", "t", {}, solution="mysolution")
+        _journal_in_ctx(ctx, "cmd", "t", {}, solution="mysolution")
         rows = audit.read(ctx.session_name)
         assert rows[0]["solution"] == "mysolution"
 
     def test_profile_falls_back_to_profile_name_without_backend(self):
         ctx = _StubCtx(profile_name="explicitprof")
-        _journal(ctx, "cmd", "t", {})
+        _journal_in_ctx(ctx, "cmd", "t", {})
         rows = audit.read(ctx.session_name)
         assert rows[0]["profile"] == "explicitprof"
 
@@ -85,7 +98,7 @@ class TestJournalHelper:
 
         ctx = _StubCtx(profile_name=None)
         ctx._backend = _Backend()
-        _journal(ctx, "cmd", "t", {})
+        _journal_in_ctx(ctx, "cmd", "t", {})
         rows = audit.read(ctx.session_name)
         assert rows[0]["profile"] == "resolvedprof"
 
@@ -93,7 +106,7 @@ class TestJournalHelper:
         monkeypatch.setattr("crm.core.audit.record", lambda **_: (_ for _ in ()).throw(RuntimeError("boom")))
         ctx = _StubCtx()
         # Must not raise
-        _journal(ctx, "cmd", "t", {})
+        _journal_in_ctx(ctx, "cmd", "t", {})
 
 
 # ---------------------------------------------------------------------------

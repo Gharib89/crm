@@ -9,15 +9,30 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 import click
 from crm.core import session as session_mod
+from crm.commands._tty import _stdin_is_tty
 if TYPE_CHECKING:
     from crm.cli import CLIContext
     from crm.utils.d365_backend import ConnectionProfile, D365Error
 
 
-def _journal(ctx, command, target, result, *, solution=None, staged=None):
-    """Best-effort audit-journal a successful mutation (issue #89). Never raises."""
+def _journal(ctx, target, result, *, solution=None, staged=None):
+    """Best-effort audit-journal a successful mutation (issue #89). Never raises.
+
+    The command name is derived from the live Click context — `command_path`
+    minus the root prog-name (e.g. "crm entity create" -> "entity create") — not
+    hand-typed at the call site, so the journal name can never drift from the
+    actual Click command. The root prog-name is stripped by its actual value
+    (`find_root().info_name`), not by splitting on the first space, so a
+    multi-token prog-name still yields "<group> <verb>": `crm` (the binary) and
+    the REPL both give "crm", while `python -m crm` gives "python -m crm" — all
+    three reduce to the same recorded name. A missing Click context makes the
+    derivation raise, which the best-effort `except Exception: pass` swallows.
+    """
     try:
         from crm.core import audit
+        cctx = click.get_current_context()
+        root_prog = cctx.find_root().info_name or ""
+        command = cctx.command_path[len(root_prog):].lstrip()
         # Prefer the RESOLVED profile name from the backend that just ran the
         # mutation — ctx.profile_name is only the explicit --profile override and
         # is None for active-profile runs. The backend is already built (the
@@ -94,6 +109,27 @@ def _handle_d365_error(
     ctx.emit(False, error=message, meta=meta, warnings=warnings)
 
 
+@contextmanager
+def d365_errors(ctx: "CLIContext", *, hint: str | None = None,
+                warnings: list[str] | None = None):
+    """Translate a `D365Error` from a single fallible core call into the standard
+    failure envelope — the boilerplate that wrapped ~130 verbs by hand (#264).
+
+    Wrap exactly one core call; a verb with two sequential core calls gets two
+    `with` blocks. On `D365Error` it routes through `_handle_d365_error`, which
+    emits `ok=False` and raises `Exit(1)` — so control never falls through the
+    block on error and the call site needs no `except ...: return`. Carries only
+    a STATIC `hint`/`warnings` (known before the call); a site that derives the
+    hint or `extra_meta` FROM the caught exception (entity dup-key enrichment,
+    workflow/entity activation hints) keeps its hand-written `try/except`.
+    """
+    from crm.utils.d365_backend import D365Error
+    try:
+        yield
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc, hint=hint, warnings=warnings)
+
+
 def _plaintext_secret_warning() -> str:
     """Warning shown after writing a profile secret in PLAINTEXT.
 
@@ -110,27 +146,31 @@ def _plaintext_secret_warning() -> str:
 
 
 def _confirm_destructive(
-    thing: str, name: str, yes: bool, *, message: str | None = None
-) -> bool:
-    """Return True to proceed, False to bail.
+    ctx: "CLIContext", thing: str, name: str, yes: bool, *, message: str | None = None
+) -> None:
+    """Gate a destructive op behind a confirmation; emit + abort on decline (#264).
 
-    `--yes` skips the prompt. On a true non-TTY (EOF) stdin, `click.confirm`
-    raises `click.Abort`; we catch it and return False so the caller can emit
-    the documented ``{"ok": false, "error": "aborted by user"}`` envelope
-    (exit 1) instead of click's bare ``Aborted!`` with no JSON.
+    `--yes` skips the prompt. On decline — or a true non-TTY (EOF) stdin, where
+    `click.confirm` raises `click.Abort` — this emits the documented
+    ``{"ok": false, "error": "aborted by user"}`` envelope via `ctx.emit(False)`
+    (which raises `Exit(1)`), so control never returns to the caller and click's
+    bare ``Aborted!`` with no JSON is never shown. Returns normally only when the
+    user proceeds, so the call site drops its `if not ...:` decline two-liner.
 
     `message` overrides the default delete wording for non-delete destructive
     ops (e.g. an overwrite-import that names the actual risk) — see #67.
     """
     if yes:
-        return True
+        return
     prompt = message or (
         f"This will permanently delete {thing} {name!r} and all related data. Continue?"
     )
     try:
-        return click.confirm(prompt, default=False)
+        proceed = click.confirm(prompt, default=False)
     except click.Abort:
-        return False
+        proceed = False
+    if not proceed:
+        ctx.emit(False, error="aborted by user")
 
 
 def _admin_header_options(f):
@@ -236,16 +276,21 @@ def _solution_option(f):
 
 
 def _resolve_solution(
-    ctx: "CLIContext", explicit: str | None, *, require: bool,
+    ctx: "CLIContext", explicit: str | None, require_solution: bool,
 ) -> tuple[str | None, str | None]:
     """Resolve the effective solution for a mutating metadata command.
 
     Precedence: explicit `--solution` > profile `default_solution` > None.
 
-    Returns `(solution, warning)`. When none resolves and `require` is False,
+    `require_solution` is the raw `--require-solution` flag; the strict-mode
+    OR-with-`CRM_REQUIRE_SOLUTION` check is folded in here (it was a
+    `_require_solution(...)` wrapper at every call site). Always-strict callers
+    pass a literal `True`.
+
+    Returns `(solution, warning)`. When none resolves and strict mode is off,
     `warning` is a non-empty string the caller stashes under the JSON `meta`
     envelope (or prints via skin.warning in human mode). When none resolves and
-    `require` is True, this routes a hard failure through `ctx.emit(False)`
+    strict mode is on, this routes a hard failure through `ctx.emit(False)`
     (raising click.exceptions.Exit per ADR 0001) instead of returning.
     """
     if explicit:
@@ -257,7 +302,7 @@ def _resolve_solution(
         "No solution resolved: pass --solution or set a profile default_solution. "
         "The change targets the default (unmanaged) solution."
     )
-    if require:
+    if _require_solution(require_solution):
         ctx.emit(False, error=msg)
         return None, None  # unreachable: emit(False) raises Exit
     return None, msg
@@ -558,14 +603,6 @@ def _auth_error_hint(status: int | None, profile_name: str) -> str:
     if status == 401:
         return f"run: crm profile set-password --profile {profile_name}"
     return ""
-
-
-def _stdin_is_tty() -> bool:
-    """Re-export of cli._stdin_is_tty as a module-level name so tests can
-    monkeypatch it without triggering a circular import at module load time
-    (cli.py imports _helpers, so a top-level import of cli would be circular)."""
-    from crm.cli import _stdin_is_tty as _impl
-    return _impl()
 
 
 def select_one(title: str, items: list[tuple[str, str]],

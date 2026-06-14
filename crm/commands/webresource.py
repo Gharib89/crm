@@ -4,11 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 import click
 from crm.core import webresource as wr_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error, _journal, _resolve_publish, _solution_option,
-    _require_solution, _resolve_solution, _emit_with_warning,
+    d365_errors, _journal, _resolve_publish, _solution_option,
+    _resolve_solution, _emit_with_warning,
 )
 
 
@@ -32,21 +31,17 @@ def webresource_group():
 def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
                        solution, require_solution, publish):
     """Create a web resource."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         wtype = wr_mod.resolve_webresourcetype(file, wr_type)
         content = Path(file).read_bytes()
         info = wr_mod.create_webresource(
             ctx.backend(), name=name, content=content, webresourcetype=wtype,
             display_name=display_name, solution=solution, publish=publish)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning,
-                       meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "webresource create", name, info, solution=solution)
+                       meta=ctx.staged_meta())
+    _journal(ctx, name, info, solution=solution)
 
 
 @webresource_group.command("update")
@@ -60,20 +55,16 @@ def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
 def webresource_update(ctx: CLIContext, name, file, display_name,
                        solution, require_solution, publish):
     """Update a web resource by name (content and/or display name)."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     content = Path(file).read_bytes() if file else None
-    try:
+    with d365_errors(ctx):
         info = wr_mod.update_webresource(
             ctx.backend(), name, content=content, display_name=display_name,
             solution=solution, publish=publish)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning,
-                       meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "webresource update", name, info, solution=solution)
+                       meta=ctx.staged_meta())
+    _journal(ctx, name, info, solution=solution)
 
 
 @webresource_group.command("get")
@@ -81,11 +72,8 @@ def webresource_update(ctx: CLIContext, name, file, display_name,
 @pass_ctx
 def webresource_get(ctx: CLIContext, name):
     """Resolve a web resource by name and print its record."""
-    try:
+    with d365_errors(ctx):
         record = wr_mod.get_webresource(ctx.backend(), name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=record)
 
 
@@ -95,12 +83,9 @@ def webresource_get(ctx: CLIContext, name):
 @pass_ctx
 def webresource_list(ctx: CLIContext, custom_only, top):
     """List web resources."""
-    try:
+    with d365_errors(ctx):
         items = wr_mod.list_webresources(
             ctx.backend(), custom_only=custom_only, top=top)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return

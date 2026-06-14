@@ -5,7 +5,8 @@ import shutil
 from pathlib import Path
 import click
 from crm import __version__
-from crm.cli import CLIContext, pass_ctx, _stdin_is_tty
+from crm.cli import CLIContext, pass_ctx
+from crm.commands._tty import _stdin_is_tty
 from crm.commands import skill_registry
 from crm.commands.skill_registry import bundled_skill_dir as _bundled_skill_dir
 

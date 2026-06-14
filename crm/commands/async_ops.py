@@ -3,10 +3,9 @@
 from __future__ import annotations
 import click
 from crm.core import async_ops as async_ops_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error,
+    d365_errors,
     _confirm_destructive,
     _journal,
     _resolve_async_state,
@@ -33,7 +32,7 @@ def async_group():
 @pass_ctx
 def async_list(ctx: CLIContext, state, message_name, owner_id, top, fetch_all, max_pages):
     """List asyncoperation rows."""
-    try:
+    with d365_errors(ctx):
         state_int = _resolve_async_state(state)
         backend = ctx.backend()
         if fetch_all:
@@ -46,9 +45,6 @@ def async_list(ctx: CLIContext, state, message_name, owner_id, top, fetch_all, m
                 backend, state=state_int, message_name=message_name,
                 owner_id=owner_id, top=top,
             )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=rows, meta={"count": len(rows)})
 
 
@@ -57,11 +53,8 @@ def async_list(ctx: CLIContext, state, message_name, owner_id, top, fetch_all, m
 @pass_ctx
 def async_get(ctx: CLIContext, async_operation_id):
     """Get one asyncoperation row."""
-    try:
+    with d365_errors(ctx):
         row = async_ops_mod.get_async_operation(ctx.backend(), async_operation_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=row)
 
 
@@ -71,14 +64,9 @@ def async_get(ctx: CLIContext, async_operation_id):
 @pass_ctx
 def async_cancel(ctx: CLIContext, async_operation_id, yes):
     """Cancel a pending or suspended asyncoperation."""
-    if not _confirm_destructive("async job", async_operation_id, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    _confirm_destructive(ctx, "async job", async_operation_id, yes)
+    with d365_errors(ctx):
         async_ops_mod.cancel_async_operation(ctx.backend(), async_operation_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     data = {"cancelled": True, "id": async_operation_id}
     ctx.emit(True, data=data)
-    _journal(ctx, "async cancel", async_operation_id, data)
+    _journal(ctx, async_operation_id, data)

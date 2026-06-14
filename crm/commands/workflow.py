@@ -11,6 +11,7 @@ from crm.commands._helpers import (
     _admin_header_options,
     _admin_kwargs,
     _journal,
+    d365_errors,
 )
 
 _CATEGORY_NAMES = {
@@ -76,7 +77,7 @@ def _redirect_note_meta(info: dict) -> dict | None:
 @pass_ctx
 def workflow_list(ctx: CLIContext, category, primary_entity, activated_only, on_demand_only):
     """List workflow definitions."""
-    try:
+    with d365_errors(ctx):
         items = workflow_mod.list_workflows(
             ctx.backend(),
             category=category,
@@ -84,9 +85,6 @@ def workflow_list(ctx: CLIContext, category, primary_entity, activated_only, on_
             activated_only=activated_only,
             on_demand_only=on_demand_only,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=items, meta={"count": len(items)})
 
 
@@ -102,13 +100,10 @@ def workflow_migration_assess(ctx: CLIContext, primary_entity):
     verdicts of impossibility. On an on-prem profile the report still runs and
     carries an advisory note (cloud flows live only on Dataverse online).
     """
-    try:
+    with d365_errors(ctx):
         backend = ctx.backend()
         items = workflow_mod.assess_workflow_migrations(
             backend, primary_entity=primary_entity)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     meta: dict[str, object] = {"count": len(items)}
     if backend.profile.auth_scheme != "oauth":
         meta["note"] = (
@@ -142,7 +137,7 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, 
         _handle_d365_error(ctx, exc, hint=hint)
         return
     ctx.emit(True, data=info, meta=_redirect_note_meta(info))
-    _journal(ctx, "workflow activate", workflow_id, info)
+    _journal(ctx, workflow_id, info)
 
 
 @workflow_group.command("deactivate")
@@ -169,7 +164,7 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id
         _handle_d365_error(ctx, exc, hint=hint)
         return
     ctx.emit(True, data=info, meta=_redirect_note_meta(info))
-    _journal(ctx, "workflow deactivate", workflow_id, info)
+    _journal(ctx, workflow_id, info)
 
 
 @workflow_group.command("delete")
@@ -187,15 +182,12 @@ def workflow_delete(ctx: CLIContext, workflow_id, yes,
     remains a draft (no rollback).
     """
     admin = _admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins)
-    try:
+    with d365_errors(ctx):
         target = workflow_mod.resolve_delete_target(
             ctx.backend(), workflow_id,
             caller_id=admin["caller_id"],
             caller_object_id=admin["caller_object_id"],
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     # The prompt must name the resolved target: with an activation-record GUID
     # the verb deletes a *different record* (the parent definition). desc is
     # plain — _confirm_destructive's default prompt applies !r itself, and the
@@ -208,17 +200,12 @@ def workflow_delete(ctx: CLIContext, workflow_id, yes,
             f"passed its activation record {workflow_id}, which the server "
             "removes with the definition. Continue?"
         )
-    if not _confirm_destructive("workflow definition", desc, yes, message=message):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    _confirm_destructive(ctx, "workflow definition", desc, yes, message=message)
+    with d365_errors(ctx):
         info = workflow_mod.delete_workflow(
             ctx.backend(), workflow_id, resolved=target, **admin)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info, meta=_redirect_note_meta(info))
-    _journal(ctx, "workflow delete", workflow_id, info)
+    _journal(ctx, workflow_id, info)
 
 
 @workflow_group.command("run")
@@ -230,16 +217,13 @@ def workflow_delete(ctx: CLIContext, workflow_id, yes,
 def workflow_run(ctx: CLIContext, workflow_id, target_record_id,
                  as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Trigger an on-demand workflow against a target record via ExecuteWorkflow."""
-    try:
+    with d365_errors(ctx):
         info = workflow_mod.execute_workflow(
             ctx.backend(), workflow_id, target_record_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "workflow run", workflow_id, info)
+    _journal(ctx, workflow_id, info)
 
 
 @workflow_group.command("clone")
@@ -255,17 +239,14 @@ def workflow_run(ctx: CLIContext, workflow_id, target_record_id,
 def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, solution,
                    as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Clone a workflow definition onto another entity (xaml-retargeted)."""
-    try:
+    with d365_errors(ctx):
         info = workflow_mod.clone_workflow_to_entity(
             ctx.backend(), workflow_id, target_entity,
             name=name, activate=activate, solution=solution,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "workflow clone", workflow_id, info)
+    _journal(ctx, workflow_id, info)
 
 
 @workflow_group.command("export")
@@ -276,11 +257,8 @@ def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, 
 @pass_ctx
 def workflow_export(ctx: CLIContext, workflow_id, out_path):
     """Export a workflow definition (incl. xaml) to a JSON file."""
-    try:
+    with d365_errors(ctx):
         info = workflow_mod.export_workflow(ctx.backend(), workflow_id, out_path=out_path)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
 
 
@@ -295,13 +273,10 @@ def workflow_export(ctx: CLIContext, workflow_id, out_path):
 def workflow_import(ctx: CLIContext, file_path, activate,
                     as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Import (upsert) a workflow definition from an exported JSON file."""
-    try:
+    with d365_errors(ctx):
         info = workflow_mod.import_workflow(
             ctx.backend(), file_path=file_path, activate=activate,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "workflow import", info.get("workflow_id", ""), info)
+    _journal(ctx, info.get("workflow_id", ""), info)

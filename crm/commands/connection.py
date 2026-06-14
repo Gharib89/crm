@@ -4,9 +4,8 @@ from __future__ import annotations
 import click
 from crm.core import connection as conn_mod
 from crm.core import session as session_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, FAILURE_EXIT_CODE, pass_ctx
-from crm.commands._helpers import _handle_d365_error
+from crm.commands._helpers import d365_errors
 
 
 @click.group("connection")
@@ -41,11 +40,8 @@ def connection_status(ctx: CLIContext):
 @pass_ctx
 def connection_whoami(ctx: CLIContext):
     """Issue WhoAmI() against the server."""
-    try:
+    with d365_errors(ctx):
         info = conn_mod.whoami(ctx.backend())
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
 
 
@@ -53,11 +49,8 @@ def connection_whoami(ctx: CLIContext):
 @pass_ctx
 def connection_test(ctx: CLIContext):
     """Reachability check: WhoAmI + report API base."""
-    try:
+    with d365_errors(ctx):
         info = conn_mod.test_connection(ctx.backend(), negotiate=False)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
 
 
@@ -68,11 +61,8 @@ def doctor_command(ctx: CLIContext):
     # Live diagnostic — issues raw GETs and never negotiates or mutates the
     # profile. Registered both under the `connection` group and as the
     # top-level `crm doctor` alias (the same command object).
-    try:
+    with d365_errors(ctx):
         backend = ctx.backend()
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     result = conn_mod.connection_doctor(backend)
     if ctx.json_mode:
         ctx.emit(result["ok"], data={"checks": result["checks"]})

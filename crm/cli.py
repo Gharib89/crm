@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
 from crm.utils.repl_skin import ReplSkin
 from crm.commands._helpers import _sanitize, _short_repr
+from crm.commands._tty import _stdin_is_tty
 
 # Exit code for an operational failure (ADR 0001): a command that ran but did not
 # achieve its effect — D365 server error, in-command validation, declined confirm.
@@ -193,6 +194,16 @@ class CLIContext:
         self._backend = None
         self._backend_key = None
 
+    def staged_meta(self) -> dict[str, Any] | None:
+        """Meta dict flagging a staged (unpublished) metadata write, or None.
+
+        Replaces the `{"staged": True} if ctx.stage_only else None` ternary
+        hand-copied across the metadata-mutating verbs. Deliberately NOT folded
+        into `emit` — that would leak `staged` into read-command output during a
+        `--stage-only` session, breaking the byte-identical envelope contract.
+        """
+        return {"staged": True} if self.stage_only else None
+
 
 pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 
@@ -213,19 +224,6 @@ def _suppress_bare_repl(json_mode: bool) -> bool:
     if os.environ.get("CRM_NO_REPL", "").lower() in ("1", "true", "yes", "on"):
         return True
     return not _stdin_is_tty()
-
-
-def _stdin_is_tty() -> bool:
-    """True only if stdin is an interactive terminal. A missing, closed, or
-    isatty-less stdin (frozen build, piped/redirected input) counts as
-    non-interactive — agents and CI never attach a TTY."""
-    stream = sys.stdin
-    if not hasattr(stream, "isatty"):
-        return False
-    try:
-        return stream.isatty()
-    except (ValueError, OSError):
-        return False
 
 
 def _json_mode_active(args: list[str] | None) -> bool:

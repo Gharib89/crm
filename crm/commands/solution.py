@@ -10,10 +10,9 @@ from crm.core import solution as sol_mod
 from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
 from crm.core import session as session_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error,
+    d365_errors,
     _confirm_destructive,
     _journal,
     _no_retry_scope,
@@ -49,11 +48,8 @@ def _autowire_profile(ctx: CLIContext, field: str, value: str, result: dict) -> 
 @click.option("--managed/--unmanaged", default=None, help="Filter by managed flag.")
 @pass_ctx
 def solution_list(ctx: CLIContext, managed):
-    try:
+    with d365_errors(ctx):
         items = sol_mod.list_solutions(ctx.backend(), managed=managed)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -66,11 +62,8 @@ def solution_list(ctx: CLIContext, managed):
 @click.argument("unique_name")
 @pass_ctx
 def solution_info_cmd(ctx: CLIContext, unique_name):
-    try:
+    with d365_errors(ctx):
         info = sol_mod.solution_info(ctx.backend(), unique_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
 
 
@@ -86,11 +79,8 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
     # not an operational failure; validate before any network call.
     if not unique_name.strip():
         raise click.UsageError("solution unique name is required.")
-    try:
+    with d365_errors(ctx):
         info = dep_mod.retrieve_dependencies_for_uninstall(ctx.backend(), unique_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     meta = {"blockers": info["count"]}
     if ctx.json_mode:
         ctx.emit(True, data=info, meta=meta)
@@ -143,11 +133,8 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
             return
         expected = raw
 
-    try:
+    with d365_errors(ctx):
         items = sol_mod.solution_components(ctx.backend(), unique_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
     if save_path:
         normalized = sol_mod.normalize_components(items)
@@ -193,13 +180,10 @@ def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
     customized subcomponent (e.g. one attribute) of a whole-table managed component
     is its own component and will not show as a conflict.
     """
-    try:
+    with d365_errors(ctx):
         backend = ctx.backend()
         managed_info = sol_mod.solution_info(backend, managed_name)
         unmanaged_info = sol_mod.solution_info(backend, unmanaged_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
     # Kind validation is data-dependent (`ismanaged` comes from the server), so a
     # mismatch is an in-command validation failure (exit 1, ADR 0001), not a Click
@@ -211,12 +195,9 @@ def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
         ctx.emit(False, error=f"--unmanaged-solution {unmanaged_name!r} is not an unmanaged solution.")
         return
 
-    try:
+    with d365_errors(ctx):
         managed_comps = sol_mod.solution_components(backend, managed_name)
         unmanaged_comps = sol_mod.solution_components(backend, unmanaged_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     conflicts = sol_mod.layer_conflicts(managed_comps, unmanaged_comps)
 
     meta = {"count": len(conflicts)}
@@ -250,18 +231,15 @@ def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
 def solution_create_publisher(ctx: CLIContext, name, display, prefix,
                               option_value_prefix, if_exists, set_default):
     """Create a solution publisher (publishers)."""
-    try:
+    with d365_errors(ctx):
         info = sol_mod.create_publisher(
             ctx.backend(), name=name, friendly_name=display, prefix=prefix,
             option_value_prefix=option_value_prefix, if_exists=if_exists,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if set_default:
         _autowire_profile(ctx, "publisher_prefix", prefix, info)
     ctx.emit(True, data=info)
-    _journal(ctx, "solution create-publisher", name, info)
+    _journal(ctx, name, info)
 
 
 @solution_group.command("create")
@@ -283,19 +261,16 @@ def solution_create(ctx: CLIContext, name, display, version, publisher,
     if bool(publisher) == bool(publisher_id):
         ctx.emit(False, error="Provide exactly one of --publisher or --publisher-id.")
         return
-    try:
+    with d365_errors(ctx):
         info = sol_mod.create_solution(
             ctx.backend(), name=name, friendly_name=display, version=version,
             publisher_unique_name=publisher, publisher_id=publisher_id,
             if_exists=if_exists,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if set_default:
         _autowire_profile(ctx, "default_solution", name, info)
     ctx.emit(True, data=info)
-    _journal(ctx, "solution create", name, info)
+    _journal(ctx, name, info)
 
 
 @solution_group.command("set-version")
@@ -308,16 +283,13 @@ def solution_create(ctx: CLIContext, name, display, version, publisher,
 @pass_ctx
 def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, description):
     """Update an unmanaged solution's version / friendly name / description in place."""
-    try:
+    with d365_errors(ctx):
         info = sol_mod.update_solution(
             ctx.backend(), unique_name,
             version=version, friendly_name=friendly_name, description=description,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "solution set-version", unique_name, info)
+    _journal(ctx, unique_name, info)
 
 
 @solution_group.command("add-component")
@@ -334,7 +306,7 @@ def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, d
 def solution_add_component(ctx: CLIContext, solution, type_, component_id,
                            no_add_required, no_subcomponents):
     """Add an existing component to an unmanaged solution (AddSolutionComponent)."""
-    try:
+    with d365_errors(ctx):
         component_type = sol_mod.resolve_component_type(type_)
         info = sol_mod.add_solution_component(
             ctx.backend(), solution=solution, component_id=component_id,
@@ -342,16 +314,13 @@ def solution_add_component(ctx: CLIContext, solution, type_, component_id,
             add_required_components=not no_add_required,
             do_not_include_subcomponents=no_subcomponents,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     meta = None
     if component_type == 1 and not no_add_required:  # entity + AddRequiredComponents
         meta = {"note": ("AddRequiredComponents was enabled: the server may have "
                          "silently added required components beyond the requested "
                          "entity; the response does not report them.")}
     ctx.emit(True, data=info, meta=meta)
-    _journal(ctx, "solution add-component", solution, info)
+    _journal(ctx, solution, info)
 
 
 @solution_group.command("remove-component")
@@ -364,23 +333,18 @@ def solution_add_component(ctx: CLIContext, solution, type_, component_id,
 @pass_ctx
 def solution_remove_component(ctx: CLIContext, solution, type_, component_id, yes):
     """Remove a component from an unmanaged solution (RemoveSolutionComponent)."""
-    if not _confirm_destructive(
-        "component", f"{component_id} from solution {solution!r}", yes,
+    _confirm_destructive(
+        ctx, "component", f"{component_id} from solution {solution!r}", yes,
         message=(f"Removing component {component_id} from solution {solution!r}. Continue?"),
-    ):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    )
+    with d365_errors(ctx):
         component_type = sol_mod.resolve_component_type(type_)
         info = sol_mod.remove_solution_component(
             ctx.backend(), solution=solution, component_id=component_id,
             component_type=component_type,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "solution remove-component", solution, info)
+    _journal(ctx, solution, info)
 
 
 @solution_group.command("clone-as-patch")
@@ -395,16 +359,13 @@ def solution_remove_component(ctx: CLIContext, solution, type_, component_id, ye
 @pass_ctx
 def solution_clone_as_patch(ctx: CLIContext, parent_solution, display, version):
     """Create a solution patch from a parent solution (CloneAsPatch)."""
-    try:
+    with d365_errors(ctx):
         info = sol_mod.clone_as_patch(
             ctx.backend(), parent_solution=parent_solution,
             display_name=display, version=version,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "solution clone-as-patch", parent_solution, info)
+    _journal(ctx, parent_solution, info)
 
 
 @solution_group.command("uninstall")
@@ -421,20 +382,15 @@ def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
     list unless --force. For a managed base solution the server also uninstalls
     its patches.
     """
-    if not _confirm_destructive(
-        "solution", unique_name, yes,
+    _confirm_destructive(
+        ctx, "solution", unique_name, yes,
         message=(f"Uninstalling solution {unique_name!r} removes it (and, for a "
                  f"managed base solution, all of its patches). Continue?"),
-    ):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    )
+    with d365_errors(ctx):
         info = sol_mod.uninstall_solution(ctx.backend(), unique_name, force=force)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "solution uninstall", unique_name, info)
+    _journal(ctx, unique_name, info)
 
 
 @solution_group.command("stage-and-upgrade")
@@ -470,13 +426,11 @@ def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_
               f"{solution_name!r} (DeleteAndPromote replaces the base solution)."
               if promote else
               f"Staging {zip_path!r} as a holding solution for upgrade.")
-    if not _confirm_destructive("solution", zip_path, yes,
-                                message=f"{action} Continue?"):
-        ctx.emit(False, error="aborted by user")
-        return
+    _confirm_destructive(ctx, "solution", zip_path, yes,
+                         message=f"{action} Continue?")
 
     with _no_retry_scope(ctx, no_retry):
-        try:
+        with d365_errors(ctx):
             info = sol_mod.import_solution(
                 ctx.backend(), zip_path,
                 publish_workflows=not no_publish,
@@ -488,12 +442,9 @@ def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_
             # Promote only a real, succeeded stage — never under --dry-run.
             if promote and not info.get("_dry_run"):
                 info["promote"] = sol_mod.delete_and_promote(ctx.backend(), solution_name)
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
         warnings = info.pop("warnings", None)
         ctx.emit(True, data=info, warnings=warnings)
-        _journal(ctx, "solution stage-and-upgrade", zip_path, info)
+        _journal(ctx, zip_path, info)
 
 
 @solution_group.command("export")
@@ -515,14 +466,11 @@ def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_
 def solution_export_cmd(ctx: CLIContext, unique_name, output, managed, export_settings, timeout, no_retry):
     kwargs = {_EXPORT_SETTING_KEYS[name]: True for name in export_settings}
     with _no_retry_scope(ctx, no_retry):
-        try:
+        with d365_errors(ctx):
             info = sol_mod.export_solution(
                 ctx.backend(), unique_name, output, managed=managed,
                 timeout=timeout, **kwargs,
             )
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
         ctx.emit(True, data=info)
 
 
@@ -530,14 +478,11 @@ def solution_export_cmd(ctx: CLIContext, unique_name, output, managed, export_se
 @pass_ctx
 def solution_publish_all(ctx: CLIContext):
     """Call PublishAllXml — publish every unpublished customization."""
-    try:
+    with d365_errors(ctx):
         result = sol_mod.publish_all(ctx.backend())
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     data = result or {"published": True}
     ctx.emit(True, data=data)
-    _journal(ctx, "solution publish-all", None, data)
+    _journal(ctx, None, data)
 
 
 @solution_group.command("publish")
@@ -555,14 +500,11 @@ def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
     if not parameter_xml:
         ctx.emit(False, error="Either --xml or --xml-file is required.")
         return
-    try:
+    with d365_errors(ctx):
         result = sol_mod.publish_xml(ctx.backend(), parameter_xml)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     data = result or {"published": True}
     ctx.emit(True, data=data)
-    _journal(ctx, "solution publish", None, data)
+    _journal(ctx, None, data)
 
 
 @solution_group.command("job-status")
@@ -570,11 +512,8 @@ def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
 @pass_ctx
 def solution_job_status(ctx: CLIContext, async_operation_id):
     """Alias for `crm async get <id>` — inspect a solution import/export job."""
-    try:
+    with d365_errors(ctx):
         row = async_ops_mod.get_async_operation(ctx.backend(), async_operation_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=row)
 
 
@@ -584,17 +523,12 @@ def solution_job_status(ctx: CLIContext, async_operation_id):
 @pass_ctx
 def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
     """Alias for `crm async cancel <id>`."""
-    if not _confirm_destructive("async job", async_operation_id, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    _confirm_destructive(ctx, "async job", async_operation_id, yes)
+    with d365_errors(ctx):
         async_ops_mod.cancel_async_operation(ctx.backend(), async_operation_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     data = {"cancelled": True, "id": async_operation_id}
     ctx.emit(True, data=data)
-    _journal(ctx, "solution job-cancel", async_operation_id, data)
+    _journal(ctx, async_operation_id, data)
 
 
 @solution_group.command("import")
@@ -617,15 +551,14 @@ def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, tim
     # An overwrite import (the default) clobbers unmanaged customizations in the
     # target org — gate it like a delete (#67). A `--no-overwrite` import is not
     # prompted here (the PreToolUse hook still requires --yes for any import).
-    if not no_overwrite and not _confirm_destructive(
-        "solution", zip_path, yes,
-        message=(f"Importing {zip_path!r} will OVERWRITE unmanaged customizations "
-                 f"in the target org. Continue?"),
-    ):
-        ctx.emit(False, error="aborted by user")
-        return
+    if not no_overwrite:
+        _confirm_destructive(
+            ctx, "solution", zip_path, yes,
+            message=(f"Importing {zip_path!r} will OVERWRITE unmanaged customizations "
+                     f"in the target org. Continue?"),
+        )
     with _no_retry_scope(ctx, no_retry):
-        try:
+        with d365_errors(ctx):
             info = sol_mod.import_solution(
                 ctx.backend(), zip_path,
                 publish_workflows=not no_publish,
@@ -634,12 +567,9 @@ def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, tim
                 quiet=quiet,
                 formatted=formatted,
             )
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
         warnings = info.pop("warnings", None)
         ctx.emit(True, data=info, warnings=warnings)
-        _journal(ctx, "solution import", zip_path, info)
+        _journal(ctx, zip_path, info)
 
 
 def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
@@ -680,14 +610,11 @@ def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
 
     OFFLINE local-file transform — no connection or profile required.
     """
-    try:
+    with d365_errors(ctx):
         info = sp_mod.extract_solution(
             zipfile=zipfile, folder=folder, package_type=package_type,
             solutionpackager_path=solutionpackager_path, timeout=timeout,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_packager_result(ctx, info)
 
 
@@ -712,14 +639,11 @@ def solution_pack_cmd(ctx: CLIContext, zipfile, folder, package_type,
 
     OFFLINE local-file transform — no connection or profile required.
     """
-    try:
+    with d365_errors(ctx):
         info = sp_mod.pack_solution(
             zipfile=zipfile, folder=folder, package_type=package_type,
             solutionpackager_path=solutionpackager_path, timeout=timeout,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_packager_result(ctx, info)
 
 
@@ -738,11 +662,8 @@ def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
     non-zero when any error-severity problem is found.
     """
     backend = ctx.backend() if against_org else None
-    try:
+    with d365_errors(ctx):
         report = sv_mod.validate_solution(zip_path, backend=backend)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if report["valid"]:
         ctx.emit(True, data=report)
         return
@@ -758,10 +679,7 @@ def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
 @pass_ctx
 def solution_import_result_cmd(ctx: CLIContext, import_job_id, formatted):
     """Re-fetch a prior ImportJob and parse its per-component pass/fail results."""
-    try:
+    with d365_errors(ctx):
         info = sol_mod.import_result(ctx.backend(), import_job_id, formatted=formatted)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     warnings = info.pop("warnings", None)
     ctx.emit(True, data=info, warnings=warnings)

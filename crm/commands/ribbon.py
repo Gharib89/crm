@@ -12,7 +12,7 @@ from crm.utils.d365_backend import D365Error, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error, _journal, _confirm_destructive,
-    _solution_option, _require_solution, _resolve_solution,
+    _solution_option, _resolve_solution, d365_errors,
 )
 
 
@@ -67,19 +67,14 @@ def _load_solution_ribbon_diff(ctx: CLIContext, solution: str, entity: str):
 @pass_ctx
 def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
     """List the custom buttons declared in a solution's RibbonDiffXml."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(True))
-    if solution is None:
-        return  # _resolve_solution already emitted the error
+    solution, warning = _resolve_solution(ctx, solution, True)
+    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     if ctx.dry_run:
-        try:
+        with d365_errors(ctx):
             with tempfile.TemporaryDirectory() as td:
                 preview = ribbon_mod.export_solution(
                     ctx.backend(), solution, Path(td) / "dry.zip",
                     export_customizations=True)
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
         ctx.emit(True, data=preview, warnings=[warning] if warning else None)
         return
     try:
@@ -123,10 +118,8 @@ def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
 def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
                       function, param, sequence, id_base, solution, require_solution):
     """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(True))
-    if solution is None:
-        return  # _resolve_solution already emitted the error
+    solution, warning = _resolve_solution(ctx, solution, True)
+    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     try:
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
     except (D365Error, ValueError) as exc:
@@ -158,7 +151,7 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
     ctx.emit(True, data={"button_id": ids.custom_action, "group": group,
                          "result": result},
              warnings=[warning] if warning else None)
-    _journal(ctx, "ribbon add-button", ids.custom_action, result, solution=solution)
+    _journal(ctx, ids.custom_action, result, solution=solution)
 
 
 @ribbon_group.command("remove")
@@ -170,13 +163,9 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
 @pass_ctx
 def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
     """Remove a custom button (CustomAction + its CommandDefinition)."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(True))
-    if solution is None:
-        return  # _resolve_solution already emitted the error
-    if not _confirm_destructive("ribbon button", button_id, yes):
-        ctx.emit(False, error="aborted by user")
-        return
+    solution, warning = _resolve_solution(ctx, solution, True)
+    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
+    _confirm_destructive(ctx, "ribbon button", button_id, yes)
 
     def mutate(cust_root):
         node = ribbon_mod.find_entity_node(cust_root, entity)
@@ -198,4 +187,4 @@ def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
         return
     ctx.emit(True, data={"removed": button_id, "result": result},
              warnings=[warning] if warning else None)
-    _journal(ctx, "ribbon remove", button_id, result, solution=solution)
+    _journal(ctx, button_id, result, solution=solution)

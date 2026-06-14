@@ -7,10 +7,9 @@ import click
 from crm.core import query as query_mod
 from crm.core.query import total_record_count
 from crm.core.metadata import resolve_entity_set_name
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error,
+    d365_errors,
     _emit_query_result,
     _touch_session,
 )
@@ -78,7 +77,7 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
     OData query options go through --select/--filter/etc., never inline.
     A '?' or '$' in the positional arg is rejected client-side before the request.
     """
-    try:
+    with d365_errors(ctx):
         result = query_mod.odata_query(
             ctx.backend(), entity_set,
             select=list(select) or None,
@@ -90,9 +89,6 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
             page_size=page_size,
             include_annotations=annotations,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_query_result(ctx, result, entity_set, minimal=minimal)
     _touch_session(ctx, entity_set, last_query={"type": "odata", "filter": filter_})
 
@@ -134,20 +130,14 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     # Parse raises click.UsageError (exit 2) for bad XML — escapes the D365Error try below.
     if entity_set is None:
         logical_name = _parse_entity_name_from_fetchxml(fetch_xml)
-        try:
+        with d365_errors(ctx):
             entity_set = resolve_entity_set_name(ctx.backend(), logical_name)
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
 
-    try:
+    with d365_errors(ctx):
         result = query_mod.fetchxml_query(
             ctx.backend(), entity_set, fetch_xml,
             include_annotations=annotations,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_query_result(ctx, result, entity_set, minimal=minimal)
     _touch_session(ctx, entity_set, last_query={"type": "fetchxml"})
 
@@ -164,14 +154,11 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 @pass_ctx
 def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_size, minimal):
     """Execute a system view (savedquery) by GUID. Use `--json query odata savedqueries` to discover IDs."""
-    try:
+    with d365_errors(ctx):
         result = query_mod.saved_query(
             ctx.backend(), entity_set, savedquery_id,
             include_annotations=annotations, page_size=page_size,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_query_result(ctx, result, entity_set, minimal=minimal)
 
 
@@ -187,14 +174,11 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
 @pass_ctx
 def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size, minimal):
     """Execute a saved view (userquery) by GUID."""
-    try:
+    with d365_errors(ctx):
         result = query_mod.user_query(
             ctx.backend(), entity_set, userquery_id,
             include_annotations=annotations, page_size=page_size,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_query_result(ctx, result, entity_set, minimal=minimal)
 
 
@@ -203,9 +187,6 @@ def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size
 @pass_ctx
 def query_count(ctx: CLIContext, entity: str):
     """Count rows for an entity via RetrieveTotalRecordCount (cached server-side)."""
-    try:
+    with d365_errors(ctx):
         n = total_record_count(ctx.backend(), entity)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data={"entity": entity, "count": n})

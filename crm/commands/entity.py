@@ -10,6 +10,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_litera
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
+    d365_errors,
     _admin_header_options,
     _admin_kwargs,
     _confirm_destructive,
@@ -186,13 +187,10 @@ def _validate_or_emit(
     with a create-path primary-id warning, returns that warning for the caller to
     surface in the final emit.
     """
-    try:
+    with d365_errors(ctx):
         verdict = entity_mod.validate_payload(
             ctx.backend(), entity_set, payload, is_create=is_create
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return None
     if not verdict["ok"]:
         meta = verdict["meta"]
         unknown = ", ".join(meta["unknown_fields"])
@@ -222,16 +220,13 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
     # Validate untrusted --expect input before any backend call (house rule):
     # a malformed pair raises UsageError (exit 2) without a round-trip.
     expectations = _parse_expect(expect)
-    try:
+    with d365_errors(ctx):
         result = entity_mod.retrieve(
             ctx.backend(), entity_set, record_id,
             select=list(select) or None,
             expand=list(expand) or None,
             include_annotations=annotations,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     # Verify against the FULL record, before any --minimal projection.
     if expectations:
         miss = _check_expectations(result, expectations)
@@ -268,15 +263,12 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
             raise click.BadParameter(
                 f"not a valid regular expression: {exc}", param_hint="--filter-entities"
             )
-    try:
+    with d365_errors(ctx):
         rows = entity_mod.count_children(
             ctx.backend(), entity_set, record_id,
             non_empty=non_empty,
             filter_entities=filter_entities,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=rows)
 
 
@@ -316,7 +308,7 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
         _handle_d365_error(ctx, exc, extra_meta=extra_meta, warnings=validate_warnings or None)
         return
     ctx.emit(True, data=result, warnings=validate_warnings or None)
-    _journal(ctx, "entity create", entity_set, result)
+    _journal(ctx, entity_set, result)
     _touch_session(ctx, entity_set)
 
 
@@ -365,12 +357,9 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
     # Validate untrusted input before constructing a backend (house rule): a
     # malformed GUID must fail fast, before any credential resolution / token
     # acquisition (msal does network at backend construction for cloud).
-    try:
+    with d365_errors(ctx):
         record_id = entity_mod._normalize_id(record_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    try:
+    with d365_errors(ctx):
         result = entity_mod.clone_record(
             ctx.backend(), entity_set, record_id,
             overrides=parsed_overrides,
@@ -379,11 +368,8 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
             with_children=with_children,
             skip_child_entities=list(skip_child_entity),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
-    _journal(ctx, "entity clone", entity_set, result)
+    _journal(ctx, entity_set, result)
     _touch_session(ctx, entity_set)
 
     # --with-children on a live run carries a {created, failures} summary: per
@@ -459,7 +445,7 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
         return
     data = result or {"updated": True, "id": record_id}
     ctx.emit(True, data=data)
-    _journal(ctx, "entity update", entity_set, data)
+    _journal(ctx, entity_set, data)
 
 
 @entity_group.command("upsert")
@@ -473,17 +459,14 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
                   as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """PATCH with create-if-missing semantics."""
     payload = _load_payload(data_json, data_file)
-    try:
+    with d365_errors(ctx):
         result = entity_mod.upsert(
             ctx.backend(), entity_set, record_id, payload,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     data = result or {"upserted": True, "id": record_id}
     ctx.emit(True, data=data)
-    _journal(ctx, "entity upsert", entity_set, data)
+    _journal(ctx, entity_set, data)
 
 
 @entity_group.command("delete")
@@ -497,9 +480,7 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
 def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
                   as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """DELETE a record."""
-    if not _confirm_destructive("record", f"{entity_set}({record_id})", yes):
-        ctx.emit(False, error="aborted by user")
-        return
+    _confirm_destructive(ctx, "record", f"{entity_set}({record_id})", yes)
     try:
         result = entity_mod.delete(
             ctx.backend(), entity_set, record_id,
@@ -519,7 +500,7 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
         _handle_d365_error(ctx, exc, hint=hint)
         return
     ctx.emit(True, data=result)
-    _journal(ctx, "entity delete", entity_set, result)
+    _journal(ctx, entity_set, result)
 
 
 @entity_group.command("associate")
@@ -533,16 +514,13 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
 def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id,
                      as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Associate two records via a collection-valued nav property (1:N from one-side or N:N)."""
-    try:
+    with d365_errors(ctx):
         result = entity_mod.associate(
             ctx.backend(), target_set, target_id, nav, related_set, related_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=result)
-    _journal(ctx, "entity associate", target_set, result)
+    _journal(ctx, target_set, result)
 
 
 @entity_group.command("disassociate")
@@ -556,17 +534,14 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
 def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id,
                         as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Disassociate two records. Omit --related-* for single-valued lookups."""
-    try:
+    with d365_errors(ctx):
         result = entity_mod.disassociate(
             ctx.backend(), target_set, target_id, nav,
             related_set=related_set, related_id=related_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=result)
-    _journal(ctx, "entity disassociate", target_set, result)
+    _journal(ctx, target_set, result)
 
 
 @entity_group.command("set-lookup")
@@ -580,17 +555,14 @@ def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set
 def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, related_id,
                       as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Set a single-valued lookup via @odata.bind PATCH."""
-    try:
+    with d365_errors(ctx):
         result = entity_mod.set_lookup(
             ctx.backend(), entity_set, record_id, nav, related_set, related_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     data = result or {"set": True, "id": record_id, "nav": nav}
     ctx.emit(True, data=data)
-    _journal(ctx, "entity set-lookup", entity_set, data)
+    _journal(ctx, entity_set, data)
 
 
 @entity_group.command("clear-lookup")
@@ -602,13 +574,10 @@ def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, 
 def entity_clear_lookup(ctx: CLIContext, entity_set, record_id, nav,
                         as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Clear a single-valued lookup via DELETE /$ref."""
-    try:
+    with d365_errors(ctx):
         result = entity_mod.clear_lookup(
             ctx.backend(), entity_set, record_id, nav,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=result)
-    _journal(ctx, "entity clear-lookup", entity_set, result)
+    _journal(ctx, entity_set, result)

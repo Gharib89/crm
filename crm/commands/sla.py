@@ -3,10 +3,9 @@
 from __future__ import annotations
 import click
 from crm.core import sla as sla_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error,
+    d365_errors,
     _admin_header_options,
     _admin_kwargs,
     _journal,
@@ -53,22 +52,16 @@ def sla_activate(ctx: CLIContext, sla_id, as_user, as_user_object_id,
     solution import), the SLA is left untouched and the per-workflow error
     report explains why UI activation is required.
     """
-    try:
+    with d365_errors(ctx):
         sla_id = sla_mod.validate_sla_id(sla_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    try:
+    with d365_errors(ctx):
         result = sla_mod.activate_sla(
             ctx.backend(), sla_id,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection,
                             bypass_plugins),
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if result.get("ui_activation_required"):
         ctx.emit(False, data=result, error=_ui_required_error(result))
         return
     ctx.emit(True, data=result)
-    _journal(ctx, "sla activate", sla_id, result)
+    _journal(ctx, sla_id, result)

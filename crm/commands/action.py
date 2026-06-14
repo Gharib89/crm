@@ -3,9 +3,8 @@
 from __future__ import annotations
 import json
 import click
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error, _journal, _load_payload, _odata_literal
+from crm.commands._helpers import d365_errors, _journal, _load_payload, _odata_literal
 
 
 @click.group("action")
@@ -26,11 +25,8 @@ def action_function(ctx: CLIContext, name, params_json):
         path = f"{name}({encoded})"
     else:
         path = f"{name}()"
-    try:
+    with d365_errors(ctx):
         result = (backend or ctx.backend()).get(path)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=result or {})
 
 
@@ -63,11 +59,8 @@ def action_invoke(ctx: CLIContext, name, body_json, body_file, bind_set, bind_id
         path = f"{bind_set}({bind_id})/{cast}.{name}"
     else:
         path = name
-    try:
+    with d365_errors(ctx):
         result = ctx.backend().post(path, json_body=payload)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     data = result or {}
     ctx.emit(True, data=data)
-    _journal(ctx, "action invoke", name, data)
+    _journal(ctx, name, data)
