@@ -14,6 +14,14 @@ The single result a command produces via `CLIContext.emit` — either a human
 rendering or, under `--json`, the `{ok, data?, error?, meta?}` object.
 _Avoid_: response, output blob.
 
+**Data payload**:
+The `data` member of the emit envelope. A *curated, CLI-owned* shape — not a
+faithful passthrough of the raw D365 Web API response. The CLI normalizes it for
+cross-command consistency: OData protocol keys (`@odata.context`, `@odata.etag`)
+and paging links are stripped from `data` and, where useful, relocated to `meta`.
+An agent learns one extraction rule, not one per command.
+_Avoid_: response body, raw OData.
+
 **Operational failure**:
 A command that ran but did not achieve its effect — a D365 server error, a
 client-side validation rejection, or a user-declined confirmation. Surfaces as
@@ -30,6 +38,36 @@ raised inside the command body).
 The promise that `0` = success, `1` = operational failure, `2` = usage error —
 the signal a coding agent loops on. Detail beyond the code lives in the emit
 envelope.
+
+**List payload**:
+The data payload of a list-returning verb: always a **bare array** of row
+objects in `data` (`data[0]` is the first row), for every list verb. OData
+paging is relocated to `meta` — `meta.next_link` (from `@odata.nextLink`) and
+`meta.count` (from `@odata.count`) — and per-row protocol keys (`@odata.etag`,
+`@odata.*`) are stripped. No command returns the raw OData envelope in `data`.
+_Avoid_: OData envelope, `data.value`, result wrapper.
+
+**Normalized entity id**:
+`_entity_id` (with companion `_entity_id_url`) — the CLI-synthesized, stable key
+holding the affected record's GUID across the write verbs and single-record
+reads, so chaining needs no per-entity primary-key knowledge. Leading underscore
+marks it synthetic, distinct from the genuine PK attribute (`accountid`, …) that
+still appears in a create/get's full record. Present on: create (alongside the
+full record), update, delete (`{deleted: true, _entity_id, _entity_id_url}`), and
+`entity get`. **Not** injected per-row in list payloads — each list row carries
+its own PK attribute.
+_Avoid_: `id`, `recordid`, primary key (the PK is the D365 attribute; this is the
+normalized synthetic key).
+
+**Record render modes**:
+A single record renders differently per output mode, each mode with a default and
+one opt-out knob. **JSON**: default = the full curated record (`@odata.*` stripped,
+`_entity_id` injected); `--minimal` trims it. **Human**: default = *concise* —
+null/empty fields hidden, `@odata.*` suppressed, `_entity_id` hoisted first (the
+primary-name attribute hoisted too only when metadata is already cached, never via
+an added round-trip); `--full` expands to every field including nulls. So JSON
+defaults verbose-for-agents, human defaults concise-for-people.
+_Avoid_: verbose dump, minimal mode (name the specific knob: `--minimal` / `--full`).
 
 ### Dry-run
 
