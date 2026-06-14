@@ -444,7 +444,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True,
               help="Preview writes without issuing them; reads run normally.")
-@click.option("--profile", "profile_name", help="Connection profile name (from the state dir; default ~/.crm, override via CRM_HOME).")
+@click.option("--profile", "profile_name", help="Connection profile name (from the profiles/ dir under CRM_HOME; default ~/.crm).")
 @click.option("--password", help="Secret for this run (overrides the profile's stored secret).")
 @click.option("--log-level",
               type=click.Choice(["debug", "info", "warning", "error"]),
