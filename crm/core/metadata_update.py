@@ -258,7 +258,8 @@ def _build_attribute_changes(
                 "--precision is only valid for decimal/double/money attributes."
             )
         kind = mc.kind_for_cast(odata_type)
-        assert kind is not None  # every _PRECISION_TYPES cast is a key in mc.KINDS
+        if kind is None:  # unreachable: _PRECISION_TYPES is derived from mc.KINDS
+            raise D365Error(f"no attribute kind for @odata.type {odata_type!r}.")
         mc.validate_precision(kind, precision, subject="--precision")
         changes["Precision"] = precision
     if min_value is not None:
