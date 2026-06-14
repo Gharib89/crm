@@ -21,8 +21,6 @@ from crm.commands._helpers import (
     _parse_value_labels,
     _handle_d365_error,
     d365_errors,
-    _admin_header_options,
-    _admin_kwargs,
     _confirm_destructive,
     _journal,
     _resolve_publish,
