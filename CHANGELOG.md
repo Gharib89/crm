@@ -9,6 +9,34 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.2 (2026-06-14)
+
+### Bug Fixes
+
+- **cli**: Hint that global flags go before the subcommand
+  ([#309](https://github.com/Gharib89/crm/pull/309),
+  [`ece8923`](https://github.com/Gharib89/crm/commit/ece892359c8e9acb2f6e2604e0e7593c6fadac43))
+
+### Chores
+
+- **agents**: Cloud ship routine (vendored skills + bootstrap + runbook)
+  ([`8f1ce23`](https://github.com/Gharib89/crm/commit/8f1ce2326c5dfd4ae1d9397317497aeac7b05cca))
+
+- **agents**: Install gh in cloud routine + branch/merge-gate fixes
+  ([`b1c3ff7`](https://github.com/Gharib89/crm/commit/b1c3ff7cc05b413fc9ffaf920510f96f6261c2ee))
+
+- **metadata**: Drop unused _admin_header_options/_admin_kwargs imports
+  ([`20b0668`](https://github.com/Gharib89/crm/commit/20b0668888436f1d8dfccff15ec5d98a0dcd2051))
+
+### Documentation
+
+- **adr**: Record CLI output contract + glossary terms (ADR 0008)
+  ([`e0d366d`](https://github.com/Gharib89/crm/commit/e0d366d1856c6056a7a0be730a94475b68d7f067))
+
+- **claude**: Note zsh output-capture traps when driving the CLI
+  ([`3fcb54e`](https://github.com/Gharib89/crm/commit/3fcb54e6a5feb3320965e5cc1dc0baf8d641a27b))
+
+
 ## v3.12.1 (2026-06-14)
 
 ### Bug Fixes
