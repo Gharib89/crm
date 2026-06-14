@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.1 (2026-06-14)
+
+### Bug Fixes
+
+- **commands**: Clean exit-2 on non-int value:label option input
+  ([#296](https://github.com/Gharib89/crm/pull/296),
+  [`2eb4102`](https://github.com/Gharib89/crm/commit/2eb410241edc1035a2660342a2cee5275d75bea4))
+
+### Documentation
+
+- Purge real test-org GUIDs from published docs ([#259](https://github.com/Gharib89/crm/pull/259),
+  [`5ab576a`](https://github.com/Gharib89/crm/commit/5ab576a6097cc19eb86531b9c766f6f599d9b941))
+
+- **claude**: Note single-test command and pytest e2e default
+  ([`34c008e`](https://github.com/Gharib89/crm/commit/34c008ed8ad7ad23cff8ec97c3362327221c20f8))
+
+- **metadata**: Align --update-option help with parser error wording
+  ([#296](https://github.com/Gharib89/crm/pull/296),
+  [`2eb4102`](https://github.com/Gharib89/crm/commit/2eb410241edc1035a2660342a2cee5275d75bea4))
+
+### Refactoring
+
+- **commands**: Composable seams for per-verb boilerplate
+  ([#264](https://github.com/Gharib89/crm/pull/264),
+  [`aeee16f`](https://github.com/Gharib89/crm/commit/aeee16f31444a7b6c8b7a79335fca322d3eac0d6))
+
+- **commands**: Split _helpers grab-bag into a package
+  ([#271](https://github.com/Gharib89/crm/pull/271),
+  [`8cdacce`](https://github.com/Gharib89/crm/commit/8cdacce0b921dd9dd24e0a7d5f2f1e16f9b2b3d6))
+
+- **core**: Single seam for metadata constraint vocabularies
+  ([#295](https://github.com/Gharib89/crm/pull/295),
+  [`3cca964`](https://github.com/Gharib89/crm/commit/3cca96427f38d0ed06c7992205e6744103e56572))
+
+- **core**: Split solution.py into lifecycle / components / transfer
+  ([#265](https://github.com/Gharib89/crm/pull/265),
+  [`8e88986`](https://github.com/Gharib89/crm/commit/8e889869691deb52bfac537a92dd36708aef38dc))
+
+
 ## v3.12.0 (2026-06-14)
 
 ### Bug Fixes
