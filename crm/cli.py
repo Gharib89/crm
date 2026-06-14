@@ -389,6 +389,26 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
     def list_commands(self, ctx):
         return sorted({*self._lazy_commands, *super().list_commands(ctx)})
 
+    def resolve_command(self, ctx, args):
+        """Delegate to Click, but widen the "Did you mean ...?" candidate set.
+
+        Click's `Group.resolve_command` raises `NoSuchCommand(possibilities=
+        self.commands)`, and the exception derives its suggestion from that set.
+        This root group is lazy — `self.commands` is empty (subcommands live in
+        the lazy registry, not eagerly registered), so Click offers no suggestion
+        for a near-miss group name while stock subgroups do for verbs. Re-raise
+        with the full top-level command set (`list_commands`, the single source of
+        truth) so `crm entit` → "Did you mean 'entity'?". The option-looking-token
+        reparse side effect happens inside super() before the raise, so it stays
+        intact; a no-close-match typo still yields the bare message (Click's
+        `get_close_matches` cutoff is reused unchanged)."""
+        try:
+            return super().resolve_command(ctx, args)
+        except click.exceptions.NoSuchCommand as exc:
+            raise click.exceptions.NoSuchCommand(
+                exc.command_name, possibilities=self.list_commands(ctx), ctx=ctx,
+            ) from None
+
     def get_command(self, ctx, cmd_name):
         eager = super().get_command(ctx, cmd_name)
         if eager is not None:

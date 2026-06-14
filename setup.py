@@ -14,7 +14,10 @@ setup(
         "crm": ["skills/*.md", "skills/reference/*.md", "README.md"],
     },
     install_requires=[
-        "click>=8.0",
+        # 8.4.0 first ships click.exceptions.NoSuchCommand and its
+        # possibilities-based "Did you mean ...?" suggestion, which the root
+        # group's resolve_command override relies on (crm/cli.py).
+        "click>=8.4",
         "requests>=2.28",
         "requests_ntlm>=1.2",
         "prompt_toolkit>=3.0",
