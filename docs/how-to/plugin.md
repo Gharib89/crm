@@ -161,3 +161,10 @@ crm --dry-run --json plugin register-step \
 
 Resolution GETs (e.g. assembly lookup under `--update`) fire for real; all
 writes are skipped. The `--json` envelope carries `meta.dry_run: true`.
+
+For `register-step`, dry-run resolves the objects the step names — the SDK
+message, the plug-in type, and (when `--entity` is given) the message filter for
+that entity — and reports each under `data.references[] = {kind, value,
+_exists}`. A reference that does not resolve keeps the preview non-failing
+(`ok: true`) and adds a `meta.warnings` advisory naming it, so a bad message,
+unregistered type, or unsupported entity is caught before the real write 400s.

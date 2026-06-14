@@ -14,6 +14,7 @@ from crm.commands._helpers import (
     _solution_option,
 )
 from crm.core import apply as apply_mod
+from crm.core import references as references_mod
 from crm.core import scaffold as scaffold_mod
 from crm.utils.d365_backend import D365Error
 
@@ -110,9 +111,10 @@ def table(
         return
 
     # --- 4. Apply via apply_spec ---
+    backend = ctx.backend()
     try:
         res = apply_mod.apply_spec(
-            ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only
+            backend, spec, solution=solution, stage_only=ctx.stage_only
         )
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -120,11 +122,20 @@ def table(
 
     # --- 5. Emit result ---
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
+    warnings = [warning] if warning else []
+    # Under dry-run the columns' references (lookup target entities, picklist
+    # option sets) are reported even when the (new) table itself is only planned,
+    # so a dangling reference is a pre-flight finding, not a write-time fault (#281).
+    if ctx.dry_run:
+        references = references_mod.resolve_spec_references(backend, spec)
+        if references:
+            data["references"] = references
+            warnings.extend(references_mod.reference_warnings(references))
     ctx.emit(
         res["ok"],
         data=data,
         meta={"staged": res["staged"]},
-        warnings=[warning] if warning else None,
+        warnings=warnings or None,
     )
 
     # --- 6. Journal on success ---

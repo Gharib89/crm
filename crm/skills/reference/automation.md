@@ -60,7 +60,12 @@ crm --json plugin unregister-assembly Contoso.Plugins --yes
 ```
 
 `--dry-run` skips all writes (resolution GETs still fire); the `--json` envelope
-carries `meta.dry_run: true`.
+carries `meta.dry_run: true`. On `register-step` the preview also resolves the
+objects the step names — the SDK message, the plug-in type, and (entity-scoped)
+the message filter for that entity — and reports each under
+`data.references[] = {kind, value, _exists}`. A reference that does not resolve
+stays a non-failing preview (`ok: true`) and adds a `meta.warnings` advisory
+naming it, so a dangling name is caught before the real write 400s.
 
 ### Debugging a plug-in via trace logs
 
