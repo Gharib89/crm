@@ -31,6 +31,15 @@ gh --version
 # crm CLI from source (not published to PyPI)
 pip install -e ".[dev,docs]"
 
+# Self-heal the sandbox image's cryptography backend before any test run. The
+# image's Debian-packaged cryptography can't load its CFFI runtime (_cffi_backend);
+# pip reports it "already satisfied" and never repairs it, so importing the NTLM
+# stack (requests_ntlm -> pyspnego -> cryptography ciphers) panics at pytest
+# collection ("No module named '_cffi_backend'" / pyo3 PanicException), producing
+# ~900 spurious collection errors. Reinstalling cffi restores the backend. CI is
+# unaffected — GitHub Actions installs fresh PyPI cryptography wheels.
+python -m pip install --force-reinstall cffi
+
 # Build + activate the agent-cloud profile (non-interactive; plaintext store, no
 # OS keyring in the sandbox). WhoAmI-tests + activates; fails fast if cloud egress
 # is blocked or the secret is wrong. --yes skips the overwrite-confirm so an
