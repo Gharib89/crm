@@ -42,8 +42,10 @@ Out of scope (non-goals):
 - On-prem issues / `agent-on-prem`.
 - Batch-processing many issues in one fire (one issue per fire — keeps runs bounded;
   a failure on issue N doesn't block N+1, which is just the next fire).
-- Triage. The routine consumes `ready-for-agent` issues; it does not label them.
-  Labeling stays a human/`/triage` step.
+- Triage. The routine consumes `ready-for-agent` issues; it does not decide which
+  issues are ready (that stays a human/`/triage` step). It does manage its own
+  claim/handoff labels — `agent-working` and `ready-for-human` — to serialize work
+  across fires (see Per-fire flow / Error handling & safety).
 
 ## Architecture
 
@@ -68,10 +70,11 @@ fire
       gh issue list --label ready-for-agent --state open \
         --json number --jq 'sort_by(.number)[0].number // empty'
       ├─ none → exit clean ("nothing ready"), no PR
-      └─ N    → /ship N
-                 ├─ phase 0–7: worktree, TDD, e2e (cloud), self-review, PR,
-                 │             Copilot loop, green CI
-                 └─ STOP at merge gate → merge-ready PR on claude.ai
+      └─ N    → CLAIM: ready-for-agent → agent-working (so the next fire skips N)
+                 └─ /ship N  (PR body: "Closes #N")
+                     ├─ shipped  → STOP at merge gate; issue stays agent-working
+                     │             until the human merge closes it
+                     └─ blocked  → agent-working → ready-for-human + reason, STOP
 ```
 
 ### Bootstrap script contract (`scripts/cloud-ship-bootstrap.sh`)
@@ -129,6 +132,14 @@ each other by name so composition survives. This is distinct from `crm/skills/`
 - **Never proceed on red** — `/ship` bounds self-fix-and-retry, then stops and reports.
 - **No `ready-for-agent` issue** → clean no-op exit, no empty PR.
 - **One issue per fire** — a failure is isolated to that fire.
+- **No double-pick (must-set label)** — hourly fires + a long-lived unmerged PR mean
+  a later fire could otherwise re-pick an in-progress / PR-open issue. The fire
+  **claims** its issue first (`ready-for-agent` → `agent-working`), which removes it
+  from the picker's `--label ready-for-agent` query; it stays claimed until the human
+  merge closes it via `Closes #N`. A blocked run relabels `agent-working` →
+  `ready-for-human` (not back to `ready-for-agent`, which would loop). A crashed run
+  leaves a stale `agent-working` with no PR → manual requeue. Requires the
+  `agent-working` label to exist and `GH_TOKEN` Issues:write.
 - **Ambiguity stop** — `/ship` stops in phase 1 if the issue is underspecified;
   the routine surfaces that on claude.ai instead of building the wrong thing.
 - **Host guard** — `D365_E2E_ALLOW_HOST` opts in only the one designated cloud test

@@ -14,16 +14,31 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
    It installs the crm CLI, builds the active `agent-cloud` profile from the
    environment's D365_* connection variables, and confirms the cloud org via whoami.
    If it exits non-zero, report the failure and STOP.
-2. Pick the work item (gh reads GH_TOKEN from the environment):
+2. Pick + claim the work item (gh reads GH_TOKEN from the environment):
    NUM=$(gh issue list --repo Gharib89/crm --label ready-for-agent --state open \
          --json number --jq 'sort_by(.number)[0].number // empty')
    If NUM is empty, report "nothing ready" and STOP — do not open a PR.
+   Claim it IMMEDIATELY, before any work, so the next hourly fire cannot pick the
+   same issue while you (or an open PR) still hold it:
+   gh issue edit "$NUM" --repo Gharib89/crm --remove-label ready-for-agent --add-label agent-working
+   gh issue comment "$NUM" --repo Gharib89/crm --body "Claimed by the cloud ship routine."
+   The claim removes ready-for-agent, so the picker above never returns a
+   claimed/in-progress issue or one that already has an open PR.
 3. Run the /ship skill on issue $NUM. Pin `--profile agent-cloud` on every crm
-   command. Follow the repo CLAUDE.md for test/gate/docs-sync/commit rules. This is
-   the cloud Dataverse org ONLY — never attempt on-prem work; if the issue can only
-   be verified on-prem, report that and STOP.
-4. /ship stops at the merge gate by design. Do NOT merge. Post the PR link and the
-   disposition summary, then STOP for human merge approval.
+   command. Put "Closes #$NUM" in the PR body so merging auto-closes the issue and
+   drops it from the queue. Follow the repo CLAUDE.md for test/gate/docs-sync/commit
+   rules. Cloud Dataverse org ONLY — never on-prem; an issue that can only be verified
+   on-prem counts as blocked (step 4).
+4. If /ship CANNOT produce a merge-ready PR (ambiguous/underspecified, on-prem-only,
+   or CI cannot be made green): do not leave it stuck as agent-working and do not
+   return it to ready-for-agent (that would loop it forever). Hand it to a human:
+   gh issue edit "$NUM" --repo Gharib89/crm --remove-label agent-working --add-label ready-for-human
+   gh issue comment "$NUM" --repo Gharib89/crm --body "<one-line reason it is blocked>"
+   then STOP.
+5. On success /ship stops at the merge gate. Do NOT merge. Leave the issue labeled
+   agent-working — it has the open PR, so later fires skip it, and merging closes it
+   via "Closes #$NUM". Post the PR link + disposition summary, then STOP for human
+   merge approval.
 
 Working standards (the operator's global coding philosophy, not in the cloned repo;
 the repo's own CLAUDE.md and /ship already cover tests, gates, and the merge flow):
@@ -83,6 +98,33 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   **connector** instead. Connectors must be account-level
   (claude.ai/customize/connectors); local `claude mcp add` servers don't appear in
   routines.
+
+## Concurrency & issue-label lifecycle
+
+The routine fires hourly and a merge-ready PR can sit unmerged for a while, so each
+fire must not re-pick an issue another fire already owns. A label state machine keeps
+one owner per issue:
+
+- `ready-for-agent` — queued, unclaimed; the picker takes the oldest of these.
+- `agent-working` — claimed by a fire (in progress, or PR open awaiting human merge).
+  Claiming **removes** `ready-for-agent`, so the picker can no longer see the issue.
+- merge the PR → `Closes #N` closes the issue → it leaves the open queue for good.
+- `ready-for-human` — `/ship` could not ship it (ambiguous, on-prem-only, red CI); a
+  human takes over. Deliberately **not** auto-requeued (avoids an infinite fail loop).
+
+One-time setup — create the claim label once:
+
+```
+gh label create agent-working --repo Gharib89/crm --color FBCA04 \
+  --description "Claimed by the cloud ship routine (in progress or PR open)"
+```
+
+Also add `agent-working` to the canonical triage label set (`docs/agents/triage-labels.md`).
+`GH_TOKEN` needs Issues:write (already in the env config) for the relabel + comment.
+
+Stale-claim recovery: if a fire dies after claiming but before opening a PR, the issue
+stays `agent-working` with no PR. The routine will not retry it — relabel it
+`ready-for-agent` by hand to requeue.
 
 ## Schedule
 
