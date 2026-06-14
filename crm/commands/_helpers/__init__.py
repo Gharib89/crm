@@ -37,6 +37,7 @@ from .solutions import (
     _resolve_solution,
     _require_solution,
     _solution_option,
+    _publish_option,
     _resolve_publish,
     _active_profile,
     _resolve_schema_name,
@@ -44,6 +45,7 @@ from .solutions import (
 )
 from .confirm import (
     _confirm_destructive,
+    _destructive_option,
     _plaintext_secret_warning,
     select_one,
 )
@@ -54,6 +56,7 @@ from .admin import (
 from .parsing import (
     _load_payload,
     _parse_expect,
+    _parse_value_labels,
     _check_expectations,
     _odata_literal,
     _resolve_async_state,
@@ -79,14 +82,16 @@ __all__ = [
     "_handle_d365_error", "d365_errors", "_auth_error_hint",
     # solution resolution
     "_resolve_solution", "_require_solution", "_solution_option",
-    "_resolve_publish", "_active_profile", "_resolve_schema_name",
-    "_EXPORT_SETTING_KEYS",
+    "_publish_option", "_resolve_publish", "_active_profile",
+    "_resolve_schema_name", "_EXPORT_SETTING_KEYS",
     # confirm / secret UX
-    "_confirm_destructive", "_plaintext_secret_warning", "select_one",
+    "_confirm_destructive", "_destructive_option", "_plaintext_secret_warning",
+    "select_one",
     # admin headers
     "_admin_header_options", "_admin_kwargs",
     # input parsing / expectations
-    "_load_payload", "_parse_expect", "_check_expectations", "_odata_literal",
+    "_load_payload", "_parse_expect", "_parse_value_labels",
+    "_check_expectations", "_odata_literal",
     "_resolve_async_state", "_CASCADE", "_MENU", "_REQUIRED",
     # profile inference
     "infer_auth_scheme", "default_profile_name",

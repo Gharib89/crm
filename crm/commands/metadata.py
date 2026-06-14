@@ -2,6 +2,7 @@
 # pyright: basic
 from __future__ import annotations
 import time
+from typing import cast
 import click
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as ma_mod
@@ -15,6 +16,9 @@ from crm.core import clone as clone_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _publish_option,
+    _destructive_option,
+    _parse_value_labels,
     _handle_d365_error,
     d365_errors,
     _admin_header_options,
@@ -353,8 +357,7 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the entity already exists: error (default) or skip (no-op success).")
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after creation. Default: publish.")
+@_publish_option
 @pass_ctx
 def metadata_create_entity(
     ctx: CLIContext, schema_name, display_name, display_collection, primary_attr_schema,
@@ -406,8 +409,7 @@ def metadata_create_entity(
 @click.option("--with-all", is_flag=True, default=False,
               help="Enable --with-forms, --with-views, --with-workflows, and --with-charts.")
 @_solution_option
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after creation. Default: publish.")
+@_publish_option
 @pass_ctx
 def metadata_clone_entity(
     ctx: CLIContext, source, new_schema_name, display,
@@ -458,8 +460,7 @@ def metadata_clone_entity(
               help="Enable/disable notes.")
 @click.option("--solution", default=None,
               help="Apply via MSCRM.SolutionUniqueName.")
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after update. Default: publish.")
+@_publish_option
 @pass_ctx
 def metadata_update_entity(
     ctx: CLIContext, logical_name, display_name, display_collection_name,
@@ -501,8 +502,7 @@ def metadata_update_entity(
               help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
 @click.option("--solution", default=None,
               help="Apply via MSCRM.SolutionUniqueName.")
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after update. Default: publish.")
+@_publish_option
 @pass_ctx
 def metadata_update_attribute(
     ctx: CLIContext, entity, attribute, display_name, description, required,
@@ -546,8 +546,7 @@ def metadata_update_attribute(
 @click.option("--menu-order", type=int, default=None)
 @click.option("--solution", default=None,
               help="Apply via MSCRM.SolutionUniqueName.")
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after update. Default: publish.")
+@_publish_option
 @pass_ctx
 def metadata_update_relationship(
     ctx: CLIContext, schema_name, cascade_assign, cascade_delete, cascade_reparent,
@@ -595,7 +594,7 @@ def metadata_relationships(ctx: CLIContext, logical_name):
 
 @metadata_group.command("delete-entity")
 @click.argument("logical_name")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
@@ -658,8 +657,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the attribute already exists: error (default) or skip (no-op success).")
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after creation. Default: publish.")
+@_publish_option
 @pass_ctx
 def metadata_add_attribute(
     ctx: CLIContext, entity, kind, schema_name, display_name, description, required,
@@ -672,18 +670,7 @@ def metadata_add_attribute(
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    parsed_options: list[tuple[int | None, str]] | None = None
-    if options:
-        parsed_options = []
-        for raw in options:
-            if ":" not in raw:
-                raise click.UsageError(
-                    f"--option must be 'value:label' or ':label', got: {raw!r}"
-                )
-            v, _, lab = raw.partition(":")
-            v = v.strip()
-            lab = lab.strip()
-            parsed_options.append((int(v) if v else None, lab))
+    parsed_options = _parse_value_labels(options, flag="--option") or None
 
     parsed_default: bool | int | None = None
     if default_value is not None:
@@ -739,7 +726,7 @@ def metadata_add_attribute(
 @metadata_group.command("delete-attribute")
 @click.argument("entity")
 @click.argument("attribute")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
@@ -781,7 +768,7 @@ def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution,
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the relationship already exists: error (default) or skip (no-op success).")
-@click.option("--publish/--no-publish", default=True)
+@_publish_option
 @pass_ctx
 def metadata_create_one_to_many(
     ctx: CLIContext, schema_name, referenced_entity, referencing_entity, lookup_schema,
@@ -834,7 +821,7 @@ def metadata_create_one_to_many(
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the relationship already exists: error (default) or skip (no-op success).")
-@click.option("--publish/--no-publish", default=True)
+@_publish_option
 @pass_ctx
 def metadata_create_many_to_many(
     ctx: CLIContext, schema_name, entity1_logical, entity2_logical, intersect_entity,
@@ -868,7 +855,7 @@ def metadata_create_many_to_many(
 
 @metadata_group.command("delete-relationship")
 @click.argument("schema_name")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
@@ -929,7 +916,7 @@ def metadata_get_optionset(ctx: CLIContext, name):
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the option set already exists: error (default) or skip (no-op success).")
-@click.option("--publish/--no-publish", default=True)
+@_publish_option
 @pass_ctx
 def metadata_create_optionset(ctx: CLIContext, name, display_name, description, options,
                               solution, require_solution, if_exists, publish):
@@ -937,14 +924,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
     name = _resolve_schema_name(ctx, name, display_name, "--name")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    parsed: list[tuple[int | None, str]] = []
-    for raw in options:
-        if ":" not in raw:
-            raise click.UsageError(f"--option must be 'value:label' or ':label', got: {raw!r}")
-        v, _, lab = raw.partition(":")
-        v = v.strip()
-        lab = lab.strip()
-        parsed.append((int(v) if v else None, lab))
+    parsed = _parse_value_labels(options, flag="--option")
     with d365_errors(ctx):
         info = os_mod.create_optionset(
             ctx.backend(),
@@ -961,40 +941,26 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
 @click.option("--insert-option", "insert_options", multiple=True,
               help="Insert option 'value:label' or ':label'. Repeatable.")
 @click.option("--update-option", "update_options", multiple=True,
-              help="Update existing option 'value:new_label'. Repeatable.")
+              help="Update an existing option's label, 'value:label'. Repeatable.")
 @click.option("--delete-option", "delete_options", multiple=True, type=int,
               help="Delete option by value. Repeatable.")
 @click.option("--reorder", default=None,
               help="Comma-separated full ordered list of values, e.g. '1,2,7,4'.")
 @_solution_option
-@click.option("--publish/--no-publish", default=True)
+@_publish_option
 @pass_ctx
 def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_options,
                               delete_options, reorder, solution, require_solution, publish):
     """Granular update: insert/update/delete/reorder options."""
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    insert: list[tuple[int | None, str]] = []
-    for raw in insert_options:
-        if ":" not in raw:
-            raise click.UsageError(f"--insert-option must be 'value:label' or ':label': {raw!r}")
-        v, _, lab = raw.partition(":")
-        v = v.strip()
-        lab = lab.strip()
-        insert.append((int(v) if v else None, lab))
-
-    update: list[tuple[int, str]] = []
-    for raw in update_options:
-        if ":" not in raw:
-            raise click.UsageError(f"--update-option must be 'value:new_label': {raw!r}")
-        v, _, lab = raw.partition(":")
-        lab = lab.strip()
-        try:
-            update.append((int(v.strip()), lab))
-        except ValueError as exc:
-            raise click.UsageError(
-                f"--update-option value must be int: {raw!r}"
-            ) from exc
+    insert = _parse_value_labels(insert_options, flag="--insert-option")
+    # require_value=True guarantees an int for every value, so this narrowing
+    # cast is sound; it satisfies update_optionset's strict list[tuple[int, str]].
+    update = cast(
+        "list[tuple[int, str]]",
+        _parse_value_labels(update_options, flag="--update-option", require_value=True),
+    )
 
     reorder_list: list[int] | None = None
     if reorder:
@@ -1022,7 +988,7 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
 
 @metadata_group.command("delete-optionset")
 @click.argument("name")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")

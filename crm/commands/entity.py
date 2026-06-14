@@ -9,6 +9,7 @@ from crm.core import entity as entity_mod
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _destructive_option,
     _handle_d365_error,
     d365_errors,
     _admin_header_options,
@@ -474,7 +475,7 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
 @click.argument("record_id")
 @click.option("--if-match", "if_match", metavar="ETAG", default=None,
               help='Optimistic concurrency etag.')
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_admin_header_options
 @pass_ctx
 def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,

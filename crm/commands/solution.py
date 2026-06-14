@@ -12,6 +12,7 @@ from crm.core import solutionpackager as sp_mod
 from crm.core import session as session_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _destructive_option,
     d365_errors,
     _confirm_destructive,
     _journal,
@@ -329,7 +330,7 @@ def solution_add_component(ctx: CLIContext, solution, type_, component_id,
               help="Component type: integer or friendly name (e.g. 61 or webresource).")
 @click.option("--id", "component_id", required=True, metavar="GUID",
               help="Component GUID (objectid) to remove.")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @pass_ctx
 def solution_remove_component(ctx: CLIContext, solution, type_, component_id, yes):
     """Remove a component from an unmanaged solution (RemoveSolutionComponent)."""
@@ -373,7 +374,7 @@ def solution_clone_as_patch(ctx: CLIContext, parent_solution, display, version):
               help="Unique name of the solution to uninstall.")
 @click.option("--force", is_flag=True,
               help="Uninstall even if dependency blockers exist (skip the pre-check).")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @pass_ctx
 def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
     """Uninstall (delete) a solution (DELETE /solutions).
@@ -519,7 +520,7 @@ def solution_job_status(ctx: CLIContext, async_operation_id):
 
 @solution_group.command("job-cancel")
 @click.argument("async_operation_id")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @pass_ctx
 def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
     """Alias for `crm async cancel <id>`."""

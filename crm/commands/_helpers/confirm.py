@@ -52,6 +52,18 @@ def _confirm_destructive(
         ctx.emit(False, error="aborted by user")
 
 
+def _destructive_option(f):
+    """Stack the standard `--yes` confirm-skip flag on a destructive command.
+
+    Pairs with `_confirm_destructive` in the verb body. Covers only the sites
+    whose flag is byte-identical to this (`--yes`, plain skip help); sites with a
+    `-y` short form or bespoke help keep their inline `@click.option` (#294).
+    """
+    return click.option(
+        "--yes", is_flag=True, help="Skip interactive confirmation.",
+    )(f)
+
+
 def select_one(title: str, items: list[tuple[str, str]],
                default: str | None = None) -> str | None:
     """Show an inline arrow-key single-select picker; return the chosen value

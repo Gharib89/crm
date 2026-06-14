@@ -6,6 +6,7 @@ import click
 from crm.core import webresource as wr_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _publish_option,
     d365_errors, _journal, _resolve_publish, _solution_option,
     _resolve_solution, _emit_with_warning,
 )
@@ -26,7 +27,7 @@ def webresource_group():
               help="Override the D365 webresourcetype int; inferred from the "
                    "file extension if omitted.")
 @_solution_option
-@click.option("--publish/--no-publish", default=True)
+@_publish_option
 @pass_ctx
 def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
                        solution, require_solution, publish):
@@ -50,7 +51,7 @@ def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
               help="New source file whose bytes replace the web resource content.")
 @click.option("--display-name", "display_name", default=None)
 @_solution_option
-@click.option("--publish/--no-publish", default=True)
+@_publish_option
 @pass_ctx
 def webresource_update(ctx: CLIContext, name, file, display_name,
                        solution, require_solution, publish):

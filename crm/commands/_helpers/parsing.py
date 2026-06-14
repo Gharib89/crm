@@ -48,6 +48,50 @@ def _parse_expect(pairs: tuple[str, ...]) -> list[tuple[str, str]]:
     return parsed
 
 
+def _parse_value_labels(
+    raws: tuple[str, ...], *, flag: str, require_value: bool = False
+) -> list[tuple[int | None, str]]:
+    """Parse repeatable ``value:label`` flags into (value, label) pairs.
+
+    Split on the FIRST ':' (so a label may itself contain ':'); both sides are
+    trimmed. With ``require_value=False`` a bare ``:label`` yields
+    ``(None, label)``. With ``require_value=True`` the value must be a non-empty
+    integer. A missing ':' — or a non-integer value, in BOTH modes — is a clean
+    ``click.UsageError`` (exit 2); the latter folds in the #294 int-guard
+    hardening, so a typo like ``--option abc:foo`` no longer raises an unhandled
+    ``ValueError``. Empty input yields ``[]``.
+
+    The return type is always the loose ``list[tuple[int | None, str]]``; a
+    ``require_value=True`` caller that must satisfy a strict
+    ``list[tuple[int, str]]`` parameter (``update_optionset``'s ``update``)
+    casts at the call site — sound because ``require_value=True`` guarantees an
+    ``int`` for every value.
+    """
+    parsed: list[tuple[int | None, str]] = []
+    for raw in raws:
+        if ":" not in raw:
+            form = "'value:label'" if require_value else "'value:label' or ':label'"
+            raise click.UsageError(f"{flag} must be {form}, got: {raw!r}")
+        v, _, lab = raw.partition(":")
+        v = v.strip()
+        lab = lab.strip()
+        if v:
+            try:
+                value: int | None = int(v)
+            except ValueError as exc:
+                raise click.UsageError(
+                    f"{flag} value must be an integer, got: {raw!r}"
+                ) from exc
+        elif require_value:
+            raise click.UsageError(
+                f"{flag} requires an integer value before ':', got: {raw!r}"
+            )
+        else:
+            value = None
+        parsed.append((value, lab))
+    return parsed
+
+
 def _check_expectations(
     record: dict[str, Any], pairs: list[tuple[str, str]]
 ) -> dict[str, Any] | None:

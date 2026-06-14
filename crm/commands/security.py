@@ -5,6 +5,7 @@ import click
 from crm.core import security as security_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _destructive_option,
     d365_errors,
     _confirm_destructive,
     _admin_header_options,
@@ -74,7 +75,7 @@ def list_team_roles(ctx: CLIContext, team_id):
               help="Assign the role to this system user GUID.")
 @click.option("--to-team", "to_team", metavar="GUID", default=None,
               help="Assign the role to this team GUID.")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_admin_header_options
 @pass_ctx
 def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,

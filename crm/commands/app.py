@@ -6,6 +6,7 @@ from crm.core import appmodule as app_mod
 from crm.core import webresource as wr_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _publish_option,
     _journal, _resolve_publish, _solution_option,
     _resolve_solution, _emit_with_warning, d365_errors,
 )
@@ -26,7 +27,7 @@ def app_group():
               help="Web resource (name or GUID) for the app icon. "
                    "Defaults to the platform icon when omitted.")
 @_solution_option
-@click.option("--publish/--no-publish", default=True)
+@_publish_option
 @pass_ctx
 def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
                icon_webresource, solution, require_solution, publish):
@@ -132,8 +133,7 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
 @click.option("--unique-name", default=None,
               help="App uniquename to link the sitemap to (sets sitemapnameunique).")
 @_solution_option
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after creation. Default: publish.")
+@_publish_option
 @pass_ctx
 def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
                       unique_name, solution, require_solution, publish):

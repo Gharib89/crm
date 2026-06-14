@@ -5,6 +5,7 @@ import click
 from crm.core import views as views_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _publish_option,
     d365_errors, _journal, _resolve_publish, _solution_option,
     _resolve_solution, _emit_with_warning,
 )
@@ -65,8 +66,7 @@ def _parse_order(raw: str) -> tuple[str, bool]:
 @click.option("--default", "is_default", is_flag=True, help="Mark as the default view.")
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
 @_solution_option
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after creation. Default: publish.")
+@_publish_option
 @pass_ctx
 def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
                 order_by, filter_active, is_default, if_exists,

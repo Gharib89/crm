@@ -9,6 +9,7 @@ import click
 from crm.core import plugin as plugin_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _destructive_option,
     d365_errors, _emit_with_warning, _confirm_destructive, _journal)
 
 
@@ -146,7 +147,7 @@ def register_image_cmd(ctx: CLIContext, step, image_type, alias, attributes,
 
 @plugin_group.command("unregister-image")
 @click.argument("image")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @pass_ctx
 def unregister_image_cmd(ctx: CLIContext, image, yes):
     """Unregister a step entity image (sdkmessageprocessingstepimage, NAME or GUID)."""
@@ -159,7 +160,7 @@ def unregister_image_cmd(ctx: CLIContext, image, yes):
 
 @plugin_group.command("unregister-assembly")
 @click.argument("assembly")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @pass_ctx
 def unregister_assembly_cmd(ctx: CLIContext, assembly, yes):
     """Unregister a plug-in assembly (NAME or GUID), deleting dependent steps first."""
@@ -172,7 +173,7 @@ def unregister_assembly_cmd(ctx: CLIContext, assembly, yes):
 
 @plugin_group.command("unregister-step")
 @click.argument("step")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @pass_ctx
 def unregister_step_cmd(ctx: CLIContext, step, yes):
     """Unregister a plug-in step (sdkmessageprocessingstep, NAME or GUID)."""
