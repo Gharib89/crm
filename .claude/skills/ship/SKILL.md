@@ -6,7 +6,6 @@ description: >-
   open the PR, drive the automated code review to a ceiling, gate on green CI,
   then STOP for human merge approval. Composes the `tdd` and `review` skills.
   Explicit-only — invoke deliberately with an issue number; never fires on its own.
-disable-model-invocation: true
 user-invocable: true
 argument-hint: "[issue-number]"
 ---
