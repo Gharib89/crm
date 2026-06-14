@@ -262,29 +262,63 @@ def _json_mode_active(args: list[str] | None) -> bool:
 
 
 class _JsonAwareGroup(click.Group):
-    """Root group that, under --json, renders Click usage errors as the standard
-    JSON envelope on stdout while preserving the exit code (2, per ADR 0001)."""
+    """Root group that intercepts Click usage errors for consistent rendering: a
+    global root option placed *after* the subcommand (which Click rejects as
+    NoSuchOption) becomes a position hint, and under --json every usage error
+    renders as the standard JSON envelope on stdout. Exit code is preserved (2,
+    per ADR 0001)."""
+
+    def _global_option_names(self) -> set[str]:
+        """Every option token the root group declares — primary and secondary
+        (`--no-*`) forms. Derived from the live params so the set never drifts from
+        the actual root options as global flags are added or renamed."""
+        names: set[str] = set()
+        for param in self.params:
+            if isinstance(param, click.Option):
+                names.update(param.opts)
+                names.update(param.secondary_opts)
+        return names
+
+    def _global_option_hint(self, exc: "click.NoSuchOption") -> "str | None":
+        """If the rejected option is a root-level global option, return a message
+        telling the user to place it before the subcommand; otherwise None (so a
+        genuinely unknown option keeps Click's error, incl. its "Did you mean")."""
+        name = exc.option_name
+        if name not in self._global_option_names():
+            return None
+        # exc.ctx.command_path is e.g. "crm profile list"; rebuild it with the
+        # global option hoisted to just after the root program name.
+        parts = (exc.ctx.command_path.split() if exc.ctx else ["crm"]) or ["crm"]
+        corrected = " ".join([parts[0], name, *parts[1:]])
+        return (f"{name!r} is a global option; place it before the command:\n"
+                f"  {corrected} ...")
 
     def main(self, args=None, **kwargs):  # type: ignore[override]
         argv = list(args) if args is not None else sys.argv[1:]
         json_mode = _json_mode_active(argv)
-        if not json_mode:
-            return super().main(args=args, **kwargs)
-
-        # Under --json, intercept Click usage errors so they render as the standard
-        # envelope on stdout. Run non-standalone so the UsageError reaches us instead
-        # of Click printing raw text to stderr; otherwise replicate standalone exit
-        # semantics so the operational-failure (Exit) / Abort paths are unchanged.
-        # In non-standalone mode super().main() returns the command's value on
-        # success, or the Exit code (an int) when emit() raised Exit.
+        # Run non-standalone so Click parse/usage errors reach us instead of being
+        # printed-and-exited by Click. We re-render: a misplaced global flag gets a
+        # position hint; under --json a usage error becomes the envelope; otherwise
+        # Click's own rendering is preserved. We then replicate standalone exit
+        # semantics (super() returns the command value on success, or the Exit code
+        # as an int when emit() raised Exit). EPIPE and EOFError/KeyboardInterrupt
+        # are handled inside Click even non-standalone, so they need no replication.
         standalone = kwargs.pop("standalone_mode", True)
         try:
             rv = super().main(args=args, standalone_mode=False, **kwargs)
-        except click.UsageError as exc:
-            _emit_usage_envelope(exc.format_message())
+        except click.NoSuchOption as exc:
+            hint = self._global_option_hint(exc)
+            if hint is None:
+                return self._render_usage_error(exc, json_mode, standalone)
+            if json_mode:
+                _emit_usage_envelope(hint)
+            else:
+                click.echo(f"Error: {hint}", err=True)
             if standalone:
                 sys.exit(exc.exit_code)
             raise click.exceptions.Exit(exc.exit_code)
+        except click.ClickException as exc:
+            return self._render_usage_error(exc, json_mode, standalone)
         except click.exceptions.Abort:
             if standalone:
                 click.echo("Aborted!", file=sys.stderr)
@@ -293,6 +327,22 @@ class _JsonAwareGroup(click.Group):
         if standalone:
             sys.exit(rv if isinstance(rv, int) else 0)
         return rv
+
+    def _render_usage_error(self, exc: "click.ClickException", json_mode: bool,
+                            standalone: bool):
+        """Render a non-global-flag ClickException exactly as before this hint was
+        added: usage errors under --json become the stdout envelope; the REPL
+        (non-standalone) and --json non-usage errors propagate to their own
+        handlers; a direct human invocation keeps Click's standalone rendering."""
+        if json_mode and isinstance(exc, click.UsageError):
+            _emit_usage_envelope(exc.format_message())
+            if standalone:
+                sys.exit(exc.exit_code)
+            raise click.exceptions.Exit(exc.exit_code)
+        if not standalone or json_mode:
+            raise exc
+        exc.show()
+        sys.exit(exc.exit_code)
 
 
 class _LazyJsonAwareGroup(_JsonAwareGroup):
