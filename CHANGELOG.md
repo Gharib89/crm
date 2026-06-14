@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.4 (2026-06-14)
+
+### Bug Fixes
+
+- **cli**: Clarify --profile help points at profiles/ under CRM_HOME
+  ([#311](https://github.com/Gharib89/crm/pull/311),
+  [`6fc5d83`](https://github.com/Gharib89/crm/commit/6fc5d8305ea9ca876912b822f4ae26f352e1f956))
+
+- **cli**: Root help reflects cloud + on-prem; drop hardcoded --profile path
+  ([#311](https://github.com/Gharib89/crm/pull/311),
+  [`6fc5d83`](https://github.com/Gharib89/crm/commit/6fc5d8305ea9ca876912b822f4ae26f352e1f956))
+
+
 ## v3.12.3 (2026-06-14)
 
 ### Bug Fixes
