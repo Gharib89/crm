@@ -649,8 +649,8 @@ crm --json query odata savedqueries \
 ```text
 Active Tickets             00000000-0000-0000-0000-000000000005
 Tickets by Priority        00000000-0000-0000-0000-000000000006
-Active Support Tickets     055e2e32-dc59-4190-a9ff-0a8c1d88cf7f   (auto-generated default)
-Inactive Support Tickets   9665360a-d424-4fd5-8a16-7a979e9988a4   (auto-generated default)
+Active Support Tickets     00000000-0000-0000-0000-000000000018   (auto-generated default)
+Inactive Support Tickets   00000000-0000-0000-0000-000000000019   (auto-generated default)
 ```
 
 ## 7. Forms
@@ -667,7 +667,7 @@ Fetch the auto-generated "Information" form and note its `formid` + FormXml leng
 ```bash
 crm --json query odata systemforms \
   --filter "objecttypecode eq 'cwx_ticket' and type eq 2" --select name,formid,formxml
-# -> Information | 8f0db50d-b90c-4b4d-9ecb-f16f9e7db491 | formxml 1625 chars
+# -> Information | 00000000-0000-0000-0000-000000000020 | formxml 1625 chars
 ```
 
 The auto form has one tab/two columns: `cwx_name` + `ownerid` on the left, the notes
@@ -879,7 +879,7 @@ discovered live and each matters.
 ### App module
 
 `appmodules` requires a non-null `webresourceid` (the tile icon). The platform ships a
-default icon (`953b9fac-1e5e-e611-80d6-00155ded156f`,
+default icon (`00000000-0000-0000-0000-000000000021`,
 `msdyn_/Images/AppModule_Default_Icon.png`); CRMWorx instead uses its own `cwx_` SVG web
 resource so the app is self-contained:
 
