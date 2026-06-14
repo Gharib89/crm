@@ -21,44 +21,20 @@ from typing import Any, cast
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish
 from crm.core import metadata_cache
+from crm.core import metadata_constraints as mc
 
-_VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
-_VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
-_VALID_CASCADE_KEYS = {"Assign", "Delete", "Merge", "Reparent", "Share", "Unshare", "RollupView"}
-_VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
-_VALID_OWNERSHIP = {"UserOwned", "OrganizationOwned"}
+# Attribute @odata.type cast names (without leading '#') by capability, derived
+# from the single KINDS table so the create and update paths cannot diverge.
+_STRING_TYPE = mc.KINDS["string"].cast
+_DATETIME_TYPE = mc.KINDS["datetime"].cast
+_LENGTH_TYPES = frozenset(mc.KINDS[k].cast for k in ("string", "memo"))
+_NUMERIC_TYPES = frozenset(
+    mc.KINDS[k].cast for k in ("integer", "bigint", "decimal", "double", "money")
+)
+_PRECISION_TYPES = frozenset(mc.KINDS[k].cast for k in ("decimal", "double", "money"))
 
-# Per-type valid format values (mirror the create path in metadata_attrs.py).
-_STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
-_DATETIME_FORMATS = {"DateOnly", "DateAndTime"}
-
-# Attribute @odata.type cast names (without leading '#') by capability.
-_STRING_TYPE = "Microsoft.Dynamics.CRM.StringAttributeMetadata"
-_MEMO_TYPE = "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
-_DATETIME_TYPE = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
-_NUMERIC_TYPES = {
-    "Microsoft.Dynamics.CRM.IntegerAttributeMetadata",
-    "Microsoft.Dynamics.CRM.BigIntAttributeMetadata",
-    "Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
-    "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
-    "Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
-}
-_PRECISION_TYPES = {
-    "Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
-    "Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
-    "Microsoft.Dynamics.CRM.MoneyAttributeMetadata",
-}
-# Valid precision range (inclusive) by @odata.type cast, mirroring the create
-# path in metadata_attrs.py (`_numeric_with_precision`).
-_PRECISION_RANGES = {
-    "Microsoft.Dynamics.CRM.DecimalAttributeMetadata": (0, 10),
-    "Microsoft.Dynamics.CRM.DoubleAttributeMetadata": (0, 5),
-    "Microsoft.Dynamics.CRM.MoneyAttributeMetadata": (0, 4),
-}
-
-# Relationship @odata.type cast for many-to-many.
+# Relationship @odata.type cast for many-to-many (not an attribute kind).
 _MANY_TO_MANY_CAST = "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
-_LENGTH_TYPES = {_STRING_TYPE, _MEMO_TYPE}
 
 # Write-time header: preserve localized labels in untouched languages.
 _WRITE_HEADERS = {"MSCRM.MergeLabels": "true"}
@@ -191,8 +167,7 @@ def _build_entity_changes(
     if description is not None:
         changes["Description"] = label(description)
     if ownership is not None:
-        if ownership not in _VALID_OWNERSHIP:
-            raise D365Error(f"ownership must be one of {sorted(_VALID_OWNERSHIP)}.")
+        mc.validate_ownership(ownership)
         changes["OwnershipType"] = ownership
     if has_activities is not None:
         changes["HasActivities"] = has_activities
@@ -271,8 +246,7 @@ def _build_attribute_changes(
     if description is not None:
         changes["Description"] = label(description)
     if required is not None:
-        if required not in _VALID_REQUIRED:
-            raise D365Error(f"required must be one of {sorted(_VALID_REQUIRED)}.")
+        mc.validate_required(required)
         changes["RequiredLevel"] = {"Value": required}
     if max_length is not None:
         if odata_type not in _LENGTH_TYPES:
@@ -283,9 +257,9 @@ def _build_attribute_changes(
             raise D365Error(
                 "--precision is only valid for decimal/double/money attributes."
             )
-        lo, hi = _PRECISION_RANGES[odata_type]
-        if not lo <= precision <= hi:
-            raise D365Error(f"--precision for this type must be {lo}..{hi}.")
+        kind = mc.kind_for_cast(odata_type)
+        assert kind is not None  # every _PRECISION_TYPES cast is a key in mc.KINDS
+        mc.validate_precision(kind, precision, subject="--precision")
         changes["Precision"] = precision
     if min_value is not None:
         if odata_type not in _NUMERIC_TYPES:
@@ -297,16 +271,10 @@ def _build_attribute_changes(
         changes["MaxValue"] = max_value
     if format_name is not None:
         if odata_type == _DATETIME_TYPE:
-            if format_name not in _DATETIME_FORMATS:
-                raise D365Error(
-                    f"--format for datetime must be one of {sorted(_DATETIME_FORMATS)}."
-                )
+            mc.validate_format("datetime", format_name, subject="--format")
             changes["Format"] = format_name
         elif odata_type == _STRING_TYPE:
-            if format_name not in _STRING_FORMATS:
-                raise D365Error(
-                    f"--format for string must be one of {sorted(_STRING_FORMATS)}."
-                )
+            mc.validate_format("string", format_name, subject="--format")
             changes["FormatName"] = {"Value": format_name}
         else:
             raise D365Error(
@@ -409,22 +377,16 @@ def _build_relationship_changes(
     changes: dict[str, Any] = {}
     if cascade:
         for name, value in cascade.items():
-            if name not in _VALID_CASCADE_KEYS:
+            if name not in mc.CASCADE_KEYS:
                 raise D365Error(
                     f"cascade key {name!r} is not valid; must be one of "
-                    f"{sorted(_VALID_CASCADE_KEYS)}."
+                    f"{sorted(mc.CASCADE_KEYS)}."
                 )
-            if value not in _VALID_CASCADE:
-                raise D365Error(
-                    f"cascade {name} must be one of {sorted(_VALID_CASCADE)}."
-                )
+            mc.validate_cascade(value, subject=f"cascade {name}")
         changes["CascadeConfiguration"] = dict(cascade)
     menu: dict[str, Any] = {}
     if menu_behavior is not None:
-        if menu_behavior not in _VALID_MENU_BEHAVIOR:
-            raise D365Error(
-                f"menu_behavior must be one of {sorted(_VALID_MENU_BEHAVIOR)}."
-            )
+        mc.validate_menu_behavior(menu_behavior)
         menu["Behavior"] = menu_behavior
     if menu_label is not None:
         menu["Label"] = label(menu_label)

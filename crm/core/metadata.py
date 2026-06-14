@@ -13,6 +13,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core import dependencies as dep_mod
 from crm.core import entity_names
 from crm.core import metadata_cache
+from crm.core import metadata_constraints as mc
 
 
 def list_entities(
@@ -455,8 +456,7 @@ def create_entity(
             "schema_name must include a publisher prefix and be PascalCase, "
             "e.g. 'new_Project'."
         )
-    if ownership not in ("UserOwned", "OrganizationOwned"):
-        raise D365Error("ownership must be 'UserOwned' or 'OrganizationOwned'.")
+    mc.validate_ownership(ownership)
 
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")

@@ -19,13 +19,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from crm.core import metadata_constraints as mc
 from crm.core.metadata_attrs import ATTRIBUTE_KINDS
 from crm.utils.d365_backend import D365Error
 
-_VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
-# Ownership models metadata.create_entity accepts; validated here so a bad value
-# fails before any HTTP call rather than downstream in apply.
-_VALID_OWNERSHIP = {"UserOwned", "OrganizationOwned"}
 _ALLOWED_OPT_KEYS = {"max_length", "required", "target_entity", "optionset_name", "description"}
 
 # Kinds that require max_length and their defaults.
@@ -92,11 +89,9 @@ def _parse_opts(raw_opts: str, column_label: str) -> dict[str, Any]:
                 )
             result[key] = int_val
         elif key == "required":
-            if value not in _VALID_REQUIRED:
-                raise D365Error(
-                    f"column {column_label!r}: required must be one of "
-                    f"{sorted(_VALID_REQUIRED)}, got {value!r}."
-                )
+            mc.validate_required(
+                value, subject=f"column {column_label!r}: required", echo=True
+            )
             result[key] = value
         else:
             result[key] = value
@@ -213,10 +208,7 @@ def build_table_spec(
         D365Error: For any malformed input — unknown kind, bad opts, empty name,
             missing required opts per kind, etc.
     """
-    if ownership not in _VALID_OWNERSHIP:
-        raise D365Error(
-            f"ownership must be one of {sorted(_VALID_OWNERSHIP)}, got {ownership!r}."
-        )
+    mc.validate_ownership(ownership, echo=True)
 
     ent_schema = (
         schema_name

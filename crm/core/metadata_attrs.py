@@ -15,13 +15,8 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
+from crm.core import metadata_constraints as mc
 from crm.core import references as ref_mod
-
-_VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
-# The string formats add_attribute can create. Public so export_spec can filter
-# live FormatName values to the creatable set without a private cross-module import.
-STRING_FORMATS = {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
-_DATETIME_FORMATS = {"DateOnly", "DateAndTime"}
 
 _NUMERIC_KINDS = {"integer", "bigint", "decimal", "double", "money"}  # pyright: ignore[reportUnusedVariable]
 _LENGTH_KINDS = {"string", "memo"}  # pyright: ignore[reportUnusedVariable]
@@ -44,8 +39,7 @@ def _base_attr_payload(
     *, schema_name: str, logical_name: str, display_name: str,
     description: str | None, required: str,
 ) -> dict[str, Any]:
-    if required not in _VALID_REQUIRED:
-        raise D365Error(f"required must be one of {sorted(_VALID_REQUIRED)}.")
+    mc.validate_required(required)
     payload: dict[str, Any] = {
         "SchemaName": schema_name,
         "LogicalName": logical_name,
@@ -62,8 +56,7 @@ def _string_attr(opts: dict[str, Any]) -> dict[str, Any]:
             "min_value", "max_value", "max_size_kb")
     _require(opts, "max_length")
     fmt = opts.get("format_name") or "Text"
-    if fmt not in STRING_FORMATS:
-        raise D365Error(f"format_name for string must be one of {sorted(STRING_FORMATS)}.")
+    mc.validate_format("string", fmt)
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],
@@ -148,13 +141,11 @@ def _bigint_attr(opts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _numeric_with_precision(
-    opts: dict[str, Any], odata_type: str, precision_range: tuple[int, int],
+    opts: dict[str, Any], odata_type: str, kind: str,
 ) -> dict[str, Any]:
     _require(opts, "precision")
     prec = opts["precision"]
-    lo, hi = precision_range
-    if not (lo <= prec <= hi):
-        raise D365Error(f"precision for this kind must be in [{lo}, {hi}].")
+    mc.validate_precision(kind, prec)
     body = _common_numeric(opts, odata_type)
     body["Precision"] = prec
     return body
@@ -162,19 +153,19 @@ def _numeric_with_precision(
 
 def _decimal_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return _numeric_with_precision(
-        opts, "Microsoft.Dynamics.CRM.DecimalAttributeMetadata", (0, 10),
+        opts, "Microsoft.Dynamics.CRM.DecimalAttributeMetadata", "decimal",
     )
 
 
 def _double_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return _numeric_with_precision(
-        opts, "Microsoft.Dynamics.CRM.DoubleAttributeMetadata", (0, 5),
+        opts, "Microsoft.Dynamics.CRM.DoubleAttributeMetadata", "double",
     )
 
 
 def _money_attr(opts: dict[str, Any]) -> dict[str, Any]:
     return _numeric_with_precision(
-        opts, "Microsoft.Dynamics.CRM.MoneyAttributeMetadata", (0, 4),
+        opts, "Microsoft.Dynamics.CRM.MoneyAttributeMetadata", "money",
     )
 
 
@@ -203,8 +194,7 @@ def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
     _forbid(opts, "max_length", "precision", "target_entity", "optionset_name",
             "options", "min_value", "max_value", "max_size_kb")
     fmt = opts.get("format_name") or "DateAndTime"
-    if fmt not in _DATETIME_FORMATS:
-        raise D365Error(f"format_name for datetime must be one of {sorted(_DATETIME_FORMATS)}.")
+    mc.validate_format("datetime", fmt)
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
         logical_name=opts["logical_name"],

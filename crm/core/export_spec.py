@@ -19,7 +19,7 @@ are skipped — the latter is represented by the entity's `primary_attr`.
 Fidelity notes:
 - `precision` (decimal/double/money) and string `format_name` are forwarded to
   `add_attribute`, so they round-trip. A string `format_name` is emitted only when
-  it is in `metadata_attrs.STRING_FORMATS`; a live `Json` / `RichText` format
+  it is in `metadata_constraints.STRING_FORMATS`; a live `Json` / `RichText` format
   (which `apply` cannot create) is dropped and the column re-created as `Text`.
   Datetime format is NOT captured (re-created with the default format).
 - A multiselect's options are read via the MultiSelect cast
@@ -33,31 +33,8 @@ from __future__ import annotations
 from typing import Any, cast
 
 from crm.core import metadata, optionsets, relationships, views
-from crm.core.metadata_attrs import STRING_FORMATS
+from crm.core import metadata_constraints as mc
 from crm.utils.d365_backend import D365Backend, D365Error
-
-# AttributeTypeName.Value -> apply `kind`. Inverse of the metadata_attrs builders
-# / @odata.type discriminators. Verified against MS Learn "Introduction to entity
-# attributes" + "Types of columns". Any AttributeTypeName not in this map (Owner,
-# State, Status, Uniqueidentifier, EntityName, ManagedProperty, PartyList,
-# Customer, CalendarRules, Virtual, …) is a system kind apply cannot create and is
-# skipped.
-_TYPE_NAME_TO_KIND: dict[str, str] = {
-    "StringType": "string",
-    "MemoType": "memo",
-    "IntegerType": "integer",
-    "BigIntType": "bigint",
-    "DecimalType": "decimal",
-    "DoubleType": "double",
-    "MoneyType": "money",
-    "BooleanType": "boolean",
-    "DateTimeType": "datetime",
-    "PicklistType": "picklist",
-    "MultiSelectPicklistType": "multiselect",
-    "LookupType": "lookup",
-    "ImageType": "image",
-    "FileType": "file",
-}
 
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 _LENGTH_KINDS = frozenset({"string", "memo"})
@@ -235,7 +212,7 @@ def _project_attribute(
         # Json / RichText are read-only kinds add_attribute rejects, so omit the
         # key and let the column round-trip as the default Text.
         fmt = _format_name(info)
-        if fmt and fmt in STRING_FORMATS:
+        if fmt and fmt in mc.STRING_FORMATS:
             out["format_name"] = fmt
 
     if kind in _PRECISION_KINDS:
@@ -368,7 +345,7 @@ def build_entity_spec(
         # same `info` (no second per-attribute read).
         info = metadata.attribute_info(backend, logical_name, attr_logical)
         type_name = _type_name(info)
-        kind = _TYPE_NAME_TO_KIND.get(type_name) if type_name else None
+        kind = mc.kind_for_type_name(type_name) if type_name else None
         if kind is None:
             warn.append(
                 f"dropped column {attr_logical!r}: attribute type "
