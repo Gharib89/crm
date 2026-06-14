@@ -20,8 +20,9 @@ The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions 
 
 ```bash
 pip install -e ".[dev,docs]"              # dev + docs deps
-pytest                                    # tests (E2E need live D365 creds via D365_* env)
-pyright --pythonpath .venv/bin/python     # local lint (omit → ~56 false errors)
+pytest                                    # offline suite; addopts pins `-m 'not e2e'`, so e2e is skipped by default
+pytest crm/tests/test_query.py::test_x    # single test (or `-k '<expr>'` to match by name); `-m slow` for the slow ops
+pyright --pythonpath .venv/bin/python     # local lint (omit → ~56 false errors); strict mode + py3.9 pinned in pyrightconfig.json
 mkdocs build --strict                     # docs; CI runs this, warnings fail
 ```
 
