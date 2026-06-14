@@ -14,6 +14,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import solution as sol
+from crm.core import solution_transfer as transfer
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
 _JOB_ID = "33333333-3333-3333-3333-333333333333"
@@ -317,14 +318,14 @@ def test_sniff_managed_never_raises_on_unexpected_error(tmp_path, monkeypatch):
             raise NotImplementedError("That compression method is not supported")
 
     monkeypatch.setattr(zipfile, "ZipFile", _Boom)
-    assert sol._sniff_solution_managed(str(zip_path)) is None
+    assert transfer._sniff_solution_managed(str(zip_path)) is None
 
 
 def test_sniff_managed_returns_true_for_managed_zip(tmp_path):
     # <Managed>1</Managed> branch was not previously covered.
     zip_path = tmp_path / "managed.zip"
     _make_solution_zip(zip_path, "1")
-    assert sol._sniff_solution_managed(str(zip_path)) is True
+    assert transfer._sniff_solution_managed(str(zip_path)) is True
 
 
 def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
@@ -333,8 +334,8 @@ def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
     # manifest trips it (vs. writing a multi-MB file).
     zip_path = tmp_path / "bomb.zip"
     _make_solution_zip(zip_path, "0")
-    monkeypatch.setattr(sol, "_MAX_SOLUTION_XML_BYTES", 4)
-    assert sol._sniff_solution_managed(str(zip_path)) is None
+    monkeypatch.setattr(transfer, "_MAX_SOLUTION_XML_BYTES", 4)
+    assert transfer._sniff_solution_managed(str(zip_path)) is None
 
 
 def test_sniff_managed_accepts_binary_stream(tmp_path):
@@ -342,4 +343,4 @@ def test_sniff_managed_accepts_binary_stream(tmp_path):
     # the helper must accept a file-like object, not only a path.
     zip_path = tmp_path / "stream.zip"
     _make_solution_zip(zip_path, "1")
-    assert sol._sniff_solution_managed(io.BytesIO(zip_path.read_bytes())) is True
+    assert transfer._sniff_solution_managed(io.BytesIO(zip_path.read_bytes())) is True
