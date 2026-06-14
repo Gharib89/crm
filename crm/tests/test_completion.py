@@ -132,8 +132,9 @@ class TestInstall:
         assert script_path.name == "crm.ps1"
         assert marker["shell"] == "powershell"
         assert "Register-ArgumentCompleter" in script_path.read_text(encoding="utf-8")
-        # PowerShell dot-sources from $PROFILE — the line is `. <path>`, not `source`.
-        assert f". {script_path}" in result.output
+        # PowerShell dot-sources from $PROFILE — `. '<path>'` (single-quoted so a
+        # path with spaces still runs), not `source`.
+        assert f". '{script_path}'" in result.output
         assert f"source {script_path}" not in result.output
 
     def test_powershell_json_shape(self):
@@ -142,7 +143,7 @@ class TestInstall:
         assert data["shell"] == "powershell"
         assert data["installed"] is True
         assert data["script_path"].endswith("crm.ps1")
-        assert data["rc_line"] == f". {data['script_path']}"
+        assert data["rc_line"] == f". '{data['script_path']}'"
 
     def test_invalid_shell_rejected(self):
         # An unsupported shell (powershell is now valid) is a Click usage error.
@@ -187,6 +188,16 @@ class TestPowerShellCompletion:
         args, incomplete = self._comp().get_completion_args()
         assert args == ["entity"]
         assert incomplete == ""
+
+    def test_rc_line_quotes_path_with_spaces(self):
+        # A destination with spaces (e.g. a custom --path under "Program Files") must
+        # still produce a runnable dot-source line; embedded quotes are doubled.
+        assert reg.rc_line("powershell", r"C:\Program Files\crm\crm.ps1") == (
+            r". 'C:\Program Files\crm\crm.ps1'"
+        )
+        assert reg.rc_line("powershell", "a'b.ps1") == ". 'a''b.ps1'"
+        # Unix shells keep the bare `source` form (unchanged).
+        assert reg.rc_line("bash", "/home/u/crm.bash") == "source /home/u/crm.bash"
 
     def test_complete_lists_top_level_commands(self, monkeypatch):
         # End-to-end: `crm <TAB>` yields top-level command names, tab-formatted as

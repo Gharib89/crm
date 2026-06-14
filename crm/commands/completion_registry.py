@@ -59,10 +59,14 @@ Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
     $env:COMP_CWORD = $wordToComplete
     %(prog_name)s | ForEach-Object {
         $type, $value, $help = ($_ -split "`t", 3)
-        if ($type -ne 'plain') { return }   # 'file'/'dir' -> let PowerShell complete paths
-        if ($help) { $toolTip = $help } else { $toolTip = $value }
-        [System.Management.Automation.CompletionResult]::new(
-            $value, $value, 'ParameterValue', $toolTip)
+        # Only 'plain' items become results; 'file'/'dir' are skipped so PowerShell
+        # does native path completion. A positive guard (not `return`) keeps a
+        # non-plain item from affecting the items emitted after it.
+        if ($type -eq 'plain') {
+            if ($help) { $toolTip = $help } else { $toolTip = $value }
+            [System.Management.Automation.CompletionResult]::new(
+                $value, $value, 'ParameterValue', $toolTip)
+        }
     }
     Remove-Item Env:%(complete_var)s, Env:COMP_WORDS, Env:COMP_CWORD
 }
@@ -114,11 +118,16 @@ def default_script_path(shell: str) -> Path:
 def rc_line(shell: str, dest: Path | str) -> str:
     """The line a user adds to their shell startup file to load the script.
 
-    PowerShell dot-sources from ``$PROFILE`` (``. <path>``); the Unix shells
-    ``source`` it.
+    PowerShell dot-sources from ``$PROFILE`` (``. '<path>'``); the Unix shells
+    ``source`` it. The PowerShell path is single-quoted so spaces/special chars in
+    the destination (common on Windows, e.g. a custom ``--path`` under
+    ``C:\\Program Files``) don't break the line; embedded single quotes are doubled
+    per PowerShell's single-quote literal rules.
     """
-    verb = "." if shell == "powershell" else "source"
-    return f"{verb} {dest}"
+    if shell == "powershell":
+        quoted = str(dest).replace("'", "''")
+        return f". '{quoted}'"
+    return f"source {dest}"
 
 
 def detect_shell() -> str | None:
