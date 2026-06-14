@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
+from click.shell_completion import get_completion_class
 from click.testing import CliRunner
 
 from crm.cli import cli
@@ -27,6 +29,14 @@ class TestGenerate:
     def test_bash_and_fish_generate(self):
         assert "_crm_completion" in reg.generate_source("bash")
         assert "_crm_completion" in reg.generate_source("fish")
+
+    def test_powershell_source(self):
+        # PowerShell uses Click's add_completion_class hook + a Register-ArgumentCompleter
+        # shim; the script must key off the same _CRM_COMPLETE var the binary derives
+        # from prog_name "crm".
+        src = reg.generate_source("powershell")
+        assert "Register-ArgumentCompleter -Native -CommandName crm" in src
+        assert "_CRM_COMPLETE" in src
 
     def test_via_binary_empty_output_raises(self, monkeypatch):
         # A binary that exits 0 but emits nothing (not a real `crm` completion
@@ -113,8 +123,31 @@ class TestInstall:
         CliRunner().invoke(cli, ["completion", "install", "--shell", "zsh"])
         assert rc.read_text(encoding="utf-8") == "# original\n"
 
-    def test_invalid_shell_rejected(self):
+    def test_powershell_writes_ps1_and_dot_source_line(self):
         result = CliRunner().invoke(cli, ["completion", "install", "--shell", "powershell"])
+        assert result.exit_code == 0
+        marker = reg.read_marker()
+        assert marker is not None
+        script_path = Path(marker["script_path"])
+        assert script_path.name == "crm.ps1"
+        assert marker["shell"] == "powershell"
+        assert "Register-ArgumentCompleter" in script_path.read_text(encoding="utf-8")
+        # PowerShell dot-sources from $PROFILE — `. '<path>'` (single-quoted so a
+        # path with spaces still runs), not `source`.
+        assert f". '{script_path}'" in result.output
+        assert f"source {script_path}" not in result.output
+
+    def test_powershell_json_shape(self):
+        result = CliRunner().invoke(cli, ["--json", "completion", "install", "--shell", "powershell"])
+        data = json.loads(result.output)["data"]
+        assert data["shell"] == "powershell"
+        assert data["installed"] is True
+        assert data["script_path"].endswith("crm.ps1")
+        assert data["rc_line"] == f". '{data['script_path']}'"
+
+    def test_invalid_shell_rejected(self):
+        # An unsupported shell (powershell is now valid) is a Click usage error.
+        result = CliRunner().invoke(cli, ["completion", "install", "--shell", "nushell"])
         assert result.exit_code == 2  # Click usage error (bad --shell choice)
 
 
@@ -130,6 +163,78 @@ class TestShellAutodetect:
         # Undetectable shell is a usage error: exit 2 + the standard JSON envelope.
         assert result.exit_code == 2
         assert json.loads(result.output)["ok"] is False
+
+
+class TestPowerShellCompletion:
+    """The PowerShellComplete class itself — the arg split + the completion path."""
+
+    def _comp(self):
+        from crm.cli import cli  # import triggers eager add_completion_class
+        from crm.commands.completion_registry import PowerShellComplete
+        return PowerShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
+
+    def test_args_split_pops_trailing_partial(self, monkeypatch):
+        # `crm entity cr<TAB>`: full line in COMP_WORDS, partial word in COMP_CWORD.
+        monkeypatch.setenv("COMP_WORDS", "crm entity cr")
+        monkeypatch.setenv("COMP_CWORD", "cr")
+        args, incomplete = self._comp().get_completion_args()
+        assert args == ["entity"]  # the partial `cr` is popped, not treated as an arg
+        assert incomplete == "cr"
+
+    def test_args_trailing_space_keeps_all(self, monkeypatch):
+        # `crm entity <TAB>`: empty partial, nothing to pop.
+        monkeypatch.setenv("COMP_WORDS", "crm entity")
+        monkeypatch.setenv("COMP_CWORD", "")
+        args, incomplete = self._comp().get_completion_args()
+        assert args == ["entity"]
+        assert incomplete == ""
+
+    def test_rc_line_quotes_path_with_spaces(self):
+        # A destination with spaces (e.g. a custom --path under "Program Files") must
+        # still produce a runnable dot-source line; embedded quotes are doubled.
+        assert reg.rc_line("powershell", r"C:\Program Files\crm\crm.ps1") == (
+            r". 'C:\Program Files\crm\crm.ps1'"
+        )
+        assert reg.rc_line("powershell", "a'b.ps1") == ". 'a''b.ps1'"
+        # Unix shells keep the bare `source` form (unchanged).
+        assert reg.rc_line("bash", "/home/u/crm.bash") == "source /home/u/crm.bash"
+
+    def test_complete_lists_top_level_commands(self, monkeypatch):
+        # End-to-end: `crm <TAB>` yields top-level command names, tab-formatted as
+        # `plain\t<value>\t<help>` (what the Register-ArgumentCompleter shim parses).
+        monkeypatch.setenv("COMP_WORDS", "crm ")
+        monkeypatch.setenv("COMP_CWORD", "")
+        out = self._comp().complete()
+        assert "\tentity\t" in out
+        assert out.splitlines()[0].startswith("plain\t")
+
+
+class TestEntryWiring:
+    """The two non-obvious Windows fixes: eager registration + prog_name pin."""
+
+    def test_powershell_registered_eagerly(self):
+        # Importing crm.cli (the always-loaded entry module) must register the
+        # PowerShell class on Click's completion hot-path. Command modules are
+        # lazy-loaded, so a completion request never imports completion_registry on
+        # its own — without eager registration get_completion_class returns None and
+        # completion silently emits nothing. Regression for that failure.
+        assert get_completion_class("powershell") is not None
+
+    def test_main_pins_prog_name_so_exe_basename_does_not_break_completion(
+        self, monkeypatch, capsysbinary
+    ):
+        # On Windows the binary is `crm.exe`; without the prog_name pin Click derives
+        # the completion var from the basename -> `_CRM_EXE_COMPLETE`, but the script
+        # sets `_CRM_COMPLETE` -> mismatch -> no completion. main() pins
+        # prog_name="crm" so the var is `_CRM_COMPLETE` regardless of argv[0].
+        from crm.cli import main
+        monkeypatch.setattr(sys, "argv", ["crm.exe"])
+        monkeypatch.setenv(reg._COMPLETE_VAR, "powershell_source")  # _CRM_COMPLETE
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        out = capsysbinary.readouterr().out
+        assert b"Register-ArgumentCompleter -Native -CommandName crm" in out
 
 
 class TestMarker:

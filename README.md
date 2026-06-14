@@ -162,7 +162,7 @@ install`, and any shell completion you installed with `crm completion install`
 
 ### Shell completion
 
-Enable tab-completion for `crm` in bash, zsh, or fish:
+Enable tab-completion for `crm` in bash, zsh, fish, or PowerShell:
 
 ```bash
 crm completion install            # caches the script under ~/.crm and prints one rc line
@@ -170,8 +170,10 @@ crm completion show --shell zsh   # or just print the script to stdout
 ```
 
 `install` writes the completion script under `${CRM_HOME:-~/.crm}/completion/` and
-prints the single `source <path>` line to add to your shell rc (it never edits the
-rc file for you). `--shell` defaults to autodetecting `$SHELL`. See the
+prints the single line to add to your shell startup file — `source <path>` for
+bash/zsh/fish, `. <path>` for PowerShell — and never edits the file for you.
+`--shell` defaults to autodetecting `$SHELL`; PowerShell sets no `$SHELL`, so pass
+`--shell powershell` explicitly. See the
 [completion how-to](docs/how-to/completion.md) for per-shell setup.
 
 ## Configure
@@ -378,7 +380,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `session`    | Local session state, command history, and audit journal    |
-| `completion` | Print or install shell completion (bash/zsh/fish); install caches the script + prints the rc line to source |
+| `completion` | Print or install shell completion (bash/zsh/fish/powershell); install caches the script + prints the rc line to source |
 | `self-update` | Upgrade a frozen (install-script) binary in place and re-sync installed agent skills + shell completion; `--check` reports current vs latest |
 
 The `metadata` group covers both browsing and write verbs. `metadata describe

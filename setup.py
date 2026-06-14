@@ -47,7 +47,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "crm = crm.cli:cli",
+            "crm = crm.cli:main",
         ],
     },
     classifiers=[

@@ -528,5 +528,28 @@ def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
     )
 
 
+# Register PowerShell completion eagerly. Command modules are lazy-loaded, so a
+# completion request never imports completion_registry on its own; Click's built-in
+# bash/zsh/fish classes self-register at click import, but ours must be registered
+# here (an always-imported module) before cli.main() runs — otherwise
+# get_completion_class("powershell") returns None and completion silently emits
+# nothing. completion_registry has no module-level crm.cli import, so this is safe.
+from click.shell_completion import add_completion_class  # noqa: E402
+from crm.commands.completion_registry import PowerShellComplete  # noqa: E402
+
+add_completion_class(PowerShellComplete)
+
+
+def main() -> None:
+    """Console-script / ``python -m crm`` entry point.
+
+    Pins ``prog_name="crm"`` so Click derives the completion env var
+    (``_CRM_COMPLETE``) and usage/help text from ``crm`` — not the Windows binary
+    basename ``crm.exe``, which would make Click look for ``_CRM_EXE_COMPLETE`` and
+    break the generated completion script.
+    """
+    cli(prog_name="crm")
+
+
 if __name__ == "__main__":
-    cli()
+    main()

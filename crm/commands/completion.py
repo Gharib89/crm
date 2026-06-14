@@ -37,7 +37,7 @@ def _resolve_shell(shell: str | None) -> str:
 
 @click.group("completion")
 def completion_group():
-    """Print or install shell completion for bash, zsh, or fish."""
+    """Print or install shell completion for bash, zsh, fish, or PowerShell."""
 
 
 @completion_group.command("show")
@@ -73,7 +73,7 @@ def completion_install(ctx: CLIContext, shell: str | None, path: str | None):
     except OSError as exc:
         ctx.emit(False, error=f"Failed to install completion to {dest}: {exc}")
         return
-    rc_line = f"source {dest}"
+    rc_line = reg.rc_line(resolved, dest)
     if ctx.json_mode:
         ctx.emit(
             True,
@@ -82,5 +82,8 @@ def completion_install(ctx: CLIContext, shell: str | None, path: str | None):
         return
     # Human mode: the one copy-paste-able rc line is the payload — no key/value dump.
     ctx.skin.status("completion installed", str(dest))
-    ctx.skin.hint("Add this line to your shell rc, then restart your shell:")
+    if resolved == "powershell":
+        ctx.skin.hint("Add this line to your PowerShell $PROFILE, then restart your shell:")
+    else:
+        ctx.skin.hint("Add this line to your shell rc, then restart your shell:")
     click.echo(f"  {rc_line}")

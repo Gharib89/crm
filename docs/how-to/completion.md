@@ -1,9 +1,9 @@
 # How-to: completion
 
-Tab-completion for `crm` in bash, zsh, or fish. `crm completion` is a thin wrapper
-over Click's built-in completion — it makes it discoverable, caches the generated
-script to a file, and records a marker so [`self-update`](self-update.md) keeps it
-current. See the [CLI reference](../reference/cli.md) for every flag.
+Tab-completion for `crm` in bash, zsh, fish, or PowerShell. `crm completion` is a
+thin wrapper over Click's built-in completion — it makes it discoverable, caches the
+generated script to a file, and records a marker so [`self-update`](self-update.md)
+keeps it current. See the [CLI reference](../reference/cli.md) for every flag.
 
 ## Install completion
 
@@ -12,20 +12,25 @@ crm completion install --shell zsh
 ```
 
 Writes the completion script to `${CRM_HOME:-~/.crm}/completion/crm.zsh` and prints
-the single line to add to your shell rc. It **never edits the rc file for you** —
-copy the printed `source <path>` line yourself. `--shell` defaults to autodetecting
+the single line to add to your shell startup file. It **never edits the file for
+you** — copy the printed line yourself. `--shell` defaults to autodetecting
 `$SHELL`; pass it explicitly if autodetection can't map `$SHELL` to bash/zsh/fish.
+PowerShell sets no `$SHELL`, so `--shell powershell` is **required** (it can't be
+autodetected).
 
 Re-running is idempotent: it rewrites the same script and marker, no duplication.
 
 ### Per-shell setup
 
-After `crm completion install`, add the printed line to the matching rc file and
-restart your shell (or `source` the rc):
+After `crm completion install`, add the printed line to the matching startup file
+and restart your shell (or re-source it):
 
 - **zsh** — add to `~/.zshrc`: `source ~/.crm/completion/crm.zsh`
 - **bash** — add to `~/.bashrc`: `source ~/.crm/completion/crm.bash`
 - **fish** — add to `~/.config/fish/config.fish`: `source ~/.crm/completion/crm.fish`
+- **PowerShell** — add to your `$PROFILE` (Windows PowerShell 5.1 or PowerShell 7+):
+  `. ~/.crm/completion/crm.ps1` (PowerShell dot-sources; install it with
+  `crm completion install --shell powershell`)
 
 ## Print the script without installing
 
