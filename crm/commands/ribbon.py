@@ -11,6 +11,7 @@ from crm.core import ribbon as ribbon_mod
 from crm.utils.d365_backend import D365Error, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _destructive_option,
     _handle_d365_error, _journal, _confirm_destructive,
     _solution_option, _resolve_solution, d365_errors,
 )
@@ -158,7 +159,7 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
 @click.argument("entity")
 @click.option("--button-id", "button_id", required=True,
               help="The CustomAction Id to remove (see `crm ribbon list`).")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_solution_option
 @pass_ctx
 def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):

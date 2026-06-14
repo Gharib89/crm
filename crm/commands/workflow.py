@@ -6,6 +6,7 @@ from crm.core import workflow as workflow_mod
 from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _destructive_option,
     _confirm_destructive,
     _handle_d365_error,
     _admin_header_options,
@@ -169,7 +170,7 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id
 
 @workflow_group.command("delete")
 @click.argument("workflow_id")
-@click.option("--yes", is_flag=True, help="Skip interactive confirmation.")
+@_destructive_option
 @_admin_header_options
 @pass_ctx
 def workflow_delete(ctx: CLIContext, workflow_id, yes,

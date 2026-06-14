@@ -44,6 +44,19 @@ def _resolve_publish(ctx: "CLIContext", publish: bool) -> bool:
     return False
 
 
+def _publish_option(f):
+    """Stack the standard `--publish/--no-publish` flag on a mutating command.
+
+    Pairs with `_resolve_publish` in the verb body, mirroring how
+    `_solution_option` pairs with `_resolve_solution`. The help text is uniform
+    across all sites (it was inconsistent / absent before #294).
+    """
+    return click.option(
+        "--publish/--no-publish", default=True,
+        help="Run PublishAllXml after the change. Default: publish.",
+    )(f)
+
+
 def _active_profile(ctx: "CLIContext") -> ConnectionProfile | None:
     """Load the active connection profile, or None if none is resolvable."""
     name = ctx.profile_name

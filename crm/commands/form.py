@@ -9,6 +9,7 @@ import click
 from crm.core import forms as forms_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _publish_option,
     d365_errors, _journal, _emit_with_warning,
     _solution_option, _resolve_solution, _resolve_publish,
 )
@@ -76,8 +77,7 @@ def form_list(ctx: CLIContext, entity: str) -> None:
 @click.argument("form_name")
 @click.option("--to", "target_entity", required=True,
               help="Target entity logical name.")
-@click.option("--publish/--no-publish", default=True,
-              help="Run PublishAllXml after creation. Default: publish.")
+@_publish_option
 @_solution_option
 @pass_ctx
 def form_clone(
