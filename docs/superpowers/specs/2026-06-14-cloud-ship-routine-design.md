@@ -66,7 +66,7 @@ fire
  └─ prompt step 1: bash scripts/cloud-ship-bootstrap.sh   (install crm, build profile, whoami)
  └─ pick issue:
       gh issue list --label ready-for-agent --state open \
-        --json number --jq 'sort_by(.number)[0].number'
+        --json number --jq 'sort_by(.number)[0].number // empty'
       ├─ none → exit clean ("nothing ready"), no PR
       └─ N    → /ship N
                  ├─ phase 0–7: worktree, TDD, e2e (cloud), self-review, PR,
