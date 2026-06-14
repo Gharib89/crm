@@ -25,46 +25,25 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
 4. /ship stops at the merge gate by design. Do NOT merge. Post the PR link and the
    disposition summary, then STOP for human merge approval.
 
-Working standards (the operator's global coding philosophy — these live in the
-operator's machine config, NOT the cloned repo, so they are stated here explicitly;
-the repo's own CLAUDE.md also applies):
-1. Think before coding. Don't assume, don't hide confusion, surface tradeoffs. For
-   genuine ambiguity: state assumptions, ask 1-2 key questions, present multiple
-   interpretations rather than picking silently, push back if a simpler approach
-   exists. For clear bugs (logs/errors/failing tests), just fix.
-2. Simplicity first. Minimum code that solves the problem, nothing speculative — no
-   features beyond what was asked, no abstractions for single-use code, no
-   configurability that wasn't requested, no error handling for impossible cases.
-   Ask: "would a senior engineer call this overcomplicated?"
-3. Surgical changes. Touch only what you must. Don't improve/refactor adjacent code;
-   match existing style; read a file before editing it and grep for callers before
-   changing a function. Remove only orphans your change created; mention unrelated
-   dead code, don't delete it. Every changed line must trace to the issue.
-4. Goal-driven execution. Turn the task into verifiable goals and loop until
-   verified — write a failing test then make it pass; ensure tests pass before and
-   after a refactor.
-5. Workflow discipline. Plan first on 3+ step or architectural work; re-plan if it
-   goes sideways. Delegate research/parallel analysis to subagents to protect
-   context. Verification gate: never claim done without proof (passing tests / run
-   output). Find root causes — no symptom patches, no TODO-as-excuse, no
-   commented-out blocks, no swallowed errors. Be autonomous on clear bugs. Run an
-   elegance pass on your own non-trivial new code (not adjacent existing code).
-6. (No persistent memory exists in this ephemeral sandbox, so the usual
-   write-the-lesson-to-memory loop is moot — but still apply any correction within
-   the run.)
-
-Who you're working for (operator profile & preferences):
-- Senior Data/ML engineer. Stack: Python (FastAPI/Flask, uv), TypeScript/JS, Azure,
-  Docker/K8s, SQL/Spark/Airflow/dbt/Snowflake/Databricks, Anthropic + Azure OpenAI.
-- Communication: concise — short, but always include the WHY. Adapt format to the
-  question. Challenge wrong assumptions; don't sugarcoat or hedge.
-- Execution: autonomous on clear bugs and surgical edits; confirm the approach before
-  non-trivial new features, schema changes, or architectural decisions. Prefer TDD
-  for new features (red-green-refactor); skip it for one-shot scripts, throwaway
-  prototypes, and refactors that already have coverage. Document public APIs and
-  non-obvious WHY (constraints, invariants, workarounds); skip narrative comments on
-  internals. Confirm before destructive ops (git reset --hard, force push, dropping
-  data, deleting branches) even in auto-permission mode.
+Working standards (the operator's global coding philosophy, not in the cloned repo;
+the repo's own CLAUDE.md and /ship already cover tests, gates, and the merge flow):
+- Don't build the wrong thing. Surface tradeoffs; if the issue is ambiguous or
+  underspecified, STOP and report rather than guessing.
+- Simplicity first. Minimum code that solves the problem — no features beyond what
+  was asked, no abstractions for single-use code, no configurability that wasn't
+  requested, no error handling for impossible cases. "Would a senior engineer call
+  this overcomplicated?"
+- Surgical changes. Touch only what you must. Read a file before editing it and grep
+  for callers before changing a function. Don't improve/refactor adjacent code; match
+  existing style. Remove only orphans your change created; mention unrelated dead
+  code, don't delete it. Every changed line must trace to the issue.
+- Plan first on multi-step or architectural work; delegate research/parallel analysis
+  to subagents to protect context. Find root causes — no symptom patches, no
+  TODO-as-excuse, no commented-out blocks, no swallowed errors. Run an elegance pass
+  on your own non-trivial new code (not adjacent existing code).
+- Comments: document public APIs and non-obvious WHY (constraints, invariants,
+  workarounds); skip narrative comments on internals.
+- Keep the PR and disposition summary concise, but always include the WHY.
 ```
 
 The routine's model selector should be set to the strongest available coding model.
