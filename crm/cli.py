@@ -1,4 +1,4 @@
-"""crm — Click-based CLI + REPL for Dynamics 365 CE on-prem 9.x.
+"""crm — Click-based CLI + REPL for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) or Dataverse online (OAuth).
 
 Entry point: `crm` (installed) or `python -m crm`.
 
@@ -444,7 +444,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True,
               help="Preview writes without issuing them; reads run normally.")
-@click.option("--profile", "profile_name", help="Connection profile name (from ~/.crm/profiles).")
+@click.option("--profile", "profile_name", help="Connection profile name (from the state dir; default ~/.crm, override via CRM_HOME).")
 @click.option("--password", help="Secret for this run (overrides the profile's stored secret).")
 @click.option("--log-level",
               type=click.Choice(["debug", "info", "warning", "error"]),
@@ -482,7 +482,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         auth_scheme: str | None, stage_only: bool, retry_on_ambiguous: bool,
         cache_metadata: bool, refresh_metadata: bool,
         session_name: str):
-    """Stateful CLI for Dynamics 365 CE on-prem 9.x (Web API)."""
+    """Stateful CLI for Microsoft Dynamics 365 CE — on-prem v9.x (NTLM) or Dataverse online (OAuth), over the Web API."""
     force_utf8_output(sys.stdout)
     force_utf8_output(sys.stderr)
     _valid_levels = ("debug", "info", "warning", "error")
