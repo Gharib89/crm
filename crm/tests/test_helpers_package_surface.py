@@ -20,9 +20,11 @@ import importlib
 import pytest
 
 # Every symbol imported via `from crm.commands._helpers import ...` across the
-# whole tree (commands + tests), plus the internal-only names and module refs
-# that were top-level in the original module — the flat namespace must stay
-# byte-for-byte resolvable.
+# whole tree (commands + tests), plus the two module references the old module
+# exposed at top level (`session_mod`, `_stdin_is_tty`) that the suite
+# monkeypatches through the package. Internal-only names (`_require_solution`,
+# `_infer_columns`, `_ASYNC_STATE_NAMES`, `_CLOUD_HOST_MARKER`) are deliberately
+# NOT re-exported — nothing imports them — so they are not pinned here.
 _PUBLIC_SURFACE = [
     # rendering / output envelope
     "_sanitize", "_short_repr", "_emit_with_warning", "_emit_query_result",
@@ -44,6 +46,8 @@ _PUBLIC_SURFACE = [
     "infer_auth_scheme", "default_profile_name",
     # session / journal
     "_journal", "_touch_session", "_no_retry_scope",
+    # module references preserved at the package top level (monkeypatch targets)
+    "session_mod", "_stdin_is_tty",
 ]
 
 
@@ -56,12 +60,13 @@ def test_symbol_resolves_from_package(name):
 def test_d365_errors_seam_is_a_context_manager():
     # The #264 seam relocated into the errors submodule; it must still be the
     # context-manager factory the ~21 verb call sites use as `with d365_errors(ctx):`.
-    from contextlib import _GeneratorContextManager  # type: ignore[attr-defined]
-
+    # Assert the context-manager protocol rather than a concrete (and private,
+    # version-dependent) type, since that protocol is the actual contract.
     from crm.commands._helpers import d365_errors
 
     cm = d365_errors(object())  # type: ignore[arg-type]
-    assert isinstance(cm, _GeneratorContextManager)
+    assert hasattr(cm, "__enter__") and hasattr(cm, "__exit__"), \
+        "d365_errors(...) must return a context manager"
 
 
 def test_session_mod_attribute_is_core_session():
