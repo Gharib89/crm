@@ -15,11 +15,11 @@ _ZIP_BYTES = b"PK\x03\x04 fake solution zip"
 
 
 def test_async_unavailable_predicate():
-    from crm.core import solution as sol
+    from crm.core import solution_transfer as transfer
     yes = D365Error("ExportSolutionAsync is not enabled for this org", status=400)
     no = D365Error("Some unrelated server error", status=500)
-    assert sol._async_export_unavailable(yes) is True
-    assert sol._async_export_unavailable(no) is False
+    assert transfer._async_export_unavailable(yes) is True
+    assert transfer._async_export_unavailable(no) is False
 
 
 def test_export_falls_back_to_sync_when_async_disabled(backend, tmp_path):
