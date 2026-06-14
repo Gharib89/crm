@@ -9,6 +9,40 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.11.0 (2026-06-14)
+
+### Documentation
+
+- **skill**: Add customization-lifecycle reference + query count example
+  ([`ac87ece`](https://github.com/Gharib89/crm/commit/ac87ece842ff5894ae525dd7cf5720d5c22cfe5e))
+
+### Features
+
+- **dry-run**: Resolve & report referenced objects on name-taking writes
+  ([#286](https://github.com/Gharib89/crm/pull/286),
+  [`d2e54aa`](https://github.com/Gharib89/crm/commit/d2e54aae435274514ad5a5df276655125397c024))
+
+### Refactoring
+
+- Consolidate entity-name resolution into one cache-backed seam
+  ([#261](https://github.com/Gharib89/crm/pull/261),
+  [`95e1d84`](https://github.com/Gharib89/crm/commit/95e1d84a2151522f24531c94fca74288f4cbb092))
+
+- Deepen the OData response surface on D365Backend
+  ([#280](https://github.com/Gharib89/crm/pull/280),
+  [`509f564`](https://github.com/Gharib89/crm/commit/509f564ac5421f29a204dee760734c8b0f32b49e))
+
+### Testing
+
+- Finish shared-conftest dedup — drop remaining fixture shadows
+  ([#285](https://github.com/Gharib89/crm/pull/285),
+  [`4930753`](https://github.com/Gharib89/crm/commit/4930753fd61d669cc351f1b7897433053e7ec86d))
+
+- Shared unit-suite conftest + canonical FakeBackend adapter
+  ([#283](https://github.com/Gharib89/crm/pull/283),
+  [`2714a06`](https://github.com/Gharib89/crm/commit/2714a063df69e6152f11932e16a1b712ea62e59d))
+
+
 ## v3.10.0 (2026-06-13)
 
 ### Features
