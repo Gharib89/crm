@@ -25,13 +25,74 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-# Click 8.x ships zsh/bash/fish completion classes; these are the shells we expose.
-SUPPORTED_SHELLS = ("zsh", "bash", "fish")
+from click.shell_completion import CompletionItem, ShellComplete, split_arg_string
+
+# Click 8.x ships zsh/bash/fish completion classes; "powershell" is added by this
+# module via add_completion_class (see PowerShellComplete + the eager registration
+# in crm/cli.py). These are the shells we expose.
+SUPPORTED_SHELLS = ("zsh", "bash", "fish", "powershell")
 
 # The env var Click derives from prog_name "crm" (``_<PROG>_COMPLETE``). The
 # generated script and the ``_CRM_COMPLETE=<shell>_source crm`` invocation both
 # key off it, so the cached script matches what a manual setup would produce.
+# Pinning ``prog_name="crm"`` at the entry point (crm/cli.py:main) is what keeps
+# this stable on Windows, where the binary basename ``crm.exe`` would otherwise
+# make Click look for ``_CRM_EXE_COMPLETE`` and break completion.
 _COMPLETE_VAR = "_CRM_COMPLETE"
+
+# Shells whose cached-script file extension differs from the shell name. PowerShell
+# dot-sources a ``.ps1``; the Unix three use ``crm.<shell>`` (crm.zsh, …).
+_SCRIPT_EXT = {"powershell": "ps1"}
+
+# PowerShell completion source. Click ships no PowerShell class, so we register a
+# custom one via ``add_completion_class``. The native completer hands the
+# scriptblock a raw command-line string + the partial word (unlike the Unix shells'
+# pre-split word list + cursor index), so the shim mirrors fish: pass the full line
+# as COMP_WORDS and the partial as COMP_CWORD. ``%(...)s`` are filled by
+# ShellComplete.source_vars (prog_name, complete_var). ``if/else`` (not the ``?:``
+# ternary) keeps the script valid on both Windows PowerShell 5.1 and PowerShell 7+.
+_SOURCE_POWERSHELL = '''\
+Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $env:%(complete_var)s = "powershell_complete"
+    $env:COMP_WORDS = $commandAst.ToString()
+    $env:COMP_CWORD = $wordToComplete
+    %(prog_name)s | ForEach-Object {
+        $type, $value, $help = ($_ -split "`t", 3)
+        if ($type -ne 'plain') { return }   # 'file'/'dir' -> let PowerShell complete paths
+        if ($help) { $toolTip = $help } else { $toolTip = $value }
+        [System.Management.Automation.CompletionResult]::new(
+            $value, $value, 'ParameterValue', $toolTip)
+    }
+    Remove-Item Env:%(complete_var)s, Env:COMP_WORDS, Env:COMP_CWORD
+}
+'''
+
+
+class PowerShellComplete(ShellComplete):
+    """Click completion for PowerShell (Windows PowerShell 5.1 and PowerShell 7+).
+
+    Registered via ``add_completion_class`` on an always-imported path (crm/cli.py)
+    so the completion hot-path has it — the command modules are lazy-loaded, so a
+    completion request never imports this module on its own.
+    """
+
+    name = "powershell"
+    source_template = _SOURCE_POWERSHELL
+
+    def get_completion_args(self) -> tuple[list[str], str]:
+        cwords = split_arg_string(os.environ["COMP_WORDS"])
+        incomplete = os.environ.get("COMP_CWORD", "")
+        args = cwords[1:]
+        # PowerShell repeats the partial word in both COMP_WORDS and COMP_CWORD;
+        # drop it from the completed args (mirrors fish).
+        if incomplete and args and args[-1] == incomplete:
+            args.pop()
+        return args, incomplete
+
+    def format_completion(self, item: CompletionItem) -> str:
+        # Tab-separated triple the scriptblock splits on `` `t ``: type, value, help.
+        return f"{item.type}\t{item.value}\t{item.help or ''}"
 
 
 def _crm_home() -> Path:
@@ -46,7 +107,18 @@ def marker_path() -> Path:
 
 def default_script_path(shell: str) -> Path:
     """The cached-script location under ``CRM_HOME`` for a given shell."""
-    return _crm_home() / "completion" / f"crm.{shell}"
+    ext = _SCRIPT_EXT.get(shell, shell)
+    return _crm_home() / "completion" / f"crm.{ext}"
+
+
+def rc_line(shell: str, dest: Path | str) -> str:
+    """The line a user adds to their shell startup file to load the script.
+
+    PowerShell dot-sources from ``$PROFILE`` (``. <path>``); the Unix shells
+    ``source`` it.
+    """
+    verb = "." if shell == "powershell" else "source"
+    return f"{verb} {dest}"
 
 
 def detect_shell() -> str | None:
