@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.3 (2026-06-14)
+
+### Bug Fixes
+
+- **cli**: Suggest near-miss top-level command names
+  ([#310](https://github.com/Gharib89/crm/pull/310),
+  [`3fb1f99`](https://github.com/Gharib89/crm/commit/3fb1f99b9e63b0a126a350f66c2fb718733fe56a))
+
+
 ## v3.12.2 (2026-06-14)
 
 ### Bug Fixes
