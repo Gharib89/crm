@@ -941,7 +941,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
 @click.option("--insert-option", "insert_options", multiple=True,
               help="Insert option 'value:label' or ':label'. Repeatable.")
 @click.option("--update-option", "update_options", multiple=True,
-              help="Update existing option 'value:new_label'. Repeatable.")
+              help="Update an existing option's label, 'value:label'. Repeatable.")
 @click.option("--delete-option", "delete_options", multiple=True, type=int,
               help="Delete option by value. Repeatable.")
 @click.option("--reorder", default=None,
