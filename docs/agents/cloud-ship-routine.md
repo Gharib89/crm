@@ -53,8 +53,16 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 
 - Enable **"Allow unrestricted branch pushes"** for `Gharib89/crm` — `/ship` pushes
   `feat/*` branches; without this, only `claude/*` pushes are allowed.
-- Remove connectors the routine doesn't need (all connected MCP servers are added
-  by default; routines can use every tool from an included connector without asking).
+- Connectors: all your connected MCP servers are added by default; a routine can use
+  every tool from an included connector without asking. **Keep Microsoft Learn and
+  Context7** (and Exa, if connected) — MCP traffic is brokered through Anthropic, so
+  these work under the Custom network policy above (no allowed-domain entry needed)
+  and give the agent D365 / library docs during `/ship`. Remove only connectors the
+  routine genuinely doesn't need. Note: the `ctx7` **CLI** (npx) is direct sandbox
+  egress and is blocked by the Custom network policy — rely on the Context7
+  **connector** instead. Connectors must be account-level
+  (claude.ai/customize/connectors); local `claude mcp add` servers don't appear in
+  routines.
 
 ## Schedule
 
