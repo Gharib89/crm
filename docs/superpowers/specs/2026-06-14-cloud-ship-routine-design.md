@@ -72,19 +72,27 @@ fire
 
 ### Bootstrap script contract (`scripts/cloud-ship-bootstrap.sh`)
 
-Idempotent; reads secrets from env (injected by the trigger), never echoes them:
+Idempotent; reads `$D365_CLIENT_SECRET`/`$GH_TOKEN` from env (injected by the
+trigger), never echoes them. Produces **on-disk** state that persists across the
+fire's steps (installed package, `~/.crm` profile, `~/.config/gh`):
 
 1. `pip install -e ".[dev,docs]"` — crm CLI from source (not on PyPI).
-2. Build the `agent-cloud` profile non-interactively (flag-driven `crm profile add`),
-   passing `--client-secret "$D365_CLIENT_SECRET"`. Public config baked into the
-   script: `auth=oauth`, `client_id=4e156fdd-7cfe-487d-8608-c6844dcaf9ed`,
+2. Build + activate the `agent-cloud` profile non-interactively (`crm profile add
+   --store-password-plaintext`, no keyring in sandbox), passing `--client-secret
+   "$D365_CLIENT_SECRET"`. Public config baked into the script: `auth-scheme=oauth`,
+   `client_id=4e156fdd-7cfe-487d-8608-c6844dcaf9ed`,
    `tenant_id=727f34ab-fb54-4512-a624-5ed673dd203b`,
-   `url=https://orgd080ee1e.crm.dynamics.com`, `publisher_prefix=ag_`,
-   `default_solution=agsol`. WhoAmI-tests + activates.
-3. Export e2e env for `/ship` phase 3:
-   `D365_E2E=1`, flat `D365_URL/D365_AUTH=oauth/D365_CLIENT_ID/D365_TENANT_ID/D365_CLIENT_SECRET`,
-   and `D365_E2E_ALLOW_HOST=orgd080ee1e.crm.dynamics.com` (cloud prod-host guard override).
-4. `gh auth login --with-token <<<"$GH_TOKEN"` (or rely on `GH_TOKEN` in env).
+   `url=https://orgd080ee1e.crm.dynamics.com`, `api-version=v9.2`,
+   `publisher_prefix=ag_`, `default_solution=agsol`. WhoAmI-tests + activates.
+3. `echo "$GH_TOKEN" | gh auth login --with-token`.
+4. Sanity: `crm --profile agent-cloud connection whoami` (early signal if cloud
+   egress is blocked).
+
+**e2e env is NOT exported by the script** (`export` dies with the subshell). The
+`/ship` phase-3 vars live in the **trigger's env config** instead:
+`D365_E2E=1`, `D365_E2E_PROFILE=agent-cloud` (target inferred = cloud; secret stays
+only in the profile), `D365_E2E_ALLOW_HOST=orgd080ee1e.crm.dynamics.com` (cloud
+prod-host guard override).
 
 ### Secrets handling (decision: dedicated scoped token + app secret)
 
