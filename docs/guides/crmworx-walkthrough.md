@@ -43,9 +43,9 @@ crm --json connection whoami
   "ok": true,
   "data": {
     "@odata.context": ".../api/data/v9.1/$metadata#Microsoft.Dynamics.CRM.WhoAmIResponse",
-    "BusinessUnitId": "078a426a-8339-f111-b65d-00155d467b90",
-    "UserId": "f890426a-8339-f111-b65d-00155d467b90",
-    "OrganizationId": "b948cd5f-8339-f111-b65d-00155d467b90"
+    "BusinessUnitId": "00000000-0000-0000-0000-000000000002",
+    "UserId": "00000000-0000-0000-0000-000000000017",
+    "OrganizationId": "00000000-0000-0000-0000-000000000013"
   }
 }
 ```
@@ -72,7 +72,7 @@ crm --json profile add \
     "auth_scheme": "ntlm",
     "credential_storage": "plaintext",
     "active": true,
-    "user_id": "f890426a-8339-f111-b65d-00155d467b90",
+    "user_id": "00000000-0000-0000-0000-000000000017",
     "api_version": "v9.1"
   }
 }
@@ -404,8 +404,8 @@ crm --json entity create cwx_tickets --data '{
   "cwx_name":"Laptop won'\''t boot",
   "cwx_description":"Dell 5420 no POST after update",
   "cwx_priority":3, "cwx_severity":2, "cwx_category":1,
-  "cwx_CustomerId@odata.bind":"/accounts(c2c130c3-c05d-f111-b65d-00155d467b90)",
-  "cwx_SLA@odata.bind":"/cwx_slas(00d955b7-c05d-f111-b65d-00155d467b90)"
+  "cwx_CustomerId@odata.bind":"/accounts(00000000-0000-0000-0000-000000000014)",
+  "cwx_SLA@odata.bind":"/cwx_slas(00000000-0000-0000-0000-000000000001)"
 }'
 ```
 
@@ -424,9 +424,9 @@ Modify a record with `update` (PATCH) and `upsert` (PATCH with create-if-missing
 no alternate key configured on the ticket, both target the record by id:
 
 ```bash
-crm --json entity update cwx_tickets a41cfedb-c05d-f111-b65d-00155d467b90 \
+crm --json entity update cwx_tickets 00000000-0000-0000-0000-000000000011 \
   --data '{"cwx_resolvedon":"2026-06-01T12:00:00Z"}'
-crm --json entity upsert cwx_tickets c8c8f8e4-c05d-f111-b65d-00155d467b90 \
+crm --json entity upsert cwx_tickets 00000000-0000-0000-0000-000000000015 \
   --data '{"cwx_resolvedon":"2026-06-01T15:30:00Z"}'
 ```
 
@@ -623,7 +623,7 @@ crm --json entity create savedqueries --data-file /tmp/cwx_view_active_tickets.j
 ```
 
 ```json
-{ "ok": true, "data": { "savedqueryid": "72313649-6f5e-f111-b65d-00155d467b90", "...": "..." } }
+{ "ok": true, "data": { "savedqueryid": "00000000-0000-0000-0000-000000000005", "...": "..." } }
 ```
 
 Two more views follow the same guard → create flow — **Tickets by Priority** (cwx_ticket;
@@ -632,9 +632,9 @@ LayoutXml leads with `cwx_priority`, FetchXml ordered by `cwx_priority`) and **A
 `cwx_responsehours`, `cwx_resolutionhours`):
 
 ```text
-Active Tickets       72313649-6f5e-f111-b65d-00155d467b90
-Tickets by Priority  74313649-6f5e-f111-b65d-00155d467b90
-Active SLAs          76313649-6f5e-f111-b65d-00155d467b90
+Active Tickets       00000000-0000-0000-0000-000000000005
+Tickets by Priority  00000000-0000-0000-0000-000000000006
+Active SLAs          00000000-0000-0000-0000-000000000007
 ```
 
 Publish so the views surface in the app, then read them back (the build's three plus the
@@ -647,10 +647,10 @@ crm --json query odata savedqueries \
 ```
 
 ```text
-Active Tickets             72313649-6f5e-f111-b65d-00155d467b90
-Tickets by Priority        74313649-6f5e-f111-b65d-00155d467b90
-Active Support Tickets     055e2e32-dc59-4190-a9ff-0a8c1d88cf7f   (auto-generated default)
-Inactive Support Tickets   9665360a-d424-4fd5-8a16-7a979e9988a4   (auto-generated default)
+Active Tickets             00000000-0000-0000-0000-000000000005
+Tickets by Priority        00000000-0000-0000-0000-000000000006
+Active Support Tickets     00000000-0000-0000-0000-000000000018   (auto-generated default)
+Inactive Support Tickets   00000000-0000-0000-0000-000000000019   (auto-generated default)
 ```
 
 ## 7. Forms
@@ -667,7 +667,7 @@ Fetch the auto-generated "Information" form and note its `formid` + FormXml leng
 ```bash
 crm --json query odata systemforms \
   --filter "objecttypecode eq 'cwx_ticket' and type eq 2" --select name,formid,formxml
-# -> Information | 8f0db50d-b90c-4b4d-9ecb-f16f9e7db491 | formxml 1625 chars
+# -> Information | 00000000-0000-0000-0000-000000000020 | formxml 1625 chars
 ```
 
 The auto form has one tab/two columns: `cwx_name` + `ownerid` on the left, the notes
@@ -722,7 +722,7 @@ crm --json solution publish-all
 ```
 
 ```json
-{ "ok": true, "data": { "formid": "94d4181e-705e-f111-b65d-00155d467b90", "...": "..." } }
+{ "ok": true, "data": { "formid": "00000000-0000-0000-0000-000000000010", "...": "..." } }
 ```
 
 !!! success "Quick-create via the Web API works on 9.1"
@@ -772,7 +772,7 @@ crm --json query odata savedqueryvisualizations --filter "primaryentitytypecode 
 ```
 
 ```text
-Tickets by Priority | b7510172-705e-f111-b65d-00155d467b90
+Tickets by Priority | 00000000-0000-0000-0000-000000000012
 ```
 
 The server accepted the chart on the first attempt. Keep that
@@ -795,9 +795,9 @@ The load-bearing parameters are `<ChartGridMode>` (`Chart` vs `Grid`), `<Visuali
     <parameters>
       <TargetEntityType>cwx_ticket</TargetEntityType>
       <ChartGridMode>Chart</ChartGridMode>
-      <ViewId>{72313649-6f5e-f111-b65d-00155d467b90}</ViewId>          <!-- Active Tickets -->
+      <ViewId>{00000000-0000-0000-0000-000000000005}</ViewId>          <!-- Active Tickets -->
       <IsUserView>false</IsUserView>
-      <VisualizationId>{b7510172-705e-f111-b65d-00155d467b90}</VisualizationId>  <!-- chart -->
+      <VisualizationId>{00000000-0000-0000-0000-000000000012}</VisualizationId>  <!-- chart -->
       <IsUserChart>false</IsUserChart>
       <EnableChartPicker>false</EnableChartPicker>
     </parameters>
@@ -815,7 +815,7 @@ crm --json query odata systemforms --filter "type eq 0 and name eq 'CRMWorx SLA 
 ```
 
 ```text
-CRMWorx SLA Overview | e29005b6-705e-f111-b65d-00155d467b90
+CRMWorx SLA Overview | 00000000-0000-0000-0000-000000000016
 binds chart b7510172: True | binds view 72313649: True
 ```
 
@@ -879,7 +879,7 @@ discovered live and each matters.
 ### App module
 
 `appmodules` requires a non-null `webresourceid` (the tile icon). The platform ships a
-default icon (`953b9fac-1e5e-e611-80d6-00155ded156f`,
+default icon (`00000000-0000-0000-0000-000000000021`,
 `msdyn_/Images/AppModule_Default_Icon.png`); CRMWorx instead uses its own `cwx_` SVG web
 resource so the app is self-contained:
 
@@ -899,7 +899,7 @@ crm --json solution publish-all
 ```bash
 crm --json entity create appmodules --no-return --data-file /tmp/cwx_app.json
 crm --json query odata "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()" --select name,uniquename,appmoduleid
-# -> CRMWorx | cwx_crmworx | 79bdfbec-725e-f111-b65d-00155d467b90
+# -> CRMWorx | cwx_crmworx | 00000000-0000-0000-0000-000000000008
 ```
 
 `/tmp/cwx_app.json`: `{ "name":"CRMWorx", "uniquename":"cwx_crmworx", "clienttype":4,
@@ -970,7 +970,7 @@ RetrieveAppComponents -> 8 items (3 view, 1 chart, 3 form/dashboard, 1 sitemap)
 The app launches at:
 
 ```text
-http://internalcrm.contoso.local/Contoso/main.aspx?appid=79bdfbec-725e-f111-b65d-00155d467b90
+http://internalcrm.contoso.local/Contoso/main.aspx?appid=00000000-0000-0000-0000-000000000008
 ```
 
 The running app, captured live (headless Chromium over NTLM):
@@ -1009,7 +1009,7 @@ crm --json query odata "ValidateApp(AppModuleId=79bdfbec-…)"
 ```
 
 ```text
-CRMWorx | 79bdfbec-725e-f111-b65d-00155d467b90 | cwx_crmworx
+CRMWorx | 00000000-0000-0000-0000-000000000008 | cwx_crmworx
 RetrieveAppComponents -> 8 components
 ValidateApp           -> ValidationSuccess = True
 ```
@@ -1032,7 +1032,7 @@ crm --json view create cwx_sla --name "Active SLAs (cmd)" --otc 10126 \
 
 ```json
 { "ok": true, "data": { "created": true,
-  "savedqueryid": "467f3c88-785e-f111-b65d-00155d467b90", "published": true } }
+  "savedqueryid": "00000000-0000-0000-0000-000000000004", "published": true } }
 ```
 
 **`crm app create`** is idempotent — run against the app from §11 it reports a skip via the
@@ -1044,7 +1044,7 @@ crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
 
 ```json
 { "ok": true, "data": { "skipped": true,
-  "appmoduleid": "79bdfbec-725e-f111-b65d-00155d467b90" } }
+  "appmoduleid": "00000000-0000-0000-0000-000000000008" } }
 ```
 
 `crm app add-components` and `crm app set-sitemap` round out the group, emitting the
@@ -1087,9 +1087,9 @@ separate delete.
 
 ```bash
 # Interface teardown (before dropping the tables) — these don't cascade with the entity
-crm --json entity delete appmodules 79bdfbec-725e-f111-b65d-00155d467b90 --yes   # the model-driven app
-crm --json entity delete sitemaps   2ef3183b-735e-f111-b65d-00155d467b90 --yes   # the app sitemap
-crm --json entity delete webresourceset 9188010c-725e-f111-b65d-00155d467b90 --yes  # the cwx_ app icon
+crm --json entity delete appmodules 00000000-0000-0000-0000-000000000008 --yes   # the model-driven app
+crm --json entity delete sitemaps   00000000-0000-0000-0000-000000000003 --yes   # the app sitemap
+crm --json entity delete webresourceset 00000000-0000-0000-0000-000000000009 --yes  # the cwx_ app icon
 # (views/forms/chart/dashboard are deleted automatically with their owning entity below)
 
 crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships + its views/forms/chart/dashboard

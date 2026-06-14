@@ -16,8 +16,8 @@ Target the **entity-set (plural) name** (`cwx_slas`), not the logical name; the 
 crm --json entity create cwx_tickets --data '{
   "cwx_name":"Laptop won'\''t boot",
   "cwx_priority":3, "cwx_severity":2, "cwx_category":1,
-  "cwx_CustomerId@odata.bind":"/accounts(c2c130c3-c05d-f111-b65d-00155d467b90)",
-  "cwx_SLA@odata.bind":"/cwx_slas(00d955b7-c05d-f111-b65d-00155d467b90)"
+  "cwx_CustomerId@odata.bind":"/accounts(00000000-0000-0000-0000-000000000014)",
+  "cwx_SLA@odata.bind":"/cwx_slas(00000000-0000-0000-0000-000000000001)"
 }'
 ```
 The bind target is the navigation property (PascalCase lookup schema name `cwx_SLA` / `cwx_CustomerId`), not the lowercase logical name.
@@ -25,9 +25,9 @@ The bind target is the navigation property (PascalCase lookup schema name `cwx_S
 ## Update or upsert by id
 
 ```bash
-crm --json entity update cwx_tickets a41cfedb-c05d-f111-b65d-00155d467b90 \
+crm --json entity update cwx_tickets 00000000-0000-0000-0000-000000000011 \
   --data '{"cwx_resolvedon":"2026-06-01T12:00:00Z"}'
-crm --json entity upsert cwx_tickets c8c8f8e4-c05d-f111-b65d-00155d467b90 \
+crm --json entity upsert cwx_tickets 00000000-0000-0000-0000-000000000015 \
   --data '{"cwx_resolvedon":"2026-06-01T15:30:00Z"}'
 ```
 `update` is a PATCH; `upsert` is a PATCH that creates the record if missing. Both return `{"ok": true}`.
@@ -58,7 +58,7 @@ This warning is not emitted for `entity update` (setting the primary id on an up
 ## Assert a field value after a write (`--expect`)
 
 ```bash
-crm --json entity get cwx_tickets a41cfedb-c05d-f111-b65d-00155d467b90 \
+crm --json entity get cwx_tickets 00000000-0000-0000-0000-000000000011 \
   --expect statecode=1 --expect statuscode=5
 ```
 The repeatable `--expect ATTR=VALUE` flag turns the retrieve into a self-checking verify step — handy for confirming a state change or an async write actually landed. Each pair passes only if `str(record[ATTR]) == VALUE`; multiple `--expect` flags are AND-gated (every one must match). The first mismatch exits **1** with the offending field under `meta`:
