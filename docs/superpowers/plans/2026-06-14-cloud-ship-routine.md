@@ -105,9 +105,9 @@ set -euo pipefail
 
 : "${D365_CLIENT_SECRET:?set D365_CLIENT_SECRET in the routine's cloud environment}"
 
-URL="https://orgd080ee1e.crm.dynamics.com"
-CLIENT_ID="4e156fdd-7cfe-487d-8608-c6844dcaf9ed"
-TENANT_ID="727f34ab-fb54-4512-a624-5ed673dd203b"
+URL="https://<your-org>.crm.dynamics.com"
+CLIENT_ID="<client-id>"
+TENANT_ID="<tenant-id>"
 
 # crm CLI from source (not published to PyPI)
 pip install -e ".[dev,docs]"
@@ -202,14 +202,14 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 - **Network access → Custom**, Allowed domains (keep "include default package
   managers" checked, for pip/PyPI):
   - `login.microsoftonline.com`   (OAuth client-credentials token endpoint)
-  - `orgd080ee1e.crm.dynamics.com` (Dataverse Web API)
+  - `<your-org>.crm.dynamics.com` (Dataverse Web API)
 - **Environment variables:**
   - `D365_CLIENT_SECRET` = agent-cloud OAuth client secret (rotate after wiring)
   - `GH_TOKEN` = fine-grained PAT, repo `Gharib89/crm`: Contents + Pull requests +
     Issues + Workflows (write)
   - `D365_E2E` = `1`
   - `D365_E2E_PROFILE` = `agent-cloud`
-  - `D365_E2E_ALLOW_HOST` = `orgd080ee1e.crm.dynamics.com`
+  - `D365_E2E_ALLOW_HOST` = `<your-org>.crm.dynamics.com`
 - **Setup script:** leave empty (bootstrap runs from the prompt, see above).
 
 ## Permissions
@@ -244,7 +244,7 @@ Mirror the full CI before pushing (CLAUDE.md: pytest + mkdocs --strict + secret 
 - [ ] **Step 1: Offline test suite**
 
 ```bash
-WT=$(pwd); PYTHONPATH=$WT ~/wip/projects/crm/.venv/bin/python -m pytest -q
+WT=$(pwd); PYTHONPATH=$WT <main-venv>/bin/python -m pytest -q
 ```
 Expected: pass (vendoring skills + adding a script/docs touches no `crm/` code, so the suite is unaffected — this confirms no incidental breakage).
 
@@ -334,4 +334,4 @@ Note the per-account daily run cap and the 1-hour minimum interval.
 
 - **Spec coverage:** per-fire flow (Task 4 prompt), bootstrap contract (Task 3), secrets decision + rotation (Tasks 1/6), skill vendoring + "intentional copy" rationale (Task 2), one-issue-per-fire + merge gate + no-on-prem + host guard (Task 4), capability gate resolved with the network/branch-push corrections (findings section + Task 6), verification incl. manual-run-before-cron (Tasks 5/6). All present.
 - **Placeholders:** none. The only credential values are entered by the user in the claude.ai UI (Tasks 6.1/6.3), never written to the repo.
-- **Consistency:** profile name `agent-cloud`, host `orgd080ee1e.crm.dynamics.com`, the OAuth token domain `login.microsoftonline.com`, the five env vars, and the two secret names are identical across spec, bootstrap script, prompt, and environment config.
+- **Consistency:** profile name `agent-cloud`, host `<your-org>.crm.dynamics.com`, the OAuth token domain `login.microsoftonline.com`, the five env vars, and the two secret names are identical across spec, bootstrap script, prompt, and environment config.

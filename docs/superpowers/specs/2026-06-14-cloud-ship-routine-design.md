@@ -18,8 +18,8 @@ surfaced on claude.ai. The cost, accepted explicitly:
   fire: installs `crm` from source, builds the `agent-cloud` profile from the
   environment's injected secret, and loads the `/ship` skill from the cloned repo.
   `gh` authenticates from `GH_TOKEN` in the environment.
-- **On-prem is out of scope** — the sandbox cannot reach `internalcrm.moce.local`
-  (no VPN/egress). Only the cloud Dataverse org (`orgd080ee1e.crm.dynamics.com`)
+- **On-prem is out of scope** — the sandbox cannot reach `internalcrm.contoso.local`
+  (no VPN/egress). Only the cloud Dataverse org (`<your-org>.crm.dynamics.com`)
   is reachable. Issues that can only be verified on-prem must not be picked up.
 
 **Capability confirmed** (see Capability findings): claude.ai Routines support repo
@@ -77,25 +77,25 @@ fire
 ### Bootstrap script contract (`scripts/cloud-ship-bootstrap.sh`)
 
 **Runs from the prompt's first step, not the environment's cached setup-script
-slot** — so it always reads the current `$D365_CLIENT_SECRET` (rotation needs no
-cache rebuild) and never bakes the plaintext secret into a cached image. Reads
-`$D365_CLIENT_SECRET` from the environment; never echoes it:
+slot** — so it always reads the current connection values (rotation needs no
+cache rebuild) and never bakes them into a cached image. Reads `$D365_URL`,
+`$D365_CLIENT_ID`, `$D365_TENANT_ID`, and `$D365_CLIENT_SECRET` from the
+environment (failing fast if any is unset); never echoes the secret:
 
 1. `pip install -e ".[dev,docs]"` — crm CLI from source (not on PyPI).
 2. Build + activate the `agent-cloud` profile non-interactively (`crm profile add
-   --store-password-plaintext`, no keyring in sandbox), passing `--client-secret
-   "$D365_CLIENT_SECRET"`. Public config baked into the script: `auth-scheme=oauth`,
-   `client_id=4e156fdd-7cfe-487d-8608-c6844dcaf9ed`,
-   `tenant_id=727f34ab-fb54-4512-a624-5ed673dd203b`,
-   `url=https://orgd080ee1e.crm.dynamics.com`, `api-version=v9.2`,
-   `publisher_prefix=ag_`, `default_solution=agsol`. WhoAmI-tests + activates.
+   --store-password-plaintext --yes`, no keyring in sandbox), passing the four
+   `$D365_*` values above. Only non-identifying config is committed in the script —
+   `auth-scheme=oauth`, `api-version=v9.2`, `publisher_prefix=ag_`,
+   `default_solution=agsol`; the org URL and the client/tenant ids come from the
+   environment. WhoAmI-tests + activates.
 3. Sanity: `crm --profile agent-cloud connection whoami` (early signal if egress
    is blocked or the secret is wrong).
 
 `gh` needs **no login step** — it auto-reads `GH_TOKEN` from the environment. The
 `/ship` phase-3 vars are also **environment variables** (not script exports):
 `D365_E2E=1`, `D365_E2E_PROFILE=agent-cloud` (target inferred = cloud; secret stays
-only in the profile), `D365_E2E_ALLOW_HOST=orgd080ee1e.crm.dynamics.com` (cloud
+only in the profile), `D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com` (cloud
 prod-host guard override).
 
 ### Secrets handling (decision: dedicated scoped token + app secret)
@@ -136,7 +136,7 @@ each other by name so composition survives. This is distinct from `crm/skills/`
 - **Secret hygiene** — bootstrap never echoes secret values; secrets only in the env.
 - **Network policy (must-set)** — the Default env "Trusted" policy blocks Dataverse;
   set the env to **Custom** allowed domains: `login.microsoftonline.com` (OAuth token)
-  + `orgd080ee1e.crm.dynamics.com` (Web API), keeping the default package-manager list.
+  + `<your-org>.crm.dynamics.com` (Web API), keeping the default package-manager list.
 - **Branch push (must-set)** — routines push only `claude/*` by default; `/ship` pushes
   `feat/*`, so enable **"Allow unrestricted branch pushes"** for the repo.
 

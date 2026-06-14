@@ -12,8 +12,8 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
 
 1. Provision the sandbox: from the repo root run `bash scripts/cloud-ship-bootstrap.sh`.
    It installs the crm CLI, builds the active `agent-cloud` profile from the
-   environment's $D365_CLIENT_SECRET, and confirms the cloud org via whoami. If it
-   exits non-zero, report the failure and STOP.
+   environment's D365_* connection variables, and confirms the cloud org via whoami.
+   If it exits non-zero, report the failure and STOP.
 2. Pick the work item (gh reads GH_TOKEN from the environment):
    NUM=$(gh issue list --repo Gharib89/crm --label ready-for-agent --state open \
          --json number --jq 'sort_by(.number)[0].number // empty')
@@ -35,14 +35,18 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 - **Network access → Custom**, Allowed domains (keep "include default package
   managers" checked, for pip/PyPI):
   - `login.microsoftonline.com`   (OAuth client-credentials token endpoint)
-  - `orgd080ee1e.crm.dynamics.com` (Dataverse Web API)
-- **Environment variables:**
+  - `<your-org>.crm.dynamics.com` (Dataverse Web API — your cloud org host)
+- **Environment variables** (nothing org-specific is committed — the bootstrap
+  reads every connection value from here, replacing `<…>` with your real values):
+  - `D365_URL` = `https://<your-org>.crm.dynamics.com`
+  - `D365_CLIENT_ID` = agent-cloud OAuth application (client) id
+  - `D365_TENANT_ID` = Azure AD tenant id
   - `D365_CLIENT_SECRET` = agent-cloud OAuth client secret (rotate after wiring)
   - `GH_TOKEN` = fine-grained PAT, repo `Gharib89/crm`: Contents + Pull requests +
     Issues + Workflows (write)
   - `D365_E2E` = `1`
   - `D365_E2E_PROFILE` = `agent-cloud`
-  - `D365_E2E_ALLOW_HOST` = `orgd080ee1e.crm.dynamics.com`
+  - `D365_E2E_ALLOW_HOST` = `<your-org>.crm.dynamics.com` (must match `D365_URL`'s host)
 - **Setup script:** leave empty (bootstrap runs from the prompt, see above).
 
 ## Permissions
