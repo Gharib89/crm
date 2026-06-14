@@ -10,7 +10,6 @@ from crm.utils.d365_backend import D365Error
 
 from crm.commands._helpers import (
     _confirm_destructive,
-    d365_errors,
     _handle_d365_error,
     _journal,
     _no_retry_scope,
