@@ -26,6 +26,16 @@ pyright --pythonpath .venv/bin/python     # local lint (omit → ~56 false error
 mkdocs build --strict                     # docs; CI runs this, warnings fail
 ```
 
+## Driving the CLI from zsh (output-capture traps)
+
+The shell here is **zsh**. Three quirks silently fake results when you capture `crm` output — in e2e `cli`-fixture checks, QA sweeps, or any scripted run — and each one reads like a CLI bug when it's really the harness lying:
+
+- **No word-split on unquoted vars.** `P="--profile x"; crm $P …` passes `--profile x` as a *single* arg → `No such option '--profile x'`. Use a zsh **array** `P=(--profile x)` (or `${=P}`), never a plain string.
+- **`| head` / SIGPIPE corrupts the captured exit code** (not zsh-specific). A real exit-0 can surface as exit-1 when `head` closes the pipe early and Click catches `BrokenPipeError`. Assert exit codes with **no pipe**: `crm … >/dev/null 2>&1; echo $?`.
+- **MULTIOS tees redirections.** `crm … 2>&1 1>/dev/null | wc` shows the same output on *both* streams, faking a stdout/stderr duplication. Check stream separation with **files**, not pipes: `crm … >/tmp/o 2>/tmp/e; diff /tmp/o /tmp/e`.
+
+Robust pattern: pass args via an array, run to temp files (no pipe), capture `$?` immediately, then `head`/`grep`/`diff` the **files**. Treat any pipe-, `head`-, or `2>&1`-based finding as suspect until reproduced without the pipe.
+
 ## Keep docs in sync with code
 
 Every feature / new command / flag / behavior change ships its docs in the **same** change:
