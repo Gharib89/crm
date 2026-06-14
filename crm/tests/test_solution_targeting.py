@@ -76,21 +76,24 @@ def _ctx_with_profile(monkeypatch, *, default_solution=None, publisher_prefix=No
 
 def test_resolve_explicit_solution_wins(monkeypatch):
     ctx = _ctx_with_profile(monkeypatch, default_solution="ProfileSol")
-    solution, warning = _resolve_solution(ctx, "ExplicitSol", require=False)
+    solution, warning = _resolve_solution(ctx, "ExplicitSol", False)
     assert solution == "ExplicitSol"
     assert warning is None
 
 
 def test_resolve_profile_default_applied(monkeypatch):
     ctx = _ctx_with_profile(monkeypatch, default_solution="ProfileSol")
-    solution, warning = _resolve_solution(ctx, None, require=False)
+    solution, warning = _resolve_solution(ctx, None, False)
     assert solution == "ProfileSol"
     assert warning is None
 
 
 def test_resolve_none_warns(monkeypatch):
+    # The require flag is the raw --require-solution; _resolve_solution now folds
+    # the CRM_REQUIRE_SOLUTION OR-check in, so clear it to test the non-strict path.
+    monkeypatch.delenv("CRM_REQUIRE_SOLUTION", raising=False)
     ctx = _ctx_with_profile(monkeypatch, default_solution=None)
-    solution, warning = _resolve_solution(ctx, None, require=False)
+    solution, warning = _resolve_solution(ctx, None, False)
     assert solution is None
     assert warning is not None
     assert "solution" in warning.lower()
@@ -102,7 +105,7 @@ def test_resolve_none_strict_raises(monkeypatch):
     ctx = _ctx_with_profile(monkeypatch, default_solution=None)
     ctx.json_mode = True
     with pytest.raises(click.exceptions.Exit):
-        _resolve_solution(ctx, None, require=True)
+        _resolve_solution(ctx, None, True)
 
 
 # ── CLI integration ──────────────────────────────────────────────────────

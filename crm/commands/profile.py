@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import click
 
-from crm.cli import CLIContext, pass_ctx, _stdin_is_tty
+from crm.cli import CLIContext, pass_ctx
+from crm.commands._tty import _stdin_is_tty
 from crm.core import connection as conn_mod
 from crm.core import keyring_store
 from crm.core import session as session_mod
 from crm.commands._helpers import (
     _handle_d365_error,
+    d365_errors,
     _plaintext_secret_warning,
     _confirm_destructive,
     infer_auth_scheme,
@@ -126,10 +128,8 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
             "--password (or --client-secret) is required (no TTY to prompt for it).")
 
     if name in session_mod.list_profiles() and not yes:
-        if not _confirm_destructive("profile", name, yes,
-                                    message=f"Profile {name!r} exists. Overwrite?"):
-            ctx.emit(False, error="aborted by user")
-            return
+        _confirm_destructive(ctx, "profile", name, yes,
+                             message=f"Profile {name!r} exists. Overwrite?")
 
     negotiate = api_version is None
     try:
@@ -149,11 +149,8 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         ctx.emit(False, error=f"Could not write profile {name!r}: {exc}")
         return
 
-    try:
+    with d365_errors(ctx):
         where = conn_mod.save_secret(name, secret, force_plaintext=store_password_plaintext)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     warnings = []
     if where == "plaintext" and not store_password_plaintext:
         warnings.append("OS keyring unavailable — " + _plaintext_secret_warning())
@@ -350,9 +347,7 @@ def profile_rm(ctx: CLIContext, name, yes):
     if name not in session_mod.list_profiles():
         _handle_d365_error(ctx, D365Error(f"Profile {name!r} not found."))
         return
-    if not _confirm_destructive("profile", name, yes):
-        ctx.emit(False, error="aborted by user")
-        return
+    _confirm_destructive(ctx, "profile", name, yes)
     keyring_store.delete_secret(name)
     session_mod.clear_profile_secret(name)
     session_mod.delete_profile(name)
@@ -389,11 +384,8 @@ def profile_set_password(ctx: CLIContext, profile_name, password_opt,
     if not secret:
         ctx.emit(False, error="No secret supplied. Pass --password (or --client-secret).")
         return
-    try:
+    with d365_errors(ctx):
         where = conn_mod.save_secret(profile_name, secret, force_plaintext=store_password_plaintext)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     warnings = [_plaintext_secret_warning()] if where == "plaintext" else None
     ctx.emit(True, data={"profile": profile_name, "stored": True, "to": where},
              warnings=warnings)

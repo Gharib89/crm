@@ -3,11 +3,10 @@
 from __future__ import annotations
 import click
 from crm.core import views as views_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error, _journal, _resolve_publish, _solution_option,
-    _require_solution, _resolve_solution, _emit_with_warning,
+    d365_errors, _journal, _resolve_publish, _solution_option,
+    _resolve_solution, _emit_with_warning,
 )
 
 
@@ -77,19 +76,15 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
     order_desc = False
     if order_by is not None:
         order_by, order_desc = _parse_order(order_by)
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         info = views_mod.create_view(
             ctx.backend(), entity=entity, object_type_code=object_type_code,
             name=name, columns=parsed, order_by=order_by, order_desc=order_desc,
             filter_active=filter_active, is_default=is_default,
             solution=solution, if_exists=if_exists, publish=publish,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning,
-                       meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "view create", name, info, solution=solution)
+                       meta=ctx.staged_meta())
+    _journal(ctx, name, info, solution=solution)

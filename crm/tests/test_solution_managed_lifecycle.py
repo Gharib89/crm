@@ -249,7 +249,7 @@ class TestUninstallCommand:
         assert captured == {"unique_name": "ManagedApp", "force": True}
 
     def test_abort_without_yes_on_non_tty(self, monkeypatch):
-        # No --yes + EOF stdin → _confirm_destructive returns False → exit 1.
+        # No --yes + EOF stdin → _confirm_destructive emits "aborted by user" + Exit(1).
         called = {"core": False}
         monkeypatch.setattr("crm.core.solution.uninstall_solution",
                             lambda *a, **k: called.update(core=True))

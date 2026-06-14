@@ -10,9 +10,8 @@ from __future__ import annotations
 import click
 
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error, _journal
+from crm.commands._helpers import d365_errors, _journal
 from crm.core import apply as apply_mod
-from crm.utils.d365_backend import D365Error
 
 
 @click.command("apply")
@@ -48,15 +47,12 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
                  "(publisher / solution / entities / optionsets).")
         return
 
-    try:
+    with d365_errors(ctx):
         res = apply_mod.apply_spec(
             ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only,
             include_referenced_optionsets=include_referenced_optionsets)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
     ctx.emit(res["ok"], data=data, meta={"staged": res["staged"]})
     if res["ok"]:
-        _journal(ctx, "apply", spec_file, data)
+        _journal(ctx, spec_file, data)

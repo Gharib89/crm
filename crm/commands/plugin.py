@@ -7,10 +7,9 @@ and derives identity — so the base64/identity/dry-run logic lives in one place
 from __future__ import annotations
 import click
 from crm.core import plugin as plugin_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _handle_d365_error, _emit_with_warning, _confirm_destructive, _journal)
+    d365_errors, _emit_with_warning, _confirm_destructive, _journal)
 
 
 @click.group("plugin")
@@ -43,18 +42,15 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
     """Register a plug-in assembly from a .dll file (uploads its bytes)."""
     warning = _ignored_update_flags_warning(update, version, culture,
                                              public_key_token, description)
-    try:
+    with d365_errors(ctx):
         info = plugin_mod.register_assembly(
             ctx.backend(), path=path, name=name, version=version,
             culture=culture, public_key_token=public_key_token,
             isolation_mode=isolation_mode, description=description,
             solution=solution, update=update)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning,
-                       meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "plugin register-assembly", path, info)
+                       meta=ctx.staged_meta())
+    _journal(ctx, path, info)
 
 
 @plugin_group.command("list-types")
@@ -63,11 +59,8 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
 @pass_ctx
 def list_types_cmd(ctx: CLIContext, assembly):
     """List platform-generated plug-in types (optionally for one assembly)."""
-    try:
+    with d365_errors(ctx):
         result = plugin_mod.list_types(ctx.backend(), assembly=assembly)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     items = result["value"]
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
@@ -108,18 +101,15 @@ def list_types_cmd(ctx: CLIContext, assembly):
 def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
                       mode, rank, filtering_attributes, name, assembly):
     """Register a plug-in step (sdkmessageprocessingstep)."""
-    try:
+    with d365_errors(ctx):
         info = plugin_mod.register_step(
             ctx.backend(), message=message, plugin_type=plugin_type,
             entity=entity, stage=stage, mode=mode, rank=rank,
             filtering_attributes=filtering_attributes, name=name,
             assembly=assembly)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, None,
-                       meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "plugin register-step", plugin_type, info)
+                       meta=ctx.staged_meta())
+    _journal(ctx, plugin_type, info)
 
 
 @plugin_group.command("register-image")
@@ -144,17 +134,14 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
 def register_image_cmd(ctx: CLIContext, step, image_type, alias, attributes,
                        name, message_property_name):
     """Register a step entity image (sdkmessageprocessingstepimage)."""
-    try:
+    with d365_errors(ctx):
         info = plugin_mod.register_image(
             ctx.backend(), step=step, image_type=image_type, alias=alias,
             attributes=attributes, name=name,
             message_property_name=message_property_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, None,
-                       meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "plugin register-image", step, info)
+                       meta=ctx.staged_meta())
+    _journal(ctx, step, info)
 
 
 @plugin_group.command("unregister-image")
@@ -163,16 +150,11 @@ def register_image_cmd(ctx: CLIContext, step, image_type, alias, attributes,
 @pass_ctx
 def unregister_image_cmd(ctx: CLIContext, image, yes):
     """Unregister a step entity image (sdkmessageprocessingstepimage, NAME or GUID)."""
-    if not _confirm_destructive("plug-in step image", image, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    _confirm_destructive(ctx, "plug-in step image", image, yes)
+    with d365_errors(ctx):
         info = plugin_mod.unregister_image(ctx.backend(), image)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "plugin unregister-image", image, info)
+    _journal(ctx, image, info)
 
 
 @plugin_group.command("unregister-assembly")
@@ -181,16 +163,11 @@ def unregister_image_cmd(ctx: CLIContext, image, yes):
 @pass_ctx
 def unregister_assembly_cmd(ctx: CLIContext, assembly, yes):
     """Unregister a plug-in assembly (NAME or GUID), deleting dependent steps first."""
-    if not _confirm_destructive("plug-in assembly", assembly, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    _confirm_destructive(ctx, "plug-in assembly", assembly, yes)
+    with d365_errors(ctx):
         info = plugin_mod.unregister_assembly(ctx.backend(), assembly)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "plugin unregister-assembly", assembly, info)
+    _journal(ctx, assembly, info)
 
 
 @plugin_group.command("unregister-step")
@@ -199,16 +176,11 @@ def unregister_assembly_cmd(ctx: CLIContext, assembly, yes):
 @pass_ctx
 def unregister_step_cmd(ctx: CLIContext, step, yes):
     """Unregister a plug-in step (sdkmessageprocessingstep, NAME or GUID)."""
-    if not _confirm_destructive("plug-in step", step, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    _confirm_destructive(ctx, "plug-in step", step, yes)
+    with d365_errors(ctx):
         info = plugin_mod.unregister_step(ctx.backend(), step)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
-    _journal(ctx, "plugin unregister-step", step, info)
+    _journal(ctx, step, info)
 
 
 def _ignored_update_flags_warning(

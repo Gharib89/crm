@@ -4,9 +4,8 @@ from __future__ import annotations
 import click
 from crm.core import export as export_mod
 from crm.core import data_import as import_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _handle_d365_error, _journal
+from crm.commands._helpers import d365_errors, _journal
 
 
 @click.group("data")
@@ -27,7 +26,7 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
     select_list: list[str] = []
     for s in select:
         select_list.extend(part.strip() for part in s.split(",") if part.strip())
-    try:
+    with d365_errors(ctx):
         info = export_mod.export_records(
             ctx.backend(), entity_set, output,
             select=select_list or None,
@@ -36,9 +35,6 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
             max_records=max_records,
             fmt=fmt,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
 
 
@@ -68,7 +64,7 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, c
         )
     if mode == "upsert" and not id_column:
         raise click.UsageError("--mode upsert requires --id-column (the GUID column).")
-    try:
+    with d365_errors(ctx):
         info = import_mod.import_records(
             ctx.backend(), entity_set, input_file,
             fmt=fmt, mode=mode, id_column=id_column,
@@ -76,13 +72,10 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, c
             transactional=not no_transaction,
             continue_on_error=continue_on_error,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     warnings = (
         [f"{info['failed']} record(s) failed to import "
          f"({info['imported']} succeeded across {info['chunks']} chunk(s))."]
         if info.get("failed") else None
     )
     ctx.emit(True, data=info, warnings=warnings)
-    _journal(ctx, "data import", entity_set, info)
+    _journal(ctx, entity_set, info)

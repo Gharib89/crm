@@ -10,6 +10,7 @@ from crm.utils.d365_backend import D365Error
 
 from crm.commands._helpers import (
     _confirm_destructive,
+    d365_errors,
     _handle_d365_error,
     _journal,
     _no_retry_scope,
@@ -58,13 +59,11 @@ def translation_export_cmd(ctx: CLIContext, solution, output, timeout, no_retry)
 @pass_ctx
 def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes):
     """Import a translations zip; labels surface only after publishing."""
-    if not _confirm_destructive(
-        "translations", zip_path, yes,
+    _confirm_destructive(
+        ctx, "translations", zip_path, yes,
         message=(f"Importing {zip_path!r} will OVERWRITE localized labels "
                  f"in the target org. Continue?"),
-    ):
-        ctx.emit(False, error="aborted by user")
-        return
+    )
     with _no_retry_scope(ctx, no_retry):
         try:
             info = translation_mod.import_translation(
@@ -80,4 +79,4 @@ def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes):
             "Imported labels do not surface until published — run "
             "`crm solution publish-all`."
         ])
-        _journal(ctx, "translation import", zip_path, info)
+        _journal(ctx, zip_path, info)

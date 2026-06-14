@@ -16,13 +16,13 @@ from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _handle_d365_error,
+    d365_errors,
     _admin_header_options,
     _admin_kwargs,
     _confirm_destructive,
     _journal,
     _resolve_publish,
     _solution_option,
-    _require_solution,
     _resolve_solution,
     _resolve_schema_name,
     _emit_with_warning,
@@ -54,7 +54,7 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
                 "(--cache-metadata / --refresh-metadata); "
                 "the cache stores only logical/set names"
             )
-        try:
+        with d365_errors(ctx):
             backend = ctx.backend()
             lookup = mc_mod.load_definitions(
                 backend.profile,
@@ -62,9 +62,6 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
                 refresh=ctx.refresh_metadata,
                 now=time.time(),
             )
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
         rows = lookup.definitions
         if top is not None:
             if top < 1:
@@ -79,11 +76,8 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
                               "rows": [[r["logical"], r["set_name"]] for r in rows]},
                  meta=meta)
         return
-    try:
+    with d365_errors(ctx):
         items = meta_mod.list_entities(ctx.backend(), custom_only=custom_only, top=top)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -100,11 +94,8 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
 @pass_ctx
 def metadata_cache_clear(ctx: CLIContext):
     """Delete the active profile's on-disk metadata cache."""
-    try:
+    with d365_errors(ctx):
         backend = ctx.backend()
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     cleared = mc_mod.clear(backend.profile)
     ctx.emit(True, data={"cleared": cleared})
 
@@ -114,11 +105,8 @@ def metadata_cache_clear(ctx: CLIContext):
 @pass_ctx
 def metadata_entity(ctx: CLIContext, logical_name):
     """Show full entity definition."""
-    try:
+    with d365_errors(ctx):
         info = meta_mod.entity_info(ctx.backend(), logical_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info)
 
 
@@ -127,11 +115,8 @@ def metadata_entity(ctx: CLIContext, logical_name):
 @pass_ctx
 def metadata_attributes(ctx: CLIContext, logical_name):
     """List attributes for an entity."""
-    try:
+    with d365_errors(ctx):
         items = meta_mod.list_attributes(ctx.backend(), logical_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -149,11 +134,8 @@ def metadata_attributes(ctx: CLIContext, logical_name):
 @pass_ctx
 def metadata_keys(ctx: CLIContext, logical_name):
     """List alternate keys defined on an entity."""
-    try:
+    with d365_errors(ctx):
         keys = meta_mod.list_entity_keys(ctx.backend(), logical_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=keys, meta={"count": len(keys)})
         return
@@ -182,11 +164,8 @@ def metadata_attribute(ctx: CLIContext, logical_name, attribute_name, expect):
     """Show a single attribute definition."""
     # Validate untrusted --expect input before any backend call (house rule).
     expectations = _parse_expect(expect)
-    try:
+    with d365_errors(ctx):
         info = meta_mod.attribute_info(ctx.backend(), logical_name, attribute_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if expectations:
         miss = _check_expectations(info, expectations)
         if miss is not None:
@@ -202,14 +181,11 @@ def metadata_attribute(ctx: CLIContext, logical_name, attribute_name, expect):
 @pass_ctx
 def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
     """Retrieve option set values for a picklist / state / status attribute."""
-    try:
+    with d365_errors(ctx):
         info = meta_mod.picklist_options(
             ctx.backend(), logical_name, attribute,
             global_optionset=not no_global,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     # Flatten once for both modes; local OptionSet wins, GlobalOptionSet is the
     # fallback for a global-bound picklist. Labels use the robust `label_text`
     # path (UserLocalizedLabel → LocalizedLabels), so JSON and table agree.
@@ -280,16 +256,13 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
     written to FILE so it is ready for `crm apply -f <file>`.
     """
     warnings: list[str] = []
-    try:
+    with d365_errors(ctx):
         spec = export_spec_mod.build_entity_spec(
             ctx.backend(), logical_name,
             with_views=with_views,
             with_relationships=with_relationships,
             warnings=warnings,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
 
     if output:
         import yaml
@@ -339,11 +312,8 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
     Read-only. --for delete returns components that block deletion (can_delete +
     blockers[]); --for dependents returns components that depend on the target.
     """
-    try:
+    with d365_errors(ctx):
         info = dep_mod.retrieve_dependencies(ctx.backend(), kind, target, for_=for_)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     meta = {"can_delete": info["can_delete"], "blockers": len(info["blockers"])}
     if ctx.json_mode:
         ctx.emit(True, data=info, meta=meta)
@@ -393,10 +363,9 @@ def metadata_create_entity(
 ):
     """Create a new custom entity (table)."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         info = meta_mod.create_entity(
             ctx.backend(),
             schema_name=schema_name,
@@ -417,11 +386,8 @@ def metadata_create_entity(
             from crm.core import solution as sol_mod
             sol_mod.publish_all(ctx.backend())
             info["published"] = True
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata create-entity", schema_name, info, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, schema_name, info, solution=solution)
 
 
 @metadata_group.command("clone-entity")
@@ -456,10 +422,9 @@ def metadata_clone_entity(
     """
     if with_all:
         with_forms = with_views = with_workflows = with_charts = True
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         info = clone_mod.clone_entity(
             ctx.backend(), source, new_schema_name,
             display=display,
@@ -467,9 +432,6 @@ def metadata_clone_entity(
             with_workflows=with_workflows, with_charts=with_charts,
             solution=solution, publish=publish,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     notes = [warning] if warning else []
     if info.get("views_note"):
         notes.append(info["views_note"])
@@ -478,7 +440,7 @@ def metadata_clone_entity(
         names = ", ".join(w["name"] for w in skipped)
         notes.append(f"{len(skipped)} workflow(s) not cloned: {names}")
     _emit_with_warning(ctx, info, "; ".join(notes) or None)
-    _journal(ctx, "metadata clone-entity", new_schema_name, info, solution=solution)
+    _journal(ctx, new_schema_name, info, solution=solution)
 
 
 @metadata_group.command("update-entity")
@@ -505,7 +467,7 @@ def metadata_update_entity(
 ):
     """Update an entity (table) definition (retrieve-merge-write)."""
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         info = mu_mod.update_entity(
             ctx.backend(),
             logical_name,
@@ -518,11 +480,8 @@ def metadata_update_entity(
             publish=publish,
             solution=solution,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata update-entity", logical_name, info, solution=solution)
+    ctx.emit(True, data=info, meta=ctx.staged_meta())
+    _journal(ctx, logical_name, info, solution=solution)
 
 
 @metadata_group.command("update-attribute")
@@ -554,7 +513,7 @@ def metadata_update_attribute(
     Option-set option edits are NOT handled here — use `update-optionset`.
     """
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         info = mu_mod.update_attribute(
             ctx.backend(),
             entity,
@@ -570,11 +529,8 @@ def metadata_update_attribute(
             publish=publish,
             solution=solution,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata update-attribute", f"{entity}.{attribute}", info, solution=solution)
+    ctx.emit(True, data=info, meta=ctx.staged_meta())
+    _journal(ctx, f"{entity}.{attribute}", info, solution=solution)
 
 
 @metadata_group.command("update-relationship")
@@ -608,7 +564,7 @@ def metadata_update_relationship(
     ):
         if value is not None:
             cascade[member] = value
-    try:
+    with d365_errors(ctx):
         info = mu_mod.update_relationship(
             ctx.backend(),
             schema_name,
@@ -619,11 +575,8 @@ def metadata_update_relationship(
             publish=publish,
             solution=solution,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    ctx.emit(True, data=info, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata update-relationship", schema_name, info, solution=solution)
+    ctx.emit(True, data=info, meta=ctx.staged_meta())
+    _journal(ctx, schema_name, info, solution=solution)
 
 
 @metadata_group.command("relationships")
@@ -631,11 +584,8 @@ def metadata_update_relationship(
 @pass_ctx
 def metadata_relationships(ctx: CLIContext, logical_name):
     """Show one-to-many, many-to-one, and many-to-many relationships."""
-    try:
+    with d365_errors(ctx):
         info = rel_mod.list_relationships(ctx.backend(), logical_name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=info, meta={
         "one_to_many": len(info.get("OneToMany", [])),
         "many_to_one": len(info.get("ManyToOne", [])),
@@ -652,21 +602,15 @@ def metadata_relationships(ctx: CLIContext, logical_name):
 @pass_ctx
 def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require_solution, check_dependencies):
     """Permanently delete a custom entity (table) and ALL its rows."""
-    if not _confirm_destructive("entity", logical_name, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
-    try:
+    _confirm_destructive(ctx, "entity", logical_name, yes)
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    with d365_errors(ctx):
         info = meta_mod.delete_entity(
             ctx.backend(), logical_name, solution=solution,
             check_dependencies=check_dependencies,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning)
-    _journal(ctx, "metadata delete-entity", logical_name, info, solution=solution)
+    _journal(ctx, logical_name, info, solution=solution)
 
 
 @metadata_group.command("add-attribute")
@@ -726,8 +670,7 @@ def metadata_add_attribute(
 ):
     """Add an attribute (column) to an existing entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     parsed_options: list[tuple[int | None, str]] | None = None
     if options:
@@ -763,7 +706,7 @@ def metadata_add_attribute(
                     f"--default-value must be int for kind {kind!r}: {default_value!r}"
                 ) from exc
 
-    try:
+    with d365_errors(ctx):
         info = ma_mod.add_attribute(
             ctx.backend(),
             entity=entity,
@@ -789,11 +732,8 @@ def metadata_add_attribute(
             solution=solution,
             if_exists=if_exists,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata add-attribute", f"{entity}.{schema_name}", info, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, f"{entity}.{schema_name}", info, solution=solution)
 
 
 @metadata_group.command("delete-attribute")
@@ -806,21 +746,15 @@ def metadata_add_attribute(
 @pass_ctx
 def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, require_solution, check_dependencies):
     """Delete a custom attribute (column) from an entity."""
-    if not _confirm_destructive("attribute", f"{entity}.{attribute}", yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
-    try:
+    _confirm_destructive(ctx, "attribute", f"{entity}.{attribute}", yes)
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    with d365_errors(ctx):
         info = ma_mod.delete_attribute(
             ctx.backend(), entity, attribute, solution=solution,
             check_dependencies=check_dependencies,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning)
-    _journal(ctx, "metadata delete-attribute", f"{entity}.{attribute}", info, solution=solution)
+    _journal(ctx, f"{entity}.{attribute}", info, solution=solution)
 
 
 # Relationship-creation commands (create-one-to-many / create-many-to-many)
@@ -857,10 +791,9 @@ def metadata_create_one_to_many(
     solution, require_solution, if_exists, publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         info = rel_mod.create_one_to_many(
             ctx.backend(),
             schema_name=schema_name,
@@ -883,11 +816,8 @@ def metadata_create_one_to_many(
             solution=solution,
             if_exists=if_exists,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata create-one-to-many", schema_name, info, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, schema_name, info, solution=solution)
 
 
 @metadata_group.command("create-many-to-many")
@@ -913,10 +843,9 @@ def metadata_create_many_to_many(
     solution, require_solution, if_exists, publish,
 ):
     """Create an N:N relationship via the dedicated action."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         info = rel_mod.create_many_to_many(
             ctx.backend(),
             schema_name=schema_name,
@@ -933,11 +862,8 @@ def metadata_create_many_to_many(
             solution=solution,
             if_exists=if_exists,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata create-many-to-many", schema_name, info, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, schema_name, info, solution=solution)
 
 
 @metadata_group.command("delete-relationship")
@@ -949,21 +875,15 @@ def metadata_create_many_to_many(
 @pass_ctx
 def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, require_solution, check_dependencies):
     """Delete a custom relationship (1:N or N:N) by schema name."""
-    if not _confirm_destructive("relationship", schema_name, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
-    try:
+    _confirm_destructive(ctx, "relationship", schema_name, yes)
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    with d365_errors(ctx):
         info = rel_mod.delete_relationship(
             ctx.backend(), schema_name, solution=solution,
             check_dependencies=check_dependencies,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning)
-    _journal(ctx, "metadata delete-relationship", schema_name, info, solution=solution)
+    _journal(ctx, schema_name, info, solution=solution)
 
 
 @metadata_group.command("list-optionsets")
@@ -972,11 +892,8 @@ def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, re
 @pass_ctx
 def metadata_list_optionsets(ctx: CLIContext, custom_only, top):
     """List global option set definitions."""
-    try:
+    with d365_errors(ctx):
         rows = os_mod.list_optionsets(ctx.backend(), custom_only=custom_only, top=top)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     headers = ["Name", "IsCustomOptionSet", "IsManaged"]
     table_rows = [
         [r.get("Name", ""), str(r.get("IsCustomOptionSet", "")),
@@ -992,11 +909,8 @@ def metadata_list_optionsets(ctx: CLIContext, custom_only, top):
 @pass_ctx
 def metadata_get_optionset(ctx: CLIContext, name):
     """Retrieve a global option set, including its options."""
-    try:
+    with d365_errors(ctx):
         info = os_mod.get_optionset(ctx.backend(), name)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     # Flattened convenience list (#76); raw `data` left untouched. Options live at
     # the root for a global option set. `ctx.emit` prints `meta` in human mode too,
     # so gate it on JSON mode to keep human output unchanged (#76).
@@ -1021,8 +935,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
                               solution, require_solution, if_exists, publish):
     """Create a global option set."""
     name = _resolve_schema_name(ctx, name, display_name, "--name")
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     parsed: list[tuple[int | None, str]] = []
     for raw in options:
@@ -1032,18 +945,15 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
         v = v.strip()
         lab = lab.strip()
         parsed.append((int(v) if v else None, lab))
-    try:
+    with d365_errors(ctx):
         info = os_mod.create_optionset(
             ctx.backend(),
             name=name, display_name=display_name,
             description=description, options=parsed or None,
             publish=publish, solution=solution, if_exists=if_exists,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata create-optionset", name, info, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, name, info, solution=solution)
 
 
 @metadata_group.command("update-optionset")
@@ -1062,8 +972,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
 def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_options,
                               delete_options, reorder, solution, require_solution, publish):
     """Granular update: insert/update/delete/reorder options."""
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     insert: list[tuple[int | None, str]] = []
     for raw in insert_options:
@@ -1096,7 +1005,7 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
                 f"--reorder must be a comma-separated list of integers: {reorder!r}"
             ) from exc
 
-    try:
+    with d365_errors(ctx):
         info = os_mod.update_optionset(
             ctx.backend(),
             name,
@@ -1107,11 +1016,8 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
             publish=publish,
             solution=solution,
         )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    _emit_with_warning(ctx, info, warning, meta={"staged": True} if ctx.stage_only else None)
-    _journal(ctx, "metadata update-optionset", name, info, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, name, info, solution=solution)
 
 
 @metadata_group.command("delete-optionset")
@@ -1123,19 +1029,13 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
 @pass_ctx
 def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solution, check_dependencies):
     """Delete a custom global option set."""
-    if not _confirm_destructive("option set", name, yes):
-        ctx.emit(False, error="aborted by user")
-        return
-    solution, warning = _resolve_solution(
-        ctx, solution, require=_require_solution(require_solution))
-    try:
+    _confirm_destructive(ctx, "option set", name, yes)
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    with d365_errors(ctx):
         info = os_mod.delete_optionset(ctx.backend(), name, solution=solution,
                                        check_dependencies=check_dependencies)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     _emit_with_warning(ctx, info, warning)
-    _journal(ctx, "metadata delete-optionset", name, info, solution=solution)
+    _journal(ctx, name, info, solution=solution)
 
 
 from crm.core.metadata import list_actions, list_functions  # noqa: E402
@@ -1145,11 +1045,8 @@ from crm.core.metadata import list_actions, list_functions  # noqa: E402
 @pass_ctx
 def metadata_list_actions(ctx: CLIContext):
     """List OData actions advertised by the service ($metadata)."""
-    try:
+    with d365_errors(ctx):
         items = list_actions(ctx.backend())
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -1166,11 +1063,8 @@ def metadata_list_actions(ctx: CLIContext):
 @pass_ctx
 def metadata_list_functions(ctx: CLIContext):
     """List OData functions advertised by the service ($metadata)."""
-    try:
+    with d365_errors(ctx):
         items = list_functions(ctx.backend())
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return

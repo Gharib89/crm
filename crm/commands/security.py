@@ -3,13 +3,12 @@
 from __future__ import annotations
 import click
 from crm.core import security as security_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    d365_errors,
     _confirm_destructive,
     _admin_header_options,
     _admin_kwargs,
-    _handle_d365_error,
     _journal,
 )
 
@@ -25,11 +24,8 @@ def security_group():
 @pass_ctx
 def list_roles(ctx: CLIContext, business_unit):
     """List security roles (optionally scoped to a business unit)."""
-    try:
+    with d365_errors(ctx):
         items = security_mod.list_roles(ctx.backend(), business_unit=business_unit)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -45,11 +41,8 @@ def list_roles(ctx: CLIContext, business_unit):
 @pass_ctx
 def list_user_roles(ctx: CLIContext, user_id):
     """List security roles assigned to a system user (USER_ID is a GUID)."""
-    try:
+    with d365_errors(ctx):
         items = security_mod.list_user_roles(ctx.backend(), user_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -64,11 +57,8 @@ def list_user_roles(ctx: CLIContext, user_id):
 @pass_ctx
 def list_team_roles(ctx: CLIContext, team_id):
     """List security roles assigned to a team (TEAM_ID is a GUID)."""
-    try:
+    with d365_errors(ctx):
         items = security_mod.list_team_roles(ctx.backend(), team_id)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -102,10 +92,8 @@ def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
         f"Grant security role {role_id} to {principal} {principal_id}? "
         "Role assignment is cumulative and not cleanly reversible."
     )
-    if not _confirm_destructive("role", role_id, yes, message=message):
-        ctx.emit(False, error="aborted by user")
-        return
-    try:
+    _confirm_destructive(ctx, "role", role_id, yes, message=message)
+    with d365_errors(ctx):
         if to_user:
             result = security_mod.assign_role_to_user(
                 ctx.backend(), to_user, role_id,
@@ -118,8 +106,5 @@ def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
                 **_admin_kwargs(as_user, as_user_object_id,
                                 suppress_dup_detection, bypass_plugins),
             )
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
     ctx.emit(True, data=result)
-    _journal(ctx, "security assign-role", role_id, result)
+    _journal(ctx, role_id, result)
