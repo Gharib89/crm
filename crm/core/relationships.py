@@ -18,11 +18,8 @@ from crm.core.metadata import label, label_text, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
 from crm.core import metadata as _meta_mod
+from crm.core import metadata_constraints as mc
 from crm.core import references as ref_mod
-
-_VALID_CASCADE = {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
-_VALID_MENU_BEHAVIOR = {"UseLabel", "UseCollectionName", "DoNotDisplay"}
-_VALID_REQUIRED = {"None", "Recommended", "ApplicationRequired"}
 
 
 def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any]:
@@ -275,17 +272,14 @@ def create_one_to_many(
         raise D365Error("if_exists must be 'error' or 'skip'.")
     if "_" not in lookup_schema:
         raise D365Error("lookup_schema must include a publisher prefix.")
-    if lookup_required not in _VALID_REQUIRED:
-        raise D365Error(f"lookup_required must be one of {sorted(_VALID_REQUIRED)}.")
+    mc.validate_required(lookup_required, subject="lookup_required")
     for name, value in (
         ("cascade_assign", cascade_assign), ("cascade_delete", cascade_delete),
         ("cascade_reparent", cascade_reparent), ("cascade_share", cascade_share),
         ("cascade_unshare", cascade_unshare), ("cascade_merge", cascade_merge),
     ):
-        if value not in _VALID_CASCADE:
-            raise D365Error(f"{name} must be one of {sorted(_VALID_CASCADE)}.")
-    if menu_behavior not in _VALID_MENU_BEHAVIOR:
-        raise D365Error(f"menu_behavior must be one of {sorted(_VALID_MENU_BEHAVIOR)}.")
+        mc.validate_cascade(value, subject=name)
+    mc.validate_menu_behavior(menu_behavior)
     if menu_behavior == "UseLabel" and not menu_label:
         raise D365Error(
             "menu_behavior 'UseLabel' requires --menu-label; the server rejects a "
@@ -439,8 +433,7 @@ def create_many_to_many(
         ("entity1_menu_behavior", entity1_menu_behavior),
         ("entity2_menu_behavior", entity2_menu_behavior),
     ):
-        if value not in _VALID_MENU_BEHAVIOR:
-            raise D365Error(f"{name} must be one of {sorted(_VALID_MENU_BEHAVIOR)}.")
+        mc.validate_menu_behavior(value, subject=name)
 
     exists = target_exists(
         backend, f"RelationshipDefinitions(SchemaName='{schema_name}')"
