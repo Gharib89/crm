@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.0 (2026-06-14)
+
+### Bug Fixes
+
+- **completion**: Quote PS dot-source path; positive-guard the completer loop
+  ([#288](https://github.com/Gharib89/crm/pull/288),
+  [`a533710`](https://github.com/Gharib89/crm/commit/a5337102a038f09a220d2fdc338ad794cb3ee485))
+
+### Features
+
+- **completion**: Add PowerShell tab-completion ([#288](https://github.com/Gharib89/crm/pull/288),
+  [`a533710`](https://github.com/Gharib89/crm/commit/a5337102a038f09a220d2fdc338ad794cb3ee485))
+
+
 ## v3.11.0 (2026-06-14)
 
 ### Documentation
