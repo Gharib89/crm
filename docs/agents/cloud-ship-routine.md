@@ -24,7 +24,13 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
    gh issue comment "$NUM" --repo Gharib89/crm --body "Claimed by the cloud ship routine."
    The claim removes ready-for-agent, so the picker above never returns a
    claimed/in-progress issue or one that already has an open PR.
-3. Run the /ship skill on issue $NUM. Pin `--profile agent-cloud` on every crm
+3. Rename the working branch off the sandbox default. A cloud fire starts you on an
+   auto `claude/<random>` branch; the repo convention (and /ship's) is
+   `<type>/<slug>-$NUM` — `<type>` = `fix` for a bug, `feat` otherwise, `<slug>` a
+   short kebab summary of the issue title. Switch before any commit so the PR branch
+   is semantic, not the `claude/...` name:
+   git switch -c fix/<slug>-$NUM   # or feat/<slug>-$NUM
+   Then run the /ship skill on issue $NUM. Pin `--profile agent-cloud` on every crm
    command. Put "Closes #$NUM" in the PR body so merging auto-closes the issue and
    drops it from the queue. Follow the repo CLAUDE.md for test/gate/docs-sync/commit
    rules. Cloud Dataverse org ONLY — never on-prem; an issue that can only be verified
@@ -35,10 +41,14 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
    gh issue edit "$NUM" --repo Gharib89/crm --remove-label agent-working --add-label ready-for-human
    gh issue comment "$NUM" --repo Gharib89/crm --body "<one-line reason it is blocked>"
    then STOP.
-5. On success /ship stops at the merge gate. Do NOT merge. Leave the issue labeled
-   agent-working — it has the open PR, so later fires skip it, and merging closes it
-   via "Closes #$NUM". Post the PR link + disposition summary, then STOP for human
-   merge approval.
+5. On success /ship reaches the merge gate. The gate's instruction is to "wait" for
+   the user to reply "merge" — that is written for an interactive CLI session. This is
+   a one-shot hourly fire with NO in-session human, so do NOT wait, do NOT poll, and
+   do NOT merge: the moment the PR is merge-ready (CI green, Copilot review addressed
+   within the ≤3-round ceiling, mergeable), post the PR link + disposition summary and
+   END the fire. A human merges out of band later; the squash "Closes #$NUM" closes
+   the issue then. Leave the issue labeled agent-working — it has the open PR, so later
+   fires skip it until the merge closes it.
 
 Working standards (the operator's global coding philosophy, not in the cloned repo;
 the repo's own CLAUDE.md and /ship already cover tests, gates, and the merge flow):
@@ -71,6 +81,13 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   managers" checked, for pip/PyPI):
   - `login.microsoftonline.com`   (OAuth client-credentials token endpoint)
   - `<your-org>.crm.dynamics.com` (Dataverse Web API — your cloud org host)
+  - `api.github.com`   (gh: pr/issue/label/copilot-rerequest REST calls)
+  - `github.com`       (`git push`/fetch over HTTPS + gh git ops)
+  - `release-assets.githubusercontent.com` (gh binary download — setup only)
+  - Note: the GitHub **MCP connector** is brokered through Anthropic and is exempt
+    from this policy, but `gh` and `git push` hit GitHub **directly**, so these
+    three are required — the routine's issue-claim state machine and `/ship`'s
+    PR/CI/merge steps are all `gh`-native (gh auto-auths from `GH_TOKEN`).
 - **Environment variables** (nothing org-specific is committed — the bootstrap
   reads every connection value from here, replacing `<…>` with your real values):
   - `D365_URL` = `https://<your-org>.crm.dynamics.com`
@@ -82,7 +99,18 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   - `D365_E2E` = `1`
   - `D365_E2E_PROFILE` = `agent-cloud`
   - `D365_E2E_ALLOW_HOST` = `<your-org>.crm.dynamics.com` (must match `D365_URL`'s host)
-- **Setup script:** leave empty (bootstrap runs from the prompt, see above).
+- **Setup script:** install `gh` here once (cached into the image — it's a static,
+  secret-free tool, so it belongs in the cached slot, not the per-fire bootstrap).
+  The sandbox image ships without `gh`, and `/ship` + the claim state machine depend
+  on it:
+  ```
+  GH_VERSION=2.94.0
+  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" | tar -xz -C /tmp
+  sudo install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
+  gh --version
+  ```
+  (The per-fire bootstrap also installs `gh` if absent, so this slot is an
+  optimization — it keeps the download out of every hourly fire.)
 
 ## Permissions
 

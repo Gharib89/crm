@@ -13,6 +13,21 @@ set -euo pipefail
 : "${D365_TENANT_ID:?set D365_TENANT_ID in the routine cloud environment}"
 : "${D365_CLIENT_SECRET:?set D365_CLIENT_SECRET in the routine cloud environment}"
 
+# gh CLI is not in the sandbox image, but /ship + the issue-claim state machine are
+# gh-native. Install the static binary if absent (no-op when the environment's cached
+# setup slot already provides it — see docs/agents/cloud-ship-routine.md). gh and git
+# reach GitHub directly, so the Custom network policy must allow api.github.com +
+# github.com (+ release-assets.githubusercontent.com for this download). gh auto-auths
+# from $GH_TOKEN — no `gh auth login`.
+if ! command -v gh >/dev/null 2>&1; then
+  GH_VERSION=2.94.0
+  curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+    | tar -xz -C /tmp
+  SUDO=""; [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1 && SUDO=sudo
+  $SUDO install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
+fi
+gh --version
+
 # crm CLI from source (not published to PyPI)
 pip install -e ".[dev,docs]"
 
