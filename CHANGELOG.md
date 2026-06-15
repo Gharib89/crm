@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.2.0 (2026-06-15)
+
+### Features
+
+- Add webresource delete verb ([#329](https://github.com/Gharib89/crm/pull/329),
+  [`10913f1`](https://github.com/Gharib89/crm/commit/10913f153a7774446bb6f6a274561de49b684f78))
+
+
 ## v4.1.1 (2026-06-15)
 
 ### Bug Fixes
