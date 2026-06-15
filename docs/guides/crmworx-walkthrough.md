@@ -1089,7 +1089,7 @@ separate delete.
 # Interface teardown (before dropping the tables) — these don't cascade with the entity
 crm --json entity delete appmodules 00000000-0000-0000-0000-000000000008 --yes   # the model-driven app
 crm --json entity delete sitemaps   00000000-0000-0000-0000-000000000003 --yes   # the app sitemap
-crm --json entity delete webresourceset 00000000-0000-0000-0000-000000000009 --yes  # the cwx_ app icon
+crm --json webresource delete 00000000-0000-0000-0000-000000000009 --yes  # the cwx_ app icon
 # (views/forms/chart/dashboard are deleted automatically with their owning entity below)
 
 crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships + its views/forms/chart/dashboard

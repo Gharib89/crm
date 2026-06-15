@@ -24,7 +24,12 @@ from crm.utils.d365_backend import (
     normalize_guid,
     odata_literal,
 )
+from crm.core import dependencies as dep_mod
 from crm.core.metadata import maybe_publish
+
+# Dataverse solution-component type for a web resource (the system `componenttype`
+# option set). Used to query RetrieveDependenciesForDelete before a delete.
+_WEBRESOURCE_COMPONENT_TYPE = 61
 
 # Extension -> D365 webresourcetype (webresource_webresourcetype option set).
 _EXT_TO_TYPE: dict[str, int] = {
@@ -187,6 +192,56 @@ def list_webresources(
     if top is not None:
         params["$top"] = str(top)
     return backend.get_collection("webresourceset", params=params)
+
+
+def delete_webresource(
+    backend: D365Backend,
+    name_or_id: str,
+    *,
+    check_dependencies: bool = False,
+) -> dict[str, Any]:
+    """Delete a web resource by unique name or id.
+
+    Resolves `name_or_id` via `resolve_webresource_id` (a GUID passes through
+    untouched; a name is resolved by a live read, which runs even under dry-run),
+    then DELETEs `webresourceset(<id>)`.
+
+    A web resource referenced by a ribbon button (or other component) cannot be
+    deleted — the server returns 0x8004f01f and that fault surfaces unchanged.
+    When `check_dependencies` is set, an up-front RetrieveDependenciesForDelete
+    probe folds `can_delete` + `blockers` into the result; it is informational
+    only and does NOT block the delete.
+
+    Dry-run returns `{_dry_run, would_delete, name, webresourceid}`; a real
+    delete returns `{deleted, name, webresourceid}`.
+    """
+    wid = resolve_webresource_id(backend, name_or_id)
+
+    deps = None
+    if check_dependencies:
+        deps = dep_mod.dependencies_by_id(
+            backend, wid, _WEBRESOURCE_COMPONENT_TYPE,
+            for_="delete", kind="webresource",
+        )
+
+    preview = backend.delete(f"webresourceset({wid})")
+    if isinstance(preview, dict) and preview.get("_dry_run"):
+        result: dict[str, Any] = {
+            "_dry_run": True,
+            "would_delete": True,
+            "name": name_or_id,
+            "webresourceid": wid,
+        }
+    else:
+        result = {
+            "deleted": True,
+            "name": name_or_id,
+            "webresourceid": wid,
+        }
+    if deps is not None:
+        result["can_delete"] = deps["can_delete"]
+        result["blockers"] = deps["blockers"]
+    return result
 
 
 def _resolve_id_by_name(backend: D365Backend, name: str) -> str:

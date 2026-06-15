@@ -9,6 +9,68 @@ import pytest
 from crm.tests.e2e.coverage import covers
 
 
+# ── delete ───────────────────────────────────────────────────────────────────
+
+
+@covers("webresource delete")
+@pytest.mark.slow
+def test_webresource_delete(cli, tmp_path, unique, request):
+    """Create a web resource then delete it via the first-class verb; assert gone.
+
+    Deletes by unique name (the verb resolves it to the id). A subsequent get
+    must fail — the record is no longer present.
+    """
+    name = f"new_e2e_del_{unique}.js"
+    src = tmp_path / f"{unique}.js"
+    src.write_bytes(b"// e2e delete test")
+
+    # ── CREATE ────────────────────────────────────────────────────────────────
+    result = cli([
+        "--json", "webresource", "create",
+        "--name", name,
+        "--file", str(src),
+        "--display-name", f"E2E WR del {unique}",
+    ])
+    assert result.returncode == 0, (
+        f"webresource create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    wid = env["data"].get("webresourceid")
+    assert wid, f"webresourceid missing from create response: {env['data']}"
+
+    # Best-effort id-based cleanup in case the delete-by-name path leaves it behind.
+    def _cleanup():
+        try:
+            cli(["--json", "entity", "delete", "webresourceset", wid, "--yes"],
+                check=False)
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    # ── DELETE (by name) ───────────────────────────────────────────────────────
+    result = cli(["--json", "webresource", "delete", name, "--yes"])
+    assert result.returncode == 0, (
+        f"webresource delete failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    data = env["data"]
+    assert data.get("deleted") is True, f"expected deleted=True: {data}"
+    assert data.get("webresourceid", "").lower() == wid.lower(), (
+        f"delete returned wrong webresourceid: {data}"
+    )
+
+    # ── ASSERT GONE ────────────────────────────────────────────────────────────
+    result = cli(["--json", "webresource", "get", name], check=False)
+    assert result.returncode != 0, (
+        f"expected get to fail after delete, got:\n{result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"] is False, f"web resource still present after delete: {env}"
+
+
 # ── create + get + update + list ─────────────────────────────────────────────
 
 
