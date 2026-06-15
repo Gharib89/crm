@@ -28,6 +28,27 @@ _ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
 }
 
 
+def _strip_repl_prefix(argv: list[str]) -> list[str] | None:
+    """Drop a single leading literal ``crm`` token from a REPL line's argv.
+
+    Inside the REPL the accepted form is prefix-less (``connection whoami``), but
+    every doc / ``--help`` / banner shows the shell form ``crm connection whoami``,
+    so re-typing ``crm`` is the natural first reflex. Tolerate it: strip one exact
+    ``crm`` token so both forms behave identically.
+
+    Returns the argv to dispatch, or ``None`` for a bare ``crm`` line (argv empty
+    after stripping) — the caller must treat that as a no-op rather than dispatch
+    ``[]``, which would relaunch the REPL via ``invoke_without_command`` on a TTY.
+    Only an exact first ``crm`` is stripped (``crmfoo`` is left alone), and at most
+    one.
+    """
+    if argv and argv[0] == "crm":
+        argv = argv[1:]
+        if not argv:
+            return None
+    return argv
+
+
 class MetadataCache:
     """Entity-name cache for the REPL session; reads from / writes to the
     persistent on-disk cache when constructed with ``use_cache=True``."""
@@ -165,6 +186,10 @@ def repl(click_ctx: click.Context):
         except ValueError as exc:
             ctx.skin.error(f"Parse error: {exc}")
             continue
+        stripped = _strip_repl_prefix(argv)
+        if stripped is None:
+            continue
+        argv = stripped
         try:
             cli.main(args=argv, obj=ctx, standalone_mode=False, prog_name="crm")
         except SystemExit:
