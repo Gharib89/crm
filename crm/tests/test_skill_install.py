@@ -163,12 +163,12 @@ def test_uninstall_dest_echoes_directory_on_success_and_noop(tmp_path: Path, mon
     runner = _runner(tmp_path, monkeypatch)
     runner.invoke(cli, ["--json", "skill", "install", "--dest", str(dest), "--force"])
 
-    removed = json.loads(
-        runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)]).output
-    )
-    noop = json.loads(
-        runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)]).output
-    )
+    removed_result = runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)])
+    noop_result = runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)])
+    assert removed_result.exit_code == 0, removed_result.output
+    assert noop_result.exit_code == 0, noop_result.output
+    removed = json.loads(removed_result.output)
+    noop = json.loads(noop_result.output)
 
     assert removed["data"]["removed"] is True
     assert noop["data"]["removed"] is False
