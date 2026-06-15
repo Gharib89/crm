@@ -28,6 +28,8 @@ from crm.utils.d365_backend import D365Error, classify_d365_error
         (429, None, "Too Many Requests", ("throttled", True)),
         # duplicate_detected wins over a 412 status when the duplicate code rides on it.
         (412, "0x80040237", "A duplicate record exists", ("duplicate_detected", False)),
+        # appmodule uniquename collision rides its own code; same category (issue #322).
+        (400, "0x80050135", "A duplicate uniquename exists", ("duplicate_detected", False)),
         (500, None, "Internal Server Error", ("server_error", True)),
         (503, None, "Service Unavailable", ("server_error", True)),
         (400, None, "Bad payload", ("validation", False)),

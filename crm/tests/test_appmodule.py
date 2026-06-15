@@ -101,6 +101,51 @@ class TestCreateApp:
         assert out["skipped"] is True
         assert not _posts(m)
 
+    def test_create_app_skip_swallows_duplicate_fault_and_requeries(self, backend):
+        # publish-before-read lag: the $filter misses a not-yet-published app, so
+        # the POST hits the server duplicate fault (0x80050135). if_exists=skip must
+        # treat that as a skip and re-query to surface the id (issue #322).
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), [
+                {"json": {"value": []}},  # first filter: not yet visible
+                {"json": {"value": [{"appmoduleid": _APP_ID,
+                                     "uniquename": "cwx_crmworx"}]}},  # re-query hit
+            ])
+            m.post(backend.url_for("appmodules"), status_code=400, json={
+                "error": {"code": "0x80050135",
+                          "message": "A duplicate uniquename exists."}})
+            out = appmodule.create_app(backend, name="CRMWorx",
+                                       unique_name="cwx_crmworx", if_exists="skip")
+        assert out == {"skipped": True, "exists": True,
+                       "uniquename": "cwx_crmworx", "appmoduleid": _APP_ID}
+
+    def test_create_app_skip_swallows_duplicate_fault_when_still_invisible(self, backend):
+        # If the lag persists, the re-query still misses: skip semantics hold, the
+        # contract is "no error" — the id is best-effort and may be None.
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": []})
+            m.post(backend.url_for("appmodules"), status_code=400, json={
+                "error": {"code": "0x80050135",
+                          "message": "A duplicate uniquename exists."}})
+            out = appmodule.create_app(backend, name="CRMWorx",
+                                       unique_name="cwx_crmworx", if_exists="skip")
+        assert out == {"skipped": True, "exists": True,
+                       "uniquename": "cwx_crmworx", "appmoduleid": None}
+
+    def test_create_app_error_still_raises_on_duplicate_fault(self, backend):
+        # if_exists=error must NOT swallow the duplicate — it genuinely collided.
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": []})
+            m.post(backend.url_for("appmodules"), status_code=400, json={
+                "error": {"code": "0x80050135",
+                          "message": "A duplicate uniquename exists."}})
+            with pytest.raises(D365Error):
+                appmodule.create_app(backend, name="CRMWorx",
+                                     unique_name="cwx_crmworx", if_exists="error")
+
 
 class TestAddComponents:
     def test_add_components_builds_typed_references(self, backend):

@@ -103,6 +103,26 @@ def test_app_lifecycle(backend, cli, request, unique):
     assert app_id, f"appmoduleid missing from create response: {env_create['data']}"
     created_app_id.append(app_id)
 
+    # ── Step 1b: app create --if-exists skip is idempotent ────────────────────
+    # A second create of the same unique-name with --if-exists skip must return a
+    # skip, never a duplicate error — whether the prior app is already
+    # query-visible (query-hit skip) or still in the publish-before-read window
+    # (the POST hits the server duplicate fault, swallowed as a skip; issue #322).
+    r_skip = cli([
+        "--json", "app", "create",
+        "--name", app_name,
+        "--unique-name", app_unique,
+        "--if-exists", "skip",
+        "--no-publish",
+    ], check=False)
+    assert r_skip.returncode == 0, (
+        f"app create --if-exists skip should not error:\n{r_skip.stderr}\n"
+        f"stdout: {r_skip.stdout}"
+    )
+    env_skip = json.loads(r_skip.stdout)
+    assert env_skip["ok"], env_skip
+    assert env_skip["data"].get("skipped") is True, env_skip["data"]
+
     # ── Step 2: app add-components ────────────────────────────────────────────
     view_guid = _find_account_view(backend)
     if view_guid:
