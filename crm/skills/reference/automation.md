@@ -135,6 +135,22 @@ See MS Learn "Create early-bound entity classes with the Code Generation tool" a
 
 ## Workflows — `workflow`
 
+**There is no `workflow create` verb — and that is deliberate.** A classic workflow is
+authored as XAML, which has no practical CLI-flag surface (the same "don't reach past the
+API" stance as ribbon and codegen). To stand up a *new* workflow:
+
+- **`workflow clone <id> --to-entity …`** — copy an existing definition onto another table
+  (categories `0` and `2` only), then edit/activate it; or
+- **author once in the D365 UI / Power Automate, then bring it over as JSON** — this is the
+  supported "create from scratch via CLI" path, in order: build it in the UI → `workflow
+  list` to find its GUID → `workflow export <guid> --out wf.json` → tweak the JSON if needed
+  → `workflow import --file wf.json --activate` (import upserts the definition).
+
+A raw `entity create workflows …` is not a supported substitute: some orgs block
+API-originated workflow creation outright and return `0x80045040` ("cannot be created
+outside the D365 web application"). The verbs below all operate on **existing**
+definitions.
+
 ```bash
 crm --json workflow list --entity cwx_ticket --category 0   # definitions on an entity
 

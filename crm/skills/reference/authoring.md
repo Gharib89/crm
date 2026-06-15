@@ -34,11 +34,17 @@ entities:
     primary_attr: {schema_name: contoso_Name, label: Name}
     attributes:
       - {kind: string,   schema_name: contoso_Code,     display_name: Code, max_length: 100}
+      - {kind: memo,     schema_name: contoso_Notes,    display_name: Notes, max_length: 2000}
       - {kind: picklist, schema_name: contoso_Priority, display_name: Priority, optionset_name: contoso_priority}
       - {kind: lookup,   schema_name: contoso_Owner,    display_name: Owner, target_entity: systemuser}
     views:
       - {name: Active Projects, columns: [contoso_name, contoso_code]}
 ```
+
+In a spec attribute block, **`string` and `memo` both need an explicit `max_length`** —
+unlike the `scaffold` / column-shorthand path below, which defaults them (100 / 2000). The
+spec builder does not default, so `{kind: memo}` with no `max_length` fails the *real*
+apply (`--max-length is required for this kind`) even though `--dry-run` plans it as fine.
 
 ## Scaffold a table — `scaffold table`
 

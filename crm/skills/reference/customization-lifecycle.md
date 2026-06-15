@@ -89,6 +89,23 @@ watch. A failed import has a full post-mortem path (`solution import-result`,
 `stage-and-upgrade --promote`, `uninstall`) handle the patch / holding-solution dance.
 → `reference/solutions.md`
 
+**Version ceiling — promote down a same-or-lower version path.** A managed zip carries the
+*package version* of the org it was built in, and an org rejects any zip newer than itself
+— a cloud (v9.2) export will **not** import into on-prem v9.1 (`0x80048068`), and `solution
+validate` won't catch it (it's structural, not a version check). Build on the lowest
+version in your dev→test→prod chain, or keep every tier on one platform.
+
+## Tearing down — reverse the build order
+
+Decommissioning undoes the build order **in reverse**: automation and UI components first,
+then schema, then the solution/publisher that held them. The platform enforces the
+dependency edges and the error code names the one you hit — a web resource won't delete
+while a ribbon button references it (`0x8004f01f`); an app won't delete while an
+`appsettings` row points at it (`0x80048d21`). The clean shortcut: **delete the unmanaged
+solution** and let the server cascade most components, then drop the global option sets and
+publisher last; a custom table's `metadata delete-entity` cascades its own
+columns/relationships/views/forms in one shot. → `reference/customizations.md`
+
 ## Don't reach past the API
 
 Some customizations have **no Web API write path**, and the CLI says so rather than faking
