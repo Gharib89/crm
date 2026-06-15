@@ -18,7 +18,8 @@ from __future__ import annotations
 from typing import Any
 from xml.sax.saxutils import quoteattr
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import (
+    D365Backend, D365Error, as_dict, classify_d365_error, odata_literal)
 from crm.core.metadata import maybe_publish
 
 # Default app-icon web resource the platform ships (MS Learn, op-9-1).
@@ -80,7 +81,25 @@ def create_app(
     if description:
         body["description"] = description
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post("appmodules", json_body=body, extra_headers=headers))
+    try:
+        result = as_dict(backend.post("appmodules", json_body=body, extra_headers=headers))
+    except D365Error as exc:
+        # Skip semantics must survive the publish-before-read window: a freshly
+        # created appmodule isn't query-visible until published (see the read-back
+        # note below), so a racing `--if-exists skip` can miss the $filter hit
+        # above and POST a duplicate. Treat the server's duplicate fault as the
+        # skip the empty query couldn't, re-querying for a best-effort id.
+        # `if_exists == "error"` still propagates — it genuinely collided.
+        category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+        if if_exists == "skip" and category == "duplicate_detected":
+            requery = backend.get_collection(
+                "appmodules",
+                params={"$filter": f"uniquename eq {odata_literal(unique_name)}",
+                        "$select": "appmoduleid,uniquename"},
+            )
+            return {"skipped": True, "exists": True, "uniquename": unique_name,
+                    "appmoduleid": requery[0].get("appmoduleid") if requery else None}
+        raise
     if result.get("_dry_run"):
         result["_exists"] = bool(existing)
         result["would_skip"] = bool(existing) and if_exists == "skip"

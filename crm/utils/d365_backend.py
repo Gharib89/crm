@@ -113,9 +113,10 @@ def classify_d365_error(
     hint; ``concurrency_conflict`` (412) is retryable only after the caller refetches
     a fresh ETag — the backend does not auto-retry it.
 
-    Mapping is status-first, except two D365 error codes that carry meaning the
-    HTTP status alone misses (``0x80040217`` object-not-found, ``0x80040237``
-    duplicate-detected) — these are honored regardless of the status they ride on.
+    Mapping is status-first, except a few D365 error codes that carry meaning the
+    HTTP status alone misses (``0x80040217`` object-not-found, and the
+    duplicate-detected set ``0x80040237`` / ``0x80060892`` / ``0x80050135``) —
+    these are honored regardless of the status they ride on.
     """
     # No HTTP status: distinguish a real transport failure (connect/timeout/TLS,
     # raised with the _TRANSPORT_FAILURE_PREFIX message) from a status-less
@@ -126,7 +127,8 @@ def classify_d365_error(
         return ("validation", False)
 
     haystack = f"{code or ''} {message or ''}".lower()
-    if "0x80040237" in haystack or "0x80060892" in haystack or "duplicaterecord" in haystack:
+    if ("0x80040237" in haystack or "0x80060892" in haystack
+            or "0x80050135" in haystack or "duplicaterecord" in haystack):
         return ("duplicate_detected", False)
     if "0x80040217" in haystack:
         return ("not_found", False)

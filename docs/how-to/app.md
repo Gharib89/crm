@@ -9,7 +9,7 @@ Create model-driven apps (appmodule) and bind components, taken from the CRMWorx
 crm --json app create --name CRMWorx --unique-name cwx_crmworx \
   --description "CRMWorx IT ticketing" --if-exists skip
 ```
-`--unique-name` must carry the publisher prefix; `--if-exists skip` reports a skip with the existing `appmoduleid` instead of duplicating. The required `webresourceid` icon comes from `--icon-webresource <name|guid>` (a name is resolved to its id, a GUID used directly, e.g. `--icon-webresource cwx_/icons/app.svg`); omit it to keep the platform default icon.
+`--unique-name` must carry the publisher prefix; `--if-exists skip` reports a skip with the existing `appmoduleid` instead of duplicating — this holds even when a just-created app isn't query-visible yet (on-prem publishes before a new appmodule becomes readable): the server's duplicate fault is treated as a skip, with a best-effort `appmoduleid` that may be `null` until the app is published. The required `webresourceid` icon comes from `--icon-webresource <name|guid>` (a name is resolved to its id, a GUID used directly, e.g. `--icon-webresource cwx_/icons/app.svg`); omit it to keep the platform default icon.
 
 ## Bind views, charts, forms, and the dashboard
 
