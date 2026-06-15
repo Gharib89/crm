@@ -19,7 +19,9 @@ from typing import Any
 from xml.sax.saxutils import quoteattr
 
 from crm.utils.d365_backend import (
-    D365Backend, D365Error, as_dict, classify_d365_error, odata_literal)
+    D365Backend, D365Error, as_dict, classify_d365_error, normalize_guid,
+    odata_literal)
+from crm.core.entity_names import load_name_map
 from crm.core.metadata import maybe_publish
 
 # Default app-icon web resource the platform ships (MS Learn, op-9-1).
@@ -126,6 +128,212 @@ def create_app(
         out["app_lookup_error"] = (
             f"Could not parse appmoduleid from response: {entity_id_url!r}")
     return out
+
+
+# Server fault when a dependent data row's FK still blocks the appmodule DELETE.
+# Verified live to be the SAME code on on-prem v9.x AND Dataverse online — online
+# surfaces it for `appsetting` too, even though that relationship's metadata
+# `CascadeConfiguration.Delete` reports `Cascade` (its SQL foreign key does not
+# actually cascade). So the sweep canNOT trust cascade metadata; it removes every
+# row that *references* the app and lets the parent DELETE cascade the rest.
+_FK_RESTRICT_CODE = "0x80048d21"
+
+# Attributes read off the resolved appmodule row: its ids (both the primary key
+# and the alternate `appmoduleidunique` some children reference), the managed
+# guard flag, and the human identifiers used in errors/results.
+_APPMODULE_SELECT = "appmoduleid,appmoduleidunique,uniquename,name,ismanaged"
+
+
+def _resolve_appmodule(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
+    """Resolve *name_or_id* to its appmodule row.
+
+    A GUID is read back directly as the appmoduleid; otherwise the row is found
+    by ``uniquename``, falling back to the display ``name``. Raises ``D365Error``
+    on no match or an ambiguous name.
+    """
+    target = name_or_id.strip()
+    rid = normalize_guid(target)
+    if rid is not None:
+        try:
+            return as_dict(backend.get(f"appmodules({rid})",
+                                       params={"$select": _APPMODULE_SELECT}))
+        except D365Error as exc:
+            category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+            if category == "not_found":
+                raise D365Error(f"App {name_or_id!r} was not found.",
+                                code="AppNotFound")
+            raise
+    for field in ("uniquename", "name"):
+        rows = backend.get_collection(
+            "appmodules",
+            params={"$filter": f"{field} eq {odata_literal(target)}",
+                    "$select": _APPMODULE_SELECT},
+        )
+        if len(rows) > 1:
+            raise D365Error(
+                f"App {name_or_id!r} is ambiguous — {len(rows)} apps match "
+                f"{field}; pass the appmoduleid instead.",
+                code="AmbiguousApp")
+        if rows:
+            return rows[0]
+    raise D365Error(f"App {name_or_id!r} was not found.", code="AppNotFound")
+
+
+def _child_relationships(backend: D365Backend) -> list[dict[str, str]]:
+    """Every 1:N relationship where the appmodule is the parent.
+
+    Each row carries the child entity, its referencing (FK) attribute, and the
+    appmodule attribute the FK points at (``ReferencedAttribute`` — NOT assumed to
+    be ``appmoduleid``, since e.g. ``appmodulecomponent`` references
+    ``appmoduleidunique``). Cascade behavior is deliberately ignored: online
+    metadata reports ``appsetting`` as ``Cascade`` yet its FK still blocks the
+    delete, so the sweep keys off whether a row references the app, not metadata.
+    """
+    rows: list[dict[str, Any]] = backend.get_collection(
+        "EntityDefinitions(LogicalName='appmodule')/OneToManyRelationships",
+        params={"$select":
+                "ReferencingEntity,ReferencingAttribute,ReferencedAttribute"},
+    )
+    rels: list[dict[str, str]] = []
+    for r in rows:
+        child = str(r.get("ReferencingEntity") or "")
+        referencing = str(r.get("ReferencingAttribute") or "")
+        referenced = str(r.get("ReferencedAttribute") or "")
+        if child and referencing and referenced:
+            rels.append({"entity": child, "referencing": referencing,
+                         "referenced": referenced})
+    return rels
+
+
+def _discover_dependents(
+    backend: D365Backend, app_row: dict[str, Any], rels: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Every dependent row that references this app, one entry per row.
+
+    Keys each query off the relationship's ``ReferencedAttribute`` value on the
+    app row, so a non-primary-key reference is matched correctly. A child entity
+    that isn't OData-addressable (or can't be filtered on the lookup) is skipped —
+    it can't be swept here; if it then blocks the delete, the parent fault names
+    it. Returns ``[{entity, set, id}]``.
+    """
+    if not rels:
+        return []
+    name_map = load_name_map(backend)
+    dependents: list[dict[str, str]] = []
+    for rel in rels:
+        child_set = name_map.set_for(rel["entity"])
+        child_pk = name_map.primary_id_for(rel["entity"])
+        if not child_set or not child_pk:
+            continue
+        ref_value = app_row.get(rel["referenced"])
+        if not ref_value:
+            continue
+        try:
+            rows = backend.get_collection(
+                child_set,
+                params={"$filter": f"_{rel['referencing']}_value eq {ref_value}",
+                        "$select": child_pk},
+            )
+        except D365Error as exc:
+            # A 4xx means this child isn't filterable on the lookup → skip it (if
+            # it then blocks the delete, the parent fault names it). A 5xx is a
+            # real server fault (already retried by the backend) → propagate.
+            if exc.status and exc.status >= 500:
+                raise
+            continue
+        for row in rows:
+            cid = row.get(child_pk)
+            if cid:
+                dependents.append({"entity": rel["entity"], "set": child_set,
+                                   "id": str(cid)})
+    return dependents
+
+
+def _remaining_blocker_error(
+    backend: D365Backend, app_row: dict[str, Any],
+    rels: list[dict[str, str]], exc: D365Error,
+) -> D365Error:
+    """Build a clear error after the appmodule DELETE is still FK-blocked.
+
+    Re-queries the child relationships ONCE (bounded — never a retry loop) and
+    names any that still reference the app, so the user sees the live blocker
+    rather than an opaque ``0x80048d21``.
+    """
+    remaining = _discover_dependents(backend, app_row, rels)
+    if remaining:
+        names = ", ".join(sorted({d["entity"] for d in remaining}))
+        return D365Error(
+            f"App delete still blocked after sweeping dependents; these still "
+            f"reference it: {names}. Original fault: {exc}",
+            status=exc.status, code=exc.code)
+    return D365Error(
+        f"App delete blocked by a dependency that could not be swept "
+        f"(child not addressable / not directly deletable): {exc}",
+        status=exc.status, code=exc.code)
+
+
+def delete_app(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
+    """Delete a model-driven app, sweeping its FK-blocking dependent rows first.
+
+    Resolves *name_or_id* (GUID, else ``uniquename``, else display ``name``),
+    refuses a managed app, then removes the dependent data rows that reference the
+    app across its 1:N relationships (e.g. ``appsetting`` — which blocks the
+    delete on BOTH on-prem and online, the latter despite its ``Cascade``
+    metadata) and DELETEs the appmodule. A dependent that won't delete is left for
+    the parent DELETE to cascade; if the appmodule DELETE is still blocked
+    afterwards, the still-referencing entity is named (no retry loop).
+
+    Honors ``backend.dry_run``: only the read/discovery GETs run (the
+    reads-execute rule) and a preview is returned; no DELETE is issued.
+
+    Real run:  ``{deleted, appmodule, dependents_deleted: [{entity, id}]}``
+               (plus ``dependents_skipped`` if a dependent would not delete)
+    Dry run:   ``{_dry_run, would_delete: {appmodule, dependents: [{entity, id}]}}``
+    """
+    app_row = _resolve_appmodule(backend, name_or_id)
+    app_id = str(app_row.get("appmoduleid") or "")
+    if not app_id:
+        raise D365Error(f"App {name_or_id!r} has no appmoduleid.",
+                        code="AppNotFound")
+    if app_row.get("ismanaged"):
+        raise D365Error(
+            f"App {name_or_id!r} is managed and cannot be deleted directly — "
+            "uninstall its parent solution instead.",
+            code="ManagedApp")
+
+    rels = _child_relationships(backend)
+    dependents = _discover_dependents(backend, app_row, rels)
+
+    if backend.dry_run:
+        public = [{"entity": d["entity"], "id": d["id"]} for d in dependents]
+        return {"_dry_run": True,
+                "would_delete": {"appmodule": app_id, "dependents": public}}
+
+    deleted: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+    for dep in dependents:
+        try:
+            backend.delete(f"{dep['set']}({dep['id']})")
+            deleted.append(dep)
+        except D365Error:
+            # Won't delete (e.g. a Cascade child the platform manages) — record it
+            # and let the parent DELETE cascade it, or surface it as the blocker
+            # below; never abort the sweep or drop it silently (ADR 0007).
+            skipped.append(dep)
+    try:
+        backend.delete(f"appmodules({app_id})")
+    except D365Error as exc:
+        if exc.code == _FK_RESTRICT_CODE:
+            raise _remaining_blocker_error(backend, app_row, rels, exc)
+        raise
+    result: dict[str, Any] = {
+        "deleted": True, "appmodule": app_id,
+        "dependents_deleted": [{"entity": d["entity"], "id": d["id"]}
+                               for d in deleted]}
+    if skipped:
+        result["dependents_skipped"] = [{"entity": d["entity"], "id": d["id"]}
+                                        for d in skipped]
+    return result
 
 
 def add_app_components(

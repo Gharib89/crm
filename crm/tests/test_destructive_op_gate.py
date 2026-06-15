@@ -74,6 +74,16 @@ class TestBlocksDestructive:
         r = _run("crm entity delete contacts 11111111-1111-1111-1111-111111111111 --yes")
         assert r.returncode == 0
 
+    def test_block_app_delete_no_yes(self):
+        r = _run("crm app delete cwx_crmworx")
+        assert r.returncode == BLOCK
+        assert "delete" in r.stderr
+
+    def test_allow_app_delete_with_yes(self):
+        r = _run("crm app delete cwx_crmworx --yes")
+        assert r.returncode == 0
+        assert r.stderr == ""
+
     def test_block_solution_job_cancel_no_yes(self):
         r = _run("crm solution job-cancel 22222222-2222-2222-2222-222222222222")
         assert r.returncode == BLOCK
@@ -421,6 +431,27 @@ class TestCliConfirmParity:
             crm_cli.cli,
             ["--json", "entity", "delete", "contacts", _GUID],
         )
+        assert result.exit_code == 1
+        assert '"error": "aborted by user"' in result.output
+
+    def test_app_delete_yes_skips_prompt(self, monkeypatch):
+        from crm import cli as crm_cli
+        called = {}
+        monkeypatch.setattr(
+            "crm.core.appmodule.delete_app",
+            lambda backend, name_or_id: called.setdefault("t", name_or_id)
+            or {"deleted": True})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(
+            crm_cli.cli, ["--json", "app", "delete", "cwx_crmworx", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert called["t"] == "cwx_crmworx"
+
+    def test_app_delete_no_yes_non_tty_aborts(self, monkeypatch):
+        from crm import cli as crm_cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(
+            crm_cli.cli, ["--json", "app", "delete", "cwx_crmworx"])
         assert result.exit_code == 1
         assert '"error": "aborted by user"' in result.output
 
