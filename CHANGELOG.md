@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.1.1 (2026-06-15)
+
+### Bug Fixes
+
+- App create --if-exists skip survives publish-before-read duplicate fault
+  ([#328](https://github.com/Gharib89/crm/pull/328),
+  [`6aa21c6`](https://github.com/Gharib89/crm/commit/6aa21c6d87e64f4f348f38c722f8686bec405917))
+
+- Default max_length for string/memo attributes when omitted
+  ([#327](https://github.com/Gharib89/crm/pull/327),
+  [`fcf4bc1`](https://github.com/Gharib89/crm/commit/fcf4bc1305fae4315b32aecde2a2643edd10758e))
+
+### Documentation
+
+- **skill**: Add flag-free customization spines + ADR 0009
+  ([#320](https://github.com/Gharib89/crm/pull/320),
+  [`284725f`](https://github.com/Gharib89/crm/commit/284725fa78811688465f818703f8611a5ea38e30))
+
+
 ## v4.1.0 (2026-06-15)
 
 ### Chores
