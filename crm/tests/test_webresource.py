@@ -307,6 +307,116 @@ class TestListWebresources:
         assert m.request_history == []
 
 
+def _deletes(m):
+    return [r for r in m.request_history if r.method == "DELETE"]
+
+
+class TestDeleteWebresource:
+    def test_delete_resolves_by_name_and_deletes(self, backend):
+        from crm.core import webresource
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID}]})
+            m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+            out = webresource.delete_webresource(backend, "new_x.js")
+        assert out["deleted"] is True
+        assert out["name"] == "new_x.js"
+        assert out["webresourceid"] == _WR_ID
+        delete = _deletes(m)[0]
+        assert f"webresourceset({_WR_ID})" in delete.url
+
+    def test_delete_by_guid_skips_name_lookup(self, backend):
+        from crm.core import webresource
+        with requests_mock.Mocker() as m:
+            m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+            out = webresource.delete_webresource(backend, _WR_ID)
+        assert out["deleted"] is True
+        assert out["webresourceid"] == _WR_ID
+        # a GUID is deleted directly — no resolve-by-name GET
+        assert not [r for r in m.request_history if r.method == "GET"]
+
+    def test_delete_not_found_raises(self, backend):
+        from crm.core import webresource
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json={"value": []})
+            with pytest.raises(D365Error, match="not found"):
+                webresource.delete_webresource(backend, "missing.js")
+        assert not _deletes(m)
+
+    def test_delete_dry_run_returns_preview_no_delete(self, profile):
+        from crm.core import webresource
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            # resolve-by-name force-reads even under dry-run
+            m.get(dry.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID}]})
+            out = webresource.delete_webresource(dry, "new_x.js")
+        assert out["_dry_run"] is True
+        assert out["would_delete"] is True
+        assert "deleted" not in out
+        assert out["webresourceid"] == _WR_ID
+        assert not _deletes(m)
+
+    def test_check_dependencies_with_blockers(self, backend):
+        """check_dependencies=True fires the dependency function; blockers in result."""
+        from crm.core import webresource
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_WR_ID},ComponentType=61)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID}]})
+            m.get(dep_url, json={"value": [
+                {
+                    "dependentcomponenttype": 24,  # Form
+                    "dependentcomponentobjectid": "1111ffff-0000-0000-0000-000000000000",
+                    "dependentcomponentparentid": None,
+                    "requiredcomponenttype": 61,
+                    "dependencytype": 1,
+                },
+            ]})
+            m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+            out = webresource.delete_webresource(
+                backend, "new_x.js", check_dependencies=True)
+        # informational only — the delete still runs
+        assert out["deleted"] is True
+        assert out["can_delete"] is False
+        assert len(out["blockers"]) == 1
+        assert out["blockers"][0]["dependent_type"] == "Form"
+
+    def test_check_dependencies_clear_allows_delete(self, backend):
+        from crm.core import webresource
+        dep_url = backend.url_for(
+            f"RetrieveDependenciesForDelete(ObjectId={_WR_ID},ComponentType=61)"
+        )
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID}]})
+            m.get(dep_url, json={"value": []})
+            m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+            out = webresource.delete_webresource(
+                backend, "new_x.js", check_dependencies=True)
+        assert out["deleted"] is True
+        assert out["can_delete"] is True
+        assert out["blockers"] == []
+
+    def test_referenced_fault_surfaces_as_d365error(self, backend):
+        """A 0x8004f01f (still referenced) server fault propagates as D365Error."""
+        from crm.core import webresource
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID}]})
+            m.delete(
+                backend.url_for(f"webresourceset({_WR_ID})"),
+                status_code=400,
+                json={"error": {"code": "0x8004f01f", "message":
+                                "Web resource cannot be deleted because it is "
+                                "referenced by a ribbon button."}},
+            )
+            with pytest.raises(D365Error, match="referenced"):
+                webresource.delete_webresource(backend, "new_x.js")
+
+
 class TestResolveWebresourceId:
     def test_guid_returned_unchanged_no_http(self, backend):
         from crm.core import webresource
@@ -452,6 +562,59 @@ class TestWebresourceCommands:
         assert captured["name"] == "cwx_/foo.js"
         assert captured["content"] == b"updated()"
         assert captured["display_name"] == "Foo"
+
+    def test_delete_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.webresource.delete_webresource",
+            lambda backend, name, **kw: captured.update({"name": name, **kw})
+            or {"deleted": True, "webresourceid": _WR_ID, "name": name})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "delete", "cwx_/foo.js", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["name"] == "cwx_/foo.js"
+        assert captured["check_dependencies"] is False
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["deleted"] is True
+
+    def test_delete_command_passes_check_dependencies(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.webresource.delete_webresource",
+            lambda backend, name, **kw: captured.update({"name": name, **kw})
+            or {"deleted": True, "webresourceid": _WR_ID, "name": name})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "delete", "cwx_/foo.js",
+            "--check-dependencies", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["check_dependencies"] is True
+
+    def test_delete_command_aborts_without_confirmation(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        called = {"deleted": False}
+        monkeypatch.setattr(
+            "crm.core.webresource.delete_webresource",
+            lambda backend, name, **kw: called.update(deleted=True))
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        # No --yes and a non-TTY stdin (EOF) → click.confirm aborts before any
+        # delete; the documented JSON envelope is still emitted.
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "delete", "cwx_/foo.js",
+        ])
+        assert result.exit_code == 1
+        assert called["deleted"] is False
+        assert '"error": "aborted by user"' in result.output
 
     def test_get_command_wires_core(self, monkeypatch):
         import json

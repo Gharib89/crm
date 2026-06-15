@@ -138,13 +138,16 @@ list to be visible.
 
 ## Decommission — deleting UI components
 
-`app`, `webresource`, and `ribbon` have **no `delete` verb** — delete through the generic
-`entity delete <set>`, or drop the whole solution to cascade. Order matters; the platform
+`app` and `ribbon` have **no `delete` verb** — delete through the generic
+`entity delete <set>`, or drop the whole solution to cascade. `webresource` has a
+first-class `crm webresource delete <name|id> --yes`. Order matters; the platform
 enforces the dependencies and the error code names the one you hit:
 
 - **Web resource referenced by a ribbon button** — remove the button first
-  (`ribbon remove …`), else the delete fails `0x8004f01f` (still referenced). Then
-  `crm entity delete webresourceset <id> --yes`.
+  (`ribbon remove …`), else the delete fails `0x8004f01f` (still referenced). Use
+  `crm webresource delete <name|id> --check-dependencies` to preview blockers before
+  attempting the delete. After clearing the button, retry:
+  `crm webresource delete <name|id> --yes`.
 - **Model-driven app** — `entity delete appmodules <id>` can fail `0x80048d21` (an
   `appsettings` FK still points at it). Deleting the **containing solution** cascades the
   app away cleanly; reach for the per-record delete only when the app lives outside a

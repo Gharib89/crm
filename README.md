@@ -383,7 +383,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
 | `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / uninstall |
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch` |
-| `webresource` | Create/update/get/list web resources (HTML/JS/CSS/images); set as app icons |
+| `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); set as app icons |
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml |
 | `plugin`     | Register/update/unregister plug-in assemblies, SDK message processing steps, and step entity images |
 | `security`   | List and assign security roles to users or teams           |

@@ -9,6 +9,7 @@ from crm.commands._helpers import (
     _publish_option,
     d365_errors, _journal, _resolve_publish, _solution_option,
     _resolve_solution, _emit_with_warning,
+    _confirm_destructive, _destructive_option,
 )
 
 
@@ -66,6 +67,23 @@ def webresource_update(ctx: CLIContext, name, file, display_name,
     _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
+
+
+@webresource_group.command("delete")
+@click.argument("name")
+@_destructive_option
+@click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
+              help="Preview blocking dependencies (RetrieveDependenciesForDelete) in "
+                   "the result; pairs with --dry-run. Informational — does not block.")
+@pass_ctx
+def webresource_delete(ctx: CLIContext, name, yes, check_dependencies):
+    """Delete a web resource by unique name or id."""
+    _confirm_destructive(ctx, "web resource", name, yes)
+    with d365_errors(ctx):
+        info = wr_mod.delete_webresource(
+            ctx.backend(), name, check_dependencies=check_dependencies)
+    _emit_with_warning(ctx, info, None)
+    _journal(ctx, name, info)
 
 
 @webresource_group.command("get")

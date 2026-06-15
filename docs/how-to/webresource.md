@@ -53,3 +53,21 @@ crm --json webresource create --name cwx_/icons/app.svg --file ./app.svg
 crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresource cwx_/icons/app.svg
 ```
 `app create --icon-webresource <name|guid>` uses that web resource as the app icon. A GUID is used directly; a name is resolved to its id. Omit the flag to keep the platform default icon.
+
+## Delete a web resource
+
+```bash
+crm webresource delete cwx_/scripts/ribbon.js --yes
+```
+
+`delete` resolves a unique name or a GUID to the record id (a GUID passes through with no lookup) and deletes the web resource. The `--yes` flag skips the interactive confirmation prompt; omit it on a TTY to confirm interactively. No publish step is needed after a delete.
+
+Pass `--check-dependencies` to preview blocking dependencies before the delete — it calls `RetrieveDependenciesForDelete` and folds the result into the output as `can_delete` and `blockers`. This is informational only; it does not block or skip the actual delete:
+
+```bash
+crm --json webresource delete cwx_/scripts/ribbon.js --check-dependencies --yes
+```
+
+Pass the global `--dry-run` to see what would be deleted without sending the DELETE request.
+
+**Web resource referenced by a ribbon button** — the server returns `0x8004f01f` and the command surfaces it as a clear error. Remove the ribbon button first (`crm ribbon remove …`), then retry the delete. Use `--check-dependencies` to identify blockers up front before attempting the delete.
