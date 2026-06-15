@@ -37,7 +37,7 @@ def test_classify_maps_each_category(status, code, message, expected):
     assert classify_d365_error(status, code, message) == expected
 
 
-def test_envelope_carries_category_and_retryable(make_fake_backend, inject_backend):
+def test_envelope_carries_category_and_retryable(make_fake_backend, inject_backend, isolated_home):
     """The JSON error envelope additively gains meta.category + meta.retryable,
     without dropping the existing meta.status / meta.code keys."""
     inject_backend(make_fake_backend(errors={"get": D365Error("Record Not Found", status=404, code="0x80040217")}))

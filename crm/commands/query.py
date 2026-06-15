@@ -6,6 +6,7 @@ from pathlib import Path
 import click
 from crm.core import query as query_mod
 from crm.core.query import total_record_count
+from crm.core.entity_names import resolve_logical_name
 from crm.core.metadata import resolve_entity_set_name
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -186,7 +187,15 @@ def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size
 @click.argument("entity")
 @pass_ctx
 def query_count(ctx: CLIContext, entity: str):
-    """Count rows for an entity via RetrieveTotalRecordCount (cached server-side)."""
+    """Count rows for an entity via RetrieveTotalRecordCount (cached server-side).
+
+    ENTITY may be the entity-set name ("accounts") or the logical name
+    ("account"), in any case — it is resolved to the logical name that
+    RetrieveTotalRecordCount requires, so it matches the entity-set form used
+    everywhere else in the CLI.
+    """
     with d365_errors(ctx):
-        n = total_record_count(ctx.backend(), entity)
-    ctx.emit(True, data={"entity": entity, "count": n})
+        backend = ctx.backend()
+        logical = resolve_logical_name(backend, entity)
+        n = total_record_count(backend, logical)
+    ctx.emit(True, data={"entity": logical, "count": n})

@@ -24,6 +24,34 @@ def test_query_count_contacts(cli):
     assert env["data"]["count"] >= 0
 
 
+@covers("query count")
+def test_query_count_accepts_entity_set_name_and_case(cli):
+    """`count contacts` (entity-set name) and a mixed-case form both resolve to the
+    logical name and return the same cached count as `count contact` (#305)."""
+    logical = json.loads(cli(["--json", "query", "count", "contact"]).stdout)
+    assert logical["ok"] is True
+    n = logical["data"]["count"]
+
+    for name in ("contacts", "Contact", "CONTACTS"):
+        r = cli(["--json", "query", "count", name])
+        assert r.returncode == 0, r.stderr
+        env = json.loads(r.stdout)
+        assert env["ok"] is True
+        # Resolved to the canonical logical name, same cached count.
+        assert env["data"]["entity"] == "contact"
+        assert env["data"]["count"] == n
+
+
+@covers("query count")
+def test_query_count_unknown_entity_errors_cleanly(cli):
+    """A genuine miss errors with exit 1 and names the bad token (no false success)."""
+    r = cli(["--json", "query", "count", "definitelynotanentity"], check=False)
+    assert r.returncode == 1
+    env = json.loads(r.stdout)
+    assert env["ok"] is False
+    assert "definitelynotanentity" in env["error"]
+
+
 # ── query odata ───────────────────────────────────────────────────────────────
 
 

@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 import requests_mock
 from click.testing import CliRunner
 
-from crm.cli import cli
+from crm.cli import CLIContext, cli
 from crm.core.query import total_record_count
+from crm.utils.d365_backend import ConnectionProfile
 
 
 class TestCoreHelper:
@@ -31,20 +35,75 @@ class TestCoreHelper:
             total_record_count(backend, "")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_crm_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`query count` now resolves the name through the read-through metadata cache
+    (#305); isolate CRM_HOME so a real ~/.crm is never touched and each test
+    starts with a cold cache."""
+    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+
+
+def _count_backend(monkeypatch: pytest.MonkeyPatch, count: int = 7) -> MagicMock:
+    """Backend stub: resolves names via the EntityDefinitions collection and
+    returns `count` from RetrieveTotalRecordCount."""
+    mock = MagicMock()
+    mock.profile = ConnectionProfile(
+        name="testp",
+        url="https://crm.contoso.local/contoso",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
+    )
+
+    def _get(path: str, **_kw: Any) -> Any:
+        assert "RetrieveTotalRecordCount" in path
+        return {"EntityRecordCountCollection": {"Keys": ["account"], "Values": [count]}}
+
+    def _get_collection(path: str, **_kw: Any) -> Any:
+        if path == "EntityDefinitions":
+            return [{"LogicalName": "account", "EntitySetName": "accounts"}]
+        return []
+
+    mock.get.side_effect = _get
+    mock.get_collection.side_effect = _get_collection
+    monkeypatch.setattr(CLIContext, "backend", lambda self: mock)
+    return mock
+
+
 class TestCLI:
-    def test_cli_count_json_envelope(self, make_fake_backend, inject_backend):
-        def _count_get(path):
-            assert "RetrieveTotalRecordCount" in path
-            return {"EntityRecordCountCollection": {
-                "Keys": ["account"], "Values": [7]
-            }}
-
-        inject_backend(make_fake_backend(responses={"get": _count_get}))
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["--json", "query", "count", "account"])
+    def test_cli_count_logical_name(self, monkeypatch):
+        _count_backend(monkeypatch)
+        result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
         assert env["data"]["count"] == 7
         assert env["data"]["entity"] == "account"
+
+    def test_cli_count_accepts_entity_set_name(self, monkeypatch):
+        """`query count accounts` resolves the set name to the logical name (#305)."""
+        _count_backend(monkeypatch)
+        result = CliRunner().invoke(cli, ["--json", "query", "count", "accounts"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["count"] == 7
+        # Output reports the canonical logical name actually counted.
+        assert env["data"]["entity"] == "account"
+
+    def test_cli_count_is_case_insensitive(self, monkeypatch):
+        _count_backend(monkeypatch)
+        for name in ("Account", "Accounts", "ACCOUNTS"):
+            result = CliRunner().invoke(cli, ["--json", "query", "count", name])
+            assert result.exit_code == 0, result.output
+            env = json.loads(result.output)
+            assert env["data"]["entity"] == "account"
+
+    def test_cli_count_unknown_entity_errors_cleanly(self, monkeypatch):
+        _count_backend(monkeypatch)
+        result = CliRunner().invoke(cli, ["--json", "query", "count", "totallybogus"])
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "totallybogus" in env["error"]

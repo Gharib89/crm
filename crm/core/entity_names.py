@@ -21,6 +21,7 @@ Design:
 
 from __future__ import annotations
 
+import difflib
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -51,6 +52,41 @@ class NameMap:
     def logical_for(self, entity_set: str) -> str | None:
         """Logical name for *entity_set*, or ``None`` if unknown."""
         return self.set_to_logical.get(entity_set) or None
+
+    def resolve(self, name: str) -> str:
+        """Resolve a user-supplied entity *name* to its canonical logical name.
+
+        Accepts either a logical name (``account``) or an entity-set name
+        (``accounts``), matched case-insensitively, and returns the logical
+        name. Raises :class:`D365Error` on a genuine miss, appending a
+        ``difflib`` close-match suggestion only when one actually exists (so the
+        message never fabricates a false correction).
+        """
+        if not name:
+            raise D365Error("entity name is required")
+        # Fast paths: exact logical, then exact entity-set.
+        if name in self.logical_to_set:
+            return name
+        logical = self.set_to_logical.get(name)
+        if logical:
+            return logical
+        # Case-insensitive fallback over logical names, then entity-set names.
+        lowered = name.lower()
+        for logical_name in self.logical_to_set:
+            if logical_name.lower() == lowered:
+                return logical_name
+        for set_name, logical_name in self.set_to_logical.items():
+            if set_name.lower() == lowered:
+                return logical_name
+        # Genuine miss: suggest a close logical name only when one is found.
+        match = difflib.get_close_matches(
+            lowered, list(self.logical_to_set), n=1, cutoff=0.6
+        )
+        hint = f" — did you mean {match[0]!r}?" if match else ""
+        raise D365Error(
+            f"Entity {name!r} was not found in the CRM system{hint}",
+            code="UnknownEntity",
+        )
 
 
 @dataclass(frozen=True)
@@ -163,3 +199,13 @@ def load_name_map(backend: D365Backend, *, refresh: bool = False) -> NameMap:
         logical_to_set[d["logical"]] = set_name
         set_to_logical[set_name] = d["logical"]
     return NameMap(logical_to_set=logical_to_set, set_to_logical=set_to_logical)
+
+
+def resolve_logical_name(backend: D365Backend, name: str) -> str:
+    """Resolve *name* (a logical or entity-set name, any case) to a logical name.
+
+    Loads the cached bidirectional name map and delegates to
+    :meth:`NameMap.resolve`. Lets a caller accept the entity-set name learned
+    everywhere else in the CLI for an API that requires the logical name.
+    """
+    return load_name_map(backend).resolve(name)
