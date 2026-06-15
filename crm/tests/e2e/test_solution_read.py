@@ -76,6 +76,34 @@ def test_solution_validate_exported_zip(cli, backend, ephemeral_solution, tmp_pa
     assert env["data"].get("valid") is True
 
 
+@covers("solution validate")
+def test_solution_validate_against_org_version_ok(cli, backend, ephemeral_solution, tmp_path):
+    """validate --against-org runs the #325 package-version compatibility check.
+
+    A solution exported FROM this org necessarily carries a package version <= the
+    org's own version, so the check is a no-op pass here (the on-prem leg is where
+    a cloud-exported v9.2 package would trip the v9.1 ceiling, 0x80048068). This
+    leg proves the check runs live and does not false-reject the equal/older case.
+    """
+    from crm.core import solution as sol_mod
+
+    zip_path = tmp_path / f"{ephemeral_solution}_against.zip"
+    try:
+        sol_mod.export_solution(backend, ephemeral_solution, zip_path)
+    except Exception as exc:
+        pytest.skip(f"export failed, cannot validate: {exc}")
+
+    result = cli(["--json", "solution", "validate", str(zip_path), "--against-org"])
+    assert result.returncode == 0, result.stderr
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    assert "package-version" in env["data"].get("checks_run", [])
+    assert env["data"].get("valid") is True
+    # the self-exported package is not newer than its own org → no error finding
+    assert not [f for f in env["data"].get("findings", [])
+                if f["check"] == "package-version" and f["severity"] == "error"]
+
+
 @covers("solution layer-conflicts")
 @pytest.mark.requires_cloud
 def test_solution_layer_conflicts_no_overlap(cli, backend, ephemeral_solution):

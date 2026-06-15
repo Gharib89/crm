@@ -67,7 +67,9 @@ solution exported from Dataverse online (v9.2) fails to import into on-prem v9.1
 earlier into this organization"). Promotion must travel **same-or-lower version** — build
 on the lowest version in your dev→test→prod chain, or keep all tiers on one platform. This
 is distinct from the API-version cap (a `v9.2` *request* → HTTP 501); here it's the
-*solution* package version, not the endpoint.
+*solution* package version, not the endpoint. `solution validate --against-org` catches
+this before the import (it compares `SolutionPackageVersion` against `RetrieveVersion()` —
+see "Validate a solution zip before import" below), so pre-flight against the **target**.
 
 **Gotcha:** importing a security **role** from a **managed** solution. On on-prem v9.x
 this strips all *manually added* privileges of that role on the target org (privilege-level
@@ -174,16 +176,22 @@ crm solution validate /tmp/snap.zip
 
 Add `--against-org` to also check for colliding `formid`/`savedqueryid` GUIDs,
 BPF process-stage GUIDs (`StageId`/`NextStageId` in `Workflows/*.xaml`, probed
-against `processstages` — the `CreateProcessStage` duplicate-key class), and
-existence of referenced web resources and global option sets in the target org
-(requires a connection/profile). Use before `solution import`.
+against `processstages` — the `CreateProcessStage` duplicate-key class),
+existence of referenced web resources and global option sets, **and the
+package-version ceiling** in the target org (requires a connection/profile). Use
+before `solution import`.
 
-**Validate is structural, not a compatibility gate.** It inspects the zip's *contents* —
-it does **not** check the target org's *package version*, so a green `validate` (even with
-`--against-org`) still hits the version ceiling above at import time on a downstream org
-older than the export. And run `--against-org` only against the **import target**, never
-the export source — validating against the source always reports `formid`/`savedqueryid`
-collisions, because those components already live there.
+**`--against-org` now enforces the version ceiling.** It reads the package's
+`SolutionPackageVersion` and compares it to the org version (`RetrieveVersion()`):
+a package newer than the org (even a newer minor) is an **error** finding —
+import would fail with `0x80048068`. So a green `--against-org` validate now
+clears that ceiling, not just GUID/ref collisions. The check is best-effort —
+an absent/unparseable package version or an unreadable org version degrades to a
+warning/skip and never falsely flips the report invalid; the offline (no
+`--against-org`) run is still purely structural and does **not** check it. And
+run `--against-org` only against the **import target**, never the export source —
+validating against the source always reports `formid`/`savedqueryid` collisions,
+because those components already live there.
 
 ## Investigating a failed import
 

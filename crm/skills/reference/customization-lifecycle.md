@@ -91,9 +91,11 @@ watch. A failed import has a full post-mortem path (`solution import-result`,
 
 **Version ceiling — promote down a same-or-lower version path.** A managed zip carries the
 *package version* of the org it was built in, and an org rejects any zip newer than itself
-— a cloud (v9.2) export will **not** import into on-prem v9.1 (`0x80048068`), and `solution
-validate` won't catch it (it's structural, not a version check). Build on the lowest
-version in your dev→test→prod chain, or keep every tier on one platform.
+— a cloud (v9.2) export will **not** import into on-prem v9.1 (`0x80048068`). `solution
+validate --against-org` now catches it pre-import (it compares the package's
+`SolutionPackageVersion` against the target org's version); the offline `validate` is still
+structural and does not. Build on the lowest version in your dev→test→prod chain, or keep
+every tier on one platform.
 
 ## Tearing down — reverse the build order
 

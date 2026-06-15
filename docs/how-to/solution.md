@@ -117,8 +117,14 @@ binding is declared; both manifests are well-formed and all required members
 Add `--against-org` to also check the connected org for colliding `formid` /
 `savedqueryid` GUIDs, colliding BPF process-stage GUIDs (`StageId` /
 `NextStageId` read from `Workflows/*.xaml` and probed against `processstages` —
-the `CreateProcessStage` duplicate-key import failure), and for the existence of
-referenced web resources and global option sets (requires a connection/profile):
+the `CreateProcessStage` duplicate-key import failure), the existence of
+referenced web resources and global option sets, and whether the package's
+`SolutionPackageVersion` exceeds the target org version — a package newer than
+the org (even a newer minor) fails import with `0x80048068` ("you can only import
+solutions with a package version of {org} or earlier"). The version check is
+best-effort: an absent/unparseable package version or an org version that can't
+be read degrades to a warning/skip and never falsely flips the report invalid.
+Requires a connection/profile:
 
 ```bash
 crm solution validate ./MySolution.zip --against-org
