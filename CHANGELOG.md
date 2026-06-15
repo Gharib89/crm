@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.8 (2026-06-15)
+
+### Bug Fixes
+
+- **output**: Render solution-component and relationship lists as tables
+  ([#315](https://github.com/Gharib89/crm/pull/315),
+  [`d7a51fc`](https://github.com/Gharib89/crm/commit/d7a51fc120fdfaaaf49194149c9e0d54824b7b1a))
+
+
 ## v3.12.7 (2026-06-15)
 
 ### Bug Fixes
