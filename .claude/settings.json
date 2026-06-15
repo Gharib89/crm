@@ -9,6 +9,26 @@
             "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/destructive_op_gate.py\""
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/block_protected_files.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/pyright_strict_check.py\""
+          }
+        ]
       }
     ]
   }
