@@ -122,8 +122,10 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 # when a test does not override it — lets commands that resolve a name through
 # ``entity_names.load_name_map`` (e.g. ``query count``) work out of the box.
 _DEFAULT_ENTITY_DEFINITIONS: list[dict[str, str]] = [
-    {"LogicalName": "account", "EntitySetName": "accounts"},
-    {"LogicalName": "contact", "EntitySetName": "contacts"},
+    {"LogicalName": "account", "EntitySetName": "accounts",
+     "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name"},
+    {"LogicalName": "contact", "EntitySetName": "contacts",
+     "PrimaryIdAttribute": "contactid", "PrimaryNameAttribute": "fullname"},
 ]
 
 
@@ -228,6 +230,10 @@ class FakeBackend:
 
     def delete(self, path: Any = None, *_args: Any, **kwargs: Any) -> Any:
         return self._dispatch("delete", path, kwargs)
+
+    def url_for(self, path: str) -> str:
+        import urllib.parse
+        return urllib.parse.urljoin(self.profile.api_base, path.lstrip("/"))
 
 
 @pytest.fixture

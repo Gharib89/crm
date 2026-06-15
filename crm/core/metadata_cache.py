@@ -28,6 +28,13 @@ if TYPE_CHECKING:
 
 TTL_SECONDS: int = 900  # 15-minute backstop
 
+# Bumped when the cached row shape changes so stale-shape caches miss and
+# refetch. v2 added PrimaryIdAttribute/PrimaryNameAttribute (`primary_id` /
+# `primary_name`) for the normalized `_entity_id` + human primary-name column
+# (ADR 0008 / #304). A legacy payload lacking `schema` (== v1) is treated as a
+# miss — a one-time refresh, not an error.
+SCHEMA_VERSION: int = 2
+
 
 @dataclass(frozen=True)
 class CacheLookup:
@@ -74,6 +81,7 @@ def write_definitions(
     payload = {
         "url": profile.url.rstrip("/"),
         "api_version": profile.api_version,
+        "schema": SCHEMA_VERSION,
         "cached_at": now,
         "definitions": definitions,
     }
@@ -133,6 +141,9 @@ def read_definitions(
     if cached_url != profile.url.rstrip("/"):
         return None
     if cached_ver != profile.api_version:
+        return None
+    # Reject a stale-shape cache (legacy payloads have no `schema` key → v1).
+    if raw_dict.get("schema") != SCHEMA_VERSION:
         return None
     if not isinstance(cached_at, (int, float)):
         return None

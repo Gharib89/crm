@@ -38,6 +38,50 @@ def build_record_path(entity_set: str, record_id: str) -> str:
     return f"{entity_set}({_normalize_id(record_id)})"
 
 
+def entity_id_fields(
+    backend: D365Backend, entity_set: str, record_id: str
+) -> dict[str, str]:
+    """The normalized-id pair for *record_id* (ADR 0008 / #303).
+
+    ``_entity_id`` is the record GUID and ``_entity_id_url`` its full Web API URL,
+    matching the shape the backend already surfaces from the ``OData-EntityId``
+    header on update/delete-by-header. Used by the write verbs and single-record
+    get so chaining needs no per-entity primary-key knowledge. *record_id* is
+    normalized + GUID-validated (raises ``D365Error`` otherwise)."""
+    rid = _normalize_id(record_id)
+    return {
+        "_entity_id": rid,
+        "_entity_id_url": backend.url_for(build_record_path(entity_set, rid)),
+    }
+
+
+def inject_create_entity_id(
+    backend: D365Backend, entity_set: str, record: dict[str, Any]
+) -> None:
+    """Inject `_entity_id`/`_entity_id_url` into a create's returned record (#303).
+
+    With `Prefer: return=representation` (the create default) Dataverse returns
+    the new GUID only inside the body, under the entity's PrimaryIdAttribute key
+    (not via the `OData-EntityId` header), and that attribute is not derivable
+    from the entity-set name (activity entities break the `<logical>+id`
+    convention). So resolve it through the read-through name map (warm cache = no
+    GET, cold = one EntityDefinitions GET that also warms the cache). Best-effort:
+    the record was already created, so a metadata miss must not fail the create —
+    we simply skip the synthetic key. Mutates *record*. Called from the command
+    layer, not `create`, so internal `create` callers are unaffected."""
+    if "_dry_run" in record:
+        return
+    try:
+        pk = entity_names.load_name_map(backend).primary_id_for(entity_set)
+    except D365Error:
+        return
+    if not pk:
+        return
+    guid = record.get(pk)
+    if isinstance(guid, str) and guid:
+        record.update(entity_id_fields(backend, entity_set, guid))
+
+
 # ── Read ────────────────────────────────────────────────────────────────
 
 
@@ -236,7 +280,7 @@ def create(
 
     With return_record=True we add `Prefer: return=representation` to get the created
     record back in the response. Otherwise we extract the GUID from the
-    `OData-EntityId` header and return `{ "id": "<guid>" }`.
+    `OData-EntityId` header and return `{ "_entity_id": "<guid>", "_entity_id_url": ... }`.
     """
     headers: dict[str, str] = {}
     if return_record:
@@ -261,11 +305,12 @@ def create(
     if return_record:
         return result_dict
 
-    # 204 path: response carried OData-EntityId we surfaced through _entity_id_url
+    # 204 path: response carried OData-EntityId — surface it under the normalized
+    # id keys so --no-return agrees with the rest of the write verbs (ADR 0008).
     entity_id_url = result_dict.get("_entity_id_url")
     entity_id = result_dict.get("_entity_id")
     if entity_id_url and entity_id:
-        return {"id": entity_id, "entity_id_url": entity_id_url}
+        return {"_entity_id": entity_id, "_entity_id_url": entity_id_url}
     return result_dict
 
 
@@ -357,7 +402,11 @@ def delete(
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
-    return result if isinstance(result, dict) else {"deleted": True, "id": _normalize_id(record_id)}
+    # Dry-run returns the backend's preview dict; a real 204 carries no body, so
+    # synthesize the success envelope with the normalized id key (ADR 0008 / #303).
+    if isinstance(result, dict):
+        return result
+    return {"deleted": True, **entity_id_fields(backend, entity_set, record_id)}
 
 
 # ── Associate / Disassociate ────────────────────────────────────────────
@@ -850,7 +899,7 @@ def clone_record(
     # no children attempted). Create id-only so the new parent id is always
     # available for repointing, regardless of the caller's return_record.
     parent_result = create(backend, entity_set, body, return_record=False)
-    new_parent_id = str(parent_result.get("id") or "")
+    new_parent_id = str(parent_result.get("_entity_id") or "")
     if not new_parent_id:
         # Parent was created but its id was not in the response (no
         # OData-EntityId). Repointing children to /<set>() would fail every row;
@@ -980,7 +1029,7 @@ def _clone_children(
                 failures.append({"entity": child_logical, "source_id": src_child_id,
                                  "reason": str(exc)})
                 continue
-            new_child_id = str(created.get("id") or "")
+            new_child_id = str(created.get("_entity_id") or "")
             if not new_child_id:
                 # Created but no parsable id (no OData-EntityId) — record a
                 # failure rather than poison meta.created with an empty id.

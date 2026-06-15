@@ -50,9 +50,12 @@ def _post_url(b) -> str:
 
 
 _DEFS = {"value": [
-    {"LogicalName": "account", "EntitySetName": "accounts"},
-    {"LogicalName": "contact", "EntitySetName": "contacts"},
-    {"LogicalName": "systemuser", "EntitySetName": "systemusers"},
+    {"LogicalName": "account", "EntitySetName": "accounts",
+     "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name"},
+    {"LogicalName": "contact", "EntitySetName": "contacts",
+     "PrimaryIdAttribute": "contactid", "PrimaryNameAttribute": "fullname"},
+    {"LogicalName": "systemuser", "EntitySetName": "systemusers",
+     "PrimaryIdAttribute": "systemuserid", "PrimaryNameAttribute": "fullname"},
 ]}
 
 # A simple account: a primary id, two Uniqueidentifier columns (primary +
@@ -312,7 +315,9 @@ class TestDryRunAndReturn:
 
             result = entity_mod.clone_record(backend, "accounts", _SRC, return_record=False)
 
-        assert result["id"] == _NEW
+        # --no-return uses the normalized id key (ADR 0008), not a bare `id`.
+        assert result["_entity_id"] == _NEW
+        assert result["_entity_id_url"] == entity_url
 
     def test_unknown_entity_set_errors_clean(self, backend):
         with requests_mock.Mocker() as m:
@@ -369,7 +374,12 @@ class TestCommand:
             result = CliRunner().invoke(cli, ["--json", "entity", "clone", "accounts", _SRC])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        assert env["ok"] is True and env["data"] == created
+        # Envelope parity with `entity create` (ADR 0008): full created record
+        # plus the normalized id keys.
+        assert env["ok"] is True
+        assert {k: v for k, v in env["data"].items() if not k.startswith("_entity_id")} == created
+        assert env["data"]["_entity_id"] == _NEW
+        assert env["data"]["_entity_id_url"].endswith(f"accounts({_NEW})")
 
     def test_cli_override_reaches_create_body(self, backend, monkeypatch):
         self._patch_backend(monkeypatch, backend)

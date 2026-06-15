@@ -177,11 +177,13 @@ def test_entity_clone(backend, cli, unique, request):
     env = json.loads(clone_res.stdout)
     assert env["ok"], env
 
-    # The clone returns either the full record (with contactid) or {"id": "<guid>"}
+    # Default clone returns the full record with the normalized _entity_id
+    # (ADR 0008 — envelope parity with `entity create`).
     data = env["data"]
-    new_id = data.get("contactid") or data.get("id")
+    new_id = data.get("_entity_id") or data.get("contactid") or data.get("id")
     assert new_id, f"no id in clone response: {data}"
     assert new_id != src_id
+    assert data.get("_entity_id") == new_id, f"clone missing _entity_id: {data}"
     request.addfinalizer(lambda: _safe(backend, f"contacts({new_id})"))
 
 
