@@ -163,7 +163,16 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
         ctx.emit(True, data=result, meta={"matches": True})
         return
 
-    ctx.emit(True, data=items, meta={"count": len(items)})
+    if ctx.json_mode:
+        ctx.emit(True, data=items, meta={"count": len(items)})
+        return
+    headers = ["componenttype", "objectid", "rootcomponentbehavior"]
+    rows = [[
+        sol_mod.component_type_name(it.get("componenttype", 0)),
+        it.get("objectid", ""),
+        "" if it.get("rootcomponentbehavior") is None else it.get("rootcomponentbehavior"),
+    ] for it in items]
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
 @solution_group.command("layer-conflicts")

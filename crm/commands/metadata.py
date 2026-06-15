@@ -583,11 +583,30 @@ def metadata_relationships(ctx: CLIContext, logical_name):
     """Show one-to-many, many-to-one, and many-to-many relationships."""
     with d365_errors(ctx):
         info = rel_mod.list_relationships(ctx.backend(), logical_name)
-    ctx.emit(True, data=info, meta={
-        "one_to_many": len(info.get("OneToMany", [])),
-        "many_to_one": len(info.get("ManyToOne", [])),
-        "many_to_many": len(info.get("ManyToMany", [])),
-    })
+    if ctx.json_mode:
+        ctx.emit(True, data=info, meta={
+            "one_to_many": len(info.get("OneToMany", [])),
+            "many_to_one": len(info.get("ManyToOne", [])),
+            "many_to_many": len(info.get("ManyToMany", [])),
+        })
+        return
+    # Human mode: one labeled table per category (emit renders only a single
+    # table, so drive the skin directly for the three groups).
+    rel_cols = ["SchemaName", "ReferencedEntity", "ReferencingEntity",
+                "ReferencingAttribute"]
+    groups = [
+        ("OneToMany", rel_cols),
+        ("ManyToOne", rel_cols),
+        ("ManyToMany", ["SchemaName", "Entity1LogicalName", "Entity2LogicalName",
+                        "IntersectEntityName"]),
+    ]
+    for title, headers in groups:
+        ctx.skin.section(title)
+        rows = info.get(title, [])
+        if not rows:
+            ctx.skin.info("none")
+            continue
+        ctx.skin.table(headers, [[r.get(h, "") for h in headers] for r in rows])
 
 
 @metadata_group.command("delete-entity")
