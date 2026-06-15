@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.4.0 (2026-06-15)
+
+### Features
+
+- Add `app delete` verb that sweeps FK-blocking dependents (#324)
+  ([#331](https://github.com/Gharib89/crm/pull/331),
+  [`f48e183`](https://github.com/Gharib89/crm/commit/f48e18322bc866d133d04de9e1a582c3efbaaf59))
+
+
 ## v4.3.0 (2026-06-15)
 
 ### Documentation
