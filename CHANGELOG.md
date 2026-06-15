@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.1.0 (2026-06-15)
+
+### Chores
+
+- **claude**: Add docs-sync subagent + edit-guard hooks, wire ship gate
+  ([#318](https://github.com/Gharib89/crm/pull/318),
+  [`7b63126`](https://github.com/Gharib89/crm/commit/7b631261ea44d2886ecdae2ecaee0516c2f16d43))
+
+### Documentation
+
+- **docs-sync**: Update model from opus to sonnet
+  ([`f8ca3fd`](https://github.com/Gharib89/crm/commit/f8ca3fd707d179675556eecd3580192615d574b9))
+
+- **ship-skill**: Add context-discipline guidance for long runs
+  ([`f4fc41e`](https://github.com/Gharib89/crm/commit/f4fc41eff90e9178b76f3312fff483feee8245af))
+
+### Features
+
+- **output**: Concise human single-record render with --full escape hatch
+  ([#319](https://github.com/Gharib89/crm/pull/319),
+  [`3894a1c`](https://github.com/Gharib89/crm/commit/3894a1cf649418a47921723e3d17f17f4f79aa9d))
+
+
 ## v4.0.0 (2026-06-15)
 
 ### Features
