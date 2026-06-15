@@ -97,6 +97,32 @@ Work the phases in order. Keep the main thread focused on orchestration and
 decisions; delegate noisy work (long polls, multi-file scans) to subagents so
 this context stays clean.
 
+### Context discipline — a ship run is long; protect the main thread
+
+A full ship touches many files across many turns. What bloats the window is raw
+tool output landing in the main thread, not the work itself — so spend tokens on
+decisions, not dumps. In rough order of impact:
+
+- **Delegate reading, not just review.** Don't read N files into the main thread
+  to build a mental model. Send the investigation to a subagent — "map how X, Y, Z
+  connect; return signatures, call sites, and the data shapes" — and it returns a
+  small conclusion. Then Read only the exact lines you will edit. This is the
+  single biggest lever: a file body you only need to *understand* should never
+  enter main context, only the hunk you *change* should.
+- **Project every `gh` / CLI / API call.** Pipe `gh … --json <only-the-fields> --jq
+  '…'`. A bare `gh pr view --json` serializes the entire PR object (repo metadata
+  twice, every URL field) — kilobytes of noise from one call.
+- **Investigate inside the worktree from the start** (do phase 0 first), so you
+  never read a file in the main checkout and then re-read it in the worktree to
+  edit it.
+- **Trust Edit/Write — don't verify-Read after a successful edit.** The tool errors
+  if the match failed and the harness tracks file state for you; a re-Read to
+  "confirm" the change is pure cost.
+- **Targeted test nodes during the loop; full suite only at the local gate.**
+  Name the nodes you touched; re-running the whole suite every cycle is slow noise.
+- **One scratch file for the design/plan** (it survives a mid-run context summary);
+  don't restate the same summary across turns.
+
 **Your first action — before phase 0, before the worktree — is to create the
 run's task list with the harness task tools** (`TaskCreate` per item; `TaskUpdate`
 to change status; `TaskList` to re-read). If those tools aren't already loaded,
