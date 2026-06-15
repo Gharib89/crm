@@ -203,6 +203,20 @@ false-positive patterns are cheap to pre-empt locally and expensive to discover
 only after the PR is open). If you can't run a check locally, at least *anticipate*
 it. Make sure docs ship in the same change if the project requires it.
 
+**Docs-sync gate (conditional).** Fire it **only if this change altered the
+documented CLI surface or observable behavior** — added / removed / renamed a
+command, flag, option, or choice; changed a default; changed an output format or
+the JSON contract; or changed a documented behavior. When it does, spawn the
+**`docs-sync`** subagent (opus) to bring README, `docs/`, the shipped
+`crm/skills/` skill, and e2e coverage back in line, and fold its `FIXED` edits
+into this change. **Skip it** when nothing user-visible changed — an internal
+refactor (`infra`), a **bugfix that restores already-documented behavior**,
+test-only or build / tooling changes, or pure comments: these need no doc /
+skill / e2e update, so don't burn a subagent on it. When you skip, say so in
+one line at the merge gate (e.g. "docs-sync skipped: bugfix, no surface /
+behavior change") so the decision is visible. (If a repo has no such subagent,
+apply its docs-sync rules by hand under the same condition.)
+
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
 project's automated review. Title it as a Conventional-Commit subject derived
 from the issue (this is what release tooling reads on squash-merge — see project
