@@ -6,7 +6,9 @@ package files, RootComponents<->customizations parity, unresolved
 $webresource: ribbon references, and undeclared global option-set bindings.
 With a backend (the --against-org path) it also reports formid/savedqueryid
 GUID collisions with the target org, plus BPF process-stage GUID collisions read
-from the Workflows/*.xaml members. Mirrors the zip/XML handling proven in
+from the Workflows/*.xaml members, and (the package-version check, #325) whether
+the package's SolutionPackageVersion exceeds the target org version — a newer
+package fails import with 0x80048068. Mirrors the zip/XML handling proven in
 solution.py::_sniff_solution_managed.
 """
 from __future__ import annotations
@@ -85,7 +87,7 @@ _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
 @dataclass(frozen=True)
 class Finding:
     severity: str  # "error" | "warning"
-    check: str     # "package" | "root-parity" | "webresource-ref" | "optionset-binding" | "guid-collision"
+    check: str     # "package" | "root-parity" | "webresource-ref" | "optionset-binding" | "package-version" | "guid-collision"
     message: str
     component: str | None = None
     location: str | None = None
@@ -377,6 +379,64 @@ def _check_xaml_stage_collisions(
     return findings
 
 
+def _version_tuple(s: str | None) -> tuple[int, ...] | None:
+    """Parse a dotted version string ("9.1.0.643") to an int tuple, else None."""
+    if not s:
+        return None
+    try:
+        return tuple(int(part) for part in s.strip().split("."))
+    except ValueError:
+        return None
+
+
+def _check_package_version(sol_root: ET.Element, backend: D365Backend) -> list[Finding]:
+    """Report when the package version exceeds what the target org can import.
+
+    A solution exported from a newer Dataverse version (even a newer *minor*)
+    cannot be imported into an older org: import fails with 0x80048068 ("you can
+    only import solutions with a package version of {org} or earlier"). The other
+    --against-org checks never catch this — they compare GUIDs/refs, not the
+    package version against the org's product version.
+
+    Reads SolutionPackageVersion off the ImportExportXml root (`sol_root`) and the
+    org version from the RetrieveVersion() Web API function ({"Version": "9.x..."}).
+    Best-effort, mirroring the other solution.xml reads: an absent/unparseable
+    package version is skipped, and a failed/empty RetrieveVersion() degrades to a
+    warning — an indeterminate comparison never flips `valid` to false on its own.
+    The org version is compared only to the granularity present in the package
+    version (typically major.minor), so build-level noise can't false-positive.
+    """
+    pkg_str = sol_root.get("SolutionPackageVersion")
+    pkg = _version_tuple(pkg_str)
+    if pkg is None:
+        return []
+    try:
+        resp = _force_get(backend, "RetrieveVersion()", {})
+    except D365Error as exc:
+        return [Finding(
+            "warning", "package-version",
+            f"could not read the target org version to check package "
+            f"compatibility: {exc}",
+            location="RetrieveVersion()")]
+    org_str = resp.get("Version")
+    org = _version_tuple(org_str if isinstance(org_str, str) else None)
+    if org is None:
+        return [Finding(
+            "warning", "package-version",
+            "RetrieveVersion() returned no usable org version; skipped the "
+            "package-version compatibility check",
+            location="RetrieveVersion()")]
+    if pkg > org[:len(pkg)]:
+        return [Finding(
+            "error", "package-version",
+            f"solution package version {pkg_str} is newer than the target org "
+            f"version {org_str}; import would fail with 0x80048068 (you can only "
+            f"import solutions with a package version of {org_str} or earlier)",
+            component=pkg_str,
+            location="solution.xml/<ImportExportXml SolutionPackageVersion>")]
+    return []
+
+
 def _load(
     zip_path: str | Path,
 ) -> tuple[ET.Element | None, ET.Element | None, list[Finding]]:
@@ -460,7 +520,8 @@ def validate_solution(
     round-trip update-import (e.g. a ribbon edit: export→mutate→re-import), where
     the package legitimately re-carries the entity's *existing* form/view/stage
     GUIDs — they are expected state, not fresh-install collisions. The other
-    backend-dependent checks (`webresource-ref`, `optionset-binding`) still run.
+    backend-dependent checks (`webresource-ref`, `optionset-binding`,
+    `package-version`) still run.
     """
     sol_root, cust_root, findings = _load(zip_path)
     checks_run = ["package"]
@@ -477,6 +538,13 @@ def validate_solution(
             # BPF stage GUIDs live in Workflows/*.xaml, not the manifests — same
             # guid-collision check name, re-reads the zip for those members (#163).
             findings += _check_xaml_stage_collisions(zip_path, backend)
+    if sol_root is not None and backend is not None:
+        # Version compatibility is a hard import ceiling, not a collision — it runs
+        # on every --against-org pass (independent of check_collisions) and needs
+        # only solution.xml, so it still fires when customizations.xml fails to
+        # parse (that already yields its own error finding).
+        checks_run.append("package-version")
+        findings += _check_package_version(sol_root, backend)
     valid = not any(f.severity == "error" for f in findings)
     return {
         "valid": valid,

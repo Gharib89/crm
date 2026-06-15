@@ -32,10 +32,11 @@ def _make_pkg(path, solution_xml, customizations_xml, content_types=True, workfl
             zf.writestr(name, body)
 
 
-def _sol(roots=""):
+def _sol(roots="", package_version=""):
+    attr = f' SolutionPackageVersion="{package_version}"' if package_version else ""
     return (
         '<?xml version="1.0"?>\n'
-        "<ImportExportXml><SolutionManifest><UniqueName>cwx_test</UniqueName>"
+        f"<ImportExportXml{attr}><SolutionManifest><UniqueName>cwx_test</UniqueName>"
         f"<Managed>0</Managed><RootComponents>{roots}</RootComponents>"
         "</SolutionManifest></ImportExportXml>"
     )
@@ -711,3 +712,140 @@ def test_unreadable_member_degrades_to_package_finding(tmp_path, monkeypatch):
     report = sv.validate_solution(p)  # must not raise
     assert report["valid"] is False
     assert any(f["check"] == "package" for f in report["findings"])
+
+
+# ── #325: package-version compatibility (--against-org) ───────────────────────
+
+
+class TestPackageVersionCompatibility:
+    """#325: a solution exported from a newer Dataverse version (even a newer
+    *minor*) cannot be imported into an older org — import fails with 0x80048068.
+    On the --against-org path, compare the package's SolutionPackageVersion (on the
+    ImportExportXml root) against the org version from RetrieveVersion()."""
+
+    def test_newer_package_than_org_is_error(self, tmp_path, backend):
+        p = tmp_path / "newer.zip"
+        _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.1.0.643"})
+            report = sv.validate_solution(p, backend=backend)
+        errs = [f for f in report["findings"] if f["check"] == "package-version"]
+        assert len(errs) == 1
+        assert errs[0]["severity"] == "error"
+        assert "9.2.0.0" in errs[0]["message"] and "9.1.0.643" in errs[0]["message"]
+        assert "0x80048068" in errs[0]["message"]
+        assert "package-version" in report["checks_run"]
+        assert report["valid"] is False
+
+    def test_older_or_equal_package_is_ok(self, tmp_path, backend):
+        # Package minor <= org minor → no version finding; valid unaffected. The
+        # check still ran (appears in checks_run).
+        p = tmp_path / "older.zip"
+        _make_pkg(p, _sol(package_version="9.1.0.0"), _cust())
+        with requests_mock.Mocker() as m:
+            ver = m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.2.0.643"})
+            report = sv.validate_solution(p, backend=backend)
+        assert ver.called
+        assert [f for f in report["findings"] if f["check"] == "package-version"] == []
+        assert "package-version" in report["checks_run"]
+        assert report["valid"] is True
+
+    def test_equal_minor_ignores_build_granularity(self, tmp_path, backend):
+        # Same major.minor: a higher *build* in the package must NOT false-positive —
+        # the org is compared only to the package's granularity (major.minor here).
+        p = tmp_path / "samepkg.zip"
+        _make_pkg(p, _sol(package_version="9.2"), _cust())
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.2.0.100"})
+            report = sv.validate_solution(p, backend=backend)
+        assert [f for f in report["findings"] if f["check"] == "package-version"] == []
+        assert report["valid"] is True
+
+    def test_missing_package_version_skips_without_network(self, tmp_path, backend):
+        # No SolutionPackageVersion attribute → skip silently, no RetrieveVersion
+        # call, no finding, valid unaffected. (Also proves the existing online
+        # tests, which omit the attribute, never hit an unmocked RetrieveVersion.)
+        p = tmp_path / "noversion.zip"
+        _make_pkg(p, _sol(), _cust())
+        with requests_mock.Mocker() as m:
+            ver = m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.1.0.0"})
+            report = sv.validate_solution(p, backend=backend)
+        assert not ver.called
+        assert [f for f in report["findings"] if f["check"] == "package-version"] == []
+        assert report["valid"] is True
+        assert "package-version" in report["checks_run"]
+
+    def test_unparseable_package_version_skips(self, tmp_path, backend):
+        # A non-numeric SolutionPackageVersion is unparseable → skip, never crash,
+        # never flip valid, and no network probe.
+        p = tmp_path / "badversion.zip"
+        _make_pkg(p, _sol(package_version="not.a.version"), _cust())
+        with requests_mock.Mocker() as m:
+            ver = m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.1.0.0"})
+            report = sv.validate_solution(p, backend=backend)
+        assert not ver.called
+        assert [f for f in report["findings"] if f["check"] == "package-version"] == []
+        assert report["valid"] is True
+
+    def test_retrieveversion_failure_is_warning_not_error(self, tmp_path, backend):
+        # A failed RetrieveVersion() must degrade to a warning (not crash, not flip
+        # valid) — an indeterminate comparison is never a false rejection.
+        p = tmp_path / "verfail.zip"
+        _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"RetrieveVersion"), status_code=500)
+            report = sv.validate_solution(p, backend=backend)
+        vers = [f for f in report["findings"] if f["check"] == "package-version"]
+        assert len(vers) == 1
+        assert vers[0]["severity"] == "warning"
+        assert report["valid"] is True
+        assert "package-version" in report["checks_run"]
+
+    def test_empty_org_version_is_warning_not_error(self, tmp_path, backend):
+        # RetrieveVersion() returns no usable version → warning, valid unaffected.
+        p = tmp_path / "emptyver.zip"
+        _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"RetrieveVersion"), json={})
+            report = sv.validate_solution(p, backend=backend)
+        vers = [f for f in report["findings"] if f["check"] == "package-version"]
+        assert len(vers) == 1
+        assert vers[0]["severity"] == "warning"
+        assert report["valid"] is True
+
+    def test_offline_path_skips_version_check(self, tmp_path):
+        # No --against-org (no backend): the version check does not run and there
+        # is no network call. Offline behavior is unchanged.
+        p = tmp_path / "offline.zip"
+        _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
+        report = sv.validate_solution(p)
+        assert "package-version" not in report["checks_run"]
+        assert [f for f in report["findings"] if f["check"] == "package-version"] == []
+        assert report["valid"] is True
+
+    def test_version_check_runs_even_if_customizations_unparseable(self, tmp_path, backend):
+        # The version check needs only solution.xml; a broken customizations.xml
+        # (its own package error) must not suppress the version-ceiling finding.
+        p = tmp_path / "badcust.zip"
+        _make_pkg(p, _sol(package_version="9.2.0.0"), "<not-well-formed")
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.1.0.643"})
+            report = sv.validate_solution(p, backend=backend)
+        vers = [f for f in report["findings"] if f["check"] == "package-version"]
+        assert len(vers) == 1 and vers[0]["severity"] == "error"
+        assert "package-version" in report["checks_run"]
+        assert report["valid"] is False
+
+    def test_cli_against_org_detects_version_ceiling(self, tmp_path, backend, monkeypatch):
+        p = tmp_path / "cli_ver.zip"
+        _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        import json
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.1.0.643"})
+            result = CliRunner().invoke(
+                cli, ["--json", "solution", "validate", str(p), "--against-org"])
+        assert result.exit_code == 1, result.output
+        data = json.loads(result.output)
+        assert any(f["check"] == "package-version" and "0x80048068" in f["message"]
+                   for f in data["data"]["findings"])
