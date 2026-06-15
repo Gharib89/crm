@@ -648,7 +648,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
               type=click.Choice(["None", "Recommended", "ApplicationRequired"]),
               default="None")
 @click.option("--max-length", type=int, default=None,
-              help="String/memo: max characters.")
+              help="String/memo: max characters (default 100/2000).")
 @click.option("--format", "format_name", default=None,
               help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
 @click.option("--min", "min_value", type=float, default=None,

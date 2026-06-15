@@ -19,7 +19,10 @@ from crm.core import metadata_constraints as mc
 from crm.core import references as ref_mod
 
 _NUMERIC_KINDS = {"integer", "bigint", "decimal", "double", "money"}  # pyright: ignore[reportUnusedVariable]
-_LENGTH_KINDS = {"string", "memo"}  # pyright: ignore[reportUnusedVariable]
+# string/memo MaxLength defaults — the single source of truth for the pair
+# (scaffold imports it) so all three create paths default consistently when
+# max_length is omitted: scaffold shorthand, apply spec, add-attribute (#321).
+LENGTH_KIND_DEFAULTS: dict[str, int] = {"string": 100, "memo": 2000}
 _PICKLIST_KINDS = {"picklist", "multiselect"}
 
 
@@ -567,6 +570,11 @@ def add_attribute(
             opts["optionset_metadata_id"] = _resolve_global_optionset_id(
                 backend, optionset_name
             )
+    # Default MaxLength for string/memo when omitted so the builder's _require
+    # resolves to the kind default rather than erroring; an explicit value (any
+    # path) is honored verbatim (#321).
+    if kind in LENGTH_KIND_DEFAULTS and opts["max_length"] is None:
+        opts["max_length"] = LENGTH_KIND_DEFAULTS[kind]
     body = builder(opts)
 
     exists = target_exists(

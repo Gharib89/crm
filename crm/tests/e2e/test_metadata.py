@@ -80,3 +80,35 @@ def test_add_attribute_each_kind(backend, ephemeral_entity, kind, extra):
         **extra,
     )
     assert info.get("created") or info.get("kind") == "OneToMany", info
+
+
+@covers("metadata add-attribute")
+@pytest.mark.parametrize("kind,odata_type,expected_max_length", [
+    ("string", "StringAttributeMetadata", 100),
+    ("memo", "MemoAttributeMetadata", 2000),
+])
+def test_add_string_memo_without_max_length_defaults(
+    backend, ephemeral_entity, kind, odata_type, expected_max_length,
+):
+    """#321: a string/memo column created with no max_length must succeed at real
+    apply (not just dry-run) and store the kind default (100/2000) server-side."""
+    from crm.core import metadata_attrs as ma
+    schema = f"new_E2EDefault{kind.capitalize()}"
+    info = ma.add_attribute(
+        backend,
+        entity=ephemeral_entity,
+        kind=kind,
+        schema_name=schema,
+        display_name=f"E2E default {kind}",
+        publish=False,
+    )
+    assert info.get("created"), info
+    # MaxLength lives on the derived attribute type, not the base AttributeMetadata,
+    # so the read-back must cast to it.
+    rb = backend.get(
+        f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+        f"/Attributes(LogicalName='{schema.lower()}')"
+        f"/Microsoft.Dynamics.CRM.{odata_type}",
+        params={"$select": "MaxLength"},
+    )
+    assert rb["MaxLength"] == expected_max_length

@@ -73,9 +73,10 @@ class TestAddAttributeString:
         assert body["MaxLength"] == 100
         assert body["FormatName"]["Value"] == "Text"
 
-    def test_string_requires_max_length(self, backend):
+    def test_string_defaults_max_length(self, backend):
         from crm.core import metadata_attrs as ma
-        with pytest.raises(D365Error, match="max-length"):
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
             ma.add_attribute(
                 backend,
                 entity="new_widget",
@@ -83,6 +84,23 @@ class TestAddAttributeString:
                 schema_name="new_Label",
                 display_name="Label",
             )
+        body = _post_body(m)
+        assert body["MaxLength"] == 100
+
+    def test_explicit_max_length_is_honored(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
+            ma.add_attribute(
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
+                max_length=250,
+            )
+        body = _post_body(m)
+        assert body["MaxLength"] == 250
 
     def test_string_rejects_precision_flag(self, backend):
         from crm.core import metadata_attrs as ma
@@ -115,9 +133,10 @@ class TestAddAttributeMemo:
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.MemoAttributeMetadata"
         assert body["MaxLength"] == 4000
 
-    def test_memo_requires_max_length(self, backend):
+    def test_memo_defaults_max_length(self, backend):
         from crm.core import metadata_attrs as ma
-        with pytest.raises(D365Error, match="max-length"):
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_notes", "Memo")
             ma.add_attribute(
                 backend,
                 entity="new_widget",
@@ -125,6 +144,8 @@ class TestAddAttributeMemo:
                 schema_name="new_Notes",
                 display_name="Notes",
             )
+        body = _post_body(m)
+        assert body["MaxLength"] == 2000
 
 
 class TestAddAttributeNonAsciiLabel:
@@ -158,6 +179,17 @@ class TestAddAttributeNumeric:
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
         assert body["MinValue"] == 0
         assert body["MaxValue"] == 1000
+
+    def test_integer_rejects_max_length(self, backend):
+        # Defaulting max_length is scoped to string/memo; a non-length kind still
+        # rejects an explicit max_length (#321).
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="max-length is not valid"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="integer",
+                schema_name="new_Qty", display_name="Qty",
+                max_length=100,
+            )
 
     def test_integer_min_max_coerced_to_int(self, backend):
         # The CLI parses --min/--max as floats, so a bound of 0 arrives as 0.0 and

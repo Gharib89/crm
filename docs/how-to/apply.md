@@ -54,7 +54,9 @@ entities:
 `memo`, `integer`, `bigint`, `decimal`, `double`, `money`, `boolean`,
 `datetime`, `picklist`, `multiselect`, `image`, `file`, `lookup`). A `picklist`
 needs `optionset_name` (a global set, usually declared under `optionsets`) **or**
-inline `options`; a `lookup` needs `target_entity`. View `columns` are entity
+inline `options`; a `lookup` needs `target_entity`. `max_length` is optional for
+`string`/`memo` (defaults to 100 / 2000 when omitted) and rejected on any other kind.
+View `columns` are entity
 **logical** names; use `name:width` (or `{name, width}`) to set a column width
 (default 100). Malformed input is rejected up front, before any HTTP call.
 
