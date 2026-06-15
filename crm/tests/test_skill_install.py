@@ -151,3 +151,26 @@ def test_uninstall_removes_tree(tmp_path: Path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert not (dest / "SKILL.md").exists()
     assert not (dest / "reference").exists()
+
+
+def test_uninstall_dest_echoes_directory_on_success_and_noop(tmp_path: Path, monkeypatch):
+    # `dest` must echo the destination directory the user passed, identically on
+    # a successful removal and on a subsequent no-op — not drift to the SKILL.md
+    # marker path when nothing is installed.
+    import json
+
+    dest = tmp_path / "crm"
+    runner = _runner(tmp_path, monkeypatch)
+    runner.invoke(cli, ["--json", "skill", "install", "--dest", str(dest), "--force"])
+
+    removed_result = runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)])
+    noop_result = runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)])
+    assert removed_result.exit_code == 0, removed_result.output
+    assert noop_result.exit_code == 0, noop_result.output
+    removed = json.loads(removed_result.output)
+    noop = json.loads(noop_result.output)
+
+    assert removed["data"]["removed"] is True
+    assert noop["data"]["removed"] is False
+    assert removed["data"]["dest"] == str(dest.resolve())
+    assert noop["data"]["dest"] == str(dest.resolve())
