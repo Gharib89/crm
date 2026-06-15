@@ -2,7 +2,7 @@
 name: docs-sync
 description: Audit and update the docs/skill/e2e artifacts that must ship in the SAME change as a CLI behavior change, then update the shipped crm skill itself. Use after adding or changing a crm command, flag, choice, default, or behavior — and before opening a PR — to keep README, docs/, crm/skills/, and e2e coverage in sync with the code. Read CLAUDE.md "Keep docs in sync with code" for the canonical gates.
 tools: Read, Grep, Glob, Bash, Edit, Write, Skill
-model: opus
+model: sonnet
 ---
 
 # docs-sync
