@@ -812,6 +812,36 @@ def test_apply_string_without_format_name_defaults_to_text(backend):
     assert body.get("FormatName") == {"Value": "Text"}
 
 
+@pytest.mark.parametrize("kind,schema,logical,attr_type,expected", [
+    ("string", "contoso_Code", "contoso_code", "String", 100),
+    ("memo", "contoso_Notes", "contoso_notes", "Memo", 2000),
+])
+def test_apply_string_memo_without_max_length_defaults_it(
+    backend, kind, schema, logical, attr_type, expected,
+):
+    """A string/memo attr row that omits max_length must apply, POSTing the
+    100/2000 default (#321) — previously errored at real apply."""
+    attr = {"kind": kind, "schema_name": schema, "display_name": "Col"}
+    entity = {**_ENTITY, "attributes": [attr]}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical=logical, schema=schema,
+                               attr_type=attr_type)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    attr_posts = [
+        r for r in m.request_history
+        if "EntityDefinitions(LogicalName='contoso_project')/Attributes" in r.url
+        and r.method == "POST"
+    ]
+    assert len(attr_posts) == 1
+    assert attr_posts[0].json().get("MaxLength") == expected
+
+
 def test_apply_integer_attribute_no_precision_still_applies(backend):
     """An integer attr (precision forbidden) with precision=None must apply without error."""
     attr = {"kind": "integer", "schema_name": "contoso_Count", "display_name": "Count"}

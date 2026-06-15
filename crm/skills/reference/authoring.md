@@ -41,10 +41,9 @@ entities:
       - {name: Active Projects, columns: [contoso_name, contoso_code]}
 ```
 
-In a spec attribute block, **`string` and `memo` both need an explicit `max_length`** —
-unlike the `scaffold` / column-shorthand path below, which defaults them (100 / 2000). The
-spec builder does not default, so `{kind: memo}` with no `max_length` fails the *real*
-apply (`--max-length is required for this kind`) even though `--dry-run` plans it as fine.
+In a spec attribute block, `string` and `memo` `max_length` is optional — omit it and
+the create defaults to 100 / 2000 (matching the `scaffold` / column-shorthand path). An
+explicit `max_length` is honored verbatim; `max_length` on any other kind is rejected.
 
 ## Scaffold a table — `scaffold table`
 

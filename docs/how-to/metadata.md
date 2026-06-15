@@ -98,6 +98,7 @@ crm --json metadata add-attribute cwx_ticket --kind picklist \
   --schema-name cwx_Priority --display "Priority" --optionset-name cwx_priority --if-exists skip
 ```
 `--kind` also accepts `integer` (with `--min`/`--max`), `memo`, `boolean`, `datetime`, etc.
+For `--kind string`/`memo`, `--max-length` is optional — omit it to default to 100 / 2000.
 
 ## Create a 1:N relationship (adds a lookup on the N side)
 

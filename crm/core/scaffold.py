@@ -20,13 +20,11 @@ import re
 from typing import Any
 
 from crm.core import metadata_constraints as mc
-from crm.core.metadata_attrs import ATTRIBUTE_KINDS
+from crm.core.metadata_attrs import ATTRIBUTE_KINDS, LENGTH_KIND_DEFAULTS
 from crm.utils.d365_backend import D365Error
 
 _ALLOWED_OPT_KEYS = {"max_length", "required", "target_entity", "optionset_name", "description"}
 
-# Kinds that require max_length and their defaults.
-_MAX_LENGTH_DEFAULTS: dict[str, int] = {"string": 100, "memo": 2000}
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 
 
@@ -114,9 +112,9 @@ def _build_attribute(
     }
 
     # Per-kind validation and default injection.
-    if kind in _MAX_LENGTH_DEFAULTS:
+    if kind in LENGTH_KIND_DEFAULTS:
         if "max_length" not in opts:
-            attr["max_length"] = _MAX_LENGTH_DEFAULTS[kind]
+            attr["max_length"] = LENGTH_KIND_DEFAULTS[kind]
         else:
             attr["max_length"] = opts["max_length"]
     elif "max_length" in opts:
