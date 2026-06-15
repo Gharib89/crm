@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from crm.cli import CLIContext, cli
+from crm.commands.repl import _strip_repl_prefix
 
 pytestmark = pytest.mark.usefixtures("isolated_home")
 
@@ -78,3 +79,33 @@ def test_non_repl_bare_invocation_defaults():
     assert ctx.session_name == "default", (
         f"expected 'default' for a fresh context, got {ctx.session_name!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Leading `crm` prefix strip (issue #300)
+# ---------------------------------------------------------------------------
+
+def test_strip_leading_crm_prefix():
+    """A single leading `crm` token is dropped so the shell reflex works."""
+    assert _strip_repl_prefix(["crm", "connection", "whoami"]) == ["connection", "whoami"]
+
+
+def test_bare_crm_is_noop():
+    """A bare `crm` line strips to empty and signals a no-op (None), not [] —
+    dispatching [] would relaunch the REPL via invoke_without_command."""
+    assert _strip_repl_prefix(["crm"]) is None
+
+
+def test_prefixless_line_unchanged():
+    """The accepted prefix-less form passes through untouched."""
+    assert _strip_repl_prefix(["connection", "whoami"]) == ["connection", "whoami"]
+
+
+def test_only_exact_crm_token_stripped():
+    """A token that merely starts with `crm` (e.g. `crmfoo`) is not stripped."""
+    assert _strip_repl_prefix(["crmfoo", "x"]) == ["crmfoo", "x"]
+
+
+def test_strips_at_most_one_crm():
+    """Only the first `crm` is stripped; a second is left as an argument."""
+    assert _strip_repl_prefix(["crm", "crm", "whoami"]) == ["crm", "whoami"]

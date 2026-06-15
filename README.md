@@ -272,6 +272,10 @@ caller â€” `--json`, `CRM_NO_REPL=1`, or a piped/redirected stdin (agents, CI) â
 exits 2 with a usage message pointing at `crm --help` instead of hanging on a
 prompt. Explicit `crm repl` always launches.
 
+Inside the REPL, commands are typed without the `crm` prefix
+(`connection whoami`, not `crm connection whoami`), but a single leading `crm`
+is tolerated and ignored so a copy-paste from the docs still works.
+
 ### One-shot subcommands
 
 ```bash
