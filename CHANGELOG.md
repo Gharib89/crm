@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.9 (2026-06-15)
+
+### Bug Fixes
+
+- Don't crash profile add when keyring backend panics at the Rust layer
+  ([#316](https://github.com/Gharib89/crm/pull/316),
+  [`8fc8281`](https://github.com/Gharib89/crm/commit/8fc8281ab0fccfe497cb47d4a9003eb37ee3809e))
+
+
 ## v3.12.8 (2026-06-15)
 
 ### Bug Fixes
