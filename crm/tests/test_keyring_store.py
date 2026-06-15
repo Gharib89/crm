@@ -82,6 +82,30 @@ def test_is_available_false_when_get_keyring_raises(monkeypatch):
     assert keyring_store.is_available() is False
 
 
+def test_is_available_false_when_get_keyring_panics(monkeypatch):
+    # A backend can panic at the Rust layer (pyo3) when cryptography's bindings
+    # can't load — that raises a BaseException subclass, not Exception (issue #308).
+    class _Panic(BaseException):
+        pass
+
+    class _Panics:
+        def get_keyring(self):
+            raise _Panic("Python API call failed")
+    monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Panics())
+    assert keyring_store.is_available() is False
+
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
+def test_is_available_propagates_interrupts(monkeypatch, exc):
+    # Catching BaseException must not swallow Ctrl-C / interpreter exit.
+    class _Interrupt:
+        def get_keyring(self):
+            raise exc()
+    monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Interrupt())
+    with pytest.raises(exc):
+        keyring_store.is_available()
+
+
 class _ErroringKeyring:
     """Usable backend whose password ops raise (locked Keychain, DBus error)."""
     def get_password(self, service, name):

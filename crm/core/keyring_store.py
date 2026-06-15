@@ -63,7 +63,12 @@ def is_available() -> bool:
         return False
     try:
         backend = kr.get_keyring()
-    except Exception:
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException:
+        # A backend can panic at the Rust layer (pyo3) when its native bindings
+        # can't load — that raises pyo3_runtime.PanicException, a BaseException
+        # subclass, not Exception (issue #308). "Unusable" is exactly this case.
         return False
     return type(backend).__module__ != _NULL_BACKEND_MODULE
 
