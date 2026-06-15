@@ -43,6 +43,37 @@ def _strip_odata_keys(obj: Any) -> Any:
     return obj
 
 
+def _concise_record(
+    record: dict[str, Any], *, primary_name: str | None = None,
+) -> dict[str, Any]:
+    """Project a single record down to its populated business fields for the
+    human render (#302 / ADR 0008 — Record render modes).
+
+    Drops `@odata.*` protocol keys (context/etag/…) and null/empty values, then
+    hoists the synthesized id (`_entity_id`/`_entity_id_url`) first, followed by
+    the primary-name attribute when *primary_name* is supplied — turning a
+    ~190-line dump led by OData plumbing into the handful of fields a user wants.
+    *primary_name* is the entity's PrimaryNameAttribute, passed only when already
+    in the metadata cache (never via an added round-trip); a cold cache leaves
+    the name in its natural position. The `--full` flag bypasses this projection.
+    JSON output is unaffected — this shapes only the human key/value render.
+    """
+    def _empty(v: Any) -> bool:
+        # None and the empty string/list/dict are noise; False and 0 are data.
+        return v is None or v == "" or v == [] or v == {}
+
+    kept = {k: v for k, v in record.items()
+            if _ODATA_PROTOCOL_MARKER not in k and not _empty(v)}
+    ordered: dict[str, Any] = {}
+    for key in ("_entity_id", "_entity_id_url"):
+        if key in kept:
+            ordered[key] = kept.pop(key)
+    if primary_name and primary_name in kept:
+        ordered[primary_name] = kept.pop(primary_name)
+    ordered.update(kept)
+    return ordered
+
+
 def _normalize_odata_envelope(data: Any) -> "tuple[Any, dict[str, Any]]":
     """Unwrap a Web API collection envelope to a bare array, lifting paging.
 

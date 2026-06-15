@@ -34,6 +34,32 @@ crm --json entity upsert cwx_tickets 00000000-0000-0000-0000-000000000015 \
 
 Both `create` and `update` accept `--return-record` (echo the full row back) and `--no-return` (a minimal ack, no echoed row) — only the default differs: `create` echoes the row unless you pass `--no-return`, `update` does not echo the record unless you pass `--return-record` (it still returns the standard `{"ok": true}` ack). Passing both at once is a usage error.
 
+## Concise human output, and `--full` to expand
+
+In **human** mode (no `--json`), `entity get <set> <id>` and `entity create <set> --data …` render a record *concisely* by default (ADR 0008 — Record render modes): the `@odata.*` protocol keys (`@odata.context`/`@odata.etag`/…) and any null/empty fields are dropped, and the normalized id (`_entity_id`) is hoisted to the top, followed by the primary-name attribute when that entity's metadata is already cached. The effect is that a `get` on an account shows the handful of populated fields a person actually wants instead of the ~190-line dump (led by `@odata.context`/`@odata.etag`, name and id buried) it used to print.
+
+```text
+crm entity get accounts 11111111-1111-1111-1111-111111111111
+# _entity_id : 11111111-1111-1111-1111-111111111111
+# name       : Contoso Ltd
+# telephone1 : +1-555-0100
+# ...populated business fields only...
+```
+
+Pass `--full` (on both `entity get` and `entity create`) to restore the old behavior — **every** field, including nulls and the `@odata.*` plumbing:
+
+```text
+crm entity get accounts 11111111-1111-1111-1111-111111111111 --full
+# @odata.context : .../$metadata#accounts/$entity
+# @odata.etag    : W/"1234567"
+# _entity_id     : 11111111-1111-1111-1111-111111111111
+# accountid      : 11111111-1111-1111-1111-111111111111
+# name           : Contoso Ltd
+# ...every field including nulls...
+```
+
+The primary-name hoist reads the **warm metadata cache only** — it never adds a metadata round-trip to a plain get/create, so a cold cache simply leaves the name in its natural position. `--full` is a human-mode concept and has **no effect under `--json`**: JSON output is unchanged (still the full curated record; `--minimal` trims the JSON).
+
 ## Catch typo'd field names before the write (`--validate`)
 
 ```bash
