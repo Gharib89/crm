@@ -38,3 +38,12 @@ crm --json app build-sitemap "CRMWorx Sitemap" \
   --unique-name cwx_crmworx
 ```
 Generates the SiteMapXml for you, then creates the sitemap via the same path as `set-sitemap` (which instead uploads a pre-built XML file). The grammar is `--area 'id[:Title]'` (repeatable, at least one required), `--group 'areaId/groupId[:Title]'` (nested under an area), and `--subarea 'areaId/groupId:entity=<logical>[:Title]'`. Titles are optional throughout: omit an Area/Group title and it falls back to its own Id as the label. A SubArea binds a table through the SiteMapXml `Entity=` attribute; its Title is optional too, and when omitted the platform derives the label from the entity. SubArea Ids are auto-allocated from the entity logical name (you don't supply them); Area/Group Ids and the references between them are validated, so broken references or duplicate Ids fail with an error. Every attribute value is XML-escaped. `--unique-name` sets `sitemapnameunique` to auto-associate with that app, exactly as on `set-sitemap`. Creation publishes by default (`--no-publish` to skip). Use `crm --dry-run app build-sitemap ...` to print the generated SiteMapXml without creating anything.
+
+## Delete the app
+
+```bash
+crm --dry-run app delete cwx_crmworx          # preview: names the app + dependent rows it would sweep, issues no DELETE
+crm app delete cwx_crmworx --yes              # delete, skipping the destructive-op confirmation
+```
+
+Resolves `NAME_OR_ID` as an `appmoduleid` (GUID), else by `uniquename`, else by display `name`; an unknown or ambiguous name fails with a clear error. Before deleting the app it **sweeps the dependent data rows that hold a record-level foreign key to it** — chiefly `appsetting`. Without that sweep a bare `crm entity delete appmodules <id>` fails with server error `0x80048d21` ("cannot delete because it is referenced by another record"). This FK block happens on **both** on-prem v9.x and Dataverse online (online blocks too, even though the `appsetting` relationship's metadata claims cascade-delete), so the sweep does not trust cascade metadata — it removes whatever rows reference the app. A **managed** app is refused with an actionable error (uninstall its parent solution instead). The destructive-op gate is `--yes` (skip the confirmation, exactly like `entity delete`); the global `--dry-run` and `--json` apply.

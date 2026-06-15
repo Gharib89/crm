@@ -9,6 +9,7 @@ from crm.commands._helpers import (
     _publish_option,
     _journal, _resolve_publish, _solution_option,
     _resolve_solution, _emit_with_warning, d365_errors,
+    _confirm_destructive, _destructive_option,
 )
 
 
@@ -47,6 +48,29 @@ def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
         )
     _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, unique_name, info, solution=solution)
+
+
+@app_group.command("delete")
+@click.argument("name_or_id")
+@_destructive_option
+@pass_ctx
+def app_delete(ctx: CLIContext, name_or_id, yes):
+    """Delete a model-driven app, sweeping FK-blocking dependent rows first.
+
+    Resolves NAME_OR_ID as an appmoduleid (GUID), else its uniquename, else its
+    display name. Removes the dependent data rows that hold a record-level FK to
+    the app (e.g. appsetting on on-prem) before deleting the app, and lists every
+    record it removed. Refuses a managed app.
+    """
+    # --dry-run is a read-only preview (no writes); never gate it behind the
+    # destructive confirm prompt — that would make the preview unreachable in a
+    # non-TTY (the confirm aborts on EOF) and defeats the safety check.
+    if not ctx.dry_run:
+        _confirm_destructive(ctx, "model-driven app", name_or_id, yes)
+    with d365_errors(ctx):
+        info = app_mod.delete_app(ctx.backend(), name_or_id)
+    ctx.emit(True, data=info)
+    _journal(ctx, name_or_id, info)
 
 
 @app_group.command("add-components")

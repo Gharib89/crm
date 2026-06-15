@@ -19,6 +19,26 @@ _APP_ID = "77777777-7777-7777-7777-777777777777"
 _DEFAULT_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
 _SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
 
+# app delete fixtures
+_APP_UNIQUE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"  # appmoduleidunique value
+_APPSETTING_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+_REL_URL = "EntityDefinitions(LogicalName='appmodule')/OneToManyRelationships"
+_APP_ROW = {"appmoduleid": _APP_ID, "appmoduleidunique": _APP_UNIQUE,
+            "uniquename": "cwx_crmworx", "name": "CRMWorx", "ismanaged": False}
+# appmodule 1:N relationships. The sweep ignores CascadeConfiguration on purpose
+# (appsetting reports Cascade on online yet its FK still blocks the delete), so
+# the fixtures carry only the shape the sweep actually uses.
+_RELS = {"value": [
+    {"ReferencingEntity": "appsetting", "ReferencingAttribute": "parentappmoduleid",
+     "ReferencedAttribute": "appmoduleid"},
+]}
+# A second child to prove the sweep removes *every* referencing row, not just one.
+_RELS_TWO = {"value": _RELS["value"] + [
+    {"ReferencingEntity": "appconfig", "ReferencingAttribute": "appmoduleid",
+     "ReferencedAttribute": "appmoduleid"},
+]}
+_APPCONFIG_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+
 
 def _posts(m):
     return [r for r in m.request_history if r.method == "POST"]
@@ -250,6 +270,191 @@ class TestSetSitemap:
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
         assert captured["unique_name"] == "cwx_crmworx"
         assert captured["sitemap_xml"].startswith("<SiteMap")
+
+
+def _deletes(m):
+    return [r for r in m.request_history if r.method == "DELETE"]
+
+
+class TestDeleteApp:
+    def _name_map(self, monkeypatch):
+        """Stub load_name_map so child set/PK resolution needs no metadata GET."""
+        from crm.core.entity_names import NameMap
+        nm = NameMap(
+            logical_to_set={"appsetting": "appsettings", "appconfig": "appconfigs"},
+            set_to_logical={"appsettings": "appsetting", "appconfigs": "appconfig"},
+            primary_id={"appsetting": "appsettingid", "appconfig": "appconfigid"},
+        )
+        monkeypatch.setattr("crm.core.appmodule.load_name_map",
+                            lambda backend, **kw: nm)
+
+    def test_sweeps_dependent_then_deletes_app(self, backend, monkeypatch):
+        from crm.core import appmodule
+        self._name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"appmodules({_APP_ID})"), json=_APP_ROW)
+            m.get(backend.url_for(_REL_URL), json=_RELS)
+            m.get(backend.url_for("appsettings"),
+                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
+            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=204)
+            m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
+            out = appmodule.delete_app(backend, _APP_ID)
+        assert out["deleted"] is True
+        assert out["appmodule"] == _APP_ID
+        assert out["dependents_deleted"] == [{"entity": "appsetting", "id": _APPSETTING_ID}]
+        # Dependent row deleted BEFORE the appmodule.
+        dels = _deletes(m)
+        assert dels[0].url.endswith(f"appsettings({_APPSETTING_ID})")
+        assert dels[-1].url.lower().endswith(f"appmodules({_APP_ID})")
+
+    def test_sweeps_all_referencing_children_ignoring_cascade(self, backend, monkeypatch):
+        # The sweep keys off "a row references the app", NOT metadata cascade — so
+        # every referencing child (appsetting + appconfig) is removed.
+        from crm.core import appmodule
+        self._name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"appmodules({_APP_ID})"), json=_APP_ROW)
+            m.get(backend.url_for(_REL_URL), json=_RELS_TWO)
+            m.get(backend.url_for("appsettings"),
+                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
+            m.get(backend.url_for("appconfigs"),
+                  json={"value": [{"appconfigid": _APPCONFIG_ID}]})
+            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=204)
+            m.delete(backend.url_for(f"appconfigs({_APPCONFIG_ID})"), status_code=204)
+            m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
+            out = appmodule.delete_app(backend, _APP_ID)
+        entities = {d["entity"] for d in out["dependents_deleted"]}
+        assert entities == {"appsetting", "appconfig"}
+
+    def test_child_delete_failure_does_not_abort_sweep(self, backend, monkeypatch):
+        # A dependent that won't delete is left for the parent DELETE to cascade;
+        # the app still deletes and the failed child is absent from the result.
+        from crm.core import appmodule
+        self._name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"appmodules({_APP_ID})"), json=_APP_ROW)
+            m.get(backend.url_for(_REL_URL), json=_RELS)
+            m.get(backend.url_for("appsettings"),
+                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
+            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=400,
+                     json={"error": {"code": "0x0", "message": "not deletable"}})
+            m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
+            out = appmodule.delete_app(backend, _APP_ID)
+        assert out["deleted"] is True
+        assert out["dependents_deleted"] == []  # the failed child was not deleted
+        # …but it is reported, not silently dropped (ADR 0007).
+        assert out["dependents_skipped"] == [{"entity": "appsetting", "id": _APPSETTING_ID}]
+
+    def test_resolves_uniquename(self, backend, monkeypatch):
+        from crm.core import appmodule
+        self._name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": [_APP_ROW]})
+            m.get(backend.url_for(_REL_URL), json={"value": []})
+            m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
+            out = appmodule.delete_app(backend, "cwx_crmworx")
+        assert out["deleted"] is True
+        # uniquename filter used (not the appmoduleid path).
+        first = m.request_history[0]
+        assert "uniquename" in first.url
+
+    def test_falls_back_to_display_name(self, backend, monkeypatch):
+        from crm.core import appmodule
+        self._name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            # uniquename miss, then display-name hit.
+            m.get(backend.url_for("appmodules"),
+                  [{"json": {"value": []}}, {"json": {"value": [_APP_ROW]}}])
+            m.get(backend.url_for(_REL_URL), json={"value": []})
+            m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
+            out = appmodule.delete_app(backend, "CRMWorx")
+        assert out["deleted"] is True
+        gets = [r for r in m.request_history if r.method == "GET"]
+        assert "uniquename" in gets[0].url and "name" in gets[1].url
+
+    def test_unknown_target_raises(self, backend, monkeypatch):
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": []})
+            with pytest.raises(D365Error, match="was not found"):
+                appmodule.delete_app(backend, "cwx_missing")
+
+    def test_ambiguous_name_raises(self, backend, monkeypatch):
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": [_APP_ROW, _APP_ROW]})
+            with pytest.raises(D365Error, match="ambiguous"):
+                appmodule.delete_app(backend, "CRMWorx")
+
+    def test_refuses_managed_app(self, backend, monkeypatch):
+        from crm.core import appmodule
+        managed = dict(_APP_ROW, ismanaged=True)
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"appmodules({_APP_ID})"), json=managed)
+            with pytest.raises(D365Error, match="managed"):
+                appmodule.delete_app(backend, _APP_ID)
+            # No DELETE issued for a managed app.
+            assert not _deletes(m)
+
+    def test_dry_run_previews_without_deleting(self, profile, monkeypatch):
+        from crm.core import appmodule
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        self._name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.get(dry.url_for(f"appmodules({_APP_ID})"), json=_APP_ROW)
+            m.get(dry.url_for(_REL_URL), json=_RELS)
+            m.get(dry.url_for("appsettings"),
+                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
+            out = appmodule.delete_app(dry, _APP_ID)
+        assert out["_dry_run"] is True
+        assert out["would_delete"]["appmodule"] == _APP_ID
+        assert out["would_delete"]["dependents"] == [
+            {"entity": "appsetting", "id": _APPSETTING_ID}]
+        assert not _deletes(m)  # discovery is read-only; no DELETE
+
+    def test_remaining_blocker_names_entity(self, backend, monkeypatch):
+        # appmodule DELETE still 0x80048d21 after the sweep → name the live blocker.
+        from crm.core import appmodule
+        self._name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"appmodules({_APP_ID})"), json=_APP_ROW)
+            m.get(backend.url_for(_REL_URL), json=_RELS)
+            m.get(backend.url_for("appsettings"),
+                  json={"value": [{"appsettingid": _APPSETTING_ID}]})
+            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=204)
+            m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=400, json={
+                "error": {"code": "0x80048d21",
+                          "message": "cannot delete; referenced by another record"}})
+            with pytest.raises(D365Error, match="appsetting"):
+                appmodule.delete_app(backend, _APP_ID)
+
+    def test_command_wires_core_with_yes(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.appmodule.delete_app",
+            lambda backend, name_or_id: captured.setdefault("target", name_or_id)
+            or {"deleted": True, "appmodule": _APP_ID, "dependents_deleted": []})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(
+            cli, ["--json", "app", "delete", "cwx_crmworx", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert captured["target"] == "cwx_crmworx"
+
+    def test_command_dry_run_skips_confirm_and_previews(self, monkeypatch):
+        # --dry-run is a read-only preview: no --yes, no TTY, must NOT abort.
+        from click.testing import CliRunner
+        from crm.cli import cli
+        preview = {"_dry_run": True,
+                   "would_delete": {"appmodule": _APP_ID, "dependents": []}}
+        monkeypatch.setattr("crm.core.appmodule.delete_app",
+                            lambda backend, name_or_id: preview)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(
+            cli, ["--json", "--dry-run", "app", "delete", "cwx_crmworx"])
+        assert result.exit_code == 0, result.output
+        assert '"_dry_run": true' in result.output
 
 
 class TestBuildSitemapXml:

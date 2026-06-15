@@ -202,3 +202,111 @@ def test_app_lifecycle(backend, cli, request, unique):
     sm_set_id = env_set["data"].get("sitemapid")
     if sm_set_id:
         created_sitemap_ids.append(sm_set_id)
+
+
+# ── app delete: FK-blocking dependent sweep ───────────────────────────────────
+
+
+@covers("app delete")
+def test_app_delete_unknown_target_errors(cli, unique):
+    """Deleting a non-existent app fails cleanly with a not-found error.
+
+    Runs on any target: it performs no write, so it is immune to the appmodule
+    read-replica lag that gates the FK-sweep test below to on-prem.
+    """
+    r = cli(["--json", "app", "delete", f"new_missing{unique[:8]}", "--yes"],
+            check=False)
+    assert r.returncode != 0
+    env = json.loads(r.stdout)
+    assert env["ok"] is False
+    assert "not found" in (env.get("error") or "").lower()
+
+
+@covers("app delete")
+@pytest.mark.requires_onprem
+@pytest.mark.slow
+def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique):
+    """`app delete` removes a published app whose `appsetting` rows FK-block it.
+
+    Gated `requires_onprem`: the appmodule DELETE block (`0x80048d21`) reproduces
+    on on-prem v9.x, and on-prem reads are consistent — Dataverse online serves
+    appmodule reads from a read replica that can lag a fresh write by minutes, so
+    a create→resolve→delete cycle can't run reliably there (the FK-block itself
+    was verified live on cloud during triage; see issue #324).
+
+    The test proves the sweep is *necessary*: a plain `appmodules` DELETE first
+    fails with `0x80048d21`, then `app delete` clears the dependents and the app
+    is gone.
+    """
+    import time
+
+    app_unique = f"new_del{unique[:8]}"
+    app_name = f"E2E Del {unique[:8]}"
+    created_id: list[str] = []
+
+    def _cleanup():
+        if created_id:
+            try:
+                # Sweep dependents then the app, in case the test aborted mid-way.
+                for s in backend.get_collection(
+                        "appsettings",
+                        params={"$filter": f"_parentappmoduleid_value eq {created_id[0]}",
+                                "$select": "appsettingid"}):
+                    backend.delete(f"appsettings({s['appsettingid']})")
+                backend.delete(f"appmodules({created_id[0]})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    # Publish so the appmodule is readable (on-prem is not readable pre-publish)
+    # and so the platform materializes its appsetting rows.
+    r_create = cli(["--json", "app", "create", "--name", app_name,
+                    "--unique-name", app_unique, "--publish"], check=False)
+    if r_create.returncode != 0:
+        combined = (r_create.stderr or "") + (r_create.stdout or "")
+        if any(k in combined.lower() for k in (
+                "not supported", "privilege", "accessdenied", "403", "notimplemented")):
+            pytest.skip(f"app create rejected by this org: {combined[:300]}")
+        pytest.fail(f"app create failed:\n{combined[:500]}")
+    app_id = json.loads(r_create.stdout)["data"].get("appmoduleid")
+    assert app_id, r_create.stdout
+    created_id.append(app_id)
+
+    # Resolve may lag the publish briefly — retry the read-only dry-run until ok.
+    resolved = False
+    for _ in range(6):
+        rr = cli(["--json", "--dry-run", "app", "delete", app_unique], check=False)
+        if rr.returncode == 0 and json.loads(rr.stdout).get("ok"):
+            resolved = True
+            break
+        time.sleep(5)
+    if not resolved:
+        pytest.skip("new appmodule not readable yet (publish/replica lag)")
+
+    # Prove the block exists: a plain record DELETE is rejected by the appsetting
+    # FK. If it is NOT blocked, this org gave the app no FK-blocking child, so the
+    # sweep can't be exercised here — skip rather than pass vacuously.
+    from crm.utils.d365_backend import D365Error
+    try:
+        backend.delete(f"appmodules({app_id})")
+        created_id.clear()  # plain delete succeeded → app already gone
+        pytest.skip("app had no FK-blocking dependents on this org; sweep not exercised")
+    except D365Error as exc:
+        assert exc.code == "0x80048d21", f"expected FK-block, got {exc.code}: {exc}"
+
+    # dry-run preview names the app and issues no delete.
+    env_dry = json.loads(cli(["--json", "--dry-run", "app", "delete", app_unique]).stdout)
+    assert env_dry["data"]["would_delete"]["appmodule"]
+
+    # Real delete sweeps the appsetting dependents and removes the app.
+    r_del = cli(["--json", "app", "delete", app_unique, "--yes"], check=False)
+    assert r_del.returncode == 0, f"app delete failed:\n{r_del.stderr}\n{r_del.stdout}"
+    env_del = json.loads(r_del.stdout)
+    assert env_del["ok"] and env_del["data"]["deleted"] is True, env_del
+    assert env_del["data"]["dependents_deleted"], "sweep removed no dependents"
+    created_id.clear()  # app deleted; nothing for the finalizer to clean
+
+    # The app no longer resolves.
+    r_gone = cli(["--json", "app", "delete", app_unique, "--yes"], check=False)
+    assert json.loads(r_gone.stdout).get("ok") is False

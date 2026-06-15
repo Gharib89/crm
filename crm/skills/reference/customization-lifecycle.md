@@ -102,8 +102,10 @@ every tier on one platform.
 Decommissioning undoes the build order **in reverse**: automation and UI components first,
 then schema, then the solution/publisher that held them. The platform enforces the
 dependency edges and the error code names the one you hit — a web resource won't delete
-while a ribbon button references it (`0x8004f01f`); an app won't delete while an
-`appsettings` row points at it (`0x80048d21`). The clean shortcut: **delete the unmanaged
+while a ribbon button references it (`0x8004f01f`); a model-driven app won't delete via a
+bare `entity delete appmodules` while an `appsetting` row points at it (`0x80048d21`, on
+both on-prem and online) — use `app delete <name|id>`, which sweeps those FK-blocking
+dependents first (and refuses a managed app). The bulk shortcut: **delete the unmanaged
 solution** and let the server cascade most components, then drop the global option sets and
 publisher last; a custom table's `metadata delete-entity` cascades its own
 columns/relationships/views/forms in one shot. → `reference/customizations.md`

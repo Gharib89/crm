@@ -45,6 +45,17 @@ retry with the *same* name can hit `0x80050135` (duplicate) because the existenc
 pre-check rides that same not-yet-published read. Treat `app create` as create-once and
 chain off its returned id.
 
+**Teardown — use `app delete <name|id>`, not `entity delete appmodules`.** An app
+won't delete while a dependent row holds a record-level FK to it: a bare
+`entity delete appmodules <id>` fails `0x80048d21` ("referenced by another record"),
+chiefly because an `appsetting` row still points at it. This block hits on **both**
+on-prem and online — online too, despite the `appsetting` relationship's cascade-delete
+metadata. `app delete` resolves the app (GUID / uniquename / display name), sweeps those
+FK-blocking dependent rows first, then deletes the app; its `data` lists every dependent
+removed (real run `dependents_deleted: [{entity, id}]`; `--dry-run` previews them under
+`would_delete.dependents` and issues no DELETE). It **refuses a managed app** — uninstall
+the parent solution instead.
+
 ## Web resources — `webresource` (HTML/JS/CSS/images)
 
 ```bash
@@ -148,10 +159,12 @@ enforces the dependencies and the error code names the one you hit:
   `crm webresource delete <name|id> --check-dependencies` to preview blockers before
   attempting the delete. After clearing the button, retry:
   `crm webresource delete <name|id> --yes`.
-- **Model-driven app** — `entity delete appmodules <id>` can fail `0x80048d21` (an
-  `appsettings` FK still points at it). Deleting the **containing solution** cascades the
-  app away cleanly; reach for the per-record delete only when the app lives outside a
-  solution you can drop.
+- **Model-driven app** — use `app delete <name|id> --yes`: it sweeps the FK-blocking
+  dependent rows (chiefly `appsetting`) before deleting the app, which a bare
+  `entity delete appmodules <id>` does not — that fails `0x80048d21` (referenced by
+  another record) on both on-prem and online. It refuses a managed app. Deleting the
+  **containing unmanaged solution** also cascades the app away and remains a valid route
+  when you're dropping the whole solution anyway.
 - **Custom table** — `metadata delete-entity <logical> --yes` cascades its columns,
   relationships, views, and forms in one shot; delete the table before the global option
   sets and publisher it depended on.
