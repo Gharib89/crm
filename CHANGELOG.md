@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.6 (2026-06-15)
+
+### Bug Fixes
+
+- **skill**: Echo destination directory on uninstall no-op
+  ([#313](https://github.com/Gharib89/crm/pull/313),
+  [`d2cf6eb`](https://github.com/Gharib89/crm/commit/d2cf6eb479a951ef803c612a205cf8d9608e84cc))
+
+### Testing
+
+- **skill**: Assert uninstall exit codes before parsing JSON
+  ([#313](https://github.com/Gharib89/crm/pull/313),
+  [`d2cf6eb`](https://github.com/Gharib89/crm/commit/d2cf6eb479a951ef803c612a205cf8d9608e84cc))
+
+
 ## v3.12.5 (2026-06-15)
 
 ### Bug Fixes
