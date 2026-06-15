@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.5 (2026-06-15)
+
+### Bug Fixes
+
+- **repl**: Ignore an optional leading 'crm' prefix
+  ([#312](https://github.com/Gharib89/crm/pull/312),
+  [`620dba2`](https://github.com/Gharib89/crm/commit/620dba202ed16a39db5a66e901fceee4785c4584))
+
+
 ## v3.12.4 (2026-06-14)
 
 ### Bug Fixes
