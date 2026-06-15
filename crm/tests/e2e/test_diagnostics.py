@@ -57,15 +57,13 @@ def test_query_count_unknown_entity_errors_cleanly(cli):
 
 @covers("query odata")
 def test_query_odata_contacts(cli):
-    """OData query against contacts returns an ok envelope wrapping the OData collection."""
+    """OData query against contacts returns an ok envelope with a bare row array."""
     r = cli(["--json", "query", "odata", "contacts", "--top", "2"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"] is True
-    # The CLI emits the raw OData envelope dict ({"value": [...], ...})
-    assert isinstance(env["data"], dict)
-    assert "value" in env["data"]
-    assert isinstance(env["data"]["value"], list)
+    # data is a bare array of rows (ADR 0008); no OData envelope, paging in meta.
+    assert isinstance(env["data"], list)
 
 
 # ── query saved ───────────────────────────────────────────────────────────────
@@ -96,9 +94,8 @@ def test_query_saved_discovers_and_executes(backend, cli):
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"] is True
-    # The CLI emits the raw OData envelope dict ({"value": [...], ...})
-    assert isinstance(env["data"], dict)
-    assert "value" in env["data"]
+    # data is a bare array of rows (ADR 0008).
+    assert isinstance(env["data"], list)
 
 
 # ── query user ────────────────────────────────────────────────────────────────
@@ -136,9 +133,8 @@ def test_query_user_discovers_and_executes(backend, cli):
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"] is True
-    # The CLI emits the raw OData envelope dict ({"value": [...], ...})
-    assert isinstance(env["data"], dict)
-    assert "value" in env["data"]
+    # data is a bare array of rows (ADR 0008).
+    assert isinstance(env["data"], list)
 
 
 # ── async list ────────────────────────────────────────────────────────────────
@@ -234,11 +230,12 @@ def test_doctor_top_level_ok(cli):
 
 @covers("service-document")
 def test_service_document_lists_entity_sets(cli):
-    """service-document returns an ok envelope with a non-empty value list."""
+    """service-document returns an ok envelope with a non-empty bare set list."""
     r = cli(["--json", "service-document"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"] is True
-    sets = env["data"].get("value", [])
+    # data is the bare array of entity sets (ADR 0008); count is in meta.
+    sets = env["data"]
     assert isinstance(sets, list)
     assert len(sets) > 0

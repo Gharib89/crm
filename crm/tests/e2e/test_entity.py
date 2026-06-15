@@ -48,17 +48,30 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
     assert env["ok"], env
     contact_id = env["data"].get("contactid")
     assert contact_id
+    # Normalized id contract (ADR 0008 / #303): create surfaces _entity_id
+    # alongside the full record, and strips @odata.* protocol keys.
+    assert env["data"]["_entity_id"] == contact_id
+    assert env["data"]["_entity_id_url"].endswith(f"contacts({contact_id})")
+    assert not any("@odata." in k for k in env["data"])
 
     try:
-        # Get
+        # Get — full record carries _entity_id, @odata.* stripped.
         got = cli([
             "--json", "entity", "get", "contacts", contact_id,
             "--select", "fullname,firstname",
         ])
         assert got.returncode == 0, got.stderr
-        assert json.loads(got.stdout)["data"]["firstname"] == "CLISub"
+        got_data = json.loads(got.stdout)["data"]
+        assert got_data["firstname"] == "CLISub"
+        assert got_data["_entity_id"] == contact_id
+        assert not any("@odata." in k for k in got_data)
     finally:
-        # Delete (idempotent finalizer)
-        cli([
+        # Delete — returns {deleted, _entity_id, _entity_id_url} (not bare `id`).
+        deleted = cli([
             "--json", "entity", "delete", "contacts", contact_id, "--yes",
         ], check=False)
+        if deleted.returncode == 0:
+            ddata = json.loads(deleted.stdout)["data"]
+            assert ddata["deleted"] is True
+            assert ddata["_entity_id"] == contact_id
+            assert "id" not in ddata

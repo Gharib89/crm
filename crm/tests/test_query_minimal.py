@@ -51,25 +51,27 @@ class TestCLIQuery:
         )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        rec = env["data"]["value"][0]
+        # Bare array (ADR 0008): rows live at data[0], not data["value"][0].
+        rec = env["data"][0]
         assert all("@" not in k for k in rec), rec
         assert rec["_owner_value"] == "00000000-0000-0000-0000-000000000002"
         assert rec["accountid"] == "00000000-0000-0000-0000-000000000001"
 
-    def test_default_retains_annotations(self, make_fake_backend, inject_backend):
+    def test_default_keeps_formatted_values_strips_protocol_keys(self, make_fake_backend, inject_backend):
         _stub_value_backend(make_fake_backend, inject_backend)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        rec = env["data"]["value"][0]
-        assert "@odata.etag" in rec
+        rec = env["data"][0]
+        # `@odata.*` protocol keys are stripped even by default (ADR 0008); the
+        # opted-in formatted-value annotation survives without --minimal.
+        assert "@odata.etag" not in rec
         assert "statuscode@OData.Community.Display.V1.FormattedValue" in rec
 
-    def test_minimal_preserves_top_level_envelope(self, make_fake_backend, inject_backend):
-        """The `{**result, "value": [...]}` rebuild must keep top-level envelope
-        keys (e.g. `@odata.count` from `--count`) while still pruning per-record
-        annotations."""
+    def test_minimal_relocates_count_to_meta(self, make_fake_backend, inject_backend):
+        """Paging relocates to `meta.count` (← `@odata.count`) even under
+        --minimal, and `data` is the bare pruned array — not an OData envelope."""
         inject_backend(make_fake_backend(responses={"get": {
             "@odata.context": "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts",
             "@odata.count": 7,
@@ -81,13 +83,9 @@ class TestCLIQuery:
         )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        # Top-level envelope survives the rebuild: both the surfaced meta and the
-        # raw `@odata.count` key in the data payload.
-        assert env["meta"]["odata_count"] == 7
-        assert env["data"]["@odata.count"] == 7
-        # Per-record annotations are still stripped.
-        rec = env["data"]["value"][0]
-        assert "@odata.etag" not in rec
+        assert env["meta"]["count"] == 7
+        assert isinstance(env["data"], list)
+        rec = env["data"][0]
         assert all("@" not in k for k in rec), rec
 
 

@@ -236,6 +236,11 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
             return
     if minimal and ctx.json_mode and isinstance(result, dict):
         result = _prune_annotations(result)
+    if isinstance(result, dict):
+        # Surface the normalized id key alongside the full record (ADR 0008). The
+        # record_id already passed GUID validation in retrieve(), so this never
+        # raises. `_entity_id` has no '@', so --minimal's prune keeps it.
+        result = {**result, **entity_mod.entity_id_fields(ctx.backend(), entity_set, record_id)}
     ctx.emit(True, data=result)
 
 
@@ -308,6 +313,9 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
                       if _is_alternate_key_error(exc) and ctx.json_mode else None)
         _handle_d365_error(ctx, exc, extra_meta=extra_meta, warnings=validate_warnings or None)
         return
+    if return_record and isinstance(result, dict):
+        # Surface the normalized id alongside the full returned record (ADR 0008).
+        entity_mod.inject_create_entity_id(ctx.backend(), entity_set, result)
     ctx.emit(True, data=result, warnings=validate_warnings or None)
     _journal(ctx, entity_set, result)
     _touch_session(ctx, entity_set)
@@ -397,6 +405,10 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
         ctx.emit(True, data=data, meta=meta)
         return
 
+    # Single-record clone is a create — surface the normalized id for envelope
+    # parity with `entity create` (ADR 0008). Self-guards on dry-run / --no-return.
+    if not ctx.dry_run and isinstance(result, dict):
+        entity_mod.inject_create_entity_id(ctx.backend(), entity_set, result)
     ctx.emit(True, data=result)
 
 
@@ -444,7 +456,11 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
                       if _is_alternate_key_error(exc) and ctx.json_mode else None)
         _handle_d365_error(ctx, exc, hint=_metadata_set_hint(entity_set), extra_meta=extra_meta)
         return
-    data = result or {"updated": True, "id": record_id}
+    # Normal path: `result` carries `_entity_id` from the OData-EntityId header.
+    # Fallback (empty 204, no header) uses the same normalized id keys, not a bare
+    # `id`, so every write verb agrees on the id shape (ADR 0008 / #303).
+    data = result or {"updated": True,
+                      **entity_mod.entity_id_fields(ctx.backend(), entity_set, record_id)}
     ctx.emit(True, data=data)
     _journal(ctx, entity_set, data)
 

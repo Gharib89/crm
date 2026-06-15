@@ -346,6 +346,14 @@ Every command supports `--json`:
 }
 ```
 
+`data` is a **curated, CLI-owned shape**, not a passthrough of the raw Web API
+response (ADR 0008): list verbs put a **bare array** in `data` (`data[0]` is the
+first row) with paging relocated to `meta.next_link`/`meta.count`; `@odata.*`
+protocol keys are stripped everywhere; and the written record's GUID is surfaced
+under the single normalized key `_entity_id` (with `_entity_id_url`) on
+`create`/`update`/`delete`/`clone`/`entity get` — so one extraction rule works
+across commands.
+
 Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code": "...", "category": "not_found", "retryable": false}}`.
 `meta.category` is a closed enum (`not_found`, `auth_failed`, `forbidden`,
 `concurrency_conflict`, `duplicate_detected`, `validation`, `throttled`,

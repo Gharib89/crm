@@ -23,7 +23,12 @@ from crm.core.logging_setup import setup_logging
 if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
 from crm.utils.repl_skin import ReplSkin
-from crm.commands._helpers import _sanitize, _short_repr
+from crm.commands._helpers import (
+    _normalize_odata_envelope,
+    _sanitize,
+    _short_repr,
+    _strip_odata_keys,
+)
 from crm.commands._tty import _stdin_is_tty
 
 # Exit code for an operational failure (ADR 0001): a command that ran but did not
@@ -85,6 +90,20 @@ class CLIContext:
         if self.json_mode:
             envelope: dict[str, Any] = {"ok": ok}
             if data is not None:
+                # Curate `data` into the CLI-owned shape (ADR 0008): unwrap an
+                # OData collection envelope to a bare array (paging → meta), then
+                # strip `@odata.*` protocol keys. Applied once here so every list
+                # verb and single record is consistent, not per-command. A dry-run
+                # mutation preview (`data._dry_run`) is a verbatim echo of the
+                # request that WOULD be sent — never curated, so request-shape keys
+                # like `<nav>@odata.bind`/`@odata.type` survive and the preview
+                # matches the wire payload. (Read results under --dry-run carry no
+                # `_dry_run` marker and ARE curated.)
+                if not (isinstance(data, dict) and "_dry_run" in data):
+                    data, paging = _normalize_odata_envelope(data)
+                    if paging:
+                        meta = {**(meta or {}), **paging}
+                    data = _strip_odata_keys(data)
                 envelope["data"] = _sanitize(data)
             if error:
                 envelope["error"] = error

@@ -8,7 +8,7 @@ Record CRUD recipes, taken from the CRMWorx build (§3). See the
 ```bash
 crm --json entity create cwx_slas --data '{"cwx_name":"Gold 4h/24h","cwx_responsehours":4,"cwx_resolutionhours":24,"cwx_tier":3,"cwx_active":true}'
 ```
-Target the **entity-set (plural) name** (`cwx_slas`), not the logical name; the response returns the full row including its new GUID.
+Target the **entity-set (plural) name** (`cwx_slas`), not the logical name; the response returns the full row including its new GUID, plus the normalized id keys `_entity_id` (the GUID) and `_entity_id_url` (its Web API URL) — the single, entity-agnostic place to read a written record's id across `create`/`update`/`delete`/`get` (ADR 0008). `@odata.*` protocol keys are stripped from the curated record.
 
 ## Create a record binding lookups with `@odata.bind`
 
@@ -167,7 +167,7 @@ crm --json --dry-run entity clone accounts 00000000-0000-0000-0000-000000000001
 # -> {"ok": true, "data": {"_dry_run": true, "would_create": {"entity_set": "accounts", "body": { ... }}}, "meta": {"dry_run": true}}
 ```
 
-The success envelope matches `entity create` — `data` is the created record, or just `{"id": "<guid>"}` with `--no-return`. To clone into a specific status, run `entity update <set> <newid> --data '{"statuscode": N}'` after the clone (on **on-prem** create does not honor a status passed in the create body, so `--override statuscode=N` is a documented no-op there).
+The success envelope matches `entity create` — `data` is the created record with the normalized `_entity_id`/`_entity_id_url` keys, or just `{"_entity_id": "<guid>", "_entity_id_url": "<url>"}` with `--no-return` (same normalized keys, no echoed row). To clone into a specific status, run `entity update <set> <newid> --data '{"statuscode": N}'` after the clone (on **on-prem** create does not honor a status passed in the create body, so `--override statuscode=N` is a documented no-op there).
 
 ## Clone a record with its children (`entity clone --with-children`)
 

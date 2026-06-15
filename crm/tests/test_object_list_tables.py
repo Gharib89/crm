@@ -74,8 +74,10 @@ class TestSolutionComponentsTable:
         result = CliRunner().invoke(cli, ["--json", "solution", "components", "CRMWorx"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        # JSON carries the raw items verbatim (etag, numeric type) and a count.
-        assert payload["data"] == items
+        # JSON carries the items with the numeric type, but `@odata.*` protocol
+        # keys are stripped from the curated data payload (ADR 0008 / #304).
+        assert payload["data"] == [{"componenttype": 61, "objectid": _OID_B,
+                                    "rootcomponentbehavior": 0}]
         assert payload["meta"]["count"] == 1
 
 
@@ -111,5 +113,12 @@ class TestMetadataRelationshipsTable:
         result = CliRunner().invoke(cli, ["--json", "metadata", "relationships", "account"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        assert payload["data"] == _REL_INFO
+        # Same categorized shape, but `@odata.*` protocol keys are stripped from
+        # the nested rows of the curated data payload (ADR 0008 / #304).
+        expected = {
+            **_REL_INFO,
+            "OneToMany": [{k: v for k, v in _REL_INFO["OneToMany"][0].items()
+                           if k != "@odata.etag"}],
+        }
+        assert payload["data"] == expected
         assert payload["meta"] == {"one_to_many": 1, "many_to_one": 1, "many_to_many": 1}

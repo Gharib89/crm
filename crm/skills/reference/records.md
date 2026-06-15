@@ -29,10 +29,13 @@ Put OData options in `--select`/`--filter`/etc., never inline.
 A `?` or `$` in the arg (e.g. `contacts?$select=fullname`) returns a `validation`
 error client-side — recover by moving the params onto flags, not by retrying the URL.
 
-`--minimal` strips OData annotation keys (`@odata.etag`, `*@FormattedValue`,
-`*@...lookuplogicalname`) from each `--json` record, keeping business fields,
-`_*_value` lookup GUIDs, and the primary id — **the form to chain downstream.** It is
-available on `query odata/fetchxml/saved/user` and `entity get`.
+By default `--json` already strips `@odata.*` protocol keys but keeps formatted-value
+annotations (`*@FormattedValue`, `*@...lookuplogicalname`). `--minimal` strips **all**
+`@`-containing keys (including those formatted values) from each record, keeping
+business fields, `_*_value` lookup GUIDs, and the primary id — **the form to chain
+downstream.** It is available on `query odata/fetchxml/saved/user` and `entity get`.
+List verbs return a **bare array** in `data` (rows at `data[0]`); paging is in
+`meta.next_link`/`meta.count`, never an OData envelope in `data`.
 
 ```bash
 crm --json query odata contacts \
@@ -54,19 +57,28 @@ filtered** count, request `$count` on a live OData query instead:
 
 ```bash
 crm --json query odata accounts --filter "statecode eq 0" --top 1 --count
-# the live @odata.count rides the result envelope
+# the live count is surfaced at meta.count (← @odata.count)
 ```
 
 ## CRUD — create → update → delete
 
 ```bash
 crm --json entity create contacts --data '{"firstname":"Rafel","lastname":"Shillo"}'
-# returns {"ok": true, "data": {"contactid": "<guid>", ...}}
+# returns {"ok": true, "data": {"contactid": "<guid>", ..., "_entity_id": "<guid>", "_entity_id_url": "<url>"}}
 
 crm --json entity update contacts <guid> --data '{"telephone1":"+1-555-0100"}'
 
 crm --json entity delete contacts <guid> --yes
+# returns {"ok": true, "data": {"deleted": true, "_entity_id": "<guid>", "_entity_id_url": "<url>"}}
 ```
+
+**Normalized id — read the written record's GUID from `_entity_id` (with
+`_entity_id_url`) on `create`, `update`, `delete`, `clone`, and `entity get`** — one
+entity-agnostic key, no need to know the per-entity primary-key attribute
+(`accountid` vs `activityid`). The leading underscore marks it CLI-synthesized; the
+genuine PK attribute still appears in a create/get's full record. List rows are
+**not** given `_entity_id` (each row carries its own PK). `@odata.*` protocol keys
+are stripped from every curated `data` payload.
 
 ## FetchXML query
 
@@ -169,7 +181,7 @@ instead of writing:
 {"ok": true, "data": {"_dry_run": true, "would_create": {"entity_set": "accounts", "body": {...}}}, "meta": {"dry_run": true}}
 ```
 
-Success matches `entity create` (`data` = created record, or `{"id"}` with `--no-return`).
+Success matches `entity create` (`data` = created record with `_entity_id`/`_entity_id_url`, or `{_entity_id, _entity_id_url}` with `--no-return` — same normalized keys).
 
 **Gotcha — status on clone.** The clone always lands in the server-default state; to set
 a status, `entity update <set> <newid> --data '{"statuscode":N}'` *after* the clone.

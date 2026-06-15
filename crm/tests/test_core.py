@@ -209,7 +209,10 @@ class TestEntityCrud:
             m.delete(backend.url_for(f"contacts({_GUID})"), status_code=204)
             result = entity_mod.delete(backend, "contacts", _GUID)
         assert result["deleted"] is True
-        assert result["id"] == _GUID
+        # Normalized id key (ADR 0008 / #303): `_entity_id`, not bare `id`.
+        assert result["_entity_id"] == _GUID
+        assert result["_entity_id_url"].endswith(f"contacts({_GUID})")
+        assert "id" not in result
 
     def test_invalid_guid_rejected(self, backend):
         with pytest.raises(D365Error, match="Invalid record id"):

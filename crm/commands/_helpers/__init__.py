@@ -21,6 +21,8 @@ from crm.commands._tty import _stdin_is_tty
 
 from .rendering import (
     _sanitize,
+    _strip_odata_keys,
+    _normalize_odata_envelope,
     _short_repr,
     _emit_with_warning,
     _emit_query_result,
@@ -76,7 +78,8 @@ from .session import (
 
 __all__ = [
     # rendering / output envelope
-    "_sanitize", "_short_repr", "_emit_with_warning", "_emit_query_result",
+    "_sanitize", "_strip_odata_keys", "_normalize_odata_envelope",
+    "_short_repr", "_emit_with_warning", "_emit_query_result",
     "_infer_columns", "_prune_annotations", "_emit_expectation_failure",
     # d365 errors
     "_handle_d365_error", "d365_errors", "_auth_error_hint",

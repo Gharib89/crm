@@ -9,7 +9,11 @@ Read and verify recipes, taken from the CRMWorx build (§4). See the
 crm --json query odata cwx_tickets \
   --filter "cwx_priority eq 3" --select cwx_name,cwx_severity --top 10
 ```
-Returns matching rows under `data.value`; queries the entity-set (plural) name.
+Returns matching rows as a **bare array** in `data` (`data[0]` is the first row);
+queries the entity-set (plural) name. The CLI unwraps the raw OData envelope (ADR
+0008): paging moves to `meta.next_link` (← `@odata.nextLink`) and `meta.count`
+(← `@odata.count`), and per-row `@odata.*` protocol keys (`@odata.etag`, …) are
+stripped. Opted-in formatted-value annotations (`*@OData.Community.…`) are kept.
 
 The positional argument is the URL path and accepts three forms: a bare entity-set name
 (e.g. `contacts`), a bound-function path (e.g. `RetrieveAppComponents(...)`), or a
@@ -32,7 +36,7 @@ crm --json query odata workflows \
 crm --json query odata cwx_tickets \
   --filter "cwx_priority eq 3" --select cwx_name,cwx_severity --annotations --minimal
 ```
-In `--json` mode `--minimal` drops every OData annotation key (anything containing `@` — `@odata.etag`, `*@OData.Community.Display.V1.FormattedValue`, `*@…lookuplogicalname`) from each record, keeping business fields, `_*_value` lookup GUIDs, and the primary id; the `value`-list envelope (`@odata.count`/`@odata.nextLink`) is preserved. It is a no-op in human/table mode and also works on `query fetchxml`, `query saved`, `query user`, and `entity get`.
+By default the curated payload already strips `@odata.*` protocol keys (etag/context/…) but **keeps** formatted-value annotations (`*@OData.Community.Display.V1.FormattedValue`, `*@…lookuplogicalname`). In `--json` mode `--minimal` goes further: it drops *every* `@`-containing key (including those formatted values) from each record, keeping business fields, `_*_value` lookup GUIDs, and the primary id. Paging stays in `meta` (`meta.count`/`meta.next_link`) regardless. It is a no-op in human/table mode and also works on `query fetchxml`, `query saved`, `query user`, and `entity get`.
 
 ## Run a FetchXML query
 

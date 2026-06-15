@@ -15,6 +15,11 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.commands.entity import _resolve_return_record
+from crm.utils.d365_backend import ConnectionProfile
+
+# `entity create` resolves the entity's primary id through the read-through name
+# cache to inject `_entity_id`; isolate CRM_HOME so it never touches a real cache.
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 class RecordingBackend:
@@ -22,6 +27,10 @@ class RecordingBackend:
 
     def __init__(self):
         self.headers: dict[str, str] | None = None
+        self.profile = ConnectionProfile(
+            name="testp", url="https://crm.contoso.local/contoso",
+            domain="CONTOSO", username="alice", api_version="v9.2",
+        )
 
     def post(self, _entity_set, *, extra_headers=None, **_kw):
         self.headers = extra_headers
@@ -30,6 +39,15 @@ class RecordingBackend:
     def patch(self, _path, *, extra_headers=None, **_kw):
         self.headers = extra_headers
         return {}
+
+    def get_collection(self, _path=None, **_kw):
+        # No entity definitions → empty name map → create's _entity_id injection
+        # is a no-op (the focus here is the Prefer header, not the id key).
+        return []
+
+    def url_for(self, path):
+        import urllib.parse
+        return urllib.parse.urljoin(self.profile.api_base, path.lstrip("/"))
 
 
 def _prefers_representation(backend: RecordingBackend) -> bool:

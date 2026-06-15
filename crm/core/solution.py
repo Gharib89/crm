@@ -123,7 +123,7 @@ def create_publisher(
         result["_exists"] = bool(existing)
         result["would_skip"] = bool(existing) and if_exists == "skip"
         return result
-    pub_id = result.get("id")
+    pub_id = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True, "uniquename": name,
         "friendlyname": friendly_name or name, "customizationprefix": prefix,
@@ -190,7 +190,7 @@ def create_solution(
         result["_exists"] = bool(existing)
         result["would_skip"] = bool(existing) and if_exists == "skip"
         return result
-    sol_id = result.get("id")
+    sol_id = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True, "uniquename": name, "friendlyname": friendly_name or name,
         "version": version, "publisherid": pub_id, "solutionid": sol_id,
