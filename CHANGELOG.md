@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v3.12.7 (2026-06-15)
+
+### Bug Fixes
+
+- **query**: Count accepts the entity-set name and is case-insensitive
+  ([#314](https://github.com/Gharib89/crm/pull/314),
+  [`48a323e`](https://github.com/Gharib89/crm/commit/48a323e656ad90807e7a2448172b50638f18dfc8))
+
+### Documentation
+
+- **cloud-ship-routine**: Force Skill-tool invocation + task-tool fallback
+  ([`6fca0fe`](https://github.com/Gharib89/crm/commit/6fca0fe99151802dafa88f2ed226d72094be9033))
+
+
 ## v3.12.6 (2026-06-15)
 
 ### Bug Fixes
