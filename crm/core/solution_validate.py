@@ -6,9 +6,10 @@ package files, RootComponents<->customizations parity, unresolved
 $webresource: ribbon references, and undeclared global option-set bindings.
 With a backend (the --against-org path) it also reports formid/savedqueryid
 GUID collisions with the target org, plus BPF process-stage GUID collisions read
-from the Workflows/*.xaml members, and (the package-version check, #325) whether
-the package's SolutionPackageVersion exceeds the target org version — a newer
-package fails import with 0x80048068. Mirrors the zip/XML handling proven in
+from the Workflows/*.xaml members. The package-version check (#325) additionally
+reports whether the package's SolutionPackageVersion exceeds the target org
+version — a newer package fails import with 0x80048068. Mirrors the zip/XML
+handling proven in
 solution.py::_sniff_solution_managed.
 """
 from __future__ import annotations
