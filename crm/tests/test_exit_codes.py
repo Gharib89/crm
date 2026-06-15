@@ -23,7 +23,7 @@ def test_in_command_validation_exits_1():
     assert json.loads(result.output)["ok"] is False
 
 
-def test_d365_server_error_exits_1(make_fake_backend, inject_backend):
+def test_d365_server_error_exits_1(make_fake_backend, inject_backend, isolated_home):
     """Operational failure: a D365Error from the backend → exit 1, status in meta."""
     inject_backend(make_fake_backend(errors={"get": D365Error("Record Not Found", status=404, code="0x80040217")}))
     result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])
@@ -43,7 +43,7 @@ def test_declined_confirmation_exits_1():
     assert '"error": "aborted by user"' in result.output
 
 
-def test_success_exits_0(make_fake_backend, inject_backend):
+def test_success_exits_0(make_fake_backend, inject_backend, isolated_home):
     """Success: a command that achieves its effect → exit 0, ok=true."""
     inject_backend(make_fake_backend(responses={"get": {"EntityRecordCountCollection": {"Keys": ["account"], "Values": [3]}}}))
     result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])

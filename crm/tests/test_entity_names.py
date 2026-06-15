@@ -106,6 +106,46 @@ def test_load_name_map_refresh_forces_live_get():
     assert backend.calls.count("EntityDefinitions") == 2
 
 
+# ── NameMap.resolve: user-supplied name → logical name (#305) ────────────────
+
+class TestResolve:
+    """A user-supplied entity name (logical or set, any case) → logical name."""
+
+    def _map(self) -> entity_names.NameMap:
+        return entity_names.load_name_map(_FakeBackend(defs=_DEFS))  # type: ignore[arg-type]
+
+    def test_resolve_exact_logical_name(self):
+        assert self._map().resolve("account") == "account"
+
+    def test_resolve_entity_set_name(self):
+        assert self._map().resolve("accounts") == "account"
+
+    def test_resolve_is_case_insensitive(self):
+        nm = self._map()
+        assert nm.resolve("Account") == "account"   # mixed-case logical
+        assert nm.resolve("Accounts") == "account"   # mixed-case set
+        assert nm.resolve("ACCOUNTS") == "account"
+
+    def test_resolve_unknown_raises_without_false_suggestion(self):
+        with pytest.raises(D365Error) as exc:
+            self._map().resolve("totallybogus")
+        assert "did you mean" not in str(exc.value).lower()
+
+    def test_resolve_unknown_suggests_close_logical_name(self):
+        # "acount" is a near-miss of "account" → difflib offers a correction.
+        with pytest.raises(D365Error) as exc:
+            self._map().resolve("acount")
+        assert "account" in str(exc.value)
+
+    def test_resolve_empty_raises(self):
+        with pytest.raises(D365Error):
+            self._map().resolve("")
+
+    def test_resolve_logical_name_module_fn_loads_map(self):
+        backend = _FakeBackend(defs=_DEFS)
+        assert entity_names.resolve_logical_name(backend, "accounts") == "account"  # type: ignore[arg-type]
+
+
 # ── attribute_specs: the one IsValidForCreate/IsValidForUpdate walk ──────────
 
 _ATTRS = [

@@ -118,6 +118,15 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
 # --------------------------------------------------------------------------- #
 # FakeBackend — duck-typed stand-in injected at CLIContext.backend
 # --------------------------------------------------------------------------- #
+# Standard entity definitions served by ``get_collection("EntityDefinitions")``
+# when a test does not override it — lets commands that resolve a name through
+# ``entity_names.load_name_map`` (e.g. ``query count``) work out of the box.
+_DEFAULT_ENTITY_DEFINITIONS: list[dict[str, str]] = [
+    {"LogicalName": "account", "EntitySetName": "accounts"},
+    {"LogicalName": "contact", "EntitySetName": "contacts"},
+]
+
+
 class FakeBackend:
     """In-memory stand-in for ``D365Backend``, injected at
     ``CLIContext.backend`` for command-layer tests.
@@ -126,12 +135,15 @@ class FakeBackend:
 
     - ``responses``: ``{verb: value_or_callable}`` — a callable is invoked with
       the request path and its return value is used (default: ``{"value": []}``
-      for ``get``, ``None`` for write verbs).
+      for ``get``, the standard entity definitions for
+      ``get_collection("EntityDefinitions")``, ``None`` for write verbs).
     - ``errors``: ``{verb: exception}`` — raised when that verb is called.
     - ``forbid``: verbs that must never be called (raise ``AssertionError``).
 
-    Recorded state: ``calls`` (list of ``(verb, path, kwargs)``), and the
-    convenience accessors ``called``, ``last_path``, ``count(verb=None)``.
+    Carries a real ``profile`` so the read-through metadata cache (used by the
+    name-resolution seam) can key on it. Recorded state: ``calls`` (list of
+    ``(verb, path, kwargs)``), and the convenience accessors ``called``,
+    ``last_path``, ``count(verb=None)``.
     """
 
     def __init__(
@@ -141,12 +153,21 @@ class FakeBackend:
         responses: dict[str, Any] | None = None,
         errors: dict[str, BaseException] | None = None,
         forbid: tuple[str, ...] = (),
+        profile: ConnectionProfile | None = None,
     ) -> None:
         self.dry_run = dry_run
         self._responses: dict[str, Any] = dict(responses or {})
         self._errors: dict[str, BaseException] = dict(errors or {})
         self._forbid: set[str] = set(forbid)
         self.calls: list[tuple[str, Any, dict[str, Any]]] = []
+        self.profile: ConnectionProfile = profile or ConnectionProfile(
+            name="testp",
+            url="https://crm.contoso.local/contoso",
+            domain="CONTOSO",
+            username="alice",
+            api_version="v9.2",
+            verify_ssl=False,
+        )
 
     @property
     def called(self) -> bool:
@@ -185,6 +206,16 @@ class FakeBackend:
         self, path: Any = None, *_args: Any, params: Any = None, **kwargs: Any
     ) -> Any:
         return self._dispatch("get", path, {"params": params, **kwargs})
+
+    def get_collection(
+        self, path: Any = None, *_args: Any, params: Any = None, **kwargs: Any
+    ) -> Any:
+        result = self._dispatch("get_collection", path, {"params": params, **kwargs})
+        # No override configured (_default → None for non-get verbs): serve the
+        # standard entity definitions for the name-resolution seam, [] otherwise.
+        if result is None:
+            return list(_DEFAULT_ENTITY_DEFINITIONS) if path == "EntityDefinitions" else []
+        return result
 
     def post(self, path: Any = None, *_args: Any, **kwargs: Any) -> Any:
         return self._dispatch("post", path, kwargs)

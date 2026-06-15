@@ -42,12 +42,13 @@ crm --json query odata contacts \
 ## Count rows — `query count`
 
 ```bash
-crm --json query count account   # -> {"ok": true, "data": {"entity": "account", "count": 5432}}
+crm --json query count accounts  # -> {"ok": true, "data": {"entity": "account", "count": 5432}}
 ```
 
-Takes the **entity logical name** (`account`) — **not** the entity-set name (`accounts`)
-every other `query` verb uses — because it calls `RetrieveTotalRecordCount`, which is keyed
-by logical name. The total is a server-side cached snapshot, so it can lag recent
+Accepts either the entity-set name (`accounts`, like every other `query` verb) or the
+logical name (`account`), case-insensitively; both resolve to the logical name that
+`RetrieveTotalRecordCount` is keyed by, and `data.entity` always reports that resolved
+logical name. The total is a server-side cached snapshot, so it can lag recent
 inserts/deletes (cheap, whole-table; there is **no `--filter`**). For an **exact or
 filtered** count, request `$count` on a live OData query instead:
 
