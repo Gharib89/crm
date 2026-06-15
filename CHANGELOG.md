@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.3.0 (2026-06-15)
+
+### Documentation
+
+- Reword package-version note in module docstring ([#330](https://github.com/Gharib89/crm/pull/330),
+  [`6bc55db`](https://github.com/Gharib89/crm/commit/6bc55db309d8a7548bbb0c5f41bc34546d886382))
+
+### Features
+
+- **solution**: Check package version ceiling in validate --against-org
+  ([#330](https://github.com/Gharib89/crm/pull/330),
+  [`6bc55db`](https://github.com/Gharib89/crm/commit/6bc55db309d8a7548bbb0c5f41bc34546d886382))
+
+
 ## v4.2.0 (2026-06-15)
 
 ### Features
