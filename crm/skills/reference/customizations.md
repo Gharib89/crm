@@ -35,6 +35,16 @@ crm --json app build-sitemap "CRMWorx Sitemap" \
 through the sitemap's `Entity=` subareas. A newly created entity is invisible in an
 app until a subarea references it.
 
+**Create→sitemap seam — carry the `appmoduleid`, don't re-create.** `app create`
+publishes the app and then reads it back; in the publish-before-read window that
+read-back can fail with a `meta.warnings` `app_lookup_error` **even though the app was
+created**. The created `appmoduleid` is still in `data` — capture it and feed it to
+`add-components`, `build-sitemap`, and teardown. Do **not** re-run `app create`: the app
+already exists, a second create with a *new* `--unique-name` orphans a duplicate, and a
+retry with the *same* name can hit `0x80050135` (duplicate) because the existence
+pre-check rides that same not-yet-published read. Treat `app create` as create-once and
+chain off its returned id.
+
 ## Web resources — `webresource` (HTML/JS/CSS/images)
 
 ```bash
@@ -78,6 +88,12 @@ crm --json ribbon remove account --solution cwx_crmworx ...
 This is why a cloned entity's ribbon does not come across (see the clone caveats in
 `reference/metadata.md`) — there is no API write path to copy it.
 
+**Ribbon writes are slow and synchronous.** Because every write rides the solution-zip
+pipeline, `add-button` / `remove` run a **full solution import per call** — 60–120s with
+no progress ticks. The command has not hung; **do not retry** a slow call (a second,
+parallel attempt races the first import). Confirm the outcome afterward with
+`ribbon list`.
+
 ## Forms — `form` (entity main forms / systemform)
 
 ```bash
@@ -86,5 +102,53 @@ crm --json form clone cwx_ticket "Information" --to cwx_ticketclone   # clone a 
 crm --json form export cwx_ticket "Information" --output form.xml     # export a form's formxml
 ```
 
+### Add a field to an existing form
+
+`form` has no field-editing verb — edit the **FormXml** by hand, the same shape as the
+view-edit recipe in `reference/authoring.md`: export, splice the control into the layout,
+PATCH the `systemforms` row, then publish the entity.
+
+```bash
+crm --json form export cwx_ticket "Information" --output form.xml
+# splice a <control> (carrying the field's classid) into a <cell> of the target
+# <section>, then PATCH only the formxml back:
+crm entity update systemforms <formid> --data-file form-update.json   # {"formxml":"…"}
+crm solution publish --xml \
+    '<importexportxml><entities><entity>cwx_ticket</entity></entities></importexportxml>'
+```
+
+Use `--data-file`, **not** inline `--data` — FormXml is quote-heavy and must be
+JSON-escaped. Get `<formid>` from `form list`. A control's `classid` is a D365 platform
+constant per control type (stable across orgs) — the common ones:
+
+| control type | `classid` |
+|---|---|
+| single line of text | `{4273EDBD-AC1D-40d3-9FB2-095C621B552D}` |
+| multiline text | `{E0DECE4B-6FC8-4a8f-A065-082708572369}` |
+| option set / picklist | `{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}` |
+| lookup | `{270BD3DB-D9AF-4782-9025-509E298DEC0A}` |
+
+For any other type, `form export` a stock table that already carries that control (e.g.
+`account`) and copy its `<control>`'s `classid` — don't guess it. After publishing,
+**re-export the form and confirm your `<control>` is present**: a malformed splice
+publishes without error but silently drops the field.
+
 On Unified Interface a cloned/added form may need adding to the model-driven app's form
 list to be visible.
+
+## Decommission — deleting UI components
+
+`app`, `webresource`, and `ribbon` have **no `delete` verb** — delete through the generic
+`entity delete <set>`, or drop the whole solution to cascade. Order matters; the platform
+enforces the dependencies and the error code names the one you hit:
+
+- **Web resource referenced by a ribbon button** — remove the button first
+  (`ribbon remove …`), else the delete fails `0x8004f01f` (still referenced). Then
+  `crm entity delete webresourceset <id> --yes`.
+- **Model-driven app** — `entity delete appmodules <id>` can fail `0x80048d21` (an
+  `appsettings` FK still points at it). Deleting the **containing solution** cascades the
+  app away cleanly; reach for the per-record delete only when the app lives outside a
+  solution you can drop.
+- **Custom table** — `metadata delete-entity <logical> --yes` cascades its columns,
+  relationships, views, and forms in one shot; delete the table before the global option
+  sets and publisher it depended on.

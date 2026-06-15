@@ -60,6 +60,15 @@ crm solution import /tmp/snap.zip --yes
 default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
 context aborts.
 
+**Gotcha — version ceiling (cloud→on-prem).** A managed zip carries the *package version*
+of the org it was exported from, and an org **rejects any zip newer than itself**. A
+solution exported from Dataverse online (v9.2) fails to import into on-prem v9.1 with
+`0x80048068` / HTTP 400 ("you can only import solutions with a package version of 9.1 or
+earlier into this organization"). Promotion must travel **same-or-lower version** — build
+on the lowest version in your dev→test→prod chain, or keep all tiers on one platform. This
+is distinct from the API-version cap (a `v9.2` *request* → HTTP 501); here it's the
+*solution* package version, not the endpoint.
+
 **Gotcha:** importing a security **role** from a **managed** solution. On on-prem v9.x
 this strips all *manually added* privileges of that role on the target org (privilege-level
 *changes* survive; manual *additions* are removed); newer Dataverse online instead *merges*
@@ -169,6 +178,13 @@ against `processstages` — the `CreateProcessStage` duplicate-key class), and
 existence of referenced web resources and global option sets in the target org
 (requires a connection/profile). Use before `solution import`.
 
+**Validate is structural, not a compatibility gate.** It inspects the zip's *contents* —
+it does **not** check the target org's *package version*, so a green `validate` (even with
+`--against-org`) still hits the version ceiling above at import time on a downstream org
+older than the export. And run `--against-org` only against the **import target**, never
+the export source — validating against the source always reports `formid`/`savedqueryid`
+collisions, because those components already live there.
+
 ## Investigating a failed import
 
 Work the timeline in order — gate, monitor, post-mortem, verify:
@@ -181,9 +197,12 @@ Work the timeline in order — gate, monitor, post-mortem, verify:
    finds the operation.
 3. **After** — `crm --json solution import-result <id>` re-fetches the
    ImportJob of any prior import and parses per-component pass/fail outcomes;
-   the id is the import envelope's `import_job_id` (always non-null). Parsing
-   is best-effort: a missing or unparseable ImportJob data column degrades to a
-   `meta.warnings` note, never an error.
+   the id is the import envelope's `import_job_id` — present **once the import job
+   starts**. A pre-execution rejection (the version-ceiling gate above, or a declared
+   missing dependency that fires at entry) returns an *error* envelope with no job id and
+   `import-result` 404s — that case is "rejected before execution", not
+   "executed-but-failed". Parsing is best-effort: a missing or unparseable ImportJob data
+   column degrades to a `meta.warnings` note, never an error.
 
 **On-prem caveat.** On-prem orgs import via the synchronous `ImportSolution`
 action (`action: "ImportSolution"` in the import envelope): no progress ticks,
