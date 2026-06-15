@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.0.0 (2026-06-15)
+
+### Features
+
+- **output**: Curate the --json data contract (ADR 0008)
+  ([#317](https://github.com/Gharib89/crm/pull/317),
+  [`ae75bb3`](https://github.com/Gharib89/crm/commit/ae75bb3dd7b6c98e34f775486177b86fad7bdd99))
+
+### Breaking Changes
+
+- **output**: `query odata` `--json` rows move from `data.value` to a bare array in `data`, and
+  `@odata.context`/`@odata.nextLink` leave `data` for `meta`. `entity delete` `--json` renames `id`
+  to `_entity_id`. Single-record `--json` `data` has `@odata.*` stripped. Pre-1.0, permitted.
+
+
 ## v3.12.9 (2026-06-15)
 
 ### Bug Fixes
