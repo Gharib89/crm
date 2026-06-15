@@ -102,9 +102,12 @@ run's task list with the harness task tools** (`TaskCreate` per item; `TaskUpdat
 to change status; `TaskList` to re-read). If those tools aren't already loaded,
 fetch their schemas first via `ToolSearch` (`select:TaskCreate,TaskUpdate,TaskList`)
 — in some harnesses they're deferred. (Older harnesses name this `TodoWrite`; use
-whichever this one exposes.) One item per phase below, exactly one `in_progress`
+whichever this one exposes.) If `ToolSearch` also turns up nothing, the harness
+exposes no task tools at all (some sandboxes — e.g. cloud routines — don't): fall
+back to a plain markdown checklist you keep up to date in your replies. Don't stall
+on the missing tool — the list's *content* is what matters, not which tool holds it. One item per phase below, exactly one `in_progress`
 at a time, each marked `completed` only when its verification passed. Do not start
-phase 0 until the list exists. This is the progress surface for an unattended run
+phase 0 until that list exists (task tools, or the markdown fallback if they're absent). This is the progress surface for an unattended run
 and the map back if the context is summarized mid-run — without it, a mid-run
 summary leaves you unable to tell which phase you were in, so you skip or repeat
 one. Create exactly these ten items:

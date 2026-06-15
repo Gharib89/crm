@@ -30,7 +30,16 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
    short kebab summary of the issue title. Switch before any commit so the PR branch
    is semantic, not the `claude/...` name:
    git switch -c fix/<slug>-$NUM   # or feat/<slug>-$NUM
-   Then run the /ship skill on issue $NUM. Pin `--profile agent-cloud` on every crm
+   Then run /ship on issue $NUM by INVOKING THE SKILL TOOL (skill `ship`) — do not
+   paraphrase or inline its steps from this prompt. /ship composes the `tdd` and
+   `review` skills (all three ship as sibling skills in the clone's
+   `.claude/skills/`): when /ship reaches those phases, invoke `tdd` / `review` via
+   the Skill tool too — never hand-roll their logic inline. /ship's first action is
+   to create its phase task list; if the Task tools (`TaskCreate`/`TaskUpdate`/
+   `TaskList`) aren't loaded, run `ToolSearch` (`select:TaskCreate,TaskUpdate,TaskList`)
+   before concluding they're unavailable — only if that returns nothing, track the
+   ten phases in a markdown checklist instead and keep going (the list is a
+   progress/resume aid, not a gate). Pin `--profile agent-cloud` on every crm
    command. Put "Closes #$NUM" in the PR body so merging auto-closes the issue and
    drops it from the queue. Follow the repo CLAUDE.md for test/gate/docs-sync/commit
    rules. Cloud Dataverse org ONLY — never on-prem; an issue that can only be verified
