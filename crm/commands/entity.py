@@ -9,6 +9,7 @@ from crm.core import entity as entity_mod
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _concise_record,
     _destructive_option,
     _handle_d365_error,
     d365_errors,
@@ -35,6 +36,19 @@ _OPTIONSET_SETS = frozenset(("globaloptionsetdefinitions",))
 # {"error": {"code": "0x80060892", ...}} with HTTP 412. Distinct from 0x80040237
 # (DuplicateRecord / SQL integrity) and 0x80040333 (duplicate-detection-rules).
 _ALT_KEY_ERROR_CODE = "0x80060892"
+
+
+def _concise_human_record(ctx: CLIContext, entity_set: str, record: dict[str, Any]) -> dict[str, Any]:
+    """Project a single record for the concise human render (#302).
+
+    Hoists the entity's primary-name column only when its metadata is already
+    cached — `cached_primary_name` reads the warm cache directly, never adding a
+    round-trip to a plain get/create (ADR 0008); a cold cache leaves the name in
+    place."""
+    # Local import keeps the commands package import-cycle-free (mirrors the
+    # name-map lookup in _helpers.rendering._emit_query_result).
+    from crm.core.entity_names import cached_primary_name
+    return _concise_record(record, primary_name=cached_primary_name(ctx.backend(), entity_set))
 
 
 def _is_alternate_key_error(exc: D365Error) -> bool:
@@ -215,8 +229,13 @@ def _validate_or_emit(
                    "never matches). Any mismatch exits 1 (the --json envelope "
                    "carries meta {attr, expected, actual}; human mode prints the "
                    "error line); all match exits 0.")
+@click.option("--full", is_flag=True, default=False,
+              help="Human mode: show every field including nulls and @odata.* "
+                   "plumbing. Default human output is concise (populated fields "
+                   "only, id first). No effect in --json mode.")
 @pass_ctx
-def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal, expect):
+def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotations,
+               minimal, expect, full):
     """GET <entity-set> <guid>."""
     # Validate untrusted --expect input before any backend call (house rule):
     # a malformed pair raises UsageError (exit 2) without a round-trip.
@@ -241,6 +260,8 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
         # record_id already passed GUID validation in retrieve(), so this never
         # raises. `_entity_id` has no '@', so --minimal's prune keeps it.
         result = {**result, **entity_mod.entity_id_fields(ctx.backend(), entity_set, record_id)}
+        if not full and not ctx.json_mode:
+            result = _concise_human_record(ctx, entity_set, result)
     ctx.emit(True, data=result)
 
 
@@ -289,10 +310,14 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
 @click.option("--validate", is_flag=True,
               help="Pre-write field-name check (1-3 metadata GETs); blocks unknown "
                    "fields with did-you-mean. Composable with --dry-run.")
+@click.option("--full", is_flag=True, default=False,
+              help="Human mode: show every field including nulls and @odata.* "
+                   "plumbing. Default human output is concise (populated fields "
+                   "only, new id first). No effect in --json mode.")
 @_admin_header_options
 @pass_ctx
 def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, return_record,
-                  validate, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+                  validate, full, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """POST a new record."""
     return_record = _resolve_return_record(no_return, return_record, default=True)
     payload = _load_payload(data_json, data_file)
@@ -313,10 +338,14 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
                       if _is_alternate_key_error(exc) and ctx.json_mode else None)
         _handle_d365_error(ctx, exc, extra_meta=extra_meta, warnings=validate_warnings or None)
         return
+    display = result
     if return_record and isinstance(result, dict):
         # Surface the normalized id alongside the full returned record (ADR 0008).
         entity_mod.inject_create_entity_id(ctx.backend(), entity_set, result)
-    ctx.emit(True, data=result, warnings=validate_warnings or None)
+        if not full and not ctx.json_mode:
+            # Concise human view only; `result` stays full for the audit journal.
+            display = _concise_human_record(ctx, entity_set, result)
+    ctx.emit(True, data=display, warnings=validate_warnings or None)
     _journal(ctx, entity_set, result)
     _touch_session(ctx, entity_set)
 
