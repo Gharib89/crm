@@ -161,7 +161,7 @@ class FakeBackend:
         self._forbid: set[str] = set(forbid)
         self.calls: list[tuple[str, Any, dict[str, Any]]] = []
         self.profile: ConnectionProfile = profile or ConnectionProfile(
-            name="fake",
+            name="testp",
             url="https://crm.contoso.local/contoso",
             domain="CONTOSO",
             username="alice",
