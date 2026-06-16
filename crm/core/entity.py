@@ -17,7 +17,7 @@ from crm.utils.d365_backend import (
     normalize_guid,
     odata_literal,
 )
-from crm.core import entity_names
+from crm.core import entity_names, lookup_bind
 from crm.utils.d365_types import BatchOperation
 
 
@@ -692,18 +692,18 @@ _NEVER_COPY_NAMES = frozenset(
     {"statecode", "statuscode", "ownerid", "overriddencreatedon"}
 )
 # Attribute types whose value is carried as a `_<name>_value` lookup property
-# and must be rebound with `<nav>@odata.bind`, not copied verbatim. `ownerid`
-# itself is in the never-copy set, but `Owner` stays here so any other
-# owner-typed column is rebound rather than silently dropped as a plain field.
-_LOOKUP_TYPES = frozenset({"Lookup", "Customer", "Owner"})
+# and must be rebound with `<nav>@odata.bind`, not copied verbatim (`ownerid` is
+# in the never-copy set, but `Owner` stays so any other owner-typed column is
+# rebound, not silently dropped). Canonical home is the import-side binder.
+_LOOKUP_TYPES = lookup_bind.LOOKUP_TYPES
 
-# Per-value lookup annotations (present on an annotated retrieve). The first is
-# the exact case-sensitive single-valued navigation property for the value
+# Per-value lookup annotations (present on an annotated retrieve). `_ASSOC_NAV_*`
+# is the exact case-sensitive single-valued navigation property for the value
 # currently set — authoritative for both single-target and polymorphic lookups
-# (avoids guessing nav-prop casing, the #228 hazard); the second is the target
-# table's logical name, which selects its entity set for the bind URL.
+# (avoids guessing nav-prop casing, the #228 hazard); `_LOOKUP_LOGICAL_*` is the
+# target table's logical name, which selects its entity set for the bind URL.
 _ASSOC_NAV_ANNOTATION = "Microsoft.Dynamics.CRM.associatednavigationproperty"
-_LOOKUP_LOGICAL_ANNOTATION = "Microsoft.Dynamics.CRM.lookuplogicalname"
+_LOOKUP_LOGICAL_ANNOTATION = lookup_bind.LOOKUP_LOGICAL_ANNOTATION
 
 
 def _plan_from_specs(

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Generator
 
 from crm.core import entity as entity_mod
+from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
 
@@ -197,6 +198,15 @@ def import_records(
         records: list[dict[str, Any]] = list(_read_jsonl(path))
     else:
         records = list(_read_csv(path))
+
+    # ── rebind READ-format lookups ─────────────────────────────────────────────
+    # `data export` / `query odata` emit lookups as read-only `_<attr>_value`
+    # GUIDs (plus annotations), which the Web API cannot write. Rewrite them to
+    # `<nav>@odata.bind` so an export round-trips on import (#333). The metadata
+    # read happens once and only when a record actually carries such a key.
+    if any(lookup_bind.needs_binding(r) for r in records):
+        resolver = lookup_bind.build_resolver(backend, entity_set)
+        records = [lookup_bind.bind_lookups(r, resolver) for r in records]
 
     # ── build ops ────────────────────────────────────────────────────────────
     # Track each op's source-row identity (1-based input index, plus the record

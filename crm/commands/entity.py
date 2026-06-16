@@ -6,6 +6,7 @@ import re
 from typing import Any
 import click
 from crm.core import entity as entity_mod
+from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
@@ -299,6 +300,22 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
     ctx.emit(True, data=rows)
 
 
+def _rebind_payload_lookups(
+    ctx: CLIContext, entity_set: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Rewrite READ-format ``_<attr>_value`` lookups in a write payload (#333).
+
+    Lets ``entity create`` / ``upsert`` accept a record straight from
+    ``data export`` / ``query odata``: any ``_<attr>_value`` lookup becomes
+    ``<nav>@odata.bind`` and read-only annotations are dropped. A no-op (no
+    metadata read) for a hand-written payload with no such keys.
+    """
+    if not lookup_bind.needs_binding(payload):
+        return payload
+    resolver = lookup_bind.build_resolver(ctx.backend(), entity_set)
+    return lookup_bind.bind_lookups(payload, resolver)
+
+
 @entity_group.command("create")
 @click.argument("entity_set")
 @click.option("--data", "data_json", help="JSON object as string.")
@@ -321,6 +338,11 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
     """POST a new record."""
     return_record = _resolve_return_record(no_return, return_record, default=True)
     payload = _load_payload(data_json, data_file)
+    try:
+        payload = _rebind_payload_lookups(ctx, entity_set, payload)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
     validate_warnings: list[str] = []
     if validate:
         result_warnings = _validate_or_emit(ctx, entity_set, payload, is_create=True)
@@ -506,6 +528,7 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
     """PATCH with create-if-missing semantics."""
     payload = _load_payload(data_json, data_file)
     with d365_errors(ctx):
+        payload = _rebind_payload_lookups(ctx, entity_set, payload)
         result = entity_mod.upsert(
             ctx.backend(), entity_set, record_id, payload,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),

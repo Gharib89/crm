@@ -113,6 +113,100 @@ def test_data_import_contacts_csv(backend, cli, tmp_path, unique):
 
 @covers("data import")
 @pytest.mark.slow
+def test_data_import_rebinds_exported_lookups(backend, cli, tmp_path, unique):
+    """A lookup exported as ``_<attr>_value`` round-trips on import (#333).
+
+    ``data export`` emits lookups in READ shape (``_primarycontactid_value`` GUID),
+    which the Web API cannot write directly. Import must rebind it to
+    ``<nav>@odata.bind`` from metadata so the relationship lands — and must drop a
+    polymorphic ``_ownerid_value`` (no annotation in a plain export) rather than
+    fail the row. Creates a contact + an account pointing at it, exports the
+    account, imports a fresh account carrying the exported lookup, and asserts the
+    relationship landed.
+    """
+    lastname = f"E2EBind{unique[:6]}"
+    acct_name = f"E2EBindAcct {unique[:6]}"
+    created_contacts: list[str] = []
+    created_accounts: list[str] = []
+
+    def _cleanup():
+        for aid in created_accounts:
+            try:
+                backend.delete(f"accounts({aid})")
+            except Exception:
+                pass
+        for cid in created_contacts:
+            try:
+                backend.delete(f"contacts({cid})")
+            except Exception:
+                pass
+
+    try:
+        # Setup: a contact, and a source account whose primary contact is that contact.
+        r = cli(["--json", "entity", "create", "contacts",
+                 "--data", json.dumps({"lastname": lastname})])
+        assert r.returncode == 0, f"contact create failed:\n{r.stderr}\n{r.stdout}"
+        contact_id = str(json.loads(r.stdout)["data"]["_entity_id"])
+        created_contacts.append(contact_id)
+
+        r = cli(["--json", "entity", "create", "accounts", "--data", json.dumps({
+            "name": f"{acct_name} src",
+            "primarycontactid@odata.bind": f"/contacts({contact_id})",
+        })])
+        assert r.returncode == 0, f"account create failed:\n{r.stderr}\n{r.stdout}"
+        src_account_id = str(json.loads(r.stdout)["data"]["_entity_id"])
+        created_accounts.append(src_account_id)
+
+        # Export the source account (READ shape: _primarycontactid_value GUID).
+        export_file = tmp_path / "account.json"
+        r = cli(["--json", "data", "export", "accounts",
+                 "--output", str(export_file), "--format", "json",
+                 "--filter", f"accountid eq {src_account_id}"])
+        assert r.returncode == 0, f"data export failed:\n{r.stderr}\n{r.stdout}"
+        exported = json.loads(export_file.read_text(encoding="utf-8"))[0]
+        assert exported.get("_primarycontactid_value") == contact_id, (
+            f"export did not emit the lookup in READ form: {exported.get('_primarycontactid_value')!r}"
+        )
+
+        # Import a fresh account carrying the exported lookup (plus a polymorphic
+        # _ownerid_value with no annotation, which must be dropped, not fail).
+        import_file = tmp_path / "account_import.jsonl"
+        import_file.write_text(json.dumps({
+            "name": acct_name,
+            "_primarycontactid_value": exported["_primarycontactid_value"],
+            "_ownerid_value": exported.get("_ownerid_value"),
+        }) + "\n", encoding="utf-8")
+
+        r = cli(["--json", "data", "import", "accounts", str(import_file),
+                 "--format", "jsonl", "--mode", "create",
+                 "--no-transaction", "--continue-on-error"])
+        assert r.returncode == 0, f"data import failed:\n{r.stderr}\n{r.stdout}"
+        data = json.loads(r.stdout)["data"]
+
+        # Resolve the new account id FIRST so cleanup runs even if asserts fail.
+        name_lit = acct_name.replace("'", "''")
+        page = backend.get("accounts", params={
+            "$filter": f"name eq '{name_lit}'",
+            "$select": "accountid,_primarycontactid_value",
+        })
+        rows = page.get("value", []) if isinstance(page, dict) else []
+        for row in rows:
+            if row.get("accountid"):
+                created_accounts.append(str(row["accountid"]))
+
+        assert data.get("imported", 0) == 1, f"expected 1 imported; got: {data}"
+        assert data.get("failed", 0) == 0, f"import had failures: {data}"
+        assert rows, "imported account not found on query-back"
+        assert rows[0].get("_primarycontactid_value") == contact_id, (
+            f"lookup did not round-trip; new account primarycontactid="
+            f"{rows[0].get('_primarycontactid_value')!r}, expected {contact_id!r}"
+        )
+    finally:
+        _cleanup()
+
+
+@covers("data import")
+@pytest.mark.slow
 def test_data_import_partial_failure_reports_per_record(backend, cli, tmp_path, unique):
     """A row the server rejects yields a data.failures entry with index/status/error (#332).
 

@@ -22,6 +22,8 @@ crm --json entity create cwx_tickets --data '{
 ```
 The bind target is the navigation property (PascalCase lookup schema name `cwx_SLA` / `cwx_CustomerId`), not the lowercase logical name.
 
+You only hand-write the bind when you know the GUID up front. If the lookup value already came from a read — the server's READ shape `_<attr>_value` (raw GUID, as `data export` / `query odata` emit) — `entity create` and `entity upsert` auto-rewrite it into the `<nav>@odata.bind` write shape, resolving the nav property and target set from relationship metadata. So a payload built from an exported row imports unedited. Read-only lookup values (e.g. `_createdby_value`) and read-only OData annotation keys are dropped; a `null` `_<attr>_value` clears the lookup; a payload already in write shape (no `_value`/annotation keys) is untouched (no metadata fetch). **Polymorphic lookups (`customerid`/`ownerid`) bind only when the record carries the `@Microsoft.Dynamics.CRM.lookuplogicalname` annotation naming the concrete target — without it the lookup is silently dropped** (matching `entity clone`'s never-copy-`ownerid` behavior), so export with annotations to round-trip one. See [How-to: data](data.md#round-tripping-an-export-read-shape-lookups-auto-rebind).
+
 ## Update or upsert by id
 
 ```bash

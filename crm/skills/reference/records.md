@@ -250,6 +250,38 @@ creates are intentional — but the warning flags the copy-a-record footgun wher
 cannot act on. Prefer validate-first (optionally with `--dry-run`) for any
 agent-driven create/update.
 
+### Round-tripping a READ-shape lookup (no hand-`@odata.bind`)
+
+You don't have to hand-write the `<nav>@odata.bind` above when the lookup value
+already came from a read. `data import`, `entity create`, and `entity upsert`
+auto-rewrite any lookup that arrives in the server's **READ shape**
+`_<attr>_value` (the raw-GUID form that `data export` / `query odata` emit) into
+the WRITE shape `<nav>@odata.bind: "/<set>(<guid>)"`, resolving the nav property
+and target set from relationship metadata. So an exported row imports unedited —
+no manual `@odata.bind` surgery. Details:
+
+- A read-only lookup value (e.g. `_createdby_value`) is **dropped** — it can't be
+  written. Read-only OData annotation keys (`@odata.etag`, `@odata.context`,
+  `@OData.Community.Display.V1.FormattedValue`, per-value annotations) are
+  stripped; a hand-written `<nav>@odata.bind` you supply is preserved as-is.
+- A `null` `_<attr>_value` **clears** the lookup (`<nav>@odata.bind: null`).
+- A payload already in write shape (plain columns + your own `@odata.bind`, no
+  `_value`/annotation keys) is left untouched — no metadata fetch happens.
+
+**Gotcha — polymorphic lookups (`customerid`, `ownerid`, …) need annotations.**
+A Customer/Owner lookup binds to the concrete target named by its
+`…@Microsoft.Dynamics.CRM.lookuplogicalname` annotation. When that annotation is
+**absent** the lookup is **silently dropped** (not bound, not an error) so the
+rest of the record still round-trips — matching `entity clone`'s never-copy-`ownerid`
+behavior. A plain `data export` carries **no** annotations and `ownerid` is on
+every record, so by default polymorphic lookups won't round-trip: **export with
+annotations** (`query odata` with annotations, or an annotated retrieve) if you
+need them rebound.
+
+This is lookup-only: non-lookup read-only / unique scalar fields are **not**
+stripped, so a whole-record export may still be rejected on those (a separate
+concern). There is no export-side "import-ready" flag.
+
 ## Bulk CSV export
 
 ```bash
