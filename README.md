@@ -327,7 +327,9 @@ crm solution validate /tmp/snap.zip
 crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue
 
-# Bulk import (JSONL create; use --mode upsert --id-column <col> for PATCH)
+# Bulk import (JSONL create; use --mode upsert --id-column <col> for PATCH).
+# READ-shape lookups (_<attr>_value, as export emits) auto-rebind to
+# <nav>@odata.bind from metadata, so an export round-trips with no hand-editing.
 crm data import accounts records.jsonl
 crm --dry-run data import accounts records.jsonl   # preview: zero writes, dry_run:true
 
