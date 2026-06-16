@@ -72,6 +72,11 @@ crm --json entity delete contacts <guid> --yes
 # returns {"ok": true, "data": {"deleted": true, "_entity_id": "<guid>", "_entity_id_url": "<url>"}}
 ```
 
+For a large or quote-heavy single-record payload (many attributes, embedded
+quotes, or one row pulled from a bulk file), pass it via `--data-file` on
+`entity create`/`update`/`upsert` instead of inline `--data` — a file sidesteps
+shell quoting and command-line length limits.
+
 **Normalized id — read the written record's GUID from `_entity_id` (with
 `_entity_id_url`) on `create`, `update`, `delete`, `clone`, and `entity get`** — one
 entity-agnostic key, no need to know the per-entity primary-key attribute

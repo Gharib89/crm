@@ -16,6 +16,13 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
         except json.JSONDecodeError as exc:
             raise click.UsageError(f"invalid JSON in --data-file: {exc}") from exc
     elif data_json:
+        # A leading '@' is the curl-style "@file" convention, not valid JSON
+        # (no JSON value starts with '@'); point at --data-file rather than
+        # letting json.loads fail with an opaque "Expecting value" error.
+        if data_json.lstrip().startswith("@"):
+            raise click.UsageError(
+                "--data does not read files; use --data-file <path> to load a JSON payload from a file."
+            )
         try:
             parsed = json.loads(data_json)
         except json.JSONDecodeError as exc:
