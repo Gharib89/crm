@@ -25,8 +25,15 @@ def test_metadata_attributes(cli):
     assert env["ok"]
     assert isinstance(env["data"], list)
     assert len(env["data"]) > 0
-    names = [a.get("LogicalName") for a in env["data"]]
-    assert "name" in names
+    by_name = {a.get("LogicalName"): a for a in env["data"]}
+    assert "name" in by_name
+    # Write/read validity + required level are projected (#337); RequiredLevel
+    # is flattened to its string value, never the raw {"Value": ...} object.
+    name_attr = by_name["name"]
+    assert name_attr["IsValidForCreate"] is True
+    assert name_attr["IsValidForUpdate"] is True
+    assert name_attr["IsValidForRead"] is True
+    assert isinstance(name_attr["RequiredLevel"], str)
 
 
 @covers("metadata entity")

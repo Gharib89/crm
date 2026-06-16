@@ -104,13 +104,27 @@ def resolve_entity_set_name(backend: D365Backend, logical_name: str) -> str:
 
 
 def list_attributes(backend: D365Backend, logical_name: str) -> list[dict[str, Any]]:
-    """List attributes for an entity (logical name)."""
+    """List attributes for an entity (logical name).
+
+    Projects write/read validity (`IsValidForCreate` / `IsValidForUpdate` /
+    `IsValidForRead`) and `RequiredLevel` alongside the identifying fields so a
+    caller can tell which attributes are settable when building a create/update
+    payload (#337). `RequiredLevel` is a nested ``{"Value": ...}`` object
+    server-side; it is flattened to its `Value` string here, matching the
+    normalization in :func:`entity_names.specs_from_rows`.
+    """
     path = f"EntityDefinitions(LogicalName='{logical_name}')/Attributes"
     result = as_dict(backend.get(
         path,
-        params={"$select": "LogicalName,SchemaName,AttributeType,IsCustomAttribute"},
+        params={"$select": "LogicalName,SchemaName,AttributeType,IsCustomAttribute,"
+                "IsValidForCreate,IsValidForUpdate,IsValidForRead,RequiredLevel"},
     ))
-    return result.get("value", [])
+    rows: list[dict[str, Any]] = result.get("value", [])
+    for row in rows:
+        required: dict[str, Any] = row.get("RequiredLevel") or {}
+        level = required.get("Value")
+        row["RequiredLevel"] = level if isinstance(level, str) else None
+    return rows
 
 
 def attribute_info(backend: D365Backend, logical_name: str, attribute: str) -> dict[str, Any]:

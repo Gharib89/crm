@@ -16,6 +16,13 @@ crm --json metadata attribute account industrycode
 crm --json metadata attribute account industrycode --expect AttributeType=Picklist
 ```
 
+`metadata attributes` returns `data: [...]` where each item carries:
+`LogicalName`, `SchemaName`, `AttributeType`, `IsCustomAttribute`,
+`IsValidForCreate`, `IsValidForUpdate`, `IsValidForRead` (booleans), and
+`RequiredLevel` (string: `None`, `ApplicationRequired`, `SystemRequired`,
+`Recommended`). `RequiredLevel` is flattened from the server's nested
+`{"Value": "..."}` object — use `item["RequiredLevel"]` directly.
+
 ## Alternate keys (`metadata keys`)
 
 ```bash
