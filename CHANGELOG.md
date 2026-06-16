@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.5.2 (2026-06-16)
+
+### Bug Fixes
+
+- Import-side rebind of exported _<attr>_value lookups
+  ([#333](https://github.com/Gharib89/crm/pull/333),
+  [`ce27287`](https://github.com/Gharib89/crm/commit/ce272873b771aa499da04e8adb41fb813d000e1f))
+
+
 ## v4.5.1 (2026-06-16)
 
 ### Bug Fixes
