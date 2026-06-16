@@ -102,7 +102,7 @@ def _meta_backend() -> FakeBackend:
 
 def _bind(entity_set: str, record: dict[str, Any]) -> dict[str, Any]:
     backend = _meta_backend()
-    resolver = lookup_bind.build_resolver(backend, entity_set)
+    resolver = lookup_bind.build_resolver(backend, entity_set)  # type: ignore[arg-type]
     return lookup_bind.bind_lookups(record, resolver)
 
 
