@@ -34,6 +34,50 @@ crm --json entity upsert cwx_tickets 00000000-0000-0000-0000-000000000015 \
 ```
 `update` is a PATCH; `upsert` is a PATCH that creates the record if missing. Both return `{"ok": true}`.
 
+## Upsert by alternate key (`entity upsert --key`)
+
+When you do not have the primary GUID, `--key` lets you upsert by a
+natural/alternate key defined on the entity. Omit the positional `RECORD_ID` —
+the key values are read directly from `--data`, and `--key` with a positional
+GUID is a usage error (exit 2).
+
+```bash
+# Single-attribute alternate key
+crm --json entity upsert accounts --key accountnumber \
+  --data '{"accountnumber":"ACC-001","name":"Contoso Ltd"}'
+
+# Composite alternate key (comma-separated)
+crm --json entity upsert cwx_slas --key cwx_tier,cwx_region \
+  --data '{"cwx_tier":3,"cwx_region":"EU","cwx_name":"Gold EU"}'
+```
+
+Key attributes are **stripped from the request body** — Dataverse identifies the
+record from the URL key segment (`accounts(accountnumber='ACC-001')`) and
+discards (or on create, copies from the URL) those fields, so the CLI omits them
+from the body for you.
+
+`--key` validates that the named attribute(s) form a **defined** alternate key on
+the entity before issuing the PATCH — an unknown or unregistered combination
+returns a clean error listing the defined keys (names + attributes). If the key's
+index is not yet active (asynchronous activation after creation), the server may
+return a 404; wait for the index status to become `Active` (`crm metadata keys
+<entity>`).
+
+On success the envelope carries `_entity_id_url` from the server's
+`OData-EntityId` header — for an alternate-key upsert that URL is the key path
+itself (`accounts(accountnumber='ACC-001')`). It has no bare `(<guid>)` segment,
+so unlike a primary-key write the envelope has no `_entity_id`:
+
+```json
+{"ok": true, "data": {"_entity_id_url": ".../accounts(accountnumber='ACC-001')"}}
+```
+
+List the alternate keys defined on an entity with:
+
+```bash
+crm --json metadata keys accounts
+```
+
 Both `create` and `update` accept `--return-record` (echo the full row back) and `--no-return` (a minimal ack, no echoed row) — only the default differs: `create` echoes the row unless you pass `--no-return`, `update` does not echo the record unless you pass `--return-record` (it still returns the standard `{"ok": true}` ack). Passing both at once is a usage error.
 
 ## Concise human output, and `--full` to expand

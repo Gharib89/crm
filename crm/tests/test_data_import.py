@@ -387,6 +387,85 @@ class TestUpsertMode:
                 backend, "accounts", p, mode="upsert", id_column="accountid",
             )
 
+    def test_upsert_by_alternate_key_builds_patch_op(self, tmp_path: Path) -> None:
+        record = {"emailaddress1": "joe@x.com", "firstname": "Joe"}
+        p = tmp_path / "data.jsonl"
+        p.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+        patch_results: list[BatchResult] = [{
+            "method": "PATCH", "url": "contacts(emailaddress1='joe%40x.com')",
+            "status": 204, "headers": {}, "body": None, "error": None,
+        }]
+        backend = _make_stub_backend([patch_results])
+        result = _import_records(
+            backend, "contacts", p, mode="upsert", alt_key=["emailaddress1"],
+        )
+
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["method"] == "PATCH"
+        assert ops[0]["url"] == "contacts(emailaddress1='joe%40x.com')"
+        # The alternate-key attribute is stripped from the body (URL identifies it).
+        assert "emailaddress1" not in ops[0]["body"]
+        assert ops[0]["body"]["firstname"] == "Joe"
+        assert result["imported"] == 1
+
+    def test_upsert_by_composite_alternate_key(self, tmp_path: Path) -> None:
+        record = {"sample_key1": 1, "sample_key2": 2, "name": "1:2"}
+        p = tmp_path / "data.jsonl"
+        p.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        _import_records(
+            backend, "samples", p, mode="upsert",
+            alt_key=["sample_key1", "sample_key2"],
+        )
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["url"] == "samples(sample_key1=1,sample_key2=2)"
+        assert ops[0]["body"] == {"name": "1:2"}
+
+    def test_upsert_alt_key_missing_column_raises(self, tmp_path: Path) -> None:
+        record = {"firstname": "Joe"}  # missing 'emailaddress1'
+        p = tmp_path / "data.jsonl"
+        p.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        backend = _make_stub_backend([])
+        with pytest.raises(D365Error, match="row 1"):
+            _import_records(
+                backend, "contacts", p, mode="upsert", alt_key=["emailaddress1"],
+            )
+
+    def test_upsert_id_column_and_alt_key_mutually_exclusive(self, tmp_path: Path) -> None:
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"emailaddress1": "a@b.com"}\n', encoding="utf-8")
+        backend = _make_stub_backend([])
+        with pytest.raises(D365Error, match="mutually exclusive"):
+            _import_records(
+                backend, "contacts", p, mode="upsert",
+                id_column="contactid", alt_key=["emailaddress1"],
+            )
+
+    def test_alt_key_requires_upsert_mode(self, tmp_path: Path) -> None:
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"emailaddress1": "a@b.com"}\n', encoding="utf-8")
+        backend = _make_stub_backend([])
+        with pytest.raises(D365Error, match="alt_key is only valid"):
+            _import_records(
+                backend, "contacts", p, mode="create", alt_key=["emailaddress1"],
+            )
+
+    def test_upsert_failure_includes_alt_key_segment(self, tmp_path: Path) -> None:
+        record = {"emailaddress1": "joe@x.com", "firstname": "Joe"}
+        p = tmp_path / "data.jsonl"
+        p.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        fail_results: list[BatchResult] = [{
+            "method": "PATCH", "url": "contacts(emailaddress1='joe%40x.com')",
+            "status": 400, "headers": {}, "body": None, "error": "Bad request",
+        }]
+        backend = _make_stub_backend([fail_results])
+        result = _import_records(
+            backend, "contacts", p, mode="upsert", alt_key=["emailaddress1"],
+        )
+        assert result["failed"] == 1
+        assert result["failures"][0]["id"] == "emailaddress1='joe%40x.com'"
+
 
 # ── output counts ─────────────────────────────────────────────────────────────
 

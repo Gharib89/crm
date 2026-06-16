@@ -65,6 +65,98 @@ class TestGuards:
         assert "--id-column" in (result.output + result.stderr)
 
 
+    def test_id_column_and_key_mutually_exclusive(self, tmp_path):
+        """--id-column with --key → UsageError (exit 2)."""
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"emailaddress1": "a@b.com"}\n', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "data", "import", "contacts", str(f), "--mode", "upsert",
+            "--id-column", "contactid", "--key", "emailaddress1",
+        ])
+        assert result.exit_code == 2
+        assert "mutually exclusive" in (result.output + result.stderr)
+
+    def test_upsert_with_neither_id_column_nor_key(self, tmp_path):
+        """--mode upsert with neither --id-column nor --key → UsageError (exit 2)."""
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"name": "x"}\n', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "data", "import", "contacts", str(f), "--mode", "upsert",
+        ])
+        assert result.exit_code == 2
+        assert "--key" in (result.output + result.stderr)
+
+    def test_key_requires_upsert_mode(self, tmp_path):
+        """--key without --mode upsert → UsageError (exit 2)."""
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"emailaddress1": "a@b.com"}\n', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "data", "import", "contacts", str(f), "--key", "emailaddress1",
+        ])
+        assert result.exit_code == 2
+        assert "upsert" in (result.output + result.stderr)
+
+    def test_empty_key_is_usage_error(self, tmp_path):
+        """--key naming no attribute (e.g. ',,,') → UsageError (exit 2)."""
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"name": "x"}\n', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "data", "import", "contacts", str(f), "--mode", "upsert", "--key", ",,,",
+        ])
+        assert result.exit_code == 2
+        assert "at least one attribute" in (result.output + result.stderr)
+
+
+class TestUpsertByAlternateKey:
+    def test_key_routes_alternate_key_attrs_to_core(self, monkeypatch, tmp_path):
+        """--key validates against metadata and reaches import_records as alt_key."""
+        from crm.core import entity as entity_mod
+        monkeypatch.setattr(
+            entity_mod, "resolve_alternate_key",
+            lambda backend, entity_set, attrs: attrs,
+        )
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"emailaddress1": "joe@x.com", "firstname": "Joe"}\n', encoding="utf-8")
+
+        class _PatchBackend(_StubBackend):
+            def batch(self, ops, *, transactional, continue_on_error, timeout=None):
+                self.ops = ops
+                return [{"method": "PATCH", "url": ops[0]["url"], "status": 204,
+                         "headers": {}, "body": None, "error": None}]
+
+        stub = _PatchBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "--json", "data", "import", "contacts", str(f),
+            "--mode", "upsert", "--key", "emailaddress1",
+        ])
+        assert result.exit_code == 0, result.output
+        assert stub.ops[0]["method"] == "PATCH"
+        assert stub.ops[0]["url"] == "contacts(emailaddress1='joe%40x.com')"
+
+    def test_unknown_key_clean_error(self, monkeypatch, tmp_path):
+        """An unknown --key surfaces a clean ok=False envelope, not a raw fault."""
+        from crm.core import entity as entity_mod
+        from crm.utils.d365_backend import D365Error
+
+        def _boom(backend, entity_set, attrs):
+            raise D365Error("No alternate key on 'contacts' matches attribute(s) nope.")
+
+        monkeypatch.setattr(entity_mod, "resolve_alternate_key", _boom)
+        stub = _StubBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"nope": "x"}\n', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "--json", "data", "import", "contacts", str(f),
+            "--mode", "upsert", "--key", "nope",
+        ])
+        assert result.exit_code == 1
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert "No alternate key" in envelope["error"]
+
+
 class TestHappyPath:
     def test_output_summary_keys(self, monkeypatch, jsonl_file):
         """Happy path: JSON output contains imported, failed, chunks."""
