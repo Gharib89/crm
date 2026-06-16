@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import re
 from typing import Any
+from urllib.parse import quote
 
 from crm.utils.d365_backend import (
     D365Backend,
@@ -36,6 +37,81 @@ def build_record_path(entity_set: str, record_id: str) -> str:
     raises ``D365Error`` if it is not one.
     """
     return f"{entity_set}({_normalize_id(record_id)})"
+
+
+def _format_alternate_key_value(value: Any) -> str:
+    """Render *value* as a URL-safe OData alternate-key literal.
+
+    GUID strings and numbers/booleans are emitted bare; every other string is
+    single-quoted with embedded quotes doubled (OData escaping). The result is
+    percent-encoded so the path is safe to append to the service root, keeping
+    the OData quote delimiters literal.
+    """
+    if isinstance(value, str):
+        guid = normalize_guid(value)
+        if guid is not None:
+            return guid
+    return quote(odata_literal(value), safe="'")
+
+
+def format_alternate_key_segment(key_values: dict[str, Any]) -> str:
+    """Render the ``attr=value,...`` key segment of an alternate-key path.
+
+    Composite keys keep the given order; raises ``D365Error`` for an empty key.
+    """
+    if not key_values:
+        raise D365Error("Alternate-key upsert requires at least one key attribute.")
+    return ",".join(
+        f"{attr}={_format_alternate_key_value(value)}"
+        for attr, value in key_values.items()
+    )
+
+
+def build_alternate_key_path(entity_set: str, key_values: dict[str, Any]) -> str:
+    """Build an OData alternate-key record path ``<entity_set>(attr=value,...)``.
+
+    A ``PATCH`` to this path performs Dataverse Upsert-by-alternate-key: it
+    matches an existing record by the natural key instead of the primary GUID,
+    creating it if absent. See :func:`_format_alternate_key_value` for value
+    rendering (strings quoted + escaped; numeric/GUID bare).
+    """
+    return f"{entity_set}({format_alternate_key_segment(key_values)})"
+
+
+def resolve_alternate_key(
+    backend: D365Backend, entity_set: str, key_attrs: list[str]
+) -> list[str]:
+    """Validate *key_attrs* name a defined alternate key on *entity_set*.
+
+    Returns the matched key's attribute list in the metadata's canonical order
+    (so a composite key always builds the same path regardless of the order the
+    user listed the attributes). Raises ``D365Error`` with the defined keys when
+    no alternate key's attribute set matches — a clear error instead of a raw
+    server fault on an unknown key.
+    """
+    if not key_attrs:
+        raise D365Error("Alternate-key upsert requires at least one key attribute.")
+    # Local import keeps the core package import-cycle-free (mirrors the
+    # metadata import in commands/entity.enrich_duplicate_key_error).
+    from crm.core import metadata as meta_mod
+
+    logical = entity_names.resolve_logical_name(backend, entity_set)
+    keys = meta_mod.list_entity_keys(backend, logical)
+    requested = set(key_attrs)
+    for key in keys:
+        if set(key["key_attributes"]) == requested:
+            return list(key["key_attributes"])
+    if keys:
+        defined = "; ".join(
+            f"{k['schema_name']} ({', '.join(k['key_attributes'])})" for k in keys
+        )
+        detail = f"Defined alternate keys: {defined}."
+    else:
+        detail = f"{entity_set!r} has no alternate keys defined."
+    raise D365Error(
+        f"No alternate key on {entity_set!r} matches attribute(s) "
+        f"{', '.join(key_attrs)}. {detail}"
+    )
 
 
 def entity_id_fields(
@@ -371,6 +447,37 @@ def upsert(
     result = backend.patch(
         build_record_path(entity_set, record_id),
         json_body=payload,
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    )
+    return as_dict(result)
+
+
+def upsert_by_key(
+    backend: D365Backend,
+    entity_set: str,
+    key_values: dict[str, Any],
+    payload: dict[str, Any],
+    *,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
+) -> dict[str, Any]:
+    """PATCH to an alternate-key path (create-if-missing, no If-Match).
+
+    Matches an existing record by its natural/alternate key instead of the
+    primary GUID. The alternate-key attributes are stripped from the body: per
+    Dataverse guidance the server identifies the record from the URL key and
+    discards (or, on create, copies from the URL) those attributes, so sending a
+    body value that differs from the URL is rejected.
+    """
+    body = {k: v for k, v in payload.items() if k not in key_values}
+    result = backend.patch(
+        build_alternate_key_path(entity_set, key_values),
+        json_body=body,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,

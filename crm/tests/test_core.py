@@ -204,6 +204,23 @@ class TestEntityCrud:
         req = m.request_history[0]
         assert "If-Match" not in req.headers
 
+    def test_upsert_by_key_patches_alt_key_path_without_if_match(self, backend):
+        with requests_mock.Mocker() as m:
+            m.patch(
+                backend.url_for("contacts(emailaddress1='joe%40x.com')"),
+                status_code=204,
+            )
+            entity_mod.upsert_by_key(
+                backend, "contacts", {"emailaddress1": "joe@x.com"},
+                {"emailaddress1": "joe@x.com", "firstname": "Joe"},
+            )
+        req = m.request_history[0]
+        assert req.method == "PATCH"
+        assert "If-Match" not in req.headers
+        # Per Dataverse guidance the alternate-key attribute is dropped from the
+        # body (the server identifies the record from the URL key).
+        assert json.loads(req.body) == {"firstname": "Joe"}
+
     def test_delete_returns_id_payload(self, backend):
         with requests_mock.Mocker() as m:
             m.delete(backend.url_for(f"contacts({_GUID})"), status_code=204)
@@ -217,6 +234,85 @@ class TestEntityCrud:
     def test_invalid_guid_rejected(self, backend):
         with pytest.raises(D365Error, match="Invalid record id"):
             entity_mod.retrieve(backend, "contacts", "not-a-guid")
+
+
+class TestAlternateKeyPath:
+    def test_single_string_key_is_quoted(self):
+        path = entity_mod.build_alternate_key_path(
+            "contacts", {"emailaddress1": "joe@example.com"}
+        )
+        assert path == "contacts(emailaddress1='joe%40example.com')"
+
+    def test_composite_key_comma_separated_in_order(self):
+        path = entity_mod.build_alternate_key_path(
+            "contacts", {"firstname": "Joe", "emailaddress1": "a@b.com"}
+        )
+        assert path == "contacts(firstname='Joe',emailaddress1='a%40b.com')"
+
+    def test_numeric_and_bool_values_are_bare(self):
+        path = entity_mod.build_alternate_key_path(
+            "sample_things", {"sample_key1": 1, "sample_key2": True}
+        )
+        assert path == "sample_things(sample_key1=1,sample_key2=true)"
+
+    def test_guid_value_is_bare_and_normalized(self):
+        path = entity_mod.build_alternate_key_path(
+            "accounts", {"_primarycontactid_value": "{" + _GUID.upper() + "}"}
+        )
+        assert path == f"accounts(_primarycontactid_value={_GUID})"
+
+    def test_special_characters_are_url_escaped_and_quotes_doubled(self):
+        path = entity_mod.build_alternate_key_path(
+            "accounts", {"accountnumber": "A/B C&D'E"}
+        )
+        # single quote doubled per OData; '/', ' ', '&' percent-encoded; the
+        # OData quote delimiters stay literal.
+        assert path == "accounts(accountnumber='A%2FB%20C%26D''E')"
+
+    def test_empty_key_values_rejected(self):
+        with pytest.raises(D365Error, match="at least one key attribute"):
+            entity_mod.build_alternate_key_path("accounts", {})
+
+
+class TestResolveAlternateKey:
+    """Validation of a named alternate key against entity metadata."""
+
+    def _mock_meta(self, m, backend):
+        m.get(backend.url_for("EntityDefinitions"), json={"value": [
+            {"LogicalName": "account", "EntitySetName": "accounts",
+             "PrimaryIdAttribute": "accountid", "PrimaryNameAttribute": "name"},
+        ]})
+        m.get(backend.url_for("EntityDefinitions(LogicalName='account')/Keys"),
+              json={"value": [
+                  {"LogicalName": "account_code_ak", "SchemaName": "Account_Code_AK",
+                   "KeyAttributes": ["accountnumber"], "EntityKeyIndexStatus": "Active"},
+                  {"LogicalName": "account_geo_ak", "SchemaName": "Account_Geo_AK",
+                   "KeyAttributes": ["address1_city", "address1_country"],
+                   "EntityKeyIndexStatus": "Active"},
+              ]})
+
+    def test_returns_matched_attributes_for_single_key(self, backend, isolated_home):
+        with requests_mock.Mocker() as m:
+            self._mock_meta(m, backend)
+            matched = entity_mod.resolve_alternate_key(
+                backend, "accounts", ["accountnumber"]
+            )
+        assert matched == ["accountnumber"]
+
+    def test_matches_composite_key_regardless_of_order(self, backend, isolated_home):
+        with requests_mock.Mocker() as m:
+            self._mock_meta(m, backend)
+            matched = entity_mod.resolve_alternate_key(
+                backend, "accounts", ["address1_country", "address1_city"]
+            )
+        # Returned in the metadata's canonical order.
+        assert matched == ["address1_city", "address1_country"]
+
+    def test_unknown_key_raises_clear_error(self, backend, isolated_home):
+        with requests_mock.Mocker() as m:
+            self._mock_meta(m, backend)
+            with pytest.raises(D365Error, match="No alternate key on 'accounts'"):
+                entity_mod.resolve_alternate_key(backend, "accounts", ["notakey"])
 
 
 # ── query.py ────────────────────────────────────────────────────────────

@@ -96,9 +96,25 @@ def _build_create_op(entity_set: str, record: dict[str, Any]) -> BatchOperation:
 def _build_upsert_op(
     entity_set: str,
     record: dict[str, Any],
-    id_column: str,
     row_index: int,
+    *,
+    id_column: str | None = None,
+    alt_key: list[str] | None = None,
 ) -> BatchOperation:
+    if alt_key is not None:
+        key_values: dict[str, Any] = {}
+        for attr in alt_key:
+            if attr not in record:
+                raise D365Error(
+                    f"Upsert row {row_index}: missing key column {attr!r} in record"
+                )
+            key_values[attr] = record[attr]
+        # Strip the key attributes from the body — Dataverse identifies the
+        # record from the URL key and rejects a differing body value.
+        body = {k: v for k, v in record.items() if k not in key_values}
+        url = entity_mod.build_alternate_key_path(entity_set, key_values)
+        return BatchOperation(method="PATCH", url=url, body=body)
+    assert id_column is not None  # narrowed by import_records guard
     if id_column not in record:
         raise D365Error(
             f"Upsert row {row_index}: missing id_column {id_column!r} in record"
@@ -129,6 +145,7 @@ def import_records(
     fmt: str | None = None,
     mode: str = "create",
     id_column: str | None = None,
+    alt_key: list[str] | None = None,
     chunk_size: int = 100,
     transactional: bool = True,
     continue_on_error: bool = False,
@@ -149,8 +166,13 @@ def import_records(
     mode:
         ``"create"`` (POST) or ``"upsert"`` (PATCH by GUID).
     id_column:
-        Column / key that holds the record GUID.  Required when
-        *mode* is ``"upsert"``.
+        Column / key that holds the record GUID.  Required for ``"upsert"``
+        unless *alt_key* is given (mutually exclusive with it).
+    alt_key:
+        Alternate-key attribute(s) (already validated against entity metadata
+        by the caller) to upsert by instead of the primary GUID.  Each row's
+        record path becomes ``set(attr='value',...)`` and the key attributes are
+        stripped from the body.
     chunk_size:
         Records per ``$batch`` call.  Must be ≥ 1.
     transactional:
@@ -176,8 +198,14 @@ def import_records(
             "continue_on_error requires transactional=False "
             "(a server-side changeset is all-or-nothing)"
         )
-    if mode == "upsert" and id_column is None:
-        raise D365Error("id_column is required when mode='upsert'")
+    if mode == "upsert":
+        if id_column is not None and alt_key is not None:
+            raise D365Error(
+                "id_column and alt_key are mutually exclusive "
+                "(upsert by primary GUID OR by alternate key, not both)"
+            )
+        if id_column is None and alt_key is None:
+            raise D365Error("id_column or alt_key is required when mode='upsert'")
     if mode not in ("create", "upsert"):
         raise D365Error(f"Unsupported mode: {mode!r} (use 'create' or 'upsert')")
 
@@ -218,10 +246,17 @@ def import_records(
         if mode == "create":
             ops.append(_build_create_op(entity_set, record))
             op_ids.append(None)
+        elif alt_key is not None:
+            op = _build_upsert_op(entity_set, record, row_index, alt_key=alt_key)
+            ops.append(op)
+            # Record the alternate-key segment for failure traceability.
+            op_ids.append(entity_mod.format_alternate_key_segment(
+                {a: record[a] for a in alt_key}
+            ))
         else:
-            # mode == "upsert"; id_column is not None (guarded above)
+            # mode == "upsert" by primary GUID; id_column is not None (guarded above)
             assert id_column is not None  # narrow type for pyright
-            ops.append(_build_upsert_op(entity_set, record, id_column, row_index))
+            ops.append(_build_upsert_op(entity_set, record, row_index, id_column=id_column))
             op_ids.append(str(record[id_column]))
 
     # ── dispatch chunks ──────────────────────────────────────────────────────

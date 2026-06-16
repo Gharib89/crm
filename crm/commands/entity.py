@@ -518,22 +518,53 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
 
 @entity_group.command("upsert")
 @click.argument("entity_set")
-@click.argument("record_id")
+@click.argument("record_id", required=False)
+@click.option("--key", "alt_key", metavar="ATTR[,ATTR...]", default=None,
+              help="Upsert by an alternate key instead of the primary GUID: one "
+                   "attribute, or a comma-separated composite key. Values are read "
+                   "from --data, so omit the RECORD_ID. Mutually exclusive with it.")
 @click.option("--data", "data_json", help="JSON object as string.")
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False))
 @_admin_header_options
 @pass_ctx
-def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
+def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, data_file,
                   as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
-    """PATCH with create-if-missing semantics."""
+    """PATCH with create-if-missing semantics (by GUID, or --key alternate key)."""
+    if alt_key and record_id:
+        raise click.UsageError(
+            "--key and a positional RECORD_ID are mutually exclusive: --key upserts "
+            "by alternate key (values read from --data), so omit the GUID."
+        )
+    if not alt_key and not record_id:
+        raise click.UsageError(
+            "Provide a RECORD_ID (the primary GUID) or --key <attr> to upsert by "
+            "an alternate key."
+        )
     payload = _load_payload(data_json, data_file)
+    admin = _admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins)
     with d365_errors(ctx):
         payload = _rebind_payload_lookups(ctx, entity_set, payload)
-        result = entity_mod.upsert(
-            ctx.backend(), entity_set, record_id, payload,
-            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
-        )
-    data = result or {"upserted": True, "id": record_id}
+        if alt_key:
+            key_attrs = entity_mod.resolve_alternate_key(
+                ctx.backend(), entity_set,
+                [a.strip() for a in alt_key.split(",") if a.strip()],
+            )
+            key_values = {}
+            for attr in key_attrs:
+                if attr not in payload:
+                    raise D365Error(
+                        f"Alternate-key attribute {attr!r} is not present in --data."
+                    )
+                key_values[attr] = payload[attr]
+            result = entity_mod.upsert_by_key(
+                ctx.backend(), entity_set, key_values, payload, **admin)
+            fallback = {"upserted": True,
+                        "key": entity_mod.format_alternate_key_segment(key_values)}
+        else:
+            result = entity_mod.upsert(
+                ctx.backend(), entity_set, record_id, payload, **admin)
+            fallback = {"upserted": True, "id": record_id}
+    data = result or fallback
     ctx.emit(True, data=data)
     _journal(ctx, entity_set, data)
 

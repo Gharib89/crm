@@ -4,6 +4,7 @@ from __future__ import annotations
 import click
 from crm.core import export as export_mod
 from crm.core import data_import as import_mod
+from crm.core import entity as entity_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import d365_errors, _journal
 
@@ -44,9 +45,15 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
 @click.option("--format", "fmt", type=click.Choice(["jsonl", "csv"]), default=None,
               help="Input format; inferred from suffix when omitted (.csv→csv, else jsonl).")
 @click.option("--mode", type=click.Choice(["create", "upsert"]), default="create",
-              help="create=POST new records; upsert=PATCH by GUID via --id-column.")
+              help="create=POST new records; upsert=PATCH by GUID (--id-column) "
+                   "or by alternate key (--key).")
 @click.option("--id-column", default=None,
-              help="Column/key holding the record GUID (required for --mode upsert).")
+              help="Column/key holding the record GUID (for --mode upsert; "
+                   "mutually exclusive with --key).")
+@click.option("--key", "alt_key", default=None, metavar="ATTR[,ATTR...]",
+              help="Upsert by an alternate key instead of the primary GUID: one "
+                   "attribute, or a comma-separated composite key. Values are read "
+                   "from each row. Mutually exclusive with --id-column.")
 @click.option("--chunk-size", type=int, default=100,
               help="Records per $batch call (each chunk is one transactional changeset by default).")
 @click.option("--no-transaction", is_flag=True, default=False,
@@ -54,20 +61,38 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
 @click.option("--continue-on-error", is_flag=True, default=False,
               help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
 @pass_ctx
-def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, chunk_size,
-                no_transaction, continue_on_error):
+def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, alt_key,
+                chunk_size, no_transaction, continue_on_error):
     """Bulk-import records from a JSONL/CSV file via $batch."""
     if continue_on_error and not no_transaction:
         raise click.UsageError(
             "--continue-on-error requires --no-transaction; "
             "Prefer: odata.continue-on-error is meaningless inside a changeset."
         )
-    if mode == "upsert" and not id_column:
-        raise click.UsageError("--mode upsert requires --id-column (the GUID column).")
+    if mode == "upsert":
+        if id_column and alt_key:
+            raise click.UsageError(
+                "--id-column and --key are mutually exclusive: upsert by the "
+                "primary GUID OR by an alternate key, not both."
+            )
+        if not id_column and not alt_key:
+            raise click.UsageError(
+                "--mode upsert requires --id-column (the GUID column) or "
+                "--key (an alternate key)."
+            )
+    elif alt_key:
+        raise click.UsageError("--key applies only to --mode upsert.")
     with d365_errors(ctx):
+        alt_key_attrs = (
+            entity_mod.resolve_alternate_key(
+                ctx.backend(), entity_set,
+                [a.strip() for a in alt_key.split(",") if a.strip()],
+            )
+            if alt_key else None
+        )
         info = import_mod.import_records(
             ctx.backend(), entity_set, input_file,
-            fmt=fmt, mode=mode, id_column=id_column,
+            fmt=fmt, mode=mode, id_column=id_column, alt_key=alt_key_attrs,
             chunk_size=chunk_size,
             transactional=not no_transaction,
             continue_on_error=continue_on_error,
