@@ -66,6 +66,99 @@ one form in the UI before cloning.
 entity. Use `crm form clone` when you only need to push a single form to another
 entity without cloning the entity itself.
 
+## Add a field to a form
+
+```bash
+crm form add-field cwx_ticket cwx_priority
+```
+
+Resolves the control `classid` from the attribute's live metadata (no manual
+lookup needed), then splices a `<cell>`/`<control>` into the target section and
+PATCHes the `systemform` record. Errors if the field is already on the form, the
+attribute does not exist on the entity, or the attribute type has no mapped
+`classid` (see "Unmapped types" below).
+
+By default the field lands in the first section of the first tab. Narrow the
+target with `--tab` and `--section` (by name or id):
+
+```bash
+crm form add-field cwx_ticket cwx_priority --tab "General" --section "Details"
+```
+
+Use `--form` when the entity has more than one main form; without it the command
+errors if the choice is ambiguous.
+
+### Publish the change
+
+The platform's `GET /systemforms` returns the **published** FormXml. A PATCH is
+only visible in the UI — and on re-export — after `PublishAllXml` runs. Pass
+`--publish` to publish immediately:
+
+```bash
+crm form add-field cwx_ticket cwx_priority --publish
+```
+
+Without `--publish` (the default) the record is updated but not published.
+Publish later with `crm solution publish --solution <name>` or a blanket
+`crm solution publish --all`.
+
+### Add to a solution
+
+```bash
+crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx --publish
+```
+
+### Preview without writing
+
+```bash
+crm --dry-run form add-field cwx_ticket cwx_priority
+```
+
+Returns `would_add: true` with the resolved `classid` and target coordinates;
+no PATCH is issued.
+
+### Unmapped attribute types
+
+The command maps these `AttributeType` values to their control `classid`:
+String, Memo, Integer, Decimal, Money, DateTime, Boolean, Picklist, State,
+Status, Lookup, Customer, Owner, PartyList. For any other type (Double,
+MultiSelectPicklist, BigInt, Uniqueidentifier, …) the command errors rather
+than guess a classid. In that case, export the form, hand-splice the
+`<control>` (copy the `classid` from a stock table that already has the
+control), PATCH back, and publish — same pipeline as before this feature
+existed (see `crm form export`).
+
+## Remove a field from a form
+
+```bash
+crm form remove-field cwx_ticket cwx_priority
+```
+
+Removes the field's `<cell>` from the form layout (and tidies an emptied
+`<row>`), then PATCHes the `systemform` record. Errors if the field is not on
+the form.
+
+```bash
+crm form remove-field cwx_ticket cwx_priority --publish
+crm --dry-run form remove-field cwx_ticket cwx_priority   # would_remove: true
+```
+
+## Move a field to a different tab or section
+
+```bash
+crm form set-field cwx_ticket cwx_priority --tab "Details" --section "Status"
+```
+
+Relocates an existing field's `<cell>` to the target tab/section. The cell
+(including its id and control binding) is preserved — only its position changes.
+Errors if the field is not already on the form (use `add-field` first).
+
+```bash
+crm form set-field cwx_ticket cwx_priority \
+    --tab "Details" --section "Status" --publish --solution cwx_crmworx
+crm --dry-run form set-field cwx_ticket cwx_priority --tab "Details"  # would_move: true
+```
+
 ## Export a form's formxml
 
 ```bash

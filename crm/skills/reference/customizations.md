@@ -113,36 +113,55 @@ crm --json form clone cwx_ticket "Information" --to cwx_ticketclone   # clone a 
 crm --json form export cwx_ticket "Information" --output form.xml     # export a form's formxml
 ```
 
-### Add a field to an existing form
+### Add / remove / move a field — first-class verbs
 
-`form` has no field-editing verb — edit the **FormXml** by hand, the same shape as the
-view-edit recipe in `reference/authoring.md`: export, splice the control into the layout,
-PATCH the `systemforms` row, then publish the entity.
+Use `form add-field`, `form remove-field`, and `form set-field` directly — no manual
+FormXml editing required. The CLI resolves the control `classid` from live metadata and
+PATCHes the `systemform` record.
+
+```bash
+crm --json form add-field cwx_ticket cwx_priority            # add to first section of first tab
+crm --json form remove-field cwx_ticket cwx_priority         # remove; errors if absent
+crm --json form set-field cwx_ticket cwx_priority \
+    --tab "Details" --section "Status"                        # relocate; errors if not already present
+```
+
+**Publish gotcha — GET returns the published snapshot.** A plain `GET /systemforms`
+returns the *published* FormXml, not the pending PATCH. The field edit is only visible
+in the UI and on re-export **after `PublishAllXml` runs**. Always verify with a
+re-export *after* publishing; a malformed splice publishes silently but the control is
+absent from the exported XML.
+
+```bash
+crm --json form add-field cwx_ticket cwx_priority --publish   # PATCH + PublishAllXml in one call
+```
+
+**Unmapped types — fallback to hand-splice.** `add-field` maps the common
+`AttributeType` values (text, numeric, money, datetime, boolean, option-set, lookup
+families) to their control `classid` automatically. For a type with no mapped
+constant (e.g. multi-select option sets, floating-point) the command **errors and
+names the supported set** rather than guess an invalid classid — fall back to the
+manual pipeline below for those.
+
+**`--dry-run` support.** All three verbs honor the global `--dry-run` flag: reads
+run for real (live metadata + form fetched), but no PATCH is issued and the response
+carries `would_add` / `would_remove` / `would_move: true`.
+
+### Manual splice — fallback for unmapped control types
+
+Only needed when the attribute type has no mapped `classid` (see above):
 
 ```bash
 crm --json form export cwx_ticket "Information" --output form.xml
-# splice a <control> (carrying the field's classid) into a <cell> of the target
-# <section>, then PATCH only the formxml back:
+# Copy the <control classid="…"> from a stock table that already carries that
+# control type (e.g. account), splice a <cell> into the target <section>, then:
 crm entity update systemforms <formid> --data-file form-update.json   # {"formxml":"…"}
 crm solution publish --xml \
     '<importexportxml><entities><entity>cwx_ticket</entity></entities></importexportxml>'
 ```
 
 Use `--data-file`, **not** inline `--data` — FormXml is quote-heavy and must be
-JSON-escaped. Get `<formid>` from `form list`. A control's `classid` is a D365 platform
-constant per control type (stable across orgs) — the common ones:
-
-| control type | `classid` |
-|---|---|
-| single line of text | `{4273EDBD-AC1D-40d3-9FB2-095C621B552D}` |
-| multiline text | `{E0DECE4B-6FC8-4a8f-A065-082708572369}` |
-| option set / picklist | `{3EF39988-22BB-4f0b-BBBE-64B5A3748AEE}` |
-| lookup | `{270BD3DB-D9AF-4782-9025-509E298DEC0A}` |
-
-For any other type, `form export` a stock table that already carries that control (e.g.
-`account`) and copy its `<control>`'s `classid` — don't guess it. After publishing,
-**re-export the form and confirm your `<control>` is present**: a malformed splice
-publishes without error but silently drops the field.
+JSON-escaped. Get `<formid>` from `form list`.
 
 On Unified Interface a cloned/added form may need adding to the model-driven app's form
 list to be visible.

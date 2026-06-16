@@ -430,3 +430,33 @@ class TestMoveFieldInFormxml:
         with pytest.raises(D365Error):
             forms.move_field_in_formxml(
                 _MAIN_FORMXML, datafieldname="nope", tab="details")
+
+
+class TestSelectForm:
+    _A = {"formid": "11111111-1111-1111-1111-111111111111", "name": "Main",
+          "type": 2, "formxml": "<form/>", "isdefault": False}
+    _B = {"formid": "22222222-2222-2222-2222-222222222222", "name": "Default",
+          "type": 2, "formxml": "<form/>", "isdefault": True}
+
+    def test_sole_form_used_without_flag(self):
+        from crm.core import forms
+        assert forms._select_form([self._A], None)["formid"] == self._A["formid"]
+
+    def test_prefers_sole_default_among_many(self):
+        from crm.core import forms
+        # multiple main forms but exactly one isdefault -> primary is unambiguous
+        assert forms._select_form([self._A, self._B], None)["formid"] == self._B["formid"]
+
+    def test_ambiguous_without_default_requires_flag(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        a2 = dict(self._A, formid="33333333-3333-3333-3333-333333333333")
+        with pytest.raises(D365Error) as exc:
+            forms._select_form([self._A, a2], None)
+        assert "--form" in str(exc.value)
+
+    def test_form_flag_matches_by_name_or_id(self):
+        from crm.core import forms
+        assert forms._select_form([self._A, self._B], "Main")["formid"] == self._A["formid"]
+        assert forms._select_form(
+            [self._A, self._B], self._B["formid"])["formid"] == self._B["formid"]

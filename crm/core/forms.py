@@ -353,25 +353,35 @@ def read_entity_forms(
 
 
 def _select_form(forms_list: list[dict[str, Any]], form: str | None) -> dict[str, Any]:
-    """Pick exactly one form by ``--form`` name/id, or the sole main form.
+    """Pick exactly one form by ``--form`` name/id, or the entity's primary form.
 
-    Raises ``D365Error`` when nothing matches, or when the choice is ambiguous
-    (multiple matches / multiple main forms and no ``--form``).
+    With ``--form`` set, matches by name or id (errors on no / ambiguous match).
+    Without it, uses the sole main form, else the sole ``isdefault`` (primary)
+    form when one stands out; only when the primary is still ambiguous does it
+    raise ``D365Error`` asking for ``--form``.
     """
     if form is not None:
         matches = [f for f in forms_list
                    if f.get("name") == form or _id_matches(str(f.get("formid")), form)]
-        what = f"matching {form!r}"
-    else:
-        matches = list(forms_list)
-        what = "for this entity"
-    if not matches:
-        raise D365Error(f"No form {what} found.")
-    if len(matches) > 1:
-        names = ", ".join(f"{m.get('name')!r} ({m.get('formid')})" for m in matches)
-        raise D365Error(
-            f"Multiple forms {what}: {names}. Pass --form <name|id> to choose one.")
-    return matches[0]
+        if not matches:
+            raise D365Error(f"No form matching {form!r} found.")
+        if len(matches) > 1:
+            names = ", ".join(f"{m.get('name')!r} ({m.get('formid')})" for m in matches)
+            raise D365Error(
+                f"Multiple forms matching {form!r}: {names}. "
+                f"Pass --form <name|id> to choose one.")
+        return matches[0]
+    if not forms_list:
+        raise D365Error("No form for this entity found.")
+    if len(forms_list) == 1:
+        return forms_list[0]
+    defaults = [f for f in forms_list if f.get("isdefault")]
+    if len(defaults) == 1:
+        return defaults[0]
+    names = ", ".join(f"{m.get('name')!r} ({m.get('formid')})" for m in forms_list)
+    raise D365Error(
+        f"Multiple main forms for this entity: {names}. "
+        f"Pass --form <name|id> to choose one.")
 
 
 def _attr_label(info: dict[str, Any], fallback: str) -> str:
