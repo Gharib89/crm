@@ -83,7 +83,11 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, c
             # Human mode: spell out each failed row (JSON mode carries the same
             # detail in data.failures, so don't duplicate it into warnings there).
             for f in failures:
-                where = f"id {f['id']}" if "id" in f else f"row {f['index']}"
+                # Always lead with the input row (the reliable locator back to the
+                # source file); append the record id for upserts where it's known.
+                where = f"row {f['index']}"
+                if "id" in f:
+                    where += f" (id {f['id']})"
                 warnings.append(f"  {where}: HTTP {f['status']} — {f['error']}")
     data = info
     if not ctx.json_mode:

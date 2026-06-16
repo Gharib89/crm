@@ -216,3 +216,28 @@ class TestFailuresReporting:
         assert "Bad Request" in out
         # The raw failures list must not be dumped as a status line.
         assert "'index'" not in out
+
+    def test_human_mode_upsert_line_leads_with_row_then_id(self, monkeypatch, tmp_path):
+        """Upsert failures still lead with `row N`, then append the record id."""
+        guid = "12345678-1234-1234-1234-123456789abc"
+        jf = tmp_path / "accounts_upsert.jsonl"
+        jf.write_text(json.dumps({"accountid": guid, "name": "Acme"}) + "\n",
+                      encoding="utf-8")
+
+        class _FailBackend(_StubBackend):
+            def batch(self, ops, *, transactional, continue_on_error, timeout=None):
+                self.calls.append({"transactional": transactional,
+                                   "continue_on_error": continue_on_error})
+                return [{"method": "PATCH", "url": f"accounts({guid})", "status": 400,
+                         "headers": {}, "body": None, "error": "Bad Request"}]
+
+        stub = _FailBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "data", "import", "accounts", str(jf),
+            "--mode", "upsert", "--id-column", "accountid",
+            "--no-transaction", "--continue-on-error",
+        ])
+        assert result.exit_code == 0, result.output
+        out = result.output + result.stderr
+        assert f"row 1 (id {guid})" in out
