@@ -88,24 +88,24 @@ crm form add-field cwx_ticket cwx_priority --tab "General" --section "Details"
 Use `--form` when the entity has more than one main form; without it the command
 errors if the choice is ambiguous.
 
-### Publish the change
+### Publishing
 
-The platform's `GET /systemforms` returns the **published** FormXml. A PATCH is
-only visible in the UI — and on re-export — after `PublishAllXml` runs. Pass
-`--publish` to publish immediately:
+These verbs run `PublishAllXml` **by default** (the CLI-wide convention shared with
+`form clone`, `metadata create-entity`, etc.), so a field edit takes effect right
+away. This matters here: `GET /systemforms` returns the **published** FormXml, so an
+unpublished PATCH is invisible in the UI and on re-export. To batch several edits and
+publish once, pass `--no-publish` and publish later with `crm solution publish`:
 
 ```bash
-crm form add-field cwx_ticket cwx_priority --publish
+crm form add-field cwx_ticket cwx_priority --no-publish   # stage the edit only
+crm form add-field cwx_ticket cwx_owner --no-publish
+crm solution publish                                       # publish once
 ```
-
-Without `--publish` (the default) the record is updated but not published.
-Publish later with `crm solution publish --solution <name>` or a blanket
-`crm solution publish --all`.
 
 ### Add to a solution
 
 ```bash
-crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx --publish
+crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx
 ```
 
 ### Preview without writing
@@ -139,8 +139,8 @@ Removes the field's `<cell>` from the form layout (and tidies an emptied
 the form.
 
 ```bash
-crm form remove-field cwx_ticket cwx_priority --publish
-crm --dry-run form remove-field cwx_ticket cwx_priority   # would_remove: true
+crm form remove-field cwx_ticket cwx_priority --no-publish   # stage only
+crm --dry-run form remove-field cwx_ticket cwx_priority      # would_remove: true
 ```
 
 ## Move a field to a different tab or section
@@ -155,7 +155,7 @@ Errors if the field is not already on the form (use `add-field` first).
 
 ```bash
 crm form set-field cwx_ticket cwx_priority \
-    --tab "Details" --section "Status" --publish --solution cwx_crmworx
+    --tab "Details" --section "Status" --solution cwx_crmworx
 crm --dry-run form set-field cwx_ticket cwx_priority --tab "Details"  # would_move: true
 ```
 

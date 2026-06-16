@@ -460,3 +460,19 @@ class TestSelectForm:
         assert forms._select_form([self._A, self._B], "Main")["formid"] == self._A["formid"]
         assert forms._select_form(
             [self._A, self._B], self._B["formid"])["formid"] == self._B["formid"]
+
+
+class TestMalformedFormxml:
+    def test_add_raises_d365error_on_unparseable_xml(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.add_field_to_formxml(
+                "<form><tabs><tab", datafieldname="new_owner",
+                classid=_LOOKUP_CLASSID, label="Owner")
+
+    def test_remove_raises_d365error_on_unparseable_xml(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.remove_field_from_formxml("<form><<>", datafieldname="x")

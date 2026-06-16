@@ -14,7 +14,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, cast
 
-from crm.core.metadata import attribute_info, maybe_publish
+from crm.core.metadata import attribute_info, label_text, maybe_publish
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 FORM_TYPE_MAIN = 2
@@ -165,6 +165,15 @@ def _fresh_cell_id() -> str:
     return "{" + str(uuid.uuid4()) + "}"
 
 
+def _parse_formxml(formxml: str) -> "ET.Element":
+    """Parse FormXml, turning a malformed payload into a ``D365Error`` so the CLI
+    emits its standard error envelope rather than a raw ``ParseError`` traceback."""
+    try:
+        return ET.fromstring(formxml)
+    except ET.ParseError as exc:
+        raise D365Error(f"Could not parse the form's FormXml: {exc}") from exc
+
+
 def _id_matches(value: str | None, given: str) -> bool:
     """Whether a FormXml ``id`` attribute matches a user-supplied id, tolerating
     braces and case (FormXml ids are brace-wrapped, case-insensitive GUIDs)."""
@@ -254,7 +263,7 @@ def add_field_to_formxml(
     field is already on the form (no silent duplicate) or the tab/section is
     absent.
     """
-    root = ET.fromstring(formxml)
+    root = _parse_formxml(formxml)
     if _find_field_control(root, datafieldname) is not None:
         raise D365Error(
             f"Field {datafieldname!r} is already on the form; refusing to "
@@ -296,7 +305,7 @@ def remove_field_from_formxml(formxml: str, *, datafieldname: str) -> str:
     Removes exactly the targeted control's cell (tidying an emptied row) and
     nothing else. Raises ``D365Error`` if the field is not on the form.
     """
-    root = ET.fromstring(formxml)
+    root = _parse_formxml(formxml)
     _detach_field_cell(root, _parent_map(root), datafieldname)
     return ET.tostring(root, encoding="unicode")
 
@@ -311,7 +320,7 @@ def move_field_in_formxml(
     Raises ``D365Error`` if the field is not already on the form (the caller
     should suggest add-field).
     """
-    root = ET.fromstring(formxml)
+    root = _parse_formxml(formxml)
     target = _resolve_target_section(root, tab, section)
     cell = _detach_field_cell(root, _parent_map(root), datafieldname)
     _append_cell(target, cell)
@@ -385,15 +394,15 @@ def _select_form(forms_list: list[dict[str, Any]], form: str | None) -> dict[str
 
 
 def _attr_label(info: dict[str, Any], fallback: str) -> str:
-    """The attribute's localized display label, falling back to its logical name."""
+    """The attribute's localized display label, falling back to its logical name.
+
+    Delegates to the shared ``metadata.label_text`` so the ``UserLocalizedLabel`` →
+    ``LocalizedLabels`` fallback is handled consistently with the rest of the CLI.
+    """
     display = info.get("DisplayName")
     if not isinstance(display, dict):
         return fallback
-    localized = cast("dict[str, Any]", display).get("UserLocalizedLabel")
-    if not isinstance(localized, dict):
-        return fallback
-    label = cast("dict[str, Any]", localized).get("Label")
-    return label if isinstance(label, str) and label else fallback
+    return label_text(cast("dict[str, Any]", display)) or fallback
 
 
 _DRY_RUN_FLAG = {
