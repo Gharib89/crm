@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.5.1 (2026-06-16)
+
+### Bug Fixes
+
+- Data import reports per-record failures, not just counts
+  ([#339](https://github.com/Gharib89/crm/pull/339),
+  [`54712d1`](https://github.com/Gharib89/crm/commit/54712d19ed79c8f18015e3fc75a77d066fd30e66))
+
+- Human-mode import failure line always leads with row index
+  ([#339](https://github.com/Gharib89/crm/pull/339),
+  [`54712d1`](https://github.com/Gharib89/crm/commit/54712d19ed79c8f18015e3fc75a77d066fd30e66))
+
+
 ## v4.5.0 (2026-06-16)
 
 ### Features
