@@ -120,10 +120,12 @@ def bind_lookups(record: dict[str, Any], resolver: LookupResolver) -> dict[str, 
         m = _VALUE_RE.match(key)
         if m:
             attr = m.group("attr")
-            # A `_<attr>_value` that is not a writable lookup (a read-only system
-            # lookup such as createdby, or one with no relationship metadata)
-            # cannot be written — drop it rather than letting the server reject a
-            # direct write to an entity-reference property.
+            # A `_<attr>_value` that is not a writable lookup — a read-only
+            # system lookup such as createdby, or a non-lookup column — cannot be
+            # written; drop it rather than let the server reject a direct write to
+            # an entity-reference property. (A writable lookup missing its
+            # relationship metadata is a can't-happen case that surfaces as a
+            # clear error from the resolver below, not a silent drop.)
             if attr not in resolver.writable:
                 continue
             if value is None:
