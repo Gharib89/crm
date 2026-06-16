@@ -24,6 +24,11 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-22.04
+    # PSR's own "chore(release): vX.Y.Z" commit is pushed back to main (with the
+    # PAT, so it re-triggers this workflow). On that commit there is nothing left
+    # to release, so skip the no-op re-run. NOT [skip ci] in commit_message: the
+    # tag points at this commit, so [skip ci] would also suppress release.yml.
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref_name }}
       cancel-in-progress: false

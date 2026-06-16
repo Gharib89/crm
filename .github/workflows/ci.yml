@@ -1,0 +1,90 @@
+name: ci
+
+# Heads-up: a NEW workflow file does not trigger on the PR that introduces it —
+# GitHub only runs pull_request workflows already present on the default branch.
+# So this file is first exercised on the FIRST pull_request opened AFTER it lands
+# on main; the introducing PR (#344/#345) validated it via the local gate instead.
+#
+# PR-only gate. The PR is the single enforced gate (a ruleset on main requires
+# these jobs + blocks direct pushes), so push:main does NOT rebuild — binaries
+# build exactly once, at the release tag (release.yml). See
+# docs/adr/0010-build-once-trust-pr-pipeline.md.
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel a superseded PR run when a new commit is pushed to the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # pyright is OS-independent — run it once, not per-OS.
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: setup.py
+      - name: Install project + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Type check (pyright)
+        run: pyright
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: setup.py
+      - name: Install project + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run unit tests
+        run: pytest -q
+
+  # Pre-merge packaging gate: catch broken crm.spec / missing hiddenimports
+  # before the release tag, since release.yml is the only other PyInstaller run
+  # and a failure there happens after the tag is already pushed.
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: setup.py
+      - name: Install project + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Build with PyInstaller
+        run: pyinstaller crm.spec
+      - name: Smoke test (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          ./dist/crm/crm --version
+          ./dist/crm/crm --help
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\dist\crm\crm.exe --version
+          .\dist\crm\crm.exe --help

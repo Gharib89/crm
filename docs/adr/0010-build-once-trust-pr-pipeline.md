@@ -5,7 +5,7 @@ The CI/CD pipeline is restructured so that the PR is the single enforced gate an
 Decision:
 
 - **`build.yml` (renamed `ci.yml`) runs on `pull_request` only**, split into parallel `lint` (pyright, once, ubuntu), `test` (pytest, both OS), and `package` (PyInstaller + smoke, both OS) jobs, with `concurrency` cancel-in-progress so stale PR pushes are abandoned.
-- **No build/test runs on `push: main`.** The PR is trusted because a branch ruleset now *enforces* it: PR required to merge, the `ci.yml` jobs + `docs` required as status checks, direct and force pushes to main blocked.
+- **No build/test runs on `push: main`.** The PR is trusted because a branch ruleset now *enforces* it: PR required to merge, the `ci` jobs (`lint`, `test`, `package`) + `docs` required as status checks, direct and force pushes to main blocked.
 - **`release.yml` (tag `v*`) is the only binary build**, keeping a `pytest` gate before publishing since the tagged commit is the first time that exact SHA hits CI.
 - **`semantic-release.yml` skips its own no-op re-run** on the `chore(release)` commit via `if: !startsWith(github.event.head_commit.message, 'chore(release):')`.
 
@@ -20,3 +20,4 @@ Decision:
 
 - The 7-day "latest main" onedir artifact `build.yml` uploaded on push is gone; only tagged release binaries are published.
 - Removing the main-push gate is only safe *because* the ruleset enforces the PR — the two changes are a package and must ship together.
+- `ci.yml` is a **new** workflow file, so it does not run on the PR that introduces it (GitHub runs only `pull_request` workflows already on the default branch). That PR is validated by the local gate (`pytest`, `pyright`, `mkdocs --strict`, `pyinstaller` + smoke); `ci.yml` itself is first exercised on the next `pull_request` after it lands on main, and the enforcing ruleset is configured once those check names are known.
