@@ -256,3 +256,153 @@ class TestFormExport:
         assert data["ok"] is False
         assert _FORM_A["formid"] in data["error"]
         assert _FORM_A_DUP["formid"] in data["error"]
+
+
+# ---------------------------------------------------------------------------
+# crm form add-field / remove-field / set-field  (#326)
+# ---------------------------------------------------------------------------
+
+# A form with a real (tab/section/rows) layout so the field transforms have
+# somewhere to splice. Carries one bound field (new_name).
+_LAYOUT_XML = (
+    '<form><tabs>'
+    '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
+    '<columns><column width="100%"><sections>'
+    '<section name="summary" id="{bbbb2222-0000-0000-0000-000000000002}">'
+    '<rows><row><cell id="{cccc3333-0000-0000-0000-000000000003}">'
+    '<labels><label description="Name" languagecode="1033" /></labels>'
+    '<control id="new_name" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" '
+    'datafieldname="new_name" /></cell></row></rows>'
+    '</section></sections></column></columns></tab>'
+    '<tab name="details" id="{dddd4444-0000-0000-0000-000000000004}">'
+    '<columns><column width="100%"><sections>'
+    '<section name="extra" id="{eeee5555-0000-0000-0000-000000000005}">'
+    '<rows></rows></section></sections></column></columns></tab>'
+    '</tabs></form>'
+)
+_FORM_LAYOUT = {
+    "formid": "aaaaaaaa-0000-0000-0000-000000000001",
+    "name": "Information", "objecttypecode": "new_project", "type": 2,
+    "formxml": _LAYOUT_XML, "description": "Main", "isdefault": True,
+}
+
+
+def _attr_url(backend, entity, attr):
+    return backend.url_for(
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attr}')")
+
+
+def _form_pk_url(backend):
+    return backend.url_for("systemforms(aaaaaaaa-0000-0000-0000-000000000001)")
+
+
+class TestFormAddField:
+    def test_add_field_patches_with_resolved_classid(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_attr_url(backend, "new_project", "new_owner"), json={
+                "AttributeType": "Lookup",
+                "DisplayName": {"UserLocalizedLabel": {"Label": "Owner"}}})
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-field", "new_project", "new_owner",
+                "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert 'datafieldname="new_owner"' in body["formxml"]
+        assert "{270BD3DB-D9AF-4782-9025-509E298DEC0A}" in body["formxml"]
+        data = json.loads(result.output)
+        assert data["data"]["updated"] is True
+        assert data["data"]["classid"] == "{270BD3DB-D9AF-4782-9025-509E298DEC0A}"
+
+    def test_add_field_dry_run_does_not_write(self, dry_backend, monkeypatch):
+        backend = dry_backend
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_attr_url(backend, "new_project", "new_owner"), json={
+                "AttributeType": "Lookup",
+                "DisplayName": {"UserLocalizedLabel": {"Label": "Owner"}}})
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "--dry-run", "form", "add-field",
+                "new_project", "new_owner"])
+        assert result.exit_code == 0, result.output
+        assert patched.call_count == 0  # no write under dry-run
+        data = json.loads(result.output)
+        assert data["data"]["would_add"] is True
+
+    def test_add_field_unmapped_type_errors(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_attr_url(backend, "new_project", "new_tags"), json={
+                "AttributeType": "MultiSelectPicklist",
+                "DisplayName": {"UserLocalizedLabel": {"Label": "Tags"}}})
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-field", "new_project", "new_tags",
+                "--no-publish"])
+        assert result.exit_code != 0
+        assert "MultiSelectPicklist" in result.output
+
+
+class TestFormRemoveField:
+    def test_remove_field_patches_without_field(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-field", "new_project", "new_name",
+                "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert 'datafieldname="new_name"' not in body["formxml"]
+
+    def test_remove_absent_field_errors(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-field", "new_project", "nope",
+                "--no-publish"])
+        assert result.exit_code != 0
+
+
+class TestFormSetField:
+    def test_set_field_moves_to_target_section(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "set-field", "new_project", "new_name",
+                "--tab", "details", "--section", "extra", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert body["formxml"].index('name="details"') < body["formxml"].index("new_name")
+
+    def test_set_absent_field_suggests_add(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "set-field", "new_project", "nope",
+                "--tab", "details", "--no-publish"])
+        assert result.exit_code != 0
+        assert "add-field" in result.output
+
+
+class TestFormFieldFormSelection:
+    def test_ambiguous_forms_require_form_flag(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        second = dict(_FORM_LAYOUT, formid="ffffffff-0000-0000-0000-000000000099",
+                      name="Information 2")
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT, second]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-field", "new_project", "new_name",
+                "--no-publish"])
+        assert result.exit_code != 0
+        assert "--form" in result.output

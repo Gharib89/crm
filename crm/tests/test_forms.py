@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import uuid
 
+import pytest
 import requests_mock
 
 _FORM_ROW = {
@@ -245,3 +246,187 @@ class TestCloneRegeneratesIds:
         from crm.core import forms
         b1, _ = self._post_clone_twice(backend, forms)
         assert "formid" not in b1, f"top-level formid must not be sent: {b1}"
+
+
+class TestClassidForAttributeType:
+    def test_maps_common_types(self):
+        from crm.core import forms
+        assert forms.classid_for_attribute_type("String") == \
+            "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
+        assert forms.classid_for_attribute_type("Lookup") == \
+            "{270BD3DB-D9AF-4782-9025-509E298DEC0A}"
+        # Customer/Owner share the lookup control
+        assert forms.classid_for_attribute_type("Owner") == \
+            forms.classid_for_attribute_type("Lookup")
+
+    def test_unmapped_type_raises_clear_error(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error) as exc:
+            forms.classid_for_attribute_type("MultiSelectPicklist")
+        assert "MultiSelectPicklist" in str(exc.value)
+
+
+# A realistic single-line main-form FormXml: two tabs, each with one section
+# carrying one bound field. Includes an external `classid` (the existing control)
+# and a <Role Id> security-role ref to assert the add/remove/move transforms
+# never disturb external GUIDs.
+_MAIN_FORMXML = (
+    '<form>'
+    '<tabs>'
+    '<tab name="general" id="{aaaaaaaa-0000-0000-0000-000000000001}">'
+    '<labels><label description="General" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section name="summary" id="{bbbbbbbb-0000-0000-0000-000000000002}" showlabel="true">'
+    '<labels><label description="Summary" languagecode="1033" /></labels>'
+    '<rows><row><cell id="{cccccccc-0000-0000-0000-000000000003}">'
+    '<labels><label description="Name" languagecode="1033" /></labels>'
+    '<control id="new_name" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" '
+    'datafieldname="new_name" /></cell></row></rows>'
+    '</section></sections></column></columns>'
+    '</tab>'
+    '<tab name="details" id="{dddddddd-0000-0000-0000-000000000004}">'
+    '<labels><label description="Details" languagecode="1033" /></labels>'
+    '<columns><column width="100%"><sections>'
+    '<section name="extra" id="{eeeeeeee-0000-0000-0000-000000000005}" showlabel="true">'
+    '<labels><label description="Extra" languagecode="1033" /></labels>'
+    '<rows></rows>'
+    '</section></sections></column></columns>'
+    '</tab>'
+    '</tabs>'
+    '<roles><role><Role Id="{ffffffff-0000-0000-0000-000000000006}" /></role></roles>'
+    '</form>'
+)
+
+_LOOKUP_CLASSID = "{270BD3DB-D9AF-4782-9025-509E298DEC0A}"
+
+
+def _controls(formxml):
+    """Parse out (datafieldname -> classid) for every bound control."""
+    out = {}
+    for m in re.finditer(r"<control\b[^>]*>", formxml):
+        tag = m.group(0)
+        df = re.search(r'datafieldname="([^"]+)"', tag)
+        cid = re.search(r'classid="([^"]+)"', tag)
+        if df:
+            out[df.group(1)] = cid.group(1) if cid else None
+    return out
+
+
+class TestAddFieldToFormxml:
+    def test_adds_control_with_classid_and_datafieldname(self):
+        from crm.core import forms
+        out = forms.add_field_to_formxml(
+            _MAIN_FORMXML, datafieldname="new_owner",
+            classid=_LOOKUP_CLASSID, label="Owner")
+        ctrls = _controls(out)
+        assert ctrls["new_owner"] == _LOOKUP_CLASSID
+        # existing field untouched
+        assert ctrls["new_name"] == "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
+
+    def test_preserves_external_guids(self):
+        from crm.core import forms
+        out = forms.add_field_to_formxml(
+            _MAIN_FORMXML, datafieldname="new_owner",
+            classid=_LOOKUP_CLASSID, label="Owner")
+        # the security-role ref and the existing control's classid survive
+        assert "{ffffffff-0000-0000-0000-000000000006}" in out
+        assert "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" in out
+
+    def test_fresh_cell_id_is_unique(self):
+        from crm.core import forms
+        out = forms.add_field_to_formxml(
+            _MAIN_FORMXML, datafieldname="new_owner",
+            classid=_LOOKUP_CLASSID, label="Owner")
+        cell_ids = re.findall(r'<cell id="(\{[^"]+\})"', out)
+        assert len(cell_ids) == len(set(cell_ids))  # no duplicate cell ids
+        # the new cell's id is not the existing one
+        assert "{cccccccc-0000-0000-0000-000000000003}" in cell_ids
+        assert len(cell_ids) == 2
+
+    def test_duplicate_field_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.add_field_to_formxml(
+                _MAIN_FORMXML, datafieldname="new_name",
+                classid=_LOOKUP_CLASSID, label="Name")
+
+    def test_default_target_is_first_section(self):
+        from crm.core import forms
+        out = forms.add_field_to_formxml(
+            _MAIN_FORMXML, datafieldname="new_owner",
+            classid=_LOOKUP_CLASSID, label="Owner")
+        # new control lands in the "summary" section (first), before "details" tab
+        assert out.index("new_owner") < out.index('name="details"')
+
+    def test_target_section_by_name(self):
+        from crm.core import forms
+        out = forms.add_field_to_formxml(
+            _MAIN_FORMXML, datafieldname="new_owner",
+            classid=_LOOKUP_CLASSID, label="Owner",
+            tab="details", section="extra")
+        # control lands after the details tab opening
+        assert out.index('name="details"') < out.index("new_owner")
+
+    def test_unknown_tab_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.add_field_to_formxml(
+                _MAIN_FORMXML, datafieldname="new_owner",
+                classid=_LOOKUP_CLASSID, label="Owner", tab="nope")
+
+
+class TestRemoveFieldFromFormxml:
+    def test_removes_targeted_field_only(self):
+        from crm.core import forms
+        added = forms.add_field_to_formxml(
+            _MAIN_FORMXML, datafieldname="new_owner",
+            classid=_LOOKUP_CLASSID, label="Owner")
+        out = forms.remove_field_from_formxml(added, datafieldname="new_owner")
+        ctrls = _controls(out)
+        assert "new_owner" not in ctrls
+        assert "new_name" in ctrls  # the other field survives
+
+    def test_tidies_emptied_row(self):
+        from crm.core import forms
+        # new_name is the only cell in its row; removing it should drop the row
+        out = forms.remove_field_from_formxml(_MAIN_FORMXML, datafieldname="new_name")
+        assert "<row>" not in out or out.count("<cell") == 0
+        assert "new_name" not in _controls(out)
+
+    def test_preserves_external_guids(self):
+        from crm.core import forms
+        out = forms.remove_field_from_formxml(_MAIN_FORMXML, datafieldname="new_name")
+        assert "{ffffffff-0000-0000-0000-000000000006}" in out  # role ref
+
+    def test_absent_field_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.remove_field_from_formxml(_MAIN_FORMXML, datafieldname="nope")
+
+
+class TestMoveFieldInFormxml:
+    def test_moves_field_to_target_section(self):
+        from crm.core import forms
+        out = forms.move_field_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", tab="details", section="extra")
+        # new_name now lands after the details tab opening, and only once
+        assert out.index('name="details"') < out.index("new_name")
+        assert list(_controls(out)).count("new_name") == 1
+
+    def test_preserves_cell_id_and_classid(self):
+        from crm.core import forms
+        out = forms.move_field_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", tab="details", section="extra")
+        assert "{cccccccc-0000-0000-0000-000000000003}" in out  # original cell id
+        assert _controls(out)["new_name"] == "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
+
+    def test_absent_field_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.move_field_in_formxml(
+                _MAIN_FORMXML, datafieldname="nope", tab="details")
