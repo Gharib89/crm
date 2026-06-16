@@ -136,12 +136,19 @@ List the alternate keys for any entity with `crm metadata keys <entity>`.
 Lookup bindings (`field@odata.bind`) are not matched and will not appear in
 `payload_values` even if a lookup is part of the alternate key.
 
-## Create from a JSON file (avoid shell-quoting XML payloads)
+## Read the payload from a JSON file (`--data-file`)
+
+`entity create`, `entity update`, and `entity upsert` all accept `--data-file <path>` (a JSON object) in place of inline `--data`:
 
 ```bash
+crm --json entity create contacts --data-file contact.json
+crm --json entity update accounts <id> --data-file patch.json
 crm --json entity create savedqueries --data-file /tmp/cwx_view_active_tickets.json
 ```
-Use `--data-file` for payloads with embedded double quotes (e.g. `savedquery` or `systemform` rows whose columns contain XML). Add `--no-return` for rows that aren't readable until published (appmodule/sitemap, §11).
+
+Prefer `--data-file` for large or quote-heavy single-record payloads — records with many attributes, embedded double quotes (e.g. `savedquery` or `systemform` rows whose columns contain XML), or one row pulled from a bulk file — since inline `--data` breaks on shell quoting and command-line length limits. Add `--no-return` for rows that aren't readable until published (appmodule/sitemap, §11).
+
+`--data` does **not** read files: the curl-style `--data @contact.json` is parsed literally as JSON and rejected with an error pointing you to `--data-file`.
 
 ## Audit a record's related data before clone/delete (`entity children`)
 

@@ -1649,6 +1649,15 @@ class TestLoadPayload:
 
         assert _load_payload('{"name":"x"}', None) == {"name": "x"}
 
+    def test_data_at_prefix_hints_data_file(self):
+        import click
+        from crm.commands._helpers import _load_payload
+
+        # `--data @file.json` is curl-style and parsed literally as JSON; point
+        # the user at --data-file instead of the opaque "Expecting value" error.
+        with pytest.raises(click.UsageError, match=r"--data-file"):
+            _load_payload("@contact.json", None)
+
     def test_malformed_data_json_raises_usage_error(self):
         import click
         from crm.commands._helpers import _load_payload

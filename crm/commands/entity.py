@@ -467,7 +467,8 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
 @click.argument("entity_set")
 @click.argument("record_id")
 @click.option("--data", "data_json", help="JSON object as string.")
-@click.option("--data-file", type=click.Path(exists=True, dir_okay=False))
+@click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
+              help="Path to a JSON file with the record body.")
 @click.option("--allow-create", is_flag=True, help="Permit upsert (skip If-Match header).")
 @click.option("--return-record", is_flag=True,
               help="Ask server to return the updated row (update is silent by default).")
@@ -520,7 +521,8 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
 @click.argument("entity_set")
 @click.argument("record_id")
 @click.option("--data", "data_json", help="JSON object as string.")
-@click.option("--data-file", type=click.Path(exists=True, dir_okay=False))
+@click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
+              help="Path to a JSON file with the record body.")
 @_admin_header_options
 @pass_ctx
 def entity_upsert(ctx: CLIContext, entity_set, record_id, data_json, data_file,
