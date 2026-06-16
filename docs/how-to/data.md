@@ -61,7 +61,10 @@ individual failures (`Prefer: odata.continue-on-error`); it requires
 `--no-transaction` because a changeset is itself all-or-nothing.
 
 When `failed > 0`, a warning is surfaced in `meta.warnings` (`--json`) or as a
-warning line in human mode; exit code is 0 on partial failure.
+warning line in human mode; exit code is 0 on partial failure. `--json` also
+returns a per-record `data.failures` array (shape `{index, id?, status, error}`,
+where `index` is the 1-based input row and `id` is present only for upsert), and
+human mode prints one line per failed record alongside the aggregate warning.
 
 ### Dry-run preview (zero writes)
 

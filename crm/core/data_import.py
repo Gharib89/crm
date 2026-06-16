@@ -162,7 +162,10 @@ def import_records(
     -------
     dict
         Keys: ``imported``, ``failed``, ``chunks``, ``entity_set``, ``mode``,
-        ``dry_run``, ``format``.
+        ``dry_run``, ``format``, and ``failures`` — a list (``[]`` when none) of
+        ``{index, id?, status, error}`` entries, one per failed record, where
+        ``index`` is the 1-based input row, ``id`` the record GUID (upserts only),
+        and ``status``/``error`` the server's HTTP status and message.
     """
     # ── guards ──────────────────────────────────────────────────────────────
     if chunk_size < 1:
@@ -196,21 +199,29 @@ def import_records(
         records = list(_read_csv(path))
 
     # ── build ops ────────────────────────────────────────────────────────────
+    # Track each op's source-row identity (1-based input index, plus the record
+    # GUID for upserts) so a per-record failure can be traced back to its row —
+    # the batch result itself carries no link to the input position.
     ops: list[BatchOperation] = []
+    op_ids: list[str | None] = []
     for row_index, record in enumerate(records, 1):
         if mode == "create":
             ops.append(_build_create_op(entity_set, record))
+            op_ids.append(None)
         else:
             # mode == "upsert"; id_column is not None (guarded above)
             assert id_column is not None  # narrow type for pyright
             ops.append(_build_upsert_op(entity_set, record, id_column, row_index))
+            op_ids.append(str(record[id_column]))
 
     # ── dispatch chunks ──────────────────────────────────────────────────────
     imported = 0
     failed = 0
     chunks = 0
+    failures: list[dict[str, Any]] = []
 
     op_chunks: list[list[BatchOperation]] = list(_chunked(ops, chunk_size)) if ops else []
+    row_offset = 0  # 0-based index into ops/op_ids of the current chunk's first op
     for chunk_ops in op_chunks:
         chunks += 1
         results: list[BatchResult] = backend.batch(
@@ -218,13 +229,22 @@ def import_records(
             transactional=transactional,
             continue_on_error=continue_on_error,
         )
-        for r in results:
+        for pos, r in enumerate(results):
             status = r["status"]
             error = r.get("error")
             if 200 <= status < 300:
                 imported += 1
             elif error != "dry-run":
                 failed += 1
+                op_index = row_offset + pos
+                entry: dict[str, Any] = {"index": op_index + 1}
+                rec_id = op_ids[op_index] if op_index < len(op_ids) else None
+                if rec_id is not None:
+                    entry["id"] = rec_id
+                entry["status"] = status
+                entry["error"] = error or f"HTTP {status}"
+                failures.append(entry)
+        row_offset += len(chunk_ops)
 
     return {
         "imported": imported,
@@ -234,4 +254,5 @@ def import_records(
         "mode": mode,
         "dry_run": backend.dry_run,
         "format": resolved_fmt,
+        "failures": failures,
     }

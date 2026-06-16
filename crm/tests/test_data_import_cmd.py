@@ -155,3 +155,64 @@ class TestHappyPath:
         assert envelope["ok"] is True
         warnings = envelope.get("meta", {}).get("warnings", [])
         assert any("failed" in w for w in warnings)
+
+
+class _MixedBackend(_StubBackend):
+    """Backend stub: even-index ops succeed (204), odd-index ops fail (400)."""
+
+    def batch(self, ops, *, transactional, continue_on_error, timeout=None):
+        self.calls.append(
+            {"transactional": transactional, "continue_on_error": continue_on_error}
+        )
+        results = []
+        for i, _ in enumerate(ops):
+            if i % 2 == 0:
+                results.append({"method": "POST", "url": "accounts", "status": 204,
+                                "headers": {}, "body": None, "error": None})
+            else:
+                results.append({"method": "POST", "url": "accounts", "status": 400,
+                                "headers": {}, "body": None, "error": "Bad Request"})
+        return results
+
+
+class TestFailuresReporting:
+    def test_json_mode_includes_failures_array(self, monkeypatch, jsonl_file):
+        """--json: data.failures lists each failed row with index, status, error."""
+        stub = _MixedBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "--json", "data", "import", "accounts", str(jsonl_file),
+            "--no-transaction", "--continue-on-error",
+        ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)["data"]
+        # jsonl_file has two rows; row 2 (index 2) fails.
+        assert data["failures"] == [
+            {"index": 2, "status": 400, "error": "Bad Request"},
+        ]
+
+    def test_json_mode_no_failures_empty_array(self, monkeypatch, jsonl_file):
+        """--json success path: failures present as [] (clone's convention)."""
+        stub = _StubBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "--json", "data", "import", "accounts", str(jsonl_file),
+        ])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"]["failures"] == []
+
+    def test_human_mode_prints_per_failure_line(self, monkeypatch, jsonl_file):
+        """Human mode prints a per-failure line (row + status + error), not just a count."""
+        stub = _MixedBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "data", "import", "accounts", str(jsonl_file),
+            "--no-transaction", "--continue-on-error",
+        ])
+        assert result.exit_code == 0, result.output
+        out = result.output + result.stderr
+        assert "row 2" in out
+        assert "400" in out
+        assert "Bad Request" in out
+        # The raw failures list must not be dumped as a status line.
+        assert "'index'" not in out
