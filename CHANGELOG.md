@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.6.0 (2026-06-16)
+
+### Bug Fixes
+
+- Reject empty --key and stray alt_key; clarify docs (review)
+  ([#341](https://github.com/Gharib89/crm/pull/341),
+  [`0101e30`](https://github.com/Gharib89/crm/commit/0101e301ae668017f34de0777741b1c454c36979))
+
+### Documentation
+
+- Document upsert by alternate key (--key) ([#341](https://github.com/Gharib89/crm/pull/341),
+  [`0101e30`](https://github.com/Gharib89/crm/commit/0101e301ae668017f34de0777741b1c454c36979))
+
+### Features
+
+- Upsert by alternate key (entity upsert --key / data import --key)
+  ([#341](https://github.com/Gharib89/crm/pull/341),
+  [`0101e30`](https://github.com/Gharib89/crm/commit/0101e301ae668017f34de0777741b1c454c36979))
+
+
 ## v4.5.2 (2026-06-16)
 
 ### Bug Fixes
