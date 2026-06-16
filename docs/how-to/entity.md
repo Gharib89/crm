@@ -65,7 +65,8 @@ return a 404; wait for the index status to become `Active` (`crm metadata keys
 
 On success the envelope carries `_entity_id_url` from the server's
 `OData-EntityId` header — for an alternate-key upsert that URL is the key path
-itself (no primary GUID, so no `_entity_id`):
+itself (`accounts(accountnumber='ACC-001')`). It has no bare `(<guid>)` segment,
+so unlike a primary-key write the envelope has no `_entity_id`:
 
 ```json
 {"ok": true, "data": {"_entity_id_url": ".../accounts(accountnumber='ACC-001')"}}

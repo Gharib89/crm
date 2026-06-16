@@ -72,7 +72,7 @@ crm data import accounts accounts.jsonl \
 Each row is PATCHed to `accounts(accountnumber='<value>')`. The key column(s)
 are read from the row and stripped from the request body before sending.
 `--key` is mutually exclusive with `--id-column`; `--mode upsert` now requires
-one of them. `--key` is silently rejected without `--mode upsert` (usage error).
+one of them. Using `--key` outside `--mode upsert` is a usage error.
 
 Composite alternate keys are comma-separated:
 

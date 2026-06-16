@@ -442,6 +442,15 @@ class TestUpsertMode:
                 id_column="contactid", alt_key=["emailaddress1"],
             )
 
+    def test_alt_key_requires_upsert_mode(self, tmp_path: Path) -> None:
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"emailaddress1": "a@b.com"}\n', encoding="utf-8")
+        backend = _make_stub_backend([])
+        with pytest.raises(D365Error, match="alt_key is only valid"):
+            _import_records(
+                backend, "contacts", p, mode="create", alt_key=["emailaddress1"],
+            )
+
     def test_upsert_failure_includes_alt_key_segment(self, tmp_path: Path) -> None:
         record = {"emailaddress1": "joe@x.com", "firstname": "Joe"}
         p = tmp_path / "data.jsonl"

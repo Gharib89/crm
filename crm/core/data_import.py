@@ -206,6 +206,8 @@ def import_records(
             )
         if id_column is None and alt_key is None:
             raise D365Error("id_column or alt_key is required when mode='upsert'")
+    elif alt_key is not None:
+        raise D365Error("alt_key is only valid when mode='upsert'")
     if mode not in ("create", "upsert"):
         raise D365Error(f"Unsupported mode: {mode!r} (use 'create' or 'upsert')")
 

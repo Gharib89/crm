@@ -82,13 +82,13 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
             )
     elif alt_key:
         raise click.UsageError("--key applies only to --mode upsert.")
+    requested_key = [a.strip() for a in alt_key.split(",") if a.strip()] if alt_key else []
+    if alt_key and not requested_key:
+        raise click.UsageError("--key must name at least one attribute.")
     with d365_errors(ctx):
         alt_key_attrs = (
-            entity_mod.resolve_alternate_key(
-                ctx.backend(), entity_set,
-                [a.strip() for a in alt_key.split(",") if a.strip()],
-            )
-            if alt_key else None
+            entity_mod.resolve_alternate_key(ctx.backend(), entity_set, requested_key)
+            if requested_key else None
         )
         info = import_mod.import_records(
             ctx.backend(), entity_set, input_file,

@@ -540,15 +540,16 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, da
             "Provide a RECORD_ID (the primary GUID) or --key <attr> to upsert by "
             "an alternate key."
         )
+    requested_key = [a.strip() for a in alt_key.split(",") if a.strip()] if alt_key else []
+    if alt_key and not requested_key:
+        raise click.UsageError("--key must name at least one attribute.")
     payload = _load_payload(data_json, data_file)
     admin = _admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins)
     with d365_errors(ctx):
         payload = _rebind_payload_lookups(ctx, entity_set, payload)
-        if alt_key:
+        if requested_key:
             key_attrs = entity_mod.resolve_alternate_key(
-                ctx.backend(), entity_set,
-                [a.strip() for a in alt_key.split(",") if a.strip()],
-            )
+                ctx.backend(), entity_set, requested_key)
             key_values = {}
             for attr in key_attrs:
                 if attr not in payload:

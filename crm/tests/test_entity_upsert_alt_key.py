@@ -61,6 +61,14 @@ def test_neither_id_nor_key_is_usage_error(runner):
     assert result.exit_code == 2
 
 
+def test_empty_key_is_usage_error(runner):
+    result = runner.invoke(cli, [
+        "entity", "upsert", "contacts", "--key", ",,,", "--data", "{}",
+    ])
+    assert result.exit_code == 2
+    assert "at least one attribute" in (result.output + result.stderr)
+
+
 def test_key_patches_alternate_key_path(runner, monkeypatch):
     monkeypatch.setattr(
         entity_mod, "resolve_alternate_key",

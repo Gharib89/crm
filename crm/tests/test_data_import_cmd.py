@@ -96,6 +96,16 @@ class TestGuards:
         assert result.exit_code == 2
         assert "upsert" in (result.output + result.stderr)
 
+    def test_empty_key_is_usage_error(self, tmp_path):
+        """--key naming no attribute (e.g. ',,,') → UsageError (exit 2)."""
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"name": "x"}\n', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "data", "import", "contacts", str(f), "--mode", "upsert", "--key", ",,,",
+        ])
+        assert result.exit_code == 2
+        assert "at least one attribute" in (result.output + result.stderr)
+
 
 class TestUpsertByAlternateKey:
     def test_key_routes_alternate_key_attrs_to_core(self, monkeypatch, tmp_path):

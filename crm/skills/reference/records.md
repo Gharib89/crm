@@ -309,7 +309,8 @@ order you listed them, so the URL path is stable across calls.
 
 **Success envelope.** A 204 with the server's `OData-EntityId` header yields
 `data._entity_id_url` — for an alternate-key upsert that URL is the key path
-itself, so there is **no** `_entity_id` GUID:
+itself (`accounts(accountnumber='ACC-001')`). It has no bare `(<guid>)` segment,
+so (unlike a primary-key write) there is **no** `_entity_id`:
 
 ```json
 {"ok": true, "data": {"_entity_id_url": ".../accounts(accountnumber='ACC-001')"}}
