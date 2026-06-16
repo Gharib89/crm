@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.6.1 (2026-06-16)
+
+### Bug Fixes
+
+- **entity**: Point --data @file users to --data-file
+  ([#342](https://github.com/Gharib89/crm/pull/342),
+  [`79812af`](https://github.com/Gharib89/crm/commit/79812afc9f919aabf2cc836964ab54178756916a))
+
+
 ## v4.6.0 (2026-06-16)
 
 ### Bug Fixes
