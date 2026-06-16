@@ -277,24 +277,19 @@ def _enrich_options(
                 attr["options"] = flatten_options(local)
 
 
-def _enrich_lookups(
-    backend: D365Backend, logical_name: str, writable: list[dict[str, Any]]
-) -> None:
-    """Attach `bind_key` + `targets[]` to each writable lookup attribute, in place.
+def lookup_nav_map(
+    backend: D365Backend, logical_name: str
+) -> dict[str, list[tuple[str, str]]]:
+    """Map each lookup column of *logical_name* to its bind targets.
 
-    The bind key is self-derived from `ManyToOne` relationship metadata: a 1:N
-    relationship's `ReferencingEntityNavigationPropertyName` is the single-valued
-    navigation property on THIS (referencing) entity — the case-sensitive name
-    the server accepts in a `<Nav>@odata.bind` deep-link — joined to the lookup
-    column on `ReferencingAttribute`. (Its partner,
-    `ReferencedEntityNavigationPropertyName`, is the collection-valued property
-    on the OTHER entity and is rejected in bind payloads.) Each target's
-    `EntitySetName` is resolved so the agent has a usable bind VALUE
-    (`/<set_name>(<id>)`). No-op when the entity has no lookup columns.
+    Returns ``{ReferencingAttribute: [(referenced_entity_logical, nav_property)]}``
+    from the entity's ``ManyToOne`` relationship metadata. The
+    ``ReferencingEntityNavigationPropertyName`` is the single-valued navigation
+    property on THIS (referencing) entity — the case-sensitive name the server
+    accepts in a ``<Nav>@odata.bind`` deep-link. A polymorphic lookup (customer /
+    owner / regarding) yields one entry per target table; a single-target lookup
+    yields one. Empty when the entity has no lookup columns.
     """
-    lookups = [a for a in writable if a["attribute_type"] == "Lookup"]
-    if not lookups:
-        return
     m2o = as_dict(backend.get(
         f"EntityDefinitions(LogicalName='{logical_name}')/ManyToOneRelationships",
         params={"$select":
@@ -302,7 +297,6 @@ def _enrich_lookups(
                 "ReferencingEntityNavigationPropertyName"},
     ))
     rels: list[dict[str, Any]] = m2o.get("value", [])
-    # ReferencingAttribute (lookup column) -> [(referenced_entity, nav_property)].
     by_attr: dict[str, list[tuple[str, str]]] = {}
     for r in rels:
         ref_attr = r.get("ReferencingAttribute")
@@ -312,6 +306,26 @@ def _enrich_lookups(
             r.get("ReferencedEntity") or "",
             r.get("ReferencingEntityNavigationPropertyName") or "",
         ))
+    return by_attr
+
+
+def _enrich_lookups(
+    backend: D365Backend, logical_name: str, writable: list[dict[str, Any]]
+) -> None:
+    """Attach `bind_key` + `targets[]` to each writable lookup attribute, in place.
+
+    The bind key is self-derived from `ManyToOne` relationship metadata (see
+    :func:`lookup_nav_map`): a 1:N relationship's
+    `ReferencingEntityNavigationPropertyName` is the single-valued navigation
+    property on THIS (referencing) entity — the case-sensitive name the server
+    accepts in a `<Nav>@odata.bind` deep-link. Each target's `EntitySetName` is
+    resolved so the agent has a usable bind VALUE (`/<set_name>(<id>)`). No-op
+    when the entity has no lookup columns.
+    """
+    lookups = [a for a in writable if a["attribute_type"] == "Lookup"]
+    if not lookups:
+        return
+    by_attr = lookup_nav_map(backend, logical_name)
 
     set_names: dict[str, str] = {}
 
