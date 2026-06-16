@@ -81,7 +81,7 @@ Releases are cut **automatically** by `python-semantic-release` (`.github/workfl
 
 The tag push uses **`RELEASE_PAT`**, NOT `GITHUB_TOKEN` — a tag pushed with `GITHUB_TOKEN` does not trigger downstream workflows, so `release.yml` would never fire. PSR itself does not build or create the GitHub release (`vcs_release: false`); the tag fires `release.yml`, which builds the PyInstaller binaries, uploads to R2, and creates the GitHub release. `scripts/check_tag_version.py` still gates that the tag matches `setup.py`.
 
-Manual release (fallback / re-cut): bump both version files, then push the tag yourself (a human/PAT tag push fires `release.yml`). Any PyInstaller bundle-shape change must touch all 5 sites: `crm.spec`, `.github/workflows/release.yml`, `.github/workflows/build.yml`, `scripts/build.sh`, `scripts/build.ps1`.
+Manual release (fallback / re-cut): bump both version files, then push the tag yourself (a human/PAT tag push fires `release.yml`). Any PyInstaller bundle-shape change must touch all 5 sites: `crm.spec`, `.github/workflows/release.yml`, `.github/workflows/ci.yml` (the `package` job), `scripts/build.sh`, `scripts/build.ps1`.
 
 ## Agent skills
 
