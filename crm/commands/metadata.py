@@ -122,10 +122,16 @@ def metadata_attributes(ctx: CLIContext, logical_name):
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
-    headers = ["LogicalName", "SchemaName", "AttributeType", "IsCustom"]
+    headers = ["LogicalName", "SchemaName", "AttributeType", "Create", "Update",
+               "Read", "Required", "IsCustom"]
     rows = [
         [it.get("LogicalName", ""), it.get("SchemaName", ""),
-         it.get("AttributeType", ""), str(it.get("IsCustomAttribute", False))]
+         it.get("AttributeType", ""),
+         str(it.get("IsValidForCreate", False)),
+         str(it.get("IsValidForUpdate", False)),
+         str(it.get("IsValidForRead", False)),
+         it.get("RequiredLevel") or "",
+         str(it.get("IsCustomAttribute", False))]
         for it in items
     ]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})

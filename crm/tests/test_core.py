@@ -408,6 +408,44 @@ class TestMetadata:
             attrs = meta_mod.list_attributes(backend, "account")
         assert attrs[0]["LogicalName"] == "name"
 
+    def test_list_attributes_selects_validity_fields(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(
+                    "EntityDefinitions(LogicalName='account')/Attributes"
+                ),
+                json={"value": []},
+            )
+            meta_mod.list_attributes(backend, "account")
+            select = m.last_request.qs["$select"][0]
+        for field in ("isvalidforcreate", "isvalidforupdate",
+                      "isvalidforread", "requiredlevel"):
+            assert field in select
+
+    def test_list_attributes_flattens_required_level(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(
+                    "EntityDefinitions(LogicalName='account')/Attributes"
+                ),
+                json={"value": [
+                    {"LogicalName": "name", "SchemaName": "Name",
+                     "AttributeType": "String", "IsCustomAttribute": False,
+                     "IsValidForCreate": True, "IsValidForUpdate": True,
+                     "IsValidForRead": True,
+                     "RequiredLevel": {"Value": "ApplicationRequired"}},
+                    {"LogicalName": "createdon", "SchemaName": "CreatedOn",
+                     "AttributeType": "DateTime", "IsCustomAttribute": False,
+                     "IsValidForCreate": False, "IsValidForUpdate": False,
+                     "IsValidForRead": True, "RequiredLevel": {"Value": "None"}},
+                ]},
+            )
+            attrs = meta_mod.list_attributes(backend, "account")
+        assert attrs[0]["RequiredLevel"] == "ApplicationRequired"
+        assert attrs[0]["IsValidForCreate"] is True
+        assert attrs[1]["RequiredLevel"] == "None"
+        assert attrs[1]["IsValidForCreate"] is False
+
 
 # ── session.py ──────────────────────────────────────────────────────────
 
