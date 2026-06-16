@@ -59,6 +59,33 @@ crm data import contacts contacts_update.jsonl \
 `--mode upsert` issues a PATCH to `contacts(<guid>)` for each row. The column
 named by `--id-column` is removed from the record body before the PATCH is sent.
 
+### Upsert records by alternate key
+
+When you do not have primary GUIDs in the file, upsert by a natural/alternate
+key instead:
+
+```bash
+crm data import accounts accounts.jsonl \
+    --mode upsert --key accountnumber
+```
+
+Each row is PATCHed to `accounts(accountnumber='<value>')`. The key column(s)
+are read from the row and stripped from the request body before sending.
+`--key` is mutually exclusive with `--id-column`; `--mode upsert` now requires
+one of them. `--key` is silently rejected without `--mode upsert` (usage error).
+
+Composite alternate keys are comma-separated:
+
+```bash
+crm data import cwx_slas slas.jsonl \
+    --mode upsert --key cwx_tier,cwx_region
+```
+
+`--key` validates the named attribute(s) form a **defined** alternate key on the
+entity before processing the first row — an unknown or unregistered combination
+returns a clean error listing the defined keys. List alternate keys with
+`crm metadata keys <entity>`.
+
 ### Import from CSV
 
 ```bash

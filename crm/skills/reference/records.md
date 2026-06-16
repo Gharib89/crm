@@ -282,6 +282,42 @@ This is lookup-only: non-lookup read-only / unique scalar fields are **not**
 stripped, so a whole-record export may still be rejected on those (a separate
 concern). There is no export-side "import-ready" flag.
 
+## Upsert by alternate key (`entity upsert --key`)
+
+When no primary GUID is known, match by a natural/alternate key. Omit the
+positional `RECORD_ID` — key values are read from `--data`. Passing both a
+GUID and `--key` is a usage error (exit 2).
+
+**Body-stripping.** The key attribute(s) are automatically removed from the
+request body before the PATCH. Dataverse identifies the record from the URL key
+segment (`accounts(accountnumber='ACC-001')`) and ignores (or on create, copies
+from the URL) those fields — sending a differing body value is rejected by the
+server. You do not need to remove them yourself.
+
+**Pre-flight validation.** The CLI calls `metadata keys` before the PATCH and
+verifies the named attribute(s) match a **defined** alternate key on the entity.
+An unknown or unregistered combination returns a clean error listing defined
+keys — the PATCH is never issued. If the key's index is not yet `Active`
+(asynchronous activation in Dataverse after key creation), the server returns a
+404; check index status with `crm --json metadata keys <entity>` and wait for
+`"index_status": "Active"`.
+
+**Composite keys.** Multiple attributes (comma-separated) must exactly match the
+attribute set of one defined key — a subset or superset is rejected. The CLI
+reorders the attributes to the **metadata's canonical order** regardless of the
+order you listed them, so the URL path is stable across calls.
+
+**Success envelope.** A 204 with the server's `OData-EntityId` header yields
+`data._entity_id_url` — for an alternate-key upsert that URL is the key path
+itself, so there is **no** `_entity_id` GUID:
+
+```json
+{"ok": true, "data": {"_entity_id_url": ".../accounts(accountnumber='ACC-001')"}}
+```
+
+Only when the server omits the header does it fall back to
+`{"upserted": true, "key": "accountnumber='ACC-001'"}`.
+
 ## Bulk CSV export
 
 ```bash
@@ -302,6 +338,12 @@ crm data import accounts records.jsonl
 # Upsert (PATCH by GUID); id-column is stripped from the record body
 crm data import contacts contacts.jsonl --mode upsert --id-column contactid
 
+# Upsert by alternate key; key column(s) stripped from each row's body
+crm data import accounts accounts.jsonl --mode upsert --key accountnumber
+
+# Composite alternate key
+crm data import cwx_slas slas.jsonl --mode upsert --key cwx_tier,cwx_region
+
 # CSV import (best-effort coercion; prefer JSONL for IDs / postal codes / lookups)
 crm data import cwx_tickets tickets.csv
 
@@ -311,6 +353,19 @@ crm data import accounts large.jsonl \
 
 # Dry-run preview — zero writes, summary shows imported:0 dry_run:true
 crm --json --dry-run data import accounts records.jsonl
+```
+
+**`--mode upsert` requires exactly one of `--id-column` or `--key`; passing
+both is a usage error. `--key` is rejected outside `--mode upsert`.**
+
+**Alternate-key import gotcha.** `--key` resolves and validates the key against
+entity metadata before the first row is processed. If the alternate key's index
+is not yet `Active`, the server returns 404 per row (not a bulk failure — each
+row fails individually in `data.failures`). Check index status first:
+
+```bash
+crm --json metadata keys <entity>
+# look for "index_status": "Active" on the matching key
 ```
 
 Output: `{imported, failed, chunks, entity_set, mode, dry_run, format, failures}`.
