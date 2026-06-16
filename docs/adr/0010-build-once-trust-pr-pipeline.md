@@ -5,7 +5,7 @@ The CI/CD pipeline is restructured so that the PR is the single enforced gate an
 Decision:
 
 - **`build.yml` (renamed `ci.yml`) runs on `pull_request` only**, split into parallel `lint` (pyright, once, ubuntu), `test` (pytest, both OS), and `package` (PyInstaller + smoke, both OS) jobs, with `concurrency` cancel-in-progress so stale PR pushes are abandoned.
-- **No build/test runs on `push: main`.** The PR is trusted because a branch ruleset now *enforces* it: PR required to merge, the `ci` jobs (`lint`, `test`, `package`) + `docs` required as status checks, direct and force pushes to main blocked.
+- **No build/test runs on `push: main`.** The PR is trusted because a branch ruleset now *enforces* it: PR required to merge, the `ci` jobs (`lint`, `test (ubuntu-22.04)`, `test (windows-latest)`, `package (ubuntu-22.04)`, `package (windows-latest)`) required as status checks, direct and force pushes to main blocked. `docs` is **not** required — it is path-filtered, and a required-but-skipped check would block PRs that do not touch docs. The ruleset bypasses the Repository-admin role so `semantic-release` (via `RELEASE_PAT`) can still push its `chore(release)` commit to main.
 - **`release.yml` (tag `v*`) is the only binary build**, keeping a `pytest` gate before publishing since the tagged commit is the first time that exact SHA hits CI.
 - **`semantic-release.yml` skips its own no-op re-run** on the `chore(release)` commit via `if: !startsWith(github.event.head_commit.message, 'chore(release):')`.
 
