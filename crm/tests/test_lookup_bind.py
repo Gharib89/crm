@@ -49,6 +49,10 @@ _ATTRS: dict[str, list[dict[str, Any]]] = {
          "IsValidForCreate": False, "IsValidForUpdate": False},
         {"LogicalName": "ownerid", "AttributeType": "Owner",
          "IsValidForCreate": True, "IsValidForUpdate": True},
+        # A multi-target column that still reports AttributeType "Lookup"
+        # (like regardingobjectid) — polymorphic by candidate count, not type.
+        {"LogicalName": "cwx_regardingid", "AttributeType": "Lookup",
+         "IsValidForCreate": True, "IsValidForUpdate": True},
     ],
     "contact": [
         {"LogicalName": "lastname", "AttributeType": "String",
@@ -70,6 +74,10 @@ _M2O: dict[str, list[dict[str, str]]] = {
         # target (systemuser|team) only comes from the value's annotation.
         {"ReferencingAttribute": "ownerid", "ReferencedEntity": "owner",
          "ReferencingEntityNavigationPropertyName": "ownerid"},
+        {"ReferencingAttribute": "cwx_regardingid", "ReferencedEntity": "contact",
+         "ReferencingEntityNavigationPropertyName": "cwx_regardingid_contact"},
+        {"ReferencingAttribute": "cwx_regardingid", "ReferencedEntity": "cwx_widget",
+         "ReferencingEntityNavigationPropertyName": "cwx_regardingid_cwx_widget"},
     ],
     "contact": [
         {"ReferencingAttribute": "parentcustomerid", "ReferencedEntity": "account",
@@ -188,6 +196,31 @@ def test_polymorphic_lookup_without_annotation_is_dropped() -> None:
         "_ownerid_value": "66666666-6666-6666-6666-666666666666",
     })
     assert out == {"name": "Acme"}
+
+
+def test_multi_target_lookup_type_is_treated_as_polymorphic() -> None:
+    # cwx_regardingid reports AttributeType "Lookup" but has >1 target table, so
+    # it must require the annotation rather than bind to the first candidate.
+    guid = "77777777-7777-7777-7777-777777777777"
+    # Without an annotation it is dropped (not bound to the first candidate).
+    assert _bind("accounts", {"_cwx_regardingid_value": guid}) == {}
+    # With an annotation it binds to the named concrete target.
+    out = _bind("accounts", {
+        "_cwx_regardingid_value": guid,
+        f"_cwx_regardingid_value@{lookup_bind.LOOKUP_LOGICAL_ANNOTATION}": "contact",
+    })
+    assert out == {"cwx_regardingid_contact@odata.bind": f"/contacts({guid})"}
+
+
+def test_hand_written_bind_wins_over_read_value() -> None:
+    # A record carrying both forms of the same lookup keeps the explicit bind.
+    out = _bind("accounts", {
+        "primarycontactid@odata.bind": "/contacts(99999999-9999-9999-9999-999999999999)",
+        "_primarycontactid_value": "11111111-1111-1111-1111-111111111111",
+    })
+    assert out == {
+        "primarycontactid@odata.bind": "/contacts(99999999-9999-9999-9999-999999999999)",
+    }
 
 
 def test_polymorphic_annotation_with_unknown_target_errors() -> None:

@@ -69,15 +69,20 @@ def build_resolver(backend: D365Backend, entity_set: str) -> LookupResolver:
     logical = name_map.logical_for(entity_set)
     if not logical:
         raise D365Error(f"Unknown entity set: {entity_set!r}")
+    by_attr = metadata.lookup_nav_map(backend, logical)
     writable: set[str] = set()
     polymorphic: set[str] = set()
     for s in entity_names.attribute_specs(backend, logical):
         if s.attribute_type in LOOKUP_TYPES and (s.valid_for_create or s.valid_for_update):
             writable.add(s.logical_name)
-            if s.attribute_type in POLYMORPHIC_TYPES:
+            # Polymorphic when the type says so (Customer/Owner → abstract base
+            # table) OR when the column simply has more than one target table
+            # (e.g. `regardingobjectid`, which reports type Lookup): either way
+            # the concrete target is not knowable without the annotation.
+            if s.attribute_type in POLYMORPHIC_TYPES or len(by_attr.get(s.logical_name, [])) > 1:
                 polymorphic.add(s.logical_name)
     return LookupResolver(
-        by_attr=metadata.lookup_nav_map(backend, logical),
+        by_attr=by_attr,
         writable=writable,
         polymorphic=polymorphic,
         logical_to_set=name_map.logical_to_set,
@@ -126,7 +131,7 @@ def bind_lookups(record: dict[str, Any], resolver: LookupResolver) -> dict[str, 
                 # to null clears the lookup (including all targets of a
                 # polymorphic one), so the target table need not be resolved.
                 nav = _first_nav(attr, resolver)
-                out[f"{nav}@odata.bind"] = None
+                _emit_bind(out, f"{nav}@odata.bind", None)
                 continue
             resolved = _resolve_target(attr, resolver, record)
             if resolved is None:
@@ -134,10 +139,20 @@ def bind_lookups(record: dict[str, Any], resolver: LookupResolver) -> dict[str, 
                 # target — drop it rather than bind to the abstract base table.
                 continue
             nav, target_set = resolved
-            out[f"{nav}@odata.bind"] = f"/{target_set}({value})"
+            _emit_bind(out, f"{nav}@odata.bind", f"/{target_set}({value})")
             continue
         out[key] = value
     return out
+
+
+def _emit_bind(out: dict[str, Any], bind_key: str, value: Any) -> None:
+    """Write a rewritten ``<nav>@odata.bind`` without clobbering a hand-written one.
+
+    A record may carry both a ``_<attr>_value`` and an explicit ``<nav>@odata.bind``
+    for the same lookup; the caller-supplied bind always wins, regardless of key
+    order, so a rewrite never overwrites a bind key already in the payload.
+    """
+    out.setdefault(bind_key, value)
 
 
 def _first_nav(attr: str, resolver: LookupResolver) -> str:
