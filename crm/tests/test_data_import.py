@@ -430,6 +430,86 @@ class TestOutputCounts:
             assert key in result, f"missing key: {key}"
 
 
+# ── per-record failure detail (#332) ──────────────────────────────────────────
+
+
+class TestFailuresDetail:
+    def test_failures_capture_index_status_error(self, tmp_path: Path) -> None:
+        """Each failed row yields a {index, status, error} entry, in input order."""
+        records = "\n".join(json.dumps({"name": f"R{i}"}) for i in range(3))
+        p = tmp_path / "data.jsonl"
+        p.write_text(records + "\n", encoding="utf-8")
+
+        mixed: list[BatchResult] = [
+            {"method": "POST", "url": "accounts", "status": 204, "headers": {},
+             "body": None, "error": None},
+            {"method": "POST", "url": "accounts", "status": 400, "headers": {},
+             "body": None, "error": "Bad request"},
+            {"method": "POST", "url": "accounts", "status": 403, "headers": {},
+             "body": None, "error": "Forbidden"},
+        ]
+        backend = _make_stub_backend([mixed])
+        result = _import_records(backend, "accounts", p, chunk_size=10)
+
+        assert result["failures"] == [
+            {"index": 2, "status": 400, "error": "Bad request"},
+            {"index": 3, "status": 403, "error": "Forbidden"},
+        ]
+
+    def test_no_failures_returns_empty_list(self, tmp_path: Path) -> None:
+        """Zero-failure import still carries failures as [] (clone's convention)."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "x"}\n', encoding="utf-8")
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        result = _import_records(backend, "accounts", p)
+        assert result["failures"] == []
+
+    def test_indices_span_chunks(self, tmp_path: Path) -> None:
+        """Row index is the 1-based position in the input, not within the chunk."""
+        records = "\n".join(json.dumps({"name": f"R{i}"}) for i in range(4))
+        p = tmp_path / "data.jsonl"
+        p.write_text(records + "\n", encoding="utf-8")
+
+        ok: BatchResult = {"method": "POST", "url": "accounts", "status": 204,
+                           "headers": {}, "body": None, "error": None}
+        bad: BatchResult = {"method": "POST", "url": "accounts", "status": 400,
+                            "headers": {}, "body": None, "error": "Bad request"}
+        # chunk_size=2 → rows 1,2 then rows 3,4; row 4 fails.
+        backend = _make_stub_backend([[ok, ok], [ok, bad]])
+        result = _import_records(backend, "accounts", p, chunk_size=2)
+        assert result["failures"] == [{"index": 4, "status": 400, "error": "Bad request"}]
+
+    def test_upsert_failure_includes_id(self, tmp_path: Path) -> None:
+        """Upsert rows carry the record GUID in the failure entry."""
+        guid = "12345678-1234-1234-1234-123456789abc"
+        record = {"accountid": guid, "name": "Contoso"}
+        p = tmp_path / "data.jsonl"
+        p.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+        fail: list[BatchResult] = [{
+            "method": "PATCH", "url": f"accounts({guid})", "status": 400,
+            "headers": {}, "body": None, "error": "Bad request",
+        }]
+        backend = _make_stub_backend([fail])
+        result = _import_records(
+            backend, "accounts", p, mode="upsert", id_column="accountid",
+        )
+        assert result["failures"] == [
+            {"index": 1, "id": guid, "status": 400, "error": "Bad request"},
+        ]
+
+    def test_failure_falls_back_to_http_status_when_error_blank(self, tmp_path: Path) -> None:
+        """A non-2xx result with no error string still reports a non-empty message."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "x"}\n', encoding="utf-8")
+        backend = _make_stub_backend([[{
+            "method": "POST", "url": "accounts", "status": 500,
+            "headers": {}, "body": None, "error": None,
+        }]])
+        result = _import_records(backend, "accounts", p)
+        assert result["failures"] == [{"index": 1, "status": 500, "error": "HTTP 500"}]
+
+
 # ── batch flag forwarding ─────────────────────────────────────────────────────
 
 

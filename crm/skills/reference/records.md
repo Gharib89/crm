@@ -281,9 +281,14 @@ crm data import accounts large.jsonl \
 crm --json --dry-run data import accounts records.jsonl
 ```
 
-Output: `{imported, failed, chunks, entity_set, mode, dry_run, format}`. `failed > 0`
-surfaces a `meta.warnings` advisory; **exit code is 0 on partial failure** — scan
-`meta.warnings`, don't rely on `$?`.
+Output: `{imported, failed, chunks, entity_set, mode, dry_run, format, failures}`.
+`failures` is **always present** (empty `[]` when nothing failed); each entry is
+`{index, id?, status, error}` — `index` is the 1-based input-row position, `id` the
+record GUID (only under `--mode upsert`), `status` the server HTTP status, `error` the
+server message. `failed > 0` also surfaces a `meta.warnings` count advisory; **exit code
+is 0 on partial failure** — read `data.failures` for which rows failed and why (no need
+to re-issue rows to discover it), don't rely on `$?`. (This is a different per-row shape
+from `entity clone`'s `{entity, source_id, reason}` above, and here `ok` stays `true`.)
 
 ## Raw `$batch` — `crm batch`
 

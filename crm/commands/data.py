@@ -72,10 +72,27 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, c
             transactional=not no_transaction,
             continue_on_error=continue_on_error,
         )
-    warnings = (
-        [f"{info['failed']} record(s) failed to import "
-         f"({info['imported']} succeeded across {info['chunks']} chunk(s))."]
-        if info.get("failed") else None
-    )
-    ctx.emit(True, data=info, warnings=warnings)
+    failures = info.get("failures") or []
+    warnings: list[str] | None = None
+    if failures:
+        warnings = [
+            f"{info['failed']} record(s) failed to import "
+            f"({info['imported']} succeeded across {info['chunks']} chunk(s))."
+        ]
+        if not ctx.json_mode:
+            # Human mode: spell out each failed row (JSON mode carries the same
+            # detail in data.failures, so don't duplicate it into warnings there).
+            for f in failures:
+                # Always lead with the input row (the reliable locator back to the
+                # source file); append the record id for upserts where it's known.
+                where = f"row {f['index']}"
+                if "id" in f:
+                    where += f" (id {f['id']})"
+                warnings.append(f"  {where}: HTTP {f['status']} — {f['error']}")
+    data = info
+    if not ctx.json_mode:
+        # The failures list renders as an unreadable truncated repr in the human
+        # status dump; we surface it via the warnings above instead.
+        data = {k: v for k, v in info.items() if k != "failures"}
+    ctx.emit(True, data=data, warnings=warnings)
     _journal(ctx, entity_set, info)
