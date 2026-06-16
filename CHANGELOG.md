@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.5.0 (2026-06-16)
+
+### Features
+
+- **form**: Add field-editing verbs (add-field/remove-field/set-field)
+  ([#338](https://github.com/Gharib89/crm/pull/338),
+  [`be7353c`](https://github.com/Gharib89/crm/commit/be7353cfc128fac3dc07692d7aec2ae675c90a31))
+
+
 ## v4.4.0 (2026-06-15)
 
 ### Features
