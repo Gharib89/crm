@@ -15,7 +15,9 @@ from crm.commands._helpers import (
 )
 
 _form_option = click.option(
-    "--form", "form", help="Target form by name or id (default: the sole main form).")
+    "--form", "form",
+    help="Target form by name or id (default: the sole main form, or the "
+         "primary form if the entity has several).")
 _tab_option = click.option(
     "--tab", help="Target tab by name or id (default: the first tab).")
 _section_option = click.option(

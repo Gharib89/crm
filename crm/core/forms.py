@@ -487,16 +487,15 @@ def set_form_field(
     """Relocate ``attribute``'s existing field to a different tab/section. Errors
     (suggesting add-field) if the field is not already on the form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
-    try:
-        new_xml = move_field_in_formxml(
-            form_row.get("formxml", ""), datafieldname=attribute,
-            tab=tab, section=section)
-    except D365Error as exc:
-        if "is not on the form" in str(exc):
-            raise D365Error(
-                f"Field {attribute!r} is not on the form; use add-field to add "
-                f"it first.") from exc
-        raise
+    formxml = form_row.get("formxml", "")
+    # Explicit presence pre-check: distinguish "field absent" (a user error worth a
+    # hint) from any other transform failure (bad --tab/--section), which should
+    # propagate unchanged — rather than fragile error-message matching.
+    if _find_field_control(_parse_formxml(formxml), attribute) is None:
+        raise D365Error(
+            f"Field {attribute!r} is not on the form; use add-field to add it first.")
+    new_xml = move_field_in_formxml(
+        formxml, datafieldname=attribute, tab=tab, section=section)
     return _commit_form_change(
         backend, form_row, new_xml, attribute, action="set-field",
         publish=publish, solution=solution, extra={"tab": tab, "section": section})

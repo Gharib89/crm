@@ -93,14 +93,22 @@ errors if the choice is ambiguous.
 These verbs run `PublishAllXml` **by default** (the CLI-wide convention shared with
 `form clone`, `metadata create-entity`, etc.), so a field edit takes effect right
 away. This matters here: `GET /systemforms` returns the **published** FormXml, so an
-unpublished PATCH is invisible in the UI and on re-export. To batch several edits and
-publish once, pass `--no-publish` and publish later with `crm solution publish`:
+unpublished PATCH is invisible in the UI and on re-export.
+
+Use `--no-publish` to **stage a single edit** and publish it later with
+`crm solution publish`:
 
 ```bash
-crm form add-field cwx_ticket cwx_priority --no-publish   # stage the edit only
-crm form add-field cwx_ticket cwx_owner --no-publish
-crm solution publish                                       # publish once
+crm form add-field cwx_ticket cwx_priority --no-publish   # stage one edit
+crm solution publish                                       # publish when ready
 ```
+
+!!! warning "Don't chain `--no-publish` edits to one form"
+    Each verb recomputes the FormXml from the form's **published** snapshot. A
+    second `--no-publish` edit therefore reads the form *without* the first
+    edit's pending change and overwrites it. To make several edits, keep the
+    default (publish each), or publish between edits — only the last
+    `--no-publish` write survives otherwise.
 
 ### Add to a solution
 
