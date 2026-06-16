@@ -19,9 +19,10 @@ crm --json metadata attribute account industrycode --expect AttributeType=Pickli
 `metadata attributes` returns `data: [...]` where each item carries:
 `LogicalName`, `SchemaName`, `AttributeType`, `IsCustomAttribute`,
 `IsValidForCreate`, `IsValidForUpdate`, `IsValidForRead` (booleans), and
-`RequiredLevel` (string: `None`, `ApplicationRequired`, `SystemRequired`,
-`Recommended`). `RequiredLevel` is flattened from the server's nested
-`{"Value": "..."}` object — use `item["RequiredLevel"]` directly.
+`RequiredLevel` (string: `"None"`, `"ApplicationRequired"`, `"SystemRequired"`,
+`"Recommended"` — the literal `"None"` is a string, not JSON `null`; `null`
+only when the value is genuinely absent). `RequiredLevel` is flattened from the
+server's nested `{"Value": "..."}` object — use `item["RequiredLevel"]` directly.
 
 ## Alternate keys (`metadata keys`)
 
