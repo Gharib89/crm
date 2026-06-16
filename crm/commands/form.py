@@ -14,6 +14,15 @@ from crm.commands._helpers import (
     _solution_option, _resolve_solution, _resolve_publish,
 )
 
+_form_option = click.option(
+    "--form", "form",
+    help="Target form by name or id (default: the sole main form, or the "
+         "primary form if the entity has several).")
+_tab_option = click.option(
+    "--tab", help="Target tab by name or id (default: the first tab).")
+_section_option = click.option(
+    "--section", help="Target section by name or id (default: the first section).")
+
 
 @click.group("form")
 def form_group():
@@ -100,6 +109,81 @@ def form_clone(
     _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
     _journal(ctx, form_name, info, solution=solution)
+
+
+@form_group.command("add-field")
+@click.argument("entity")
+@click.argument("attribute")
+@_form_option
+@_tab_option
+@_section_option
+@_publish_option
+@_solution_option
+@pass_ctx
+def form_add_field(
+    ctx: CLIContext, entity: str, attribute: str, form: str | None,
+    tab: str | None, section: str | None, publish: bool,
+    solution: str | None, require_solution: bool,
+) -> None:
+    """Add a field to an entity form (resolves the control type from metadata)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = forms_mod.add_form_field(
+            ctx.backend(), entity, attribute, form=form, tab=tab, section=section,
+            publish=publish, solution=solution,
+        )
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, attribute, info, solution=solution)
+
+
+@form_group.command("remove-field")
+@click.argument("entity")
+@click.argument("attribute")
+@_form_option
+@_publish_option
+@_solution_option
+@pass_ctx
+def form_remove_field(
+    ctx: CLIContext, entity: str, attribute: str, form: str | None,
+    publish: bool, solution: str | None, require_solution: bool,
+) -> None:
+    """Remove a field from an entity form."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = forms_mod.remove_form_field(
+            ctx.backend(), entity, attribute, form=form,
+            publish=publish, solution=solution,
+        )
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, attribute, info, solution=solution)
+
+
+@form_group.command("set-field")
+@click.argument("entity")
+@click.argument("attribute")
+@_form_option
+@_tab_option
+@_section_option
+@_publish_option
+@_solution_option
+@pass_ctx
+def form_set_field(
+    ctx: CLIContext, entity: str, attribute: str, form: str | None,
+    tab: str | None, section: str | None, publish: bool,
+    solution: str | None, require_solution: bool,
+) -> None:
+    """Move an existing field to a different tab/section of an entity form."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = forms_mod.set_form_field(
+            ctx.backend(), entity, attribute, form=form, tab=tab, section=section,
+            publish=publish, solution=solution,
+        )
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, attribute, info, solution=solution)
 
 
 @form_group.command("export")

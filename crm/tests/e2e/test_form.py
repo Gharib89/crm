@@ -140,3 +140,93 @@ def test_form_clone_account_to_ephemeral(cli, backend, ephemeral_entity):
                 backend.delete(f"systemforms({formid})")
             except Exception:
                 pass
+
+
+# ── form add-field / remove-field / set-field (#326) ────────────────────────────
+#
+# All three operate on the session ephemeral_entity's auto-created Main form, so
+# they never touch a real entity's UI. `createdon` (DateTime) is a stock attribute
+# on every entity that a fresh custom entity's default form does not show — a clean
+# add/remove target.
+#
+# IMPORTANT: a plain `GET /systemforms` returns the *published* FormXml, so a field
+# edit is only visible on re-export AFTER PublishAllXml (the unpublished PATCH alone
+# round-trips as a no-op — the documented form-surgery gotcha). Hence these tests
+# pass `--publish` and assert on the re-exported, published form. Acceptance is
+# FormXml structure + successful publish + round-trip, NOT visual render (an
+# accepted limitation per the issue).
+
+_DATETIME_CLASSID = "{5B773807-9FB2-42DB-97C3-7A91EFF8ADFF}"
+
+
+def _export_formxml(cli, entity, form_name, tmp_path):
+    out_file = tmp_path / "form.xml"
+    r = cli(["--json", "form", "export", entity, form_name, "--output", str(out_file)])
+    assert r.returncode == 0, r.stderr
+    return out_file.read_text(encoding="utf-8")
+
+
+@covers("form add-field")
+@pytest.mark.slow
+def test_form_add_field_roundtrip(cli, ephemeral_entity, tmp_path):
+    """Add `createdon` to the entity's Main form (publishing the change); assert the
+    DateTime classid was resolved from live metadata and the control round-trips via
+    a re-export. Removes it again so the shared session form is left clean."""
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    assert forms, "ephemeral entity has no Main form"
+    form_name = forms[0]["name"]
+    try:
+        r = cli(["--json", "form", "add-field", ephemeral_entity, "createdon",
+                 "--publish"])
+        assert r.returncode == 0, f"add-field failed:\n{r.stderr}\n{r.stdout}"
+        data = json.loads(r.stdout)["data"]
+        assert data["updated"] is True, data
+        assert data["classid"] == _DATETIME_CLASSID, data
+        xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        assert 'datafieldname="createdon"' in xml, "added control not in exported form"
+        assert _DATETIME_CLASSID.lower() in xml.lower(), "classid not in exported form"
+    finally:
+        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
+             "--publish"], check=False)
+
+
+@covers("form remove-field")
+@pytest.mark.slow
+def test_form_remove_field_roundtrip(cli, ephemeral_entity, tmp_path):
+    """Add then remove `createdon` (publishing each); assert it is gone from the
+    re-exported form."""
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    form_name = forms[0]["name"]
+    cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish"])
+    r = cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
+             "--publish"])
+    assert r.returncode == 0, f"remove-field failed:\n{r.stderr}\n{r.stdout}"
+    xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+    assert 'datafieldname="createdon"' not in xml, "control still present after remove"
+
+
+@covers("form set-field")
+@pytest.mark.slow
+def test_form_set_field_roundtrip(cli, ephemeral_entity, tmp_path):
+    """Add `createdon`, then relocate it with set-field into a section targeted by
+    its live id (publishing each); assert the command succeeds and the field is
+    still present exactly once. (Cross-section relocation is covered by the offline
+    unit tests; a fresh form has a single section, so this exercises the live
+    read→detach→re-append→publish→round-trip path.) Removes it to leave the form
+    clean."""
+    import re as _re
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    form_name = forms[0]["name"]
+    try:
+        cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish"])
+        xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        section_ids = _re.findall(r'<section\b[^>]*\bid="(\{[^"]+\})"', xml)
+        assert section_ids, "no section id on the form to target"
+        r = cli(["--json", "form", "set-field", ephemeral_entity, "createdon",
+                 "--section", section_ids[0], "--publish"])
+        assert r.returncode == 0, f"set-field failed:\n{r.stderr}\n{r.stdout}"
+        xml2 = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        assert xml2.count('datafieldname="createdon"') == 1, "field not present once"
+    finally:
+        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
+             "--publish"], check=False)
