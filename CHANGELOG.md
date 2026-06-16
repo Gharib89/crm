@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.7.0 (2026-06-16)
+
+### Documentation
+
+- Clarify RequiredLevel string vs null in skill contract
+  ([#343](https://github.com/Gharib89/crm/pull/343),
+  [`a4bed9d`](https://github.com/Gharib89/crm/commit/a4bed9db47fcd7ccea5925d5c9ca81e7df5c4d8b))
+
+### Features
+
+- Expose write/read validity + required level in metadata attributes
+  ([#343](https://github.com/Gharib89/crm/pull/343),
+  [`a4bed9d`](https://github.com/Gharib89/crm/commit/a4bed9db47fcd7ccea5925d5c9ca81e7df5c4d8b))
+
+
 ## v4.6.1 (2026-06-16)
 
 ### Bug Fixes
