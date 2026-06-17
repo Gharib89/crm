@@ -90,6 +90,9 @@ def test_metadata_list_actions(cli):
     assert env["ok"]
     # May be empty on a minimal org — assert structure only.
     assert isinstance(env["data"], list)
+    for a in env["data"]:
+        assert isinstance(a["is_bound"], bool)
+        assert a["return_type"] is None or isinstance(a["return_type"], str)
 
 
 @covers("metadata list-functions")
@@ -99,6 +102,10 @@ def test_metadata_list_functions(cli):
     env = json.loads(r.stdout)
     assert env["ok"]
     assert isinstance(env["data"], list)
+    for f in env["data"]:
+        assert isinstance(f["is_bound"], bool)
+        assert isinstance(f["is_composable"], bool)
+        assert f["return_type"] is None or isinstance(f["return_type"], str)
 
 
 @covers("metadata list-optionsets")

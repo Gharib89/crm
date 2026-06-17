@@ -1096,9 +1096,10 @@ def metadata_list_actions(ctx: CLIContext):
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
-    headers = ["Name", "Parameters"]
+    headers = ["Name", "Bound", "Returns", "Parameters"]
     rows = [
-        [a["name"], ", ".join(f"{p['name']}:{p['type']}" for p in a["parameters"])]
+        [a["name"], a["is_bound"], a["return_type"] or "",
+         ", ".join(f"{p['name']}:{p['type']}" for p in a["parameters"])]
         for a in items
     ]
     ctx.emit(True, table={"headers": headers, "rows": rows},
@@ -1114,9 +1115,10 @@ def metadata_list_functions(ctx: CLIContext):
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
-    headers = ["Name", "Parameters"]
+    headers = ["Name", "Bound", "Composable", "Returns", "Parameters"]
     rows = [
-        [f["name"], ", ".join(f"{p['name']}:{p['type']}" for p in f["parameters"])]
+        [f["name"], f["is_bound"], f["is_composable"], f["return_type"] or "",
+         ", ".join(f"{p['name']}:{p['type']}" for p in f["parameters"])]
         for f in items
     ]
     ctx.emit(True, table={"headers": headers, "rows": rows},
