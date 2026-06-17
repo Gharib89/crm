@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.8.0 (2026-06-17)
+
+### Bug Fixes
+
+- **import**: Gate bulk alt-key enrichment on json mode (when-to-pay)
+  ([#379](https://github.com/Gharib89/crm/pull/379),
+  [`1847649`](https://github.com/Gharib89/crm/commit/1847649565038d674eceda170122dab5a40f6ea8))
+
+### Continuous Integration
+
+- Build binaries once, trust PR as the gate ([#344](https://github.com/Gharib89/crm/pull/344),
+  [`9d94f10`](https://github.com/Gharib89/crm/commit/9d94f10e9d9d84bbd97366fded11d0843fae7d22))
+
+### Documentation
+
+- Add section on subagents for code exploration using the Explore agent
+  ([`ed5b4df`](https://github.com/Gharib89/crm/commit/ed5b4df894e0c9c39d693082af2fb204e5001e3e))
+
+- **adr**: Correct 0010 required-checks list + record PSR admin bypass
+  ([`d8f9de8`](https://github.com/Gharib89/crm/commit/d8f9de85d45c02983c79a189bf1f97cae27f1ec2))
+
+- **adr**: Record build-once, trust-PR CI/CD pipeline decision (0010)
+  ([`c097b14`](https://github.com/Gharib89/crm/commit/c097b1457b4ed8e1eac9f067e2554707d60f71ca))
+
+### Features
+
+- **import**: Surface alternate-key collision hints on bulk data import failures
+  ([#379](https://github.com/Gharib89/crm/pull/379),
+  [`1847649`](https://github.com/Gharib89/crm/commit/1847649565038d674eceda170122dab5a40f6ea8))
+
+
 ## v4.7.0 (2026-06-16)
 
 ### Documentation
