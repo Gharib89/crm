@@ -28,7 +28,7 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "entity": {"delete"},
     "app": {"delete"},
     "solution": {"job-cancel", "import", "remove-component", "uninstall",
-                 "stage-and-upgrade"},
+                 "stage-and-upgrade", "apply-upgrade"},
     "translation": {"import"},
     "async": {"cancel"},
     "plugin": {"unregister-assembly", "unregister-step", "unregister-image"},

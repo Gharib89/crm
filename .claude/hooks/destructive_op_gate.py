@@ -40,6 +40,7 @@ DESTRUCTIVE: dict[str, set[str]] = {
         "remove-component",
         "uninstall",
         "stage-and-upgrade",
+        "apply-upgrade",
     },
     "translation": {"import"},
     "async": {"cancel"},

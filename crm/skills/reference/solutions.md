@@ -82,11 +82,11 @@ and don't move a role's updates to a different solution.
 The result carries `import_job_id` and `async_operation_id` — capture both; they
 drive the investigation workflow below.
 
-## Managed-solution upgrade lifecycle — `clone-as-patch` / `stage-and-upgrade` / `uninstall`
+## Managed-solution upgrade lifecycle — `clone-as-patch` / `stage-and-upgrade` / `apply-upgrade` / `uninstall`
 
 First-class verbs wrapping the `CloneAsPatch`, `ImportSolution` (`HoldingSolution`),
 `DeleteAndPromote`, and solution-delete server actions — so you never drop to
-`crm action invoke CloneAsPatch/DeleteAndPromote` (agent-infeasible). All three
+`crm action invoke CloneAsPatch/DeleteAndPromote` (agent-infeasible). They all
 work on **both** on-prem v9.x and Dataverse online.
 
 ```bash
@@ -96,18 +96,20 @@ crm --json solution clone-as-patch --solution CRMWorx
 
 # Major upgrade: stage the new managed zip as a HOLDING solution (not yet live)…
 crm solution stage-and-upgrade /tmp/crmworx_2_0.zip --yes
-# …then apply it (DeleteAndPromote replaces the base + its patches):
+# …then apply it (DeleteAndPromote replaces the base + its patches) — one-shot:
 crm solution stage-and-upgrade /tmp/crmworx_2_0.zip --promote --solution CRMWorx --yes
+# …or promote a separately-staged holding solution later (after verifying it):
+crm solution apply-upgrade CRMWorx --yes
 
 # Remove a solution (managed base also removes its patches, server-side)
 crm solution uninstall --solution CRMWorx --yes
 ```
 
 **Workflow:** a holding import alone does **not** make the upgrade live — it stages
-and validates. Either promote in the same call (`--promote --solution <name>`) or
-re-run later; promotion is the destructive step that deletes the old base. The
-two-step shape lets you stage, verify with `solution import-result <id>`, then
-promote.
+and validates. Either promote in the same call (`stage-and-upgrade --promote`) or
+stage now and run `apply-upgrade <name>` later — both fire the same `DeleteAndPromote`
+(the destructive step that deletes the old base). The decoupled shape lets you stage,
+verify with `solution import-result <id>`, then promote separately.
 
 **Gotchas:**
 - `clone-as-patch` auto-bump increments the **revision** (4th part); a patch must

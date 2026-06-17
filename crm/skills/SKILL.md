@@ -163,6 +163,7 @@ non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit
 | `crm solution import <zip>` | OVERWRITES unmanaged customizations in the target org |
 | `crm solution remove-component --solution <name> --type <int\|name> --id <guid>` | Removes a component from an unmanaged solution |
 | `crm solution stage-and-upgrade <zip> [--promote --solution <name>]` | Stages a holding-solution upgrade; `--promote` replaces the base solution + its patches |
+| `crm solution apply-upgrade <name>` | Promotes a separately-staged holding solution (replaces the base solution + deletes its patches) |
 | `crm solution uninstall --solution <name>` | Uninstalls a solution (managed base also removes its patches) |
 | `crm translation import <zip>` | OVERWRITES localized labels in the target org |
 | `crm async cancel <id>` | A pending/suspended async operation |

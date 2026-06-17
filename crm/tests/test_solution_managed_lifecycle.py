@@ -309,3 +309,61 @@ class TestStageAndUpgradeCommand:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["promote"]["promoted"] is True
+
+
+class TestApplyUpgradeCommand:
+    def test_wires_core_and_emits_json(self, monkeypatch):
+        captured = {}
+
+        def fake(backend, name):
+            captured.update(name=name)
+            return {"promoted": True, "solution": name, "solutionid": _SOL_ID}
+
+        monkeypatch.setattr("crm.core.solution.delete_and_promote", fake)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "apply-upgrade", "ManagedApp", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured == {"name": "ManagedApp"}
+        assert json.loads(result.output)["data"]["promoted"] is True
+
+    def test_abort_without_yes_on_non_tty(self, monkeypatch):
+        # No --yes + EOF stdin → _confirm_destructive emits "aborted by user" + Exit(1).
+        called = {"core": False}
+        monkeypatch.setattr("crm.core.solution.delete_and_promote",
+                            lambda *a, **k: called.update(core=True))
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "apply-upgrade", "ManagedApp",
+        ])
+        assert result.exit_code == 1, result.output
+        assert called["core"] is False
+        assert "aborted by user" in result.output
+
+    def test_core_error_exit_1(self, monkeypatch):
+        def boom(backend, name):
+            raise D365Error("no holding solution staged")
+
+        monkeypatch.setattr("crm.core.solution.delete_and_promote", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "apply-upgrade", "ManagedApp", "--yes",
+        ])
+        assert result.exit_code == 1, result.output
+        assert json.loads(result.output)["ok"] is False
+
+    def test_dry_run_previews_no_post(self, monkeypatch, dry_backend):
+        # --dry-run flows through the real delete_and_promote → the backend
+        # short-circuits the DeleteAndPromote POST and returns a _dry_run preview;
+        # no real promote happens.
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: dry_backend)
+        with requests_mock.Mocker() as m:
+            result = CliRunner().invoke(cli, [
+                "--json", "--dry-run", "solution", "apply-upgrade", "ManagedApp", "--yes",
+            ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["_dry_run"] is True
+        assert env["meta"]["dry_run"] is True
+        assert _posts(m) == []
