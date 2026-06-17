@@ -472,3 +472,9 @@ fail** — read each result's `status` and `meta.failed`, don't rely on `$?`.
 crm --json action function RetrieveCurrentOrganization \
     --params '{"AccessType":"Default"}'
 ```
+
+`action function` issues a **GET** (read-only); `action invoke` issues a **POST**
+(state change, journalled). Both run unbound by default and can bind to a
+collection or a single record (e.g. a function bound to a `systemusers` record).
+Pick `function` vs `invoke` by the operation's OData kind, not by whether it
+binds. Run `crm describe action` for the exact bind flags.
