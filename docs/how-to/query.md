@@ -13,7 +13,8 @@ Returns matching rows as a **bare array** in `data` (`data[0]` is the first row)
 queries the entity-set (plural) name. The CLI unwraps the raw OData envelope (ADR
 0008): paging moves to `meta.next_link` (← `@odata.nextLink`) and `meta.count`
 (← `@odata.count`), and per-row `@odata.*` protocol keys (`@odata.etag`, …) are
-stripped. Opted-in formatted-value annotations (`*@OData.Community.…`) are kept.
+stripped. Formatted-value annotations (`*@OData.Community.…`) are kept by default
+(`--annotations`; opt out with `--no-annotations`).
 
 The positional argument is the URL path and accepts three forms: a bare entity-set name
 (e.g. `contacts`), a bound-function path (e.g. `RetrieveAppComponents(...)`), or a

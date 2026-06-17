@@ -65,7 +65,7 @@ def query_group():
 @click.option("--max-records", type=int,
               help="Cap the total rows returned, following @odata.nextLink only as "
                    "far as needed. Implies page-following; bounds --all when both given.")
-@click.option("--annotations/--no-annotations", default=False)
+@click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--minimal", is_flag=True, default=False,
               help="JSON mode: drop every record key containing '@' (OData annotations "
                    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
@@ -109,7 +109,7 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
 @click.option("--xml", "xml_inline", help="Inline FetchXML string.")
 @click.option("--file", "xml_file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a FetchXML file.")
-@click.option("--annotations/--no-annotations", default=False)
+@click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--minimal", is_flag=True, default=False,
               help="JSON mode: drop every record key containing '@' (OData annotations "
                    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
@@ -156,7 +156,7 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 @query_group.command("saved")
 @click.argument("entity_set")
 @click.argument("savedquery_id")
-@click.option("--annotations/--no-annotations", default=True)
+@click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--page-size", type=int)
 @click.option("--minimal", is_flag=True, default=False,
               help="JSON mode: drop every record key containing '@' (OData annotations "
@@ -176,7 +176,7 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
 @query_group.command("user")
 @click.argument("entity_set")
 @click.argument("userquery_id")
-@click.option("--annotations/--no-annotations", default=True)
+@click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--page-size", type=int)
 @click.option("--minimal", is_flag=True, default=False,
               help="JSON mode: drop every record key containing '@' (OData annotations "
