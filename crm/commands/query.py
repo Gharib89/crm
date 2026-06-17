@@ -59,6 +59,12 @@ def query_group():
 @click.option("--expand", multiple=True)
 @click.option("--count", is_flag=True, help="Also request $count.")
 @click.option("--page-size", type=int)
+@click.option("--all", "all_pages", is_flag=True, default=False,
+              help="Follow @odata.nextLink across all pages and merge the results "
+                   "into one array (default: a single server page).")
+@click.option("--max-records", type=int,
+              help="Cap the total rows returned, following @odata.nextLink only as "
+                   "far as needed. Implies page-following; bounds --all when both given.")
 @click.option("--annotations/--no-annotations", default=False)
 @click.option("--minimal", is_flag=True, default=False,
               help="JSON mode: drop every record key containing '@' (OData annotations "
@@ -66,7 +72,7 @@ def query_group():
                    "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expand,
-                count, page_size, annotations, minimal):
+                count, page_size, all_pages, max_records, annotations, minimal):
     """OData v4 GET — entity set, bound-function path, or metadata path.
 
     \b
@@ -88,9 +94,13 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
             expand=list(expand) or None,
             count=count,
             page_size=page_size,
+            all_pages=all_pages,
+            max_records=max_records,
             include_annotations=annotations,
         )
-    _emit_query_result(ctx, result, entity_set, minimal=minimal)
+    # Surface the cap-hit signal in meta and drop the internal marker before render.
+    extra_meta = {"truncated": True} if result.pop("@crm.truncated", False) else None
+    _emit_query_result(ctx, result, entity_set, minimal=minimal, extra_meta=extra_meta)
     _touch_session(ctx, entity_set, last_query={"type": "odata", "filter": filter_})
 
 

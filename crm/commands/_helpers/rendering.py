@@ -151,9 +151,10 @@ def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
 
 def _emit_query_result(
     ctx: "CLIContext", result: dict, entity_set: str, *, minimal: bool = False,
+    extra_meta: dict[str, Any] | None = None,
 ) -> None:
     values = result.get("value", []) if isinstance(result, dict) else []
-    meta: dict[str, Any] = {"entity_set": entity_set}
+    meta: dict[str, Any] = {"entity_set": entity_set, **(extra_meta or {})}
     if ctx.json_mode:
         # Hand emit the raw OData envelope; the central normalizer unwraps it to a
         # bare array, relocates `@odata.nextLink`/`@odata.count` → `meta`, and

@@ -30,10 +30,23 @@ def odata_query(
     count: bool = False,
     include_annotations: bool = False,
     page_size: int | None = None,
+    all_pages: bool = False,
+    max_records: int | None = None,
 ) -> dict[str, Any]:
     """Execute a GET against an entity set with OData query options.
 
     Returns the raw response dict (with `value` array + optional `@odata.nextLink`).
+
+    By default a single server page is returned unchanged. With `all_pages` the
+    `@odata.nextLink` cursor is followed to exhaustion and every page's `value`
+    is merged into one array; `max_records` caps the total returned and stops
+    following once the cap is reached (it also implies page-following on its own).
+    In either paging mode the merged envelope drops `@odata.nextLink` to signal
+    that following completed (`@odata.context`/`@odata.count` are preserved). When
+    `max_records` actually truncated the result (more rows existed than returned)
+    the internal `@crm.truncated` marker is set so the caller can report the cap
+    was hit — a valid resume cursor is impossible once the final page is sliced to
+    an exact count, so no `@odata.nextLink` is emitted in that case.
     """
     # The entity-set arg carries the URL path only — OData options go through the
     # query-option kwargs below. A `?` or `$` means the caller baked params into
@@ -81,7 +94,32 @@ def odata_query(
         page_pref = f"odata.maxpagesize={page_size}"
         headers["Prefer"] = f"{existing},{page_pref}" if existing else page_pref
 
-    return as_dict(backend.get(entity_set, params=params or None, extra_headers=headers or None))
+    if max_records is not None and max_records < 1:
+        raise D365Error("--max-records must be >= 1")
+
+    raw = as_dict(backend.get(entity_set, params=params or None, extra_headers=headers or None))
+    if not all_pages and max_records is None:
+        return raw
+
+    # Follow the @odata.nextLink cursor (an absolute URL with the query baked in)
+    # to exhaustion, stopping early once `max_records` rows are accumulated.
+    records: list[Any] = list(raw.get("value") or [])
+    next_link = raw.get("@odata.nextLink")
+    while next_link and (max_records is None or len(records) < max_records):
+        page = as_dict(backend.get(next_link))
+        records.extend(page.get("value") or [])
+        next_link = page.get("@odata.nextLink")
+
+    # Truncated only when more rows existed than the cap returned — either an
+    # unfollowed cursor remained or a single page overshot the cap.
+    truncated = max_records is not None and (bool(next_link) or len(records) > max_records)
+    if max_records is not None:
+        records = records[:max_records]
+    raw["value"] = records
+    raw.pop("@odata.nextLink", None)
+    if truncated:
+        raw["@crm.truncated"] = True
+    return raw
 
 
 # ── FetchXML query ──────────────────────────────────────────────────────

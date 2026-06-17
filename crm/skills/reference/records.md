@@ -37,6 +37,15 @@ downstream.** It is available on `query odata/fetchxml/saved/user` and `entity g
 List verbs return a **bare array** in `data` (rows at `data[0]`); paging is in
 `meta.next_link`/`meta.count`, never an OData envelope in `data`.
 
+**Paging gotchas (`--all` / `--max-records`).**
+When page-following is active (`--all` or `--max-records`), `meta.next_link` is
+**absent** from the result even when the org has more rows — the signal means
+"cursor followed as far as requested", not "no more pages".  When `--max-records`
+actually hit the cap, `meta.truncated: true` is set; if it is absent (or false)
+the follow reached exhaustion before the cap.  A valid resume cursor cannot be
+synthesised after a capped follow — if you need to paginate manually, use the
+default single-page behaviour and thread `meta.next_link` yourself.
+
 ```bash
 crm --json query odata contacts \
     --filter "statecode eq 0" --select fullname,emailaddress1 --top 5 --minimal
