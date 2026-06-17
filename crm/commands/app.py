@@ -73,13 +73,8 @@ def app_delete(ctx: CLIContext, name_or_id, yes):
     _journal(ctx, name_or_id, info)
 
 
-@app_group.command("add-components")
-@click.argument("app_id")
-@click.option("--component", "components", multiple=True, required=True,
-              help="Repeatable 'kind:guid' (kind: view|chart|form|dashboard|sitemap|bpf).")
-@pass_ctx
-def app_add_components(ctx: CLIContext, app_id, components):
-    """Bind components to an app (AddAppComponents)."""
+def _parse_components(components) -> list[tuple[str, str]]:
+    """Parse repeatable 'kind:guid' --component values into (kind, guid) pairs."""
     parsed: list[tuple[str, str]] = []
     for raw in components:
         kind, _, guid = raw.partition(":")
@@ -87,9 +82,35 @@ def app_add_components(ctx: CLIContext, app_id, components):
         if not guid:
             raise click.BadParameter(f"--component must be 'kind:guid': {raw!r}")
         parsed.append((kind, guid))
+    return parsed
+
+
+@app_group.command("add-components")
+@click.argument("app_id")
+@click.option("--component", "components", multiple=True, required=True,
+              help="Repeatable 'kind:guid' (kind: view|chart|form|dashboard|sitemap|bpf).")
+@pass_ctx
+def app_add_components(ctx: CLIContext, app_id, components):
+    """Bind components to an app (AddAppComponents)."""
+    parsed = _parse_components(components)
     with d365_errors(ctx):
         info = app_mod.add_app_components(ctx.backend(), app_id=app_id,
                                           components=parsed)
+    ctx.emit(True, data=info)
+    _journal(ctx, app_id, info)
+
+
+@app_group.command("remove-components")
+@click.argument("app_id")
+@click.option("--component", "components", multiple=True, required=True,
+              help="Repeatable 'kind:guid' (kind: view|chart|form|dashboard|sitemap|bpf).")
+@pass_ctx
+def app_remove_components(ctx: CLIContext, app_id, components):
+    """Unbind components from an app (RemoveAppComponents)."""
+    parsed = _parse_components(components)
+    with d365_errors(ctx):
+        info = app_mod.remove_app_components(ctx.backend(), app_id=app_id,
+                                             components=parsed)
     ctx.emit(True, data=info)
     _journal(ctx, app_id, info)
 

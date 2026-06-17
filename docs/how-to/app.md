@@ -20,6 +20,14 @@ crm --json app add-components <appmoduleid> \
 ```
 `<appmoduleid>` comes from `app create`. `--component` is repeatable as `kind:guid`; kinds are `view|chart|form|dashboard|sitemap|bpf`. Tables surface through the sitemap, not here.
 
+## Unbind components
+
+```bash
+crm --json app remove-components <appmoduleid> \
+  --component view:<savedqueryid> --component chart:<savedqueryvisualizationid>
+```
+The inverse of `add-components` (RemoveAppComponents): same repeatable `kind:guid` grammar and the same `view|chart|form|dashboard|sitemap|bpf` vocabulary. Use `crm --dry-run app remove-components ...` to preview the components it would unbind without issuing the call.
+
 ## Attach a sitemap
 
 ```bash

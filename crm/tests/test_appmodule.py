@@ -208,6 +208,47 @@ class TestAddComponents:
         assert "added" not in out
 
 
+class TestRemoveComponents:
+    def test_remove_components_builds_typed_references(self, backend):
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("RemoveAppComponents"), status_code=204)
+            out = appmodule.remove_app_components(
+                backend, app_id=_APP_ID,
+                components=[("view", "bbbb"), ("chart", "cccc"), ("sitemap", "dddd")],
+            )
+        assert out["removed"] == 3
+        body = _posts(m)[0].json()
+        assert body["AppId"] == _APP_ID
+        # RemoveAppComponents takes the same typed entity references as Add.
+        types = {c["@odata.type"] for c in body["Components"]}
+        assert types == {
+            "Microsoft.Dynamics.CRM.savedquery",
+            "Microsoft.Dynamics.CRM.savedqueryvisualization",
+            "Microsoft.Dynamics.CRM.sitemap",
+        }
+        view = next(c for c in body["Components"]
+                    if c["@odata.type"].endswith(".savedquery"))
+        assert view["savedqueryid"] == "bbbb"
+
+    def test_remove_components_rejects_unknown_kind(self, backend):
+        from crm.core import appmodule
+        with pytest.raises(D365Error, match="unknown component kind"):
+            appmodule.remove_app_components(backend, app_id=_APP_ID,
+                                            components=[("widget", "xxxx")])
+
+    def test_remove_components_dry_run_previews(self, profile):
+        from crm.core import appmodule
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        out = appmodule.remove_app_components(
+            dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")])
+        # dry-run surfaces the preview instead of a fake "removed" count
+        assert out["_dry_run"] is True
+        assert out["components"] == 2
+        assert out["app_id"] == _APP_ID
+        assert "removed" not in out
+
+
 class TestSetSitemap:
     def test_set_sitemap_posts_and_reads_id(self, backend):
         from crm.core import appmodule
@@ -913,6 +954,38 @@ class TestAppCommands:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "app", "add-components", _APP_ID, "--component", " view : bbbb ",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["components"] == [("view", "bbbb")]
+
+    def test_app_remove_components_command(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_remove(backend, **kw):
+            captured.update(kw)
+            return {"removed": len(kw["components"]), "app_id": kw["app_id"]}
+
+        monkeypatch.setattr("crm.core.appmodule.remove_app_components", fake_remove)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "app", "remove-components", _APP_ID,
+            "--component", "view:bbbb", "--component", "chart:cccc",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["components"] == [("view", "bbbb"), ("chart", "cccc")]
+
+    def test_app_remove_components_strips_whitespace(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.appmodule.remove_app_components",
+            lambda backend, **kw: captured.update(kw) or {"removed": len(kw["components"])})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "app", "remove-components", _APP_ID, "--component", " view : bbbb ",
         ])
         assert result.exit_code == 0, result.output
         assert captured["components"] == [("view", "bbbb")]

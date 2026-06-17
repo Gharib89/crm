@@ -336,6 +336,25 @@ def delete_app(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
     return result
 
 
+def _component_refs(components: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Translate `(kind, guid)` pairs into typed entity references.
+
+    Each kind maps through _COMPONENT_REFS to its primary-key field plus an
+    `@odata.type` — the shape both AddAppComponents and RemoveAppComponents
+    take. Raises D365Error on an unknown kind before any HTTP call.
+    """
+    refs: list[dict[str, Any]] = []
+    for kind, guid in components:
+        if kind not in _COMPONENT_REFS:
+            raise D365Error(
+                f"unknown component kind {kind!r}; "
+                f"expected one of {sorted(_COMPONENT_REFS)}."
+            )
+        pk, otype = _COMPONENT_REFS[kind]
+        refs.append({pk: guid, "@odata.type": f"Microsoft.Dynamics.CRM.{otype}"})
+    return refs
+
+
 def add_app_components(
     backend: D365Backend,
     *,
@@ -352,15 +371,7 @@ def add_app_components(
         raise D365Error("app_id is required.")
     if not components:
         raise D365Error("at least one component is required.")
-    refs: list[dict[str, Any]] = []
-    for kind, guid in components:
-        if kind not in _COMPONENT_REFS:
-            raise D365Error(
-                f"unknown component kind {kind!r}; "
-                f"expected one of {sorted(_COMPONENT_REFS)}."
-            )
-        pk, otype = _COMPONENT_REFS[kind]
-        refs.append({pk: guid, "@odata.type": f"Microsoft.Dynamics.CRM.{otype}"})
+    refs = _component_refs(components)
     result = as_dict(backend.post(
         "AddAppComponents", json_body={"AppId": app_id, "Components": refs}))
     if result.get("_dry_run"):
@@ -368,6 +379,32 @@ def add_app_components(
         result["components"] = len(refs)
         return result
     return {"added": len(refs), "app_id": app_id}
+
+
+def remove_app_components(
+    backend: D365Backend,
+    *,
+    app_id: str,
+    components: list[tuple[str, str]],
+) -> dict[str, Any]:
+    """Unbind components from an app via the RemoveAppComponents action.
+
+    Mirror of add_app_components: `components` is a list of `(kind, guid)` where
+    kind is one of _COMPONENT_REFS, each becoming the same typed entity reference
+    in the action body. Raises D365Error on an unknown kind before any HTTP call.
+    """
+    if not app_id:
+        raise D365Error("app_id is required.")
+    if not components:
+        raise D365Error("at least one component is required.")
+    refs = _component_refs(components)
+    result = as_dict(backend.post(
+        "RemoveAppComponents", json_body={"AppId": app_id, "Components": refs}))
+    if result.get("_dry_run"):
+        result["app_id"] = app_id
+        result["components"] = len(refs)
+        return result
+    return {"removed": len(refs), "app_id": app_id}
 
 
 def set_sitemap(
