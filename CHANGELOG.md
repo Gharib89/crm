@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.9.0 (2026-06-17)
+
+### Features
+
+- **metadata**: Create and delete alternate keys (EntityKeyMetadata)
+  ([#382](https://github.com/Gharib89/crm/pull/382),
+  [`99da3a6`](https://github.com/Gharib89/crm/commit/99da3a66f04b3de6752d2952fcfe1bcdf692cb2e))
+
+
 ## v4.8.2 (2026-06-17)
 
 ### Bug Fixes
