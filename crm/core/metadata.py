@@ -697,6 +697,9 @@ def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
 
 
 def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:
+    # CSDL booleans are absent unless true; the return type is a child
+    # <ReturnType Type="..."/> element. IsComposable only applies to Functions.
+    is_function = tag == "Function"
     items: list[dict[str, Any]] = []
     for elem in schema.findall(f"{{{_EDM_NS}}}{tag}"):
         params: list[dict[str, str]] = []
@@ -705,7 +708,16 @@ def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:
                 "name": p.attrib.get("Name", ""),
                 "type": p.attrib.get("Type", ""),
             })
-        items.append({"name": elem.attrib.get("Name", ""), "parameters": params})
+        return_type = elem.find(f"{{{_EDM_NS}}}ReturnType")
+        item: dict[str, Any] = {
+            "name": elem.attrib.get("Name", ""),
+            "is_bound": elem.attrib.get("IsBound") == "true",
+            "return_type": return_type.attrib.get("Type") if return_type is not None else None,
+            "parameters": params,
+        }
+        if is_function:
+            item["is_composable"] = elem.attrib.get("IsComposable") == "true"
+        items.append(item)
     return items
 
 
