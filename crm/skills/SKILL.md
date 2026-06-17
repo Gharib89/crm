@@ -166,6 +166,9 @@ non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit
 | `crm solution uninstall --solution <name>` | Uninstalls a solution (managed base also removes its patches) |
 | `crm translation import <zip>` | OVERWRITES localized labels in the target org |
 | `crm async cancel <id>` | A pending/suspended async operation |
+| `crm entity disassociate <set> <id> <nav> --related-set <s> --related-id <id>` | Removes a collection relationship link |
+| `crm entity clear-lookup <set> <id> <nav>` | Clears a single-valued lookup (sets it to null) |
+| `crm workflow deactivate <id>` | Deactivates a workflow definition (statecode=0) |
 
 ## Hard constraints
 

@@ -164,8 +164,8 @@ def test_workflow_activate_deactivate(backend, cli, request):
     row = backend.get(f"workflows({wf_id})", params={"$select": "statecode"})
     assert isinstance(row, dict) and row.get("statecode") == 1
 
-    # Deactivate
-    deact = cli(["--json", "workflow", "deactivate", wf_id])
+    # Deactivate (--yes: guarded verb, non-interactive run)
+    deact = cli(["--json", "workflow", "deactivate", wf_id, "--yes"])
     assert deact.returncode == 0, f"deactivate failed: {deact.stderr}"
     deact_env = json.loads(deact.stdout)
     assert deact_env["ok"], deact_env

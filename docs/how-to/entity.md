@@ -194,6 +194,19 @@ Prefer `--data-file` for large or quote-heavy single-record payloads — records
 
 `--data` does **not** read files: the curl-style `--data @contact.json` is parsed literally as JSON and rejected with an error pointing you to `--data-file`.
 
+## Disassociate a relationship or clear a lookup (`entity disassociate` / `entity clear-lookup`)
+
+```bash
+# Remove a collection (1:N) relationship link
+crm --json entity disassociate accounts <account-guid> \
+    contact_customer_accounts --related-set contacts --related-id <contact-guid> --yes
+
+# Clear a single-valued lookup (set it to null)
+crm --json entity clear-lookup contacts <contact-guid> parentcustomerid_account --yes
+```
+
+Both verbs permanently alter server-side state and require confirmation. Pass `--yes` when calling non-interactively — omitting it in a non-TTY context (e.g. `--json` or piped) aborts with `{"ok": false, "error": "aborted by user"}` and exit 1. On an interactive terminal the verb prompts for confirmation instead.
+
 ## Audit a record's related data before clone/delete (`entity children`)
 
 ```bash

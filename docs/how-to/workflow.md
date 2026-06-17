@@ -68,6 +68,14 @@ crm --json workflow activate <workflow-guid>
 ```
 Sets `statecode=1, statuscode=2`; `crm workflow deactivate` reverses it.
 
+## Deactivate a workflow
+
+```bash
+crm --json workflow deactivate <workflow-guid> --yes
+```
+
+Deactivation changes server-side state (sets `statecode=0`). Pass `--yes` when calling non-interactively — omitting it in a non-TTY context (e.g. `--json` or piped) aborts with `{"ok": false, "error": "aborted by user"}` and exit 1. On an interactive terminal the verb prompts for confirmation instead.
+
 If you pass an activation-record GUID (type=2 — the compiled copy the server creates when a draft is activated), the command resolves the parent definition via the row's `parentworkflowid` lookup and applies the state change to the parent automatically. The result carries a note naming both GUIDs (in human and `--json` output alike), so you can see the redirect happened:
 
 ```json

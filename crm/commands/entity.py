@@ -554,11 +554,16 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
 @click.argument("nav")
 @click.option("--related-set", help="Required for collection-valued nav properties.")
 @click.option("--related-id", help="Required for collection-valued nav properties.")
+@_destructive_option
 @_admin_header_options
 @pass_ctx
-def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id,
+def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id, yes,
                         as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Disassociate two records. Omit --related-* for single-valued lookups."""
+    _confirm_destructive(
+        ctx, "relationship", f"{target_set}({target_id}).{nav}", yes,
+        message=f"This will remove the {nav!r} relationship on "
+                f"{target_set}({target_id}). Continue?")
     with d365_errors(ctx):
         result = entity_mod.disassociate(
             ctx.backend(), target_set, target_id, nav,
@@ -594,11 +599,16 @@ def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, 
 @click.argument("entity_set")
 @click.argument("record_id")
 @click.argument("nav")
+@_destructive_option
 @_admin_header_options
 @pass_ctx
-def entity_clear_lookup(ctx: CLIContext, entity_set, record_id, nav,
+def entity_clear_lookup(ctx: CLIContext, entity_set, record_id, nav, yes,
                         as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Clear a single-valued lookup via DELETE /$ref."""
+    _confirm_destructive(
+        ctx, "lookup", f"{entity_set}({record_id}).{nav}", yes,
+        message=f"This will clear the {nav!r} lookup on "
+                f"{entity_set}({record_id}). Continue?")
     with d365_errors(ctx):
         result = entity_mod.clear_lookup(
             ctx.backend(), entity_set, record_id, nav,

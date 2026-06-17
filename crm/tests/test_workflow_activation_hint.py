@@ -43,7 +43,7 @@ class TestWorkflowActivationHintWiring:
         )
 
         from crm.cli import cli
-        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
         assert result.exit_code != 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -97,7 +97,7 @@ class TestWorkflowActivationHintWiring:
         monkeypatch.setattr(wf_cmd.workflow_mod, "activation_record_hint", _spy)
 
         from crm.cli import cli
-        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+        result = CliRunner().invoke(cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
         assert result.exit_code != 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
@@ -130,7 +130,7 @@ class TestWorkflowAutoResolveNoteWiring:
         )
         from crm.cli import cli
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
         assert result.exit_code == 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -166,7 +166,7 @@ class TestWorkflowAutoResolveNoteWiring:
         )
         from crm.cli import cli
         result = CliRunner().invoke(
-            cli, ["--profile", "t", "workflow", "deactivate", _WF_ID])
+            cli, ["--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
         assert result.exit_code == 0
         assert "Operated on parent definition" in result.output
         assert _PARENT_GUID in result.output
@@ -181,7 +181,7 @@ class TestWorkflowAutoResolveNoteWiring:
         )
         from crm.cli import cli
         result = CliRunner().invoke(
-            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID])
+            cli, ["--json", "--profile", "t", "workflow", "deactivate", _WF_ID, "--yes"])
         assert result.exit_code == 0
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
