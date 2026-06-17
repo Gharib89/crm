@@ -45,6 +45,8 @@ def ribbon_export(ctx: CLIContext, entity, output):
     if output:
         Path(output).write_text(pretty, encoding="utf-8")
         ctx.emit(True, data={"entity": entity, "output": output})
+    elif ctx.json_mode:
+        ctx.emit(True, data={"entity": entity, "ribbonxml": pretty})
     else:
         click.echo(pretty)
 

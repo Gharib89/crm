@@ -1,4 +1,5 @@
 # pyright: basic
+import json
 import xml.etree.ElementTree as ET
 from click.testing import CliRunner
 import pytest
@@ -16,6 +17,20 @@ def test_ribbon_export_prints_xml(monkeypatch):
     res = CliRunner().invoke(cli, ["ribbon", "export", "cwx_ticket"])
     assert res.exit_code == 0, res.output
     assert "RibbonDiffXml" in res.output
+
+
+def test_ribbon_export_json_no_output_emits_envelope(monkeypatch):
+    xml = "<RibbonDiffXml><CustomActions/></RibbonDiffXml>"
+    monkeypatch.setattr(
+        ribbon_mod, "retrieve_entity_ribbon",
+        lambda backend, entity: ET.fromstring(xml))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, ["--json", "ribbon", "export", "cwx_ticket"])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert data["ok"] is True
+    assert data["data"]["entity"] == "cwx_ticket"
+    assert "RibbonDiffXml" in data["data"]["ribbonxml"]
 
 
 def test_ribbon_list_shows_custom_buttons(monkeypatch):

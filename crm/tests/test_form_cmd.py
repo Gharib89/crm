@@ -232,6 +232,20 @@ class TestFormExport:
         assert data["data"]["entity"] == "new_project"
         assert data["data"]["form"] == "Information"
 
+    def test_export_json_no_output_emits_envelope(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_A]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "export", "new_project", "Information",
+            ])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert data["data"]["entity"] == "new_project"
+        assert data["data"]["form"] == "Information"
+        assert data["data"]["formxml"] == _FORM_A["formxml"]
+
     def test_export_unknown_form_errors(self, backend, monkeypatch):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
         with rm_module.Mocker() as m:
