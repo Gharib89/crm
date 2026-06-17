@@ -163,7 +163,9 @@ crm --json workflow list \
             rows: [.[] | {workflowid, statecode, statuscode}]}]'
 
 crm --json workflow activate <workflow-guid>
-crm --json workflow deactivate <workflow-guid>
+crm --json workflow deactivate <workflow-guid> --yes
+# deactivate is destructive — pass --yes non-interactively (omitting it aborts with
+# {"ok":false,"error":"aborted by user"}, exit 1); on a TTY it prompts instead.
 # A type=2 activation-record GUID is auto-resolved to its parent definition; the result carries meta.note naming both GUIDs (check it when looping on exact ids).
 
 crm --json workflow delete <workflow-guid> --yes

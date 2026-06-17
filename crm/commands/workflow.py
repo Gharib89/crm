@@ -143,14 +143,20 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, 
 
 @workflow_group.command("deactivate")
 @click.argument("workflow_id")
+@_destructive_option
 @_admin_header_options
 @pass_ctx
-def workflow_deactivate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+def workflow_deactivate(ctx: CLIContext, workflow_id, yes, as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Deactivate a workflow (statecode=0, statuscode=1).
 
     An activation-record GUID (type=2) is resolved to its parent definition
     automatically and the state change is applied to the parent.
     """
+    # Deactivate is a state change, not a delete — name the actual effect rather
+    # than the shared helper's default "permanently delete" wording.
+    _confirm_destructive(
+        ctx, "workflow", workflow_id, yes,
+        message=f"This will deactivate workflow {workflow_id!r} (statecode=0). Continue?")
     try:
         info = workflow_mod.set_workflow_state(
             ctx.backend(), workflow_id, activate=False,

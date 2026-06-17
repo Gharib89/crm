@@ -135,6 +135,10 @@ crm entity disassociate accounts <account-guid> \
 crm entity clear-lookup contacts <contact-guid> parentcustomerid_account
 ```
 
+`disassociate` and `clear-lookup` are destructive: pass `--yes` when calling
+non-interactively (omitting it aborts with `{"ok":false,"error":"aborted by user"}`,
+exit 1). On a TTY the verb prompts for confirmation instead.
+
 ## Audit a record's related data — `entity children`
 
 Before cloning, deleting, or auditing a record, answer "what related data does this

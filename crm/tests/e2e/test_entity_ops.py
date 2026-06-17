@@ -85,11 +85,13 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
     got = backend.get(f"contacts({ctct_id})", params={"$select": "_parentcustomerid_value"})
     assert got.get("_parentcustomerid_value") == acct_id
 
-    # clear-lookup: remove it via the typed nav property
+    # clear-lookup: remove it via the typed nav property (--yes: guarded verb,
+    # non-interactive run)
     clr_res = cli([
         "--json", "entity", "clear-lookup",
         "contacts", ctct_id,
         "parentcustomerid_account",
+        "--yes",
     ])
     assert clr_res.returncode == 0, clr_res.stderr
     assert json.loads(clr_res.stdout)["ok"]
@@ -147,6 +149,7 @@ def test_associate_and_disassociate(backend, cli, unique, request):
         "contact_customer_accounts",
         "--related-set", "contacts",
         "--related-id", ctct_id,
+        "--yes",  # guarded verb, non-interactive run
     ])
     assert disassoc_res.returncode == 0, disassoc_res.stderr
     assert json.loads(disassoc_res.stdout)["ok"]
