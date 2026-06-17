@@ -359,6 +359,9 @@ under the single normalized key `_entity_id` (with `_entity_id_url`) on
 `create`/`update`/`delete`/`clone`/`entity get` — so one extraction rule works
 across commands.
 
+`query odata` follows `@odata.nextLink` automatically when you opt in: `--all`
+merges every page into one `data` array (no `meta.next_link` in the result); `--max-records N` follows pages only until N rows are collected and caps the array there. When `--max-records` truncated the result (more rows existed), `meta.truncated: true` appears in the envelope. Default (neither flag) is unchanged: one server page, `meta.next_link` present when more pages exist.
+
 Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code": "...", "category": "not_found", "retryable": false}}`.
 `meta.category` is a closed enum (`not_found`, `auth_failed`, `forbidden`,
 `concurrency_conflict`, `duplicate_detected`, `validation`, `throttled`,

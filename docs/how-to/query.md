@@ -30,6 +30,38 @@ crm --json query odata workflows \
   --filter "Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['<id1>','<id2>'])"
 ```
 
+## Follow pagination automatically (`--all` / `--max-records`)
+
+By default `query odata` returns a single server page and exposes the cursor in
+`meta.next_link` when more rows exist.  Two opt-in flags follow the cursor
+automatically:
+
+**`--all`** — follows every `@odata.nextLink` to exhaustion and merges all
+pages into one `data` array.  `meta.next_link` is absent in the result (paging
+was followed completely).
+
+```bash
+crm --json query odata contacts --filter "statecode eq 0" --select fullname --all
+```
+
+**`--max-records N`** — follows pages only until N total rows are accumulated,
+then stops.  The `data` array contains at most N rows.  When the cap was
+actually hit (more rows existed beyond what was returned), the envelope carries
+`meta.truncated: true`.  `meta.next_link` is absent — a resume cursor is not
+emitted because the final page may have been sliced to reach the exact cap.
+`--max-records` implies page-following on its own; combining it with `--all`
+adds the cap as a bound on the otherwise-unbounded follow.
+
+```bash
+crm --json query odata contacts --filter "statecode eq 0" --select fullname \
+    --max-records 200
+# meta.truncated: true when more than 200 rows matched
+```
+
+Default behaviour (neither flag) is **byte-identical** to pre-flag behaviour:
+one server page is returned, `meta.next_link` is present when more pages exist.
+Use `--page-size` to control how many rows the server puts on each page.
+
 ## Strip annotations for token-efficient JSON (`--minimal`)
 
 ```bash
