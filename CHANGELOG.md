@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.13.0 (2026-06-17)
+
+### Features
+
+- **view**: Add view list <entity> ([#386](https://github.com/Gharib89/crm/pull/386),
+  [`b616f0f`](https://github.com/Gharib89/crm/commit/b616f0f2c7ba4f16925f1673c6796fd3bac45d55))
+
+
 ## v4.12.0 (2026-06-17)
 
 ### Documentation
