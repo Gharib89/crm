@@ -409,6 +409,7 @@ one call. Write verbs new in 0.5.0:
 - `metadata add-attribute <entity> --kind <k>` — add a column (14 kinds)
 - `metadata create-one-to-many` / `create-many-to-many` — relationships
 - `metadata list-optionsets` / `get-optionset` / `create-optionset` / `update-optionset` / `delete-optionset` — global option sets
+- `metadata keys <entity>` / `create-key <entity> --key-attributes col1,col2` / `delete-key <entity> <key>` — read, create, and drop alternate keys (the natural-key index that `entity upsert --key` / `data import --mode upsert --key` match on)
 - `metadata delete-entity <logical-name>` — drop a custom entity (gated)
 - `metadata delete-attribute <entity> <attribute>` / `delete-relationship <schema-name>` — drop a custom column or relationship (gated)
 - `metadata dependencies <target> [--kind entity|attribute|optionset|relationship] [--for delete|dependents]` — pre-delete dependency preview: returns `can_delete` + `blockers[]`; pass `--check-dependencies` on a `metadata delete-*` verb (delete-entity, delete-attribute, delete-relationship, delete-optionset) to fold this into the preview

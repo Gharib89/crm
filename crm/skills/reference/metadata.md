@@ -34,6 +34,13 @@ Returns `data: [{logical_name, schema_name, key_attributes, index_status}]`.
 Empty `data: []` means no alternate keys are defined — not an error.
 `index_status` values: `Active`, `Pending`, `Failed`, `InProgress`.
 
+Create/drop the key with `metadata create-key <entity>` /
+`metadata delete-key <entity> <key>` (a `metadata create-*`/`delete-*` write verb
+— see `reference/customization-lifecycle.md`). A freshly created key's index builds
+asynchronously (`index_status` `Pending`), and `entity upsert --key` /
+`data import --mode upsert --key` 404 against it until it reaches `Active` — poll
+`metadata keys` to confirm before upserting (see `reference/records.md`).
+
 When `entity create` or `entity update` hits an alternate-key collision (HTTP 412,
 code `0x80060892`), the error envelope gains `meta.alternate_keys` showing each key,
 its attributes, and the colliding `payload_values` from the submitted payload.

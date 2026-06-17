@@ -777,3 +777,138 @@ def list_entity_keys(backend: D365Backend, logical_name: str) -> list[dict[str, 
             "index_status": r.get("EntityKeyIndexStatus") or "",
         })
     return out
+
+
+def create_entity_key(
+    backend: D365Backend,
+    *,
+    entity: str,
+    schema_name: str,
+    key_attributes: list[str],
+    display_name: str | None = None,
+    solution: str | None = None,
+    if_exists: str = "error",
+) -> dict[str, Any]:
+    """Create an alternate key (``EntityKeyMetadata``) on ``entity``.
+
+    POSTs to ``EntityDefinitions(LogicalName='...')/Keys`` — the collection that
+    ``list_entity_keys`` reads. ``CreateEntityKey`` is an Organization-Service
+    message with no OData action, so the metadata collection is the only Web API
+    path. The server builds the supporting index asynchronously, so a freshly
+    created key starts with ``EntityKeyIndexStatus`` ``Pending``.
+
+    Args:
+        schema_name: PascalCase with publisher prefix, e.g. ``new_Code``.
+        key_attributes: Attribute logical names forming the key (1..n).
+        display_name: UI label; defaults to ``schema_name``.
+        solution: Optional ``uniquename`` added via ``MSCRM.SolutionUniqueName``.
+        if_exists: ``error`` (default) or ``skip`` (no-op success) when the key
+            already exists.
+
+    The Web API returns 204 No Content with an ``OData-EntityId`` header. Alternate
+    keys are not held in the entity-name metadata cache, so no cache invalidation
+    is needed.
+
+    Reference: https://learn.microsoft.com/power-apps/developer/data-platform/define-alternate-keys-entity#create-alternate-keys
+    """
+    if not entity:
+        raise D365Error("entity is required.")
+    if not schema_name or "_" not in schema_name:
+        raise D365Error(
+            "schema_name must include a publisher prefix and be PascalCase, "
+            "e.g. 'new_Code'."
+        )
+    if not key_attributes:
+        raise D365Error("at least one key attribute is required.")
+    if if_exists not in ("error", "skip"):
+        raise D365Error("if_exists must be 'error' or 'skip'.")
+
+    logical_name = schema_name.lower()
+    display = display_name or schema_name
+
+    exists = target_exists(
+        backend,
+        f"EntityDefinitions(LogicalName='{entity}')/Keys(LogicalName='{logical_name}')",
+    )
+    if exists and not backend.dry_run:
+        if if_exists == "error":
+            raise D365Error(
+                f"Alternate key {logical_name!r} already exists on entity {entity!r}.",
+                code="AlreadyExists",
+            )
+        return {
+            "skipped": True,
+            "exists": True,
+            "entity": entity,
+            "schema_name": schema_name,
+            "logical_name": logical_name,
+        }
+
+    body: dict[str, Any] = {
+        "@odata.type": "Microsoft.Dynamics.CRM.EntityKeyMetadata",
+        "SchemaName": schema_name,
+        "LogicalName": logical_name,
+        "DisplayName": label(display),
+        "KeyAttributes": list(key_attributes),
+    }
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post(
+        f"EntityDefinitions(LogicalName='{entity}')/Keys",
+        json_body=body,
+        extra_headers=headers,
+    ))
+    if result.get("_dry_run"):
+        result["_exists"] = exists
+        result["would_skip"] = exists and if_exists == "skip"
+        return result
+    return {
+        "created": True,
+        "entity": entity,
+        "schema_name": schema_name,
+        "logical_name": logical_name,
+        "key_attributes": list(key_attributes),
+        "metadata_id_url": result.get("_entity_id_url"),
+        "solution": solution,
+    }
+
+
+def delete_entity_key(
+    backend: D365Backend,
+    entity: str,
+    key: str,
+    *,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Delete an alternate key from ``entity`` by its logical name.
+
+    DELETEs ``EntityDefinitions(LogicalName='...')/Keys(LogicalName='...')``.
+    ``key`` is lower-cased before addressing the collection so callers can pass
+    either the schema name or the logical name (Dataverse logical names are
+    always lower-case). Alternate keys are not held in the entity-name metadata
+    cache, so no cache invalidation is needed.
+    """
+    if not entity:
+        raise D365Error("entity is required.")
+    if not key:
+        raise D365Error("key is required.")
+    key_logical = key.lower()
+    path = (
+        f"EntityDefinitions(LogicalName='{entity}')"
+        f"/Keys(LogicalName='{key_logical}')"
+    )
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    preview = backend.delete(path, extra_headers=headers)
+    if isinstance(preview, dict) and preview.get("_dry_run"):
+        return {
+            "_dry_run": True,
+            "would_delete": True,
+            "entity": entity,
+            "key": key_logical,
+            "solution": solution,
+        }
+    return {
+        "deleted": True,
+        "entity": entity,
+        "key": key_logical,
+        "solution": solution,
+    }

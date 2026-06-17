@@ -60,6 +60,34 @@ is not an error.
 `index_status` mirrors `EntityKeyIndexStatus` from the Dataverse Web API —
 typical values are `Active`, `Pending`, `Failed`, `InProgress`.
 
+## Create an alternate key
+
+```bash
+crm --json metadata create-key account --name new_AccountCode \
+  --key-attributes accountnumber --if-exists skip
+
+# composite key (two or more attributes)
+crm --json metadata create-key cwx_sla --name cwx_TierRegion \
+  --key-attributes cwx_tier,cwx_region
+```
+
+`--key-attributes` is a comma-separated list of attribute **logical** names. The
+server builds the supporting index asynchronously, so a freshly created key starts
+with `index_status` `Pending` — poll `metadata keys <entity>` (or
+`entity upsert --key` returns 404) until it reaches `Active`. `--if-exists skip`
+makes re-runs a no-op. This is the key that `entity upsert --key` and
+`data import --mode upsert --key` match records on.
+
+## Delete an alternate key
+
+```bash
+crm --json metadata delete-key account new_accountcode --yes
+```
+
+Addresses the key by its logical name (lower-case; the schema name also works).
+Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an
+interactive confirmation).
+
 ## Read option set values (flattened)
 
 ```bash
