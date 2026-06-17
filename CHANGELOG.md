@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.14.0 (2026-06-17)
+
+### Features
+
+- **solution**: Add standalone apply-upgrade (DeleteAndPromote)
+  ([#387](https://github.com/Gharib89/crm/pull/387),
+  [`7648343`](https://github.com/Gharib89/crm/commit/76483433f77650e8787f0fc25a67b814ee2f2b58))
+
+
 ## v4.13.0 (2026-06-17)
 
 ### Features
