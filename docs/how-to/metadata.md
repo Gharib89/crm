@@ -375,3 +375,66 @@ represent in the output spec — for example, a picklist whose metadata cast is
 permission-limited, or a lookup with no readable target entity. When running with
 `--json`, dropped columns and the reason are collected in `meta.warnings` so
 nothing is silently lost.
+
+## List callable actions and functions
+
+```bash
+crm --json metadata list-actions
+crm --json metadata list-functions
+```
+
+Both commands read the CSDL `$metadata` document and return every OData action or
+function defined in the org (built-in Dataverse operations and any custom process
+actions). They are read-only — no changes are made.
+
+**JSON shape — actions** (`data` is a bare array):
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "name": "ImportSolution",
+      "is_bound": false,
+      "return_type": "mscrm.ImportSolutionResponse",
+      "parameters": [
+        {"name": "CustomizationFile", "type": "Edm.Binary"},
+        {"name": "OverwriteUnmanagedCustomizations", "type": "Edm.Boolean"}
+      ]
+    }
+  ],
+  "meta": {"count": 1}
+}
+```
+
+**JSON shape — functions** (same as actions, plus `is_composable`):
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "name": "WhoAmI",
+      "is_bound": false,
+      "is_composable": false,
+      "return_type": "mscrm.WhoAmIResponse",
+      "parameters": []
+    }
+  ],
+  "meta": {"count": 1}
+}
+```
+
+**Field meanings:**
+
+- **`is_bound`** — `true` when the callable binds to an entity or entity collection
+  (its first parameter is typed `mscrm.<entity>` or `Collection(mscrm.<entity>)`).
+  Unbound callables are invoked at the service root.
+- **`return_type`** — the OData type string from the CSDL `<ReturnType>` element
+  (e.g. `"mscrm.WhoAmIResponse"`, `"Collection(mscrm.systemuser)"`), or `null` when
+  the callable has no return type.
+- **`is_composable`** — functions only. `true` when the function can appear inside an
+  OData query expression (composed with `$filter`, `$orderby`, etc.); `false` for the
+  majority of functions.
+
+Actions never carry `is_composable` — OData actions are never composable by spec.
