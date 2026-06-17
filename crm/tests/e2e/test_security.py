@@ -1,6 +1,6 @@
 # pyright: basic
 """E2E tests for security verbs: list-roles / list-user-roles /
-list-team-roles / assign-role.
+list-team-roles / user-privileges / assign-role.
 """
 from __future__ import annotations
 
@@ -55,6 +55,35 @@ def test_list_user_roles(cli, backend):
     assert env["ok"], env
     items = env["data"]
     assert isinstance(items, list), f"expected list, got {type(items)}: {env}"
+
+
+# ── user-privileges ───────────────────────────────────────────────────────────
+
+
+@covers("security user-privileges")
+def test_user_privileges(cli, backend):
+    """Fetch the current user's id via WhoAmI and list their effective privileges.
+
+    The service account always resolves to a non-empty privilege set on a sane
+    org (it holds at least one role), so this asserts non-empty plus the shape
+    RetrieveUserPrivileges returns (PrivilegeId / PrivilegeName / Depth).
+    """
+    whoami = backend.get("WhoAmI")
+    user_id = whoami.get("UserId")
+    assert user_id, f"WhoAmI did not return UserId: {whoami}"
+
+    result = cli(["--json", "security", "user-privileges", user_id])
+    assert result.returncode == 0, (
+        f"security user-privileges failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    items = env["data"]
+    assert isinstance(items, list), f"expected list, got {type(items)}: {env}"
+    assert len(items) > 0, "user-privileges returned empty set for the service user"
+    first = items[0]
+    assert "PrivilegeId" in first, f"PrivilegeId missing from first privilege: {first}"
+    assert "Depth" in first, f"Depth missing from first privilege: {first}"
 
 
 # ── list-team-roles ───────────────────────────────────────────────────────────

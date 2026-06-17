@@ -69,6 +69,28 @@ def list_team_roles(ctx: CLIContext, team_id):
              meta={"count": len(items)})
 
 
+@security_group.command("user-privileges")
+@click.argument("user_id")
+@pass_ctx
+def user_privileges(ctx: CLIContext, user_id):
+    """Show a system user's effective privileges (USER_ID is a GUID).
+
+    Resolves the user's full privilege set — from their own roles plus
+    team-inherited — via RetrieveUserPrivileges. Team-inherited privileges
+    are reported at Basic depth only.
+    """
+    with d365_errors(ctx):
+        items = security_mod.list_user_privileges(ctx.backend(), user_id)
+    if ctx.json_mode:
+        ctx.emit(True, data=items, meta={"count": len(items)})
+        return
+    headers = ["name", "depth", "privilegeid"]
+    rows = [[it.get("PrivilegeName", ""), it.get("Depth", ""),
+             it.get("PrivilegeId", "")] for it in items]
+    ctx.emit(True, table={"headers": headers, "rows": rows},
+             meta={"count": len(items)})
+
+
 @security_group.command("assign-role")
 @click.argument("role_id")
 @click.option("--to-user", "to_user", metavar="GUID", default=None,

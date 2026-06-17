@@ -127,6 +127,50 @@ class TestListTeamRoles:
         assert result == mock_roles
 
 
+# ── list_user_privileges ─────────────────────────────────────────────────
+
+
+_PRIVILEGE = {
+    "Depth": "Global",
+    "PrivilegeId": "99999999-8888-7777-6666-555555555555",
+    "BusinessUnitId": _BU_ID,
+    "PrivilegeName": "prvReadAccount",
+    "RecordFilterId": "00000000-0000-0000-0000-000000000000",
+    "RecordFilterUniqueName": "",
+}
+
+_PRIVILEGES_FN = "Microsoft.Dynamics.CRM.RetrieveUserPrivileges"
+
+
+class TestListUserPrivileges:
+    def test_hits_bound_function_path(self, backend):
+        path = f"systemusers({_GUID})/{_PRIVILEGES_FN}"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(path), json={"RolePrivileges": [_PRIVILEGE]})
+            result = sec.list_user_privileges(backend, _GUID)
+        assert result == [_PRIVILEGE]
+        assert path in m.request_history[0].url
+
+    def test_unwraps_roleprivileges(self, backend):
+        path = f"systemusers({_GUID})/{_PRIVILEGES_FN}"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(path),
+                  json={"RolePrivileges": [_PRIVILEGE, _PRIVILEGE]})
+            result = sec.list_user_privileges(backend, _GUID)
+        assert result == [_PRIVILEGE, _PRIVILEGE]
+
+    def test_returns_empty_list_when_absent(self, backend):
+        path = f"systemusers({_GUID})/{_PRIVILEGES_FN}"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(path), json={})
+            result = sec.list_user_privileges(backend, _GUID)
+        assert result == []
+
+    def test_invalid_user_id_raises_d365error(self, backend):
+        with pytest.raises(D365Error):
+            sec.list_user_privileges(backend, "not-a-guid")
+
+
 # ── assign_role_to_user ──────────────────────────────────────────────────
 
 
