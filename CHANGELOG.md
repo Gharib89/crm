@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.8.2 (2026-06-17)
+
+### Bug Fixes
+
+- **cli**: Emit JSON envelope for form/ribbon export to stdout (#349)
+  ([#381](https://github.com/Gharib89/crm/pull/381),
+  [`2832b24`](https://github.com/Gharib89/crm/commit/2832b24def83692047dd496f558fa14c8c4629fa))
+
+
 ## v4.8.1 (2026-06-17)
 
 ### Bug Fixes
