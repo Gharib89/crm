@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.10.0 (2026-06-17)
+
+### Features
+
+- **query**: Add --all/--max-records to follow @odata.nextLink
+  ([#383](https://github.com/Gharib89/crm/pull/383),
+  [`5b297e5`](https://github.com/Gharib89/crm/commit/5b297e51ac163de1e91e705fca6af7555a7c4a5e))
+
+
 ## v4.9.0 (2026-06-17)
 
 ### Features
