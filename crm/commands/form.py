@@ -203,5 +203,7 @@ def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None
     if output:
         Path(output).write_text(formxml, encoding="utf-8")
         ctx.emit(True, data={"entity": entity, "form": form_name, "output": output})
+    elif ctx.json_mode:
+        ctx.emit(True, data={"entity": entity, "form": form_name, "formxml": formxml})
     else:
         click.echo(formxml)

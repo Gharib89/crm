@@ -63,6 +63,18 @@ def test_form_export_account(cli, tmp_path):
         f"exported content does not look like XML: {xml_text[:80]!r}"
     )
 
+    # With no --output, --json must still emit a valid {ok,data} envelope
+    # carrying the full FormXml in data (issue #349), not bare XML.
+    r_stdout = cli(["--json", "form", "export", "account", form_name])
+    assert r_stdout.returncode == 0, (
+        f"form export (stdout) failed:\n{r_stdout.stderr}\nstdout: {r_stdout.stdout}"
+    )
+    env_stdout = json.loads(r_stdout.stdout)
+    assert env_stdout["ok"], env_stdout
+    assert env_stdout["data"].get("entity") == "account"
+    assert env_stdout["data"].get("form") == form_name
+    assert env_stdout["data"].get("formxml", "").lstrip().startswith("<")
+
 
 # ── form clone ────────────────────────────────────────────────────────────────
 
