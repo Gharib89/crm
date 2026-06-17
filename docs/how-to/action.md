@@ -10,6 +10,17 @@ crm --json action function RetrieveCurrentOrganization --params '{"AccessType":"
 ```
 `--params` is a JSON dict encoded inline per OData v4; returns the function result under `data`.
 
+## Call a bound function
+
+```bash
+# Collection-bound: GET <entityset>/Microsoft.Dynamics.CRM.<Fn>(params)
+crm --json action function <FunctionName> --bind-set <entityset>
+
+# Record-bound: GET <entityset>(<guid>)/Microsoft.Dynamics.CRM.<Fn>(params)
+crm --json action function RetrieveUserPrivileges --bind-set systemusers --bind-id <systemuser-guid>
+```
+`--bind-set` alone binds to the collection; adding `--bind-id` binds to a single record. Override the `Microsoft.Dynamics.CRM` namespace segment with `--cast <namespace>` only for custom namespaces. `--bind-id` requires `--bind-set`. Functions issue a **GET** (read-only, params encoded inline) — unlike `action invoke`, which issues a **POST**.
+
 ## Invoke an unbound action from a body file
 
 ```bash

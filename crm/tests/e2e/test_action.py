@@ -16,6 +16,29 @@ def test_action_function_whoami(cli):
     assert "UserId" in data["data"], f"UserId missing from WhoAmI response: {data['data']}"
 
 
+@covers("action function")
+def test_action_function_bound_retrieve_user_privileges(cli):
+    """A record-bound function: GET systemusers(<id>)/Ns.RetrieveUserPrivileges().
+
+    RetrieveUserPrivileges is a zero-side-effect function bound to a systemuser
+    record, present on every org. The current user's id comes from WhoAmI so no
+    org-specific GUID is embedded in the test.
+    """
+    who = json.loads(cli(["--json", "action", "function", "WhoAmI"]).stdout)
+    user_id = who["data"]["UserId"]
+    result = cli(
+        [
+            "--json", "action", "function", "RetrieveUserPrivileges",
+            "--bind-set", "systemusers", "--bind-id", user_id,
+        ]
+    )
+    data = json.loads(result.stdout)
+    assert data["ok"] is True, f"bound RetrieveUserPrivileges failed: {data}"
+    assert "RolePrivileges" in data["data"], (
+        f"RolePrivileges missing from bound function response: {data['data']}"
+    )
+
+
 @covers("action invoke")
 def test_action_invoke_publish_all_xml(cli):
     """PublishAllXml is a zero-side-effect* unbound OData action on every D365 org.

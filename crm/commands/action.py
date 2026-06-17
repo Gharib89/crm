@@ -15,16 +15,44 @@ def action_group():
 @action_group.command("function")
 @click.argument("name")
 @click.option("--params", "params_json", help='JSON dict of function parameters.')
+@click.option(
+    "--bind-set",
+    help="Entity set to bind the function to (e.g. 'systemusers'). "
+    "Alone → collection-bound; with --bind-id → record-bound.",
+)
+@click.option(
+    "--bind-id",
+    help="Record id to bind the function to. Requires --bind-set.",
+)
+@click.option(
+    "--cast",
+    default="Microsoft.Dynamics.CRM",
+    show_default=True,
+    help="Namespace for the function when bound. Override only for custom namespaces.",
+)
 @pass_ctx
-def action_function(ctx: CLIContext, name, params_json):
-    """Call an unbound OData function. Params encoded inline per OData v4."""
+def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast):
+    """Call an OData function — unbound by default, bound when --bind-set is given.
+
+    Functions issue a GET. Params are encoded inline per OData v4. --bind-set
+    alone binds to a collection (set/Ns.Fn(...)); adding --bind-id binds to a
+    single record (set(id)/Ns.Fn(...)). --bind-id requires --bind-set.
+    """
+    if bind_id and not bind_set:
+        ctx.emit(False, error="--bind-id requires --bind-set.")
+        return
     backend = ctx.backend() if not ctx.dry_run else None
     params = json.loads(params_json) if params_json else None
-    if params:
-        encoded = ",".join(f"{k}={_odata_literal(v)}" for k, v in params.items())
-        path = f"{name}({encoded})"
+    encoded = (
+        ",".join(f"{k}={_odata_literal(v)}" for k, v in params.items()) if params else ""
+    )
+    call = f"{name}({encoded})"
+    if bind_set and bind_id:
+        path = f"{bind_set}({bind_id})/{cast}.{call}"
+    elif bind_set:
+        path = f"{bind_set}/{cast}.{call}"
     else:
-        path = f"{name}()"
+        path = call
     with d365_errors(ctx):
         result = (backend or ctx.backend()).get(path)
     ctx.emit(True, data=result or {})
