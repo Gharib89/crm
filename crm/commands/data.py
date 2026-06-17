@@ -96,6 +96,9 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
             chunk_size=chunk_size,
             transactional=not no_transaction,
             continue_on_error=continue_on_error,
+            # When-to-pay gate: only json mode surfaces the alt-key hint, so only
+            # it pays for the enrichment metadata lookup (human render drops it).
+            enrich_alt_key=ctx.json_mode,
         )
     failures = info.get("failures") or []
     warnings: list[str] | None = None

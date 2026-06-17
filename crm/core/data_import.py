@@ -164,6 +164,7 @@ def import_records(
     chunk_size: int = 100,
     transactional: bool = True,
     continue_on_error: bool = False,
+    enrich_alt_key: bool = True,
 ) -> dict[str, Any]:
     """Import records from a JSONL or CSV file via ``$batch``.
 
@@ -195,6 +196,12 @@ def import_records(
     continue_on_error:
         Ask the server to continue past individual failures.
         Mutually exclusive with ``transactional=True``.
+    enrich_alt_key:
+        Attach the alternate-key collision hint to failed rows (see below). The
+        *when-to-pay* gate: enrichment costs a metadata lookup, so the command
+        passes ``ctx.json_mode`` — the human render drops ``failures`` and never
+        shows the hint, so it must not pay for it. ``True`` by default for
+        non-command callers that consume the structured result.
 
     Returns
     -------
@@ -319,7 +326,8 @@ def import_records(
                 # Enrich an alternate-key collision with the entity's key schema
                 # and this row's colliding values (#347) — the same best-effort
                 # hint `entity create --json` attaches, now on bulk failures too.
-                if (_batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
+                if (enrich_alt_key
+                        and _batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
                         and op_index < len(records)):
                     if not alt_key_schema_fetched:
                         alt_key_schema = entity_mod.lookup_alternate_key_schema(backend, entity_set)

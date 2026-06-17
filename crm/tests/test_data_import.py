@@ -715,6 +715,18 @@ class TestAltKeyEnrichment:
         assert fail["alternate_keys"] == []
         assert "accountid" in fail["primary_id_hint"]
 
+    def test_enrich_alt_key_false_skips_lookup(self, tmp_path: Path) -> None:
+        """The when-to-pay gate: enrich_alt_key=False (human mode) does no metadata
+        reads and attaches no hint, even on a real alternate-key collision."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "Alpha", "accountnumber": "A-1"}\n', encoding="utf-8")
+        results = [[_alt_key_failure()]]
+        backend = _stub_backend_with_keys(results, keys=_ACCOUNT_NUMBER_KEY)
+        result = _import_records(backend, "accounts", p, enrich_alt_key=False)
+
+        assert backend.get.call_count == 0
+        assert "alternate_keys" not in result["failures"][0]
+
     def test_non_alt_key_failure_not_enriched(self, tmp_path: Path) -> None:
         """A non-alternate-key failure is untouched — no metadata reads at all."""
         p = tmp_path / "data.jsonl"
