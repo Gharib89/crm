@@ -9,13 +9,14 @@ from __future__ import annotations
 from typing import Any
 
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import D365Backend, D365Error, normalize_guid
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
 
 # ── Constants ────────────────────────────────────────────────────────────
 
 _ROLES_SET = "roles"
 _USER_ROLES_NAV = "systemuserroles_association"
 _TEAM_ROLES_NAV = "teamroles_association"
+_USER_PRIVILEGES_FN = "Microsoft.Dynamics.CRM.RetrieveUserPrivileges"
 
 # ── Reads ────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,24 @@ def list_team_roles(
         "$orderby": "name",
     }
     return backend.get_collection(path, params=params)
+
+
+def list_user_privileges(
+    backend: D365Backend,
+    user_id: str,
+) -> list[dict[str, Any]]:
+    """Retrieve a system user's effective privileges via RetrieveUserPrivileges.
+
+    Returns the resolved RolePrivileges set — privileges from the user's own
+    security roles plus those inherited from team membership. Per the Web API
+    contract, team-inherited privileges are reported at Basic (user) depth only;
+    the per-privilege RetrieveUserPrivilegeByPrivilegeId/Name messages are needed
+    for the full inherited depth (out of scope here).
+    """
+    path = f"{entity_mod.build_record_path('systemusers', user_id)}/{_USER_PRIVILEGES_FN}"
+    result = as_dict(backend.get(path))
+    privileges: list[dict[str, Any]] = result.get("RolePrivileges", [])
+    return privileges
 
 
 # ── Writes ───────────────────────────────────────────────────────────────

@@ -43,6 +43,29 @@ crm --json security list-team-roles 00000000-0000-0000-0000-000000000003
 The positional argument `TEAM_ID` is the GUID of the team. Returns the roles
 currently associated with that team.
 
+## Show a user's effective privileges
+
+```bash
+crm --json security user-privileges 00000000-0000-0000-0000-000000000002
+```
+
+The positional argument `USER_ID` is the GUID of the system user
+(`systemuser`). Unlike `list-user-roles` (which lists the *roles* on the user),
+this resolves the user's **effective privilege set** via the
+`RetrieveUserPrivileges` Web API function: every privilege granted by the
+user's own security roles **plus** those inherited from team membership, with
+each privilege collapsed to its highest-applicable depth.
+
+Each privilege carries its access depth — `Basic` (user), `Local` (business
+unit), `Deep` (BU + child BUs), or `Global` (organization).
+
+**Caveat — team-inherited privileges are reported at `Basic` depth only.** This
+is a limitation of the `RetrieveUserPrivileges` contract, not of this command:
+the resolved set understates the true depth of a privilege that the user holds
+solely through team membership. Resolving the full inherited depth requires the
+per-privilege `RetrieveUserPrivilegeByPrivilegeId`/`-Name` messages, which this
+CLI does not implement.
+
 ## Assign a security role
 
 ```bash

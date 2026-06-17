@@ -166,6 +166,42 @@ class TestListTeamRoles:
         assert env["meta"]["count"] == 1
 
 
+# ── user-privileges ───────────────────────────────────────────────────────
+
+
+_USER_PRIVILEGES = [
+    {"PrivilegeName": "prvReadAccount", "Depth": "Global", "PrivilegeId": "priv-1111"},
+]
+
+
+class TestUserPrivileges:
+    def test_human_shows_privilege_name_and_depth(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.list_user_privileges",
+            lambda b, user_id: _USER_PRIVILEGES,
+        )
+        result = CliRunner().invoke(cli, ["security", "user-privileges", "user-guid-1"])
+        assert result.exit_code == 0, result.output
+        assert "prvReadAccount" in result.output
+        assert "Global" in result.output
+
+    def test_json_envelope(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.list_user_privileges",
+            lambda b, user_id: _USER_PRIVILEGES,
+        )
+        result = CliRunner().invoke(
+            cli, ["--json", "security", "user-privileges", "user-guid-1"]
+        )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.stdout)
+        assert env["ok"] is True
+        assert env["meta"]["count"] == 1
+        assert env["data"][0]["PrivilegeName"] == "prvReadAccount"
+
+
 # ── assign-role ───────────────────────────────────────────────────────────
 
 
