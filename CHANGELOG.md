@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.15.0 (2026-06-17)
+
+### Features
+
+- **security**: Add `security user-privileges` (RetrieveUserPrivileges)
+  ([#388](https://github.com/Gharib89/crm/pull/388),
+  [`17bac1b`](https://github.com/Gharib89/crm/commit/17bac1b2722a44c0865930b7b2b1a66bba315a12))
+
+
 ## v4.14.0 (2026-06-17)
 
 ### Features
