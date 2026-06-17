@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.11.0 (2026-06-17)
+
+### Features
+
+- **action**: Let action function invoke bound functions
+  ([#384](https://github.com/Gharib89/crm/pull/384),
+  [`7949fb8`](https://github.com/Gharib89/crm/commit/7949fb8e10aec8c079751da3c7c9989f29c51312))
+
+
 ## v4.10.0 (2026-06-17)
 
 ### Features
