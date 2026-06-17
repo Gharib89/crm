@@ -85,6 +85,10 @@ Manual release (fallback / re-cut): bump both version files, then push the tag y
 
 ## Agent skills
 
+### Subagents
+
+For code exploration/search, use the **`Explore`** agent (not the `cavecrew-*` agents) and run it on the **haiku** model.
+
 ### Issue tracker
 
 Issues live in GitHub Issues at `Gharib89/crm`. Use the `gh` CLI. See `docs/agents/issue-tracker.md`.
