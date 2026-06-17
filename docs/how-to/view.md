@@ -1,7 +1,17 @@
 # How-to: view
 
-Create system views (savedquery), taken from the CRMWorx build (§6, §13). See the
+List and create system views (savedquery), taken from the CRMWorx build (§6, §13). See the
 [CLI reference](../reference/cli.md) for every flag.
+
+## List the public views for an entity
+
+```bash
+crm view list cwx_ticket
+```
+
+Output columns: `name`, `savedqueryid`, `isdefault`, `querytype`. Mirrors
+`crm form list` — use it to find a view's `savedqueryid` before editing or
+deleting it.
 
 ## Create an active-records public view
 
