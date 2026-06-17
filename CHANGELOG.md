@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.8.1 (2026-06-17)
+
+### Bug Fixes
+
+- **cli**: Guard entity disassociate/clear-lookup and workflow deactivate behind the destructive
+  confirm ([#380](https://github.com/Gharib89/crm/pull/380),
+  [`d9f3c72`](https://github.com/Gharib89/crm/commit/d9f3c72fa70531946d09e50c69221dbc526b79fb))
+
+
 ## v4.8.0 (2026-06-17)
 
 ### Bug Fixes
