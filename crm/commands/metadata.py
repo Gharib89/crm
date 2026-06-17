@@ -767,6 +767,63 @@ def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution,
     _journal(ctx, f"{entity}.{attribute}", info, solution=solution)
 
 
+@metadata_group.command("create-key")
+@click.argument("entity")
+@click.option("--name", "schema_name", default=None,
+              help="Alternate key schema name, PascalCase with publisher prefix, "
+                   "e.g. 'new_Code'. Defaults to <prefix>_<display> from the profile.")
+@click.option("--key-attributes", required=True,
+              help="Comma-separated attribute logical names forming the key, "
+                   "e.g. 'accountnumber' or 'firstname,emailaddress1'.")
+@click.option("--display", "display_name", default=None,
+              help="UI label. Defaults to the schema name.")
+@_solution_option
+@click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
+              help="If the key already exists: error (default) or skip (no-op success).")
+@_publish_option
+@pass_ctx
+def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
+                        display_name, solution, require_solution, if_exists, publish):
+    """Create an alternate key on an entity."""
+    schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--name")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    attrs = [a.strip() for a in key_attributes.split(",") if a.strip()]
+    if not attrs:
+        raise click.UsageError("--key-attributes must list at least one attribute.")
+    with d365_errors(ctx):
+        info = meta_mod.create_entity_key(
+            ctx.backend(), entity=entity, schema_name=schema_name,
+            key_attributes=attrs, display_name=display_name,
+            solution=solution, if_exists=if_exists,
+        )
+        if publish and not info.get("_dry_run") and not info.get("skipped"):
+            from crm.core import solution as sol_mod
+            sol_mod.publish_all(ctx.backend())
+            info["published"] = True
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, f"{entity}.{schema_name}", info, solution=solution)
+
+
+@metadata_group.command("delete-key")
+@click.argument("entity")
+@click.argument("key")
+@_destructive_option
+@_solution_option
+@pass_ctx
+def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution, require_solution):
+    """Delete an alternate key from an entity."""
+    _confirm_destructive(
+        ctx, "alternate key", f"{entity}.{key}", yes,
+        message=f"This will delete alternate key {entity}.{key!r}. Continue?",
+    )
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    with d365_errors(ctx):
+        info = meta_mod.delete_entity_key(ctx.backend(), entity, key, solution=solution)
+    _emit_with_warning(ctx, info, warning)
+    _journal(ctx, f"{entity}.{key}", info, solution=solution)
+
+
 # Relationship-creation commands (create-one-to-many / create-many-to-many)
 # intentionally keep --schema-name required and do NOT get publisher-prefix
 # defaulting: a relationship name spans two entities and cannot be derived from

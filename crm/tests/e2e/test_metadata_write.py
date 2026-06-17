@@ -284,6 +284,76 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
 
 
 # ---------------------------------------------------------------------------
+# metadata create-key  +  metadata delete-key  (alternate-key lifecycle)
+# ---------------------------------------------------------------------------
+
+@covers("metadata create-key", "metadata delete-key")
+@pytest.mark.slow
+def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique):
+    """Full alternate-key lifecycle on ephemeral_entity:
+      1. add-attribute (string) to get a key-eligible column
+      2. create-key on that column; assert created=True
+      3. metadata keys lists the new key (existing read path)
+      4. delete-key --yes; assert deleted=True
+    The attribute is deleted in finally so the entity teardown is clean.
+    """
+    attr_schema = f"new_e2ek{unique}"
+    attr_logical = attr_schema.lower()
+    key_schema = f"new_e2eak{unique}"
+    key_logical = key_schema.lower()
+
+    r_add = cli([
+        "--json", "metadata", "add-attribute", ephemeral_entity,
+        "--kind", "string",
+        "--schema-name", attr_schema,
+        "--display", f"E2E Key Col {unique}",
+        "--no-publish",
+    ])
+    assert r_add.returncode == 0, r_add.stderr
+    assert json.loads(r_add.stdout)["ok"]
+
+    try:
+        # Step 2: create the alternate key on the seeded column.
+        r_create = cli([
+            "--json", "metadata", "create-key", ephemeral_entity,
+            "--name", key_schema,
+            "--key-attributes", attr_logical,
+            "--display", f"E2E AK {unique}",
+            "--no-publish",
+        ])
+        assert r_create.returncode == 0, r_create.stderr
+        env_create = json.loads(r_create.stdout)
+        assert env_create["ok"], env_create
+        assert env_create["data"].get("created") is True
+
+        try:
+            # Step 3: the existing read path lists the new key.
+            r_keys = cli(["--json", "metadata", "keys", ephemeral_entity])
+            assert r_keys.returncode == 0, r_keys.stderr
+            keys = json.loads(r_keys.stdout)["data"]
+            assert any(k.get("logical_name") == key_logical for k in keys), (
+                f"key {key_logical!r} not found in keys list: {keys}"
+            )
+
+            # Step 4: delete the key.
+            r_del = cli([
+                "--json", "metadata", "delete-key", ephemeral_entity, key_logical,
+                "--yes",
+            ])
+            assert r_del.returncode == 0, r_del.stderr
+            env_del = json.loads(r_del.stdout)
+            assert env_del["ok"], env_del
+            assert env_del["data"].get("deleted") is True
+        except Exception:
+            cli(["--json", "metadata", "delete-key", ephemeral_entity, key_logical,
+                 "--yes"], check=False)
+            raise
+    finally:
+        cli(["--json", "metadata", "delete-attribute", ephemeral_entity,
+             attr_logical, "--yes"], check=False)
+
+
+# ---------------------------------------------------------------------------
 # metadata clone-entity
 # ---------------------------------------------------------------------------
 
