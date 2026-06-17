@@ -238,6 +238,100 @@ class TestViewCommand:
 
 
 # ---------------------------------------------------------------------------
+# crm view list
+# ---------------------------------------------------------------------------
+
+# Saved-query rows used across `view list` tests. layoutxml/fetchxml are absent
+# on purpose — `view list` projects them away, mirroring how `form list` drops
+# formxml; the reader tolerates their absence (columns → []).
+_VIEW_ROW_A = {
+    "savedqueryid": "aaaaaaaa-0000-0000-0000-000000000001",
+    "name": "Active Tickets",
+    "isdefault": True,
+    "querytype": 0,
+}
+_VIEW_ROW_B = {
+    "savedqueryid": "bbbbbbbb-0000-0000-0000-000000000002",
+    "name": "All Tickets",
+    "isdefault": False,
+    "querytype": 0,
+}
+
+
+def _views_url(backend):
+    return backend.url_for("savedqueries")
+
+
+class TestViewList:
+    def test_list_renders_view_names(self, backend, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with requests_mock.Mocker() as m:
+            m.get(_views_url(backend), json={"value": [_VIEW_ROW_A, _VIEW_ROW_B]})
+            result = CliRunner().invoke(cli, ["--json", "view", "list", "cwx_ticket"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        names = [v["name"] for v in data["data"]]
+        assert "Active Tickets" in names
+        assert "All Tickets" in names
+
+    def test_list_projects_to_list_fields_only(self, backend, monkeypatch):
+        """JSON rows carry exactly name/savedqueryid/isdefault/querytype — no
+        columns/order_by (mirrors `form list` dropping formxml)."""
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with requests_mock.Mocker() as m:
+            m.get(_views_url(backend), json={"value": [_VIEW_ROW_A]})
+            result = CliRunner().invoke(cli, ["--json", "view", "list", "cwx_ticket"])
+        assert result.exit_code == 0, result.output
+        row = json.loads(result.output)["data"][0]
+        assert row == {
+            "name": "Active Tickets",
+            "savedqueryid": "aaaaaaaa-0000-0000-0000-000000000001",
+            "isdefault": True,
+            "querytype": 0,
+        }
+
+    def test_list_renders_table_in_human_mode(self, backend, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with requests_mock.Mocker() as m:
+            m.get(_views_url(backend), json={"value": [_VIEW_ROW_A]})
+            result = CliRunner().invoke(cli, ["view", "list", "cwx_ticket"])
+        assert result.exit_code == 0, result.output
+        assert "Active Tickets" in result.output
+
+    def test_list_filters_to_queried_entity(self, backend, monkeypatch):
+        """The GET request URL must include the entity logical name in the filter."""
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with requests_mock.Mocker() as m:
+            m.get(_views_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["view", "list", "cwx_ticket"])
+        assert "cwx_ticket" in m.last_request.url
+
+    def test_list_empty_exits_ok(self, backend, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with requests_mock.Mocker() as m:
+            m.get(_views_url(backend), json={"value": []})
+            result = CliRunner().invoke(cli, ["--json", "view", "list", "cwx_ticket"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert data["ok"] is True
+        assert data["data"] == []
+
+
+# ---------------------------------------------------------------------------
 # Tests for read_entity_views
 # ---------------------------------------------------------------------------
 
@@ -319,6 +413,28 @@ class TestReadEntityViews:
             views = read_entity_views(backend, "cwx_ticket")
         assert len(views) == 1
         assert "order_by" not in views[0]
+
+    def test_view_includes_savedqueryid_and_querytype(self, backend):
+        """`view list` needs the id + querytype, so the reader must surface them."""
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 200)]
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _build_fetchxml("cwx_ticket", cols, None, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "All Tickets",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                    "querytype": 0,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert views[0]["savedqueryid"] == _READ_VIEW_ID
+        assert views[0]["querytype"] == 0
 
     def test_no_public_views_returns_empty(self, backend):
         from crm.core.views import read_entity_views

@@ -16,6 +16,33 @@ def view_group():
     """Create and manage system views (savedquery)."""
 
 
+@view_group.command("list")
+@click.argument("entity")
+@pass_ctx
+def view_list(ctx: CLIContext, entity: str) -> None:
+    """List the public views (savedquery) for an entity."""
+    with d365_errors(ctx):
+        views = views_mod.read_entity_views(ctx.backend(), entity)
+    # Project to the list-oriented fields only — read_entity_views also returns
+    # columns + order_by (parsed from layout/fetch xml), which would bloat
+    # --json output and surprise consumers expecting list columns.
+    listed = [
+        {"name": v.get("name", ""), "savedqueryid": v.get("savedqueryid"),
+         "isdefault": bool(v.get("is_default", False)),
+         "querytype": v.get("querytype")}
+        for v in views
+    ]
+    rows = [
+        [r["name"], r["savedqueryid"] or "", str(r["isdefault"]),
+         "" if r["querytype"] is None else str(r["querytype"])]
+        for r in listed
+    ]
+    ctx.emit(True, data=listed, table={
+        "headers": ["name", "savedqueryid", "isdefault", "querytype"],
+        "rows": rows,
+    })
+
+
 def _parse_column(raw: str) -> tuple[str, int]:
     """Parse 'logicalname[:width]' (width optional, default 100)."""
     name, sep, w = raw.partition(":")

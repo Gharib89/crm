@@ -109,12 +109,12 @@ no follow-up savedquery PATCH. Bad direction token → usage error (exit 2).
 ### Edit an existing view
 
 `view create` only makes new views. To change an existing one, PATCH its
-`savedquery` row — locate the GUID by name, update `fetchxml`/`layoutxml`, then
+`savedquery` row — locate the GUID by name (`view list <entity>` lists every
+public view's `savedqueryid`), update `fetchxml`/`layoutxml`, then
 publish the owning entity:
 
 ```bash
-crm --json query odata savedqueries --filter "name eq 'Active Accounts'" \
-    --select name,returnedtypecode,savedqueryid
+crm --json view list account                                          # find the savedqueryid by name
 crm entity update savedqueries <savedqueryid> --data-file view.json   # {"fetchxml":"…","layoutxml":"…"}
 crm solution publish --xml \
     '<importexportxml><entities><entity>account</entity></entities></importexportxml>'

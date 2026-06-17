@@ -147,6 +147,8 @@ def read_entity_views(
 
     Returns a list of dicts with keys:
     - ``name``: view name (may be empty string for nameless rows)
+    - ``savedqueryid``: view id (GUID string)
+    - ``querytype``: saved-query type int (always 0 here — public views only)
     - ``columns``: list of ``{"name": str, "width": int}`` (may be empty when
       layoutxml is absent or unparseable)
     - ``order_by``: attribute name string (omitted if no <order> element)
@@ -163,7 +165,7 @@ def read_entity_views(
                 f"returnedtypecode eq {odata_literal(entity_logical_name)} "
                 "and querytype eq 0"
             ),
-            "$select": "name,layoutxml,fetchxml,isdefault",
+            "$select": "name,savedqueryid,querytype,layoutxml,fetchxml,isdefault",
         },
     )
 
@@ -206,6 +208,8 @@ def read_entity_views(
 
         view: dict[str, Any] = {
             "name": row.get("name", ""),
+            "savedqueryid": row.get("savedqueryid"),
+            "querytype": row.get("querytype"),
             "columns": columns,
             "is_default": bool(row.get("isdefault", False)),
         }

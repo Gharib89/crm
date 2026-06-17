@@ -1,5 +1,5 @@
 # pyright: basic
-"""E2E tests for view verbs: create."""
+"""E2E tests for view verbs: list, create."""
 from __future__ import annotations
 
 import json
@@ -23,6 +23,28 @@ def _resolve_otc(backend, logical: str) -> int:
     if not isinstance(otc, int) or otc <= 0:
         pytest.skip(f"OTC for {logical!r} not available: {rb}")
     return otc
+
+
+# ── view list ───────────────────────────────────────────────────────────────
+
+
+@covers("view list")
+def test_view_list_contact(cli):
+    """Every D365 org ships public views for 'contact'; assert non-empty + shape."""
+    result = cli(["--json", "view", "list", "contact"])
+    assert result.returncode == 0, (
+        f"view list failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    items = env["data"]
+    assert isinstance(items, list), f"expected list, got {type(items)}: {env}"
+    assert len(items) > 0, "view list returned empty list for 'contact'"
+    first = items[0]
+    assert "savedqueryid" in first, f"savedqueryid missing from first view: {first}"
+    assert "name" in first, f"name missing from first view: {first}"
+    assert "isdefault" in first, f"isdefault missing from first view: {first}"
+    assert "querytype" in first, f"querytype missing from first view: {first}"
 
 
 # ── view create ───────────────────────────────────────────────────────────────
