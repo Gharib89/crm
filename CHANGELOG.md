@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.12.0 (2026-06-17)
+
+### Documentation
+
+- **metadata**: Document is_bound/return_type/is_composable on list-actions/list-functions
+  ([#385](https://github.com/Gharib89/crm/pull/385),
+  [`a2ff49c`](https://github.com/Gharib89/crm/commit/a2ff49c8224b9a9cce692a7d75fe50da04af53d9))
+
+### Features
+
+- **metadata**: Surface is_bound/return_type/is_composable in list-actions/list-functions
+  ([#385](https://github.com/Gharib89/crm/pull/385),
+  [`a2ff49c`](https://github.com/Gharib89/crm/commit/a2ff49c8224b9a9cce692a7d75fe50da04af53d9))
+
+
 ## v4.11.0 (2026-06-17)
 
 ### Features
