@@ -41,6 +41,7 @@ LOCAL_GROUPS = frozenset(
 E2E_SKIP: dict[str, str] = {
     "plugin register-assembly": "needs a prebuilt signed test .dll; tracked in GH issue",
     "solution stage-and-upgrade": "needs a managed solution installed first; org-stateful",
+    "solution apply-upgrade": "needs a holding solution staged from a prior managed-solution upgrade first; org-stateful (same constraint as stage-and-upgrade)",
     "workflow run": "async side effects on live records; dispatch-only not asserted",
     # async cancel modifies live job state; no safe always-present cancellable job exists
     "async cancel": "cancelling arbitrary live asyncoperations is destructive; no safe read-only test target",

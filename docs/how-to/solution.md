@@ -153,9 +153,9 @@ crm --json solution import-result <import_job_id>
 ```
 Re-fetches a completed import job by id and runs the same parser, returning the per-component pass/fail envelope (and the same `meta.warnings` on any non-success component) without re-importing. The `<import_job_id>` is the `import_job_id` reported by `solution import`. Add `--formatted` for the Excel-format report ([#70](https://github.com/Gharib89/crm/issues/70)).
 
-## Upgrade a managed solution (clone-as-patch, stage-and-upgrade, uninstall)
+## Upgrade a managed solution (clone-as-patch, stage-and-upgrade, apply-upgrade, uninstall)
 
-First-class verbs for the managed-solution lifecycle, so an agent never has to drop to the raw `CloneAsPatch`/`DeleteAndPromote` server actions. All three work on both v9.x on-prem and Dataverse online, and compose with `--dry-run` and `--json`.
+First-class verbs for the managed-solution lifecycle, so an agent never has to drop to the raw `CloneAsPatch`/`DeleteAndPromote` server actions. They all work on both v9.x on-prem and Dataverse online, and compose with `--dry-run` and `--json`.
 
 **Clone a parent solution to a patch** (`CloneAsPatch`):
 
@@ -177,6 +177,13 @@ Imports the zip in *holding* mode — staged for upgrade, not yet applied — re
 crm solution stage-and-upgrade docs/artifacts/crmworx_2_0.zip --promote --solution CRMWorx --yes
 ```
 `--promote` requires `--solution` (the unique name to promote, exit 2 otherwise). It runs only after a real, succeeded stage — never under `--dry-run` — and attaches the promote result under `data.promote`.
+
+**Apply a separately-staged upgrade** (`DeleteAndPromote` — the standalone promote path):
+
+```bash
+crm solution apply-upgrade CRMWorx --yes
+```
+Promotes a solution already staged via `stage-and-upgrade` (run **without** `--promote`), decoupling stage-time from promote-time — the same `DeleteAndPromote` the one-shot `stage-and-upgrade --promote` runs, replacing the base solution and deleting its patches. Gated as destructive (`--yes`).
 
 **Uninstall a solution** (`DELETE /solutions(<id>)`):
 

@@ -457,6 +457,30 @@ def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_
         _journal(ctx, zip_path, info)
 
 
+@solution_group.command("apply-upgrade")
+@click.argument("unique_name")
+@_destructive_option
+@pass_ctx
+def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, yes):
+    """Apply a previously-staged holding-solution upgrade (DeleteAndPromote).
+
+    Promotes a solution already staged via `stage-and-upgrade` (run without
+    --promote), replacing the base solution and deleting its patches. This is
+    the separate-promote path that decouples stage-time from promote-time;
+    `stage-and-upgrade --promote` remains the one-shot path.
+    """
+    _confirm_destructive(
+        ctx, "solution", unique_name, yes,
+        message=(f"Promoting the staged upgrade for solution {unique_name!r} via "
+                 f"DeleteAndPromote (replaces the base solution and deletes its "
+                 f"patches). Continue?"),
+    )
+    with d365_errors(ctx):
+        info = sol_mod.delete_and_promote(ctx.backend(), unique_name)
+    ctx.emit(True, data=info)
+    _journal(ctx, unique_name, info)
+
+
 @solution_group.command("export")
 @click.argument("unique_name")
 @click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))
