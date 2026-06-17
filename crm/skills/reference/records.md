@@ -383,6 +383,36 @@ is 0 on partial failure** — read `data.failures` for which rows failed and why
 to re-issue rows to discover it), don't rely on `$?`. (This is a different per-row shape
 from `entity clone`'s `{entity, source_id, reason}` above, and here `ok` stays `true`.)
 
+**Alternate-key collision hint.** A row that fails with the alternate-key uniqueness
+code (`0x80060892`) additionally carries best-effort enrichment fields on its
+`failures` entry:
+
+```json
+{
+  "index": 3,
+  "status": 412,
+  "error": "A record with matching key values already exists.",
+  "alternate_keys": [
+    {
+      "name": "accountnumber_key",
+      "schema_name": "accountnumber_key",
+      "attributes": ["accountnumber"],
+      "payload_values": {"accountnumber": "ACC-001"}
+    }
+  ]
+}
+```
+
+`alternate_keys` lists every defined alternate key on the entity (each
+`{name, schema_name, attributes, payload_values}`), where `payload_values` is the
+intersection of the key's attribute names with the failing row's payload. When the
+row's payload also contains the entity's primary-id attribute, a `primary_id_hint`
+string is added to warn that the server returns the same error code for a
+primary-key collision too. The schema is fetched at most once per import run
+(identical for every row). Both fields are absent when the schema lookup fails or
+the row's code is different — enrichment is strictly best-effort and never masks
+the original error.
+
 ## Raw `$batch` — `crm batch`
 
 `crm batch <file.json>` runs a hand-authored `$batch` directly — the escape hatch for

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import difflib
 import re
-from typing import Any
+from typing import Any, NamedTuple, cast
 from urllib.parse import quote
 
 from crm.utils.d365_backend import (
@@ -91,8 +91,8 @@ def resolve_alternate_key(
     """
     if not key_attrs:
         raise D365Error("Alternate-key upsert requires at least one key attribute.")
-    # Local import keeps the core package import-cycle-free (mirrors the
-    # metadata import in commands/entity.enrich_duplicate_key_error).
+    # Local import keeps the core package import-cycle-free (mirrors
+    # lookup_alternate_key_schema below).
     from crm.core import metadata as meta_mod
 
     logical = entity_names.resolve_logical_name(backend, entity_set)
@@ -112,6 +112,128 @@ def resolve_alternate_key(
         f"No alternate key on {entity_set!r} matches attribute(s) "
         f"{', '.join(key_attrs)}. {detail}"
     )
+
+
+# ── Alternate-key collision enrichment (#347) ────────────────────────────
+# D365 error code for an alternate-key uniqueness violation
+# (DuplicateRecordEntityKey). Live-verified on both on-prem v9.1 and Dataverse
+# cloud v9.2: response body {"error": {"code": "0x80060892", ...}} with HTTP 412.
+# Distinct from 0x80040237 (DuplicateRecord / SQL integrity) and 0x80040333
+# (duplicate-detection-rules).
+ALT_KEY_ERROR_CODE = "0x80060892"
+
+
+class AltKeySchema(NamedTuple):
+    """An entity's alternate-key schema, fetched once and reused across rows.
+
+    ``primary_id`` is the entity's ``PrimaryIdAttribute``; ``keys`` are the rows
+    from :func:`crm.core.metadata.list_entity_keys` (each
+    ``{logical_name, schema_name, key_attributes, index_status}``)."""
+
+    primary_id: str
+    keys: list[dict[str, Any]]
+
+
+def is_alternate_key_error(exc: D365Error) -> bool:
+    """Return True when *exc* is an alternate-key uniqueness violation.
+
+    Checks ``exc.code`` first; falls back to the parsed ``response_body`` in case
+    the code was overwritten by an older backend or a test that builds the
+    exception directly."""
+    if exc.code == ALT_KEY_ERROR_CODE:
+        return True
+    body = exc.response_body
+    if isinstance(body, dict):
+        err = cast("dict[str, Any]", body).get("error")
+        if isinstance(err, dict):
+            return cast("dict[str, Any]", err).get("code") == ALT_KEY_ERROR_CODE
+    return False
+
+
+def lookup_alternate_key_schema(
+    backend: D365Backend, entity_set: str
+) -> "AltKeySchema | None":
+    """Fetch *entity_set*'s alternate-key schema, or ``None`` if unavailable.
+
+    One ``EntityDefinitions`` GET (mapping the entity set to its logical name +
+    primary id) plus one ``Keys`` GET. Returns ``None`` for an unknown entity set
+    or any backend failure — callers treat that as "no hint available" and never
+    surface the error. Bulk callers fetch this **once** and reuse it across rows,
+    since the alternate-key schema is identical for every row of one import."""
+    try:
+        result = as_dict(backend.get(
+            "EntityDefinitions",
+            params={
+                "$select": "LogicalName,PrimaryIdAttribute",
+                "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
+            },
+        ))
+        matches: list[dict[str, Any]] = result.get("value", [])
+        if not matches:
+            return None
+        logical_name: str = matches[0].get("LogicalName") or ""
+        primary_id: str = matches[0].get("PrimaryIdAttribute") or ""
+        if not logical_name:
+            return None
+        # Local import keeps the core package import-cycle-free (mirrors
+        # resolve_alternate_key above).
+        from crm.core import metadata as meta_mod
+        keys = meta_mod.list_entity_keys(backend, logical_name)
+        return AltKeySchema(primary_id=primary_id, keys=keys)
+    except Exception:
+        return None
+
+
+def dupe_key_hint(schema: "AltKeySchema", payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the presentation-agnostic alternate-key hint for one *payload*.
+
+    Pure (no I/O): given a pre-fetched *schema*, return
+    ``{"alternate_keys": [...], "primary_id_hint"?: str}``. Each key entry is
+    ``{name, schema_name, attributes, payload_values}`` where ``payload_values``
+    is the plain-name intersection of the key's attributes with *payload* (lookup
+    columns surfaced as ``field@odata.bind`` are NOT matched — v1 limitation,
+    plain names only). ``primary_id_hint`` is added when *payload* carries the
+    primary-id attribute (the server returns the same code for a PK collision)."""
+    enriched: list[dict[str, Any]] = []
+    for k in schema.keys:
+        key_attrs: list[str] = k["key_attributes"]
+        payload_values = {a: payload[a] for a in key_attrs if a in payload}
+        enriched.append({
+            "name": k["logical_name"],
+            "schema_name": k["schema_name"],
+            "attributes": key_attrs,
+            "payload_values": payload_values,
+        })
+    out: dict[str, Any] = {"alternate_keys": enriched}
+    if schema.primary_id and schema.primary_id in payload:
+        out["primary_id_hint"] = (
+            f"Payload contains the primary key attribute '{schema.primary_id}'. "
+            "The server returns the same error for a primary-key collision."
+        )
+    return out
+
+
+def enrich_dupe_key(
+    backend: D365Backend,
+    entity_set: str,
+    payload: dict[str, Any],
+    *,
+    code: str,
+) -> dict[str, Any]:
+    """Try to enrich an alternate-key collision with the entity's key metadata.
+
+    Returns a hint dict (see :func:`dupe_key_hint`) when *code* is
+    :data:`ALT_KEY_ERROR_CODE` and the metadata is reachable; ``{}`` for any
+    other code or if the lookup fails — the original failure is never masked.
+    Takes the already-detected *code* (not the exception) so non-exception
+    callers like the bulk-import batch path can reuse it. The *when-to-pay* cost
+    gate (the extra metadata reads) stays at the caller, not here."""
+    if code != ALT_KEY_ERROR_CODE:
+        return {}
+    schema = lookup_alternate_key_schema(backend, entity_set)
+    if schema is None:
+        return {}
+    return dupe_key_hint(schema, payload)
 
 
 def entity_id_fields(

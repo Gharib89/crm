@@ -11,12 +11,27 @@ import csv
 import json
 import math
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, Generator, cast
 
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
+
+
+def _batch_error_code(body: "dict[str, Any] | str | None") -> str | None:
+    """Extract the D365 error code from a failed batch sub-op's parsed body.
+
+    The backend already parses the OData error envelope into ``BatchResult.body``;
+    return ``body["error"]["code"]`` when present (e.g. ``0x80060892``), else None.
+    """
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            code = cast("dict[str, Any]", err).get("code")
+            if isinstance(code, str):
+                return code
+    return None
 
 
 # ── CSV value coercion ───────────────────────────────────────────────────────
@@ -188,7 +203,12 @@ def import_records(
         ``dry_run``, ``format``, and ``failures`` — a list (``[]`` when none) of
         ``{index, id?, status, error}`` entries, one per failed record, where
         ``index`` is the 1-based input row, ``id`` the record GUID (upserts only),
-        and ``status``/``error`` the server's HTTP status and message.
+        and ``status``/``error`` the server's HTTP status and message. A row that
+        failed with the alternate-key collision code (``0x80060892``) also carries
+        the best-effort ``alternate_keys`` (and ``primary_id_hint`` when relevant)
+        enrichment — the same hint ``entity create --json`` attaches (#347); the
+        key schema is fetched once per import and the colliding ``payload_values``
+        are per row.
     """
     # ── guards ──────────────────────────────────────────────────────────────
     if chunk_size < 1:
@@ -267,6 +287,12 @@ def import_records(
     chunks = 0
     failures: list[dict[str, Any]] = []
 
+    # Alternate-key schema for collision enrichment: fetched at most once per
+    # import (the schema is per-entity, identical for every row), lazily on the
+    # first 0x80060892 failure. `None` after a fetch means "lookup unavailable".
+    alt_key_schema: entity_mod.AltKeySchema | None = None
+    alt_key_schema_fetched = False
+
     op_chunks: list[list[BatchOperation]] = list(_chunked(ops, chunk_size)) if ops else []
     row_offset = 0  # 0-based index into ops/op_ids of the current chunk's first op
     for chunk_ops in op_chunks:
@@ -290,6 +316,16 @@ def import_records(
                     entry["id"] = rec_id
                 entry["status"] = status
                 entry["error"] = error or f"HTTP {status}"
+                # Enrich an alternate-key collision with the entity's key schema
+                # and this row's colliding values (#347) — the same best-effort
+                # hint `entity create --json` attaches, now on bulk failures too.
+                if (_batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
+                        and op_index < len(records)):
+                    if not alt_key_schema_fetched:
+                        alt_key_schema = entity_mod.lookup_alternate_key_schema(backend, entity_set)
+                        alt_key_schema_fetched = True
+                    if alt_key_schema is not None:
+                        entry.update(entity_mod.dupe_key_hint(alt_key_schema, records[op_index]))
                 failures.append(entry)
         row_offset += len(chunk_ops)
 
