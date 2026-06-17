@@ -621,3 +621,133 @@ class TestBatchFlagForwarding:
         _args, kwargs = backend.batch.call_args
         assert kwargs["transactional"] is True
         assert kwargs["continue_on_error"] is False
+
+
+# ── alternate-key collision enrichment on failures (#347) ──────────────────────
+
+
+_ACCOUNT_NUMBER_KEY = [{
+    "LogicalName": "account_code_ak",
+    "SchemaName": "Account_Code_AK",
+    "KeyAttributes": ["accountnumber"],
+    "EntityKeyIndexStatus": "Active",
+}]
+
+
+def _alt_key_failure(code: str = "0x80060892", status: int = 412) -> BatchResult:
+    return {
+        "method": "POST", "url": "accounts", "status": status, "headers": {},
+        "body": {"error": {"code": code,
+                           "message": "A record with these values already exists."}},
+        "error": "A record with these values already exists.",
+    }
+
+
+def _stub_backend_with_keys(
+    results_per_chunk: list[list[BatchResult]],
+    *,
+    keys: list[dict[str, Any]],
+    logical: str = "account",
+    primary_id: str = "accountid",
+) -> Any:
+    """Stub backend whose .batch() returns successive chunks and whose .get()
+    serves the EntityDefinitions + Keys metadata the enrichment reads."""
+    backend = _make_stub_backend(results_per_chunk)
+
+    def _get(path: str, params: Any = None, **_kw: Any) -> dict[str, Any]:
+        if path == "EntityDefinitions":
+            return {"value": [{"LogicalName": logical, "PrimaryIdAttribute": primary_id}]}
+        if path == f"EntityDefinitions(LogicalName='{logical}')/Keys":
+            return {"value": keys}
+        raise AssertionError(f"unexpected GET {path!r}")
+
+    backend.get.side_effect = _get
+    return backend
+
+
+class TestAltKeyEnrichment:
+    def test_collision_attaches_alternate_keys_per_row(self, tmp_path: Path) -> None:
+        """A row failing with 0x80060892 gains alternate_keys + the colliding values."""
+        p = tmp_path / "data.jsonl"
+        p.write_text(
+            '{"name": "Alpha", "accountnumber": "A-1"}\n'
+            '{"name": "Beta", "accountnumber": "B-2"}\n',
+            encoding="utf-8",
+        )
+        results = [[_make_2xx_results(1)[0], _alt_key_failure()]]
+        backend = _stub_backend_with_keys(results, keys=_ACCOUNT_NUMBER_KEY)
+        result = _import_records(backend, "accounts", p, chunk_size=10)
+
+        assert result["imported"] == 1
+        assert result["failed"] == 1
+        fail = result["failures"][0]
+        assert fail["index"] == 2
+        assert fail["alternate_keys"][0]["name"] == "account_code_ak"
+        assert fail["alternate_keys"][0]["payload_values"] == {"accountnumber": "B-2"}
+
+    def test_single_metadata_lookup_for_many_failed_rows(self, tmp_path: Path) -> None:
+        """The per-entity key schema is fetched ONCE, with per-row colliding values."""
+        p = tmp_path / "data.jsonl"
+        p.write_text(
+            '{"name": "Alpha", "accountnumber": "A-1"}\n'
+            '{"name": "Beta", "accountnumber": "B-2"}\n',
+            encoding="utf-8",
+        )
+        results = [[_alt_key_failure(), _alt_key_failure()]]
+        backend = _stub_backend_with_keys(results, keys=_ACCOUNT_NUMBER_KEY)
+        result = _import_records(backend, "accounts", p, chunk_size=10)
+
+        # One EntityDefinitions GET + one Keys GET for the whole import.
+        assert backend.get.call_count == 2
+        assert result["failures"][0]["alternate_keys"][0]["payload_values"] == {"accountnumber": "A-1"}
+        assert result["failures"][1]["alternate_keys"][0]["payload_values"] == {"accountnumber": "B-2"}
+
+    def test_primary_id_collision_hint_per_row(self, tmp_path: Path) -> None:
+        """A row whose payload carries the primary id gets the PK-collision hint."""
+        guid = "11111111-1111-1111-1111-111111111111"
+        p = tmp_path / "data.jsonl"
+        p.write_text(json.dumps({"accountid": guid, "name": "Alpha"}) + "\n", encoding="utf-8")
+        results = [[_alt_key_failure()]]
+        backend = _stub_backend_with_keys(results, keys=[])
+        result = _import_records(backend, "accounts", p)
+
+        fail = result["failures"][0]
+        assert fail["alternate_keys"] == []
+        assert "accountid" in fail["primary_id_hint"]
+
+    def test_enrich_alt_key_false_skips_lookup(self, tmp_path: Path) -> None:
+        """The when-to-pay gate: enrich_alt_key=False (human mode) does no metadata
+        reads and attaches no hint, even on a real alternate-key collision."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "Alpha", "accountnumber": "A-1"}\n', encoding="utf-8")
+        results = [[_alt_key_failure()]]
+        backend = _stub_backend_with_keys(results, keys=_ACCOUNT_NUMBER_KEY)
+        result = _import_records(backend, "accounts", p, enrich_alt_key=False)
+
+        assert backend.get.call_count == 0
+        assert "alternate_keys" not in result["failures"][0]
+
+    def test_non_alt_key_failure_not_enriched(self, tmp_path: Path) -> None:
+        """A non-alternate-key failure is untouched — no metadata reads at all."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "Alpha"}\n', encoding="utf-8")
+        results = [[_alt_key_failure(code="0x80040217", status=404)]]
+        backend = _stub_backend_with_keys(results, keys=_ACCOUNT_NUMBER_KEY)
+        result = _import_records(backend, "accounts", p)
+
+        assert backend.get.call_count == 0
+        assert "alternate_keys" not in result["failures"][0]
+
+    def test_metadata_lookup_failure_leaves_failure_unenriched(self, tmp_path: Path) -> None:
+        """If the schema lookup fails, the original failure entry is unchanged."""
+        p = tmp_path / "data.jsonl"
+        p.write_text('{"name": "Alpha", "accountnumber": "A-1"}\n', encoding="utf-8")
+        results = [[_alt_key_failure()]]
+        backend = _make_stub_backend(results)
+        backend.get.side_effect = D365Error("metadata unreachable", status=500)
+        result = _import_records(backend, "accounts", p)
+
+        fail = result["failures"][0]
+        assert "alternate_keys" not in fail
+        assert fail["index"] == 1
+        assert fail["status"] == 412

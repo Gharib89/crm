@@ -1,11 +1,13 @@
-"""Tests for alternate-key duplicate error enrichment (#232).
+"""Command-layer wiring for alternate-key duplicate error enrichment (#232, #347).
 
 Covers:
  - _parse_response: preserves body error code for 412 (not overwritten)
- - _is_alternate_key_error detection helper
- - enrich_duplicate_key_error: key fetch, payload_values, primary_id_hint, failure isolation
+ - classify_d365_error: 0x80060892 → duplicate_detected
  - _handle_d365_error: extra_meta merged into envelope
- - entity create/update commands: enrichment wired end-to-end
+ - entity create/update commands: enrichment wired end-to-end (json-only gate)
+
+The detection helper and core enrichment seam moved to crm.core.entity in #347 —
+their direct tests live in test_entity_dupe_key_enrichment_core.py.
 """
 # pyright: basic
 
@@ -89,194 +91,11 @@ def test_classify_precondition_failed_is_concurrency_conflict():
     assert category == "concurrency_conflict"
 
 
-# ── _is_alternate_key_error detection ───────────────────────────────────────
-
-
-def test_is_alternate_key_error_true_for_known_code():
-    """Detection returns True for code 0x80060892."""
-    from crm.commands.entity import _is_alternate_key_error
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-    assert _is_alternate_key_error(exc) is True
-
-
-def test_is_alternate_key_error_false_for_precondition_failed():
-    """Detection returns False for plain PreconditionFailed (ETag conflict)."""
-    from crm.commands.entity import _is_alternate_key_error
-    exc = D365Error("ETag mismatch", status=412, code="PreconditionFailed")
-    assert _is_alternate_key_error(exc) is False
-
-
-def test_is_alternate_key_error_false_for_other_errors():
-    """Detection returns False for unrelated error codes."""
-    from crm.commands.entity import _is_alternate_key_error
-    exc = D365Error("Not found", status=404, code="0x80040217")
-    assert _is_alternate_key_error(exc) is False
-
-
-def test_is_alternate_key_error_fallback_via_response_body():
-    """Detection falls back to response_body code when exc.code was overwritten."""
-    from crm.commands.entity import _is_alternate_key_error
-    exc = D365Error("Entity Key violated.", status=412, code="PreconditionFailed",
-                    response_body={"error": {"code": "0x80060892", "message": "..."}})
-    assert _is_alternate_key_error(exc) is True
-
-
-# ── enrich_duplicate_key_error ───────────────────────────────────────────────
-
-
-def _entity_defs_url(backend):
-    return backend.url_for("EntityDefinitions")
-
-
-def _keys_url(backend, logical_name: str):
-    return backend.url_for(f"EntityDefinitions(LogicalName='{logical_name}')/Keys")
-
-
-def test_enrich_returns_alternate_keys_with_payload_values(backend):
-    """Enrichment returns alternate_keys with payload_values intersection."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
-        m.get(_keys_url(backend, "account"), json={"value": [
-            {
-                "LogicalName": "account_code_ak",
-                "SchemaName": "Account_Code_AK",
-                "KeyAttributes": ["accountnumber"],
-                "EntityKeyIndexStatus": "Active",
-            }
-        ]})
-        payload = {"name": "Contoso", "accountnumber": "ACC-001"}
-        result = enrich_duplicate_key_error(backend, "accounts", payload, exc)
-
-    assert "alternate_keys" in result
-    assert len(result["alternate_keys"]) == 1
-    k = result["alternate_keys"][0]
-    assert k["name"] == "account_code_ak"
-    assert k["attributes"] == ["accountnumber"]
-    assert k["payload_values"] == {"accountnumber": "ACC-001"}
-
-
-def test_enrich_empty_payload_values_when_no_intersection(backend):
-    """Key attributes not in payload → payload_values is empty dict."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
-        m.get(_keys_url(backend, "account"), json={"value": [
-            {
-                "LogicalName": "account_code_ak",
-                "SchemaName": "Account_Code_AK",
-                "KeyAttributes": ["accountnumber"],
-                "EntityKeyIndexStatus": "Active",
-            }
-        ]})
-        payload = {"name": "Contoso"}  # accountnumber not in payload
-        result = enrich_duplicate_key_error(backend, "accounts", payload, exc)
-
-    assert result["alternate_keys"][0]["payload_values"] == {}
-
-
-def test_enrich_no_keys_returns_empty_alternate_keys(backend):
-    """Entity with no alternate keys → result has empty alternate_keys list."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
-        m.get(_keys_url(backend, "account"), json={"value": []})
-        payload = {"name": "Contoso"}
-        result = enrich_duplicate_key_error(backend, "accounts", payload, exc)
-
-    assert result["alternate_keys"] == []
-
-
-def test_enrich_primary_id_hint_when_payload_has_primary_id(backend):
-    """If payload contains the primary id attribute, enrichment adds a hint."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
-        m.get(_keys_url(backend, "account"), json={"value": []})
-        payload = {"name": "Contoso", "accountid": "some-guid"}
-        result = enrich_duplicate_key_error(backend, "accounts", payload, exc)
-
-    assert "primary_id_hint" in result
-    assert "accountid" in result["primary_id_hint"]
-
-
-def test_enrich_no_primary_id_hint_when_not_in_payload(backend):
-    """If payload does not contain the primary id, no hint is added."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
-        m.get(_keys_url(backend, "account"), json={"value": []})
-        payload = {"name": "Contoso"}
-        result = enrich_duplicate_key_error(backend, "accounts", payload, exc)
-
-    assert "primary_id_hint" not in result
-
-
-def test_enrich_entity_lookup_fails_returns_empty(backend):
-    """If entity set → logical name lookup fails, returns {} (original error unchanged)."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), status_code=500, json={"error": {"message": "Server error"}})
-        result = enrich_duplicate_key_error(backend, "accounts", {"name": "x"}, exc)
-
-    assert result == {}
-
-
-def test_enrich_keys_fetch_fails_returns_empty(backend):
-    """If keys fetch fails, returns {} (original error unchanged)."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
-        m.get(_keys_url(backend, "account"), status_code=500, json={"error": {"message": "err"}})
-        result = enrich_duplicate_key_error(backend, "accounts", {"name": "x"}, exc)
-
-    assert result == {}
-
-
-def test_enrich_unknown_entity_set_returns_empty(backend):
-    """If entity set is not found in metadata, returns {} gracefully."""
-    from crm.commands.entity import enrich_duplicate_key_error
-
-    exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
-
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": []})  # no match
-        result = enrich_duplicate_key_error(backend, "unknownsets", {"name": "x"}, exc)
-
-    assert result == {}
+# Detection (`is_alternate_key_error`) and the core enrichment seam
+# (`enrich_dupe_key` / `lookup_alternate_key_schema` / `dupe_key_hint`) relocated
+# to crm.core.entity in #347 — covered in test_entity_dupe_key_enrichment_core.py.
+# The tests below assert the command-layer wiring (json-only gate, end-to-end
+# render) is unchanged after the move.
 
 
 # ── _handle_d365_error: extra_meta merges into envelope ────────────────────

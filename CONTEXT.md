@@ -28,6 +28,18 @@ client-side validation rejection, or a user-declined confirmation. Surfaces as
 `emit(ok=false)` and exit code `1`.
 _Avoid_: runtime error, command error, generic failure.
 
+**Alternate-key hint**:
+A best-effort enrichment attached to an operational failure when a write hits
+the alternate-key uniqueness code `0x80060892`: the entity's alternate keys,
+their attributes, and the colliding `payload_values`, plus a `primary_id_hint`
+when the payload also carries the primary id (the server returns the same code
+for a PK collision). Owned by `crm/core/entity.py` so every write path can reach
+it — emitted in `meta` on `entity create` (`--json`) and per-row on bulk
+`data import` failures. The human render skips it to avoid the extra metadata
+reads (the *when-to-pay* gate stays at the caller, not in core). Self-contained:
+it swallows its own errors and never masks the original failure.
+_Avoid_: duplicate error, key error detail.
+
 **Usage error**:
 A caller mistake Click rejects before the command body runs — unknown flag, bad
 parameter value, missing required argument. Exit code `2` (Click's default).

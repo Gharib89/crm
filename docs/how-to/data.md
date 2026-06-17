@@ -118,9 +118,18 @@ individual failures (`Prefer: odata.continue-on-error`); it requires
 
 When `failed > 0`, a warning is surfaced in `meta.warnings` (`--json`) or as a
 warning line in human mode; exit code is 0 on partial failure. `--json` also
-returns a per-record `data.failures` array (shape `{index, id?, status, error}`,
-where `index` is the 1-based input row and `id` is present only for upsert), and
-human mode prints one line per failed record alongside the aggregate warning.
+returns a per-record `data.failures` array and human mode prints one line per
+failed record alongside the aggregate warning.
+
+Each `data.failures` entry shape: `{index, id?, status, error}`, where `index` is
+the 1-based input row and `id` is present only for upsert. A row that fails with
+the alternate-key uniqueness violation code (`0x80060892`) additionally carries
+best-effort `alternate_keys` (each `{name, schema_name, attributes, payload_values}`)
+and, when the row's payload also contains the primary-id attribute, a
+`primary_id_hint` string — the same hint `entity create --json` attaches for
+single-record duplicate-key errors. The key schema is fetched once per import run
+and `payload_values` is per row. These fields are absent when the schema lookup
+fails or the row's error code is different.
 
 ### Dry-run preview (zero writes)
 
