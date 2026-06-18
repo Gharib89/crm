@@ -73,9 +73,14 @@ plugins:
         declarative apply, and bulk CSV/JSON export. `--json` everywhere for agents.
       sections:
         Getting started:
+          - getting-started/quickstart.md: Quickstart — install to first query
+          - getting-started/concepts.md: Concepts — on-prem vs cloud, profiles
           - getting-started/install.md: Install (script or from source)
-          - getting-started/initialize.md: First-run setup
-          - getting-started/configure.md: Auth (NTLM / OAuth) and profiles
+          - getting-started/update.md: Update the CLI
+          - getting-started/add-profile.md: Create a connection profile
+          - getting-started/configure.md: Auth (NTLM / OAuth) and switching profiles
+          - getting-started/skill.md: Install the agent skill
+          - getting-started/agent.md: Use /crm with a coding agent
         How-to:
           - how-to/*.md
         Reference:
@@ -83,9 +88,13 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - pymdownx.details
   - pymdownx.superfences
   - pymdownx.highlight
+  - pymdownx.tabbed:
+      alternate_style: true
   - tables
   - mkdocs-click
 
@@ -99,9 +108,17 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Getting started:
+      - Quickstart: getting-started/quickstart.md
+      - Concepts: getting-started/concepts.md
       - Install: getting-started/install.md
-      - Initialize: getting-started/initialize.md
-      - Configure: getting-started/configure.md
+      - Update: getting-started/update.md
+      - Add a profile: getting-started/add-profile.md
+      - Configure & switch: getting-started/configure.md
+      - Verify it works: getting-started/verify.md
+      - Tab completion (optional): getting-started/completion.md
+      - Install the skill: getting-started/skill.md
+      - Use /crm with an agent: getting-started/agent.md
+      - Troubleshooting: getting-started/troubleshooting.md
   - Guides:
       - CRMWorx walkthrough: guides/crmworx-walkthrough.md
   - How-to:
