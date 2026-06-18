@@ -305,6 +305,28 @@ def test_import_result_command_surfaces_warnings_and_formatted(monkeypatch, tmp_
     assert captured == {"job_id": _JOB_ID, "formatted": True}
 
 
+def test_import_command_passes_skip_dependency_check(monkeypatch, tmp_path):
+    """`solution import --skip-dependency-check` wires through to
+    import_solution(skip_dependency_check=True) (#376)."""
+    _save_profile(monkeypatch, tmp_path)
+    zip_path = tmp_path / "pkg.zip"
+    zip_path.write_bytes(b"PK\x03\x04stub")
+    captured = {}
+
+    def fake_import_solution(_backend, _zip, *, skip_dependency_check=False, **_kw):
+        captured["skip"] = skip_dependency_check
+        return {"import_job_id": _JOB_ID, "status": "succeeded"}
+
+    monkeypatch.setattr(sol, "import_solution", fake_import_solution)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--profile", "p", "solution", "import", str(zip_path),
+         "--skip-dependency-check", "--yes"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["skip"] is True
+
+
 def test_sniff_managed_never_raises_on_unexpected_error(tmp_path, monkeypatch):
     # zf.read can raise NotImplementedError (unsupported compression) /
     # RuntimeError (encrypted) — neither is BadZipFile/OSError. The advisory

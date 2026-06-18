@@ -570,6 +570,9 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--no-publish", is_flag=True)
 @click.option("--no-overwrite", is_flag=True)
+@click.option("--skip-dependency-check", "skip_dependency_check", is_flag=True,
+              help="Set ImportSolution SkipProductUpdateDependencies to proceed "
+                   "past a product-update dependency block.")
 @click.option("--timeout", type=int, default=None,
               help="Async operation timeout in seconds. Overrides profile.async_timeout.")
 @click.option("--no-retry", is_flag=True,
@@ -582,7 +585,7 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
 @click.option("--yes", is_flag=True,
               help="Skip the overwrite confirmation prompt.")
 @pass_ctx
-def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, timeout, no_retry, quiet, formatted, yes):
+def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, skip_dependency_check, timeout, no_retry, quiet, formatted, yes):
     # An overwrite import (the default) clobbers unmanaged customizations in the
     # target org — gate it like a delete (#67). A `--no-overwrite` import is not
     # prompted here (the PreToolUse hook still requires --yes for any import).
@@ -598,6 +601,7 @@ def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, tim
                 ctx.backend(), zip_path,
                 publish_workflows=not no_publish,
                 overwrite_unmanaged_customizations=not no_overwrite,
+                skip_dependency_check=skip_dependency_check,
                 timeout=timeout,
                 quiet=quiet,
                 formatted=formatted,

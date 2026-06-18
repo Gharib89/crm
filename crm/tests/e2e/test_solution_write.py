@@ -232,6 +232,24 @@ def test_import_round_trip_and_result_and_job_status(
     data = env["data"]
     assert data.get("status") == "succeeded", f"import status not succeeded: {data}"
 
+    # --skip-dependency-check must be accepted and still succeed. The freshly
+    # exported solution has no product-update dependency block, so the flag is a
+    # no-op here; this proves the option wires through to ImportSolution live (#376).
+    result_skip = cli([
+        "--json", "solution", "import",
+        str(zip_path),
+        "--skip-dependency-check",
+        "--yes",
+        "--quiet",
+    ])
+    assert result_skip.returncode == 0, (
+        f"import --skip-dependency-check failed:\n{result_skip.stderr}\n"
+        f"stdout: {result_skip.stdout}"
+    )
+    env_skip = json.loads(result_skip.stdout)
+    assert env_skip["ok"], env_skip
+    assert env_skip["data"].get("status") == "succeeded", env_skip
+
     import_job_id = data.get("import_job_id")
     async_op_id = data.get("async_operation_id")
 
