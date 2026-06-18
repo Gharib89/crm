@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.25.1 (2026-06-18)
+
+### Bug Fixes
+
+- **view**: Add --query-type and --description to view create
+  ([#403](https://github.com/Gharib89/crm/pull/403),
+  [`e1fa769`](https://github.com/Gharib89/crm/commit/e1fa769d273bc4f79658fdca85e08fac5e36a679))
+
+### Documentation
+
+- **ship**: Fold issue claim + PR-status reflection into the ship skill
+  ([#401](https://github.com/Gharib89/crm/pull/401),
+  [`1903d4d`](https://github.com/Gharib89/crm/commit/1903d4d4569edba1d9726ecbe783bc441e245172))
+
+
 ## v4.25.0 (2026-06-18)
 
 ### Documentation
