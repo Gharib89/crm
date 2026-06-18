@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.17.0 (2026-06-18)
+
+### Documentation
+
+- **metadata**: Clarify datetime default — CLI sends Format, server defaults behavior
+  ([#391](https://github.com/Gharib89/crm/pull/391),
+  [`a46a059`](https://github.com/Gharib89/crm/commit/a46a059c6f1c7e6fa8bb5ecd75a76bbaf50c0601))
+
+### Features
+
+- **metadata**: Add-attribute --behavior to set DateTimeBehavior
+  ([#391](https://github.com/Gharib89/crm/pull/391),
+  [`a46a059`](https://github.com/Gharib89/crm/commit/a46a059c6f1c7e6fa8bb5ecd75a76bbaf50c0601))
+
+
 ## v4.16.1 (2026-06-18)
 
 ### Bug Fixes
