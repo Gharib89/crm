@@ -32,6 +32,8 @@ def odata_query(
     page_size: int | None = None,
     all_pages: bool = False,
     max_records: int | None = None,
+    track_changes: bool = False,
+    delta_token: str | None = None,
 ) -> dict[str, Any]:
     """Execute a GET against an entity set with OData query options.
 
@@ -47,6 +49,15 @@ def odata_query(
     the internal `@crm.truncated` marker is set so the caller can report the cap
     was hit — a valid resume cursor is impossible once the final page is sliced to
     an exact count, so no `@odata.nextLink` is emitted in that case.
+
+    `track_changes` requests a change-tracking delta link (`Prefer:
+    odata.track-changes`); the response carries an `@odata.deltaLink` whose
+    `$deltatoken` resumes from this point. `delta_token` resumes by sending that
+    token as `$deltatoken`, returning only rows created/updated/deleted since
+    (deletes arrive as rows with a `$deletedEntity` context). The two are mutually
+    exclusive, and neither combines with `$filter/$orderby/$expand/$top` (rejected
+    by the Web API) or with page-following (which would consume the delta link) —
+    all rejected here as `D365Error`.
     """
     # The entity-set arg carries the URL path only — OData options go through the
     # query-option kwargs below. A `?` or `$` means the caller baked params into
@@ -60,6 +71,30 @@ def odata_query(
             "use --select/--filter for OData parameters — do not embed '?' or '$' in the path",
             code="InvalidEntitySet",
         )
+
+    # Change tracking: --track-changes initiates (server returns an @odata.deltaLink),
+    # --delta-token resumes from a prior link. The two are opposite ends of one
+    # round-trip, and the Web API rejects $filter/$orderby/$expand/$top with change
+    # tracking; page-following ($all/$max-records) would consume the deltaLink. Reject
+    # all of these client-side so the failure is actionable, not a generic server 400.
+    if track_changes and delta_token is not None:
+        raise D365Error(
+            "--track-changes initiates change tracking; --delta-token resumes it — "
+            "pass one or the other, not both."
+        )
+    if track_changes or delta_token is not None:
+        bad = [name for name, val in (
+            ("--filter", filter_), ("--orderby", orderby),
+            ("--expand", expand), ("--top", top),
+            ("--all", all_pages), ("--max-records", max_records is not None),
+        ) if val]
+        if bad:
+            raise D365Error(
+                "change tracking does not support " + "/".join(bad)
+                + ": the Dataverse Web API rejects $filter/$orderby/$expand/$top with "
+                "Prefer: odata.track-changes, and page-following drops the delta link. "
+                "Use --select to shape columns; resume with --delta-token."
+            )
 
     params: dict[str, Any] = {}
     if select:
@@ -83,16 +118,21 @@ def odata_query(
         params["$expand"] = ",".join(expand)
     if count:
         params["$count"] = "true"
+    if delta_token is not None:
+        params["$deltatoken"] = delta_token
 
     headers: dict[str, str] = {}
+    prefer_parts: list[str] = []
+    if track_changes:
+        prefer_parts.append("odata.track-changes")
     if include_annotations:
-        headers["Prefer"] = 'odata.include-annotations="*"'
+        prefer_parts.append('odata.include-annotations="*"')
     if page_size is not None:
         if page_size < 1:
             raise D365Error("--page-size must be >= 1")
-        existing = headers.get("Prefer")
-        page_pref = f"odata.maxpagesize={page_size}"
-        headers["Prefer"] = f"{existing},{page_pref}" if existing else page_pref
+        prefer_parts.append(f"odata.maxpagesize={page_size}")
+    if prefer_parts:
+        headers["Prefer"] = ",".join(prefer_parts)
 
     if max_records is not None and max_records < 1:
         raise D365Error("--max-records must be >= 1")

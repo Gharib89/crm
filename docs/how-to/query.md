@@ -94,6 +94,51 @@ When `ENTITY_SET` is omitted, the logical name is parsed from `<entity name="...
 resolved to the entity-set name via `EntityDefinitions` — one extra metadata GET.
 If the XML has no `<entity name="...">`, pass `ENTITY_SET` explicitly.
 
+## Track changes and resume from a delta token (`--track-changes` / `--delta-token`)
+
+Dataverse change tracking lets you retrieve only the rows that were created,
+updated, or deleted since a prior snapshot — useful for sync and incremental
+export.  Change tracking must be enabled on the table (it is on by default for
+many system tables including `account` and `contact`; list the enabled tables
+with `crm --json query odata EntityDefinitions --select LogicalName --filter
+"ChangeTrackingEnabled eq true"`).
+
+**Initiate a tracked query** — add `--track-changes` to any `query odata` call.
+The response envelope carries two extra keys in `meta`:
+
+- `meta.delta_link` — the opaque resume URL (`@odata.deltaLink`) for the next
+  round.
+- `meta.delta_token` — the bare `$deltatoken` value lifted out of that URL
+  (pass this to `--delta-token` on the next call instead of parsing the link
+  yourself).
+
+```bash
+crm --json query odata contacts --track-changes --select fullname,statecode
+# meta.delta_link:  "https://.../contacts?$deltatoken=<tok>"
+# meta.delta_token: "<tok>"
+```
+
+**Resume from a prior token** — pass the saved `meta.delta_token` as
+`--delta-token`.  Only rows created, updated, or deleted since the prior round
+are returned.  Each round surfaces a fresh `meta.delta_link` / `meta.delta_token`
+to chain from:
+
+```bash
+PREV_TOKEN=$(crm --json query odata contacts --track-changes --select fullname | jq -r .meta.delta_token)
+crm --json query odata contacts --delta-token "$PREV_TOKEN" --select fullname
+```
+
+**Deletions** arrive as rows shaped `{"id": "<guid>", "reason": "deleted"}` —
+the per-row `$deletedEntity` context is stripped along with other `@odata.*`
+keys by the normal envelope normalisation.
+
+**Conflicting options.**  The Dataverse Web API forbids system query options
+alongside change tracking.  `--track-changes` and `--delta-token` both reject
+combination with `--filter`, `--orderby`, `--expand`, `--top`, `--all`, and
+`--max-records`; the command errors client-side before any request.
+`--select`, `--count`, and `--page-size` are compatible.
+`--track-changes` and `--delta-token` are mutually exclusive with each other.
+
 ## Call a bound function or metadata path on the URL path
 
 `query odata` accepts three forms for its positional argument — all pass through to the
