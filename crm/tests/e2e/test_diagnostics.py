@@ -150,6 +150,26 @@ def test_async_list_returns_list(cli):
     assert isinstance(env["data"], list)
 
 
+@covers("async list")
+def test_async_list_order_by(cli):
+    """async list --order-by works."""
+    r = cli(["--json", "async", "list", "--top", "2", "--order-by", "completedon desc"])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"] is True
+    assert isinstance(env["data"], list)
+
+
+@covers("async list")
+def test_async_list_filter(cli):
+    """async list --filter works."""
+    r = cli(["--json", "async", "list", "--top", "2", "--filter", "statuscode eq 30"])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"] is True
+    assert isinstance(env["data"], list)
+
+
 # ── async get ─────────────────────────────────────────────────────────────────
 
 

@@ -31,9 +31,12 @@ def list_async_operations(
     owner_id: str | None = None,
     top: int = 50,
     order_by: str = "createdon desc",
+    filter: str | None = None,
 ) -> list[AsyncOperationRow]:
     """List asyncoperation rows. Filters are AND-joined when multiple are set."""
     filters: list[str] = []
+    if filter is not None:
+        filters.append(f"({filter})")
     if state is not None:
         filters.append(f"statecode eq {int(state)}")
     if message_name is not None:
@@ -93,6 +96,8 @@ def list_all_async_operations(
     owner_id: str | None = None,
     page_size: int = 50,
     max_pages: int = 20,
+    order_by: str = "createdon desc",
+    filter: str | None = None,
 ) -> list[AsyncOperationRow]:
     """Paginated variant of list_async_operations: follows @odata.nextLink up to max_pages.
 
@@ -102,6 +107,8 @@ def list_all_async_operations(
     when max_pages is reached.
     """
     filters: list[str] = []
+    if filter is not None:
+        filters.append(f"({filter})")
     if state is not None:
         filters.append(f"statecode eq {int(state)}")
     if message_name is not None:
@@ -115,7 +122,7 @@ def list_all_async_operations(
     params: dict[str, Any] = {
         "$select": _SELECT,
         "$top": str(int(page_size)),
-        "$orderby": "createdon desc",
+        "$orderby": order_by,
     }
     if filters:
         params["$filter"] = " and ".join(filters)
