@@ -23,6 +23,23 @@ class TestList:
             assert qs.get("$orderby") == ["createdon desc"]
             assert "$filter" not in qs
 
+    def test_list_with_order_by(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}asyncoperations", json={"value": []})
+            async_ops.list_async_operations(backend, order_by="completedon desc")
+            qs = m.last_request.qs
+            assert qs.get("$orderby") == ["completedon desc"]
+
+    def test_list_with_raw_filter(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.get(f"{profile.api_base}asyncoperations", json={"value": []})
+            async_ops.list_async_operations(backend, filter="statuscode eq 30", state=0)
+            qs = m.last_request.qs
+            f = qs.get("$filter", [""])[0]
+            assert "statecode eq 0" in f
+            assert "statuscode eq 30" in f
+            assert " and " in f
+
     def test_list_with_state_filter(self, backend, profile):
         with requests_mock.Mocker() as m:
             m.get(f"{profile.api_base}asyncoperations",
@@ -157,6 +174,28 @@ class TestAsyncCLI:
         assert result.exit_code == 0
         assert "--state" in result.output
         assert "--message" in result.output
+        assert "--order-by" in result.output
+        assert "--filter" in result.output
+
+    def test_async_list_order_by_and_filter(self, monkeypatch, profile):
+        from click.testing import CliRunner
+        from crm import cli as crm_cli
+
+        captured: dict[str, Any] = {}
+
+        def fake_list(backend, **kw):
+            captured.update(kw)
+            return []
+
+        monkeypatch.setattr("crm.core.async_ops.list_async_operations", fake_list)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        result = runner.invoke(crm_cli.cli, [
+            "async", "list", "--order-by", "completedon desc", "--filter", "statuscode eq 30"
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured.get("order_by") == "completedon desc"
+        assert captured.get("filter") == "statuscode eq 30"
 
     def test_async_list_state_resolves_named_value(self, monkeypatch, profile):
         from click.testing import CliRunner

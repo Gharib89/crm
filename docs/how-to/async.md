@@ -16,6 +16,13 @@ crm --json async list --message ImportSolution
 ```
 `--message` filters by `messagename`; `--owner <guid>` narrows to one user.
 
+## Advanced filtering and sorting
+
+```bash
+crm --json async list --state ready --filter "executiontimespan gt 1000" --order-by "startedon asc"
+```
+Use `--filter` for raw OData `$filter` expressions (AND-joined with canned filters like `--state` or `--message`). The default sort is `--order-by "createdon desc"`.
+
 ## Inspect one operation
 
 ```bash
