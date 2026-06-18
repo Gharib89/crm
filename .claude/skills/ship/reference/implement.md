@@ -1,4 +1,9 @@
-# Phase 2 — classify, then implement test-first
+# Phases 1–3 — understand, classify, implement, integrated-test (detail)
+
+Phase 2 leads (classification drives everything downstream); the phase-1 and
+phase-3 deep-dives follow at the end.
+
+## Phase 2 — classify, then implement test-first
 
 First **classify the change** into one of three classes — this decides whether
 TDD applies and (later, phase 7) the review ceiling. **Announce the class and the
