@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.31.0 (2026-06-18)
+
+### Bug Fixes
+
+- **translation**: Add --publish to translation import (#377)
+  ([#413](https://github.com/Gharib89/crm/pull/413),
+  [`6f2af59`](https://github.com/Gharib89/crm/commit/6f2af59fd293125e4d16b26caa8ef306d5d53c60))
+
+- **translation**: Restore publish-all warning when --publish skipped by dry-run
+  ([#413](https://github.com/Gharib89/crm/pull/413),
+  [`6f2af59`](https://github.com/Gharib89/crm/commit/6f2af59fd293125e4d16b26caa8ef306d5d53c60))
+
+### Documentation
+
+- **translation**: Document --publish flag on translation import
+  ([#413](https://github.com/Gharib89/crm/pull/413),
+  [`6f2af59`](https://github.com/Gharib89/crm/commit/6f2af59fd293125e4d16b26caa8ef306d5d53c60))
+
+### Features
+
+- **translation**: Add --publish flag to translation import
+  ([#413](https://github.com/Gharib89/crm/pull/413),
+  [`6f2af59`](https://github.com/Gharib89/crm/commit/6f2af59fd293125e4d16b26caa8ef306d5d53c60))
+
+
 ## v4.30.1 (2026-06-18)
 
 ### Bug Fixes
