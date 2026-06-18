@@ -1,0 +1,37 @@
+name: bump-guard
+
+# Reserve the minor/major version digits for intentional bumps. python-semantic-
+# release reads the squash-merge subject (the PR title) to choose the bump:
+# feat: -> minor, !/BREAKING CHANGE -> major, everything else -> patch. This gate
+# fails any PR whose title implies a non-patch bump unless the maintainer has
+# applied the matching opt-in label (`minor` / `major`). See ADR 0011, issue #398.
+#
+# NOT path-filtered, so it reports on every PR and can be made a required status
+# check. New workflows do not run on the PR that introduces them (GitHub uses the
+# default-branch copy for pull_request events), so this first runs post-merge.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  bump-guard:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate PR title against bump labels
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: python scripts/check_bump_label.py

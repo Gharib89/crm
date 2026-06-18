@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## Pre-1.0 development history
+
+The sections below (`v0.12.0` → `v4.31.1`) record `crm`'s pre-launch development.
+Before its first public release the project reset its version to `1.0.0` to shed
+the misleading inflated number (see
+[ADR 0011](https://github.com/Gharib89/crm/blob/main/docs/adr/0011-reset-to-1.0.0-and-label-gated-bumps.md));
+this history is kept for the record. Releases from `1.0.0` on are inserted above
+this line by python-semantic-release.
+
 ## v4.31.1 (2026-06-18)
 
 ### Bug Fixes
