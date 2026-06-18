@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.26.0 (2026-06-18)
+
+### Features
+
+- **security**: Add --name-contains filter to list-roles, document direct-only scope on
+  list-user-roles
+  ([`75a4235`](https://github.com/Gharib89/crm/commit/75a42359a2442fa55a9f7a053277886d2a263839))
+
+
 ## v4.25.1 (2026-06-18)
 
 ### Bug Fixes
