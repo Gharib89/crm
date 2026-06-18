@@ -14,6 +14,7 @@ from crm.commands._helpers import (
     _destructive_option,
     _handle_d365_error, _journal, _confirm_destructive,
     _solution_option, _resolve_solution, d365_errors,
+    _output_option,
 )
 
 
@@ -24,8 +25,7 @@ def ribbon_group():
 
 @ribbon_group.command("export")
 @click.argument("entity")
-@click.option("--output", type=click.Path(dir_okay=False),
-              help="Write the ribbon XML to this file instead of stdout.")
+@_output_option(help="Write the ribbon XML to this file instead of stdout.")
 @pass_ctx
 def ribbon_export(ctx: CLIContext, entity, output):
     """Export an entity's composed ribbon as readable XML."""

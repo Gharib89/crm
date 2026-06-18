@@ -30,6 +30,7 @@ from .rendering import (
     _infer_columns,
     _prune_annotations,
     _emit_expectation_failure,
+    _output_option,
 )
 from .errors import (
     _handle_d365_error,
@@ -83,6 +84,7 @@ __all__ = [
     "_sanitize", "_strip_odata_keys", "_concise_record", "_normalize_odata_envelope",
     "_short_repr", "_emit_with_warning", "_emit_query_result",
     "_infer_columns", "_prune_annotations", "_emit_expectation_failure",
+    "_output_option",
     # d365 errors
     "_handle_d365_error", "d365_errors", "_auth_error_hint",
     # solution resolution

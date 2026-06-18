@@ -19,6 +19,7 @@ from crm.commands._helpers import (
     _no_retry_scope,
     _active_profile,
     _EXPORT_SETTING_KEYS,
+    _output_option,
 )
 
 
@@ -483,7 +484,7 @@ def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, yes):
 
 @solution_group.command("export")
 @click.argument("unique_name")
-@click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))
+@_output_option(required=True)
 @click.option("--managed", is_flag=True)
 @click.option(
     "--export-setting",

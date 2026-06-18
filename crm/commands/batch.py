@@ -7,7 +7,7 @@ import click
 from crm.core import batch as batch_mod
 from crm.core import solution as sol_mod
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors, _journal
+from crm.commands._helpers import d365_errors, _journal, _output_option
 
 
 @click.command("service-document")
@@ -31,12 +31,11 @@ def service_document_cmd(ctx: CLIContext):
               help="Send each op as a top-level operation; no changeset wrapping.")
 @click.option("--continue-on-error", is_flag=True, default=False,
               help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
-@click.option("--output", "output_path", type=click.Path(dir_okay=False), default=None,
-              help="Write BatchResult[] JSON to this path.")
+@_output_option(help="Write BatchResult[] JSON to this path.")
 @click.option("--timeout", type=int, default=None,
               help="Override request timeout (seconds) for the batch call.")
 @pass_ctx
-def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, output_path, timeout):
+def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, output, timeout):
     """Execute a $batch from a JSON file."""
     if continue_on_error and not no_transaction:
         raise click.UsageError(
@@ -52,15 +51,15 @@ def batch_cmd(ctx: CLIContext, file_path, no_transaction, continue_on_error, out
             timeout=timeout,
         )
 
-    if output_path:
+    if output:
         try:
-            Path(output_path).write_text(
+            Path(output).write_text(
                 json.dumps(results, indent=2, default=str), encoding="utf-8"
             )
         except OSError as exc:
-            ctx.emit(False, error=f"Could not write {output_path}: {exc}")
+            ctx.emit(False, error=f"Could not write {output}: {exc}")
             return
-        data = {"written": output_path, **batch_mod.render_batch_summary(results)}  # type: ignore[arg-type]
+        data = {"written": output, **batch_mod.render_batch_summary(results)}  # type: ignore[arg-type]
         ctx.emit(True, data=data)
         _journal(ctx, file_path, data)
     else:

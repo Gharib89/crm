@@ -143,9 +143,9 @@ API" stance as ribbon and codegen). To stand up a *new* workflow:
 
 - **`workflow clone <id> --to-entity …`** — copy an existing definition onto another table
   (categories `0` and `2` only), then edit/activate it; or
-- **author once in the D365 UI / Power Automate, then bring it over as JSON** — this is the
+- author once in the D365 UI / Power Automate, then bring it over as JSON — this is the
   supported "create from scratch via CLI" path, in order: build it in the UI → `workflow
-  list` to find its GUID → `workflow export <guid> --out wf.json` → tweak the JSON if needed
+  list` to find its GUID → `workflow export <guid> --output wf.json` → tweak the JSON if needed
   → `workflow import --file wf.json --activate` (import upserts the definition).
 
 A raw `entity create workflows …` is not a supported substitute: some orgs block
@@ -186,7 +186,7 @@ crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone \
     --name "My Clone" --solution my_solution --no-activate
 
 # Export / import a workflow definition (incl. xaml) as JSON
-crm --json workflow export <workflow-guid> --out ./wf.json
+crm --json workflow export <workflow-guid> --output ./wf.json
 crm --json workflow import --file ./wf.json --activate
 ```
 

@@ -107,20 +107,26 @@ def test_workflow_export(backend, cli, tmp_path):
 
     Uses any existing workflow on the org — this is a read-only operation.
     """
+    import os
     wf_id = _find_any_workflow_id(backend)
+    
+    # Test canonical option --output
     out_file = str(tmp_path / "wf_export.json")
-    result = cli(["--json", "workflow", "export", wf_id, "--out", out_file])
+    result = cli(["--json", "workflow", "export", wf_id, "--output", out_file])
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert env["data"]["workflow_id"] == wf_id
-
-    # Written file must contain valid JSON with workflowid field.
-    import os
     assert os.path.exists(out_file)
     with open(out_file, encoding="utf-8") as fh:
         saved = json.load(fh)
     assert saved["workflowid"] == wf_id
+
+    # Test backward-compatible alias --out
+    out_file_compat = str(tmp_path / "wf_export_compat.json")
+    result_compat = cli(["--json", "workflow", "export", wf_id, "--out", out_file_compat])
+    assert result_compat.returncode == 0, result_compat.stderr
+    assert os.path.exists(out_file_compat)
 
 
 @covers("workflow activate", "workflow deactivate")
