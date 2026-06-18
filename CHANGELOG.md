@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.30.1 (2026-06-18)
+
+### Bug Fixes
+
+- **solution**: Add solution import --skip-dependency-check
+  ([#412](https://github.com/Gharib89/crm/pull/412),
+  [`8ceb564`](https://github.com/Gharib89/crm/commit/8ceb564b60281bff9d55b109607fad9f734ade97))
+
+
 ## v4.30.0 (2026-06-18)
 
 ### Features
