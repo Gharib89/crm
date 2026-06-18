@@ -140,9 +140,17 @@ crm --json translation export --solution CRMWorx -o labels.zip
 # labels.zip = CrmTranslations.xml (Excel-openable spreadsheet) + [Content_Types].xml;
 # translator adds a column per language code (e.g. 1034) and fills it in
 
-crm --json translation import labels.zip --yes   # re-zipped edited files, NOT the bare XML
-crm --json solution publish-all                  # labels do NOT surface until published
+crm --json translation import labels.zip --yes            # re-zipped edited files, NOT the bare XML
+crm --json solution publish-all                           # labels do NOT surface until published
+
+# One-step: import + publish in a single call (PublishAllXml after import)
+crm --json translation import labels.zip --yes --publish
 ```
+
+`--publish` runs `PublishAllXml` immediately after a successful import, so
+labels surface without a separate `solution publish-all` step. Default off —
+omitting it leaves the existing behavior (import only, `meta.warnings` publish
+reminder). Under `--dry-run` the import is previewed and publish is skipped.
 
 Gotchas: import fails on any translated string **>500 chars**; labels for
 languages **not provisioned** on the target are discarded with a warning;
