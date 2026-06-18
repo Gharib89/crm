@@ -75,6 +75,11 @@ crm --json plugin unregister-image preimg --yes
 # unregister-step: by name or GUID; an ambiguous name errors (use the GUID).
 crm --json plugin unregister-step "Contoso.Plugins.AccountPostUpdate: Update of account" --yes
 
+# set-step-state: disable/enable a step (toggles statecode) — a reversible
+# rollback; prefer over unregister-step when you may re-enable. Pass exactly
+# one of --disable / --enable.
+crm --json plugin set-step-state "Contoso.Plugins.AccountPostUpdate: Update of account" --disable
+
 # unregister-assembly: cascades — deletes dependent steps first, then the assembly.
 crm --json plugin unregister-assembly Contoso.Plugins --yes
 ```
