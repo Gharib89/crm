@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.31.1 (2026-06-18)
+
+### Bug Fixes
+
+- **cli**: Align solution import publish/overwrite flags to opt-in pairs (#378)
+  ([#414](https://github.com/Gharib89/crm/pull/414),
+  [`c4a3969`](https://github.com/Gharib89/crm/commit/c4a3969df6010a114bb249cc3c91d9cc65477d80))
+
+
 ## v4.31.0 (2026-06-18)
 
 ### Bug Fixes
