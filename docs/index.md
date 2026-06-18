@@ -95,6 +95,6 @@ crm query whoami --json          # (2)!
 
 ## For agents
 
-Point a web-fetch agent at [`/llms.txt`](llms.txt) (curated index) or
-[`/llms-full.txt`](llms-full.txt) (full corpus), or read the complete
+Point a web-fetch agent at [`/llms.txt`](/llms.txt) (curated index) or
+[`/llms-full.txt`](/llms-full.txt) (full corpus), or read the complete
 [CLI reference](reference/cli.md).
