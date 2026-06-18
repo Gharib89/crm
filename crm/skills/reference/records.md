@@ -501,3 +501,9 @@ crm --json action function RetrieveCurrentOrganization \
 collection or a single record (e.g. a function bound to a `systemusers` record).
 Pick `function` vs `invoke` by the operation's OData kind, not by whether it
 binds. Run `crm describe action` for the exact bind flags.
+
+To pass a **record-reference** param to a function (e.g. `Target` on
+`RetrievePrincipalAccess`/`CalculateRollupField`), give the value as a JSON object
+`{"@odata.id": "<entityset>(<guid>)"}` — `action function` sends it as an OData
+parameter alias carrying the `@odata.id`. Values with URL-reserved characters or
+whitespace are aliased automatically; plain scalars stay inline.

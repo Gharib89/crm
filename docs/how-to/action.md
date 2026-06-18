@@ -10,6 +10,23 @@ crm --json action function RetrieveCurrentOrganization --params '{"AccessType":"
 ```
 `--params` is a JSON dict encoded inline per OData v4; returns the function result under `data`.
 
+## Pass a record-reference or special-character param
+
+A param value that is a JSON object `{"@odata.id": "<entityset>(<guid>)"}` is a
+**record reference** — it is sent as an OData parameter alias (`Fn(P=@p1)?@p1=...`)
+carrying the `@odata.id`, so functions that take an entity reference are invocable:
+
+```bash
+crm --json action function RetrievePrincipalAccess \
+    --bind-set systemusers --bind-id <user-guid> \
+    --params '{"Target": {"@odata.id": "accounts(<account-guid>)"}}'
+```
+
+String values that contain URL-reserved characters (`/ < > * % & : \ ? +`) or
+whitespace are aliased the same way automatically — passing them inline would
+`400`/`404`. Plain scalars stay inline. A malformed reference (a JSON object that
+is not exactly `{"@odata.id": "..."}`) is rejected with a clear error.
+
 ## Call a bound function
 
 ```bash

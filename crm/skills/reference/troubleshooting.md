@@ -104,5 +104,6 @@ returns an empty `AuditDetailCollection` (no error). Each `AuditDetail` entry ex
 promoted to a plain field because the standard emit envelope strips all `@odata.*` keys.
 
 These functions (`RetrieveRecordChangeHistory`, `RetrieveAuditDetails`) cannot be called
-via `action function` because they require OData parameter aliases for complex-type
-arguments that the inline `Fn(k=v)` encoding cannot express.
+via `action function`: it now emits parameter aliases for record-reference params
+(`{"@odata.id": "set(guid)"}`) and reserved-char values, but not the arbitrary
+complex-type arguments (e.g. a `PagingInfo` object) these functions require.
