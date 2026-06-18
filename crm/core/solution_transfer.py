@@ -281,6 +281,7 @@ def import_solution(
     publish_workflows: bool = True,
     overwrite_unmanaged_customizations: bool = True,
     holding_solution: bool = False,
+    skip_dependency_check: bool = False,
     timeout: int | None = None,
     quiet: bool = False,
     formatted: bool = False,
@@ -290,6 +291,9 @@ def import_solution(
     `holding_solution=True` stages the import as a "holding" solution for a
     managed upgrade (ImportSolution `HoldingSolution`); apply it afterwards with
     `delete_and_promote`. This is what `crm solution stage-and-upgrade` uses.
+
+    `skip_dependency_check=True` sets ImportSolution `SkipProductUpdateDependencies`
+    so the import proceeds past a product-update dependency block (#376).
 
     When the org rejects ImportJobId on the async action (on-prem v9.x), falls
     back to the synchronous ImportSolution action carrying the same client GUID
@@ -324,6 +328,11 @@ def import_solution(
         "HoldingSolution": holding_solution,
         "ImportJobId": import_job_id,
     }
+    # Only emit SkipProductUpdateDependencies when opted in, so the default
+    # import body stays byte-for-byte as it was (#376). Set on the shared body so
+    # both the async path and the synchronous fallback inherit it.
+    if skip_dependency_check:
+        body["SkipProductUpdateDependencies"] = True
 
     started = _time.monotonic()
     try:

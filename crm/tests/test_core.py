@@ -1545,6 +1545,63 @@ class TestImportSolutionAsync:
         assert "duration_ms" in info
         assert "started_on" in info or info.get("started_on") is None  # tolerant
 
+    def test_import_skip_dependency_check_sets_flag(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """--skip-dependency-check sets SkipProductUpdateDependencies in the
+        ImportSolution body so an import can proceed past a product-update
+        dependency block (#376)."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"), json={
+                "AsyncOperationId": self.OP_ID,
+                "ImportJobKey": "00000000-0000-0000-0000-000000000abc",
+            })
+            m.get(
+                requests_mock.ANY,
+                json={"statecode": 3, "statuscode": 30, "message": "Done"},
+            )
+            from crm.core import solution as sol_mod
+            sol_mod.import_solution(
+                backend, zip_path, quiet=True, skip_dependency_check=True
+            )
+
+        async_post = next(
+            r for r in m.request_history if r.url.endswith("ImportSolutionAsync")
+        )
+        assert json.loads(async_post.body)["SkipProductUpdateDependencies"] is True
+
+    def test_import_default_omits_skip_dependency_check(
+        self, backend, tmp_path, monkeypatch
+    ):
+        """Default import leaves the body unchanged — no
+        SkipProductUpdateDependencies key (#376)."""
+        import time as _t
+        monkeypatch.setattr(_t, "sleep", lambda s: None)
+        zip_path = tmp_path / "in.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("ImportSolutionAsync"), json={
+                "AsyncOperationId": self.OP_ID,
+                "ImportJobKey": "00000000-0000-0000-0000-000000000abc",
+            })
+            m.get(
+                requests_mock.ANY,
+                json={"statecode": 3, "statuscode": 30, "message": "Done"},
+            )
+            from crm.core import solution as sol_mod
+            sol_mod.import_solution(backend, zip_path, quiet=True)
+
+        async_post = next(
+            r for r in m.request_history if r.url.endswith("ImportSolutionAsync")
+        )
+        assert "SkipProductUpdateDependencies" not in json.loads(async_post.body)
+
     def test_import_missing_file_raises(self, backend, tmp_path):
         from crm.core import solution as sol_mod
         with pytest.raises(D365Error, match="not found"):

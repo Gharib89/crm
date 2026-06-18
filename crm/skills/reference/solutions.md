@@ -60,6 +60,12 @@ crm solution import /tmp/snap.zip --yes
 default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
 context aborts.
 
+**Gotcha — product-update dependency block.** If the server rejects the import before
+processing any components due to a product-update dependency check, pass
+`--skip-dependency-check` to set `SkipProductUpdateDependencies` in the request body and
+allow the import to proceed past it. Applies to both the async and the on-prem
+synchronous-fallback path.
+
 **Gotcha — version ceiling (cloud→on-prem).** A managed zip carries the *package version*
 of the org it was exported from, and an org **rejects any zip newer than itself**. A
 solution exported from Dataverse online (v9.2) fails to import into on-prem v9.1 with

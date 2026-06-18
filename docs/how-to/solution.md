@@ -146,6 +146,8 @@ The result also includes a `managed` field: `true` if the imported solution is m
 
 On on-prem orgs that reject `ImportJobId` on `ImportSolutionAsync` (v9.x), the command transparently retries with the synchronous `ImportSolution` action carrying the same id (`action: "ImportSolution"` in the result), so `import_job_id` is always non-null and `import-result` works there too ([#182](https://github.com/Gharib89/crm/issues/182)). On that path the whole import runs inside one HTTP request — the read timeout follows `--timeout` (default: the profile's `async_timeout`), and no progress ticks are emitted. A missing-dependency import fails loudly as a synchronous error (naming the `import_job_id`) instead of reporting a bare `status: succeeded`; if the platform still provides no per-component results after a successful import, `meta.warnings` says so explicitly.
 
+If an import is blocked by a **product-update dependency** (the server rejects it before processing components), add `--skip-dependency-check` to set `SkipProductUpdateDependencies: true` in the request body and allow the import to proceed past that check ([#376](https://github.com/Gharib89/crm/issues/376)). This flag applies to both the async and the synchronous-fallback path.
+
 ## Verify a prior import
 
 ```bash
