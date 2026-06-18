@@ -109,7 +109,7 @@ def test_workflow_export(backend, cli, tmp_path):
     """
     import os
     wf_id = _find_any_workflow_id(backend)
-    
+
     # Test canonical option --output
     out_file = str(tmp_path / "wf_export.json")
     result = cli(["--json", "workflow", "export", wf_id, "--output", out_file])

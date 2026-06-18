@@ -651,7 +651,7 @@ class TestBatchCLI:
         runner = CliRunner()
         p = tmp_path / "b.json"
         p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
-        
+
         resp_body = (
             "--batchresp\r\n"
             "Content-Type: application/http\r\n"

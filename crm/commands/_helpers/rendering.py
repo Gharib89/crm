@@ -221,16 +221,3 @@ def _infer_columns(values: list[dict], primary_name: str | None = None) -> list[
             cols.append(k)
             seen.add(k)
     return cols[:8]
-
-
-def _output_option(required: bool = False, help: str | None = None):
-    """Stack the standard `--output / -o` option on a command."""
-    def decorator(f):
-        import click
-        return click.option(
-            "--output", "-o",
-            required=required,
-            type=click.Path(dir_okay=False),
-            help=help
-        )(f)
-    return decorator
