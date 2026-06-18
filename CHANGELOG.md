@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.21.0 (2026-06-18)
+
+### Features
+
+- **query**: Add change tracking via --track-changes/--delta-token
+  ([#395](https://github.com/Gharib89/crm/pull/395),
+  [`052ea60`](https://github.com/Gharib89/crm/commit/052ea60100629011c750a11023c5a251ccdda03e))
+
+
 ## v4.20.0 (2026-06-18)
 
 ### Features
