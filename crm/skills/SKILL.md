@@ -159,6 +159,7 @@ non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit
 | `crm metadata delete-attribute <entity> <attribute>` | A custom column |
 | `crm metadata delete-relationship <schema-name>` | A custom relationship (1:N or N:N) |
 | `crm entity delete <set> <guid>` | A single record |
+| `crm data delete <entity_set> (--fetchxml\|--fetchxml-file)` | Submits a server-side BulkDelete async job — permanently deletes ALL records matching the FetchXML query |
 | `crm solution job-cancel <id>` | A running async job |
 | `crm solution import <zip>` | OVERWRITES unmanaged customizations in the target org |
 | `crm solution remove-component --solution <name> --type <int\|name> --id <guid>` | Removes a component from an unmanaged solution |

@@ -188,3 +188,85 @@ crm data export cwx_tickets -o high_priority.csv \
   --filter "cwx_priority eq 3" --max-records 500 --page-size 100
 ```
 `--filter` takes an OData `$filter`; `--page-size` controls the per-call page and `--max-records` caps the total rows written.
+
+---
+
+## Server-side bulk delete (`data delete`)
+
+`crm data delete` submits a **server-side D365 BulkDelete async job** — the operation
+runs entirely inside Dynamics and does not pull records to the client first. Records to
+delete are selected by a FetchXML query. This is fundamentally different from
+`data import --mode delete`, which issues one HTTP DELETE per row via `$batch`.
+
+### Why FetchXML (not an OData `$filter`)
+
+The Web API `BulkDelete` action's `QuerySet` parameter accepts only a
+`QueryExpression`. There is no server-side OData→QueryExpression conversion, so the
+command takes FetchXML and converts it via the server's `FetchXmlToQueryExpression`
+function before submitting. See the
+[BulkDelete action reference](https://learn.microsoft.com/power-apps/developer/data-platform/webapi/reference/bulkdelete).
+
+### Submit a job and return immediately
+
+```bash
+crm data delete contacts \
+    --fetchxml '<fetch><entity name="contact"><filter><condition attribute="statecode" operator="eq" value="1"/></filter></entity></fetch>' \
+    --yes
+```
+
+Returns immediately with a job id once the async operation is queued:
+
+```json
+{"ok": true, "data": {"job_id": "<guid>", "job_name": "crm data delete contacts", "status": "submitted", "match_count": 42}}
+```
+
+`match_count` is the number of records the FetchXML matched at submission time.
+
+### Submit a job and wait for completion
+
+```bash
+crm data delete contacts \
+    --fetchxml-file ./stale-contacts.xml \
+    --wait --timeout 300 --yes
+```
+
+Blocks until the job finishes, then reports succeeded/failed counts:
+
+```json
+{"ok": true, "data": {"job_id": "<guid>", "job_name": "crm data delete contacts", "match_count": 42, "status": "completed", "succeeded": 42, "failed": 0}}
+```
+
+### Preview without deleting (dry-run)
+
+```bash
+crm --dry-run data delete contacts --fetchxml-file ./stale-contacts.xml
+```
+
+Under `--dry-run` the FetchXML is validated and the matched record count is reported;
+no BulkDelete job is submitted:
+
+```json
+{"ok": true, "data": {"_dry_run": true, "would_submit": "BulkDelete", "entity_set": "contacts", "job_name": "crm data delete contacts", "match_count": 42}}
+```
+
+### Name the job
+
+```bash
+crm data delete contacts \
+    --fetchxml-file ./stale-contacts.xml \
+    --job-name "Purge inactive contacts 2026-06" --yes
+```
+
+`--job-name` sets the display name for the system job in D365. When omitted, the job
+name is derived from the entity-set name.
+
+### Confirmation gate
+
+`data delete` is destructive and requires `--yes` for non-interactive use. On a TTY,
+omitting it prompts for confirmation. Under `--json` / no-TTY, omitting `--yes` aborts:
+
+```json
+{"ok": false, "error": "aborted by user"}
+```
+
+Pass `--yes` whenever you call the command non-interactively (agent, CI, scripted run).
