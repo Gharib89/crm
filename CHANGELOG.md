@@ -9,6 +9,34 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.28.0 (2026-06-18)
+
+### Documentation
+
+- **ship**: Address copilot review nits ([#407](https://github.com/Gharib89/crm/pull/407),
+  [`2631c23`](https://github.com/Gharib89/crm/commit/2631c2352356ce43517fd408dde0408ade3a4a08))
+
+- **ship**: Address copilot round-2 nit ([#407](https://github.com/Gharib89/crm/pull/407),
+  [`2631c23`](https://github.com/Gharib89/crm/commit/2631c2352356ce43517fd408dde0408ade3a4a08))
+
+- **ship**: Instruct phase 6 to fill the repo PR template
+  ([#407](https://github.com/Gharib89/crm/pull/407),
+  [`2631c23`](https://github.com/Gharib89/crm/commit/2631c2352356ce43517fd408dde0408ade3a4a08))
+
+- **ship**: Trim SKILL.md, add Claude+Gemini model tiers
+  ([#407](https://github.com/Gharib89/crm/pull/407),
+  [`2631c23`](https://github.com/Gharib89/crm/commit/2631c2352356ce43517fd408dde0408ade3a4a08))
+
+- **skill**: Note plugin set-step-state in automation reference
+  ([#409](https://github.com/Gharib89/crm/pull/409),
+  [`250f7cc`](https://github.com/Gharib89/crm/commit/250f7cc4600c7911eea4122082b3981c189535dd))
+
+### Features
+
+- Add plugin step and image registration options ([#409](https://github.com/Gharib89/crm/pull/409),
+  [`250f7cc`](https://github.com/Gharib89/crm/commit/250f7cc4600c7911eea4122082b3981c189535dd))
+
+
 ## v4.27.1 (2026-06-18)
 
 ### Bug Fixes
