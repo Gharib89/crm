@@ -31,6 +31,25 @@ crm --json query odata workflows \
   --filter "Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['<id1>','<id2>'])"
 ```
 
+## Aggregate / group by with `$apply` (`--apply`)
+
+```bash
+# Count records per status
+crm --json query odata accounts \
+  --apply "groupby((statuscode),aggregate(\$count as count))"
+
+# Sum a measure across a grouping
+crm --json query odata opportunities \
+  --apply "groupby((ownerid),aggregate(estimatedvalue with sum as total))"
+```
+
+`--apply` passes an OData `$apply` expression through to the Web API for
+server-side aggregation, grouping, and `distinct`. Because the positional path
+validator rejects an inline `$` (see above), `--apply` is the **only** way to run
+a `$apply` query. The result `data` shape is whatever the aggregation returns
+(the grouped/aggregated rows), wrapped in the standard envelope — not the source
+entity's columns.
+
 ## Follow pagination automatically (`--all` / `--max-records`)
 
 By default `query odata` returns a single server page and exposes the cursor in

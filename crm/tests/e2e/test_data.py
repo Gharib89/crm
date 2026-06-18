@@ -269,3 +269,54 @@ def test_data_import_partial_failure_reports_per_record(backend, cli, tmp_path, 
         assert entry.get("error"), f"failure entry missing error text: {entry}"
     finally:
         _cleanup()
+
+
+@covers("data import")
+@pytest.mark.slow
+def test_data_import_delete_by_id_column(backend, cli, tmp_path, unique):
+    """--mode delete removes the rows named in the file via batch DELETE."""
+    lastname = f"E2EDel{unique[:6]}"
+    ids: list[str] = []
+    for fn in ("DelA", "DelB"):
+        created = backend.post(
+            "contacts",
+            json_body={"firstname": fn, "lastname": lastname},
+            extra_headers={"Prefer": "return=representation"},
+        )
+        ids.append(str(created["contactid"]))
+
+    def _cleanup():
+        for cid in ids:
+            try:
+                backend.delete(f"contacts({cid})")
+            except Exception:
+                pass
+
+    try:
+        del_file = tmp_path / "to_delete.jsonl"
+        del_file.write_text(
+            "\n".join(json.dumps({"contactid": cid}) for cid in ids) + "\n",
+            encoding="utf-8",
+        )
+        result = cli([
+            "--json", "data", "import", "contacts", str(del_file),
+            "--mode", "delete", "--id-column", "contactid",
+        ])
+        assert result.returncode == 0, (
+            f"data import --mode delete failed:\n{result.stderr}\nstdout: {result.stdout}"
+        )
+        env = json.loads(result.stdout)
+        assert env["ok"], env
+        data = env["data"]
+        assert data.get("mode") == "delete", f"unexpected mode: {data}"
+        assert data.get("imported", 0) == 2, f"expected 2 deleted; got: {data}"
+        assert data.get("failed", 0) == 0, f"delete had failures: {data}"
+        # Both records are gone.
+        for cid in ids:
+            page = backend.get(
+                "contacts",
+                params={"$filter": f"contactid eq {cid}", "$select": "contactid"},
+            )
+            assert (page.get("value") or []) == [], f"contact {cid} was not deleted"
+    finally:
+        _cleanup()

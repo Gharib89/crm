@@ -44,11 +44,12 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--format", "fmt", type=click.Choice(["jsonl", "csv"]), default=None,
               help="Input format; inferred from suffix when omitted (.csv→csv, else jsonl).")
-@click.option("--mode", type=click.Choice(["create", "upsert"]), default="create",
+@click.option("--mode", type=click.Choice(["create", "upsert", "delete"]), default="create",
               help="create=POST new records; upsert=PATCH by GUID (--id-column) "
+                   "or by alternate key (--key); delete=DELETE by GUID (--id-column) "
                    "or by alternate key (--key).")
 @click.option("--id-column", default=None,
-              help="Column/key holding the record GUID (for --mode upsert; "
+              help="Column/key holding the record GUID (for --mode upsert/delete; "
                    "mutually exclusive with --key).")
 @click.option("--key", "alt_key", default=None, metavar="ATTR[,ATTR...]",
               help="Upsert by an alternate key instead of the primary GUID: one "
@@ -69,19 +70,19 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
             "--continue-on-error requires --no-transaction; "
             "Prefer: odata.continue-on-error is meaningless inside a changeset."
         )
-    if mode == "upsert":
+    if mode in ("upsert", "delete"):
         if id_column and alt_key:
             raise click.UsageError(
-                "--id-column and --key are mutually exclusive: upsert by the "
+                f"--id-column and --key are mutually exclusive: {mode} by the "
                 "primary GUID OR by an alternate key, not both."
             )
         if not id_column and not alt_key:
             raise click.UsageError(
-                "--mode upsert requires --id-column (the GUID column) or "
+                f"--mode {mode} requires --id-column (the GUID column) or "
                 "--key (an alternate key)."
             )
     elif alt_key:
-        raise click.UsageError("--key applies only to --mode upsert.")
+        raise click.UsageError("--key applies only to --mode upsert or --mode delete.")
     requested_key = [a.strip() for a in alt_key.split(",") if a.strip()] if alt_key else []
     if alt_key and not requested_key:
         raise click.UsageError("--key must name at least one attribute.")

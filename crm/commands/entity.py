@@ -449,10 +449,15 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
 @click.option("--data", "data_json", help="JSON object as string.")
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a JSON file with the record body.")
+@click.option("--if-none-match", "if_none_match", is_flag=True, default=False,
+              help="Create-only: send If-None-Match: * so the write succeeds only "
+                   "if the record does not already exist (412 precondition error "
+                   "when it does). The complement to update's --if-match.")
 @_admin_header_options
 @pass_ctx
 def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, data_file,
-                  as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+                  if_none_match, as_user, as_user_object_id, suppress_dup_detection,
+                  bypass_plugins):
     """PATCH with create-if-missing semantics (by GUID, or --key alternate key)."""
     if alt_key and record_id:
         raise click.UsageError(
@@ -482,12 +487,14 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, da
                     )
                 key_values[attr] = payload[attr]
             result = entity_mod.upsert_by_key(
-                ctx.backend(), entity_set, key_values, payload, **admin)
+                ctx.backend(), entity_set, key_values, payload,
+                if_none_match=if_none_match, **admin)
             fallback = {"upserted": True,
                         "key": entity_mod.format_alternate_key_segment(key_values)}
         else:
             result = entity_mod.upsert(
-                ctx.backend(), entity_set, record_id, payload, **admin)
+                ctx.backend(), entity_set, record_id, payload,
+                if_none_match=if_none_match, **admin)
             fallback = {"upserted": True, "id": record_id}
     data = result or fallback
     ctx.emit(True, data=data)

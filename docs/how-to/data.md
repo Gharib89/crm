@@ -71,8 +71,10 @@ crm data import accounts accounts.jsonl \
 
 Each row is PATCHed to `accounts(accountnumber='<value>')`. The key column(s)
 are read from the row and stripped from the request body before sending.
-`--key` is mutually exclusive with `--id-column`; `--mode upsert` now requires
-one of them. Using `--key` outside `--mode upsert` is a usage error.
+`--key` is mutually exclusive with `--id-column`; `--mode upsert` (and
+`--mode delete`, below) requires one of them. `--key` and `--id-column` apply
+only to `--mode upsert` or `--mode delete` — using either under `--mode create`
+is a usage error.
 
 Composite alternate keys are comma-separated:
 
@@ -85,6 +87,24 @@ crm data import cwx_slas slas.jsonl \
 entity before processing the first row — an unknown or unregistered combination
 returns a clean error listing the defined keys. List alternate keys with
 `crm metadata keys <entity>`.
+
+### Delete records in bulk
+
+```bash
+# Delete by GUID
+crm data import contacts to_delete.jsonl --mode delete --id-column contactid
+
+# Delete by alternate key
+crm data import accounts to_delete.jsonl --mode delete --key accountnumber
+```
+
+`--mode delete` issues a `$batch` DELETE per row, keyed by `--id-column` (the
+record GUID) or `--key` (an alternate key) — resolved exactly as `--mode upsert`
+resolves the target record (composite keys, validation, and body handling are
+identical; DELETE carries no body). Like the other modes it reports per-row
+success/failure in `data.failures` and respects the global `--dry-run` flag
+(zero writes, `dry_run: true`). As with upsert, exactly one of `--id-column` or
+`--key` is required.
 
 ### Import from CSV
 
@@ -122,7 +142,8 @@ returns a per-record `data.failures` array and human mode prints one line per
 failed record alongside the aggregate warning.
 
 Each `data.failures` entry shape: `{index, id?, status, error}`, where `index` is
-the 1-based input row and `id` is present only for upsert. A row that fails with
+the 1-based input row and `id` is present for upsert and delete (the GUID or
+alternate-key segment that addressed the row). A row that fails with
 the alternate-key uniqueness violation code (`0x80060892`) additionally carries
 best-effort `alternate_keys` (each `{name, schema_name, attributes, payload_values}`)
 and, when the row's payload also contains the primary-id attribute, a

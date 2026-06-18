@@ -29,6 +29,12 @@ Put OData options in `--select`/`--filter`/etc., never inline.
 A `?` or `$` in the arg (e.g. `contacts?$select=fullname`) returns a `validation`
 error client-side — recover by moving the params onto flags, not by retrying the URL.
 
+**Aggregation / group-by (`--apply`).** Because that validator blocks an inline
+`$`, `--apply EXPR` is the **only** way to run an OData `$apply` query
+(`groupby`/`aggregate`/`distinct`). The `data` array is then whatever the
+aggregation returns (the grouped/aggregated rows), **not** the source entity's
+columns — don't expect `_entity_id` or the usual fields on those rows.
+
 By default `--json` already strips `@odata.*` protocol keys but keeps formatted-value
 annotations (`*@FormattedValue`, `*@...lookuplogicalname`). `--minimal` strips **all**
 `@`-containing keys (including those formatted values) from each record, keeping
@@ -360,6 +366,12 @@ so (unlike a primary-key write) there is **no** `_entity_id`:
 Only when the server omits the header does it fall back to
 `{"upserted": true, "key": "accountnumber='ACC-001'"}`.
 
+**Create-only upsert (`--if-none-match`).** `entity upsert --if-none-match`
+(GUID or `--key`) sends `If-None-Match: *`, so the write lands only if the record
+does not yet exist; an existing record makes the server return **412** (the error
+envelope carries `meta.status: 412`). It is the create-only complement to `entity
+update --if-match` (update-only). The flag is on `entity upsert` only.
+
 ## Bulk CSV export
 
 ```bash
@@ -397,8 +409,11 @@ crm data import accounts large.jsonl \
 crm --json --dry-run data import accounts records.jsonl
 ```
 
-**`--mode upsert` requires exactly one of `--id-column` or `--key`; passing
-both is a usage error. `--key` is rejected outside `--mode upsert`.**
+**`--mode upsert` and `--mode delete` each require exactly one of `--id-column`
+or `--key`; passing both is a usage error. `--key`/`--id-column` are rejected
+under `--mode create`.** `--mode delete` resolves the target record by GUID or
+alternate key exactly as upsert does (DELETE carries no body) and reports per-row
+results in `data.failures` just like the other modes.
 
 **Alternate-key import gotcha.** `--key` resolves and validates the key against
 entity metadata before the first row is processed. If the alternate key's index
@@ -413,7 +428,8 @@ crm --json metadata keys <entity>
 Output: `{imported, failed, chunks, entity_set, mode, dry_run, format, failures}`.
 `failures` is **always present** (empty `[]` when nothing failed); each entry is
 `{index, id?, status, error}` — `index` is the 1-based input-row position, `id` the
-record GUID (only under `--mode upsert`), `status` the server HTTP status, `error` the
+record GUID or alternate-key segment (present under `--mode upsert`/`--mode delete`,
+not `create`), `status` the server HTTP status, `error` the
 server message. `failed > 0` also surfaces a `meta.warnings` count advisory; **exit code
 is 0 on partial failure** — read `data.failures` for which rows failed and why (no need
 to re-issue rows to discover it), don't rely on `$?`. (This is a different per-row shape
