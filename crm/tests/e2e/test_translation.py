@@ -52,3 +52,25 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
     assert "import_job_id" in import_data["data"], (
         f"import_job_id missing from translation import response: {import_data['data']}"
     )
+
+
+@covers("translation import")
+def test_translation_import_with_publish(cli, ephemeral_solution, tmp_path):
+    """translation import --publish chains PublishAllXml after a successful import."""
+    import json as _json
+    zip_path = tmp_path / "translations_pub.zip"
+
+    export = cli(["--json", "translation", "export",
+                  "--solution", ephemeral_solution, "--output", str(zip_path)])
+    assert export.returncode == 0
+    assert _json.loads(export.stdout)["ok"] is True
+
+    result = cli(["--json", "translation", "import", "--yes", "--publish", str(zip_path)])
+    assert result.returncode == 0, (
+        f"translation import --publish failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    data = _json.loads(result.stdout)
+    assert data["ok"] is True, data
+    assert data["data"]["publish"]["published"] is True, (
+        f"publish key missing or false: {data['data']}"
+    )

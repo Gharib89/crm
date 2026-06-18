@@ -56,8 +56,10 @@ def translation_export_cmd(ctx: CLIContext, solution, output, timeout, no_retry)
 @click.option("--no-retry", is_flag=True,
               help="Disable the 429/5xx retry loop for this invocation.")
 @click.option("--yes", is_flag=True, help="Skip the overwrite confirmation prompt.")
+@click.option("--publish", is_flag=True,
+              help="Publish all customizations after a successful import.")
 @pass_ctx
-def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes):
+def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes, publish):
     """Import a translations zip; labels surface only after publishing."""
     _confirm_destructive(
         ctx, "translations", zip_path, yes,
@@ -75,8 +77,14 @@ def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes):
         except OSError as exc:
             ctx.emit(False, error=f"Could not read {zip_path}: {exc}")
             return
-        ctx.emit(True, data=info, warnings=[
-            "Imported labels do not surface until published — run "
-            "`crm solution publish-all`."
-        ])
+        if publish and not info.get("_dry_run"):
+            from crm.core import solution as sol_mod
+            info["publish"] = sol_mod.publish_all(ctx.backend())
+        if publish:
+            ctx.emit(True, data=info)
+        else:
+            ctx.emit(True, data=info, warnings=[
+                "Imported labels do not surface until published — run "
+                "`crm solution publish-all`."
+            ])
         _journal(ctx, zip_path, info)
