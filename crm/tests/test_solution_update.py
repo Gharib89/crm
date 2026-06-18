@@ -219,3 +219,27 @@ class TestSolutionImportConfirm:
         assert result.exit_code == 0, result.output
         assert "Continue?" not in result.output
         assert captured["overwrite_unmanaged_customizations"] is False
+
+    def test_explicit_publish_flag_is_accepted(self, monkeypatch, zip_path):
+        # --publish is the explicit affirmative form of the --publish/--no-publish
+        # pair (default=True). It must be accepted and leave publish_workflows ON.
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--publish", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert captured["publish_workflows"] is True
+
+    def test_no_publish_suppresses_workflows(self, monkeypatch, zip_path):
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--no-publish", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert captured["publish_workflows"] is False
+
+    def test_explicit_overwrite_flag_is_accepted(self, monkeypatch, zip_path):
+        # --overwrite is the explicit affirmative form of the pair (default=True).
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--overwrite", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert captured["overwrite_unmanaged_customizations"] is True

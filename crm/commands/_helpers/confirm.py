@@ -58,6 +58,8 @@ def _destructive_option(f):
     Pairs with `_confirm_destructive` in the verb body. Covers only the sites
     whose flag is byte-identical to this (`--yes`, plain skip help); sites with a
     `-y` short form or bespoke help keep their inline `@click.option` (#294).
+    No `-y` short alias here by design — profile verbs that need it define their
+    own inline option so help text and the short alias stay co-located.
     """
     return click.option(
         "--yes", is_flag=True, help="Skip interactive confirmation.",

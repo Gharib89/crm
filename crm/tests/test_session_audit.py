@@ -176,3 +176,11 @@ class TestSessionAuditCommand:
         assert result.exit_code == 0
         assert "dry-run" in result.output
         assert "staged" in result.output
+
+    def test_help_clarifies_local_scope(self):
+        # Help must make clear this is the local client-side journal, not the
+        # Dataverse server-side audit log (#378).
+        result = self._run("session", "audit", "--help")
+        assert result.exit_code == 0
+        help_text = result.output.lower()
+        assert "local" in help_text or "client-side" in help_text

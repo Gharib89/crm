@@ -97,3 +97,15 @@ class TestDestructiveOption:
         assert opt.default is False
         assert "--yes" in opt.opts
         assert opt.help == "Skip interactive confirmation."
+
+    def test_no_y_alias_by_design(self):
+        # The -y short form is deliberately absent from the shared helper (#294).
+        # Profile verbs that need -y define their own inline @click.option.
+        @click.command()
+        @_destructive_option
+        def cmd(yes):  # pragma: no cover
+            pass
+
+        opt = _option_named(cmd, "yes")
+        all_opts = list(opt.opts) + list(opt.secondary_opts)
+        assert "-y" not in all_opts
