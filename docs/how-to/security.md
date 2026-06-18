@@ -25,6 +25,20 @@ crm --json security list-roles --business-unit 00000000-0000-0000-0000-000000000
 `--business-unit GUID` scopes the result to roles belonging to that business
 unit only.
 
+## Filter roles by name
+
+```bash
+crm --json security list-roles --name-contains Sales
+```
+
+`--name-contains TEXT` filters server-side with an OData `contains(name,'…')`
+clause. Composes with `--business-unit` (both are AND-joined):
+
+```bash
+crm --json security list-roles --name-contains Admin \
+    --business-unit 00000000-0000-0000-0000-000000000001
+```
+
 ## List roles assigned to a user
 
 ```bash
@@ -32,7 +46,12 @@ crm --json security list-user-roles 00000000-0000-0000-0000-000000000002
 ```
 
 The positional argument `USER_ID` is the GUID of the system user
-(`systemuser`). Returns the roles currently associated with that user.
+(`systemuser`). Returns the roles **directly assigned** to that user — roles
+inherited through team membership are not included.
+
+> **Tip — team-inherited roles:** use `crm --json security user-privileges
+> <USER_ID>` to see the full effective privilege set, which includes
+> privileges from both direct roles and team-inherited roles.
 
 ## List roles assigned to a team
 

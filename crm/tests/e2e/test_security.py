@@ -31,6 +31,24 @@ def test_list_roles(cli):
     assert "roleid" in first, f"roleid missing from first role: {first}"
     assert "name" in first, f"name missing from first role: {first}"
 
+    # Pick a substring of the first role's name to verify --name-contains
+    # filters server-side (result set must be a non-empty subset).
+    search_term = first["name"][:4]  # first 4 chars
+    filtered = cli(["--json", "security", "list-roles", "--name-contains", search_term])
+    assert filtered.returncode == 0, (
+        f"security list-roles --name-contains failed:\n{filtered.stderr}"
+    )
+    fenv = json.loads(filtered.stdout)
+    assert fenv["ok"], fenv
+    fitems = fenv["data"]
+    assert len(fitems) > 0, (
+        f"--name-contains {search_term!r} returned empty — expected at least one match"
+    )
+    for r in fitems:
+        assert search_term.lower() in r.get("name", "").lower(), (
+            f"role {r.get('name')!r} does not contain {search_term!r}"
+        )
+
 
 # ── list-user-roles ───────────────────────────────────────────────────────────
 

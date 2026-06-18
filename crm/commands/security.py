@@ -35,11 +35,15 @@ def _split_principal(value: str) -> tuple[str, str]:
 @security_group.command("list-roles")
 @click.option("--business-unit", "business_unit", metavar="GUID", default=None,
               help="Filter to roles belonging to this business unit GUID.")
+@click.option("--name-contains", "name_contains", metavar="TEXT", default=None,
+              help="Filter to roles whose name contains this text (server-side).")
 @pass_ctx
-def list_roles(ctx: CLIContext, business_unit):
-    """List security roles (optionally scoped to a business unit)."""
+def list_roles(ctx: CLIContext, business_unit, name_contains):
+    """List security roles (optionally filtered by business unit or name)."""
     with d365_errors(ctx):
-        items = security_mod.list_roles(ctx.backend(), business_unit=business_unit)
+        items = security_mod.list_roles(
+            ctx.backend(), business_unit=business_unit, name_contains=name_contains,
+        )
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -50,11 +54,17 @@ def list_roles(ctx: CLIContext, business_unit):
              meta={"count": len(items)})
 
 
+
 @security_group.command("list-user-roles")
 @click.argument("user_id")
 @pass_ctx
 def list_user_roles(ctx: CLIContext, user_id):
-    """List security roles assigned to a system user (USER_ID is a GUID)."""
+    """List security roles directly assigned to a system user (USER_ID is a GUID).
+
+    Shows only roles assigned directly to the user, not roles inherited
+    through team membership.  Use ``security user-privileges`` to see the
+    full effective privilege set (direct + team-inherited).
+    """
     with d365_errors(ctx):
         items = security_mod.list_user_roles(ctx.backend(), user_id)
     if ctx.json_mode:

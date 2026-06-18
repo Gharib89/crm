@@ -55,21 +55,29 @@ def list_roles(
     backend: D365Backend,
     *,
     business_unit: str | None = None,
+    name_contains: str | None = None,
 ) -> list[dict[str, Any]]:
-    """List security roles, optionally filtered by business unit GUID.
+    """List security roles, optionally filtered server-side.
 
-    ``business_unit`` is a GUID string; when supplied, only roles belonging
-    to that business unit are returned (server-side OData ``$filter``).
+    ``business_unit`` (GUID) scopes to a single business unit.
+    ``name_contains`` adds an OData ``contains(name,'…')`` clause.
+    Both filters compose (AND-joined).
     """
     params: dict[str, str] = {
         "$select": "roleid,name,_businessunitid_value",
         "$orderby": "name",
     }
+    filters: list[str] = []
     if business_unit is not None:
         normalized_bu = normalize_guid(business_unit)
         if normalized_bu is None:
             raise D365Error(f"business_unit must be a GUID; got {business_unit!r}")
-        params["$filter"] = f"_businessunitid_value eq {normalized_bu}"
+        filters.append(f"_businessunitid_value eq {normalized_bu}")
+    if name_contains is not None:
+        escaped = name_contains.replace("'", "''")
+        filters.append(f"contains(name,'{escaped}')")
+    if filters:
+        params["$filter"] = " and ".join(filters)
     return backend.get_collection(_ROLES_SET, params=params)
 
 
