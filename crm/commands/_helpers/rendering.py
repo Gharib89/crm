@@ -80,10 +80,12 @@ def _normalize_odata_envelope(data: Any) -> "tuple[Any, dict[str, Any]]":
     Returns ``(payload, paging)``. When *data* is a collection response (a dict
     with an ``@odata.context`` and a list ``value``), *payload* is the bare
     ``value`` array and *paging* carries ``next_link`` (← ``@odata.nextLink``) and
-    ``count`` (← ``@odata.count``) when the server supplied them. Otherwise *data*
-    is returned unchanged with an empty *paging*. Detection keys on
-    ``@odata.context`` so a hand-built ``{"value": [...]}`` (no protocol keys) is
-    left alone.
+    ``count`` (← ``@odata.count``) when the server supplied them. A change-tracking
+    response also yields ``delta_link`` (← ``@odata.deltaLink``, the opaque resume
+    URL) and ``delta_token`` (the bare ``$deltatoken`` value lifted out of it, ready
+    to feed back via ``--delta-token``). Otherwise *data* is returned unchanged with
+    an empty *paging*. Detection keys on ``@odata.context`` so a hand-built
+    ``{"value": [...]}`` (no protocol keys) is left alone.
     """
     if (isinstance(data, dict) and "@odata.context" in data
             and isinstance(data.get("value"), list)):
@@ -92,8 +94,27 @@ def _normalize_odata_envelope(data: Any) -> "tuple[Any, dict[str, Any]]":
             paging["next_link"] = data["@odata.nextLink"]
         if "@odata.count" in data:
             paging["count"] = data["@odata.count"]
+        if "@odata.deltaLink" in data:
+            paging["delta_link"] = data["@odata.deltaLink"]
+            token = _delta_token_of(data["@odata.deltaLink"])
+            if token is not None:
+                paging["delta_token"] = token
         return data["value"], paging
     return data, {}
+
+
+def _delta_token_of(delta_link: Any) -> str | None:
+    """Lift the bare ``$deltatoken`` value out of an ``@odata.deltaLink`` URL.
+
+    The delta link is an opaque, percent-encoded resume URL; ``parse_qs`` decodes
+    the token to the plain form ``--delta-token`` expects (the backend re-encodes
+    it on the next request). Returns ``None`` if the link carries no token."""
+    from urllib.parse import parse_qs, urlsplit
+
+    if not isinstance(delta_link, str):
+        return None
+    tokens = parse_qs(urlsplit(delta_link).query).get("$deltatoken")
+    return tokens[0] if tokens else None
 
 
 def _short_repr(v: Any, limit: int = 80) -> str:

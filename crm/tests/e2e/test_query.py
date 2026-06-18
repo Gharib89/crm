@@ -37,3 +37,23 @@ def test_odata_all_and_max_records_follow_paging(backend):
         # A single default page returns fewer rows than the fully-followed set.
         single = odata_query(backend, "contacts", select=["fullname"], page_size=1)
         assert len(single["value"]) < len(merged["value"])
+
+
+@covers("query odata")
+def test_odata_track_changes_returns_delta_link_and_resumes(backend):
+    from urllib.parse import parse_qs, urlsplit
+
+    from crm.core.query import odata_query
+
+    # account has change tracking enabled by default on Dataverse, so --track-changes
+    # returns an opaque @odata.deltaLink carrying the $deltatoken resume cursor.
+    initial = odata_query(backend, "accounts", select=["name"], track_changes=True)
+    assert "value" in initial
+    delta_link = initial["@odata.deltaLink"]
+    token = parse_qs(urlsplit(delta_link).query)["$deltatoken"][0]
+
+    # Resuming from that token returns only changes since (typically none right
+    # after the initial read) plus a fresh delta link to chain from.
+    resumed = odata_query(backend, "accounts", select=["name"], delta_token=token)
+    assert "value" in resumed
+    assert "@odata.deltaLink" in resumed

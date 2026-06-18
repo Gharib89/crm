@@ -51,6 +51,29 @@ crm --json query odata contacts \
     --filter "statecode eq 0" --select fullname,emailaddress1 --top 5 --minimal
 ```
 
+**Change tracking — incremental sync.**
+Two mutually exclusive modes let you retrieve only what changed since a prior
+snapshot rather than re-querying the full table.
+
+*Initiate:* the first tracked call surfaces two extra keys in `meta`:
+`meta.delta_link` (the opaque resume URL) and `meta.delta_token` (the bare
+token — pass this to the next call).
+
+*Resume:* supply the saved token to fetch only rows created/updated/deleted
+since the prior round; each round returns a fresh `meta.delta_link` /
+`meta.delta_token` to chain from.
+
+*Deletions* arrive as rows shaped `{"id": "<guid>", "reason": "deleted"}` —
+the per-row `$deletedEntity` context is stripped by the normal `@odata.*` strip.
+
+*Gotchas:*
+- Change tracking must be enabled on the table (on by default for many system
+  tables such as account/contact; check table settings if you get an error).
+- The Dataverse API forbids `$filter`, `$orderby`, `$expand`, `$top`, and page
+  following (`--all`/`--max-records`) alongside change tracking — the CLI
+  rejects those combinations client-side before any request.
+  `--select`/`--count`/`--page-size` are compatible.
+
 ## Count rows — `query count`
 
 ```bash

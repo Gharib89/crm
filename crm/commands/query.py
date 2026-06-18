@@ -66,13 +66,21 @@ def query_group():
               help="Cap the total rows returned, following @odata.nextLink only as "
                    "far as needed. Implies page-following; bounds --all when both given.")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
+@click.option("--track-changes", is_flag=True, default=False,
+              help="Request a change-tracking delta link (Prefer: odata.track-changes): "
+                   "returns the current rows plus meta.delta_token/meta.delta_link to "
+                   "resume from later. Rejects --filter/--orderby/--expand/--top/--all.")
+@click.option("--delta-token",
+              help="Resume change tracking from a prior meta.delta_token: returns only "
+                   "rows created/updated/deleted since (deletes carry reason=\"deleted\").")
 @click.option("--minimal", is_flag=True, default=False,
               help="JSON mode: drop every record key containing '@' (OData annotations "
                    "like @odata.etag, *@FormattedValue, *@lookuplogicalname); keeps "
                    "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expand,
-                count, page_size, all_pages, max_records, annotations, minimal):
+                count, page_size, all_pages, max_records, annotations,
+                track_changes, delta_token, minimal):
     """OData v4 GET — entity set, bound-function path, or metadata path.
 
     \b
@@ -97,6 +105,8 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
             all_pages=all_pages,
             max_records=max_records,
             include_annotations=annotations,
+            track_changes=track_changes,
+            delta_token=delta_token,
         )
     # Surface the cap-hit signal in meta and drop the internal marker before render.
     extra_meta = {"truncated": True} if result.pop("@crm.truncated", False) else None

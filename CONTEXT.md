@@ -55,8 +55,11 @@ envelope.
 The data payload of a list-returning verb: always a **bare array** of row
 objects in `data` (`data[0]` is the first row), for every list verb. OData
 paging is relocated to `meta` — `meta.next_link` (from `@odata.nextLink`) and
-`meta.count` (from `@odata.count`) — and per-row protocol keys (`@odata.etag`,
-`@odata.*`) are stripped. No command returns the raw OData envelope in `data`.
+`meta.count` (from `@odata.count`); a change-tracking query (`--track-changes`/
+`--delta-token`) likewise relocates `meta.delta_link` (from `@odata.deltaLink`)
+and the bare `meta.delta_token` lifted out of it — and per-row protocol keys
+(`@odata.etag`, `@odata.*`) are stripped. No command returns the raw OData
+envelope in `data`.
 _Avoid_: OData envelope, `data.value`, result wrapper.
 
 **Normalized entity id**:
