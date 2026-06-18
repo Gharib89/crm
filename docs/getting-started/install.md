@@ -5,17 +5,17 @@ The canonical install instructions live in the project
 
 ## Install script (no Python required)
 
-**Windows (PowerShell):**
+=== "Windows (PowerShell)"
 
-```powershell
-irm https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.ps1 | iex
-```
+    ```powershell
+    irm https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.ps1 | iex
+    ```
 
-**Linux:**
+=== "Linux"
 
-```bash
-curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
-```
+    ```bash
+    curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
+    ```
 
 Pin a version by setting `CRM_VERSION` (e.g. `v0.6.0`). The binary is unsigned;
 Windows SmartScreen may warn on first run. On managed machines it may be blocked
@@ -74,3 +74,12 @@ crm --version
 ```
 
 Requires Python ≥ 3.9. See the README for the full per-platform walkthrough.
+
+## Verify
+
+```bash
+crm --version
+```
+
+Then create a connection with [Add a profile](add-profile.md), or jump to the
+[Quickstart](quickstart.md).
