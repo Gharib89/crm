@@ -4,7 +4,12 @@ from __future__ import annotations
 import json
 import click
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors, _journal, _load_payload, _odata_literal
+from crm.commands._helpers import (
+    d365_errors,
+    _journal,
+    _load_payload,
+    encode_function_params,
+)
 
 
 @click.group("action")
@@ -34,19 +39,25 @@ def action_group():
 def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast):
     """Call an OData function — unbound by default, bound when --bind-set is given.
 
-    Functions issue a GET. Params are encoded inline per OData v4. --bind-set
-    alone binds to a collection (set/Ns.Fn(...)); adding --bind-id binds to a
-    single record (set(id)/Ns.Fn(...)). --bind-id requires --bind-set.
+    Functions issue a GET. Scalar params are encoded inline per OData v4; a
+    record-reference param ({"@odata.id": "<set>(<guid>)"}) or a value with
+    URL-reserved characters is passed as a parameter alias (Fn(P=@p1)?@p1=...).
+    --bind-set alone binds to a collection (set/Ns.Fn(...)); adding --bind-id
+    binds to a single record (set(id)/Ns.Fn(...)). --bind-id requires --bind-set.
     """
     if bind_id and not bind_set:
         ctx.emit(False, error="--bind-id requires --bind-set.")
         return
     backend = ctx.backend() if not ctx.dry_run else None
-    params = json.loads(params_json) if params_json else None
-    encoded = (
-        ",".join(f"{k}={_odata_literal(v)}" for k, v in params.items()) if params else ""
-    )
-    call = f"{name}({encoded})"
+    try:
+        params = json.loads(params_json) if params_json else None
+        if params is not None and not isinstance(params, dict):
+            raise ValueError("--params must be a JSON object of parameter name/value pairs.")
+        inline, aliases = encode_function_params(params) if params else ("", {})
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    call = f"{name}({inline})"
     if bind_set and bind_id:
         path = f"{bind_set}({bind_id})/{cast}.{call}"
     elif bind_set:
@@ -54,7 +65,7 @@ def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast)
     else:
         path = call
     with d365_errors(ctx):
-        result = (backend or ctx.backend()).get(path)
+        result = (backend or ctx.backend()).get(path, params=aliases or None)
     ctx.emit(True, data=result or {})
 
 

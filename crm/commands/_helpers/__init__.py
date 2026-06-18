@@ -62,6 +62,7 @@ from .parsing import (
     _parse_value_labels,
     _check_expectations,
     _odata_literal,
+    encode_function_params,
     _resolve_async_state,
     _CASCADE,
     _MENU,
@@ -95,7 +96,7 @@ __all__ = [
     "_admin_header_options", "_admin_kwargs",
     # input parsing / expectations
     "_load_payload", "_parse_expect", "_parse_value_labels",
-    "_check_expectations", "_odata_literal",
+    "_check_expectations", "_odata_literal", "encode_function_params",
     "_resolve_async_state", "_CASCADE", "_MENU", "_REQUIRED",
     # profile inference
     "infer_auth_scheme", "default_profile_name",

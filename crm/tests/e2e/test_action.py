@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from crm.tests.e2e.coverage import covers
+from crm.tests.e2e.conftest import _safe_delete
 
 
 @covers("action function")
@@ -36,6 +37,38 @@ def test_action_function_bound_retrieve_user_privileges(cli):
     assert data["ok"] is True, f"bound RetrieveUserPrivileges failed: {data}"
     assert "RolePrivileges" in data["data"], (
         f"RolePrivileges missing from bound function response: {data['data']}"
+    )
+
+
+@covers("action function")
+def test_action_function_record_reference_param(cli, backend, request, unique):
+    """A record-reference param ({"@odata.id": ...}) is passed as a parameter
+    alias so a reference-taking function is invocable (issue 365).
+
+    RetrievePrincipalAccess is bound to a principal (the current user) and takes
+    a Target record reference. A throwaway contact is the Target; both the user
+    id and the contact id are resolved at run time so no org GUID is embedded.
+    """
+    who = json.loads(cli(["--json", "action", "function", "WhoAmI"]).stdout)
+    user_id = who["data"]["UserId"]
+    created = backend.post(
+        "contacts",
+        json_body={"firstname": "CLI", "lastname": f"Ref-{unique}"},
+        extra_headers={"If-None-Match": "null", "Prefer": "return=representation"},
+    )
+    contact_id = created["contactid"]
+    request.addfinalizer(lambda: _safe_delete(backend, f"contacts({contact_id})"))
+    result = cli(
+        [
+            "--json", "action", "function", "RetrievePrincipalAccess",
+            "--bind-set", "systemusers", "--bind-id", user_id,
+            "--params", json.dumps({"Target": {"@odata.id": f"contacts({contact_id})"}}),
+        ]
+    )
+    data = json.loads(result.stdout)
+    assert data["ok"] is True, f"RetrievePrincipalAccess with record-ref param failed: {data}"
+    assert "AccessRights" in data["data"], (
+        f"AccessRights missing from RetrievePrincipalAccess response: {data['data']}"
     )
 
 

@@ -127,6 +127,66 @@ def _odata_literal(v: Any) -> str:
     return odata_literal(v)
 
 
+# Characters that are structurally significant in a URL path segment: an inline
+# OData function-parameter literal carrying any of them 400/404s. Per the Web
+# API docs they must be passed as a query-string parameter alias instead, where
+# the value is percent-encoded safely.
+# https://learn.microsoft.com/power-apps/developer/data-platform/webapi/use-web-api-functions#passing-parameters-to-a-function
+_ODATA_RESERVED = set("/<>*%&:\\?+#")
+
+
+def _needs_alias(value: Any) -> bool:
+    """A function-param value must be passed as a parameter alias (not inline)
+    when it is a record reference (a dict) or a string carrying URL-reserved or
+    whitespace characters that would break an inline path-segment literal."""
+    if isinstance(value, dict):
+        return True
+    if isinstance(value, str):
+        return any(c in _ODATA_RESERVED or c.isspace() for c in value)
+    return False
+
+
+def _record_reference_value(name: str, value: dict[str, Any]) -> str:
+    """Validate a record-reference param (``{"@odata.id": "set(guid)"}``) and
+    render its alias value as an ``@odata.id`` JSON object. Raises ValueError on
+    a malformed reference so the command can report it as an operational
+    failure."""
+    ref = value.get("@odata.id")
+    if set(value) != {"@odata.id"} or not isinstance(ref, str) or not ref:
+        raise ValueError(
+            f"parameter {name!r} must be a record reference of the form "
+            '{"@odata.id": "<entityset>(<guid>)"}'
+        )
+    return json.dumps({"@odata.id": ref})
+
+
+def encode_function_params(params: dict[str, Any]) -> tuple[str, dict[str, str]]:
+    """Encode ``action function`` params into ``(inline_args, aliases)``.
+
+    ``inline_args`` is the comma-joined ``Name=...`` body for ``Fn(...)``;
+    scalars render inline per OData v4. Record references
+    (``{"@odata.id": "set(guid)"}``) and reserved-char/whitespace strings instead
+    become parameter aliases (``Name=@pN``), with ``aliases`` mapping each ``@pN``
+    to its query-string value. The caller passes ``aliases`` as the request
+    ``params=`` kwarg so the values land in the query string — the only place the
+    server accepts a record reference or a reserved character. Raises ValueError
+    on a malformed record reference."""
+    parts: list[str] = []
+    aliases: dict[str, str] = {}
+    for name, value in params.items():
+        if _needs_alias(value):
+            alias = f"@p{len(aliases) + 1}"
+            aliases[alias] = (
+                _record_reference_value(name, value)
+                if isinstance(value, dict)
+                else _odata_literal(value)
+            )
+            parts.append(f"{name}={alias}")
+        else:
+            parts.append(f"{name}={_odata_literal(value)}")
+    return ",".join(parts), aliases
+
+
 _ASYNC_STATE_NAMES = {
     "ready": 0,
     "suspended": 1,
