@@ -109,6 +109,24 @@ crm --json metadata create-optionset --name cwx_priority --display "CRMWorx Prio
 ```
 `--if-exists skip` makes re-runs a no-op; the response reports `created`, the metadata id, and `published: true`.
 
+## List entities filtered by managed/custom
+
+```bash
+# custom (unmanaged) entities only
+crm --json metadata entities --custom-only --top 20
+
+# managed entities only (solution-installed)
+crm --json metadata entities --managed-only --top 20
+
+# arbitrary OData $filter passthrough (combined with the above via AND)
+crm --json metadata entities --filter "IsActivity eq true"
+```
+
+`--managed-only` adds `IsManaged eq true`; `--filter` appends a raw OData expression.
+The human table includes an `IsManaged` column. Filters are rejected with the
+entity-definition cache (`--cache-metadata` / `--refresh-metadata`), which stores only
+logical/set names.
+
 ## Create a custom entity
 
 ```bash
@@ -156,6 +174,19 @@ explicitly the server will reject the request with a validation error.
 **Behavior is immutable after create.** `DateTimeBehavior` cannot be changed after the
 column is created — get it right on create. `--behavior` is only valid for
 `--kind datetime`; using it with any other kind is rejected with an error.
+
+## Add an auto-number string column
+
+```bash
+crm --json metadata add-attribute cwx_ticket --kind string \
+  --schema-name cwx_TicketNumber --display "Ticket Number" \
+  --auto-number-format "TKT-{SEQNUM:5}"
+```
+
+`--auto-number-format` sets `AutoNumberFormat` on a string column so the server
+generates values on insert. Placeholders include `{SEQNUM:n}` (zero-padded running
+number) and `{RANDSTRING:n}` (random alphanumerics) — e.g. `INV-{SEQNUM:5}` →
+`INV-00042`. It is only valid with `--kind string`.
 
 ## Create a 1:N relationship (adds a lookup on the N side)
 

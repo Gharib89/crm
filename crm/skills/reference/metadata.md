@@ -8,6 +8,9 @@ Flags/choices: `crm metadata --help`.
 
 ```bash
 crm --json metadata entities --custom-only --top 20
+# --managed-only adds IsManaged eq true; --filter "<odata>" appends a raw $filter
+# (both AND-combined with --custom-only). Rejected with --cache-metadata.
+crm --json metadata entities --managed-only --filter "IsActivity eq true"
 crm --json metadata attributes account
 crm --json metadata attribute account industrycode
 
@@ -234,6 +237,13 @@ Two non-obvious coupling rules:
 2. **`--behavior` is rejected for non-datetime kinds** (errors before any HTTP call).
 
 Omitting `--behavior` leaves the column at the server default (`UserLocal`).
+
+## Auto-number string columns (`--auto-number-format`)
+
+`metadata add-attribute --kind string --auto-number-format "<pattern>"` sets
+`AutoNumberFormat` so the server generates the value on insert. Patterns use
+`{SEQNUM:n}` (zero-padded sequence) and `{RANDSTRING:n}` (random alphanumerics),
+e.g. `INV-{SEQNUM:5}`. String-kind only; ignored/invalid for other kinds.
 
 ## Inspect the server's entity sets
 

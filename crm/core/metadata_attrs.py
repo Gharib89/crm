@@ -72,6 +72,8 @@ def _string_attr(opts: dict[str, Any]) -> dict[str, Any]:
     body["@odata.type"] = "Microsoft.Dynamics.CRM.StringAttributeMetadata"
     body["MaxLength"] = opts["max_length"]
     body["FormatName"] = {"Value": fmt}
+    if opts.get("auto_number_format"):
+        body["AutoNumberFormat"] = opts["auto_number_format"]
     return body
 
 
@@ -478,6 +480,7 @@ def add_attribute(
     required: str = "None",
     max_length: int | None = None,
     format_name: str | None = None,
+    auto_number_format: str | None = None,
     behavior_name: str | None = None,
     min_value: float | None = None,
     max_value: float | None = None,
@@ -585,6 +588,7 @@ def add_attribute(
         "required": required,
         "max_length": max_length,
         "format_name": format_name,
+        "auto_number_format": auto_number_format,
         "behavior_name": behavior_name,
         "min_value": min_value,
         "max_value": max_value,
