@@ -15,6 +15,10 @@ crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
 crm --json app add-components <appmoduleid> \
     --component view:<savedqueryid> --component chart:<savedqueryvisualizationid>
 
+# remove-components: inverse of add-components (RemoveAppComponents), same
+# 'kind:guid' grammar + same vocabulary. --dry-run previews without calling.
+crm --json app remove-components <appmoduleid> --component view:<savedqueryid>
+
 # set-sitemap: SITEMAP_NAME positional is the sitemap's descriptive name
 # (stored as sitemapname); --unique-name is the app's uniquename and sets
 # sitemapnameunique to auto-associate the sitemap with that app.

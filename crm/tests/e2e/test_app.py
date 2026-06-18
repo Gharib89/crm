@@ -47,7 +47,8 @@ def _find_account_view(backend) -> str | None:
 # ── app lifecycle: create + add-components + build-sitemap + set-sitemap ──────
 
 
-@covers("app create", "app add-components", "app build-sitemap", "app set-sitemap")
+@covers("app create", "app add-components", "app remove-components",
+        "app build-sitemap", "app set-sitemap")
 @pytest.mark.slow
 def test_app_lifecycle(backend, cli, request, unique):
     """Create a throwaway app, add a view component, build and set a sitemap.
@@ -138,7 +139,21 @@ def test_app_lifecycle(backend, cli, request, unique):
         assert env_add["data"].get("added", 0) >= 1, (
             f"expected at least 1 added component: {env_add['data']}"
         )
-    # (If no account view found we still cover add-components code path by
+
+        # ── Step 2b: app remove-components (unbind what we just added) ─────────
+        r_rm = cli([
+            "--json", "app", "remove-components", app_id,
+            "--component", f"view:{view_guid}",
+        ], check=False)
+        assert r_rm.returncode == 0, (
+            f"app remove-components failed:\n{r_rm.stderr}\nstdout: {r_rm.stdout}"
+        )
+        env_rm = json.loads(r_rm.stdout)
+        assert env_rm["ok"], env_rm
+        assert env_rm["data"].get("removed", 0) >= 1, (
+            f"expected at least 1 removed component: {env_rm['data']}"
+        )
+    # (If no account view found we still cover add/remove-components code path by
     # noting the skip, but we still continue to test the sitemap verbs.)
 
     # ── Step 3: app build-sitemap ─────────────────────────────────────────────
