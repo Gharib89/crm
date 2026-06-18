@@ -16,7 +16,20 @@ from crm.commands._helpers import (
 
 @click.group("security")
 def security_group():
-    """List and assign security roles."""
+    """List and assign security roles, and share records (POA)."""
+
+
+def _split_principal(value: str) -> tuple[str, str]:
+    """Parse a ``<type>:<guid>`` principal argument into (type, id).
+
+    The type is validated against the supported principals in the core layer;
+    here we only enforce the ``type:id`` shape so a malformed value fails as a
+    clean usage error (exit 2) before any backend call.
+    """
+    ptype, sep, pid = value.partition(":")
+    if not sep or not ptype.strip() or not pid.strip():
+        raise click.UsageError("principal must be of the form <user|team|org>:<guid>")
+    return ptype.strip(), pid.strip()
 
 
 @security_group.command("list-roles")
@@ -131,3 +144,85 @@ def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
             )
     ctx.emit(True, data=result)
     _journal(ctx, role_id, result)
+
+
+@security_group.command("grant")
+@click.argument("entity_set")
+@click.argument("record_id")
+@click.option("--to", "to", metavar="TYPE:GUID", required=True,
+              help="Principal to share with, as <user|team|org>:<guid>.")
+@click.option("--rights", required=True, metavar="RIGHTS",
+              help="Comma-separated access rights: "
+                   "Read,Write,Append,AppendTo,Create,Delete,Share,Assign.")
+@_destructive_option
+@pass_ctx
+def grant(ctx: CLIContext, entity_set, record_id, to, rights, yes):
+    """Share a record with a principal (POA GrantAccess).
+
+    ENTITY_SET is the entity-set name (e.g. accounts); RECORD_ID is the record
+    GUID. Sharing is reversible with `security revoke`.
+    """
+    principal_type, principal_id = _split_principal(to)
+    message = (
+        f"Share {entity_set}({record_id}) with {principal_type} {principal_id} "
+        f"at rights [{rights}]?"
+    )
+    _confirm_destructive(ctx, "record", record_id, yes, message=message)
+    with d365_errors(ctx):
+        result = security_mod.grant_access(
+            ctx.backend(), entity_set, record_id,
+            principal_type=principal_type, principal_id=principal_id, rights=rights,
+        )
+    ctx.emit(True, data=result)
+    _journal(ctx, record_id, result)
+
+
+@security_group.command("revoke")
+@click.argument("entity_set")
+@click.argument("record_id")
+@click.option("--from", "from_", metavar="TYPE:GUID", required=True,
+              help="Principal to unshare, as <user|team|org>:<guid>.")
+@_destructive_option
+@pass_ctx
+def revoke(ctx: CLIContext, entity_set, record_id, from_, yes):
+    """Remove a principal's shared access to a record (POA RevokeAccess).
+
+    Removes all of the principal's shared rights on the record (there is no
+    per-right revoke). ENTITY_SET is the entity-set name; RECORD_ID is the GUID.
+    """
+    principal_type, principal_id = _split_principal(from_)
+    message = (
+        f"Revoke {principal_type} {principal_id}'s shared access to "
+        f"{entity_set}({record_id})?"
+    )
+    _confirm_destructive(ctx, "record", record_id, yes, message=message)
+    with d365_errors(ctx):
+        result = security_mod.revoke_access(
+            ctx.backend(), entity_set, record_id,
+            principal_type=principal_type, principal_id=principal_id,
+        )
+    ctx.emit(True, data=result)
+    _journal(ctx, record_id, result)
+
+
+@security_group.command("list-access")
+@click.argument("entity_set")
+@click.argument("record_id")
+@pass_ctx
+def list_access(ctx: CLIContext, entity_set, record_id):
+    """List the principals a record is shared with and their rights.
+
+    ENTITY_SET is the entity-set name (e.g. accounts); RECORD_ID is the GUID.
+    Reports each principal's type, id, and effective shared access mask
+    (RetrieveSharedPrincipalsAndAccess).
+    """
+    with d365_errors(ctx):
+        items = security_mod.list_access(ctx.backend(), entity_set, record_id)
+    if ctx.json_mode:
+        ctx.emit(True, data=items, meta={"count": len(items)})
+        return
+    headers = ["principalType", "principalId", "accessMask"]
+    rows = [[it.get("principalType", ""), it.get("principalId", ""),
+             it.get("accessMask", "")] for it in items]
+    ctx.emit(True, table={"headers": headers, "rows": rows},
+             meta={"count": len(items)})

@@ -109,3 +109,96 @@ A 403 (`forbidden`) from `assign-role` means either:
   principal, or use `list-roles --business-unit <bu-guid>` to find roles in
   the correct business unit.
 
+---
+
+## Record sharing (POA)
+
+Dynamics 365 lets you share individual records with principals outside normal
+role-based access. These verbs wrap the Dataverse **Principal Object Access
+(POA)** model: `GrantAccess`, `RevokeAccess`, and
+`RetrieveSharedPrincipalsAndAccess`.
+
+### Principal `<type>:<guid>` form
+
+All three verbs that name a principal accept the argument as
+`<type>:<guid>`, where `<type>` is one of `user`, `team`, or `org`:
+
+```
+user:00000000-0000-0000-0000-000000000002
+team:00000000-0000-0000-0000-000000000003
+org:00000000-0000-0000-0000-000000000004
+```
+
+A malformed value (missing colon, empty type, empty GUID) is rejected as a
+usage error (exit 2) before any backend call is made.
+
+### Friendly access-right names
+
+`--rights` accepts a comma-separated list of these friendly names
+(case-insensitive):
+
+`Read`, `Write`, `Append`, `AppendTo`, `Create`, `Delete`, `Share`, `Assign`
+
+### Share a record with a principal
+
+```bash
+crm --json security grant accounts 00000000-0000-0000-0000-000000000001 \
+    --to user:00000000-0000-0000-0000-000000000002 \
+    --rights Read,Write --yes
+```
+
+`ENTITY_SET` is the OData entity-set name (`accounts`, `contacts`, …);
+`RECORD_ID` is the record GUID. `--rights` is required. Like `assign-role`,
+`grant` is confirmation-gated — pass `--yes` in non-interactive contexts.
+
+Use `--dry-run` to preview the POST without executing it:
+
+```bash
+crm --dry-run --json security grant accounts 00000000-0000-0000-0000-000000000001 \
+    --to user:00000000-0000-0000-0000-000000000002 \
+    --rights Read,Write --yes
+```
+
+Sharing a record that was already shared with the same principal at different
+rights **replaces** those rights (D365 POA semantics — one POA row per
+principal per record).
+
+### Revoke a principal's shared access
+
+```bash
+crm --json security revoke accounts 00000000-0000-0000-0000-000000000001 \
+    --from user:00000000-0000-0000-0000-000000000002 --yes
+```
+
+**Revoke is all-or-nothing per principal.** There is no `--rights` flag —
+`RevokeAccess` removes all of the principal's shared rights on that record in
+one call. Confirmation-gated; pass `--yes` non-interactively.
+
+### List who a record is shared with
+
+```bash
+crm --json security list-access accounts 00000000-0000-0000-0000-000000000001
+```
+
+Read-only. Calls `RetrieveSharedPrincipalsAndAccess`. Returns the principals
+the record is currently shared with and their access masks. Human output is a
+table with columns `principalType` / `principalId` / `accessMask`; JSON `data`
+is a list of objects:
+
+```json
+[
+  {
+    "principalType": "systemuser",
+    "principalId": "00000000-0000-0000-0000-000000000002",
+    "accessMask": "ReadAccess, WriteAccess"
+  }
+]
+```
+
+`principalType` values are `systemuser`, `team`, or `organization`.
+`accessMask` is a comma-separated string of the active access rights (as
+returned by the Web API).
+
+> **Note:** `ModifyAccess` (changing rights on an existing share without a full
+> revoke+re-grant) is not currently implemented.
+

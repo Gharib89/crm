@@ -13,12 +13,25 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Error
 from crm.core import security as sec
+from crm.core.entity_names import NameMap
 
 # ── Constants ────────────────────────────────────────────────────────────
 
 _GUID = "11111111-2222-3333-4444-555555555555"
 _ROLE_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _BU_ID = "cccccccc-dddd-eeee-ffff-000000000000"
+_RECORD_ID = "dddddddd-1111-2222-3333-444444444444"
+_PRINCIPAL_ID = "eeeeeeee-1111-2222-3333-555555555555"
+
+
+def _stub_name_map(monkeypatch):
+    """Resolve the ``accounts`` entity set without a live EntityDefinitions GET."""
+    name_map = NameMap(
+        logical_to_set={"account": "accounts"},
+        set_to_logical={"accounts": "account"},
+        primary_id={"account": "accountid"},
+    )
+    monkeypatch.setattr(sec.entity_names, "load_name_map", lambda backend, **kw: name_map)
 
 # ── list_roles ───────────────────────────────────────────────────────────
 
@@ -235,3 +248,169 @@ class TestAssignRoleToTeam:
             m.post(ref_url, status_code=204)
             result = sec.assign_role_to_team(backend, _GUID, _ROLE_ID)
         assert result.get("associated") is True
+
+
+# ── grant_access ───────────────────────────────────────────────────────────
+
+
+class TestGrantAccess:
+    def test_posts_to_grantaccess_with_target_principal_and_mask(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("GrantAccess"), status_code=204)
+            sec.grant_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="user", principal_id=_PRINCIPAL_ID, rights="Read,Write",
+            )
+        body = json.loads(m.request_history[0].body)
+        assert body["Target"] == {
+            "accountid": _RECORD_ID,
+            "@odata.type": "Microsoft.Dynamics.CRM.account",
+        }
+        assert body["PrincipalAccess"]["Principal"] == {
+            "systemuserid": _PRINCIPAL_ID,
+            "@odata.type": "Microsoft.Dynamics.CRM.systemuser",
+        }
+        assert body["PrincipalAccess"]["AccessMask"] == "ReadAccess, WriteAccess"
+
+    def test_team_principal_uses_team_logical_and_key(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("GrantAccess"), status_code=204)
+            sec.grant_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="team", principal_id=_PRINCIPAL_ID, rights="Read",
+            )
+        principal = json.loads(m.request_history[0].body)["PrincipalAccess"]["Principal"]
+        assert principal == {
+            "teamid": _PRINCIPAL_ID,
+            "@odata.type": "Microsoft.Dynamics.CRM.team",
+        }
+
+    def test_returns_granted_true_on_204(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("GrantAccess"), status_code=204)
+            result = sec.grant_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="user", principal_id=_PRINCIPAL_ID, rights="Read",
+            )
+        assert result == {"granted": True}
+
+    def test_rights_are_case_insensitive_and_deduped(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("GrantAccess"), status_code=204)
+            sec.grant_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="user", principal_id=_PRINCIPAL_ID,
+                rights="read, WRITE, ReadAccess",
+            )
+        mask = json.loads(m.request_history[0].body)["PrincipalAccess"]["AccessMask"]
+        assert mask == "ReadAccess, WriteAccess"
+
+    def test_unknown_right_raises_d365error(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with pytest.raises(D365Error, match="unknown access right 'Fly'"):
+            sec.grant_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="user", principal_id=_PRINCIPAL_ID, rights="Read,Fly",
+            )
+
+    def test_unknown_principal_type_raises_d365error(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with pytest.raises(D365Error, match="unknown principal type 'robot'"):
+            sec.grant_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="robot", principal_id=_PRINCIPAL_ID, rights="Read",
+            )
+
+    def test_invalid_record_id_raises_d365error(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with pytest.raises(D365Error, match="record id must be a GUID"):
+            sec.grant_access(
+                backend, "accounts", "not-a-guid",
+                principal_type="user", principal_id=_PRINCIPAL_ID, rights="Read",
+            )
+
+
+# ── revoke_access ──────────────────────────────────────────────────────────
+
+
+class TestRevokeAccess:
+    def test_posts_to_revokeaccess_with_target_and_revokee(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("RevokeAccess"), status_code=204)
+            sec.revoke_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="user", principal_id=_PRINCIPAL_ID,
+            )
+        body = json.loads(m.request_history[0].body)
+        assert body["Target"] == {
+            "accountid": _RECORD_ID,
+            "@odata.type": "Microsoft.Dynamics.CRM.account",
+        }
+        assert body["Revokee"] == {
+            "systemuserid": _PRINCIPAL_ID,
+            "@odata.type": "Microsoft.Dynamics.CRM.systemuser",
+        }
+        assert "PrincipalAccess" not in body
+
+    def test_returns_revoked_true_on_204(self, backend, monkeypatch):
+        _stub_name_map(monkeypatch)
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("RevokeAccess"), status_code=204)
+            result = sec.revoke_access(
+                backend, "accounts", _RECORD_ID,
+                principal_type="user", principal_id=_PRINCIPAL_ID,
+            )
+        assert result == {"revoked": True}
+
+
+# ── list_access ────────────────────────────────────────────────────────────
+
+
+_SHARED_RESPONSE = {
+    "PrincipalAccesses": [
+        {
+            "AccessMask": "ReadAccess, WriteAccess",
+            "Principal": {
+                "@odata.type": "#Microsoft.Dynamics.CRM.systemuser",
+                "ownerid": _PRINCIPAL_ID,
+            },
+        },
+    ]
+}
+
+
+class TestListAccess:
+    def test_calls_function_with_target_alias(self, backend):
+        url = backend.url_for("RetrieveSharedPrincipalsAndAccess(Target=@p1)")
+        with requests_mock.Mocker() as m:
+            m.get(url, json=_SHARED_RESPONSE)
+            sec.list_access(backend, "accounts", _RECORD_ID)
+        alias = m.request_history[0].qs["@p1"][0]
+        assert json.loads(alias) == {"@odata.id": f"accounts({_RECORD_ID})"}
+
+    def test_normalizes_principal_type_id_and_mask(self, backend):
+        url = backend.url_for("RetrieveSharedPrincipalsAndAccess(Target=@p1)")
+        with requests_mock.Mocker() as m:
+            m.get(url, json=_SHARED_RESPONSE)
+            result = sec.list_access(backend, "accounts", _RECORD_ID)
+        assert result == [{
+            "principalType": "systemuser",
+            "principalId": _PRINCIPAL_ID,
+            "accessMask": "ReadAccess, WriteAccess",
+        }]
+
+    def test_returns_empty_list_when_no_shares(self, backend):
+        url = backend.url_for("RetrieveSharedPrincipalsAndAccess(Target=@p1)")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={})
+            result = sec.list_access(backend, "accounts", _RECORD_ID)
+        assert result == []
+
+    def test_invalid_record_id_raises_d365error(self, backend):
+        with pytest.raises(D365Error, match="record id must be a GUID"):
+            sec.list_access(backend, "accounts", "not-a-guid")
