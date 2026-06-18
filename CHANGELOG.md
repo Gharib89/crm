@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.27.1 (2026-06-18)
+
+### Bug Fixes
+
+- **metadata**: Add --auto-number-format and entities --filter/--managed-only
+  ([#373](https://github.com/Gharib89/crm/pull/373),
+  [`bc5007d`](https://github.com/Gharib89/crm/commit/bc5007d78285897d5910fc611e8a4ab5da97282e))
+
+### Chores
+
+- Expand PR template to cover all merge gates ([#408](https://github.com/Gharib89/crm/pull/408),
+  [`b8011b0`](https://github.com/Gharib89/crm/commit/b8011b0c878677c23618a7ee302fd9d7de57b8ac))
+
+
 ## v4.27.0 (2026-06-18)
 
 ### Features
