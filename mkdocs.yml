@@ -113,6 +113,7 @@ nav:
       - solution: how-to/solution.md
       - data: how-to/data.md
       - action: how-to/action.md
+      - audit: how-to/audit.md
       - view: how-to/view.md
       - apply: how-to/apply.md
       - scaffold: how-to/scaffold.md
