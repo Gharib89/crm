@@ -29,7 +29,8 @@ Automated review
   - <comment> → <fixed | rejected: reason | n/a>
   ...
 
-Local gate:  tests <✓/✗> · lint <✓/✗> · docs <✓/✗>
+Local gate:  tests <✓/✗> · lint <✓/✗> · type <✓/✗> · docs <✓/✗> · security-scan <✓/✗/n-a>
+Docs-sync:   <ran: files | skipped: reason>
 CI:          <checks> → <green | state>
 
 Ready to merge. Reply "merge" to squash-merge, delete the branch, and clean up.

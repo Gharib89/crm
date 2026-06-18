@@ -14,285 +14,181 @@ argument-hint: "[issue-number]"
 
 Drive one issue from nothing to a **merge-ready PR**, hands-off, stopping only at
 a final human merge gate. You run `/ship <issue>`, walk away, and come back to a
-PR that has been implemented test-first, integration-tested, self-reviewed,
-review-bot-reviewed, and CI-green — with every decision summarized for you to
-approve before the irreversible merge.
+PR implemented test-first, integration-tested, self-reviewed, bot-reviewed, and
+CI-green — every decision summarized for you to approve before the merge.
 
-This skill is **generic**. Everything specific to a given repo — how to run its
-integrated tests, which test targets exist and how to pick between them, how to
-set up credentials, the local-gate commands, docs-sync rules, the commit-subject
-convention, and the review-bot re-request mechanism — lives in that repo's
-**project instructions** (its `CLAUDE.md` / `AGENTS.md`). This file states each
-step generically and points to "project instructions" for the how. **Before
-starting, read the project instructions** and extract these specifics; if any are
-missing, that's a gap to surface, not to guess at:
+This skill is **generic**. Everything repo-specific lives in that repo's
+**project instructions** (`CLAUDE.md` / `AGENTS.md`). **Before starting, read them**
+and extract these; if any is missing, surface the gap — don't guess:
 
-- **Test command** + how to run them from an isolated worktree (venv/path quirks).
+- **Test command** + how to run it from an isolated worktree (venv/path quirks).
 - **Integrated/live test** targets, how to pick between them, credential setup.
-- **Local-gate commands** — and crucially, *the full set of checks CI runs* (lint,
-  type-check, docs build, and any **secret/security scan**), so the local gate can
-  mirror CI rather than a fixed triad.
+- **Local-gate commands** — *the full set CI runs* (lint, type-check, docs build,
+  any **secret/security scan**), so the local gate mirrors CI, not a fixed triad.
 - **Docs-sync rules** — what docs must ship in the same change.
 - **Commit-subject convention** (what release tooling reads on squash-merge).
-- **Review-bot mechanism** — *whether the repo has an automated reviewer at all*,
-  how it's triggered, and how to re-request later rounds.
+- **Review-bot mechanism** — *whether the repo has one at all*, how it's
+  triggered, how to re-request later rounds.
 
-A repo that documents all of this well lets `/ship` run hands-off; a thin one will
-force guesses — surface the gap instead.
+## The autonomy contract
 
-## The autonomy contract — why it's shaped this way
-
-The whole point is to stop babysitting a long review loop. So `/ship` runs
-unattended through implementation, testing, review, and CI, and reaches **one
-guaranteed stop: the merge gate.** That gate is your single review point — you
-see every disposition there before approving the squash-merge.
-
-It pauses in only three places:
+`/ship` runs unattended through implementation, testing, review, and CI, to **one
+guaranteed stop: the merge gate** — your single review point. It pauses in only
+three places:
 
 - **Merge gate (always).** Merging to the default branch is effectively
   irreversible; a human approves it. Never auto-merge.
-- **Ambiguity stop (phase 1, only if needed).** If the issue is too
-  underspecified to derive a plan, stop and ask rather than build the wrong
-  thing — a misread would otherwise only surface at the merge gate, after the
-  whole loop ran.
-- **Integrated-test hand-off (phase 3, only if needed).** If live-test
-  credentials aren't available in the environment, hand the exact command back
-  and wait for confirmation.
+- **Ambiguity stop (phase 1, only if needed).** Issue too underspecified to derive
+  a plan → stop and ask rather than build the wrong thing.
+- **Integrated-test hand-off (phase 3, only if needed).** Live-test creds absent →
+  hand the exact command back and wait.
 
-Everything else — triaging your own review findings and the bot's comments,
-fixing them, re-running — happens **autonomously**. No mid-loop pause.
+Everything else — triaging your own and the bot's findings, fixing, re-running —
+is **autonomous**, no mid-loop pause.
 
 **Never proceed on red.** Any failure before the merge gate (failing test, lint,
-type-check, CI) gets a bounded self-fix-and-retry. If it's still red after that,
-or the failure means the approach is wrong, **stop and report** — don't push
-through, and never merge on red. When you stop, make the report a **fast yes**:
-attach the concrete evidence (the failing output / live error) and, if it's cheap
-to get, a **verified-working alternative** — converting a blocking question into
-a one-glance approve-or-redirect decision instead of an open-ended "what now?".
+type-check, CI) gets a bounded self-fix-and-retry. Still red after that, or the
+failure means the approach is wrong → **stop and report**; never merge on red.
+Make the report a **fast yes**: attach the concrete evidence (failing output /
+live error) and, if cheap, a **verified-working alternative** — a one-glance
+approve-or-redirect, not an open-ended "what now?".
 
 ## Argument
 
-`$ARGUMENTS` is the issue number. If it's omitted, ask which issue. If it's free
-text rather than a number, treat it as the task spec directly and skip the issue
-fetch in phase 1.
+`$ARGUMENTS` is the issue number. Omitted → ask which issue. Free text rather than
+a number → treat it as the task spec directly and skip the issue fetch in phase 1.
 
 ## Consult current docs — don't trust training data for APIs
 
-While implementing (phase 2), triaging review findings (phases 4 and 7), or
-debugging a library's behavior, verify against **current** documentation rather
-than memory — your training data may lag the installed version. Reach for:
-
-- **context7** (`ctx7` CLI / MCP) for any library, framework, SDK, or CLI tool —
-  API syntax, config options, version migration, library-specific debugging.
-- **Microsoft Learn** (MCP / docs) for Microsoft / Dataverse / Power Platform /
-  Azure APIs, when the project targets them.
-
+While implementing (phase 2) or triaging findings (phases 4, 7), verify against
+**current** docs, not memory — your training data may lag the installed version.
+Use **context7** (`ctx7` CLI / MCP) for any library/SDK/CLI, and **Microsoft
+Learn** (MCP) for Microsoft / Dataverse / Power Platform / Azure when relevant.
 This matters most when a review comment cites an API detail: confirm the claim
-against the **pinned** version before acting — a review bot may "remember" an API
-the installed version doesn't have, and acting on it would be a regression.
+against the **pinned** version before acting — a bot may "remember" an API the
+installed version doesn't have, and acting on it would be a regression.
+
+## Model tiers — match the model to the work
+
+Use the cheapest model that fits; reserve the strong model for judgment. Tag every
+subagent and the poll loop with a model explicitly — never default-inherit.
+
+| Work | Claude | Gemini (agy, when Claude tiers absent) |
+|------|--------|-----------------------------------------|
+| Investigation / mapping, poll loop | haiku | Flash |
+| Mechanical edits, `docs-sync` subagent | sonnet | Flash |
+| Review judgment (phases 4 & 7 triage, re-invoked `review` skill) | opus | Pro |
+
+Review is judgment — running it on the cheap tier under-reads diffs. Poll loops and
+file-mapping are mechanical — running them on the strong tier burns budget for
+nothing. Whichever family the host harness exposes, pick the matching row cell;
+fall back to the nearest available tier rather than running everything on one model.
 
 ## The pipeline
 
-Work the phases in order. Keep the main thread focused on orchestration and
-decisions; delegate noisy work (long polls, multi-file scans) to subagents so
-this context stays clean.
+Work the phases in order; keep the main thread on orchestration and decisions,
+delegating noisy work to subagents. **First**, read
+[reference/context-discipline.md](reference/context-discipline.md) — it covers how
+to keep this long run from bloating the window **and your required first action:
+creating the run's ten-item task list** (one per phase below). Don't start phase 0
+until that list exists.
 
-### Context discipline — a ship run is long; protect the main thread
-
-A full ship touches many files across many turns. What bloats the window is raw
-tool output landing in the main thread, not the work itself — so spend tokens on
-decisions, not dumps. In rough order of impact:
-
-- **Delegate reading, not just review.** Don't read N files into the main thread
-  to build a mental model. Send the investigation to a subagent — "map how X, Y, Z
-  connect; return signatures, call sites, and the data shapes" — and it returns a
-  small conclusion. Then Read only the exact lines you will edit. This is the
-  single biggest lever: a file body you only need to *understand* should never
-  enter main context, only the hunk you *change* should.
-- **Project every `gh` / CLI / API call.** Pipe `gh … --json <only-the-fields> --jq
-  '…'`. A bare `gh pr view --json` serializes the entire PR object (repo metadata
-  twice, every URL field) — kilobytes of noise from one call.
-- **Investigate inside the worktree from the start** (do phase 0 first), so you
-  never read a file in the main checkout and then re-read it in the worktree to
-  edit it.
-- **Trust Edit/Write — don't verify-Read after a successful edit.** The tool errors
-  if the match failed and the harness tracks file state for you; a re-Read to
-  "confirm" the change is pure cost.
-- **Targeted test nodes during the loop; full suite only at the local gate.**
-  Name the nodes you touched; re-running the whole suite every cycle is slow noise.
-- **One scratch file for the design/plan** (it survives a mid-run context summary);
-  don't restate the same summary across turns.
-
-**Your first action — before phase 0, before the worktree — is to create the
-run's task list with the harness task tools** (`TaskCreate` per item; `TaskUpdate`
-to change status; `TaskList` to re-read). If those tools aren't already loaded,
-fetch their schemas first via `ToolSearch` (`select:TaskCreate,TaskUpdate,TaskList`)
-— in some harnesses they're deferred. (Older harnesses name this `TodoWrite`; use
-whichever this one exposes.) If `ToolSearch` also turns up nothing, the harness
-exposes no task tools at all (some sandboxes — e.g. cloud routines — don't): fall
-back to a plain markdown checklist you keep up to date in your replies. Don't stall
-on the missing tool — the list's *content* is what matters, not which tool holds it. One item per phase below, exactly one `in_progress`
-at a time, each marked `completed` only when its verification passed. Do not start
-phase 0 until that list exists (task tools, or the markdown fallback if they're absent). This is the progress surface for an unattended run
-and the map back if the context is summarized mid-run — without it, a mid-run
-summary leaves you unable to tell which phase you were in, so you skip or repeat
-one. Create exactly these ten items:
-
-- [ ] 0 · Isolate — worktree on a fresh branch off default
-- [ ] 1 · Understand — fetch issue, derive success, claim it, apply spec precedence
-- [ ] 2 · Implement — classify (docs/code/infra), then TDD per class
-- [ ] 3 · Integrated test — live-test only what you touched, on the reported target
-- [ ] 4 · Self-review — `review` skill on the diff, auto-triage findings
-- [ ] 5 · Local gate — mirror the full CI checks, all green
-- [ ] 6 · Open PR — ready (non-draft), Conventional-Commit title, reflect on the issue
-- [ ] 7 · Review-bot loop — only if the repo has a bot; drive to the ceiling
-- [ ] 8 · CI — resolve any base-branch conflict, then land the checks green
-- [ ] 9 · Merge gate — hard stop for human merge approval
-
-**Compose, don't reinline.** Load the `tdd` skill (phase 2) and the `review`
-skill (phases 4 and 7) through the Skill tool when their phase begins — never
-hand-roll their logic. Run review work on subagents at **opus** (review is
-judgment; the default is sonnet, which under-reads diffs); mechanical helpers
-like a poll loop can stay on the default.
+**Compose, don't reinline.** Load the `tdd` skill (phase 2) and the `review` skill
+(phases 4, 7) through the Skill tool when their phase begins — never hand-roll
+their logic. Run review work at the judgment tier (table above); mechanical helpers
+stay on the cheap tier.
 
 **0 · Isolate.** Before any edit, create an isolated workspace on a fresh branch
 off the default branch — `EnterWorktree`, or `git worktree add`. Name the branch
 `<type>/<slug>-<issue>` where `<type>` matches the issue (feat/fix/…). All work,
 commits, and the PR happen from this branch; clean it up after merge. (The branch
 `<type>` is just a label — the commit/PR Conventional-Commit type may differ once
-you see the actual change, e.g. a `feat/`-branched enhancement best committed as
-`test:` or `docs:`. The squash subject, not the branch, drives release tooling.)
+you see the change, e.g. a `feat/`-branched enhancement best committed as `test:`
+or `docs:`. The squash subject, not the branch, drives release tooling.)
 
 **1 · Understand.** Fetch the issue and its comments. Derive what success looks
-like. **Spec precedence:** a later triage brief / authoritative comment can
-*supersede* the issue body — when they conflict (scope reduced, an option chosen,
-an axis dropped), the latest authoritative spec wins, and the body's original
-acceptance criteria no longer bind. Note this explicitly, because a review bot
-reading the stale body will flag "missing" requirements you deliberately cut —
-you'll reject those in phases 4/7 with this as the reason. **If it's too vague to
-plan, stop and ask** (the ambiguity rail).
+like. A later authoritative comment can supersede the issue body — **spec
+precedence**, detailed in [reference/implement.md](reference/implement.md). **If
+it's too vague to plan, stop and ask** (the ambiguity rail).
+**Claim it before implementing** — mark the issue in-progress per the project's
+claim convention so a concurrent run can't double-pick it (idempotent; skip if
+there's no issue or no documented convention). Don't claim if you stopped on the
+ambiguity rail; if you claim then stop blocked, hand the issue back.
 
-**Claim it before implementing.** Once it clears the ambiguity rail, mark the issue
-in-progress per the project's claim convention (concrete labels/commands: project
-instructions) so a concurrent or scheduled run can't double-pick it — idempotent, so
-re-applying a pre-claim is fine. Skip if there's no issue (free-text `$ARGUMENTS`) or
-no documented convention. Don't claim if you stopped on the ambiguity rail; if you
-claim and later stop blocked, hand the issue back rather than leave a dangling claim.
+**2 · Implement.** Classify the change as `docs` / `code` / `infra`, announce the
+class and the skip path it implies, then implement test-first per class —
+**full detail (classes, TDD override, external-claim verification) in
+[reference/implement.md](reference/implement.md).**
 
-**2 · Implement.** First **classify the change** into one of three classes — this
-decides whether TDD applies and (later) the review ceiling. **Announce the class
-you chose and the skip path it implies** — e.g. "classified `docs` → skipping TDD
-and the phase-3 integrated test, going straight to the local gate" — so a wrong
-label is a visible decision now, not a silently-skipped verification later. Later
-phases refer back to this class by name:
+**3 · Integrated test.** Live-test **only what you touched**, on the environment
+the bug was reported against — **detail in
+[reference/implement.md](reference/implement.md).** A `docs` change has nothing to
+integration-test — skip to the local gate.
 
-- **`docs`** — markdown, comments, config text with no logic: **skip TDD** (no
-  behavior to red→green; the phase-5 docs build + link check is the verification).
-  Mark the commit `docs:`. Don't manufacture a contrived test.
-- **`code`** (feature / bugfix): invoke the `tdd` skill **autonomously** —
-  red→green→refactor **without pausing for plan approval** (you're intentionally
-  overriding tdd's plan-approval checkpoint; the merge gate is the review point).
-- **`infra`** (tooling / refactor where a strict red→green is awkward — the change
-  *is* a test harness, build script, or fixture): don't force a contrived red.
-  Extract the logic into a testable seam and unit-test its **observable behavior**
-  through that seam; let the real run (phase 3) be the integration proof.
+**4 · Self-review.** Invoke the `review` skill against the diff (judgment tier).
+**Auto-triage** each finding: harden rather than rip out capability, verify nits
+against the **pinned** dependency versions, reject known non-issues; fix the valid
+ones; record a one-line disposition per finding for the merge summary.
 
-When in doubt between `code` and `docs`, treat it as `code` and write the test.
+**5 · Local gate.** *Precondition:* phase 3 passed **or** the class is `docs` — if
+neither holds, you skipped a verification; stop and go back. Run the project's full
+verification green before opening the PR, **mirroring the checks CI actually runs**
+(per project instructions) — not a fixed triad: tests, lint, type-check, docs
+build, **and any secret/security scan the repo gates on** (cheap to pre-empt
+locally, expensive to discover after the PR is open). If you can't run a check
+locally, at least *anticipate* it.
 
-**Verify the spec's external-system claims before building on them.** If the
-issue asserts a *causal mechanism* about something outside the code — an API/SDK
-behavior, a platform/version constraint, "the server does X / honors Y" — treat
-it as a **hypothesis, not a fact** and confirm it against the real target with the
-cheapest possible probe (one live read / export / call) *before* writing the fix
-around it. A triage brief's root cause is frequently a plausible guess; building
-on a wrong one means implementing the fix, having phase 3 disprove it, and
-rebuilding from scratch. Verifying up front collapses that loop — and if the
-probe contradicts the brief, that's an early stop-and-report, not a phase-3
-surprise.
-
-**3 · Integrated test.** Run the project's integrated/live tests **for only what
-you touched** — never the whole suite — following project instructions for
-targets and credentials, and create or update those tests as part of the work.
-**Run on the environment the bug was actually reported against:** if the issue
-names a specific target / version / config, test *there* — a different
-environment may auto-heal the bug (e.g. a server that silently rewrites the bad
-input) and hand you a misleading green. Green ≠ fixed unless it's green where it
-failed. If live creds aren't available, print the exact command + required setup,
-hand it back, and wait for the user to confirm it passed. (A `docs` change has
-nothing to integration-test — skip straight to the local gate.)
-
-**4 · Self-review.** Invoke the `review` skill against the diff. **Auto-triage**
-each finding with judgment — harden rather than rip out capability, verify nits
-against the pinned dependency versions, reject known non-issues — fix the valid
-ones, and record a one-line disposition per finding for the merge summary.
-
-**5 · Local gate.** *Precondition:* phase 3 passed **or** the class is `docs`
-(nothing to integration-test) — if neither holds, you skipped a verification;
-stop and go back rather than papering over it. Run the project's full local
-verification and get it green before opening the PR. **Mirror the checks CI will actually run** (per project
-instructions) — not a fixed triad: tests, lint, type-check, docs build, **and any
-secret/security scan the repo gates on** (e.g. a credential scanner — its
-false-positive patterns are cheap to pre-empt locally and expensive to discover
-only after the PR is open). If you can't run a check locally, at least *anticipate*
-it. Make sure docs ship in the same change if the project requires it.
-
-**Docs-sync gate (conditional).** Fire it **only if this change altered the
-documented CLI surface or observable behavior** — added / removed / renamed a
-command, flag, option, or choice; changed a default; changed an output format or
-the JSON contract; or changed a documented behavior. When it does, spawn the
-**`docs-sync`** subagent to bring README, `docs/`, the shipped
-`crm/skills/` skill, and e2e coverage back in line, and fold its `FIXED` edits
-into this change. **Skip it** when nothing user-visible changed — an internal
-refactor (`infra`), a **bugfix that restores already-documented behavior**,
-test-only or build / tooling changes, or pure comments: these need no doc /
-skill / e2e update, so don't burn a subagent on it. When you skip, say so in
-one line at the merge gate (e.g. "docs-sync skipped: bugfix, no surface /
-behavior change") so the decision is visible. (If a repo has no such subagent,
-apply its docs-sync rules by hand under the same condition.)
+**Docs-sync gate (conditional).** Fire **only if this change altered the documented
+CLI surface or observable behavior** — added/removed/renamed a command, flag,
+option, or choice; changed a default, an output format, or the JSON contract; or
+changed a documented behavior. Then spawn the **`docs-sync`** subagent (mechanical
+tier) to bring README, `docs/`, the shipped `crm/skills/` skill, and e2e coverage
+back in line, and fold its `FIXED` edits into this change. **Skip** when nothing
+user-visible changed — an internal refactor (`infra`), a bugfix that restores
+already-documented behavior, test-only / build / tooling changes, or pure comments.
+When you skip, say so in one line at the merge gate. (No such subagent → apply the
+docs-sync rules by hand under the same condition.)
 
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
-project's automated review. Title it as a Conventional-Commit subject derived
-from the issue (this is what release tooling reads on squash-merge — see project
-instructions), body closes the issue. An automated round-1 review may fire on PR
-creation per project config; **don't re-request round 1.**
-
-**Reflect the PR back on the issue.** Right after opening, update the issue per the
-project's convention (typically a comment linking the PR) so the tracker shows *PR
-open, awaiting review/merge* — keeping a scheduled run from re-picking it. The PR
-body's close keyword is the durable link; skip if the project documents no convention.
+project's automated review. Title it as a Conventional-Commit subject derived from
+the issue (release tooling reads this on squash-merge); body closes the issue. An
+automated round-1 review may fire on PR creation — **don't re-request round 1.**
+**Reflect the PR back on the issue** right after opening (typically a comment
+linking the PR) so a scheduled run won't re-pick it; skip if no documented
+convention.
 
 **7 · Review-bot loop.** **Only if the repo has an automated reviewer configured**
-(per project instructions — not every repo does; this is a repo config, never an
-assumption). If it doesn't, skip this phase: phase-4 self-review plus green CI is
-the review gate. Otherwise drive the automated review to a ceiling — poll,
-auto-triage and fix valid comments (same judgment + review subagents as
-phase 4), re-request later rounds via the project's documented mechanism, and
-enforce a **3-round hard ceiling**. Scale the ceiling to the change: a small,
-targeted PR needs only **one** round, and a `docs` change is capped at **one**
-round — address anything actionable, then go to the merge gate; **do not
-re-request**. Details and known traps (incl. how to poll without burning
-context): **read `reference/copilot-loop.md`.**
+(per project instructions — never an assumption). If not, skip: phase-4 self-review
+plus green CI is the review gate. Otherwise drive it to a ceiling — poll,
+auto-triage and fix valid comments (same judgment + review tier as phase 4),
+re-request later rounds via the project's mechanism, **3-round hard ceiling**.
+Scale to the change: a small/targeted PR needs **one** round, a `docs` change is
+capped at **one**. Mechanics and traps:
+**[reference/copilot-loop.md](reference/copilot-loop.md).**
 
-**8 · CI.** CI usually runs concurrently from PR-open, so phases 7 and 8 overlap
-rather than strictly follow. **First confirm the PR isn't conflicted with the base
-branch** — `gh pr view <n> --json mergeable,mergeStateStatus` (`mergeable:
-CONFLICTING` / `mergeStateStatus: DIRTY` means conflict). A conflicted PR has no
-merge ref, so merge-commit-based checks never start and CI sits **pending
-forever** — don't wait on it. Resolve first: fetch the latest default branch and
-rebase (or merge) it into the PR branch, fix the conflicts, **re-run the local
-gate (phase 5)**, and push — that recomputes the merge ref and lets CI run. Then
-ensure the checks that actually run land green. If CI goes red **after** the
-review ceiling closed, fix and push, then proceed on green — re-request another
-review round only if the fix changed behavior materially (a lint/format/flake fix
-doesn't earn a fresh round).
+**8 · CI.** CI usually runs concurrently from PR-open, so phases 7 and 8 overlap.
+**First confirm the PR isn't conflicted with the base branch** — `gh pr view <n>
+--json mergeable,mergeStateStatus` (`CONFLICTING` / `DIRTY` = conflict). A
+conflicted PR has no merge ref, so merge-commit checks never start and CI sits
+**pending forever** — don't wait on it. Resolve: fetch the latest default branch,
+rebase (or merge) it in, fix conflicts, **re-run the local gate (phase 5)**, and
+push — that recomputes the merge ref and lets CI run. Then land the checks green.
+If CI goes red **after** the review ceiling closed, fix and push, then proceed on
+green — re-request another round only if the fix changed behavior materially (a
+lint/format/flake fix doesn't earn one).
 
 **9 · Merge gate.** **Hard stop.** Post the summary and wait for the user's
-explicit "merge"; on approval, squash-merge, delete the branch, and clean up the
-worktree. Summary format and merge mechanics: **read `reference/merge-gate.md`.**
+explicit "merge"; on approval, squash-merge, delete the branch, clean up the
+worktree. Summary format and merge mechanics:
+**[reference/merge-gate.md](reference/merge-gate.md).**
 
 ## Reference files
 
-- `reference/copilot-loop.md` — phase 7: poll mechanics, re-requesting later
-  rounds, the 3-round ceiling, handling bot infra flakes and known non-issues.
+- `reference/context-discipline.md` — keeping the long run from bloating context;
+  the required first-action task list.
+- `reference/implement.md` — phases 1–3: spec precedence, change classification,
+  external-claim verification, run-where-it-failed.
+- `reference/copilot-loop.md` — phase 7: poll mechanics, re-requesting rounds, the
+  3-round ceiling, bot infra flakes and known non-issues.
 - `reference/merge-gate.md` — phase 9: the merge-summary template and the
   squash-merge / cleanup mechanics.
