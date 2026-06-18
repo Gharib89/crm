@@ -84,6 +84,7 @@ _MODE: dict[str, int] = {
 _IMAGE_TYPE: dict[str, int] = {
     "pre": 0,
     "post": 1,
+    "both": 2,
 }
 # Webhook auth scheme -> serviceendpoint.authtype option set (verified MS Learn:
 # serviceendpoint entity reference). Only the three webhook-valid schemes are
@@ -235,6 +236,8 @@ def register_step(
     rank: int = 1,
     filtering_attributes: str | None = None,
     name: str | None = None,
+    configuration: str | None = None,
+    asyncautodelete: bool = False,
     assembly: str | None = None,
     service_endpoint: str | None = None,
     solution: str | None = None,
@@ -342,6 +345,10 @@ def register_step(
         "mode": mode_int,
         "rank": rank,
     }
+    if configuration is not None:
+        body["configuration"] = configuration
+    if asyncautodelete:
+        body["asyncautodelete"] = True
     # sdkmessageprocessingstep nav-props are lowercase logical names in $metadata;
     # PascalCase is rejected with HTTP 400 (issue #159). For a real write the ids
     # are always present; under dry-run a dangling reference simply omits its bind
@@ -387,6 +394,26 @@ def register_step(
             f"{entity_id_url!r}"
         )
     return out
+
+
+def set_step_state(
+    backend: D365Backend,
+    *,
+    step: str,
+    enable: bool,
+) -> dict[str, Any]:
+    """Toggle the state of an sdkmessageprocessingstep (enable/disable)."""
+    step_id, _, _ = _step_image_info(backend, step)
+    # statecode 0=Enabled, 1=Disabled; statuscode 1=Enabled, 2=Disabled
+    state_int = 0 if enable else 1
+    status_int = 1 if enable else 2
+    body = {"statecode": state_int, "statuscode": status_int}
+    backend.patch(f"sdkmessageprocessingsteps({step_id})", json_body=body)
+    return {
+        "updated": True,
+        "sdkmessageprocessingstepid": step_id,
+        "enabled": enable,
+    }
 
 
 def register_webhook(

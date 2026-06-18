@@ -67,7 +67,7 @@ def test_image_register_read_unregister_roundtrip(backend, request):
     assert deleted["deleted"] is True
 
 
-@covers("plugin register-webhook")
+@covers("plugin register-webhook", "plugin set-step-state")
 def test_webhook_register_and_bind_step_roundtrip(backend, request):
     """register_webhook -> register a step bound to it -> read back -> cleanup.
 
@@ -120,6 +120,12 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
         params={"$expand": "eventhandler_serviceendpoint($select=serviceendpointid)"})
     handler = bound.get("eventhandler_serviceendpoint") or {}
     assert handler.get("serviceendpointid", "").lower() == se_id.lower()
+
+    disabled = plugin_mod.set_step_state(backend, step=state["step_id"], enable=False)
+    assert disabled["enabled"] is False
+
+    enabled = plugin_mod.set_step_state(backend, step=state["step_id"], enable=True)
+    assert enabled["enabled"] is True
 
 
 @covers("plugin list-types")
