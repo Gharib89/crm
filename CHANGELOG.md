@@ -9,6 +9,10 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.0.0 (2026-06-18)
+
+- Initial Release
+
 ## Pre-1.0 development history
 
 The sections below (`v0.12.0` → `v4.31.1`) record `crm`'s pre-launch development.
