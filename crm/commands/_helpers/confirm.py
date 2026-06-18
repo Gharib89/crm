@@ -55,9 +55,12 @@ def _confirm_destructive(
 def _destructive_option(f):
     """Stack the standard `--yes` confirm-skip flag on a destructive command.
 
-    Pairs with `_confirm_destructive` in the verb body. Covers only the sites
-    whose flag is byte-identical to this (`--yes`, plain skip help); sites with a
-    `-y` short form or bespoke help keep their inline `@click.option` (#294).
+    Pairs with `_confirm_destructive` in the verb body. Intentionally offers
+    `--yes` only, with no `-y` short alias: this is the one canonical confirm-skip
+    spelling across the CLI. The `profile add` / `profile rm` verbs are the
+    deliberate exception — as the most-typed interactive setup verbs they keep a
+    `-y` short alias (and bespoke help) via their own inline `@click.option`
+    (#294). The split is by design; do not "fix" it by adding `-y` here.
     """
     return click.option(
         "--yes", is_flag=True, help="Skip interactive confirmation.",

@@ -568,8 +568,12 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
 
 @solution_group.command("import")
 @click.argument("zip_path", type=click.Path(exists=True, dir_okay=False))
-@click.option("--no-publish", is_flag=True)
-@click.option("--no-overwrite", is_flag=True)
+@click.option("--publish/--no-publish", default=True,
+              help="Set the import's PublishWorkflows server option (activate "
+                   "imported workflows). NOT PublishAllXml. Default: publish.")
+@click.option("--overwrite/--no-overwrite", default=True,
+              help="Set ImportSolution OverwriteUnmanagedCustomizations. Default: "
+                   "overwrite (clobbers unmanaged customizations in the target org).")
 @click.option("--skip-dependency-check", "skip_dependency_check", is_flag=True,
               help="Set ImportSolution SkipProductUpdateDependencies to proceed "
                    "past a product-update dependency block.")
@@ -585,11 +589,11 @@ def solution_job_cancel(ctx: CLIContext, async_operation_id, yes):
 @click.option("--yes", is_flag=True,
               help="Skip the overwrite confirmation prompt.")
 @pass_ctx
-def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, skip_dependency_check, timeout, no_retry, quiet, formatted, yes):
+def solution_import_cmd(ctx: CLIContext, zip_path, publish, overwrite, skip_dependency_check, timeout, no_retry, quiet, formatted, yes):
     # An overwrite import (the default) clobbers unmanaged customizations in the
     # target org — gate it like a delete (#67). A `--no-overwrite` import is not
     # prompted here (the PreToolUse hook still requires --yes for any import).
-    if not no_overwrite:
+    if overwrite:
         _confirm_destructive(
             ctx, "solution", zip_path, yes,
             message=(f"Importing {zip_path!r} will OVERWRITE unmanaged customizations "
@@ -599,8 +603,8 @@ def solution_import_cmd(ctx: CLIContext, zip_path, no_publish, no_overwrite, ski
         with d365_errors(ctx):
             info = sol_mod.import_solution(
                 ctx.backend(), zip_path,
-                publish_workflows=not no_publish,
-                overwrite_unmanaged_customizations=not no_overwrite,
+                publish_workflows=publish,
+                overwrite_unmanaged_customizations=overwrite,
                 skip_dependency_check=skip_dependency_check,
                 timeout=timeout,
                 quiet=quiet,

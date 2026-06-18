@@ -51,7 +51,11 @@ def session_history(ctx: CLIContext):
               help="Read another session's journal (default: current --session).")
 @pass_ctx
 def session_audit(ctx: CLIContext, tail, session_override):
-    """Show this session's audit journal of mutations."""
+    """Show this session's LOCAL mutation journal (client-side).
+
+    This is the local, client-side record of mutating commands run in this
+    session — it is NOT the Dataverse server-side audit log.
+    """
     from crm.core import audit
     name = session_override or ctx.session_name
     rows = audit.read(name, tail=tail)
