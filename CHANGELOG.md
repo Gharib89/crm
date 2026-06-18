@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.18.0 (2026-06-18)
+
+### Features
+
+- **form**: Add --type/--all to form list to expose form types
+  ([#392](https://github.com/Gharib89/crm/pull/392),
+  [`5cf7c4a`](https://github.com/Gharib89/crm/commit/5cf7c4a2ac7d4aff1ac131f1b4f51a4704220297))
+
+### Testing
+
+- **form**: Make form list tests encoder- and org-independent
+  ([#392](https://github.com/Gharib89/crm/pull/392),
+  [`5cf7c4a`](https://github.com/Gharib89/crm/commit/5cf7c4a2ac7d4aff1ac131f1b4f51a4704220297))
+
+
 ## v4.17.0 (2026-06-18)
 
 ### Documentation
