@@ -196,7 +196,14 @@ def _bool_attr(opts: dict[str, Any]) -> dict[str, Any]:
 def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
     _forbid(opts, "max_length", "precision", "target_entity", "optionset_name",
             "options", "min_value", "max_value", "max_size_kb")
-    fmt = opts.get("format_name") or "DateAndTime"
+    behavior = opts.get("behavior_name")
+    if behavior is not None:
+        mc.validate_behavior(behavior)
+    # DateOnly behavior is incompatible with the DateAndTime format (Dataverse
+    # rejects that pair), so the format default tracks the behavior when no
+    # explicit --format is given. An explicit conflicting pair is left for the
+    # server to reject.
+    fmt = opts.get("format_name") or ("DateOnly" if behavior == "DateOnly" else "DateAndTime")
     mc.validate_format("datetime", fmt)
     body = _base_attr_payload(
         schema_name=opts["schema_name"],
@@ -207,6 +214,8 @@ def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
     )
     body["@odata.type"] = "Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
     body["Format"] = fmt
+    if behavior is not None:
+        body["DateTimeBehavior"] = {"Value": behavior}
     return body
 
 
@@ -466,6 +475,7 @@ def add_attribute(
     required: str = "None",
     max_length: int | None = None,
     format_name: str | None = None,
+    behavior_name: str | None = None,
     min_value: float | None = None,
     max_value: float | None = None,
     precision: int | None = None,
@@ -486,6 +496,8 @@ def add_attribute(
         raise D365Error("schema_name must include a publisher prefix.")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
+    if behavior_name is not None and kind != "datetime":
+        raise D365Error("--behavior is not valid for this kind.")
     logical_name = schema_name.lower()
 
     if kind == "lookup":
@@ -540,6 +552,7 @@ def add_attribute(
         "required": required,
         "max_length": max_length,
         "format_name": format_name,
+        "behavior_name": behavior_name,
         "min_value": min_value,
         "max_value": max_value,
         "precision": precision,

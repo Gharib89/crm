@@ -657,6 +657,10 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
               help="String/memo: max characters (default 100/2000).")
 @click.option("--format", "format_name", default=None,
               help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@click.option("--behavior", "behavior_name",
+              type=click.Choice(["UserLocal", "DateOnly", "TimeZoneIndependent"]),
+              default=None,
+              help="Datetime: DateTimeBehavior. Omit for the server default (UserLocal).")
 @click.option("--min", "min_value", type=float, default=None,
               help="Numeric kinds: minimum value.")
 @click.option("--max", "max_value", type=float, default=None,
@@ -684,7 +688,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
 @pass_ctx
 def metadata_add_attribute(
     ctx: CLIContext, entity, kind, schema_name, display_name, description, required,
-    max_length, format_name, min_value, max_value, precision,
+    max_length, format_name, behavior_name, min_value, max_value, precision,
     true_label, false_label, default_value,
     optionset_name, options, target_entity, relationship_schema,
     max_size_kb, solution, require_solution, if_exists, publish,
@@ -727,6 +731,7 @@ def metadata_add_attribute(
             required=required,
             max_length=max_length,
             format_name=format_name,
+            behavior_name=behavior_name,
             min_value=min_value,
             max_value=max_value,
             precision=precision,

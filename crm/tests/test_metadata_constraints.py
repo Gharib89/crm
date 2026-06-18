@@ -18,7 +18,8 @@ from crm.utils.d365_backend import D365Error
 
 @pytest.mark.parametrize("vocab", [
     mc.REQUIRED_LEVELS, mc.OWNERSHIP_TYPES, mc.STRING_FORMATS,
-    mc.DATETIME_FORMATS, mc.CASCADE_TYPES, mc.CASCADE_KEYS, mc.MENU_BEHAVIORS,
+    mc.DATETIME_FORMATS, mc.DATETIME_BEHAVIORS, mc.CASCADE_TYPES,
+    mc.CASCADE_KEYS, mc.MENU_BEHAVIORS,
 ])
 def test_vocabularies_are_nonempty_frozensets(vocab):
     assert isinstance(vocab, frozenset)
@@ -30,6 +31,7 @@ def test_known_membership():
     assert "OrganizationOwned" in mc.OWNERSHIP_TYPES
     assert "TickerSymbol" in mc.STRING_FORMATS
     assert "DateOnly" in mc.DATETIME_FORMATS
+    assert "TimeZoneIndependent" in mc.DATETIME_BEHAVIORS
     assert "RemoveLink" in mc.CASCADE_TYPES
     assert "RollupView" in mc.CASCADE_KEYS
     assert "UseCollectionName" in mc.MENU_BEHAVIORS
@@ -101,6 +103,13 @@ def test_validate_format_subject_overrides():
 def test_validate_format_unknown_kind_raises():
     with pytest.raises(D365Error):
         mc.validate_format("integer", "anything")
+
+
+def test_validate_behavior_accepts_and_rejects():
+    for v in mc.DATETIME_BEHAVIORS:
+        mc.validate_behavior(v)  # no raise
+    with pytest.raises(D365Error, match=r"behavior must be one of \["):
+        mc.validate_behavior("Bogus")
 
 
 # ── precision ──
