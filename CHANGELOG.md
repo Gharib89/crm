@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.25.0 (2026-06-18)
+
+### Documentation
+
+- Add AGENTS.md pointing agents to CLAUDE.md
+  ([`db08c31`](https://github.com/Gharib89/crm/commit/db08c31fde0250f58a1b4a8efda4fcde1234242f))
+
+### Features
+
+- **records**: Round out data-plane flags (--apply, --if-none-match, --mode delete)
+  ([#402](https://github.com/Gharib89/crm/pull/402),
+  [`ddcd419`](https://github.com/Gharib89/crm/commit/ddcd419df369b6e7aa88cc94b9ffa34a81de97b9))
+
+
 ## v4.24.0 (2026-06-18)
 
 ### Documentation
