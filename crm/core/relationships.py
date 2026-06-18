@@ -400,6 +400,109 @@ def create_one_to_many(
     return out
 
 
+def create_customer_relationships(
+    backend: D365Backend,
+    *,
+    referencing_entity: str,
+    lookup_schema: str,
+    lookup_display: str,
+    lookup_required: str = "None",
+    lookup_description: str | None = None,
+    publish: bool = False,
+    solution: str | None = None,
+    if_exists: str = "error",
+) -> dict[str, Any]:
+    """Create a Customer composite lookup (account + contact) atomically.
+
+    A Customer column can't be made by a plain attribute `POST` or a single
+    1:N relationship: it needs the `CreateCustomerRelationships` action, which
+    creates one `ComplexLookupAttributeMetadata` whose `Targets` are fixed to
+    `[account, contact]` plus the pair of 1:N relationships that back it, in one
+    call. The relationship schema names are derived from the lookup
+    (`<entity>_<lookup>_account` / `_contact`); unlike a single-target lookup,
+    they aren't user-nameable because the action owns both.
+    """
+    if "_" not in lookup_schema:
+        raise D365Error("lookup_schema must include a publisher prefix.")
+    if if_exists not in ("error", "skip"):
+        raise D365Error("if_exists must be 'error' or 'skip'.")
+    mc.validate_required(lookup_required, subject="lookup_required")
+
+    lookup_logical = lookup_schema.lower()
+    attr_path = (
+        f"EntityDefinitions(LogicalName='{referencing_entity}')"
+        f"/Attributes(LogicalName='{lookup_logical}')"
+    )
+    exists = target_exists(backend, attr_path)
+    if exists and not backend.dry_run:
+        if if_exists == "error":
+            raise D365Error(
+                f"Attribute {lookup_logical!r} already exists on entity "
+                f"{referencing_entity!r}.",
+                code="AlreadyExists",
+            )
+        return {
+            "skipped": True,
+            "exists": True,
+            "entity": referencing_entity,
+            "schema_name": lookup_schema,
+            "logical_name": lookup_logical,
+        }
+
+    lookup_payload: dict[str, Any] = {
+        "@odata.type": "Microsoft.Dynamics.CRM.ComplexLookupAttributeMetadata",
+        "AttributeType": "Lookup",
+        "AttributeTypeName": {"Value": "LookupType"},
+        "SchemaName": lookup_schema,
+        "DisplayName": label(lookup_display),
+        "RequiredLevel": {"Value": lookup_required},
+    }
+    if lookup_description:
+        lookup_payload["Description"] = label(lookup_description)
+    body: dict[str, Any] = {
+        "Lookup": lookup_payload,
+        "OneToManyRelationships": [
+            {
+                "SchemaName": f"{referencing_entity}_{lookup_logical}_account",
+                "ReferencedEntity": "account",
+                "ReferencingEntity": referencing_entity,
+            },
+            {
+                "SchemaName": f"{referencing_entity}_{lookup_logical}_contact",
+                "ReferencedEntity": "contact",
+                "ReferencingEntity": referencing_entity,
+            },
+        ],
+    }
+
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post(
+        "CreateCustomerRelationships",
+        json_body=body,
+        extra_headers=headers,
+    ))
+    if result.get("_dry_run"):
+        result["_exists"] = exists
+        result["would_skip"] = exists and if_exists == "skip"
+        return result
+
+    out: dict[str, Any] = {
+        "created": True,
+        "kind": "Customer",
+        "entity": referencing_entity,
+        "schema_name": lookup_schema,
+        "logical_name": lookup_logical,
+        "targets": ["account", "contact"],
+        "attribute_id": result.get("AttributeId"),
+        "relationship_ids": result.get("RelationshipIds"),
+        "solution": solution,
+    }
+    maybe_publish(backend, out, publish)
+    if not backend.dry_run:
+        metadata_cache.invalidate(backend.profile)
+    return out
+
+
 def create_many_to_many(
     backend: D365Backend,
     *,

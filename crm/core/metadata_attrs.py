@@ -4,7 +4,9 @@
 kwarg matrix per `kind` (raising `D365Error` before any HTTP), routes
 to a `_<kind>_attr` builder for the OData body, POSTs to
 `EntityDefinitions(...)/Attributes`, and reads back the canonical
-attribute fields. Lookup short-circuits to `create_one_to_many`.
+attribute fields. The relationship-backed kinds short-circuit instead:
+`lookup` to `create_one_to_many`, `customer` to
+`create_customer_relationships`.
 """
 
 from __future__ import annotations
@@ -357,9 +359,10 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
 }
 
 # Every attribute kind add_attribute accepts: the builder-backed kinds plus the
-# special-cased "lookup". Exposed so callers (e.g. crm.core.apply) validate
-# against one source of truth and never drift.
-ATTRIBUTE_KINDS = frozenset(_BUILDERS) | {"lookup"}
+# special-cased relationship-backed lookups ("lookup", "customer"). Exposed so
+# callers (e.g. crm.core.apply) validate against one source of truth and never
+# drift.
+ATTRIBUTE_KINDS = frozenset(_BUILDERS) | {"lookup", "customer"}
 
 
 def _resolve_global_optionset_id(backend: D365Backend, name: str) -> str:
@@ -539,6 +542,36 @@ def add_attribute(
                 if r["kind"] == "referenced_entity"
             ]
         return result
+
+    if kind == "customer":
+        # A Customer column is a composite lookup with fixed Targets
+        # (account + contact); the server wires up a 1:N relationship to each,
+        # so its only inputs are the lookup's own fields. Everything that
+        # parameterizes a single-target lookup or another kind is rejected.
+        _forbid_kwargs = {
+            "max_length": max_length, "precision": precision,
+            "min_value": min_value, "max_value": max_value,
+            "format_name": format_name,
+            "optionset_name": optionset_name, "options": options,
+            "max_size_kb": max_size_kb,
+            "target_entity": target_entity,
+            "relationship_schema": relationship_schema,
+        }
+        for n, v in _forbid_kwargs.items():
+            if v is not None:
+                raise D365Error(f"--{n.replace('_', '-')} is not valid for customer.")
+        from crm.core import relationships as rel
+        return rel.create_customer_relationships(
+            backend,
+            referencing_entity=entity,
+            lookup_schema=schema_name,
+            lookup_display=display_name,
+            lookup_required=required,
+            lookup_description=description,
+            publish=publish,
+            solution=solution,
+            if_exists=if_exists,
+        )
 
     builder = _BUILDERS.get(kind)
     if builder is None:

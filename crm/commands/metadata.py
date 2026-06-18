@@ -641,7 +641,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
               type=click.Choice([
                   "string", "memo", "integer", "bigint", "decimal", "double",
                   "money", "boolean", "datetime", "picklist", "multiselect",
-                  "lookup", "image", "file",
+                  "lookup", "customer", "image", "file",
               ]),
               help="Attribute kind.")
 @click.option("--schema-name", default=None,
