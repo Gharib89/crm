@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.30.0 (2026-06-18)
+
+### Features
+
+- **async**: Async list --order-by/--filter
+  ([`153f279`](https://github.com/Gharib89/crm/commit/153f279804358b43e157bad10aad4dea5b8bf60b))
+
+
 ## v4.29.0 (2026-06-18)
 
 ### Features
