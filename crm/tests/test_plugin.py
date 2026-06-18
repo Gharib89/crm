@@ -590,6 +590,34 @@ class TestRegisterStep:
         assert out["_dry_run"] is True
         assert not _posts(m)
 
+    def test_solution_header_routed(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                solution="cwx_sol")
+        # the step row lands in the targeted solution via the create header
+        assert _posts(m)[0].headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
+        assert out["solution"] == "cwx_sol"
+
+    def test_no_solution_header_when_absent(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Create",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
+        assert "MSCRM.SolutionUniqueName" not in _posts(m)[0].headers
+        assert out["solution"] is None
+
 
 _DELETE_STEP_ID = "66666666-6666-6666-6666-666666666666"
 _PTID_A = "77777777-7777-7777-7777-777777777777"
@@ -998,6 +1026,32 @@ class TestRegisterImage:
         gets = [r for r in m.request_history if r.method == "GET"]
         assert len(gets) == 2
 
+    def test_solution_header_routed(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg",
+                solution="cwx_sol")
+        # the image row lands in the targeted solution via the create header
+        assert _posts(m)[0].headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
+        assert out["solution"] == "cwx_sol"
+
+    def test_no_solution_header_when_absent(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="pre", alias="preimg")
+        assert "MSCRM.SolutionUniqueName" not in _posts(m)[0].headers
+        assert out["solution"] is None
+
 
 class TestUnregisterImage:
     def test_guid_deletes_directly(self, backend):
@@ -1287,10 +1341,12 @@ class TestPluginCommands:
                 fh.write(b"MZ")
             result = runner.invoke(cli, [
                 "--json", "plugin", "register-assembly", "a.dll", "--update",
+                "--solution", "cwx_sol",
             ])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         # plain --update is the content-only happy path: no ignored-flags warning
+        # (--solution given so the shared solution resolution stays silent too)
         assert env.get("meta", {}).get("warnings") is None
 
     def test_register_assembly_command_handles_d365_error(self, monkeypatch):
@@ -1529,3 +1585,81 @@ class TestPluginCommands:
         env = json.loads(result.output)
         assert env["ok"] is False
         assert "boom" in env["error"]
+
+    def test_register_verbs_expose_shared_solution_options(self):
+        # All three register verbs must carry the shared _solution_option:
+        # both flags plus the env knob and header named in its help text.
+        from click.testing import CliRunner
+        from crm.cli import cli
+        runner = CliRunner()
+        for verb in ("register-assembly", "register-step", "register-image"):
+            result = runner.invoke(cli, ["plugin", verb, "--help"])
+            assert result.exit_code == 0, result.output
+            assert "--solution" in result.output
+            assert "--require-solution" in result.output
+            # single tokens from the shared help, robust to Click's line wrapping
+            assert "MSCRM.SolutionUniqueName" in result.output
+            assert "CRM_REQUIRE_SOLUTION" in result.output
+
+    def test_register_step_command_threads_solution(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.register_step",
+            lambda backend, **kw: captured.update(kw) or {
+                "created": True, "sdkmessageprocessingstepid": _STEP_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-step",
+            "--message", "Create",
+            "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+            "--solution", "cwx_sol",
+        ])
+        assert result.exit_code == 0, result.output
+        # explicit --solution is resolved and threaded to the core function
+        assert captured["solution"] == "cwx_sol"
+
+    def test_register_image_command_threads_solution(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.register_image",
+            lambda backend, **kw: captured.update(kw) or {
+                "created": True, "sdkmessageprocessingstepimageid": _IMG_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-image",
+            "--step", _STEP_ID, "--type", "post", "--alias", "postimg",
+            "--solution", "cwx_sol",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["solution"] == "cwx_sol"
+
+    def test_register_step_require_solution_strict_errors(
+            self, monkeypatch, tmp_path):
+        # --require-solution with no resolvable solution must fail before any
+        # core call. Isolate CRM_HOME so no ambient profile default resolves.
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setenv("CRM_HOME", str(tmp_path))
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+        monkeypatch.delenv("CRM_REQUIRE_SOLUTION", raising=False)
+        called = {"n": 0}
+        monkeypatch.setattr(
+            "crm.core.plugin.register_step",
+            lambda *a, **k: called.__setitem__("n", called["n"] + 1) or {})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-step",
+            "--message", "Create",
+            "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+            "--require-solution",
+        ])
+        assert result.exit_code != 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "solution" in env["error"].lower()
+        assert called["n"] == 0

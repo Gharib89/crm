@@ -70,6 +70,10 @@ Key points:
   256-character limit.
 - `--assembly` scopes the type lookup to a single assembly when multiple
   assemblies share a type name.
+- `--solution` / `--require-solution` land the step row in a target solution
+  (sets `MSCRM.SolutionUniqueName`); defaults to the profile's
+  `default_solution`. `--require-solution` (or `CRM_REQUIRE_SOLUTION`) fails
+  when no solution resolves.
 
 ## Full registration workflow
 
@@ -122,6 +126,8 @@ Key points:
 - Platform validity rules are enforced before any write: no pre-image on a
   `Create` step, no post-image on a `Delete` step, and post-images require a
   step registered in the **PostOperation** stage.
+- `--solution` / `--require-solution` land the image row in a target solution
+  (same semantics as on `register-step` and `register-assembly`).
 
 ## Unregister a step image
 

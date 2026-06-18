@@ -27,7 +27,8 @@ crm --json plugin list-types --assembly Contoso.Plugins
 # --entity sets primaryobjecttypecode (omit = all entities); --filtering-attributes
 # (comma-separated) restricts an Update step. The step name is auto-derived as
 # '<typename>: <message> of <entity>'; pass --name when that would exceed the
-# 256-char platform limit.
+# 256-char platform limit. --solution/--require-solution accepted (same semantics
+# as register-assembly — sets MSCRM.SolutionUniqueName, step lands in that solution).
 crm --json plugin register-step \
     --message Update \
     --plugin-type Contoso.Plugins.AccountPostUpdate \
@@ -42,6 +43,7 @@ crm --json plugin register-step \
 # omitting it snapshots ALL columns (documented performance anti-pattern).
 # Rejected client-side: pre-image on Create, post-image on Delete, post-image
 # on a non-PostOperation step, messages that don't support images.
+# --solution/--require-solution accepted (same semantics as register-assembly/step).
 crm --json plugin register-image \
     --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
     --type pre --alias preimg --attributes name,telephone1

@@ -222,6 +222,7 @@ def register_step(
     filtering_attributes: str | None = None,
     name: str | None = None,
     assembly: str | None = None,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Register an `sdkmessageprocessingstep` (a plug-in step).
 
@@ -314,7 +315,9 @@ def register_step(
     if filtering_attributes is not None and message.lower() == "update":
         body["filteringattributes"] = filtering_attributes
 
-    result = as_dict(backend.post("sdkmessageprocessingsteps", json_body=body))
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post(
+        "sdkmessageprocessingsteps", json_body=body, extra_headers=headers))
     if result.get("_dry_run"):
         if references:
             result["references"] = references
@@ -330,6 +333,7 @@ def register_step(
         "message": message,
         "entity": entity,
         "plugintype": plugin_type,
+        "solution": solution,
     }
     if not sid:
         entity_id_url = result.get("_entity_id_url") or ""
@@ -349,6 +353,7 @@ def register_image(
     attributes: str | None = None,
     name: str | None = None,
     message_property_name: str | None = None,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Register an `sdkmessageprocessingstepimage` (a step entity image).
 
@@ -407,8 +412,9 @@ def register_image(
     if attributes is not None:
         body["attributes"] = attributes
 
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "sdkmessageprocessingstepimages", json_body=body))
+        "sdkmessageprocessingstepimages", json_body=body, extra_headers=headers))
     if result.get("_dry_run"):
         return result
 
@@ -422,6 +428,7 @@ def register_image(
         "messagepropertyname": mpn,
         "sdkmessageprocessingstepid": step_id,
         "attributes": attributes,
+        "solution": solution,
     }
     if not iid:
         entity_id_url = result.get("_entity_id_url") or ""
