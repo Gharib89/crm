@@ -131,7 +131,7 @@ For `--kind string`/`memo`, `--max-length` is optional — omit it to default to
 ## Add a datetime column with specific behavior
 
 ```bash
-# Default — server assigns UserLocal behavior and DateAndTime format
+# Default — DateAndTime format; behavior omitted, so the server applies UserLocal
 crm --json metadata add-attribute cwx_ticket --kind datetime \
   --schema-name cwx_DueDate --display "Due Date"
 
