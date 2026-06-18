@@ -58,6 +58,32 @@ class TestReadEntityForms:
             forms.read_entity_forms(backend, "it's_table")
         assert "it%27%27s_table" in m.last_request.url
 
+    def test_explicit_form_types_widen_the_filter(self, backend):
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            forms.read_entity_forms(backend, "new_project", form_types=(7,))
+        url = m.last_request.url
+        assert "type+eq+7" in url or "type%20eq%207" in url
+
+    def test_none_form_types_omits_the_type_filter(self, backend):
+        """``form_types=None`` lists every form type — only the entity is filtered."""
+        from crm.core import forms
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            forms.read_entity_forms(backend, "new_project", form_types=None)
+        url = m.last_request.url
+        assert "objecttypecode" in url
+        assert "type+eq" not in url and "type%20eq" not in url
+
+    def test_empty_form_types_is_rejected(self, backend):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with requests_mock.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            with pytest.raises(D365Error):
+                forms.read_entity_forms(backend, "new_project", form_types=())
+
 
 class TestRetargetFormxml:
     def test_rewrites_whole_word_entity_refs(self):

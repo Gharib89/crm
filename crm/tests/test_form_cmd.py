@@ -53,6 +53,12 @@ def _forms_url(backend: D365Backend) -> str:
     return backend.url_for("systemforms")
 
 
+def _has_clause(url: str, clause: str) -> bool:
+    """Whether ``url`` contains an OData clause, tolerating either space encoding
+    (``+`` or ``%20``) — the encoder choice is not part of the behavior."""
+    return clause.replace(" ", "+") in url or clause.replace(" ", "%20") in url
+
+
 # ---------------------------------------------------------------------------
 # crm form list
 # ---------------------------------------------------------------------------
@@ -95,6 +101,54 @@ class TestFormList:
         data = json.loads(result.output)
         assert data["ok"] is True
         assert data["data"] == []
+
+    def test_list_default_restricts_to_main(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project"])
+        assert _has_clause(m.last_request.url, "type eq 2")
+
+    def test_list_type_filters_to_that_type(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project", "--type", "quickcreate"])
+        assert _has_clause(m.last_request.url, "type eq 7")
+        assert not _has_clause(m.last_request.url, "type eq 2")
+
+    def test_list_type_is_repeatable(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(
+                cli, ["form", "list", "new_project",
+                      "--type", "main", "--type", "card"])
+        url = m.last_request.url
+        assert _has_clause(url, "type eq 2") and _has_clause(url, "type eq 11")
+
+    def test_list_all_omits_the_type_filter(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project", "--all"])
+        url = m.last_request.url
+        assert "objecttypecode" in url and not _has_clause(url, "type eq")
+
+    def test_list_type_is_case_insensitive(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project", "--type", "QuickCreate"])
+        assert _has_clause(m.last_request.url, "type eq 7")
+
+    def test_list_type_and_all_are_mutually_exclusive(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        result = CliRunner().invoke(
+            cli, ["--json", "form", "list", "new_project", "--all", "--type", "main"])
+        # House rule: mutually-exclusive flags raise click.UsageError → exit 2.
+        assert result.exit_code == 2, result.output
+        assert "mutually exclusive" in result.output.lower()
 
 
 # ---------------------------------------------------------------------------

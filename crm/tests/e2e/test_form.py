@@ -29,6 +29,37 @@ def test_form_list_account(cli):
     assert "name" in first, f"name missing from first form: {first}"
 
 
+@covers("form list")
+def test_form_list_type_and_all(cli):
+    """`--all` lists a superset of the default main-only set; `--type quickcreate`
+    filters to type 7 only (issue #360). Both assertions are org-independent — they
+    don't assume the org carries any particular non-main form type."""
+    main_only = json.loads(cli(["--json", "form", "list", "account"]).stdout)["data"]
+    all_forms = cli(["--json", "form", "list", "account", "--all"])
+    assert all_forms.returncode == 0, all_forms.stderr
+    all_data = json.loads(all_forms.stdout)["data"]
+    # --all omits the type filter, so it returns at least the default main forms.
+    all_ids = {f.get("formid") for f in all_data}
+    assert all_ids >= {f.get("formid") for f in main_only}, (
+        "--all did not return a superset of the default main forms"
+    )
+
+    # --type filters server-side: every returned quick-create form must be type 7
+    # (empty is fine — the org may have none; the type constraint is what matters).
+    qc = cli(["--json", "form", "list", "account", "--type", "quickcreate"])
+    assert qc.returncode == 0, qc.stderr
+    qc_data = json.loads(qc.stdout)["data"]
+    assert all(f.get("type") == 7 for f in qc_data), (
+        f"--type quickcreate returned non-type-7 forms: {qc_data}"
+    )
+
+    # --type and --all together is a usage error (Click UsageError → exit 2).
+    both = cli(["--json", "form", "list", "account", "--all", "--type", "main"],
+               check=False)
+    assert both.returncode == 2, f"expected --all + --type rejected with exit 2: {both}"
+    assert "mutually exclusive" in (both.stderr + both.stdout).lower()
+
+
 # ── form export ───────────────────────────────────────────────────────────────
 
 

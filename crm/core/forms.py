@@ -19,6 +19,21 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_litera
 
 FORM_TYPE_MAIN = 2
 
+# User-facing subset of the `systemform_type` global choice (Dataverse), keyed by
+# a stable lowercase token → optionset value. Only the form types worth filtering
+# on are exposed; backup/internal types (Preview, MainBackup, …) are omitted —
+# `form list --all` (form_types=None) returns every type regardless. Values are
+# from the SystemForm `type` reference, not guessed:
+# learn.microsoft.com/power-apps/developer/data-platform/reference/entities/systemform
+FORM_TYPE_BY_NAME: dict[str, int] = {
+    "dashboard": 0,
+    "main": FORM_TYPE_MAIN,
+    "quickview": 6,
+    "quickcreate": 7,
+    "dialog": 8,
+    "card": 11,
+}
+
 _FORM_SELECT = "formid,name,objecttypecode,type,formxml,description,isdefault"
 
 # Control-type `classid` GUIDs keyed by the attribute's `AttributeType`. These are
@@ -331,18 +346,21 @@ def read_entity_forms(
     backend: D365Backend,
     entity_logical_name: str,
     *,
-    form_types: tuple[int, ...] = (FORM_TYPE_MAIN,),
+    form_types: tuple[int, ...] | None = (FORM_TYPE_MAIN,),
 ) -> list[dict[str, Any]]:
     """Read an entity's forms as projection dicts.
 
-    Defaults to Main forms only (``type=2``); pass ``form_types`` to widen.
-    Returns dicts with keys ``formid, name, objecttypecode, type, formxml,
-    description, isdefault``.
+    Defaults to Main forms only (``type=2``); pass ``form_types`` to widen to
+    specific systemform ``type`` values, or ``None`` to list every type (no
+    ``type`` filter). Returns dicts with keys ``formid, name, objecttypecode,
+    type, formxml, description, isdefault``.
     """
-    if not form_types:
-        raise D365Error("form_types must not be empty.")
-    type_clause = " or ".join(f"type eq {t}" for t in form_types)
-    filt = f"objecttypecode eq {odata_literal(entity_logical_name)} and ({type_clause})"
+    filt = f"objecttypecode eq {odata_literal(entity_logical_name)}"
+    if form_types is not None:
+        if not form_types:
+            raise D365Error("form_types must not be empty.")
+        type_clause = " or ".join(f"type eq {t}" for t in form_types)
+        filt = f"{filt} and ({type_clause})"
     rows = backend.get_collection(
         "systemforms",
         params={"$select": _FORM_SELECT, "$filter": filt},

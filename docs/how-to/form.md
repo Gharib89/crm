@@ -1,16 +1,33 @@
 # How-to: form
 
-List, clone, and export entity main forms (systemform). See the
+List, clone, and export entity forms (systemform). See the
 [CLI reference](../reference/cli.md) for every flag.
 
-## List the main forms for an entity
+## List an entity's forms
 
 ```bash
 crm form list cwx_ticket
 ```
 
-Output columns: `name`, `type`, `formid`, `isdefault`. Only **main** forms are
-returned — quick-create, card, and mobile-express forms are not included.
+Output columns: `name`, `type`, `formid`, `isdefault` (`type` is the raw
+systemform optionset integer). By **default only main forms are returned**.
+
+Use `--type` to filter to one or more form types (repeatable,
+case-insensitive); recognized tokens are `dashboard`, `main`, `quickview`,
+`quickcreate`, `dialog`, and `card`:
+
+```bash
+crm form list cwx_ticket --type quickcreate
+crm form list cwx_ticket --type main --type quickview
+```
+
+Use `--all` to list every form type (no type filter):
+
+```bash
+crm form list cwx_ticket --all
+```
+
+`--type` and `--all` are mutually exclusive — passing both is a usage error.
 
 ## Clone a form to another entity
 
