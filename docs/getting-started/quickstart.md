@@ -35,7 +35,7 @@ crm profile add
 ```
 
 On a terminal this runs a wizard: enter your server URL, and the CLI infers the
-auth scheme (`*.dynamics.com` → OAuth, anything else → NTLM), prompts for what
+auth scheme (any host containing `.dynamics.` → OAuth, anything else → NTLM), prompts for what
 that scheme needs, stores the secret, runs a `WhoAmI` to verify, and activates the
 profile. See [Add a profile](add-profile.md) for the non-interactive form.
 
