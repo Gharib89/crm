@@ -18,11 +18,9 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
    NUM=$(gh issue list --repo Gharib89/crm --label ready-for-agent --state open \
          --json number --jq 'sort_by(.number)[0].number // empty')
    If NUM is empty, report "nothing ready" and STOP — do not open a PR.
-   Do NOT claim it here: /ship now owns the claim (skill phase 1 removes
-   ready-for-agent → adds agent-working + comments, before it implements). Because
-   the claim drops ready-for-agent, this picker never returns a claimed/in-progress
-   issue or one that already has an open PR — at the hourly cadence the few seconds
-   between this pick and /ship's phase-1 claim are not a real race.
+   Do NOT claim it here — /ship claims it in its phase 1 (removes ready-for-agent,
+   adds agent-working, comments). Since the claim drops ready-for-agent, this picker
+   never returns an issue that is already claimed or has an open PR.
 3. Rename the working branch off the sandbox default. A cloud fire starts you on an
    auto `claude/<random>` branch; the repo convention (and /ship's) is
    `<type>/<slug>-$NUM` — `<type>` = `fix` for a bug, `feat` otherwise, `<slug>` a
@@ -139,19 +137,20 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 
 The routine fires hourly and a merge-ready PR can sit unmerged for a while, so each
 fire must not re-pick an issue another fire already owns. The `agent-working` claim
-label gives one owner per issue. **`/ship` now owns the claim and the PR-reflect**
-(phase 1 claims, phase 6 comments the PR link), so the routine only *picks* — it no
-longer relabels at the start. The one relabel still on the routine is the **blocked**
-hand-off (step 4: `agent-working` → `ready-for-human`), because not-shippable is a
-routine policy, not a `/ship` step. The full state machine, the claim/PR/block
-commands, and stale-claim recovery are documented once in
-**`docs/agents/triage-labels.md` → "Agent work lifecycle (`/ship`)"**.
+label gives one owner per issue: `/ship` claims the issue itself (phase 1) and
+comments the PR link (phase 6), so the routine only *picks* — it does not relabel at
+the start. The one relabel the routine owns is the **blocked** hand-off (step 4:
+`agent-working` → `ready-for-human`), since not-shippable is a routine policy, not a
+`/ship` step. The claim convention lives in `CLAUDE.md` → "Triage labels".
 
-Routine-specific note: because a fire never waits at the merge gate (step 5), a
-merge-ready issue is left `agent-working` with its open PR; later fires skip it (it
-no longer carries `ready-for-agent`) until a human merges and `Closes #N` closes it.
-`GH_TOKEN` needs Issues:write (already in the env config) for `/ship`'s relabel +
-comments.
+Because a fire never waits at the merge gate (step 5), a merge-ready issue is left
+`agent-working` with its open PR; later fires skip it (it no longer carries
+`ready-for-agent`) until a human merges and `Closes #N` closes it. `GH_TOKEN` needs
+Issues:write (already in the env config) for `/ship`'s relabel + comments.
+
+Stale-claim recovery: if a fire dies after claiming but before opening a PR, the issue
+sits `agent-working` with no PR and is not retried — relabel it `ready-for-agent` by
+hand to requeue.
 
 One-time setup — create the claim label once (idempotent; skip if it exists):
 
