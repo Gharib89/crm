@@ -106,6 +106,15 @@ The LayoutXml `object` attribute is the entity **ObjectTypeCode (OTC)** — get 
 sorts newest-first by writing `descending="true"` into the FetchXml at create time —
 no follow-up savedquery PATCH. Bad direction token → usage error (exit 2).
 
+`--query-type` (see `--help` for the choices) selects the savedquery type; the
+default is a public grid view. Two non-obvious effects: picking the quick-find
+type also flips `isquickfindquery` on the row (so the view backs global search,
+not the grid picker), and the existence guard keys on name+entity+**type** — the
+same name can coexist across types, and `--if-exists skip` only matches a prior
+view of the same type. **Gotcha:** `view list` shows only public views, so a
+non-public view you create this way will not appear there — capture its
+`savedqueryid` from the `view create` output if you need to edit it later.
+
 ### Edit an existing view
 
 `view create` only makes new views. To change an existing one, PATCH its

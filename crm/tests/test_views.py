@@ -48,6 +48,97 @@ class TestCreateView:
         assert 'value="0"' in body["fetchxml"]
         assert 'attribute="cwx_name"' in body["fetchxml"]
 
+    def test_query_type_advanced_find_sets_querytype_1(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": view_url})
+            m.get(view_url, json={"savedqueryid": _VIEW_ID, "name": "AF"})
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="AF", columns=[("cwx_name", 220)],
+                query_type="advanced-find",
+            )
+        body = _post_body(m)
+        assert body["querytype"] == 1
+        assert "isquickfindquery" not in body
+
+    def test_query_type_quick_find_sets_isquickfindquery(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": view_url})
+            m.get(view_url, json={"savedqueryid": _VIEW_ID, "name": "QF"})
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="QF", columns=[("cwx_name", 220)],
+                query_type="quick-find",
+            )
+        body = _post_body(m)
+        assert body["querytype"] == 4
+        assert body["isquickfindquery"] is True
+
+    def test_description_set_in_body_when_provided(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": view_url})
+            m.get(view_url, json={"savedqueryid": _VIEW_ID, "name": "D"})
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="D", columns=[("cwx_name", 220)],
+                description="My view description",
+            )
+        assert _post_body(m)["description"] == "My view description"
+
+    def test_default_query_type_preserves_public_body(self, backend):
+        """Omitting both new flags reproduces today's public-view body exactly."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": view_url})
+            m.get(view_url, json={"savedqueryid": _VIEW_ID, "name": "P"})
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="P", columns=[("cwx_name", 220)],
+            )
+        body = _post_body(m)
+        assert body["querytype"] == 0
+        assert "isquickfindquery" not in body
+        assert "description" not in body
+
+    def test_existence_guard_uses_resolved_querytype(self, backend):
+        """The collision probe filters on the requested type, not always 0."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
+            m.post(backend.url_for("savedqueries"), status_code=204,
+                   headers={"OData-EntityId": view_url})
+            m.get(view_url, json={"savedqueryid": _VIEW_ID, "name": "AF"})
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="AF", columns=[("cwx_name", 220)],
+                query_type="advanced-find",
+            )
+        probe = m.request_history[0]
+        assert "querytype eq 1" in probe.qs["$filter"][0]
+
+    def test_unknown_query_type_raises(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error, match="unknown query_type"):
+            views.create_view(
+                backend, entity="cwx_ticket", object_type_code=10042,
+                name="X", columns=[("cwx_name", 220)], query_type="bogus")
+
     def test_descending_order_emits_descending_true(self, backend):
         from crm.core import views
         with requests_mock.Mocker() as m:
@@ -176,6 +267,49 @@ class TestViewCommand:
         assert captured["columns"] == [("cwx_name", 220), ("cwx_priority", 120)]
         assert captured["order_by"] == "cwx_name"
         assert captured["filter_active"] is True
+
+    def test_view_create_wires_query_type_and_description(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.views.create_view",
+            lambda backend, **kw: captured.update(kw) or {"created": True, "name": kw["name"]})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+            "--column", "cwx_name:220", "--query-type", "quick-find",
+            "--description", "Quick find columns", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["query_type"] == "quick-find"
+        assert captured["description"] == "Quick find columns"
+
+    def test_view_create_query_type_defaults_public(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.views.create_view",
+            lambda backend, **kw: captured.update(kw) or {"created": True, "name": kw["name"]})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+            "--column", "cwx_name:220", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["query_type"] == "public"
+        assert captured["description"] is None
+
+    def test_view_create_rejects_unknown_query_type(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+            "--column", "cwx_name:220", "--query-type", "bogus", "--no-publish",
+        ])
+        assert result.exit_code == 2, result.output
 
     def test_view_create_parses_descending_order(self, monkeypatch):
         from click.testing import CliRunner

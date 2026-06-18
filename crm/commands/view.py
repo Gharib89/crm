@@ -92,13 +92,18 @@ def _parse_order(raw: str) -> tuple[str, bool]:
 @click.option("--filter-active", is_flag=True, help="Filter to statecode=0 (active) rows.")
 @click.option("--default", "is_default", is_flag=True, help="Mark as the default view.")
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
+@click.option("--query-type", type=click.Choice(list(views_mod.QUERY_TYPES)),
+              default="public", show_default=True,
+              help="Saved-query type to create.")
+@click.option("--description", default=None, help="View description.")
 @_solution_option
 @_publish_option
 @pass_ctx
 def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
                 order_by, filter_active, is_default, if_exists,
+                query_type, description,
                 solution, require_solution, publish):
-    """Create a public system view on ENTITY."""
+    """Create a system view on ENTITY (public by default; see --query-type)."""
     parsed = [_parse_column(c) for c in columns]
     order_desc = False
     if order_by is not None:
@@ -111,6 +116,7 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
             name=name, columns=parsed, order_by=order_by, order_desc=order_desc,
             filter_active=filter_active, is_default=is_default,
             solution=solution, if_exists=if_exists, publish=publish,
+            query_type=query_type, description=description,
         )
     _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())

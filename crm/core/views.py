@@ -1,8 +1,9 @@
 """Custom view (savedquery) creation and reading.
 
 Generates LayoutXml (grid columns) + FetchXml (columns, order, optional
-active-state filter) and POSTs a public view (querytype 0). Read-back on
-create is non-fatal, matching the metadata-write precedent.
+active-state filter) and POSTs a saved view (querytype defaults to public/0;
+see ``QUERY_TYPES``). Read-back on create is non-fatal, matching the
+metadata-write precedent.
 """
 
 from __future__ import annotations
@@ -13,6 +14,16 @@ from xml.sax.saxutils import quoteattr
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.core.metadata import maybe_publish
+
+# savedquery.querytype optionset values (friendly name → code). See
+# https://learn.microsoft.com/power-apps/developer/model-driven-apps/customize-entity-views#types-of-views
+QUERY_TYPES: dict[str, int] = {
+    "public": 0,
+    "advanced-find": 1,
+    "associated": 2,
+    "quick-find": 4,
+    "lookup": 64,
+}
 
 
 def _build_layoutxml(entity: str, object_type_code: int,
@@ -67,11 +78,14 @@ def create_view(
     publish: bool = False,
     solution: str | None = None,
     if_exists: str = "error",
+    query_type: str = "public",
+    description: str | None = None,
 ) -> dict[str, Any]:
-    """Create a public system view (savedquery). Returns `{created, savedqueryid, ...}`.
+    """Create a system view (savedquery). Returns `{created, savedqueryid, ...}`.
 
-    Assumes the entity's primary-id attribute is ``<entity>id`` (always true for
-    custom tables, which is what this command targets).
+    ``query_type`` selects the savedquery type (see ``QUERY_TYPES``); defaults to
+    ``public``. Assumes the entity's primary-id attribute is ``<entity>id``
+    (always true for custom tables, which is what this command targets).
     """
     if not name:
         raise D365Error("name is required.")
@@ -84,6 +98,11 @@ def create_view(
             raise D365Error(f"column width must be positive: {col_name!r}={width}.")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
+    if query_type not in QUERY_TYPES:
+        raise D365Error(
+            f"unknown query_type {query_type!r}; "
+            f"expected one of {', '.join(QUERY_TYPES)}.")
+    querytype = QUERY_TYPES[query_type]
 
     # Existence guard — savedqueries has no alternate key, so query by name+type.
     existing = backend.get_collection(
@@ -91,7 +110,7 @@ def create_view(
         params={
             "$filter": (f"name eq {odata_literal(name)} "
                         f"and returnedtypecode eq {odata_literal(entity)} "
-                        "and querytype eq 0"),
+                        f"and querytype eq {querytype}"),
             "$select": "savedqueryid,name",
         },
     )
@@ -105,12 +124,16 @@ def create_view(
     body: dict[str, Any] = {
         "name": name,
         "returnedtypecode": entity,
-        "querytype": 0,
+        "querytype": querytype,
         "isdefault": is_default,
         "layoutxml": _build_layoutxml(entity, object_type_code, columns),
         "fetchxml": _build_fetchxml(entity, columns, order_by, filter_active,
                                     order_desc),
     }
+    if query_type == "quick-find":
+        body["isquickfindquery"] = True
+    if description is not None:
+        body["description"] = description
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post("savedqueries", json_body=body,
                                   extra_headers=headers))
