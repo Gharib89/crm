@@ -240,7 +240,7 @@ it. Make sure docs ship in the same change if the project requires it.
 documented CLI surface or observable behavior** — added / removed / renamed a
 command, flag, option, or choice; changed a default; changed an output format or
 the JSON contract; or changed a documented behavior. When it does, spawn the
-**`docs-sync`** subagent (opus) to bring README, `docs/`, the shipped
+**`docs-sync`** subagent to bring README, `docs/`, the shipped
 `crm/skills/` skill, and e2e coverage back in line, and fold its `FIXED` edits
 into this change. **Skip it** when nothing user-visible changed — an internal
 refactor (`infra`), a **bugfix that restores already-documented behavior**,
@@ -265,7 +265,7 @@ body's close keyword is the durable link; skip if the project documents no conve
 (per project instructions — not every repo does; this is a repo config, never an
 assumption). If it doesn't, skip this phase: phase-4 self-review plus green CI is
 the review gate. Otherwise drive the automated review to a ceiling — poll,
-auto-triage and fix valid comments (same judgment + **opus** review subagents as
+auto-triage and fix valid comments (same judgment + review subagents as
 phase 4), re-request later rounds via the project's documented mechanism, and
 enforce a **3-round hard ceiling**. Scale the ceiling to the change: a small,
 targeted PR needs only **one** round, and a `docs` change is capped at **one**
