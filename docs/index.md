@@ -7,8 +7,8 @@ hide:
 <div class="crm-hero" markdown>
 
 <div class="crm-hero-title" markdown>
-![crm](assets/logo.svg){ .crm-hero-logo }
-# crm
+![crm](assets/mark.svg){ .crm-hero-mark }
+<h1>crm<span class="crm-hero-dot">.</span></h1>
 </div>
 
 ### Drive Dynamics 365 CE from your shell — on-prem (NTLM) or Dataverse (OAuth), one CLI.

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="crm">
+  <!-- ITWorx-style red aperture mark (no wordmark — the hero heading is the wordmark) -->
+  <circle cx="24" cy="24" r="17" fill="#C83428"/>
+  <path d="M24 24 L24 7 A17 17 0 0 0 9.3 32.5 Z" fill="#ffffff" opacity="0.92"/>
+  <circle cx="24" cy="24" r="4.5" fill="#ffffff"/>
+</svg>
