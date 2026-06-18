@@ -49,3 +49,26 @@
 [data-md-color-scheme="slate"][data-md-color-accent="custom"] {
   --md-accent-fg-color: var(--itworx-red-light);
 }
+
+/* ---- Home page hero ---------------------------------------------------- */
+.crm-hero {
+  text-align: center;
+  padding: 2.5rem 1rem 1.5rem;
+}
+.crm-hero-logo {
+  width: 72px;
+  height: 72px;
+}
+.crm-hero h1 {
+  margin: 0.4rem 0 0;
+  font-weight: 700;
+}
+.crm-hero h3 {
+  margin: 0.4rem auto 1.4rem;
+  max-width: 36rem;
+  font-weight: 400;
+  color: var(--md-default-fg-color--light);
+}
+.crm-hero .md-button {
+  margin: 0.3rem 0.4rem;
+}
