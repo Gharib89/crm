@@ -97,7 +97,7 @@ Issues live in GitHub Issues at `Gharib89/crm`. Use the `gh` CLI. See `docs/agen
 
 ### Triage labels
 
-Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`, plus `agent-working` (claimed by `/ship`). `/ship` drives the claim lifecycle itself — phase 1 claims (`ready-for-agent` → `agent-working` + comment), phase 6 comments the PR link, merge closes. See `docs/agents/triage-labels.md`.
 
 ### Code review
 

@@ -14,16 +14,13 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
    It installs the crm CLI, builds the active `agent-cloud` profile from the
    environment's D365_* connection variables, and confirms the cloud org via whoami.
    If it exits non-zero, report the failure and STOP.
-2. Pick + claim the work item (gh reads GH_TOKEN from the environment):
+2. Pick the work item (gh reads GH_TOKEN from the environment):
    NUM=$(gh issue list --repo Gharib89/crm --label ready-for-agent --state open \
          --json number --jq 'sort_by(.number)[0].number // empty')
    If NUM is empty, report "nothing ready" and STOP — do not open a PR.
-   Claim it IMMEDIATELY, before any work, so the next hourly fire cannot pick the
-   same issue while you (or an open PR) still hold it:
-   gh issue edit "$NUM" --repo Gharib89/crm --remove-label ready-for-agent --add-label agent-working
-   gh issue comment "$NUM" --repo Gharib89/crm --body "Claimed by the cloud ship routine."
-   The claim removes ready-for-agent, so the picker above never returns a
-   claimed/in-progress issue or one that already has an open PR.
+   Do NOT claim it here — /ship claims it in its phase 1 (removes ready-for-agent,
+   adds agent-working, comments). Since the claim drops ready-for-agent, this picker
+   never returns an issue that is already claimed or has an open PR.
 3. Rename the working branch off the sandbox default. A cloud fire starts you on an
    auto `claude/<random>` branch; the repo convention (and /ship's) is
    `<type>/<slug>-$NUM` — `<type>` = `fix` for a bug, `feat` otherwise, `<slug>` a
@@ -139,29 +136,28 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 ## Concurrency & issue-label lifecycle
 
 The routine fires hourly and a merge-ready PR can sit unmerged for a while, so each
-fire must not re-pick an issue another fire already owns. A label state machine keeps
-one owner per issue:
+fire must not re-pick an issue another fire already owns. The `agent-working` claim
+label gives one owner per issue: `/ship` claims the issue itself (phase 1) and
+comments the PR link (phase 6), so the routine only *picks* — it does not relabel at
+the start. The one relabel the routine owns is the **blocked** hand-off (step 4:
+`agent-working` → `ready-for-human`), since not-shippable is a routine policy, not a
+`/ship` step. The claim convention lives in `CLAUDE.md` → "Triage labels".
 
-- `ready-for-agent` — queued, unclaimed; the picker takes the oldest of these.
-- `agent-working` — claimed by a fire (in progress, or PR open awaiting human merge).
-  Claiming **removes** `ready-for-agent`, so the picker can no longer see the issue.
-- merge the PR → `Closes #N` closes the issue → it leaves the open queue for good.
-- `ready-for-human` — `/ship` could not ship it (ambiguous, on-prem-only, red CI); a
-  human takes over. Deliberately **not** auto-requeued (avoids an infinite fail loop).
+Because a fire never waits at the merge gate (step 5), a merge-ready issue is left
+`agent-working` with its open PR; later fires skip it (it no longer carries
+`ready-for-agent`) until a human merges and `Closes #N` closes it. `GH_TOKEN` needs
+Issues:write (already in the env config) for `/ship`'s relabel + comments.
 
-One-time setup — create the claim label once:
+Stale-claim recovery: if a fire dies after claiming but before opening a PR, the issue
+sits `agent-working` with no PR and is not retried — relabel it `ready-for-agent` by
+hand to requeue.
+
+One-time setup — create the claim label once (idempotent; skip if it exists):
 
 ```
 gh label create agent-working --repo Gharib89/crm --color FBCA04 \
-  --description "Claimed by the cloud ship routine (in progress or PR open)"
+  --description "Claimed by /ship — in progress, or PR open awaiting human merge"
 ```
-
-Also add `agent-working` to the canonical triage label set (`docs/agents/triage-labels.md`).
-`GH_TOKEN` needs Issues:write (already in the env config) for the relabel + comment.
-
-Stale-claim recovery: if a fire dies after claiming but before opening a PR, the issue
-stays `agent-working` with no PR. The routine will not retry it — relabel it
-`ready-for-agent` by hand to requeue.
 
 ## Schedule
 

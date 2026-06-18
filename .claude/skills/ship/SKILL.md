@@ -139,12 +139,12 @@ summary leaves you unable to tell which phase you were in, so you skip or repeat
 one. Create exactly these ten items:
 
 - [ ] 0 · Isolate — worktree on a fresh branch off default
-- [ ] 1 · Understand — fetch issue, derive success, apply spec precedence
+- [ ] 1 · Understand — fetch issue, derive success, claim it, apply spec precedence
 - [ ] 2 · Implement — classify (docs/code/infra), then TDD per class
 - [ ] 3 · Integrated test — live-test only what you touched, on the reported target
 - [ ] 4 · Self-review — `review` skill on the diff, auto-triage findings
 - [ ] 5 · Local gate — mirror the full CI checks, all green
-- [ ] 6 · Open PR — ready (non-draft), Conventional-Commit title
+- [ ] 6 · Open PR — ready (non-draft), Conventional-Commit title, reflect on the issue
 - [ ] 7 · Review-bot loop — only if the repo has a bot; drive to the ceiling
 - [ ] 8 · CI — resolve any base-branch conflict, then land the checks green
 - [ ] 9 · Merge gate — hard stop for human merge approval
@@ -170,7 +170,14 @@ an axis dropped), the latest authoritative spec wins, and the body's original
 acceptance criteria no longer bind. Note this explicitly, because a review bot
 reading the stale body will flag "missing" requirements you deliberately cut —
 you'll reject those in phases 4/7 with this as the reason. **If it's too vague to
-plan, stop and ask** (the ambiguity rail). Otherwise continue without pausing.
+plan, stop and ask** (the ambiguity rail).
+
+**Claim it before implementing.** Once it clears the ambiguity rail, mark the issue
+in-progress per the project's claim convention (concrete labels/commands: project
+instructions) so a concurrent or scheduled run can't double-pick it — idempotent, so
+re-applying a pre-claim is fine. Skip if there's no issue (free-text `$ARGUMENTS`) or
+no documented convention. Don't claim if you stopped on the ambiguity rail; if you
+claim and later stop blocked, hand the issue back rather than leave a dangling claim.
 
 **2 · Implement.** First **classify the change** into one of three classes — this
 decides whether TDD applies and (later) the review ceiling. **Announce the class
@@ -248,6 +255,11 @@ project's automated review. Title it as a Conventional-Commit subject derived
 from the issue (this is what release tooling reads on squash-merge — see project
 instructions), body closes the issue. An automated round-1 review may fire on PR
 creation per project config; **don't re-request round 1.**
+
+**Reflect the PR back on the issue.** Right after opening, update the issue per the
+project's convention (typically a comment linking the PR) so the tracker shows *PR
+open, awaiting review/merge* — keeping a scheduled run from re-picking it. The PR
+body's close keyword is the durable link; skip if the project documents no convention.
 
 **7 · Review-bot loop.** **Only if the repo has an automated reviewer configured**
 (per project instructions — not every repo does; this is a repo config, never an
