@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.23.0 (2026-06-18)
+
+### Features
+
+- **security**: Add record sharing verbs (grant/revoke/list-access)
+  ([#397](https://github.com/Gharib89/crm/pull/397),
+  [`94e5a56`](https://github.com/Gharib89/crm/commit/94e5a56b4ec1b3cbb2ce6016600f97afcdbd2f01))
+
+
 ## v4.22.0 (2026-06-18)
 
 ### Features
