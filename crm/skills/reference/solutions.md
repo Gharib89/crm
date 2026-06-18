@@ -53,12 +53,22 @@ crm solution export MyCustomSolution -o /tmp/snap.zip
 
 ```bash
 crm solution import /tmp/snap.zip --yes
-# --no-overwrite prevents overwriting existing unmanaged customizations in the target
+# --no-overwrite keeps existing unmanaged customizations (default: overwrite on)
+# --no-publish skips the ImportSolution workflow-publish step (default: publish on)
 ```
 
 **Gotcha:** `solution import` **OVERWRITES** unmanaged customizations in the target org by
-default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
-context aborts.
+default. `--overwrite/--no-overwrite` and `--publish/--no-publish` are opt-in pairs
+(both default on): pass `--no-overwrite` to keep existing customizations; pass `--no-publish`
+to skip workflow publishing during import. Omitting `--yes` in a non-interactive context aborts.
+
+**Gotcha — `--publish` ≠ `PublishAllXml`.** The `--publish` flag on `solution import` (and
+`stage-and-upgrade`) triggers the **ImportSolution** publish step — it publishes workflows
+embedded in the solution package during the import request. It is **not** the same as
+`crm solution publish-all` (which calls `PublishAllXml` and surfaces metadata changes, views,
+and forms in the app UI). After a solution import you still need a separate
+`crm solution publish-all` to make those changes visible. Contrast with
+`translation import --publish`, which **does** call `PublishAllXml`.
 
 **Gotcha — product-update dependency block.** If the server rejects the import before
 processing any components due to a product-update dependency check, pass
