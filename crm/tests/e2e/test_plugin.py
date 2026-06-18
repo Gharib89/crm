@@ -67,6 +67,61 @@ def test_image_register_read_unregister_roundtrip(backend, request):
     assert deleted["deleted"] is True
 
 
+@covers("plugin register-webhook")
+def test_webhook_register_and_bind_step_roundtrip(backend, request):
+    """register_webhook -> register a step bound to it -> read back -> cleanup.
+
+    The serviceendpoint create is self-contained (no signed assembly needed),
+    so this runs on any reachable org. It also exercises register_step's
+    service-endpoint binding path (eventhandler_serviceendpoint) — a mock
+    can't validate the @odata.bind key casing (the #159 lesson), so the POST
+    must hit a real org. There is no CLI delete verb for a service endpoint,
+    so cleanup is via the backend in a finalizer.
+    """
+    from crm.core import plugin as plugin_mod
+
+    name = f"e2e webhook {os.getpid()}"
+    hook = plugin_mod.register_webhook(
+        backend, name=name, url="https://example.com/e2e-hook",
+        auth="webhookkey", auth_value="e2e-secret")
+    assert hook["created"] is True
+    se_id = hook["serviceendpointid"]
+    assert se_id, f"no serviceendpointid parsed: {hook}"
+
+    state = {"step_id": None}
+
+    def _cleanup():
+        if state["step_id"]:
+            try:
+                backend.delete(f"sdkmessageprocessingsteps({state['step_id']})")
+            except Exception:
+                pass
+        try:
+            backend.delete(f"serviceendpoints({se_id})")
+        except Exception:
+            pass
+    request.addfinalizer(_cleanup)
+
+    got = backend.get(f"serviceendpoints({se_id})",
+                      params={"$select": "url,contract,authtype"})
+    assert got["contract"] == 8          # Webhook
+    assert got["authtype"] == 4          # Webhook Key
+    assert got["url"] == "https://example.com/e2e-hook"
+
+    step = plugin_mod.register_step(
+        backend, message="Create", entity="account",
+        service_endpoint=name, name=f"e2e webhook step {os.getpid()}")
+    assert step["created"] is True
+    state["step_id"] = step["sdkmessageprocessingstepid"]
+    assert state["step_id"], f"no step id parsed: {step}"
+
+    bound = backend.get(
+        f"sdkmessageprocessingsteps({state['step_id']})",
+        params={"$expand": "eventhandler_serviceendpoint($select=serviceendpointid)"})
+    handler = bound.get("eventhandler_serviceendpoint") or {}
+    assert handler.get("serviceendpointid", "").lower() == se_id.lower()
+
+
 @covers("plugin list-types")
 def test_plugin_list_types_returns_list(cli):
     """list-types returns a list (possibly empty on orgs with no custom assemblies).

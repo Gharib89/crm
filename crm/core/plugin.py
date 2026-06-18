@@ -85,6 +85,20 @@ _IMAGE_TYPE: dict[str, int] = {
     "pre": 0,
     "post": 1,
 }
+# Webhook auth scheme -> serviceendpoint.authtype option set (verified MS Learn:
+# serviceendpoint entity reference). Only the three webhook-valid schemes are
+# exposed; the Service Bus auth types (ACS / SAS*) don't apply to a webhook.
+_WEBHOOK_AUTHTYPE: dict[str, int] = {
+    "webhookkey": 4,       # Webhook Key (?code=<value>, e.g. Azure Functions)
+    "httpheader": 5,       # Http Header (key:value pairs in the request header)
+    "httpquerystring": 6,  # Http Query String (key=value query params)
+}
+# serviceendpoint option-set constants for a webhook (verified MS Learn):
+# contract 8=Webhook, connectionmode 1=Normal, messageformat 2=Json (a webhook
+# always receives the JSON RemoteExecutionContext payload).
+_WEBHOOK_CONTRACT = 8
+_CONNECTION_MODE_NORMAL = 1
+_MESSAGE_FORMAT_JSON = 2
 # Message name (lowercased) -> Request property the image snapshots, from
 # MS Learn "Register a plug-in" (messages that support entity images). Send is
 # deliberately absent: its property depends on what is sent (FaxId / EmailId /
@@ -214,7 +228,7 @@ def register_step(
     backend: D365Backend,
     *,
     message: str,
-    plugin_type: str,
+    plugin_type: str | None = None,
     entity: str | None = None,
     stage: str = "postoperation",
     mode: str = "sync",
@@ -222,17 +236,24 @@ def register_step(
     filtering_attributes: str | None = None,
     name: str | None = None,
     assembly: str | None = None,
+    service_endpoint: str | None = None,
     solution: str | None = None,
 ) -> dict[str, Any]:
     """Register an `sdkmessageprocessingstep` (a plug-in step).
 
-    Resolves the SDK message (by `message` name) and the plug-in type (by
-    `plugin_type` typename, optionally scoped to `assembly` by name) to their
-    ids, then POSTs a step bound to them. When `entity` is given, the message's
+    The step's event handler is either a plug-in type (`plugin_type` typename,
+    optionally scoped to `assembly` by name) or a service endpoint
+    (`service_endpoint` by name, e.g. a webhook registered with
+    `register_webhook`) — provide exactly one. The handler is bound via the
+    polymorphic `eventhandler` lookup: `plugintypeid` for a plug-in type,
+    `eventhandler_serviceendpoint` for a service endpoint. Resolves the SDK
+    message (by `message` name) and the chosen handler to their ids, then POSTs
+    a step bound to them. When `entity` is given, the message's
     `sdkmessagefilter` for that `primaryobjecttypecode` is resolved and bound so
     the step fires only for that entity; with no `entity` the step is
-    message-level (fires for all entities). A missing message, plug-in type, or
-    (entity-given) filter raises D365Error.
+    message-level (fires for all entities). A missing message, handler, or
+    (entity-given) filter raises D365Error, as does passing neither or both
+    handlers.
 
     Option-set values verified against MS Learn's sdkmessageprocessingstep
     entity reference: stage prevalidation=10 / preoperation=20 /
@@ -246,6 +267,11 @@ def register_step(
 
     Dry-run returns the backend preview as-is (no real POST).
     """
+    if (plugin_type is None) == (service_endpoint is None):
+        raise D365Error(
+            "Provide exactly one of plugin_type or service_endpoint "
+            "(a step binds to a single event handler).",
+            code="StepHandlerRequired")
     if stage not in _STAGE:
         raise D365Error(
             f"Unknown stage {stage!r}; choose from {sorted(_STAGE)}.")
@@ -267,16 +293,26 @@ def register_step(
     # pre-flight finding, not a server fault (#281). An id that does resolve is
     # reused so the preview body matches what the real write would POST.
     references: list[ref_mod.Reference] = []
+    plugintype_id: str | None = None
+    serviceendpoint_id: str | None = None
     if backend.dry_run:
         message_id = _resolve_or_none(
             lambda: _resolve_sdkmessage_id(backend, message), "SdkMessageNotFound")
-        plugintype_id = _resolve_or_none(
-            lambda: _resolve_plugintype_id(backend, plugin_type, assembly),
-            "PluginTypeNotFound")
         references.append(ref_mod.make_reference(
             "message", message, message_id is not None))
-        references.append(ref_mod.make_reference(
-            "plugin_type", plugin_type, plugintype_id is not None))
+        if plugin_type is not None:
+            plugintype_id = _resolve_or_none(
+                lambda: _resolve_plugintype_id(backend, plugin_type, assembly),
+                "PluginTypeNotFound")
+            references.append(ref_mod.make_reference(
+                "plugin_type", plugin_type, plugintype_id is not None))
+        elif service_endpoint is not None:  # exactly-one guard above ensures this
+            serviceendpoint_id = _resolve_or_none(
+                lambda: _resolve_serviceendpoint_id(backend, service_endpoint),
+                "ServiceEndpointNotFound")
+            references.append(ref_mod.make_reference(
+                "service_endpoint", service_endpoint,
+                serviceendpoint_id is not None))
         filter_id: str | None = None
         if entity is not None:
             # The filter binds an entity to a message, so it can only resolve when
@@ -289,12 +325,17 @@ def register_step(
                 "entity", entity, filter_id is not None))
     else:
         message_id = _resolve_sdkmessage_id(backend, message)
-        plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
+        if plugin_type is not None:
+            plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
+        elif service_endpoint is not None:  # exactly-one guard above ensures this
+            serviceendpoint_id = _resolve_serviceendpoint_id(
+                backend, service_endpoint)
         filter_id = (_resolve_sdkmessagefilter_id(backend, entity, message_id)
                      if entity is not None else None)
 
+    handler_label = plugin_type or service_endpoint
     resolved_name = name or (
-        f"{plugin_type}: {message} of {entity or 'any entity'}")
+        f"{handler_label}: {message} of {entity or 'any entity'}")
     body: dict[str, Any] = {
         "name": resolved_name,
         "stage": stage_int,
@@ -309,6 +350,9 @@ def register_step(
         body["sdkmessageid@odata.bind"] = f"/sdkmessages({message_id})"
     if plugintype_id is not None:
         body["plugintypeid@odata.bind"] = f"/plugintypes({plugintype_id})"
+    if serviceendpoint_id is not None:
+        body["eventhandler_serviceendpoint@odata.bind"] = (
+            f"/serviceendpoints({serviceendpoint_id})")
     if entity is not None and filter_id is not None:
         body["sdkmessagefilterid@odata.bind"] = (
             f"/sdkmessagefilters({filter_id})")
@@ -333,6 +377,7 @@ def register_step(
         "message": message,
         "entity": entity,
         "plugintype": plugin_type,
+        "service_endpoint": service_endpoint,
         "solution": solution,
     }
     if not sid:
@@ -340,6 +385,69 @@ def register_step(
         out["sdkmessageprocessingstep_lookup_error"] = (
             "Could not parse sdkmessageprocessingstepid from response: "
             f"{entity_id_url!r}"
+        )
+    return out
+
+
+def register_webhook(
+    backend: D365Backend,
+    *,
+    name: str,
+    url: str,
+    auth: str,
+    auth_value: str,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Register a webhook `serviceendpoint` (contract=8).
+
+    POSTs a serviceendpoint row for an HTTP webhook: `url` is the endpoint the
+    platform POSTs the JSON execution context to, `auth` selects the
+    authentication scheme the endpoint expects, and `auth_value` is the
+    corresponding secret (the `?code=` value for webhookkey, or the header /
+    query-string key-value pairs). The auth value is write-only on the platform
+    and is never echoed back. Raises D365Error on an unknown `auth` scheme.
+
+    The serviceendpoint has no foreign keys to resolve, so a dry-run simply
+    returns the backend preview (no reference probe, unlike register_step).
+
+    Option-set values verified against MS Learn's serviceendpoint entity
+    reference: authtype webhookkey=4 / httpheader=5 / httpquerystring=6;
+    contract 8=Webhook, connectionmode 1=Normal, messageformat 2=Json.
+    """
+    if auth not in _WEBHOOK_AUTHTYPE:
+        raise D365Error(
+            f"Unknown auth scheme {auth!r}; choose from "
+            f"{sorted(_WEBHOOK_AUTHTYPE)}.")
+    authtype_int = _WEBHOOK_AUTHTYPE[auth]
+    body: dict[str, Any] = {
+        "name": name,
+        "url": url,
+        "contract": _WEBHOOK_CONTRACT,
+        "connectionmode": _CONNECTION_MODE_NORMAL,
+        "messageformat": _MESSAGE_FORMAT_JSON,
+        "authtype": authtype_int,
+        "authvalue": auth_value,
+    }
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post(
+        "serviceendpoints", json_body=body, extra_headers=headers))
+    if result.get("_dry_run"):
+        return result
+
+    sid = result.get("_entity_id")
+    out: dict[str, Any] = {
+        "created": True,
+        "serviceendpointid": sid,
+        "name": name,
+        "url": url,
+        "contract": _WEBHOOK_CONTRACT,
+        "authtype": authtype_int,
+        "solution": solution,
+    }
+    if not sid:
+        entity_id_url = result.get("_entity_id_url") or ""
+        out["serviceendpoint_lookup_error"] = (
+            f"Could not parse serviceendpointid from response: {entity_id_url!r}"
         )
     return out
 
@@ -684,6 +792,22 @@ def _resolve_plugintype_id(
         raise D365Error(
             f"Plug-in type not found: {typename}", code="PluginTypeNotFound")
     return str(rows[0]["plugintypeid"])
+
+
+def _resolve_serviceendpoint_id(backend: D365Backend, name: str) -> str:
+    """Resolve a service endpoint id by exact name.
+
+    Forces a real read even under dry-run (mirrors the other step-handler
+    resolvers — a step is POSTed only after its bound id is known).
+    """
+    sid = backend.resolve_id_by_name(
+        "serviceendpoints", filter_field="name",
+        id_field="serviceendpointid", value=name)
+    if not sid:
+        raise D365Error(
+            f"Service endpoint not found: {name}",
+            code="ServiceEndpointNotFound")
+    return sid
 
 
 def _resolve_sdkmessagefilter_id(

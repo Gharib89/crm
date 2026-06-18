@@ -76,8 +76,13 @@ def list_types_cmd(ctx: CLIContext, assembly):
 @plugin_group.command("register-step")
 @click.option("--message", required=True,
               help="SDK message name (e.g. Create, Update, Delete).")
-@click.option("--plugin-type", "plugin_type", required=True,
-              help="Plug-in type name (the fully qualified typename).")
+@click.option("--plugin-type", "plugin_type", default=None,
+              help="Plug-in type name (the fully qualified typename). Provide "
+                   "this or --service-endpoint (exactly one event handler).")
+@click.option("--service-endpoint", "service_endpoint", default=None,
+              help="Bind the step to a service endpoint (e.g. a webhook from "
+                   "register-webhook) by name instead of a plug-in type. "
+                   "Provide this or --plugin-type (exactly one event handler).")
 @click.option("--entity", default=None,
               help="Primary entity logical name (primaryobjecttypecode). "
                    "Omit for a message-level step (all entities).")
@@ -101,20 +106,54 @@ def list_types_cmd(ctx: CLIContext, assembly):
               help="Scope the plug-in type lookup to this assembly (by name).")
 @_solution_option
 @pass_ctx
-def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
-                      mode, rank, filtering_attributes, name, assembly,
-                      solution, require_solution):
-    """Register a plug-in step (sdkmessageprocessingstep)."""
+def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
+                      entity, stage, mode, rank, filtering_attributes, name,
+                      assembly, solution, require_solution):
+    """Register a plug-in step (sdkmessageprocessingstep).
+
+    The step's event handler is a plug-in type (--plugin-type) or a service
+    endpoint such as a webhook (--service-endpoint) — pass exactly one.
+    """
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     with d365_errors(ctx):
         info = plugin_mod.register_step(
             ctx.backend(), message=message, plugin_type=plugin_type,
-            entity=entity, stage=stage, mode=mode, rank=rank,
-            filtering_attributes=filtering_attributes, name=name,
-            assembly=assembly, solution=solution)
+            service_endpoint=service_endpoint, entity=entity, stage=stage,
+            mode=mode, rank=rank, filtering_attributes=filtering_attributes,
+            name=name, assembly=assembly, solution=solution)
     _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
-    _journal(ctx, plugin_type, info, solution=solution)
+    _journal(ctx, plugin_type or service_endpoint, info, solution=solution)
+
+
+@plugin_group.command("register-webhook")
+@click.option("--name", required=True,
+              help="Unique webhook name (serviceendpoint.name).")
+@click.option("--url", required=True,
+              help="Endpoint URL the platform POSTs the execution context to "
+                   "(http on port 80 or https on port 443).")
+@click.option("--auth",
+              type=click.Choice(["webhookkey", "httpheader", "httpquerystring"]),
+              required=True,
+              help="Authentication scheme the endpoint expects (authtype: "
+                   "webhookkey=4, httpheader=5, httpquerystring=6).")
+@click.option("--auth-value", "auth_value", required=True,
+              help="Authentication value the endpoint expects (the ?code= key "
+                   "for webhookkey, or the header/query-string key-value "
+                   "pairs). Write-only; the platform never returns it.")
+@_solution_option
+@pass_ctx
+def register_webhook_cmd(ctx: CLIContext, name, url, auth, auth_value,
+                         solution, require_solution):
+    """Register a webhook service endpoint (serviceendpoint, contract=8)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    with d365_errors(ctx):
+        info = plugin_mod.register_webhook(
+            ctx.backend(), name=name, url=url, auth=auth,
+            auth_value=auth_value, solution=solution)
+    _emit_with_warning(ctx, info, warning,
+                       meta=ctx.staged_meta())
+    _journal(ctx, name, info, solution=solution)
 
 
 @plugin_group.command("register-image")

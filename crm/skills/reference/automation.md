@@ -23,17 +23,35 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update
 # list-types: platform-generated rows in plugintypes (one per IPlugin class).
 crm --json plugin list-types --assembly Contoso.Plugins
 
-# register-step: --message and --plugin-type are required. async forces postoperation.
-# --entity sets primaryobjecttypecode (omit = all entities); --filtering-attributes
-# (comma-separated) restricts an Update step. The step name is auto-derived as
-# '<typename>: <message> of <entity>'; pass --name when that would exceed the
-# 256-char platform limit. --solution/--require-solution accepted (same semantics
-# as register-assembly — sets MSCRM.SolutionUniqueName, step lands in that solution).
+# register-webhook: creates a serviceendpoint (contract=8). The platform POSTs
+# the JSON execution context to --url. --auth choices: webhookkey (appends
+# ?code=<auth-value>), httpheader, httpquerystring. --auth-value is write-only
+# (the platform never returns it). --solution/--require-solution accepted.
+crm --json plugin register-webhook \
+    --name MyWebhook \
+    --url https://func.azurewebsites.net/api/d365hook \
+    --auth webhookkey --auth-value 'abc123secret' \
+    --solution cwx_contoso
+
+# register-step: --message is required; pass exactly ONE of --plugin-type or
+# --service-endpoint (the step's polymorphic event handler). --plugin-type binds
+# via plugintypeid; --service-endpoint (e.g. a webhook from register-webhook)
+# binds via eventhandler_serviceendpoint (uses the endpoint name). async forces
+# postoperation. --entity sets primaryobjecttypecode (omit = all entities);
+# --filtering-attributes (comma-separated) restricts an Update step. The step
+# name is auto-derived as '<handler>: <message> of <entity>'; pass --name when
+# that would exceed the 256-char platform limit.
+# --solution/--require-solution accepted (same semantics as register-assembly).
 crm --json plugin register-step \
     --message Update \
     --plugin-type Contoso.Plugins.AccountPostUpdate \
     --entity account --stage postoperation --mode sync \
     --filtering-attributes name,telephone1
+
+# Bind a step to a webhook instead of a plug-in type:
+crm --json plugin register-step \
+    --message Create --service-endpoint MyWebhook \
+    --entity account --stage postoperation --mode async
 ```
 
 ```bash
@@ -63,8 +81,8 @@ crm --json plugin unregister-assembly Contoso.Plugins --yes
 
 `--dry-run` skips all writes (resolution GETs still fire); the `--json` envelope
 carries `meta.dry_run: true`. On `register-step` the preview also resolves the
-objects the step names — the SDK message, the plug-in type, and (entity-scoped)
-the message filter for that entity — and reports each under
+objects the step names — the SDK message, the plug-in type or service endpoint,
+and (entity-scoped) the message filter for that entity — and reports each under
 `data.references[] = {kind, value, _exists}`. A reference that does not resolve
 stays a non-failing preview (`ok: true`) and adds a `meta.warnings` advisory
 naming it, so a dangling name is caught before the real write 400s.
