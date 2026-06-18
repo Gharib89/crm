@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.16.1 (2026-06-18)
+
+### Bug Fixes
+
+- **query**: Default --annotations to True on query odata/fetchxml
+  ([#390](https://github.com/Gharib89/crm/pull/390),
+  [`0af693c`](https://github.com/Gharib89/crm/commit/0af693cc7a9ce63c9301f7f83d353fe45e40374e))
+
+
 ## v4.16.0 (2026-06-18)
 
 ### Features
