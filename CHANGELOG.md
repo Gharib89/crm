@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.19.0 (2026-06-18)
+
+### Features
+
+- **plugin**: Consistent --solution across register-assembly/step/image
+  ([#393](https://github.com/Gharib89/crm/pull/393),
+  [`14a734b`](https://github.com/Gharib89/crm/commit/14a734b86cf927b228ef90c51febb625d3911d8d))
+
+
 ## v4.18.0 (2026-06-18)
 
 ### Features
