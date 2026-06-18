@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.22.0 (2026-06-18)
+
+### Features
+
+- **action**: Parameter aliases and @odata.id record-reference params for action function
+  ([#396](https://github.com/Gharib89/crm/pull/396),
+  [`acece55`](https://github.com/Gharib89/crm/commit/acece555d43c336feaa45e7c777b97308617ed0f))
+
+
 ## v4.21.0 (2026-06-18)
 
 ### Features
