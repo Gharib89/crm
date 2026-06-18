@@ -24,10 +24,19 @@ crm --json translation import labels.zip --yes
 
 # 4. Publish — imported labels do NOT surface until published
 crm --json solution publish-all
+
+# One-step alternative: import + publish in a single call
+crm --json translation import labels.zip --yes --publish
 ```
 
 `translation import` reports the `import_job_id`; per-component results are
 retrievable from the import job (`crm solution import-result <id>`).
+
+`--publish` runs `PublishAllXml` immediately after a successful import, so
+labels surface without a separate `crm solution publish-all` step. Default off
+— omitting it leaves the existing behavior (import only, warning shown).
+Under `--dry-run` the import is previewed and publish is skipped; the warning
+is still emitted.
 
 ## Gotchas
 

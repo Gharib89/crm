@@ -184,6 +184,64 @@ class TestTranslationCommands:
         assert result.exit_code == 1
         assert "aborted by user" in result.output
 
+    def test_import_command_with_publish_flag_calls_publish_all(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        src = _write_translations_zip(tmp_path / "labels.zip")
+        from crm.commands import translation as tr_cmd
+        monkeypatch.setattr(
+            tr_cmd.translation_mod, "import_translation",
+            lambda backend, zip_path, **kw: {
+                "import_job_id": "11111111-2222-3333-4444-555555555555",
+                "status": "succeeded", "action": "ImportTranslation",
+            },
+        )
+        published = {}
+        import crm.core.solution as sol_core
+        monkeypatch.setattr(
+            sol_core, "publish_all",
+            lambda backend: published.update(called=True) or {"published": True, "action": "PublishAllXml"},
+        )
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "--json", "translation", "import", str(src), "--yes", "--publish",
+        ])
+        assert result.exit_code == 0, result.output
+        import json
+        envelope = json.loads(result.stdout)
+        assert envelope["ok"] is True
+        assert envelope["data"]["publish"]["published"] is True
+        assert published.get("called") is True
+        warnings = envelope.get("meta", {}).get("warnings", [])
+        assert not any("publish-all" in w for w in warnings)
+
+    def test_import_command_with_publish_flag_dry_run_skips_publish(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        src = _write_translations_zip(tmp_path / "labels.zip")
+        from crm.commands import translation as tr_cmd
+        monkeypatch.setattr(
+            tr_cmd.translation_mod, "import_translation",
+            lambda backend, zip_path, **kw: {
+                "_dry_run": True,
+                "import_job_id": "11111111-2222-3333-4444-555555555555",
+                "action": "ImportTranslation",
+            },
+        )
+        publish_called = []
+        import crm.core.solution as sol_core
+        monkeypatch.setattr(sol_core, "publish_all", lambda backend: publish_called.append(True) or {})
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "--json", "translation", "import", str(src), "--yes", "--publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert not publish_called, "publish_all must not be called under dry-run"
+        import json
+        envelope = json.loads(result.stdout)
+        warnings = " ".join(envelope.get("meta", {}).get("warnings", []))
+        assert "publish" in warnings.lower(), (
+            "warning must still appear when --publish skipped due to dry-run"
+        )
+
     def test_import_command_with_yes_runs_and_hints_publish(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         src = _write_translations_zip(tmp_path / "labels.zip")
