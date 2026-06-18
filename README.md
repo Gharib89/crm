@@ -399,6 +399,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `sla`        | Activate an SLA and its backing workflows, with structured per-step compile-error reporting |
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |
 | `action`     | Call arbitrary OData functions and actions                 |
+| `audit`      | Retrieve server-side D365 audit change history (`audit history` / `audit detail`) — distinct from the local `session audit` journal |
 | `session`    | Local session state, command history, and audit journal    |
 | `completion` | Print or install shell completion (bash/zsh/fish/powershell); install caches the script + prints the rc line to source |
 | `self-update` | Upgrade a frozen (install-script) binary in place and re-sync installed agent skills + shell completion; `--check` reports current vs latest |

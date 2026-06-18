@@ -59,6 +59,7 @@ E2E_SKIP: dict[str, str] = {
     # setup (register-assembly + register-step) is itself in E2E_SKIP.
     "plugin unregister-assembly": "requires a registered plugin assembly to unregister; register-assembly is in E2E_SKIP (needs a prebuilt signed .dll)",
     "plugin unregister-step": "requires a registered plugin step to unregister; creating one needs a registered assembly (register-assembly is in E2E_SKIP)",
+    "audit detail": "needs a pre-existing audit row to decode; the cloud test org has org-level auditing disabled (isauditenabled=false) and an empty audits table, and enabling org auditing + generating audited data is not safe/deterministic within e2e",
 }
 
 

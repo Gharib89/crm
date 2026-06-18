@@ -87,3 +87,22 @@ crm session clear             # reset local session state
 
 The audit journal is local bookkeeping of the mutations this CLI issued — useful for
 reconstructing what an agent run changed. It is not the server-side D365 audit log.
+
+## Server-side audit history
+
+To read the D365 server's own audit records use `crm audit`, not `crm session audit`.
+
+```bash
+crm --json audit history <entity-set> <record-guid>   # paged AuditDetailCollection
+crm --json audit detail  <auditid-guid>               # single decoded AuditDetail
+```
+
+**Prerequisites:** the calling user needs `prvReadRecordAuditHistory` + `prvReadAuditSummary`
+privileges, and auditing must be enabled on the org/table/columns — otherwise the server
+returns an empty `AuditDetailCollection` (no error). Each `AuditDetail` entry exposes
+`AuditDetailType` (e.g. `AttributeAuditDetail`) — the Web API `@odata.type` discriminator
+promoted to a plain field because the standard emit envelope strips all `@odata.*` keys.
+
+These functions (`RetrieveRecordChangeHistory`, `RetrieveAuditDetails`) cannot be called
+via `action function` because they require OData parameter aliases for complex-type
+arguments that the inline `Fn(k=v)` encoding cannot express.
