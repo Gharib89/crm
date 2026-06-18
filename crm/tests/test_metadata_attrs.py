@@ -524,6 +524,43 @@ class TestAddAttributeLookup:
             )
 
 
+class TestAddAttributeCustomer:
+    def test_customer_dispatches_to_create_customer_relationships(self, backend, monkeypatch):
+        from crm.core import metadata_attrs as ma
+        from crm.core import relationships as rel
+        calls: dict[str, Any] = {}
+
+        def fake_create_customer(b, **kw):
+            calls.update(kw)
+            return {
+                "created": True, "kind": "Customer",
+                "schema_name": kw["lookup_schema"],
+                "targets": ["account", "contact"],
+            }
+
+        monkeypatch.setattr(rel, "create_customer_relationships", fake_create_customer)
+        info = ma.add_attribute(
+            backend, entity="new_widget", kind="customer",
+            schema_name="new_CustomerId", display_name="Customer",
+            description="Owner",
+        )
+        assert info["kind"] == "Customer"
+        assert info["targets"] == ["account", "contact"]
+        assert calls["referencing_entity"] == "new_widget"
+        assert calls["lookup_schema"] == "new_CustomerId"
+        assert calls["lookup_display"] == "Customer"
+        assert calls["lookup_description"] == "Owner"
+
+    def test_customer_rejects_target_entity(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="target-entity"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="customer",
+                schema_name="new_CustomerId", display_name="Customer",
+                target_entity="account",
+            )
+
+
 class TestAddAttributeImageFile:
     def test_image(self, backend):
         from crm.core import metadata_attrs as ma

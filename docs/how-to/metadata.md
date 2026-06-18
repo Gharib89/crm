@@ -177,6 +177,17 @@ crm --dry-run --json metadata add-attribute cwx_ticket --kind lookup \
 
 A reference that does not resolve keeps the preview non-failing (`ok: true`) and adds a `meta.warnings` advisory naming it — so a dangling target entity or option set surfaces as a pre-flight finding instead of a server 400/404 at write time.
 
+## Add a Customer column (composite account/contact lookup)
+
+A *Customer* column is a single lookup that can point at **either an account or a contact** — the type used by the built-in `customerid`. It can't be made by a plain attribute write or a single-target `--kind lookup`; the server builds it from a dedicated action that creates the lookup plus one 1:N relationship to each of `account` and `contact` in one call.
+
+```bash
+crm --json metadata add-attribute cwx_ticket --kind customer \
+  --schema-name cwx_CustomerId --display "Customer" --if-exists skip
+```
+
+The targets are fixed to `account` + `contact`, so `--kind customer` takes no `--target-entity` (and the two relationship schema names are derived as `<entity>_<lookup>_account` / `_contact` — they aren't user-nameable). The result reports `targets: ["account", "contact"]` and the created `relationship_ids`.
+
 ## Verify a metadata change landed (`--expect`)
 
 A metadata change isn't readable until it's published. The repeatable `--expect ATTR=VALUE` flag on `metadata attribute` turns the read-back into a self-checking verify step — pair it with a create + publish to poll until the definition reflects the change:

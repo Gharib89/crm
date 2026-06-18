@@ -75,9 +75,12 @@ class KindInfo:
     precision_range: tuple[int, int] | None = None
 
 
-# The 14 attribute kinds add_attribute accepts (the 13 builder-backed kinds plus
-# the special-cased "lookup"). Casts mirror the create builders' inline literals;
-# type_names mirror the live AttributeTypeName.Value discriminators.
+# Attribute kinds with a distinct live type discriminator: the 13 builder-backed
+# kinds plus the special-cased "lookup". (The "customer" kind add_attribute also
+# accepts has no own entry — a Customer column reads back as a LookupType, so it
+# reverse-maps to "lookup"; only its Targets distinguish it.) Casts mirror the
+# create builders' inline literals; type_names mirror the live
+# AttributeTypeName.Value discriminators.
 KINDS: dict[str, KindInfo] = {
     "string": KindInfo("Microsoft.Dynamics.CRM.StringAttributeMetadata", "StringType"),
     "memo": KindInfo("Microsoft.Dynamics.CRM.MemoAttributeMetadata", "MemoType"),

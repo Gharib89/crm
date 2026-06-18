@@ -143,3 +143,29 @@ def test_add_datetime_with_behavior(backend, ephemeral_entity, behavior, expecte
     )
     assert rb["DateTimeBehavior"]["Value"] == behavior
     assert rb["Format"] == expected_format
+
+
+@covers("metadata add-attribute")
+def test_add_customer_attribute_targets_account_and_contact(backend, ephemeral_entity):
+    """#367: --kind customer creates a Customer composite lookup via the
+    CreateCustomerRelationships action; the column's Targets must be exactly
+    account + contact."""
+    from crm.core import metadata_attrs as ma
+    schema = "new_E2ECustomer"
+    info = ma.add_attribute(
+        backend,
+        entity=ephemeral_entity,
+        kind="customer",
+        schema_name=schema,
+        display_name="E2E customer",
+        publish=False,
+    )
+    assert info.get("created"), info
+    assert info["targets"] == ["account", "contact"]
+    rb = backend.get(
+        f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+        f"/Attributes(LogicalName='{schema.lower()}')"
+        f"/Microsoft.Dynamics.CRM.LookupAttributeMetadata",
+        params={"$select": "Targets"},
+    )
+    assert sorted(rb["Targets"]) == ["account", "contact"]

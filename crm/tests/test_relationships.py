@@ -125,6 +125,85 @@ class TestCreateOneToMany:
         assert "relationship_lookup_error" in info
 
 
+class TestCreateCustomerRelationships:
+    def _mock_not_exists(self, m, backend, entity, lookup_logical):
+        m.get(
+            backend.url_for(
+                f"EntityDefinitions(LogicalName='{entity}')"
+                f"/Attributes(LogicalName='{lookup_logical}')"
+            ),
+            status_code=404,
+            json={"error": {"code": "0x", "message": "not found"}},
+        )
+
+    def test_posts_action_with_composite_lookup_and_two_relationships(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            self._mock_not_exists(m, backend, "new_widget", "new_customerid")
+            m.post(
+                backend.url_for("CreateCustomerRelationships"),
+                json={
+                    "AttributeId": "aaaa1111-2222-3333-4444-555566667777",
+                    "RelationshipIds": ["rel-account", "rel-contact"],
+                },
+            )
+            info = rel.create_customer_relationships(
+                backend,
+                referencing_entity="new_widget",
+                lookup_schema="new_CustomerId",
+                lookup_display="Customer",
+                lookup_description="Owner",
+            )
+        post = next(r for r in m.request_history if r.method == "POST")
+        assert post.url.endswith("/CreateCustomerRelationships")
+        body = post.json()
+        assert body["Lookup"]["@odata.type"] == (
+            "Microsoft.Dynamics.CRM.ComplexLookupAttributeMetadata"
+        )
+        assert body["Lookup"]["SchemaName"] == "new_CustomerId"
+        rels = body["OneToManyRelationships"]
+        assert [r["ReferencedEntity"] for r in rels] == ["account", "contact"]
+        assert all(r["ReferencingEntity"] == "new_widget" for r in rels)
+        assert rels[0]["SchemaName"] == "new_widget_new_customerid_account"
+        assert rels[1]["SchemaName"] == "new_widget_new_customerid_contact"
+        # Response parsed into the canonical result shape.
+        assert info["created"] is True
+        assert info["kind"] == "Customer"
+        assert info["targets"] == ["account", "contact"]
+        assert info["attribute_id"] == "aaaa1111-2222-3333-4444-555566667777"
+        assert info["relationship_ids"] == ["rel-account", "rel-contact"]
+
+    def test_rejects_schema_without_prefix(self, backend):
+        from crm.core import relationships as rel
+        with pytest.raises(D365Error, match="publisher prefix"):
+            rel.create_customer_relationships(
+                backend,
+                referencing_entity="new_widget",
+                lookup_schema="CustomerId",
+                lookup_display="Customer",
+            )
+
+    def test_existing_attribute_skip_is_noop(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for(
+                    "EntityDefinitions(LogicalName='new_widget')"
+                    "/Attributes(LogicalName='new_customerid')"
+                ),
+                json={"LogicalName": "new_customerid"},
+            )
+            info = rel.create_customer_relationships(
+                backend,
+                referencing_entity="new_widget",
+                lookup_schema="new_CustomerId",
+                lookup_display="Customer",
+                if_exists="skip",
+            )
+        assert info["skipped"] is True
+        assert not any(r.method == "POST" for r in m.request_history)
+
+
 class TestListRelationshipsMoved:
     def test_list_relationships_works_from_new_module(self, backend):
         from crm.core import relationships as rel

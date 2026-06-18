@@ -410,7 +410,7 @@ id/name, writable columns + required levels, lookup `@odata.bind` keys + targets
 picklist/state/status options — everything needed to build a valid record payload in
 one call. Write verbs new in 0.5.0:
 
-- `metadata add-attribute <entity> --kind <k>` — add a column (14 kinds)
+- `metadata add-attribute <entity> --kind <k>` — add a column (15 kinds, incl. `customer` composite lookup)
 - `metadata create-one-to-many` / `create-many-to-many` — relationships
 - `metadata list-optionsets` / `get-optionset` / `create-optionset` / `update-optionset` / `delete-optionset` — global option sets
 - `metadata keys <entity>` / `create-key <entity> --key-attributes col1,col2` / `delete-key <entity> <key>` — read, create, and drop alternate keys (the natural-key index that `entity upsert --key` / `data import --mode upsert --key` match on)

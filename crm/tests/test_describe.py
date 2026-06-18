@@ -74,10 +74,11 @@ def _all_choice_lists(data):
 def test_choice_enums_surface_verbatim():
     data = _describe()
     choice_lists = _all_choice_lists(data)
-    # The 14 attribute kinds — exact order preserved.
+    # The 15 attribute kinds — exact order preserved.
     assert [
         "string", "memo", "integer", "bigint", "decimal", "double", "money",
-        "boolean", "datetime", "picklist", "multiselect", "lookup", "image", "file",
+        "boolean", "datetime", "picklist", "multiselect", "lookup", "customer",
+        "image", "file",
     ] in choice_lists
     # --behavior DateTimeBehavior choices — exact order preserved.
     assert ["UserLocal", "DateOnly", "TimeZoneIndependent"] in choice_lists
