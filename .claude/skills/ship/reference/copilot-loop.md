@@ -20,8 +20,9 @@ conversation.
    when the review has landed (or the cap is hit), and report review state +
    comments + final check conclusions in one message.
 3. **Auto-triage every comment** with the same judgment as the self-review (run
-   this triage / any re-invoked `review` skill on **opus** — it's judgment work;
-   the poll loop in step 2 is mechanical and can stay on the default model):
+   this triage / any re-invoked `review` skill on the **judgment tier** — opus, or
+   Gemini Pro in agy; the poll loop in step 2 is mechanical and stays on the
+   **cheap tier** — haiku / Flash. See the model-tier table in SKILL.md):
    - Harden rather than remove capability when a comment flags a footgun.
    - Verify nit-level claims against the **pinned** dependency versions before
      acting — APIs the bot "remembers" may not match what's installed.
