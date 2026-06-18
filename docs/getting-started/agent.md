@@ -14,7 +14,7 @@ and reads the structured output — no copy-pasting GUIDs.
 ```text
 You:  List the top 5 accounts by name from my D365 org.
 
-Agent:  Running: crm query account --top 5 --select name --order-by name --json
+Agent:  Running: crm query account --top 5 --select name --orderby name --json
         Here are the 5 accounts:
           1. Adventure Works
           2. Coho Vineyard
