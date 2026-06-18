@@ -55,13 +55,22 @@
   text-align: center;
   padding: 2.5rem 1rem 1.5rem;
 }
+.crm-hero-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
 .crm-hero-logo {
-  width: 72px;
-  height: 72px;
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
 }
 .crm-hero h1 {
-  margin: 0.4rem 0 0;
+  margin: 0;
   font-weight: 700;
+  font-size: 3rem;
+  line-height: 1;
 }
 .crm-hero h3 {
   margin: 0.4rem auto 1.4rem;
