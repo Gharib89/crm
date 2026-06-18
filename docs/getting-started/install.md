@@ -17,7 +17,7 @@ The canonical install instructions live in the project
     curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
     ```
 
-Pin a version by setting `CRM_VERSION` (e.g. `v0.6.0`). The binary is unsigned;
+Pin a version by setting `CRM_VERSION` (e.g. `v1.0.0`). The binary is unsigned;
 Windows SmartScreen may warn on first run. On managed machines it may be blocked
 outright by endpoint security (e.g. Microsoft Defender ASR or AppLocker) — use
 [uv tool install](#uv-tool-install-isolated) in that case.
