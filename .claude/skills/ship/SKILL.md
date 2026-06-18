@@ -151,7 +151,12 @@ docs-sync rules by hand under the same condition.)
 
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
 project's automated review. Title it as a Conventional-Commit subject derived from
-the issue (release tooling reads this on squash-merge); body closes the issue. An
+the issue (release tooling reads this on squash-merge). **If the repo has a PR
+template (`.github/PULL_REQUEST_TEMPLATE.md` / `docs/pull_request_template.md`),
+fill it in** — write the summary and tick / strike-through each checklist item
+honestly against the work you did, keeping the `Closes #<issue>` keyword. Don't
+pass a raw `--body` that bypasses the template; let it populate, then edit. (No
+template → a plain body that closes the issue.) An
 automated round-1 review may fire on PR creation — **don't re-request round 1.**
 **Reflect the PR back on the issue** right after opening (typically a comment
 linking the PR) so a scheduled run won't re-pick it; skip if no documented
