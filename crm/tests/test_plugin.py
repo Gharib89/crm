@@ -391,6 +391,32 @@ class TestRegisterStep:
                 filtering_attributes="a,b")
         assert _posts(m)[0].json()["filteringattributes"] == "a,b"
 
+    def test_configuration_passed_through(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Update",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                configuration="someconfig")
+        assert _posts(m)[0].json()["configuration"] == "someconfig"
+
+    def test_asyncautodelete_passed_through(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_step_resolution(m, backend)
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            plugin.register_step(
+                backend, message="Update",
+                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
+                mode="async", asyncautodelete=True)
+        assert _posts(m)[0].json()["asyncautodelete"] is True
+
     def test_no_filtering_attributes_key_when_absent(self, backend):
         from crm.core import plugin
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
@@ -1027,6 +1053,19 @@ class TestRegisterImage:
         assert _posts(m)[0].json()["imagetype"] == 1
         assert out["imagetype"] == 1
 
+    def test_both_image_on_postoperation_step(self, backend):
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40)
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="both", alias="bothimg")
+        assert out["created"] is True
+        assert _posts(m)[0].json()["imagetype"] == 2
+        assert out["imagetype"] == 2
+
     def test_post_image_requires_postoperation_stage(self, backend):
         # MS Learn: post-images only exist for PostOperation-stage steps.
         from crm.core import plugin
@@ -1206,6 +1245,34 @@ class TestRegisterImage:
                 backend, step=_STEP_ID, image_type="pre", alias="preimg")
         assert "MSCRM.SolutionUniqueName" not in _posts(m)[0].headers
         assert out["solution"] is None
+
+
+class TestSetStepState:
+    def test_enables_step(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        img_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.patch(step_url, status_code=204)
+            out = plugin.set_step_state(backend, step="My Step", enable=True)
+        assert out["enabled"] is True
+        assert out["sdkmessageprocessingstepid"] == _STEP_ID
+        assert [r for r in m.request_history if r.method == "PATCH"][0].json()["statecode"] == 0
+        assert [r for r in m.request_history if r.method == "PATCH"][0].json()["statuscode"] == 1
+
+    def test_disables_step(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        img_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend)
+            m.patch(step_url, status_code=204)
+            out = plugin.set_step_state(backend, step="My Step", enable=False)
+        assert out["enabled"] is False
+        assert out["sdkmessageprocessingstepid"] == _STEP_ID
+        assert [r for r in m.request_history if r.method == "PATCH"][0].json()["statecode"] == 1
+        assert [r for r in m.request_history if r.method == "PATCH"][0].json()["statuscode"] == 2
 
 
 class TestUnregisterImage:
@@ -1756,7 +1823,7 @@ class TestPluginCommands:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "plugin", "register-image",
-            "--step", _STEP_ID, "--type", "both", "--alias", "a",
+            "--step", _STEP_ID, "--type", "invalid_type", "--alias", "a",
         ])
         # click.Choice rejects unknown image types with a usage error (exit 2)
         assert result.exit_code == 2

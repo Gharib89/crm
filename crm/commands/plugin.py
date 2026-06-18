@@ -102,12 +102,17 @@ def list_types_cmd(ctx: CLIContext, assembly):
 @click.option("--name", default=None,
               help="Step name; defaults to a derived label. Pass explicitly if "
                    "the derived name would exceed the platform's 256-char limit.")
+@click.option("--configuration", default=None,
+              help="Unsecure configuration string.")
+@click.option("--async-auto-delete", "asyncautodelete", is_flag=True,
+              help="Auto-delete the system job on success (async steps only).")
 @click.option("--assembly", default=None,
               help="Scope the plug-in type lookup to this assembly (by name).")
 @_solution_option
 @pass_ctx
 def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
                       entity, stage, mode, rank, filtering_attributes, name,
+                      configuration, asyncautodelete,
                       assembly, solution, require_solution):
     """Register a plug-in step (sdkmessageprocessingstep).
 
@@ -120,7 +125,9 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
             ctx.backend(), message=message, plugin_type=plugin_type,
             service_endpoint=service_endpoint, entity=entity, stage=stage,
             mode=mode, rank=rank, filtering_attributes=filtering_attributes,
-            name=name, assembly=assembly, solution=solution)
+            name=name, configuration=configuration,
+            asyncautodelete=asyncautodelete,
+            assembly=assembly, solution=solution)
     _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
     _journal(ctx, plugin_type or service_endpoint, info, solution=solution)
@@ -159,9 +166,9 @@ def register_webhook_cmd(ctx: CLIContext, name, url, auth, auth_value,
 @plugin_group.command("register-image")
 @click.option("--step", required=True,
               help="Step GUID or exact step name (sdkmessageprocessingstep).")
-@click.option("--type", "image_type", type=click.Choice(["pre", "post"]),
+@click.option("--type", "image_type", type=click.Choice(["pre", "post", "both"]),
               required=True,
-              help="Image type (pre=0, post=1). Post-images require a "
+              help="Image type (pre=0, post=1, both=2). Post-images require a "
                    "PostOperation-stage step.")
 @click.option("--alias", required=True,
               help="Entity alias — the key used to access the image from "
@@ -225,6 +232,21 @@ def unregister_step_cmd(ctx: CLIContext, step, yes):
     _confirm_destructive(ctx, "plug-in step", step, yes)
     with d365_errors(ctx):
         info = plugin_mod.unregister_step(ctx.backend(), step)
+    ctx.emit(True, data=info)
+    _journal(ctx, step, info)
+
+
+@plugin_group.command("set-step-state")
+@click.argument("step")
+@click.option("--enable", "enable", flag_value=True, required=True,
+              help="Enable the step.")
+@click.option("--disable", "enable", flag_value=False, required=True,
+              help="Disable the step.")
+@pass_ctx
+def set_step_state_cmd(ctx: CLIContext, step, enable):
+    """Enable or disable a plug-in step (sdkmessageprocessingstep)."""
+    with d365_errors(ctx):
+        info = plugin_mod.set_step_state(ctx.backend(), step=step, enable=enable)
     ctx.emit(True, data=info)
     _journal(ctx, step, info)
 

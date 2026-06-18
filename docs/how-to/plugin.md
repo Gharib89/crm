@@ -82,7 +82,8 @@ crm --json plugin register-step \
     --entity account \
     --stage postoperation \
     --mode sync \
-    --filtering-attributes name,telephone1
+    --filtering-attributes name,telephone1 \
+    --configuration '{"key": "value"}'
 ```
 
 **Bind a step to a webhook (service endpoint):**
@@ -93,7 +94,8 @@ crm --json plugin register-step \
     --service-endpoint MyWebhook \
     --entity account \
     --stage postoperation \
-    --mode async
+    --mode async \
+    --async-auto-delete
 ```
 
 Key points:
@@ -107,6 +109,8 @@ Key points:
   `postoperation` (40). Default: `postoperation`.
 - `--mode` choices: `sync` (0), `async` (1). Default: `sync`. Async mode
   requires `--stage postoperation` — other combinations are rejected.
+- `--async-auto-delete` configures an async step to delete its system job upon success.
+- `--configuration` stores an unsecure configuration string on the step, passed to the plug-in constructor.
 - `--entity` sets the `primaryobjecttypecode`. Omit it to fire on all entities.
 - `--filtering-attributes` (comma-separated) restricts an Update step to
   specific columns; ignored for non-Update messages.
@@ -140,7 +144,8 @@ crm --json plugin register-step \
     --entity account \
     --stage postoperation \
     --mode sync \
-    --filtering-attributes name,telephone1
+    --filtering-attributes name,telephone1 \
+    --configuration '{"key": "value"}'
 ```
 
 ### Webhook → step
@@ -161,6 +166,7 @@ crm --json plugin register-step \
     --entity account \
     --stage postoperation \
     --mode async \
+    --async-auto-delete \
     --solution cwx_contoso
 ```
 
@@ -194,7 +200,7 @@ Key points:
   `--message-property-name`; messages outside that table do not support
   images and are rejected client-side.
 - Platform validity rules are enforced before any write: no pre-image on a
-  `Create` step, no post-image on a `Delete` step, and post-images require a
+  `Create` step, no post-image on a `Delete` step, and post-images (or `both`) require a
   step registered in the **PostOperation** stage.
 - `--solution` / `--require-solution` land the image row in a target solution
   (same semantics as on `register-step` and `register-assembly`).
@@ -208,6 +214,15 @@ crm --json plugin unregister-image preimg --yes
 Resolves by image name or GUID; an ambiguous name errors — use the GUID.
 Deleting a step cascades its images automatically, so this is only needed to
 remove an image while keeping the step.
+
+## Set step state
+
+```bash
+crm --json plugin set-step-state "Contoso.Plugins.AccountPostUpdate: Update of account" --disable
+crm --json plugin set-step-state "Contoso.Plugins.AccountPostUpdate: Update of account" --enable
+```
+
+Resolves by step name or GUID; an ambiguous name errors — use the GUID.
 
 ## Unregister a step
 
