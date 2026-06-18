@@ -97,3 +97,56 @@ def test_view_create_on_contact(backend, cli, request, unique):
     assert rb.get("name") == view_name, (
         f"view name mismatch: expected {view_name!r}, got {rb.get('name')!r}"
     )
+
+
+@covers("view create")
+@pytest.mark.slow
+def test_view_create_query_type_and_description(backend, cli, request, unique):
+    """--query-type + --description persist on the created savedquery."""
+    view_name = f"E2E QF {unique}"
+    description = f"E2E description {unique}"
+    otc = _resolve_otc(backend, "contact")
+
+    created_id: list[str] = []
+
+    def _cleanup():
+        if created_id:
+            try:
+                backend.delete(f"savedqueries({created_id[0]})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    result = cli([
+        "--json", "view", "create", "contact",
+        "--name", view_name,
+        "--otc", str(otc),
+        "--column", "contactid",
+        "--column", "fullname",
+        "--query-type", "quick-find",
+        "--description", description,
+        "--no-publish",
+    ])
+    assert result.returncode == 0, (
+        f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    sqid = env["data"].get("savedqueryid")
+    assert sqid, f"savedqueryid missing from response: {env}"
+    created_id.append(sqid)
+
+    # Verify querytype + description persisted via direct GET.
+    from crm.utils.d365_backend import as_dict
+    rb = as_dict(backend.get(
+        f"savedqueries({sqid})",
+        params={"$select": "querytype,description,isquickfindquery"},
+    ))
+    assert rb.get("querytype") == 4, f"expected quick-find querytype 4: {rb}"
+    assert rb.get("isquickfindquery") is True, (
+        f"expected isquickfindquery True: {rb}"
+    )
+    assert rb.get("description") == description, (
+        f"description mismatch: {rb.get('description')!r}"
+    )
