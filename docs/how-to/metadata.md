@@ -128,6 +128,35 @@ crm --json metadata add-attribute cwx_ticket --kind picklist \
 `--kind` also accepts `integer` (with `--min`/`--max`), `memo`, `boolean`, `datetime`, etc.
 For `--kind string`/`memo`, `--max-length` is optional — omit it to default to 100 / 2000.
 
+## Add a datetime column with specific behavior
+
+```bash
+# Default — server assigns UserLocal behavior and DateAndTime format
+crm --json metadata add-attribute cwx_ticket --kind datetime \
+  --schema-name cwx_DueDate --display "Due Date"
+
+# DateOnly behavior (date with no time component)
+crm --json metadata add-attribute cwx_ticket --kind datetime \
+  --schema-name cwx_DueDate --display "Due Date" --behavior DateOnly
+
+# TimeZoneIndependent — stored and displayed without conversion
+crm --json metadata add-attribute cwx_ticket --kind datetime \
+  --schema-name cwx_ScheduledAt --display "Scheduled At" \
+  --behavior TimeZoneIndependent --format DateAndTime
+```
+
+`--behavior` accepts `UserLocal`, `DateOnly`, or `TimeZoneIndependent` and sets the
+`DateTimeBehavior` property on the column. When omitted the server defaults to `UserLocal`.
+
+**DateOnly↔format coupling.** `DateOnly` behavior is incompatible with the `DateAndTime`
+format. When `--behavior DateOnly` is given and `--format` is omitted, the format
+auto-defaults to `DateOnly`. If you pass both `--behavior DateOnly --format DateAndTime`
+explicitly the server will reject the request with a validation error.
+
+**Behavior is immutable after create.** `DateTimeBehavior` cannot be changed after the
+column is created — get it right on create. `--behavior` is only valid for
+`--kind datetime`; using it with any other kind is rejected with an error.
+
 ## Create a 1:N relationship (adds a lookup on the N side)
 
 ```bash
@@ -358,8 +387,8 @@ crm apply -f project.yaml
 
 - A string column whose live format is `Json` or `RichText` (formats `apply` cannot
   create) is re-created as plain `Text`.
-- A datetime column's format is **not** captured; it is re-created with the default
-  format.
+- A datetime column's format and `DateTimeBehavior` are **not** captured; it is
+  re-created with the server default format and `UserLocal` behavior.
 - A polymorphic (multi-target) lookup is exported with its first target only and
   re-created as a single-target lookup (`apply` creates single-target lookups).
 - Relationship `cascade` and `associated_menu` configuration are captured but not

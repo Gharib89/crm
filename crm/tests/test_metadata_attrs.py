@@ -353,6 +353,65 @@ class TestAddAttributeDateTime:
                 format_name="Garbage",
             )
 
+    def test_datetime_behavior_set(self, backend):
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_when", "DateTime")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_When", display_name="When",
+                behavior_name="TimeZoneIndependent",
+            )
+        body = _post_body(m)
+        assert body["DateTimeBehavior"] == {"Value": "TimeZoneIndependent"}
+        # Behavior is orthogonal to format; the default format is unchanged.
+        assert body["Format"] == "DateAndTime"
+
+    def test_datetime_behavior_omitted_unset(self, backend):
+        # Omitting --behavior leaves DateTimeBehavior off the payload so the
+        # server default (UserLocal) applies — today's behavior, unchanged.
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_when", "DateTime")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_When", display_name="When",
+            )
+        assert "DateTimeBehavior" not in _post_body(m)
+
+    def test_datetime_dateonly_behavior_defaults_format(self, backend):
+        # DateOnly behavior is incompatible with the DateAndTime format, so the
+        # format defaults to DateOnly when behavior is DateOnly and none is given.
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_day", "DateTime")
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_Day", display_name="Day",
+                behavior_name="DateOnly",
+            )
+        body = _post_body(m)
+        assert body["DateTimeBehavior"] == {"Value": "DateOnly"}
+        assert body["Format"] == "DateOnly"
+
+    def test_datetime_bad_behavior_rejected(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="behavior"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_When", display_name="When",
+                behavior_name="Garbage",
+            )
+
+    def test_behavior_rejected_for_non_datetime_kind(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="behavior"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="string",
+                schema_name="new_Name", display_name="Name",
+                behavior_name="UserLocal",
+            )
+
 
 class TestAddAttributePicklist:
     def test_picklist_inline_options(self, backend):

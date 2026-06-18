@@ -43,6 +43,11 @@ STRING_FORMATS: frozenset[str] = frozenset(
     {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
 )
 DATETIME_FORMATS: frozenset[str] = frozenset({"DateOnly", "DateAndTime"})
+# DateTimeBehavior values add_attribute can set on a datetime kind. Omitting the
+# behavior leaves it off the payload so the server default (UserLocal) applies.
+DATETIME_BEHAVIORS: frozenset[str] = frozenset(
+    {"UserLocal", "DateOnly", "TimeZoneIndependent"}
+)
 CASCADE_TYPES: frozenset[str] = frozenset(
     {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 )
@@ -163,6 +168,12 @@ def validate_format(kind: str, value: str, *, subject: str = "format_name") -> N
         raise D365Error(f"format validation is not defined for kind {kind!r}.")
     if value not in allowed:
         raise D365Error(f"{subject} for {kind} must be one of {sorted(allowed)}.")
+
+
+def validate_behavior(value: str, *, subject: str = "behavior", echo: bool = False) -> None:
+    """Validate a ``DateTimeBehavior`` value (UserLocal / DateOnly / TimeZoneIndependent)."""
+    if value not in DATETIME_BEHAVIORS:
+        raise _reject(subject, DATETIME_BEHAVIORS, value, echo)
 
 
 def validate_precision(kind: str, value: int, *, subject: str = "precision") -> None:

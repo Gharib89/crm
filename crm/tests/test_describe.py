@@ -79,6 +79,8 @@ def test_choice_enums_surface_verbatim():
         "string", "memo", "integer", "bigint", "decimal", "double", "money",
         "boolean", "datetime", "picklist", "multiselect", "lookup", "image", "file",
     ] in choice_lists
+    # --behavior DateTimeBehavior choices — exact order preserved.
+    assert ["UserLocal", "DateOnly", "TimeZoneIndependent"] in choice_lists
     assert ["UserOwned", "OrganizationOwned"] in choice_lists  # ownership
     assert ["error", "skip"] in choice_lists  # --if-exists
     assert [  # cascade behaviors

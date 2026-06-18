@@ -112,3 +112,34 @@ def test_add_string_memo_without_max_length_defaults(
         params={"$select": "MaxLength"},
     )
     assert rb["MaxLength"] == expected_max_length
+
+
+@covers("metadata add-attribute")
+@pytest.mark.parametrize("behavior,expected_format", [
+    ("TimeZoneIndependent", "DateAndTime"),  # non-default, format untouched
+    ("DateOnly", "DateOnly"),                # format auto-defaults to DateOnly
+])
+def test_add_datetime_with_behavior(backend, ephemeral_entity, behavior, expected_format):
+    """#359: --behavior writes DateTimeBehavior; verify a non-default value is
+    stored server-side (not the UserLocal default). DateOnly also exercises the
+    format auto-default that Dataverse requires for DateOnly behavior."""
+    from crm.core import metadata_attrs as ma
+    schema = f"new_E2EBehavior{behavior}"
+    info = ma.add_attribute(
+        backend,
+        entity=ephemeral_entity,
+        kind="datetime",
+        schema_name=schema,
+        display_name=f"E2E behavior {behavior}",
+        behavior_name=behavior,
+        publish=False,
+    )
+    assert info.get("created"), info
+    rb = backend.get(
+        f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+        f"/Attributes(LogicalName='{schema.lower()}')"
+        f"/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
+        params={"$select": "DateTimeBehavior,Format"},
+    )
+    assert rb["DateTimeBehavior"]["Value"] == behavior
+    assert rb["Format"] == expected_format

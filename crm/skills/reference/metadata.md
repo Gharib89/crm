@@ -127,7 +127,8 @@ Publisher/solution are **not** emitted — supply them via `--solution` on `appl
 edit the YAML. **Fidelity caveats** (these silently lose information on round-trip):
 
 - A string column whose live format is `Json` or `RichText` is re-created as plain `Text`.
-- A datetime column's format is NOT captured (re-created with the default format).
+- A datetime column's format and `DateTimeBehavior` are NOT captured (re-created with
+  the server default format and `UserLocal` behavior).
 - A polymorphic (multi-target) lookup is exported with its **first target only** and
   re-created as a single-target lookup.
 - Relationship `cascade` / `associated_menu` are captured but re-created with default
@@ -217,6 +218,22 @@ so a shell `||` branch — or an agent — can branch and retry. A malformed `--
 lowercase (`new_label`); the schema name is PascalCase (`new_Label`). The same flag on
 `entity get` asserts a write landed on the record side (e.g. `--expect statecode=1`,
 checked against the full record before any `--minimal` projection).
+
+## Datetime column behavior gotchas (`--behavior`)
+
+`DateTimeBehavior` controls whether a datetime column stores time-zone-offset data
+(`UserLocal`), is treated as a date with no time component (`DateOnly`), or stores
+absolute UTC with no conversion (`TimeZoneIndependent`). The value is set on create
+and **cannot be changed afterward** — plan before you create.
+
+Two non-obvious coupling rules:
+
+1. **`DateOnly` behavior auto-sets the format.** When `--behavior DateOnly` is given
+   and `--format` is omitted, the CLI auto-defaults `--format` to `DateOnly`. Passing
+   `--behavior DateOnly --format DateAndTime` explicitly is a server validation error.
+2. **`--behavior` is rejected for non-datetime kinds** (errors before any HTTP call).
+
+Omitting `--behavior` leaves the column at the server default (`UserLocal`).
 
 ## Inspect the server's entity sets
 
