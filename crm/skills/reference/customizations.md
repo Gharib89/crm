@@ -108,7 +108,8 @@ parallel attempt races the first import). Confirm the outcome afterward with
 ## Forms — `form` (entity main forms / systemform)
 
 ```bash
-crm --json form list cwx_ticket                                 # main forms on a table
+crm --json form list cwx_ticket                                 # main forms only (the default)
+crm --json form list cwx_ticket --all                           # every form type, not just main
 crm --json form clone cwx_ticket "Information" --to cwx_ticketclone   # clone a named form to another table
 crm --json form export cwx_ticket "Information" --output form.xml     # export a form's formxml
 ```

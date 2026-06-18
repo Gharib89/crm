@@ -96,6 +96,54 @@ class TestFormList:
         assert data["ok"] is True
         assert data["data"] == []
 
+    def test_list_default_restricts_to_main(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project"])
+        assert "type+eq+2" in m.last_request.url
+
+    def test_list_type_filters_to_that_type(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project", "--type", "quickcreate"])
+        assert "type+eq+7" in m.last_request.url
+        assert "type+eq+2" not in m.last_request.url
+
+    def test_list_type_is_repeatable(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(
+                cli, ["form", "list", "new_project",
+                      "--type", "main", "--type", "card"])
+        url = m.last_request.url
+        assert "type+eq+2" in url and "type+eq+11" in url
+
+    def test_list_all_omits_the_type_filter(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project", "--all"])
+        url = m.last_request.url
+        assert "objecttypecode" in url and "type+eq" not in url
+
+    def test_list_type_is_case_insensitive(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": []})
+            CliRunner().invoke(cli, ["form", "list", "new_project", "--type", "QuickCreate"])
+        assert "type+eq+7" in m.last_request.url
+
+    def test_list_type_and_all_are_mutually_exclusive(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        result = CliRunner().invoke(
+            cli, ["--json", "form", "list", "new_project", "--all", "--type", "main"])
+        # House rule: mutually-exclusive flags raise click.UsageError → exit 2.
+        assert result.exit_code == 2, result.output
+        assert "mutually exclusive" in result.output.lower()
+
 
 # ---------------------------------------------------------------------------
 # crm form clone

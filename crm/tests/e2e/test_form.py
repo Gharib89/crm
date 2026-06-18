@@ -29,6 +29,35 @@ def test_form_list_account(cli):
     assert "name" in first, f"name missing from first form: {first}"
 
 
+@covers("form list")
+def test_form_list_type_and_all(cli):
+    """`--all` lists every form type (≥ the default main-only set) and surfaces
+    non-main types; `--type quickcreate` filters to type 7 only (issue #360)."""
+    main_only = json.loads(cli(["--json", "form", "list", "account"]).stdout)["data"]
+    all_forms = cli(["--json", "form", "list", "account", "--all"])
+    assert all_forms.returncode == 0, all_forms.stderr
+    all_data = json.loads(all_forms.stdout)["data"]
+    assert len(all_data) >= len(main_only), "--all returned fewer forms than the default"
+    # A stock org's 'account' carries more than just main forms (quick-create,
+    # quick-view, card, …), so --all must surface at least one non-main type.
+    assert any(f.get("type") != 2 for f in all_data), (
+        "--all surfaced only main forms; type filter was not widened"
+    )
+
+    qc = cli(["--json", "form", "list", "account", "--type", "quickcreate"])
+    assert qc.returncode == 0, qc.stderr
+    qc_data = json.loads(qc.stdout)["data"]
+    assert all(f.get("type") == 7 for f in qc_data), (
+        f"--type quickcreate returned non-type-7 forms: {qc_data}"
+    )
+
+    # --type and --all together is a usage error (Click UsageError → exit 2).
+    both = cli(["--json", "form", "list", "account", "--all", "--type", "main"],
+               check=False)
+    assert both.returncode == 2, f"expected --all + --type rejected with exit 2: {both}"
+    assert "mutually exclusive" in (both.stderr + both.stdout).lower()
+
+
 # ── form export ───────────────────────────────────────────────────────────────
 
 

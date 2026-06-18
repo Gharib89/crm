@@ -57,11 +57,27 @@ def _resolve_single_form(
 
 @form_group.command("list")
 @click.argument("entity")
+@click.option(
+    "--type", "form_types", multiple=True,
+    type=click.Choice(list(forms_mod.FORM_TYPE_BY_NAME), case_sensitive=False),
+    help="Form type to list (repeatable). Default: main.")
+@click.option("--all", "all_types", is_flag=True,
+              help="List every form type (cannot be combined with --type).")
 @pass_ctx
-def form_list(ctx: CLIContext, entity: str) -> None:
-    """List the main forms for an entity."""
+def form_list(
+    ctx: CLIContext, entity: str, form_types: tuple[str, ...], all_types: bool,
+) -> None:
+    """List an entity's forms (main forms by default)."""
+    if all_types and form_types:
+        raise click.UsageError("--all and --type are mutually exclusive.")
+    if all_types:
+        types = None
+    elif form_types:
+        types = tuple(forms_mod.FORM_TYPE_BY_NAME[t] for t in form_types)
+    else:
+        types = (forms_mod.FORM_TYPE_MAIN,)
     with d365_errors(ctx):
-        forms = forms_mod.read_entity_forms(ctx.backend(), entity)
+        forms = forms_mod.read_entity_forms(ctx.backend(), entity, form_types=types)
     # Project to the list-oriented fields only — read_entity_forms also returns
     # formxml (potentially large) + description/objecttypecode, which would
     # bloat --json output and surprise consumers expecting list columns.
