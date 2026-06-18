@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.26.1 (2026-06-18)
+
+### Bug Fixes
+
+- **docs**: Correct phrasing in documentation regarding docs-sync subagent usage
+  ([`fd653fd`](https://github.com/Gharib89/crm/commit/fd653fda4855cd48d3d07ab6fd1969fb7376f263))
+
+
 ## v4.26.0 (2026-06-18)
 
 ### Features
