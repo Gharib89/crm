@@ -77,6 +77,41 @@ class TestListRoles:
             result = sec.list_roles(backend)
         assert result == []
 
+    def test_name_contains_adds_contains_filter(self, backend):
+        """--name-contains should produce a server-side contains(name,'…') clause."""
+        mock_roles = [{"roleid": _ROLE_ID, "name": "Salesperson"}]
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": mock_roles})
+            result = sec.list_roles(backend, name_contains="Sales")
+        assert result == mock_roles
+        # requests_mock .qs lowercases values; parse the raw URL to preserve case.
+        from urllib.parse import urlparse, parse_qs, unquote
+        raw_url = unquote(m.request_history[0].url)
+        filt = parse_qs(urlparse(raw_url).query)["$filter"][0]
+        assert filt == "contains(name,'Sales')"
+
+    def test_name_contains_composes_with_business_unit(self, backend):
+        """Both filters should AND-join in the $filter clause."""
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})
+            sec.list_roles(backend, name_contains="Admin", business_unit=_BU_ID)
+        from urllib.parse import urlparse, parse_qs, unquote
+        raw_url = unquote(m.request_history[0].url)
+        filt = parse_qs(urlparse(raw_url).query)["$filter"][0]
+        assert "contains(name,'Admin')" in filt
+        assert f"_businessunitid_value eq {_BU_ID}" in filt
+        assert " and " in filt
+
+    def test_name_contains_escapes_single_quotes(self, backend):
+        """Single quotes in the search term must be doubled per OData escaping."""
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})
+            sec.list_roles(backend, name_contains="it's")
+        from urllib.parse import urlparse, parse_qs, unquote
+        raw_url = unquote(m.request_history[0].url)
+        filt = parse_qs(urlparse(raw_url).query)["$filter"][0]
+        assert filt == "contains(name,'it''s')"
+
 
 # ── list_user_roles ──────────────────────────────────────────────────────
 

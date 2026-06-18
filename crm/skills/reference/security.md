@@ -7,8 +7,9 @@ with principals via the Dataverse POA (Principal Object Access) model. Group:
 ```bash
 crm --json security list-roles
 crm --json security list-roles --business-unit <bu-guid>     # scope to one BU
+crm --json security list-roles --name-contains Sales         # server-side name filter
 
-crm --json security list-user-roles <user-guid>              # roles on a user
+crm --json security list-user-roles <user-guid>              # direct roles only
 crm --json security list-team-roles <team-guid>              # roles on a team
 
 crm --json security user-privileges <user-guid>             # effective privileges on a user

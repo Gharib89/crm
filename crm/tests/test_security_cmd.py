@@ -69,29 +69,43 @@ class TestListRoles:
         _stub_backend(monkeypatch, backend)
         calls = []
 
-        def _fake_list_roles(b, *, business_unit=None):
-            calls.append(business_unit)
+        def _fake_list_roles(b, *, business_unit=None, name_contains=None):
+            calls.append((business_unit, name_contains))
             return _ROLES
 
         monkeypatch.setattr(
             "crm.commands.security.security_mod.list_roles", _fake_list_roles
         )
         CliRunner().invoke(cli, ["security", "list-roles"])
-        assert calls == [None]
+        assert calls == [(None, None)]
 
     def test_with_business_unit_forwarded(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         calls = []
 
-        def _fake_list_roles(b, *, business_unit=None):
-            calls.append(business_unit)
+        def _fake_list_roles(b, *, business_unit=None, name_contains=None):
+            calls.append((business_unit, name_contains))
             return []
 
         monkeypatch.setattr(
             "crm.commands.security.security_mod.list_roles", _fake_list_roles
         )
         CliRunner().invoke(cli, ["security", "list-roles", "--business-unit", "bu-aaaa"])
-        assert calls == ["bu-aaaa"]
+        assert calls == [("bu-aaaa", None)]
+
+    def test_with_name_contains_forwarded(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = []
+
+        def _fake_list_roles(b, *, business_unit=None, name_contains=None):
+            calls.append((business_unit, name_contains))
+            return []
+
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.list_roles", _fake_list_roles
+        )
+        CliRunner().invoke(cli, ["security", "list-roles", "--name-contains", "Sales"])
+        assert calls == [(None, "Sales")]
 
     def test_d365_error_clean_envelope(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
