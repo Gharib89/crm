@@ -298,3 +298,123 @@ class TestAssignRole:
         assert env["ok"] is False
         assert "Forbidden" in env["error"]
         assert env["meta"]["status"] == 403
+
+
+# ── grant ───────────────────────────────────────────────────────────────────
+
+
+class TestGrant:
+    def test_forwards_parsed_principal_and_rights(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = []
+
+        def _fake_grant(b, entity_set, record_id, *, principal_type, principal_id, rights):
+            calls.append((entity_set, record_id, principal_type, principal_id, rights))
+            return {"granted": True}
+
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.grant_access", _fake_grant
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "grant", "accounts", "rec-1",
+            "--to", "user:user-1", "--rights", "Read,Write", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert calls == [("accounts", "rec-1", "user", "user-1", "Read,Write")]
+        env = json.loads(result.stdout)
+        assert env["ok"] is True
+        assert env["data"]["granted"] is True
+
+    def test_malformed_principal_is_usage_error(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "security", "grant", "accounts", "rec-1",
+            "--to", "user-1", "--rights", "Read", "--yes",
+        ])
+        assert result.exit_code == 2
+
+    def test_missing_rights_is_usage_error(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "security", "grant", "accounts", "rec-1", "--to", "user:user-1", "--yes",
+        ])
+        assert result.exit_code == 2
+
+    def test_without_yes_non_interactive_aborts(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.grant_access",
+            lambda *a, **k: {"granted": True},
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "grant", "accounts", "rec-1",
+            "--to", "user:user-1", "--rights", "Read",
+        ], input="")
+        assert result.exit_code == 1, result.output
+        json_start = result.stdout.rfind("{")
+        env = json.loads(result.stdout[json_start:])
+        assert env["ok"] is False
+        assert env["error"] == "aborted by user"
+
+
+# ── revoke ──────────────────────────────────────────────────────────────────
+
+
+class TestRevoke:
+    def test_forwards_parsed_principal(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = []
+
+        def _fake_revoke(b, entity_set, record_id, *, principal_type, principal_id):
+            calls.append((entity_set, record_id, principal_type, principal_id))
+            return {"revoked": True}
+
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.revoke_access", _fake_revoke
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "revoke", "accounts", "rec-1",
+            "--from", "team:team-1", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert calls == [("accounts", "rec-1", "team", "team-1")]
+        env = json.loads(result.stdout)
+        assert env["ok"] is True
+        assert env["data"]["revoked"] is True
+
+
+# ── list-access ───────────────────────────────────────────────────────────
+
+
+_SHARES = [
+    {"principalType": "systemuser", "principalId": "user-1", "accessMask": "ReadAccess"},
+    {"principalType": "team", "principalId": "team-1", "accessMask": "ReadAccess, WriteAccess"},
+]
+
+
+class TestListAccess:
+    def test_human_shows_principals_and_mask(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.list_access",
+            lambda b, entity_set, record_id: _SHARES,
+        )
+        result = CliRunner().invoke(cli, ["security", "list-access", "accounts", "rec-1"])
+        assert result.exit_code == 0, result.output
+        assert "systemuser" in result.output
+        assert "WriteAccess" in result.output
+
+    def test_json_envelope(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.list_access",
+            lambda b, entity_set, record_id: _SHARES,
+        )
+        result = CliRunner().invoke(
+            cli, ["--json", "security", "list-access", "accounts", "rec-1"]
+        )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.stdout)
+        assert env["ok"] is True
+        assert env["meta"]["count"] == 2
+        assert env["data"][0]["principalType"] == "systemuser"

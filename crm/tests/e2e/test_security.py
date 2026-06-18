@@ -220,3 +220,98 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     assert role_id.lower() not in remaining, (
         f"role {role_id} still present on team after unassign: {remaining}"
     )
+
+
+# ── grant / revoke / list-access (record sharing) ───────────────────────────
+
+
+@covers("security grant", "security revoke", "security list-access")
+def test_share_record_with_team_roundtrip(cli, backend, unique, request):
+    """Share a throwaway account with a throwaway team, then unshare it.
+
+    Creates a disposable account (the shared record) and an owner team (the
+    principal), grants the team Read+Write, asserts list-access reflects the
+    share, revokes it, and asserts the share is gone. Both records are deleted in
+    a finalizer regardless of outcome. Fully reversible — no live data mutated.
+    """
+    # Root business unit (required to create an owner team).
+    bu_resp = backend.get(
+        "businessunits",
+        params={"$filter": "parentbusinessunitid eq null",
+                "$select": "businessunitid", "$top": "1"},
+    )
+    bu_rows = bu_resp.get("value", [])
+    if not bu_rows:
+        pytest.skip("could not locate root business unit; cannot create throwaway team")
+    bu_id = bu_rows[0]["businessunitid"]
+
+    account = backend.post(
+        "accounts",
+        json_body={"name": f"e2e_share_{unique}"},
+        extra_headers={"Prefer": "return=representation"},
+    )
+    account_id = account.get("accountid")
+    assert account_id, f"account creation did not return accountid: {account}"
+
+    team = backend.post(
+        "teams",
+        json_body={
+            "name": f"e2e_share_team_{unique}",
+            "teamtype": 0,
+            "businessunitid@odata.bind": f"/businessunits({bu_id})",
+        },
+        extra_headers={"Prefer": "return=representation"},
+    )
+    team_id = team.get("teamid")
+    assert team_id, f"team creation did not return teamid: {team}"
+
+    def _cleanup():
+        for path in (f"accounts({account_id})", f"teams({team_id})"):
+            try:
+                backend.delete(path)
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    # ── GRANT ──────────────────────────────────────────────────────────────
+    granted = cli([
+        "--json", "security", "grant", "accounts", account_id,
+        "--to", f"team:{team_id}", "--rights", "Read,Write", "--yes",
+    ])
+    assert granted.returncode == 0, (
+        f"security grant failed:\n{granted.stderr}\nstdout: {granted.stdout}"
+    )
+    assert json.loads(granted.stdout)["ok"]
+
+    # ── LIST-ACCESS shows the team ───────────────────────────────────────────
+    listed = cli(["--json", "security", "list-access", "accounts", account_id])
+    assert listed.returncode == 0, (
+        f"security list-access failed:\n{listed.stderr}\nstdout: {listed.stdout}"
+    )
+    shares = json.loads(listed.stdout)["data"]
+    shared_ids = {s.get("principalId", "").lower() for s in shares}
+    assert team_id.lower() in shared_ids, (
+        f"team {team_id} not present in shares after grant: {shares}"
+    )
+    team_share = next(s for s in shares if s.get("principalId", "").lower() == team_id.lower())
+    assert "ReadAccess" in team_share["accessMask"], team_share
+    assert "WriteAccess" in team_share["accessMask"], team_share
+
+    # ── REVOKE ──────────────────────────────────────────────────────────────
+    revoked = cli([
+        "--json", "security", "revoke", "accounts", account_id,
+        "--from", f"team:{team_id}", "--yes",
+    ])
+    assert revoked.returncode == 0, (
+        f"security revoke failed:\n{revoked.stderr}\nstdout: {revoked.stdout}"
+    )
+    assert json.loads(revoked.stdout)["ok"]
+
+    # ── LIST-ACCESS no longer shows the team ─────────────────────────────────
+    after = cli(["--json", "security", "list-access", "accounts", account_id])
+    assert after.returncode == 0, after.stderr
+    after_ids = {s.get("principalId", "").lower() for s in json.loads(after.stdout)["data"]}
+    assert team_id.lower() not in after_ids, (
+        f"team {team_id} still shared after revoke: {after_ids}"
+    )
