@@ -213,7 +213,7 @@ cannot: workflows, gotchas, and the JSON contract. For per-domain detail:
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
 | solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift, label translation export/import | `reference/solutions.md` |
 | customizations: model-driven apps, web resources, ribbon, forms, sitemap | `reference/customizations.md` |
-| automation: plug-in assemblies & steps, workflows, SLA activation | `reference/automation.md` |
+| automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA activation | `reference/automation.md` |
 | security: roles & assignment | `reference/security.md` |
 | server-side audit history (`audit history` / `audit detail`) — distinct from `session audit` | `reference/troubleshooting.md` |
 | errors, retries, connection diagnostics, session/audit, on-prem vs cloud | `reference/troubleshooting.md` |

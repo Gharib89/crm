@@ -42,7 +42,38 @@ crm --json plugin list-types --assembly Contoso.Plugins
 Returned columns: `typename`, `friendlyname`, `plugintypeid`. Filter to a single
 assembly with `--assembly NAME`.
 
+## Register a webhook
+
+Webhooks are `serviceendpoint` rows (contract=8). The platform POSTs the JSON
+execution context to the webhook URL whenever a registered step fires.
+
+```bash
+crm --json plugin register-webhook \
+    --name MyWebhook \
+    --url https://func.azurewebsites.net/api/d365hook \
+    --auth webhookkey \
+    --auth-value 'abc123secret'
+```
+
+Auth scheme choices: `webhookkey` (appends `?code=<auth-value>` — the Azure
+Functions default), `httpheader` (passes the value as an HTTP header),
+`httpquerystring` (passes it as a query-string parameter). The auth value is
+**write-only**: the platform never returns it on subsequent reads.
+
+After registering the webhook, bind a step to it with `--service-endpoint`
+(see "Register a processing step" below).
+
+Dry-run preview (no write): `crm --dry-run --json plugin register-webhook ...`
+carries `meta.dry_run: true`.
+
+`--solution` / `--require-solution` land the endpoint row in a target solution.
+
 ## Register a processing step
+
+Bind to a **plug-in type** (`--plugin-type`) *or* a **service endpoint** such
+as a webhook (`--service-endpoint`) — pass exactly one.
+
+**Bind to a plug-in type:**
 
 ```bash
 crm --json plugin register-step \
@@ -54,9 +85,24 @@ crm --json plugin register-step \
     --filtering-attributes name,telephone1
 ```
 
+**Bind a step to a webhook (service endpoint):**
+
+```bash
+crm --json plugin register-step \
+    --message Create \
+    --service-endpoint MyWebhook \
+    --entity account \
+    --stage postoperation \
+    --mode async
+```
+
 Key points:
 
-- `--message` and `--plugin-type` are required.
+- Exactly one of `--plugin-type` or `--service-endpoint` must be given — they
+  are mutually exclusive; omitting or providing both is a usage error.
+- `--service-endpoint` matches by the webhook (or other service endpoint) name
+  given to `register-webhook`. The step is bound via the
+  `eventhandler_serviceendpoint` navigation property.
 - `--stage` choices: `prevalidation` (10), `preoperation` (20),
   `postoperation` (40). Default: `postoperation`.
 - `--mode` choices: `sync` (0), `async` (1). Default: `sync`. Async mode
@@ -64,18 +110,21 @@ Key points:
 - `--entity` sets the `primaryobjecttypecode`. Omit it to fire on all entities.
 - `--filtering-attributes` (comma-separated) restricts an Update step to
   specific columns; ignored for non-Update messages.
-- Step name is auto-derived as `<typename>: <message> of <entity>` (or
-  `<typename>: <message> of any entity` when `--entity` is omitted). Pass
-  `--name` explicitly when the derived string would exceed the platform's
-  256-character limit.
+- Step name is auto-derived as `<handler>: <message> of <entity>` (or
+  `<handler>: <message> of any entity` when `--entity` is omitted), where
+  `<handler>` is the plug-in typename or service endpoint name. Pass `--name`
+  explicitly when the derived string would exceed the platform's 256-character
+  limit.
 - `--assembly` scopes the type lookup to a single assembly when multiple
-  assemblies share a type name.
+  assemblies share a type name (relevant only with `--plugin-type`).
 - `--solution` / `--require-solution` land the step row in a target solution
   (sets `MSCRM.SolutionUniqueName`); defaults to the profile's
   `default_solution`. `--require-solution` (or `CRM_REQUIRE_SOLUTION`) fails
   when no solution resolves.
 
 ## Full registration workflow
+
+### Plug-in assembly → step
 
 ```bash
 # 1. Upload the assembly
@@ -92,6 +141,27 @@ crm --json plugin register-step \
     --stage postoperation \
     --mode sync \
     --filtering-attributes name,telephone1
+```
+
+### Webhook → step
+
+```bash
+# 1. Register the webhook endpoint
+crm --json plugin register-webhook \
+    --name MyWebhook \
+    --url https://func.azurewebsites.net/api/d365hook \
+    --auth webhookkey \
+    --auth-value 'abc123secret' \
+    --solution cwx_contoso
+
+# 2. Bind an async step on account Create to the webhook
+crm --json plugin register-step \
+    --message Create \
+    --service-endpoint MyWebhook \
+    --entity account \
+    --stage postoperation \
+    --mode async \
+    --solution cwx_contoso
 ```
 
 ## Register a step image
@@ -161,16 +231,22 @@ skip confirmation. Accepts either the assembly name or its GUID.
 
 ```bash
 crm --dry-run --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
+crm --dry-run --json plugin register-webhook \
+    --name MyWebhook --url https://func.azurewebsites.net/api/d365hook \
+    --auth webhookkey --auth-value 'abc123secret'
 crm --dry-run --json plugin register-step \
     --message Create --plugin-type Contoso.Plugins.AccountPreCreate --entity account
+crm --dry-run --json plugin register-step \
+    --message Create --service-endpoint MyWebhook --entity account
 ```
 
 Resolution GETs (e.g. assembly lookup under `--update`) fire for real; all
 writes are skipped. The `--json` envelope carries `meta.dry_run: true`.
 
 For `register-step`, dry-run resolves the objects the step names — the SDK
-message, the plug-in type, and (when `--entity` is given) the message filter for
-that entity — and reports each under `data.references[] = {kind, value,
-_exists}`. A reference that does not resolve keeps the preview non-failing
-(`ok: true`) and adds a `meta.warnings` advisory naming it, so a bad message,
-unregistered type, or unsupported entity is caught before the real write 400s.
+message, the plug-in type or service endpoint, and (when `--entity` is given)
+the message filter for that entity — and reports each under
+`data.references[] = {kind, value, _exists}`. A reference that does not resolve
+keeps the preview non-failing (`ok: true`) and adds a `meta.warnings` advisory
+naming it, so a bad message, unregistered type/endpoint, or unsupported entity
+is caught before the real write 400s.

@@ -530,6 +530,72 @@ class TestRegisterStep:
                     entity="account")
         assert not _posts(m)
 
+    def test_service_endpoint_binds_eventhandler_not_plugintype(self, backend):
+        from crm.core import plugin
+        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessages"),
+                  json={"value": [{"sdkmessageid": _MSG_ID, "name": "Create"}]})
+            m.get(backend.url_for("serviceendpoints"),
+                  json={"value": [{"serviceendpointid": _SE_ID}]})
+            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+                   headers={"OData-EntityId": step_url})
+            out = plugin.register_step(
+                backend, message="Create", service_endpoint="Contoso Hook")
+        body = _posts(m)[0].json()
+        assert body["eventhandler_serviceendpoint@odata.bind"] == \
+            f"/serviceendpoints({_SE_ID})"
+        assert "plugintypeid@odata.bind" not in body
+        # no plug-in type lookup happens
+        assert not any("plugintypes" in r.url for r in m.request_history)
+        # derived name uses the endpoint as the handler label
+        assert body["name"] == "Contoso Hook: Create of any entity"
+        assert out["service_endpoint"] == "Contoso Hook"
+        assert out["plugintype"] is None
+
+    def test_requires_exactly_one_handler_neither(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="exactly one"):
+                plugin.register_step(backend, message="Create")
+        assert m.request_history == []
+
+    def test_requires_exactly_one_handler_both(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="exactly one"):
+                plugin.register_step(
+                    backend, message="Create",
+                    plugin_type="Contoso.Plugins.PreCreateAccount",
+                    service_endpoint="Contoso Hook")
+        assert m.request_history == []
+
+    def test_service_endpoint_not_found_raises(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("sdkmessages"),
+                  json={"value": [{"sdkmessageid": _MSG_ID, "name": "Create"}]})
+            m.get(backend.url_for("serviceendpoints"), json={"value": []})
+            with pytest.raises(D365Error, match="[Ss]ervice endpoint"):
+                plugin.register_step(
+                    backend, message="Create", service_endpoint="Nope")
+        assert not _posts(m)
+
+    def test_service_endpoint_dry_run_reference(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(dry.url_for("sdkmessages"),
+                  json={"value": [{"sdkmessageid": _MSG_ID, "name": "Create"}]})
+            m.get(dry.url_for("serviceendpoints"), json={"value": []})
+            out = plugin.register_step(
+                dry, message="Create", service_endpoint="Ghost Hook")
+        assert out["_dry_run"] is True
+        kinds = {r["kind"]: r["_exists"] for r in out["references"]}
+        assert kinds["service_endpoint"] is False
+        assert kinds["message"] is True
+        assert not _posts(m)
+
     def test_filter_get_scoped_by_message_and_entity(self, backend):
         from crm.core import plugin
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
@@ -617,6 +683,95 @@ class TestRegisterStep:
                 plugin_type="Contoso.Plugins.PreCreateAccount", entity="account")
         assert "MSCRM.SolutionUniqueName" not in _posts(m)[0].headers
         assert out["solution"] is None
+
+
+_SE_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+
+class TestRegisterWebhook:
+    def test_posts_serviceendpoint_with_webhook_fields(self, backend):
+        from crm.core import plugin
+        se_url = backend.url_for(f"serviceendpoints({_SE_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("serviceendpoints"), status_code=204,
+                   headers={"OData-EntityId": se_url})
+            out = plugin.register_webhook(
+                backend, name="Contoso Hook",
+                url="https://example.com/hook", auth="webhookkey",
+                auth_value="secret-code")
+        assert out["created"] is True
+        assert out["serviceendpointid"] == _SE_ID
+        body = _posts(m)[0].json()
+        assert body["name"] == "Contoso Hook"
+        assert body["url"] == "https://example.com/hook"
+        # contract 8=Webhook, connectionmode 1=Normal, messageformat 2=Json
+        assert body["contract"] == 8
+        assert body["connectionmode"] == 1
+        assert body["messageformat"] == 2
+        # webhookkey -> authtype 4
+        assert body["authtype"] == 4
+        assert body["authvalue"] == "secret-code"
+        # echoed back (but never the secret authvalue)
+        assert out["name"] == "Contoso Hook"
+        assert out["contract"] == 8
+        assert out["authtype"] == 4
+        assert "authvalue" not in out
+
+    def test_auth_scheme_maps_to_authtype(self, backend):
+        from crm.core import plugin
+        se_url = backend.url_for(f"serviceendpoints({_SE_ID})")
+        for scheme, expected in [("webhookkey", 4), ("httpheader", 5),
+                                 ("httpquerystring", 6)]:
+            with requests_mock.Mocker() as m:
+                m.post(backend.url_for("serviceendpoints"), status_code=204,
+                       headers={"OData-EntityId": se_url})
+                plugin.register_webhook(
+                    backend, name="H", url="https://e/h", auth=scheme,
+                    auth_value="v")
+            assert _posts(m)[0].json()["authtype"] == expected
+
+    def test_unknown_auth_raises_no_http(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="auth"):
+                plugin.register_webhook(
+                    backend, name="H", url="https://e/h", auth="bogus",
+                    auth_value="v")
+        assert m.request_history == []
+
+    def test_solution_header_routed(self, backend):
+        from crm.core import plugin
+        se_url = backend.url_for(f"serviceendpoints({_SE_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("serviceendpoints"), status_code=204,
+                   headers={"OData-EntityId": se_url})
+            out = plugin.register_webhook(
+                backend, name="H", url="https://e/h", auth="webhookkey",
+                auth_value="v", solution="cwx_sol")
+        assert _posts(m)[0].headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
+        assert out["solution"] == "cwx_sol"
+
+    def test_dry_run_returns_preview_no_post(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            out = plugin.register_webhook(
+                dry, name="H", url="https://e/h", auth="webhookkey",
+                auth_value="v")
+        assert out["_dry_run"] is True
+        assert not _posts(m)
+
+    def test_unparseable_id_sets_lookup_error(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("serviceendpoints"), status_code=204,
+                   headers={"OData-EntityId": "https://x/serviceendpoints(bogus)"})
+            out = plugin.register_webhook(
+                backend, name="H", url="https://e/h", auth="webhookkey",
+                auth_value="v")
+        assert out["created"] is True
+        assert out["serviceendpointid"] is None
+        assert "serviceendpoint_lookup_error" in out
 
 
 _DELETE_STEP_ID = "66666666-6666-6666-6666-666666666666"
@@ -1482,6 +1637,65 @@ class TestPluginCommands:
         assert captured["filtering_attributes"] is None
         assert captured["name"] is None
         assert captured["assembly"] is None
+        assert captured["service_endpoint"] is None
+
+    def test_register_step_command_threads_service_endpoint(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.plugin.register_step",
+            lambda backend, **kw: captured.update(kw) or {
+                "created": True, "sdkmessageprocessingstepid": _STEP_ID})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-step",
+            "--message", "Create", "--service-endpoint", "Contoso Hook",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["service_endpoint"] == "Contoso Hook"
+        assert captured["plugin_type"] is None
+
+    def test_register_webhook_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_webhook(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "serviceendpointid": _SE_ID,
+                    "name": "Contoso Hook",
+                    "url": "https://example.com/hook", "contract": 8,
+                    "authtype": 4}
+
+        monkeypatch.setattr("crm.core.plugin.register_webhook", fake_webhook)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-webhook",
+            "--name", "Contoso Hook", "--url", "https://example.com/hook",
+            "--auth", "webhookkey", "--auth-value", "secret-code",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["name"] == "Contoso Hook"
+        assert captured["url"] == "https://example.com/hook"
+        assert captured["auth"] == "webhookkey"
+        assert captured["auth_value"] == "secret-code"
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["serviceendpointid"] == _SE_ID
+
+    def test_register_webhook_command_rejects_bad_auth(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-webhook",
+            "--name", "H", "--url", "https://e/h",
+            "--auth", "bogus", "--auth-value", "v",
+        ])
+        assert result.exit_code != 0
+        assert "bogus" in result.output
 
     def test_register_image_command_wires_core(self, monkeypatch):
         import json
