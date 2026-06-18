@@ -13,6 +13,7 @@ from crm.commands._helpers import (
     _handle_d365_error,
     _journal,
     _no_retry_scope,
+    _output_option,
 )
 
 
@@ -24,7 +25,7 @@ def translation_group():
 @translation_group.command("export")
 @click.option("--solution", required=True,
               help="Unique name of the solution whose labels to export.")
-@click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))
+@_output_option(required=True)
 @click.option("--timeout", type=int, default=None,
               help="Read timeout in seconds for the export request. "
                    "Overrides profile.async_timeout.")

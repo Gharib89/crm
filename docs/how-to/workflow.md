@@ -139,7 +139,7 @@ Action and business-process-flow cloning is not yet supported; use solution expo
 Save the full workflow definition (including xaml) to a JSON file for source control or migration.
 
 ```bash
-crm --json workflow export <workflow-guid> --out ./workflows/update-request.json
+crm --json workflow export <workflow-guid> --output ./workflows/update-request.json
 ```
 
 ## Import a workflow definition

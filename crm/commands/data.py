@@ -6,7 +6,7 @@ from crm.core import export as export_mod
 from crm.core import data_import as import_mod
 from crm.core import entity as entity_mod
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors, _journal
+from crm.commands._helpers import d365_errors, _journal, _output_option
 
 
 @click.group("data")
@@ -16,7 +16,7 @@ def data_group():
 
 @data_group.command("export")
 @click.argument("entity_set")
-@click.option("--output", "-o", required=True, type=click.Path(dir_okay=False))
+@_output_option(required=True)
 @click.option("--select", multiple=True)
 @click.option("--filter", "filter_", help="OData $filter.")
 @click.option("--page-size", type=int, default=500)

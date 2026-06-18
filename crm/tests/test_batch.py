@@ -644,6 +644,56 @@ class TestBatchCLI:
         assert result.exit_code != 0
         assert "continue-on-error" in result.output.lower() or "transaction" in result.output.lower()
 
+    def test_batch_cli_accepts_output_flags(self, backend, monkeypatch, tmp_path):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        from click.testing import CliRunner
+        from crm import cli as crm_cli
+        runner = CliRunner()
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "accounts"}]', encoding="utf-8")
+
+        resp_body = (
+            "--batchresp\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"value": []}\r\n'
+            "--batchresp--\r\n"
+        )
+
+        # Test -o
+        out_o = tmp_path / "out_o.json"
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("$batch"),
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresp"},
+                status_code=200,
+            )
+            result = runner.invoke(crm_cli.cli, [
+                "--json", "batch", str(p), "-o", str(out_o),
+            ])
+        assert result.exit_code == 0, result.output
+        assert out_o.exists()
+
+        # Test --output
+        out_output = tmp_path / "out_output.json"
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("$batch"),
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresp"},
+                status_code=200,
+            )
+            result = runner.invoke(crm_cli.cli, [
+                "--json", "batch", str(p), "--output", str(out_output),
+            ])
+        assert result.exit_code == 0, result.output
+        assert out_output.exists()
+
 
 class TestRenderBatchSummary:
     def test_empty_results(self):

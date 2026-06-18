@@ -23,6 +23,7 @@ from crm.commands._helpers import (
     d365_errors,
     _confirm_destructive,
     _journal,
+    _output_option,
     _resolve_publish,
     _solution_option,
     _resolve_solution,
@@ -252,8 +253,7 @@ def metadata_describe(ctx: CLIContext, logical_name):
               help="Include the entity's public views in the spec.")
 @click.option("--with-relationships", is_flag=True, default=False,
               help="Include the entity's custom 1:N relationships in the spec.")
-@click.option("--output", "-o", default=None, type=click.Path(dir_okay=False),
-              help="Write the bare spec as YAML to FILE (directly consumable by crm apply -f).")
+@_output_option(help="Write the bare spec as YAML to FILE (directly consumable by crm apply -f).")
 @pass_ctx
 def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relationships, output):
     """Export a live entity as an apply-consumable desired-state spec.

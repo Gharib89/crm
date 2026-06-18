@@ -13,6 +13,7 @@ from crm.commands._helpers import (
     _admin_kwargs,
     _journal,
     d365_errors,
+    _output_option,
 )
 
 _CATEGORY_NAMES = {
@@ -258,14 +259,13 @@ def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, 
 
 @workflow_group.command("export")
 @click.argument("workflow_id")
-@click.option("--out", "out_path", default=None,
-              type=click.Path(file_okay=True, dir_okay=False),
-              help="Write the workflow definition to this JSON file. Default: stdout only.")
+@_output_option(help="Write the workflow definition to this JSON file. Default: stdout only.")
+@click.option("--out", "out_path", hidden=True, type=click.Path(dir_okay=False))
 @pass_ctx
-def workflow_export(ctx: CLIContext, workflow_id, out_path):
+def workflow_export(ctx: CLIContext, workflow_id, output, out_path):
     """Export a workflow definition (incl. xaml) to a JSON file."""
     with d365_errors(ctx):
-        info = workflow_mod.export_workflow(ctx.backend(), workflow_id, out_path=out_path)
+        info = workflow_mod.export_workflow(ctx.backend(), workflow_id, out_path=output or out_path)
     ctx.emit(True, data=info)
 
 

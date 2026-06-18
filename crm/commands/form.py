@@ -12,6 +12,7 @@ from crm.commands._helpers import (
     _publish_option,
     d365_errors, _journal, _emit_with_warning,
     _solution_option, _resolve_solution, _resolve_publish,
+    _output_option,
 )
 
 _form_option = click.option(
@@ -205,8 +206,7 @@ def form_set_field(
 @form_group.command("export")
 @click.argument("entity")
 @click.argument("form_name")
-@click.option("--output", type=click.Path(dir_okay=False),
-              help="Write the formxml to this file instead of stdout.")
+@_output_option(help="Write the formxml to this file instead of stdout.")
 @pass_ctx
 def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None) -> None:
     """Export a form's formxml."""
