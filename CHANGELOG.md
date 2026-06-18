@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.20.0 (2026-06-18)
+
+### Features
+
+- **audit**: Retrieve server-side audit change history
+  ([#394](https://github.com/Gharib89/crm/pull/394),
+  [`82c063c`](https://github.com/Gharib89/crm/commit/82c063c356635861031e738ce348a011fc70c780))
+
+
 ## v4.19.0 (2026-06-18)
 
 ### Features
