@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.16.0 (2026-06-18)
+
+### Features
+
+- **app**: Add app remove-components (RemoveAppComponents)
+  ([#389](https://github.com/Gharib89/crm/pull/389),
+  [`e81967d`](https://github.com/Gharib89/crm/commit/e81967de6e4cf59faf795fb7e8c426a2ee4f8b20))
+
+
 ## v4.15.0 (2026-06-17)
 
 ### Features
