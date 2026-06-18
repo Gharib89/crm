@@ -80,7 +80,6 @@ def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes, pu
         if publish and not info.get("_dry_run"):
             from crm.core import solution as sol_mod
             info["publish"] = sol_mod.publish_all(ctx.backend())
-        if publish:
             ctx.emit(True, data=info)
         else:
             ctx.emit(True, data=info, warnings=[

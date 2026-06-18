@@ -235,6 +235,12 @@ class TestTranslationCommands:
         ])
         assert result.exit_code == 0, result.output
         assert not publish_called, "publish_all must not be called under dry-run"
+        import json
+        envelope = json.loads(result.stdout)
+        warnings = " ".join(envelope.get("meta", {}).get("warnings", []))
+        assert "publish" in warnings.lower(), (
+            "warning must still appear when --publish skipped due to dry-run"
+        )
 
     def test_import_command_with_yes_runs_and_hints_publish(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
