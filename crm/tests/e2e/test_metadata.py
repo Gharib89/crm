@@ -20,6 +20,19 @@ def test_metadata_list_entities(backend):
     assert "account" in names, f"Did not see 'account' in: {names[:10]}..."
 
 
+@covers("metadata entities")
+def test_metadata_list_entities_managed_filter(backend):
+    """Test --managed-only and --filter flags on metadata entities."""
+    from crm.core import metadata as md
+    managed = md.list_entities(backend, managed_only=True, top=50)
+    for ent in managed:
+        assert ent.get("IsManaged") is True
+        
+    filtered = md.list_entities(backend, filter_expr="IsCustomEntity eq false", top=50)
+    for ent in filtered:
+        assert ent.get("IsCustomEntity") is False
+
+
 @covers("metadata create-entity")
 def test_e2e_create_custom_entity_reads_back_set_name(backend):
     """§3.3: create a unique custom entity, assert returned entity_set_name resolves via metadata.list_entities."""
@@ -169,3 +182,29 @@ def test_add_customer_attribute_targets_account_and_contact(backend, ephemeral_e
         params={"$select": "Targets"},
     )
     assert sorted(rb["Targets"]) == ["account", "contact"]
+
+
+@covers("metadata add-attribute")
+def test_add_string_auto_number_format(backend, ephemeral_entity):
+    """Test --auto-number-format on string attribute create."""
+    from crm.core import metadata_attrs as ma
+    schema = "new_E2EAutoNum"
+    fmt = "TEST-{SEQNUM:5}"
+    info = ma.add_attribute(
+        backend,
+        entity=ephemeral_entity,
+        kind="string",
+        schema_name=schema,
+        display_name="E2E AutoNum",
+        max_length=100,
+        auto_number_format=fmt,
+        publish=False,
+    )
+    assert info.get("created"), info
+    rb = backend.get(
+        f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+        f"/Attributes(LogicalName='{schema.lower()}')"
+        f"/Microsoft.Dynamics.CRM.StringAttributeMetadata",
+        params={"$select": "AutoNumberFormat"},
+    )
+    assert rb.get("AutoNumberFormat") == fmt

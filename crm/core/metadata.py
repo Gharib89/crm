@@ -20,6 +20,8 @@ def list_entities(
     backend: D365Backend,
     *,
     custom_only: bool = False,
+    managed_only: bool = False,
+    filter_expr: str | None = None,
     top: int | None = None,
 ) -> list[dict[str, Any]]:
     """List entity definitions. Returns a list of `{LogicalName, EntitySetName, ...}` dicts.
@@ -29,10 +31,18 @@ def list_entities(
     the response comes back.
     """
     params = {
-        "$select": "LogicalName,EntitySetName,SchemaName,IsCustomEntity,DisplayName",
+        "$select": "LogicalName,EntitySetName,SchemaName,IsCustomEntity,IsManaged,DisplayName",
     }
+    clauses: list[str] = []
     if custom_only:
-        params["$filter"] = "IsCustomEntity eq true"
+        clauses.append("IsCustomEntity eq true")
+    if managed_only:
+        clauses.append("IsManaged eq true")
+    if filter_expr:
+        clauses.append(filter_expr)
+        
+    if clauses:
+        params["$filter"] = " and ".join(clauses)
 
     result = as_dict(backend.get("EntityDefinitions", params=params))
     items = result.get("value", [])

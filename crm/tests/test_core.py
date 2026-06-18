@@ -385,6 +385,18 @@ class TestMetadata:
         assert items[0]["LogicalName"] == "new_thing"
         assert m.request_history[0].qs["$filter"] == ["iscustomentity eq true"]
 
+    def test_list_entities_filters_managed_and_custom_expr(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions"),
+                json={"value": [{"LogicalName": "account"}]},
+            )
+            meta_mod.list_entities(backend, managed_only=True, filter_expr="IsActivity eq true")
+        qs = m.request_history[0].qs["$filter"][0]
+        # Should contain both clauses
+        assert "ismanaged eq true" in qs
+        assert "isactivity eq true" in qs
+
     def test_entity_info_uses_logical_name_path(self, backend):
         with requests_mock.Mocker() as m:
             m.get(

@@ -45,16 +45,18 @@ def metadata_group():
 
 @metadata_group.command("entities")
 @click.option("--custom-only", is_flag=True)
+@click.option("--managed-only", is_flag=True)
+@click.option("--filter", "filter_expr")
 @click.option("--top", type=int)
 @pass_ctx
-def metadata_entities(ctx: CLIContext, custom_only, top):
+def metadata_entities(ctx: CLIContext, custom_only, managed_only, filter_expr, top):
     """List entity definitions."""
     use_cache = ctx.cache_metadata or ctx.refresh_metadata
     if use_cache:
-        if custom_only:
+        if custom_only or managed_only or filter_expr:
             raise click.UsageError(
-                "--custom-only is not supported with the metadata cache "
-                "(--cache-metadata / --refresh-metadata); "
+                "Filters (--custom-only, --managed-only, --filter) are not supported "
+                "with the metadata cache (--cache-metadata / --refresh-metadata); "
                 "the cache stores only logical/set names"
             )
         with d365_errors(ctx):
@@ -80,14 +82,20 @@ def metadata_entities(ctx: CLIContext, custom_only, top):
                  meta=meta)
         return
     with d365_errors(ctx):
-        items = meta_mod.list_entities(ctx.backend(), custom_only=custom_only, top=top)
+        items = meta_mod.list_entities(
+            ctx.backend(),
+            custom_only=custom_only,
+            managed_only=managed_only,
+            filter_expr=filter_expr,
+            top=top
+        )
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
-    headers = ["LogicalName", "EntitySetName", "SchemaName", "IsCustom"]
+    headers = ["LogicalName", "EntitySetName", "SchemaName", "IsCustom", "IsManaged"]
     rows = [
         [it.get("LogicalName", ""), it.get("EntitySetName", ""),
-         it.get("SchemaName", ""), str(it.get("IsCustomEntity", False))]
+         it.get("SchemaName", ""), str(it.get("IsCustomEntity", False)), str(it.get("IsManaged", False))]
         for it in items
     ]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
@@ -657,6 +665,8 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
               help="String/memo: max characters (default 100/2000).")
 @click.option("--format", "format_name", default=None,
               help="String: Text|Email|Url|Phone|TextArea. Datetime: DateOnly|DateAndTime.")
+@click.option("--auto-number-format", default=None,
+              help="String: Auto-number format pattern (e.g. 'INV-{SEQNUM:5}').")
 @click.option("--behavior", "behavior_name",
               type=click.Choice(["UserLocal", "DateOnly", "TimeZoneIndependent"]),
               default=None,
@@ -688,7 +698,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
 @pass_ctx
 def metadata_add_attribute(
     ctx: CLIContext, entity, kind, schema_name, display_name, description, required,
-    max_length, format_name, behavior_name, min_value, max_value, precision,
+    max_length, format_name, auto_number_format, behavior_name, min_value, max_value, precision,
     true_label, false_label, default_value,
     optionset_name, options, target_entity, relationship_schema,
     max_size_kb, solution, require_solution, if_exists, publish,
@@ -731,6 +741,7 @@ def metadata_add_attribute(
             required=required,
             max_length=max_length,
             format_name=format_name,
+            auto_number_format=auto_number_format,
             behavior_name=behavior_name,
             min_value=min_value,
             max_value=max_value,
