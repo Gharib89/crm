@@ -75,3 +75,34 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
             assert ddata["deleted"] is True
             assert ddata["_entity_id"] == contact_id
             assert "id" not in ddata
+
+
+@covers("entity upsert")
+def test_entity_upsert_if_none_match_is_create_only(backend, cli, unique):
+    import uuid
+
+    # Upsert to a fresh client-chosen GUID with --if-none-match: the record is
+    # absent, so it creates. A second create-only upsert to the same id must fail
+    # with a precondition error (If-None-Match: * → 412) instead of updating.
+    cid = str(uuid.uuid4())
+    created = False
+    try:
+        first = cli([
+            "--json", "entity", "upsert", "contacts", cid,
+            "--data", json.dumps({"firstname": "INM", "lastname": f"Test-{unique}"}),
+            "--if-none-match",
+        ])
+        assert first.returncode == 0, first.stderr
+        created = True
+
+        second = cli([
+            "--json", "entity", "upsert", "contacts", cid,
+            "--data", json.dumps({"firstname": "INM2", "lastname": f"Test-{unique}"}),
+            "--if-none-match",
+        ], check=False)
+        assert second.returncode != 0, "create-only upsert should fail when the record exists"
+        env = json.loads(second.stdout)
+        assert env["ok"] is False
+    finally:
+        if created:
+            _safe(backend, f"contacts({cid})")

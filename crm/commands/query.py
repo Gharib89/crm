@@ -57,6 +57,10 @@ def query_group():
 @click.option("--top", type=int)
 @click.option("--orderby")
 @click.option("--expand", multiple=True)
+@click.option("--apply", "apply_", metavar="EXPR",
+              help="OData $apply aggregation expression, e.g. "
+                   "'groupby((field),aggregate(measure with sum as total))'. The "
+                   "result shape is whatever the aggregation returns.")
 @click.option("--count", is_flag=True, help="Also request $count.")
 @click.option("--page-size", type=int)
 @click.option("--all", "all_pages", is_flag=True, default=False,
@@ -79,7 +83,7 @@ def query_group():
                    "business fields, _*_value lookup GUIDs, and the primary id.")
 @pass_ctx
 def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expand,
-                count, page_size, all_pages, max_records, annotations,
+                apply_, count, page_size, all_pages, max_records, annotations,
                 track_changes, delta_token, minimal):
     """OData v4 GET — entity set, bound-function path, or metadata path.
 
@@ -100,6 +104,7 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
             top=top,
             orderby=orderby,
             expand=list(expand) or None,
+            apply=apply_,
             count=count,
             page_size=page_size,
             all_pages=all_pages,

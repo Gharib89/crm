@@ -328,11 +328,13 @@ crm data export opportunities -o /tmp/op.csv \
     --filter "statecode eq 0" --select name,estimatedvalue
 
 # Bulk import (JSONL create; use --mode upsert --id-column <col> for PATCH by GUID,
-# or --mode upsert --key <attr> to PATCH by alternate key when no GUID is available).
+# or --mode upsert --key <attr> to PATCH by alternate key when no GUID is available;
+# --mode delete removes records by the same GUID/alternate-key resolution).
 # READ-shape lookups (_<attr>_value, as export emits) auto-rebind to
 # <nav>@odata.bind from metadata, so an export round-trips with no hand-editing.
 crm data import accounts records.jsonl
 crm data import accounts updates.jsonl --mode upsert --key accountnumber
+crm data import accounts to_delete.jsonl --mode delete --key accountnumber
 crm --dry-run data import accounts records.jsonl   # preview: zero writes, dry_run:true
 
 # Discover the CLI surface (no connection needed) — for agents and scripts
@@ -384,13 +386,13 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | Group        | Purpose                                                    |
 |--------------|------------------------------------------------------------|
 | `connection` | Profiles, WhoAmI, preflight diagnostic (`doctor`), reachability checks |
-| `entity`     | Record CRUD (get/create/update/upsert/delete); `upsert` accepts `--key ATTR[,ATTR...]` to match by alternate key instead of a primary GUID (key values read from `--data`, key attrs stripped from the body); `clone` (single-record clone, lookups rebound to the same parents, `--override`/`--unset`; `--with-children` also clones the custom 1:N child rows, repointing them to the new parent — continue-and-report on failure, `--skip-child-entity` prunes); `children` (per-1:N related-record counts via chunked `$batch`, not one query per relationship) |
-| `query`      | OData v4 and FetchXML queries                              |
+| `entity`     | Record CRUD (get/create/update/upsert/delete); `upsert` accepts `--key ATTR[,ATTR...]` to match by alternate key instead of a primary GUID (key values read from `--data`, key attrs stripped from the body), plus `--if-none-match` for a create-only upsert (412 if the record exists); `clone` (single-record clone, lookups rebound to the same parents, `--override`/`--unset`; `--with-children` also clones the custom 1:N child rows, repointing them to the new parent — continue-and-report on failure, `--skip-child-entity` prunes); `children` (per-1:N related-record counts via chunked `$batch`, not one query per relationship) |
+| `query`      | OData v4 and FetchXML queries; `query odata --apply` runs server-side `$apply` aggregation / group-by / distinct |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
 | `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
 | `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / apply-upgrade (separate promote) / uninstall |
-| `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch`; `--mode upsert` supports GUID (`--id-column`) or alternate-key (`--key`) matching |
+| `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch`; `--mode upsert`/`--mode delete` resolve records by GUID (`--id-column`) or alternate key (`--key`) |
 | `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); set as app icons |
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml; add-field / remove-field / set-field to edit form layouts without manual XML |
 | `plugin`     | Register/update/unregister plug-in assemblies, SDK message processing steps, and step entity images |

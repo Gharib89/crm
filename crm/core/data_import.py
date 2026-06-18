@@ -139,6 +139,35 @@ def _build_upsert_op(
     return BatchOperation(method="PATCH", url=url, body=body)
 
 
+def _build_delete_op(
+    entity_set: str,
+    record: dict[str, Any],
+    row_index: int,
+    *,
+    id_column: str | None = None,
+    alt_key: list[str] | None = None,
+) -> BatchOperation:
+    # DELETE carries no body; the record path comes from the alternate key or
+    # the GUID column, resolved exactly as upsert does.
+    if alt_key is not None:
+        key_values: dict[str, Any] = {}
+        for attr in alt_key:
+            if attr not in record:
+                raise D365Error(
+                    f"Delete row {row_index}: missing key column {attr!r} in record"
+                )
+            key_values[attr] = record[attr]
+        url = entity_mod.build_alternate_key_path(entity_set, key_values)
+        return BatchOperation(method="DELETE", url=url)
+    assert id_column is not None  # narrowed by import_records guard
+    if id_column not in record:
+        raise D365Error(
+            f"Delete row {row_index}: missing id_column {id_column!r} in record"
+        )
+    url = entity_mod.build_record_path(entity_set, str(record[id_column]))
+    return BatchOperation(method="DELETE", url=url)
+
+
 # ── chunking ─────────────────────────────────────────────────────────────────
 
 
@@ -180,10 +209,11 @@ def import_records(
         ``"jsonl"`` or ``"csv"``.  Inferred from the file suffix when *None*:
         ``.csv`` → ``"csv"``, everything else → ``"jsonl"``.
     mode:
-        ``"create"`` (POST) or ``"upsert"`` (PATCH by GUID).
+        ``"create"`` (POST), ``"upsert"`` (PATCH by GUID/alternate key), or
+        ``"delete"`` (DELETE by GUID/alternate key).
     id_column:
-        Column / key that holds the record GUID.  Required for ``"upsert"``
-        unless *alt_key* is given (mutually exclusive with it).
+        Column / key that holds the record GUID.  Required for ``"upsert"`` and
+        ``"delete"`` unless *alt_key* is given (mutually exclusive with it).
     alt_key:
         Alternate-key attribute(s) (already validated against entity metadata
         by the caller) to upsert by instead of the primary GUID.  Each row's
@@ -225,18 +255,20 @@ def import_records(
             "continue_on_error requires transactional=False "
             "(a server-side changeset is all-or-nothing)"
         )
-    if mode == "upsert":
+    if mode in ("upsert", "delete"):
         if id_column is not None and alt_key is not None:
             raise D365Error(
                 "id_column and alt_key are mutually exclusive "
-                "(upsert by primary GUID OR by alternate key, not both)"
+                "(target by primary GUID OR by alternate key, not both)"
             )
         if id_column is None and alt_key is None:
-            raise D365Error("id_column or alt_key is required when mode='upsert'")
+            raise D365Error(f"id_column or alt_key is required when mode={mode!r}")
     elif alt_key is not None:
-        raise D365Error("alt_key is only valid when mode='upsert'")
-    if mode not in ("create", "upsert"):
-        raise D365Error(f"Unsupported mode: {mode!r} (use 'create' or 'upsert')")
+        raise D365Error("alt_key is only valid when mode='upsert' or mode='delete'")
+    if mode not in ("create", "upsert", "delete"):
+        raise D365Error(
+            f"Unsupported mode: {mode!r} (use 'create', 'upsert', or 'delete')"
+        )
 
     # ── format ───────────────────────────────────────────────────────────────
     path = Path(input_path)
@@ -275,17 +307,18 @@ def import_records(
         if mode == "create":
             ops.append(_build_create_op(entity_set, record))
             op_ids.append(None)
-        elif alt_key is not None:
-            op = _build_upsert_op(entity_set, record, row_index, alt_key=alt_key)
-            ops.append(op)
+            continue
+        # upsert / delete both target an existing record by GUID or alternate key.
+        build = _build_upsert_op if mode == "upsert" else _build_delete_op
+        ops.append(build(entity_set, record, row_index,
+                         id_column=id_column, alt_key=alt_key))
+        if alt_key is not None:
             # Record the alternate-key segment for failure traceability.
             op_ids.append(entity_mod.format_alternate_key_segment(
                 {a: record[a] for a in alt_key}
             ))
         else:
-            # mode == "upsert" by primary GUID; id_column is not None (guarded above)
-            assert id_column is not None  # narrow type for pyright
-            ops.append(_build_upsert_op(entity_set, record, row_index, id_column=id_column))
+            assert id_column is not None  # narrow type for pyright (guarded above)
             op_ids.append(str(record[id_column]))
 
     # ── dispatch chunks ──────────────────────────────────────────────────────

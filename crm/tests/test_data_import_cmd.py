@@ -106,6 +106,40 @@ class TestGuards:
         assert result.exit_code == 2
         assert "at least one attribute" in (result.output + result.stderr)
 
+    def test_delete_without_id_column_nor_key(self, tmp_path):
+        """--mode delete with neither --id-column nor --key → UsageError (exit 2)."""
+        f = tmp_path / "data.jsonl"
+        f.write_text('{"name": "x"}\n', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "data", "import", "accounts", str(f), "--mode", "delete",
+        ])
+        assert result.exit_code == 2
+        assert "--id-column" in (result.output + result.stderr)
+
+
+class TestDeleteMode:
+    def test_delete_by_id_column_emits_delete_ops(self, monkeypatch, tmp_path):
+        """--mode delete --id-column issues DELETE batch ops keyed by GUID."""
+        guid = "12345678-1234-1234-1234-123456789abc"
+        f = tmp_path / "data.jsonl"
+        f.write_text(json.dumps({"accountid": guid}) + "\n", encoding="utf-8")
+
+        class _DelBackend(_StubBackend):
+            def batch(self, ops, *, transactional, continue_on_error, timeout=None):
+                self.ops = ops
+                return [{"method": "DELETE", "url": ops[0]["url"], "status": 204,
+                         "headers": {}, "body": None, "error": None}]
+
+        stub = _DelBackend()
+        monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        result = CliRunner().invoke(cli, [
+            "--json", "data", "import", "accounts", str(f),
+            "--mode", "delete", "--id-column", "accountid",
+        ])
+        assert result.exit_code == 0, result.output
+        assert stub.ops[0]["method"] == "DELETE"
+        assert stub.ops[0]["url"] == f"accounts({guid})"
+
 
 class TestUpsertByAlternateKey:
     def test_key_routes_alternate_key_attrs_to_core(self, monkeypatch, tmp_path):

@@ -57,3 +57,19 @@ def test_odata_track_changes_returns_delta_link_and_resumes(backend):
     resumed = odata_query(backend, "accounts", select=["name"], delta_token=token)
     assert "value" in resumed
     assert "@odata.deltaLink" in resumed
+
+
+@covers("query odata")
+def test_odata_apply_groups_and_aggregates(backend):
+    from crm.core.query import odata_query
+
+    # $apply groupby + aggregate($count) — the validator blocks an inline `$`, so
+    # this aggregation can only reach the server through the --apply flag. Each
+    # returned row carries the grouped key plus the count measure.
+    result = odata_query(
+        backend, "contacts",
+        apply="groupby((statuscode),aggregate($count as count))",
+    )
+    assert "value" in result
+    for row in result["value"]:
+        assert "count" in row

@@ -560,15 +560,23 @@ def upsert(
     record_id: str,
     payload: dict[str, Any],
     *,
+    if_none_match: bool = False,
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
-    """PATCH that creates if missing (no If-Match header)."""
+    """PATCH that creates if missing.
+
+    With ``if_none_match`` the request carries ``If-None-Match: *``, so it
+    succeeds only when the record does not yet exist (create-only); the server
+    returns a 412 precondition failure otherwise.
+    """
+    headers = {"If-None-Match": "*"} if if_none_match else None
     result = backend.patch(
         build_record_path(entity_set, record_id),
         json_body=payload,
+        extra_headers=headers,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
@@ -583,23 +591,29 @@ def upsert_by_key(
     key_values: dict[str, Any],
     payload: dict[str, Any],
     *,
+    if_none_match: bool = False,
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
-    """PATCH to an alternate-key path (create-if-missing, no If-Match).
+    """PATCH to an alternate-key path (create-if-missing).
 
     Matches an existing record by its natural/alternate key instead of the
     primary GUID. The alternate-key attributes are stripped from the body: per
     Dataverse guidance the server identifies the record from the URL key and
     discards (or, on create, copies from the URL) those attributes, so sending a
     body value that differs from the URL is rejected.
+
+    With ``if_none_match`` the request carries ``If-None-Match: *`` (create-only;
+    412 when a record with that key already exists).
     """
     body = {k: v for k, v in payload.items() if k not in key_values}
+    headers = {"If-None-Match": "*"} if if_none_match else None
     result = backend.patch(
         build_alternate_key_path(entity_set, key_values),
         json_body=body,
+        extra_headers=headers,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,

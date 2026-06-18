@@ -27,6 +27,7 @@ def odata_query(
     top: int | None = None,
     orderby: str | None = None,
     expand: list[str] | None = None,
+    apply: str | None = None,
     count: bool = False,
     include_annotations: bool = False,
     page_size: int | None = None,
@@ -116,6 +117,8 @@ def odata_query(
         params["$orderby"] = orderby
     if expand:
         params["$expand"] = ",".join(expand)
+    if apply:
+        params["$apply"] = apply
     if count:
         params["$count"] = "true"
     if delta_token is not None:

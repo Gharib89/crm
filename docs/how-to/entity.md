@@ -34,6 +34,20 @@ crm --json entity upsert cwx_tickets 00000000-0000-0000-0000-000000000015 \
 ```
 `update` is a PATCH; `upsert` is a PATCH that creates the record if missing. Both return `{"ok": true}`.
 
+### Create-only upsert (`entity upsert --if-none-match`)
+
+```bash
+crm --json entity upsert cwx_tickets 00000000-0000-0000-0000-000000000015 \
+  --if-none-match --data '{"cwx_name":"New ticket"}'
+```
+
+`--if-none-match` sends `If-None-Match: *` with the PATCH, so the write succeeds
+only when the record does **not** already exist — the server returns a 412
+precondition error if it does. This is the create-only complement to `entity
+update --if-match` (which only succeeds when the record exists). It works for
+both a primary GUID and a `--key` alternate-key upsert. The flag is on `entity
+upsert` only — not on `entity create`.
+
 ## Upsert by alternate key (`entity upsert --key`)
 
 When you do not have the primary GUID, `--key` lets you upsert by a
