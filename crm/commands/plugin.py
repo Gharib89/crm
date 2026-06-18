@@ -9,7 +9,7 @@ import click
 from crm.core import plugin as plugin_mod
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
-    _destructive_option,
+    _destructive_option, _solution_option, _resolve_solution,
     d365_errors, _emit_with_warning, _confirm_destructive, _journal)
 
 
@@ -32,17 +32,18 @@ def plugin_group():
               type=click.Choice(["sandbox", "none"]), default="sandbox",
               help="Isolation mode (sandbox=2, none=1). Default: sandbox.")
 @click.option("--description", default=None, help="Assembly description.")
-@click.option("--solution", default=None,
-              help="Target solution uniquename (MSCRM.SolutionUniqueName).")
+@_solution_option
 @click.option("--update", is_flag=True, default=False,
               help="PATCH the content of an existing assembly (resolved by name).")
 @pass_ctx
 def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
                           public_key_token, isolation_mode, description,
-                          solution, update):
+                          solution, require_solution, update):
     """Register a plug-in assembly from a .dll file (uploads its bytes)."""
-    warning = _ignored_update_flags_warning(update, version, culture,
-                                             public_key_token, description)
+    update_warning = _ignored_update_flags_warning(update, version, culture,
+                                                    public_key_token, description)
+    solution, sol_warning = _resolve_solution(ctx, solution, require_solution)
+    warning = "; ".join(w for w in (update_warning, sol_warning) if w) or None
     with d365_errors(ctx):
         info = plugin_mod.register_assembly(
             ctx.backend(), path=path, name=name, version=version,
@@ -51,7 +52,7 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
             solution=solution, update=update)
     _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
-    _journal(ctx, path, info)
+    _journal(ctx, path, info, solution=solution)
 
 
 @plugin_group.command("list-types")
@@ -98,19 +99,22 @@ def list_types_cmd(ctx: CLIContext, assembly):
                    "the derived name would exceed the platform's 256-char limit.")
 @click.option("--assembly", default=None,
               help="Scope the plug-in type lookup to this assembly (by name).")
+@_solution_option
 @pass_ctx
 def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
-                      mode, rank, filtering_attributes, name, assembly):
+                      mode, rank, filtering_attributes, name, assembly,
+                      solution, require_solution):
     """Register a plug-in step (sdkmessageprocessingstep)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     with d365_errors(ctx):
         info = plugin_mod.register_step(
             ctx.backend(), message=message, plugin_type=plugin_type,
             entity=entity, stage=stage, mode=mode, rank=rank,
             filtering_attributes=filtering_attributes, name=name,
-            assembly=assembly)
-    _emit_with_warning(ctx, info, None,
+            assembly=assembly, solution=solution)
+    _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
-    _journal(ctx, plugin_type, info)
+    _journal(ctx, plugin_type, info, solution=solution)
 
 
 @plugin_group.command("register-image")
@@ -131,18 +135,20 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, entity, stage,
 @click.option("--message-property-name", "message_property_name", default=None,
               help="Override the derived request property (required for "
                    "Send-message steps: FaxId, EmailId or TemplateId).")
+@_solution_option
 @pass_ctx
 def register_image_cmd(ctx: CLIContext, step, image_type, alias, attributes,
-                       name, message_property_name):
+                       name, message_property_name, solution, require_solution):
     """Register a step entity image (sdkmessageprocessingstepimage)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     with d365_errors(ctx):
         info = plugin_mod.register_image(
             ctx.backend(), step=step, image_type=image_type, alias=alias,
             attributes=attributes, name=name,
-            message_property_name=message_property_name)
-    _emit_with_warning(ctx, info, None,
+            message_property_name=message_property_name, solution=solution)
+    _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
-    _journal(ctx, step, info)
+    _journal(ctx, step, info, solution=solution)
 
 
 @plugin_group.command("unregister-image")
