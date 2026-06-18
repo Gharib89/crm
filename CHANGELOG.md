@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.27.0 (2026-06-18)
+
+### Features
+
+- **plugin**: Register webhook service endpoints and bind steps to them
+  ([#406](https://github.com/Gharib89/crm/pull/406),
+  [`ef2ec37`](https://github.com/Gharib89/crm/commit/ef2ec37c77a6b879528fd928a82671a6f5be28f9))
+
+
 ## v4.26.1 (2026-06-18)
 
 ### Bug Fixes
