@@ -53,12 +53,14 @@ crm solution export MyCustomSolution -o /tmp/snap.zip
 
 ```bash
 crm solution import /tmp/snap.zip --yes
-# --no-overwrite prevents overwriting existing unmanaged customizations in the target
+# --no-overwrite keeps existing unmanaged customizations; --no-publish suppresses workflow activation
 ```
 
 **Gotcha:** `solution import` **OVERWRITES** unmanaged customizations in the target org by
-default. Pass `--no-overwrite` to skip overwriting; omitting `--yes` in a non-interactive
-context aborts.
+default, and **activates imported workflows** (`PublishWorkflows` — not `PublishAllXml`).
+Pass `--no-overwrite` to keep existing customizations, or `--no-publish` to suppress
+workflow activation. Both are the off-halves of boolean pairs (`--overwrite/--no-overwrite`,
+`--publish/--no-publish`). Omitting `--yes` in a non-interactive context aborts.
 
 **Gotcha — product-update dependency block.** If the server rejects the import before
 processing any components due to a product-update dependency check, pass

@@ -70,6 +70,8 @@ def _resolve_secret_flag(password_opt, client_secret_opt):
 @click.option("--publisher-prefix", default=None, help="Default schema-name prefix, e.g. 'new'.")
 @click.option("--store-password-plaintext", is_flag=True,
               help="Force plaintext storage (skip the OS keyring).")
+# Deliberate inline option (not _destructive_option): the profile setup verbs
+# keep a `-y` short alias the shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip the overwrite-confirm prompt.")
 @pass_ctx
 def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
@@ -340,6 +342,8 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
 
 @profile_group.command("rm")
 @click.argument("name")
+# Deliberate inline option (not _destructive_option): keeps a `-y` short alias the
+# shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @pass_ctx
 def profile_rm(ctx: CLIContext, name, yes):

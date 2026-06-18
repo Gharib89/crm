@@ -205,9 +205,10 @@ class TestSolutionImportConfirm:
             cli, ["--json", "solution", "import", zip_path, "--yes"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"] == {"imported": True}
-        # default semantics unchanged: overwrite stays ON
+        # default semantics unchanged: publish + overwrite both stay ON (#378)
         assert captured["zip_path"] == zip_path
         assert captured["overwrite_unmanaged_customizations"] is True
+        assert captured["publish_workflows"] is True
 
     def test_no_overwrite_does_not_prompt(self, monkeypatch, zip_path):
         # A non-overwrite import does not clobber unmanaged customizations, so the
@@ -219,3 +220,27 @@ class TestSolutionImportConfirm:
         assert result.exit_code == 0, result.output
         assert "Continue?" not in result.output
         assert captured["overwrite_unmanaged_customizations"] is False
+
+    def test_publish_pair_maps_to_publish_workflows(self, monkeypatch, zip_path):
+        # Opt-in `--publish/--no-publish` pair (#378): the explicit positive form
+        # imports with PublishWorkflows ON; the negative half turns it off.
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--publish", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert captured["publish_workflows"] is True
+
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--no-publish", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert captured["publish_workflows"] is False
+
+    def test_overwrite_pair_maps_to_overwrite(self, monkeypatch, zip_path):
+        # Opt-in `--overwrite/--no-overwrite` pair (#378): the explicit positive
+        # form keeps the destructive overwrite ON (still gated by --yes).
+        captured = self._stub_import(monkeypatch)
+        result = CliRunner().invoke(
+            cli, ["--json", "solution", "import", zip_path, "--overwrite", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert captured["overwrite_unmanaged_customizations"] is True
