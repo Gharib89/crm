@@ -6,7 +6,7 @@ hide:
 
 <div class="crm-hero" markdown>
 
-<div class="crm-hero-title">
+<div class="crm-hero-title" markdown>
 ![crm](assets/logo.svg){ .crm-hero-logo }
 # crm
 </div>
