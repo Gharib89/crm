@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.24.0 (2026-06-18)
+
+### Documentation
+
+- Clarify version bump discipline (feat=minor for real features only)
+  ([`95a829d`](https://github.com/Gharib89/crm/commit/95a829d4c43df0b67c483e574a916708c023a7e5))
+
+### Features
+
+- **metadata**: Add --kind customer composite lookup
+  ([#400](https://github.com/Gharib89/crm/pull/400),
+  [`124fab3`](https://github.com/Gharib89/crm/commit/124fab3b1e8669667908e51576adfabd4437bbd8))
+
+### Refactoring
+
+- **cli**: Unify the output-file flag to --output/-o
+  ([#362](https://github.com/Gharib89/crm/pull/362),
+  [`7482496`](https://github.com/Gharib89/crm/commit/7482496f0eabe60b10e37ca25768a7d345e3f221))
+
+
 ## v4.23.0 (2026-06-18)
 
 ### Features
