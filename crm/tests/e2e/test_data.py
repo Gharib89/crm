@@ -41,6 +41,60 @@ def test_data_export_contacts_csv(cli, tmp_path):
     )
 
 
+# ── data delete (BulkDelete) ────────────────────────────────────────────────────
+
+
+@covers("data delete")
+@pytest.mark.slow
+def test_data_delete_bulkdelete_by_fetchxml(backend, cli, tmp_path, unique):
+    """Submit a BulkDelete job over a FetchXML filter and wait; rows are deleted."""
+    lastname = f"E2EBulkDel{unique[:6]}"
+    ids: list[str] = []
+    for fn in ("BulkA", "BulkB"):
+        created = backend.post(
+            "contacts",
+            json_body={"firstname": fn, "lastname": lastname},
+            extra_headers={"Prefer": "return=representation"},
+        )
+        ids.append(str(created["contactid"]))
+
+    def _cleanup():
+        for cid in ids:
+            try:
+                backend.delete(f"contacts({cid})")
+            except Exception:
+                pass
+
+    try:
+        ln_lit = lastname.replace("'", "''")
+        fetch = (
+            '<fetch><entity name="contact"><attribute name="contactid"/>'
+            f'<filter><condition attribute="lastname" operator="eq" value="{lastname}"/>'
+            "</filter></entity></fetch>"
+        )
+        result = cli([
+            "--json", "data", "delete", "contacts",
+            "--fetchxml", fetch, "--yes", "--wait", "--timeout", "120",
+        ])
+        assert result.returncode == 0, (
+            f"data delete failed:\n{result.stderr}\nstdout: {result.stdout}"
+        )
+        env = json.loads(result.stdout)
+        assert env["ok"], env
+        data = env["data"]
+        assert data.get("status") == "completed", f"job did not complete: {data}"
+        assert data.get("match_count") == 2, f"expected 2 matched; got: {data}"
+        assert data.get("succeeded") == 2, f"expected 2 deleted; got: {data}"
+        # Both records are gone.
+        page = backend.get(
+            "contacts",
+            params={"$filter": f"lastname eq '{ln_lit}'", "$select": "contactid"},
+        )
+        assert (page.get("value") or []) == [], f"records not deleted: {page}"
+    finally:
+        _cleanup()
+
+
 # ── data import ───────────────────────────────────────────────────────────────
 
 

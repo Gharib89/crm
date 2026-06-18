@@ -5,8 +5,11 @@ import click
 from crm.core import export as export_mod
 from crm.core import data_import as import_mod
 from crm.core import entity as entity_mod
+from crm.core import bulk_delete as bulk_delete_mod
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import d365_errors, _journal, _output_option
+from crm.commands._helpers import (
+    d365_errors, _journal, _output_option, _confirm_destructive, _destructive_option,
+)
 
 
 @click.group("data")
@@ -125,3 +128,46 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
         data = {k: v for k, v in info.items() if k != "failures"}
     ctx.emit(True, data=data, warnings=warnings)
     _journal(ctx, entity_set, info)
+
+
+@data_group.command("delete")
+@click.argument("entity_set")
+@click.option("--fetchxml", "fetch_xml", default=None,
+              help="FetchXML <fetch> document selecting the records to delete.")
+@click.option("--fetchxml-file", type=click.File("r"), default=None,
+              help="Read the FetchXML from a file instead of --fetchxml.")
+@click.option("--job-name", "job_name", default=None,
+              help="Name for the bulk-delete system job (default derived from the entity).")
+@click.option("--wait", is_flag=True, default=False,
+              help="Block until the job finishes, then report succeeded/failed counts.")
+@click.option("--timeout", type=int, default=None,
+              help="Seconds to wait under --wait (default: the profile's async timeout).")
+@_destructive_option
+@pass_ctx
+def data_delete(ctx: CLIContext, entity_set, fetch_xml, fetchxml_file, job_name,
+                wait, timeout, yes):
+    """Submit a server-side BulkDelete job for records matching a FetchXML query.
+
+    The Web API's BulkDelete action takes a QueryExpression, so the FetchXML is
+    converted server-side before submission (raw OData $filter is not accepted).
+    Returns the job's async-operation id; pass --wait to poll to completion.
+    """
+    if bool(fetch_xml) == bool(fetchxml_file):
+        raise click.UsageError("Provide exactly one of --fetchxml or --fetchxml-file.")
+    if fetchxml_file is not None:
+        fetch_xml = fetchxml_file.read()
+    # --dry-run issues no writes, so don't gate it behind the destructive prompt;
+    # the core still previews the matched count via a read.
+    if not ctx.dry_run:
+        _confirm_destructive(
+            ctx, "records", entity_set, yes,
+            message=(f"This submits a BulkDelete job that permanently deletes all "
+                     f"{entity_set} records matching the FetchXML query. Continue?"),
+        )
+    with d365_errors(ctx):
+        result = bulk_delete_mod.bulk_delete(
+            ctx.backend(), entity_set, fetch_xml,
+            job_name=job_name, wait=wait, timeout=timeout,
+        )
+    ctx.emit(True, data=result)
+    _journal(ctx, entity_set, result)

@@ -465,6 +465,41 @@ primary-key collision too. The schema is fetched at most once per import run
 the row's code is different — enrichment is strictly best-effort and never masks
 the original error.
 
+## Server-side BulkDelete — `data delete`
+
+`crm data delete` submits a **server-side D365 BulkDelete async job**. D365 runs the
+deletion inside the server — no records are pulled to the client. This is distinct from
+`data import --mode delete`, which issues one HTTP DELETE per row via `$batch`.
+
+**Why FetchXML.** The Web API `BulkDelete` action's `QuerySet` accepts only a
+`QueryExpression`. There is no server-side OData→QueryExpression path, so the CLI takes
+FetchXML and converts it via `FetchXmlToQueryExpression` before submitting. Passing an
+OData `$filter` directly is not possible.
+
+**JSON contract — submit (no `--wait`):**
+```json
+{"job_id": "<guid>", "job_name": "crm data delete contacts", "status": "submitted", "match_count": 42}
+```
+
+**JSON contract — with `--wait`:**
+```json
+{"job_id": "<guid>", "job_name": "...", "match_count": 42, "status": "completed", "succeeded": 42, "failed": 0}
+```
+
+**JSON contract — under `--dry-run`:**
+```json
+{"_dry_run": true, "would_submit": "BulkDelete", "entity_set": "contacts", "job_name": "...", "match_count": 42}
+```
+
+**`--yes` is required for non-interactive use.** Omitting it on a non-TTY aborts with
+`{"ok": false, "error": "aborted by user"}`, exit 1.
+
+**`--dry-run` is safe.** FetchXML is validated and the matched count is reported; no job
+is submitted. Reads always run for real under `--dry-run`.
+
+**Gotcha — `match_count` is a snapshot.** It reflects the live row count when the job was
+submitted. The async job may encounter more or fewer rows as it runs (concurrent writes).
+
 ## Raw `$batch` — `crm batch`
 
 `crm batch <file.json>` runs a hand-authored `$batch` directly — the escape hatch for

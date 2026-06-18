@@ -33,6 +33,7 @@ DESTRUCTIVE: dict[str, set[str]] = {
         "delete-relationship",  # not yet implemented; gated pre-emptively
     },
     "entity": {"delete"},
+    "data": {"delete"},
     "app": {"delete"},
     "solution": {
         "job-cancel",
