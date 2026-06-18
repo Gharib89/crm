@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v4.29.0 (2026-06-18)
+
+### Features
+
+- **data**: First-class server-side BulkDelete verb
+  ([#410](https://github.com/Gharib89/crm/pull/410),
+  [`b9c7029`](https://github.com/Gharib89/crm/commit/b9c7029e74247f4e8de20e9ea222b68b6f684f1f))
+
+
 ## v4.28.0 (2026-06-18)
 
 ### Documentation
