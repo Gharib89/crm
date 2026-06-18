@@ -68,3 +68,18 @@ prompt. No environment variable is consulted.
 State lives under `~/.crm/` — the only environment knob that affects connections is
 `CRM_HOME`, which relocates that directory. See [How-to: profile](../how-to/profile.md)
 for the full profile reference.
+
+## Switching and managing profiles
+
+You can keep several profiles and switch the active one:
+
+```bash
+crm profile list                 # show all profiles; the active one is marked
+crm profile use online           # make "online" the active profile
+crm profile edit prod            # change saved fields
+crm profile set-password --profile prod   # replace the stored secret
+crm profile rm old               # delete a profile
+```
+
+Commands use the active profile unless you pass `--profile <name>` for a single run.
+See [how-to: profile](../how-to/profile.md) for every flag.
