@@ -14,3 +14,6 @@ site/
 .claude/scheduled_tasks.lock
 data/
 .worktrees/
+
+# brainstorming visual companion (transient)
+.superpowers/
