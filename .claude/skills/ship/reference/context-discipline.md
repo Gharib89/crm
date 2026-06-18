@@ -8,7 +8,7 @@ decisions, not dumps. In rough order of impact:
   to build a mental model. Send the investigation to a subagent (at the cheap
   tier — see the model-tier table in SKILL.md) — "map how X, Y, Z connect; return
   signatures, call sites, and the data shapes" — and it returns a small
-  conclusion. Then Read only the exact lines you will edit. This is the single
+  conclusion, then read only the exact lines you will edit. This is the single
   biggest lever: a file body you only need to *understand* should never enter main
   context, only the hunk you *change* should.
 - **Project every `gh` / CLI / API call.** Pipe `gh … --json <only-the-fields>
