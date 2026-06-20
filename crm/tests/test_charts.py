@@ -215,16 +215,15 @@ class TestDeleteChart:
         assert result["deleted"] is True
         assert result["userqueryvisualizationid"] == _USER_ID
 
-    def test_dry_run_returns_would_delete(self, backend):
+    def test_dry_run_returns_would_delete(self, dry_backend):
         from crm.core import charts
-        backend_dry = backend.__class__.__new__(backend.__class__)
-        backend_dry.__dict__.update(backend.__dict__)
-        backend_dry._dry_run = True  # type: ignore[attr-defined]
         with requests_mock.Mocker() as m:
-            m.delete(backend.url_for(f"savedqueryvisualizations({_SYSTEM_ID})"),
+            m.delete(dry_backend.url_for(f"savedqueryvisualizations({_SYSTEM_ID})"),
                      status_code=204)
-            result = charts.delete_chart(backend_dry, _SYSTEM_ID)
-        assert result.get("_dry_run") or result.get("would_delete") or result.get("deleted")
+            result = charts.delete_chart(dry_backend, _SYSTEM_ID)
+        assert result.get("_dry_run") is True
+        assert result.get("would_delete") is True
+        assert result.get("savedqueryvisualizationid") == _SYSTEM_ID
 
 
 class TestCreateChart:

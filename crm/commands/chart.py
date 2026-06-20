@@ -108,7 +108,6 @@ def chart_create(
       --web-resource NAME
           Script-based visualization backed by a web resource.
     """
-    # Validate mutually exclusive option groups.
     has_xml = data_description_file is not None or presentation_description_file is not None
     has_wr = web_resource is not None
     if has_xml and has_wr:

@@ -133,13 +133,13 @@ def test_chart_create_get_delete_system(backend, cli, request, unique):
                 pass
 
 
-# ── chart create (user) ───────────────────────────────────────────────────────
+# ── chart create / get / delete (user) ───────────────────────────────────────
 
 
-@covers("chart create --user")
+@covers("chart create --user", "chart get --user", "chart delete --user")
 @pytest.mark.slow
-def test_chart_create_user(backend, cli, request, unique):
-    """Create a user chart, then clean up."""
+def test_chart_create_get_delete_user(backend, cli, request, unique):
+    """Create a user chart, get it by ID, delete it — exercises the user lifecycle."""
     chart_name = f"E2E User Chart {unique}"
     created_id: list[str] = []
 
@@ -178,6 +178,26 @@ def test_chart_create_user(backend, cli, request, unique):
         cid = env["data"]["userqueryvisualizationid"]
         assert cid, "no userqueryvisualizationid in response"
         created_id.append(cid)
+
+        # Get
+        result = cli(["--json", "chart", "get", cid, "--user"])
+        assert result.returncode == 0, (
+            f"chart get --user failed:\n{result.stderr}\nstdout: {result.stdout}"
+        )
+        env = json.loads(result.stdout)
+        assert env["ok"], env
+        assert env["data"]["userqueryvisualizationid"] == cid
+        assert env["data"]["name"] == chart_name
+
+        # Delete
+        result = cli(["--json", "chart", "delete", cid, "--user"])
+        assert result.returncode == 0, (
+            f"chart delete --user failed:\n{result.stderr}\nstdout: {result.stdout}"
+        )
+        env = json.loads(result.stdout)
+        assert env["ok"], env
+        assert env["data"]["deleted"] is True
+        created_id.clear()
     finally:
         for p in (data_path, pres_path):
             try:

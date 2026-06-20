@@ -140,12 +140,10 @@ crm --json chart delete <savedqueryvisualizationid>
 crm --json chart delete <userqueryvisualizationid> --user
 ```
 
-# Create modes are mutually exclusive:
-#   --data-description + --presentation-description  → XML-based chart
-#   --web-resource <name>                            → script visualization
-# --publish (default) runs PublishAllXml; --no-publish defers it.
-# --solution <unique_name> sets MSCRM.SolutionUniqueName on the write.
-# --dry-run returns {_dry_run: true, would_*} on writes; reads still run.
+Create modes are mutually exclusive: XML pair (`--data-description` + `--presentation-description`)
+or `--web-resource <name>` (script visualization). `--solution <unique_name>` sets
+`MSCRM.SolutionUniqueName` on writes. `--dry-run` returns `{_dry_run: true, would_*}` on writes;
+reads still run.
 
 ## Forms — `form` (entity main forms / systemform)
 
