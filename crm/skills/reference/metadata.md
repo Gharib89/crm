@@ -245,6 +245,23 @@ Omitting `--behavior` leaves the column at the server default (`UserLocal`).
 `{SEQNUM:n}` (zero-padded sequence) and `{RANDSTRING:n}` (random alphanumerics),
 e.g. `INV-{SEQNUM:5}`. String-kind only; ignored/invalid for other kinds.
 
+## Rollup and calculated columns (`--type rollup` / `--type calculated`)
+
+`metadata add-attribute` with `--type rollup` or `--type calculated` turns the
+typed column (chosen by `--kind`) into a rollup or calculated field by setting
+`SourceType` (2 for rollup, 1 for calculated) and `FormulaDefinition` on the
+metadata body. `--formula-file <path>` is required; the XAML is sent verbatim.
+
+**Critical gotcha — formula XAML is editor-authored.** The formula XAML must be
+produced by the Dynamics 365 formula editor (or extracted from a solution export).
+Hand-written XAML is unsupported: the server validates it and rejects invalid XAML
+with "FormulaDefinition is not valid Xaml". Use `--dry-run` to preview the
+would-be POST body (including `SourceType` + `FormulaDefinition`) before writing.
+
+The base `--kind` still picks the data type; the server enforces which base
+types support rollup vs calculated and rejects an unsupported pairing. The CLI
+only rejects `--type rollup`/`calculated` on `--kind lookup`/`customer` up front.
+
 ## Inspect the server's entity sets
 
 ```bash

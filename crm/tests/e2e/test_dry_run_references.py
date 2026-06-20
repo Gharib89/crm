@@ -119,6 +119,55 @@ def test_add_attribute_picklist_dry_run_flags_dangling_optionset(cli, unique):
     assert any(_GHOST_OPTIONSET in w for w in env["meta"]["warnings"])
 
 
+@covers("metadata add-attribute")
+def test_add_attribute_calculated_dry_run_sets_source_type(cli, unique, tmp_path):
+    # Rollup/calculated turn the typed --kind column into a specialized column by
+    # setting SourceType (1=calculated, 2=rollup) + FormulaDefinition on the body.
+    # Dry-run echoes the would-be POST body, so we can assert the wiring without a
+    # write. A live-WRITE e2e is deliberately not shipped: a successful create
+    # requires valid editor-authored formula XAML, which is out of scope per #427
+    # (the server rejects a hand-written body with "FormulaDefinition is not valid
+    # Xaml" — the documented caveat). This dry-run case is the @covers coverage.
+    f = tmp_path / "formula.xaml"
+    f.write_text("<formula/>", encoding="utf-8")
+    r = cli([
+        "--dry-run", "--json", "metadata", "add-attribute", "account",
+        "--kind", "integer",
+        "--schema-name", f"new_E2eCalc{unique}",
+        "--display", "E2E Calc Probe",
+        "--type", "calculated",
+        "--formula-file", str(f),
+        "--no-publish",
+    ])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"] is True
+    body = env["data"]["body"]
+    assert body["SourceType"] == 1
+    assert body["FormulaDefinition"] == "<formula/>"
+
+
+@covers("metadata add-attribute")
+def test_add_attribute_rollup_dry_run_sets_source_type(cli, unique, tmp_path):
+    f = tmp_path / "formula.xaml"
+    f.write_text("<formula/>", encoding="utf-8")
+    r = cli([
+        "--dry-run", "--json", "metadata", "add-attribute", "account",
+        "--kind", "integer",
+        "--schema-name", f"new_E2eRollup{unique}",
+        "--display", "E2E Rollup Probe",
+        "--type", "rollup",
+        "--formula-file", str(f),
+        "--no-publish",
+    ])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"] is True
+    body = env["data"]["body"]
+    assert body["SourceType"] == 2
+    assert body["FormulaDefinition"] == "<formula/>"
+
+
 @covers("plugin register-step")
 def test_register_step_dry_run_references(cli):
     # Create (a built-in SDK message) and account (a system entity supporting it)
