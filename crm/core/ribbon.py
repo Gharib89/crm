@@ -67,6 +67,21 @@ def retrieve_entity_ribbon(backend: "D365Backend", entity: str) -> ET.Element:
     return decode_compressed_ribbon(str(resp["CompressedEntityXml"]))
 
 
+def retrieve_application_ribbon(backend: "D365Backend") -> ET.Element:
+    """Call RetrieveApplicationRibbon and return the decoded ribbon root.
+
+    The application-wide ribbon (everything not bound to a specific table). The
+    function takes no parameters and returns the zipped XML under a different key
+    (``CompressedApplicationRibbonXml``, not the entity path's
+    ``CompressedEntityXml``) — both verified live.
+    """
+    resp = backend.get("RetrieveApplicationRibbon()")
+    if not isinstance(resp, dict) or "CompressedApplicationRibbonXml" not in resp:
+        raise ValueError(
+            "RetrieveApplicationRibbon returned no CompressedApplicationRibbonXml")
+    return decode_compressed_ribbon(str(resp["CompressedApplicationRibbonXml"]))
+
+
 @dataclass(frozen=True)
 class RibbonButton:
     """One custom command-bar button parsed from a RibbonDiffXml."""

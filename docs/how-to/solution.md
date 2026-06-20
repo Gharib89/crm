@@ -35,6 +35,30 @@ crm --json solution components CRMWorx --diff components.json
 
 The two flags are mutually exclusive; bare `components <name>` is unchanged. The round-trip `--save` then `--diff` against the same org reports no drift ([#82](https://github.com/Gharib89/crm/issues/82)).
 
+## Check what an exported solution needs before importing
+
+Run this read-only check against the **import target** org before importing — an
+empty result means the org already has everything the solution requires.
+
+```bash
+crm --json solution missing-components ./MySolution.zip
+```
+
+`SOLUTION_FILE` is a path to an exported solution `.zip` (not a solution unique
+name — the API requires the file bytes). The command calls
+`RetrieveMissingComponents` against the connected org and returns the list of
+components the solution depends on that are absent there.
+
+`--json` emits `{ok, data:[<missing components>], meta:{count}}`. A non-empty
+`data` list names what must be installed (or the import will fail with a
+dependency error). Human mode lists the components and prints the count.
+
+**Gotcha — URL-length limit.** The file bytes are sent as a parameter in the
+query string. Very large solution zips can exceed the server's URL-length limit;
+that is an inherent constraint of the `RetrieveMissingComponents` function, not a
+CLI bug. Pre-validate offline with `solution validate` first; if the zip is
+excessively large, split it across multiple solutions.
+
 ## Detect unmanaged-layer conflicts across two solutions
 
 ```bash

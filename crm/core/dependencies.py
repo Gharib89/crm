@@ -50,6 +50,7 @@ _COMPONENT_TYPE_LABELS: dict[int, str] = {
 _FUNCTION_NAMES: dict[str, str] = {
     "delete": "RetrieveDependenciesForDelete",
     "dependents": "RetrieveDependentComponents",
+    "required": "RetrieveRequiredComponents",
 }
 
 
@@ -222,8 +223,10 @@ def retrieve_dependencies(
 ) -> dict[str, Any]:
     """Resolve ``target`` and return its dependency information.
 
-    Calls ``RetrieveDependenciesForDelete`` (default) or
-    ``RetrieveDependentComponents`` (``for_="dependents"``).
+    Calls ``RetrieveDependenciesForDelete`` (default), ``RetrieveDependentComponents``
+    (``for_="dependents"`` — what depends on the target), or
+    ``RetrieveRequiredComponents`` (``for_="required"`` — what the target requires,
+    the reverse direction).
 
     Both GETs (resolve + function) fire even when the backend is in dry-run
     mode so the returned preview reflects live state.

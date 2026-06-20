@@ -379,12 +379,13 @@ def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relatio
 )
 @click.option(
     "--for", "for_",
-    type=click.Choice(["delete", "dependents"]),
+    type=click.Choice(["delete", "dependents", "required"]),
     default="delete",
     show_default=True,
     help=(
         "delete = blockers preventing delete (RetrieveDependenciesForDelete); "
-        "dependents = components that depend on it (RetrieveDependentComponents)."
+        "dependents = components that depend on it (RetrieveDependentComponents); "
+        "required = components it depends on (RetrieveRequiredComponents)."
     ),
 )
 @pass_ctx
@@ -392,7 +393,8 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
     """Show solution-component dependencies for a metadata target.
 
     Read-only. --for delete returns components that block deletion (can_delete +
-    blockers[]); --for dependents returns components that depend on the target.
+    blockers[]); --for dependents returns components that depend on the target;
+    --for required returns the components the target itself depends on.
     """
     with d365_errors(ctx):
         info = dep_mod.retrieve_dependencies(ctx.backend(), kind, target, for_=for_)

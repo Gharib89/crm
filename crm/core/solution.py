@@ -11,7 +11,10 @@ keep resolving for every X that existed before the split.
 
 from __future__ import annotations
 
+import base64
 import re
+import urllib.parse
+from pathlib import Path
 from typing import Any
 
 from crm.core import dependencies
@@ -504,6 +507,33 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str
     }
     result = as_dict(backend.get("solutioncomponents", params=params))
     return result.get("value", [])
+
+
+def retrieve_missing_components(
+    backend: D365Backend, solution_file: "str | Path"
+) -> dict[str, Any]:
+    """List components an exported solution needs that the connected org lacks.
+
+    ``solution_file`` is a path to an exported solution ``.zip``. Its bytes are
+    sent as the ``CustomizationFile`` (Edm.Binary) parameter of the
+    ``RetrieveMissingComponents`` Web API function and checked against the
+    connected org (the import target). An empty result means the org already has
+    everything the solution requires.
+
+    The binary parameter is passed as a ``binary'<base64>'`` parameter-alias
+    literal in the query string — a bare base64 alias is rejected by the server
+    (verified live). The file rides in the URL, so a very large solution can hit
+    the server's URL-length limit; that is an inherent constraint of this function.
+
+    Returns ``{"missing_components": [...], "count": int}``.
+    """
+    data = Path(solution_file).read_bytes()
+    b64 = base64.b64encode(data).decode("ascii")
+    alias = urllib.parse.quote(f"binary'{b64}'", safe="")
+    path = f"RetrieveMissingComponents(CustomizationFile=@p1)?@p1={alias}"
+    result = as_dict(backend.get(path))
+    missing: list[dict[str, Any]] = result.get("MissingComponents") or []
+    return {"missing_components": missing, "count": len(missing)}
 
 
 # ── Publish utilities ────────────────────────────────────────────────────────

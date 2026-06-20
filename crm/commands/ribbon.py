@@ -24,17 +24,35 @@ def ribbon_group():
 
 
 @ribbon_group.command("export")
-@click.argument("entity")
+@click.argument("entity", required=False)
+@click.option("--application", "-a", "application", is_flag=True,
+              help="Export the application-wide ribbon (RetrieveApplicationRibbon) "
+                   "instead of a single entity's. Omit ENTITY when set.")
 @_output_option(help="Write the ribbon XML to this file instead of stdout.")
 @pass_ctx
-def ribbon_export(ctx: CLIContext, entity, output):
-    """Export an entity's composed ribbon as readable XML."""
+def ribbon_export(ctx: CLIContext, entity, application, output):
+    """Export a composed ribbon as readable XML.
+
+    Pass ENTITY for one table's ribbon, or --application for the app-wide ribbon
+    (the commands not bound to a specific table). Read-only.
+    """
+    # Invalid argument combinations are usage errors (exit 2, ADR 0001), not
+    # operational failures — raise UsageError so the CLI's --json usage envelope
+    # handles them consistently.
+    if application and entity:
+        raise click.UsageError("pass either ENTITY or --application, not both")
+    if not application and not entity:
+        raise click.UsageError("ENTITY is required unless --application is given")
+    label = {"application": True} if application else {"entity": entity}
     if ctx.dry_run:
-        ctx.emit(True, data=ctx.backend().get(
-            f"RetrieveEntityRibbon(EntityName={odata_literal(entity)},RibbonLocationFilter='All')"))
+        path = ("RetrieveApplicationRibbon()" if application
+                else f"RetrieveEntityRibbon(EntityName={odata_literal(entity)},"
+                     "RibbonLocationFilter='All')")
+        ctx.emit(True, data=ctx.backend().get(path))
         return
     try:
-        root = ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity)
+        root = (ribbon_mod.retrieve_application_ribbon(ctx.backend()) if application
+                else ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity))
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -43,10 +61,14 @@ def ribbon_export(ctx: CLIContext, entity, output):
         return
     pretty = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
     if output:
-        Path(output).write_text(pretty, encoding="utf-8")
-        ctx.emit(True, data={"entity": entity, "output": output})
+        try:
+            Path(output).write_text(pretty, encoding="utf-8")
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output}: {exc}")
+            return
+        ctx.emit(True, data={**label, "output": output})
     elif ctx.json_mode:
-        ctx.emit(True, data={"entity": entity, "ribbonxml": pretty})
+        ctx.emit(True, data={**label, "ribbonxml": pretty})
     else:
         click.echo(pretty)
 

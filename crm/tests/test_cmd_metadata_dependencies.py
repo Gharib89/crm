@@ -139,6 +139,24 @@ class TestOptionsForwarded:
         assert captured["target"] == "new_widget.new_amount"
         assert captured["for_"] == "dependents"
 
+    def test_for_required_forwarded(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        captured = {}
+
+        def _fake_retrieve(backend, kind, target, *, for_="delete"):
+            captured["for_"] = for_
+            return {**_NO_BLOCKERS, "kind": kind, "for": for_}
+
+        monkeypatch.setattr(
+            "crm.commands.metadata.dep_mod.retrieve_dependencies",
+            _fake_retrieve,
+        )
+        result = CliRunner().invoke(
+            cli, ["--json", "metadata", "dependencies", "new_widget", "--for", "required"],
+        )
+        assert result.exit_code == 0, result.output
+        assert captured["for_"] == "required"
+
 
 class TestErrorPath:
     def test_d365_error_yields_non_zero_exit(self, monkeypatch, backend):

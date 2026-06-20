@@ -177,6 +177,26 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
 
 
+@solution_group.command("missing-components")
+@click.argument("solution_file",
+                type=click.Path(exists=True, dir_okay=False, readable=True))
+@pass_ctx
+def solution_missing_components_cmd(ctx: CLIContext, solution_file):
+    """List components an exported solution needs that this org is missing.
+
+    SOLUTION_FILE is a path to an exported solution .zip. The check runs against
+    the connected org (the import target): an empty result means the org already
+    has everything the solution requires. Read-only — run before importing.
+    """
+    try:
+        with d365_errors(ctx):
+            info = sol_mod.retrieve_missing_components(ctx.backend(), solution_file)
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not read {solution_file}: {exc}")
+        return
+    ctx.emit(True, data=info["missing_components"], meta={"count": info["count"]})
+
+
 @solution_group.command("layer-conflicts")
 @click.option("--solution", "managed_name", required=True,
               help="Managed solution unique name.")

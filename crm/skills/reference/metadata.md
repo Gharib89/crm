@@ -186,13 +186,18 @@ crm --json metadata dependencies cwx_ticket.cwx_priority --kind attribute
 
 # What depends on a global option set
 crm --json metadata dependencies cwx_status --kind optionset --for dependents
+
+# What components the target itself depends on (reverse direction)
+crm --json metadata dependencies cwx_ticket --kind entity --for required
 ```
 
 Returns `{can_delete, blockers[], metadata_id, component_type, kind, for}`; each
 blocker carries `dependent_type`, `dependent_id`, `dependent_parent_id`,
 `required_type`, `dependency_type`. `--for delete` (default) uses
-`RetrieveDependenciesForDelete`; `--for dependents` uses `RetrieveDependentComponents`.
-Read-only. To fold dependency info into a delete result non-destructively:
+`RetrieveDependenciesForDelete`; `--for dependents` uses `RetrieveDependentComponents`
+(what depends on the target); `--for required` uses `RetrieveRequiredComponents`
+(what the target depends on — the reverse of `dependents`). Same output shape for
+all three modes. Read-only. To fold dependency info into a delete result non-destructively:
 
 ```bash
 crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --check-dependencies

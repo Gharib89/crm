@@ -251,6 +251,26 @@ crm --json solution components MySolution --diff expected.json
 crm --json metadata entity new_widget       # spot-check key components exist
 ```
 
+## Check what an exported solution needs before importing (`missing-components`)
+
+Run against the **import target** org before importing. An empty result means the
+org already has everything the solution needs — go ahead with `solution import`.
+A non-empty list names what must be installed first (or the import will fail with
+a dependency fault).
+
+```bash
+crm --json solution missing-components ./MySolution.zip
+# → {ok, data:[<missing components>], meta:{count}}
+```
+
+The argument is a **path to an exported `.zip`** (not a unique name — the API
+requires the file bytes). Read-only; fires under `--dry-run` too.
+
+**Gotcha — URL-length limit.** The bytes ride in the query string as a parameter
+alias. Excessively large zips can hit the server's URL-length ceiling (inherent
+to `RetrieveMissingComponents`, not the CLI). If you hit it, pre-validate
+offline with `solution validate` and split the solution if it is genuinely too large.
+
 ## Preview what blocks uninstalling a managed solution
 
 ```bash
