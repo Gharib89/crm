@@ -182,3 +182,27 @@ def test_metadata_cache_clear(cli):
     # data.cleared is True when a cache file existed, False when there was nothing
     # to clear — both outcomes are success.
     assert "cleared" in env["data"]
+
+
+@covers("metadata changes")
+def test_metadata_changes(cli):
+    """RetrieveMetadataChanges: a baseline call returns a fresh ServerVersionStamp;
+    feeding it back as --since returns a (smaller) delta + a new stamp. Scoped to
+    `account` so the baseline payload stays light on a real org."""
+    # Baseline (no --since): returns a fresh stamp + the scoped entity.
+    r = cli(["--json", "metadata", "changes", "--entity", "account"])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"]
+    stamp = env["data"]["server_version_stamp"]
+    assert stamp  # a non-empty version stamp to save for next time
+    assert "account" in [e["logical_name"] for e in env["data"]["entities"]]
+
+    # Delta: passing the stamp back returns only changes since (typically none)
+    # plus a new stamp and a deleted_count.
+    r2 = cli(["--json", "metadata", "changes", "--entity", "account", "--since", stamp])
+    assert r2.returncode == 0, r2.stderr
+    env2 = json.loads(r2.stdout)
+    assert env2["ok"]
+    assert env2["data"]["server_version_stamp"]
+    assert "deleted_count" in env2["data"]
