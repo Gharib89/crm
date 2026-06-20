@@ -11,7 +11,7 @@ out everything they'd want to check.
 
 PR:        <url>  (<branch> → <default-branch>)
 Issue:     <one-line restatement of what was asked>
-Lane:      <full | small — skipped: integrated test, self-review (bot covers), local suite (CI)>
+Lane:      <full | small — skipped: integrated test, local suite (CI), self-review (if auto-bot)>
 
 Implementation
   - <what was built, 1–3 lines>

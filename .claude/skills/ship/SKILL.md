@@ -104,8 +104,9 @@ to test). On top of that, two explicit cuts:
 - **Skip phase 4 self-review *iff* the repo has an auto-review bot** — its automatic
   round-1 (phase 7) is the review gate. No bot → keep one phase-4 pass, else the
   change gets no review.
-- **Local gate = the secret/security scan only.** Lean on CI for the suite, lint,
-  and type-check — CI re-runs them, and a red CI on a small change is a cheap
+- **Local gate = the secret/security scan + the one regression test node** (run
+  that node locally for red→green proof). Lean on CI for the rest of the suite,
+  lint, and type-check — CI re-runs them, and a red CI on a small change is a cheap
   round-trip.
 
 **The floor — never collapses, even for small:** the worktree (phase 0), **one
@@ -198,7 +199,8 @@ Then run the project's full verification green before opening the PR, **mirrorin
 the checks CI actually runs** (per project instructions) — not a fixed triad:
 tests, lint, type-check, docs build, **and any secret/security scan the repo gates
 on** (cheap to pre-empt locally, expensive to discover after the PR is open). If you
-can't run a check locally, at least *anticipate* it.
+can't run a check locally, at least *anticipate* it. **Small lane:** this gate is
+the secret scan + the proving test only (suite via CI) — see *The small lane*.
 
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
 project's automated review. Title it as a Conventional-Commit subject derived from
