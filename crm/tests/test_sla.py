@@ -352,6 +352,22 @@ class TestCreateSla:
         with pytest.raises(D365Error, match="entity is required"):
             create_sla(backend, name="Gold", entity="")
 
+    def test_enable_failure_after_post_reports_created_sla_id(self, backend):
+        """If enabling IsSLAEnabled fails after the SLA POST landed, the error
+        records the created slaid (stage/completed_steps) so the half-done SLA
+        is recoverable, not orphaned."""
+        from crm.core.sla import create_sla
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("slas"), status_code=204,
+                   headers=_created_header("slas", _NEW_SLA))
+            m.get(backend.url_for("EntityDefinitions(LogicalName='incident')"),
+                  status_code=403,
+                  json={"error": {"code": "0x80040220", "message": "no privilege"}})
+            with pytest.raises(D365Error) as ei:
+                create_sla(backend, name="Gold", entity="incident")
+        assert ei.value.stage == "enable_sla"
+        assert ei.value.completed_steps == [f"created sla {_NEW_SLA}"]
+
 
 class TestAddKpi:
     def test_posts_slaitem_with_conditions(self, backend):
@@ -486,6 +502,25 @@ class TestSlaAddKpiCommand:
             "--sla", _SLA_ID, "--kpi", "k", "--success-criteria", _SUCCESS])
         assert result.exit_code != 0
         assert "--applicable-when" in result.output
+
+    def test_invalid_sla_guid_fails_before_backend(self, monkeypatch, tmp_path):
+        """Invalid --sla GUID fails fast, before an authenticated backend is built
+        (matches `sla activate`)."""
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.cli import CLIContext
+
+        def _no_backend(self):
+            raise AssertionError("ctx.backend() must not be called")
+        monkeypatch.setattr(CLIContext, "backend", _no_backend)
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--json", "--profile", "t", "sla", "add-kpi",
+            "--sla", "not-a-guid", "--kpi", "k",
+            "--applicable-when", _FETCH, "--success-criteria", _SUCCESS])
+        assert result.exit_code != 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert "Invalid GUID" in envelope["error"]
 
 
 class TestSlaActivateCommand:

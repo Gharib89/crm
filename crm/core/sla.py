@@ -159,7 +159,16 @@ def create_sla(
             "sla_enabled": _ensure_sla_enabled(backend, entity, solution=solution),
         }
     sla_id = result.get("_entity_id")
-    sla_enabled = _ensure_sla_enabled(backend, entity, solution=solution)
+    try:
+        sla_enabled = _ensure_sla_enabled(backend, entity, solution=solution)
+    except D365Error as exc:
+        # The SLA row already landed server-side; record it on the partial-failure
+        # context (the optionsets multi-stage convention) so a failure to flip
+        # IsSLAEnabled — e.g. lacking metadata-write privilege — leaves a
+        # discoverable/recoverable SLA rather than a lost orphan.
+        exc.completed_steps = [f"created sla {sla_id}"] if sla_id else []
+        exc.stage = "enable_sla"
+        raise
     out: dict[str, Any] = {
         "created": True,
         "name": name,

@@ -133,6 +133,10 @@ def sla_add_kpi(ctx: CLIContext, sla_id, kpi, name, applicable_when,
         applicable_when, applicable_when_file, "--applicable-when")
     success_criteria = _inline_or_file(
         success_criteria, success_criteria_file, "--success-criteria")
+    # Validate the GUID before building an authenticated backend, matching
+    # `sla activate` — an invalid id fails fast without a session round-trip.
+    with d365_errors(ctx):
+        sla_id = sla_mod.validate_sla_id(sla_id)
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     with d365_errors(ctx):
         info = sla_mod.add_kpi(
