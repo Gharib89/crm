@@ -45,6 +45,7 @@ a = Analysis(
         'crm.commands.completion',
         'crm.commands.completion_registry',
         'crm.commands.connection',
+        'crm.commands.connectionrole',
         'crm.commands.dashboard',
         'crm.commands.data',
         'crm.commands.describe',
