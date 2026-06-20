@@ -60,6 +60,49 @@ def test_e2e_can_relate_eligibility_and_partners(backend):
     assert isinstance(m2m["valid_partners"], list)
 
 
+@covers("metadata create-one-to-many", "metadata update-relationship",
+        "metadata delete-entity")
+def test_e2e_hierarchical_relationship_create_and_update(backend):
+    """--hierarchical on create-one-to-many sets IsHierarchical on a
+    self-referencing 1:N; --no-hierarchical/--hierarchical on update-relationship
+    flips it. Reads IsHierarchical back from the typed cast both times. Teardown
+    drops the throwaway entity (which removes the relationship + lookup)."""
+    from crm.core import metadata as meta_mod
+    from crm.core import relationships as rel_mod
+    from crm.core import metadata_update as mu_mod
+    from crm.utils.d365_backend import as_dict
+
+    suffix = uuid.uuid4().hex[:8]
+    schema = f"new_Hier{suffix}"
+    logical = schema.lower()
+    rel_name = f"new_{logical}_{logical}"
+    try:
+        meta_mod.create_entity(backend, schema_name=schema,
+                               display_name=f"Hier {suffix}")
+        # Create hierarchical self-referencing 1:N.
+        created = rel_mod.create_one_to_many(
+            backend, schema_name=rel_name,
+            referenced_entity=logical, referencing_entity=logical,
+            lookup_schema=f"new_Parent{suffix}Id", lookup_display="Parent",
+            is_hierarchical=True,
+        )
+        rel_id = created["relationship_id"]
+        cast = (f"RelationshipDefinitions({rel_id})"
+                "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata")
+        rb = as_dict(backend.get(cast, params={"$select": "IsHierarchical"}))
+        assert rb.get("IsHierarchical") is True
+
+        # Flip it off via update-relationship, then assert the read-back.
+        mu_mod.update_relationship(backend, rel_name, is_hierarchical=False)
+        rb2 = as_dict(backend.get(cast, params={"$select": "IsHierarchical"}))
+        assert rb2.get("IsHierarchical") is False
+    finally:
+        try:
+            backend.delete(f"EntityDefinitions(LogicalName='{logical}')")
+        except Exception:
+            pass
+
+
 @covers("metadata create-entity")
 def test_e2e_create_custom_entity_reads_back_set_name(backend):
     """§3.3: create a unique custom entity, assert returned entity_set_name resolves via metadata.list_entities."""

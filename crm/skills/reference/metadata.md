@@ -342,7 +342,6 @@ for initial bulk setup; for additive changes use `--from`/`--to` on individual c
 }
 ```
 
-<<<<<<< HEAD
 ## Incremental metadata sync (`metadata changes`)
 
 `metadata changes` wraps `RetrieveMetadataChanges`. The contract: save the returned
