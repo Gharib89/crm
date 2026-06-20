@@ -493,17 +493,39 @@ def add_attribute(
     target_entity: str | None = None,
     relationship_schema: str | None = None,
     max_size_kb: int | None = None,
+    source_type: str = "simple",
+    formula_definition: str | None = None,
     publish: bool = False,
     solution: str | None = None,
     if_exists: str = "error",
 ) -> dict[str, Any]:
-    """Add an attribute (column) to an existing entity."""
+    """Add an attribute (column) to an existing entity.
+
+    A ``source_type`` of ``rollup`` or ``calculated`` turns the typed column
+    (chosen by ``kind``) into a rollup/calculated field by setting ``SourceType``
+    (2/1) and ``FormulaDefinition`` on the metadata body. The XAML in
+    ``formula_definition`` is sent verbatim — the formula body is officially
+    editor-authored, so hand-written XAML is unsupported (it is neither
+    generated nor validated here).
+    """
     if "_" not in schema_name:
         raise D365Error("schema_name must include a publisher prefix.")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
     if behavior_name is not None and kind != "datetime":
         raise D365Error("--behavior is not valid for this kind.")
+    if source_type not in ("simple", "rollup", "calculated"):
+        raise D365Error("source_type must be 'simple', 'rollup', or 'calculated'.")
+    if source_type == "simple":
+        if formula_definition is not None:
+            raise D365Error(
+                "--formula-file is only valid with --type rollup or calculated."
+            )
+    else:
+        if formula_definition is None:
+            raise D365Error(f"--formula-file is required for --type {source_type}.")
+        if kind in ("lookup", "customer"):
+            raise D365Error(f"--type {source_type} is not valid for kind {kind!r}.")
     logical_name = schema_name.lower()
 
     if kind == "lookup":
@@ -626,6 +648,12 @@ def add_attribute(
     if kind in LENGTH_KIND_DEFAULTS and opts["max_length"] is None:
         opts["max_length"] = LENGTH_KIND_DEFAULTS[kind]
     body = builder(opts)
+    if source_type != "simple":
+        # SourceType + FormulaDefinition live on the base AttributeMetadata, so
+        # they ride on whatever typed body the builder produced (rollup=2,
+        # calculated=1). The XAML is passed through unmodified — unvalidated.
+        body["SourceType"] = 2 if source_type == "rollup" else 1
+        body["FormulaDefinition"] = formula_definition
 
     exists = target_exists(
         backend,
@@ -684,6 +712,8 @@ def add_attribute(
         "metadata_id_url": entity_id_url,
         "solution": solution,
     }
+    if source_type != "simple":
+        out["source_type"] = source_type
     if lookup_error:
         out["attribute_lookup_error"] = lookup_error
     maybe_publish(backend, out, publish)

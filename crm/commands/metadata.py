@@ -2,6 +2,7 @@
 # pyright: basic
 from __future__ import annotations
 import time
+from pathlib import Path
 from typing import cast
 import click
 from crm.core import metadata as meta_mod
@@ -691,6 +692,18 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require
               help="Lookup: override auto-generated relationship name.")
 @click.option("--max-size-kb", type=int, default=None,
               help="File: max attachment size in KB. Default 32768.")
+@click.option("--type", "source_type",
+              type=click.Choice(["simple", "rollup", "calculated"]),
+              default="simple",
+              help="Column source: simple (default), or rollup/calculated — the "
+                   "latter two turn the --kind column into a rollup/calculated "
+                   "field and require --formula-file.")
+@click.option("--formula-file", "formula_file",
+              type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="Rollup/calculated: path to the formula XAML file. Sent "
+                   "verbatim — the formula body is officially editor-authored, "
+                   "so hand-written XAML is unsupported (not validated here).")
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the attribute already exists: error (default) or skip (no-op success).")
@@ -701,13 +714,32 @@ def metadata_add_attribute(
     max_length, format_name, auto_number_format, behavior_name, min_value, max_value, precision,
     true_label, false_label, default_value,
     optionset_name, options, target_entity, relationship_schema,
-    max_size_kb, solution, require_solution, if_exists, publish,
+    max_size_kb, source_type, formula_file, solution, require_solution, if_exists, publish,
 ):
     """Add an attribute (column) to an existing entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     parsed_options = _parse_value_labels(options, flag="--option") or None
+
+    formula_definition: str | None = None
+    if source_type == "simple":
+        if formula_file is not None:
+            raise click.UsageError(
+                "--formula-file is only valid with --type rollup or calculated."
+            )
+    else:
+        if formula_file is None:
+            raise click.UsageError(f"--formula-file is required for --type {source_type}.")
+        if kind in ("lookup", "customer"):
+            raise click.UsageError(f"--type {source_type} is not valid for --kind {kind}.")
+        # click.Path(exists=True) validates at parse time, but a permission edge,
+        # a delete-after-check race, or a bad encoding can still fail the read —
+        # surface it as a clean usage error rather than an uncaught traceback.
+        try:
+            formula_definition = Path(formula_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise click.UsageError(f"cannot read --formula-file {formula_file}: {exc}") from exc
 
     parsed_default: bool | int | None = None
     if default_value is not None:
@@ -754,6 +786,8 @@ def metadata_add_attribute(
             target_entity=target_entity,
             relationship_schema=relationship_schema,
             max_size_kb=max_size_kb,
+            source_type=source_type,
+            formula_definition=formula_definition,
             publish=publish,
             solution=solution,
             if_exists=if_exists,

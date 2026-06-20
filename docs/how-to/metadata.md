@@ -219,6 +219,45 @@ crm --json metadata add-attribute cwx_ticket --kind customer \
 
 The targets are fixed to `account` + `contact`, so `--kind customer` takes no `--target-entity` (and the two relationship schema names are derived as `<entity>_<lookup>_account` / `_contact` — they aren't user-nameable). The result reports `targets: ["account", "contact"]` and the created `relationship_ids`.
 
+## Add a rollup or calculated column
+
+Rollup and calculated fields are typed columns (chosen by `--kind`) whose
+values are derived from a formula or an aggregation expression. The CLI creates
+the attribute *shell* and sets `SourceType` on it; the formula body itself
+(`FormulaDefinition`) is a XAML blob that must be supplied via `--formula-file`.
+
+**Critical caveat — formula XAML is editor-authored.** The formula XAML is
+officially authored by the Dynamics 365 formula editor. Hand-authoring valid XAML
+headlessly works in principle but is unsupported: the server validates the XAML
+and rejects an invalid body with "FormulaDefinition is not valid Xaml". Capture
+the XAML from the editor (export the solution and inspect the attribute XML, or
+use an SDK tool) rather than writing it by hand.
+
+```bash
+# Calculated integer column — SourceType=1
+crm --json metadata add-attribute account \
+  --kind integer --schema-name new_Total --display "Total" \
+  --type calculated --formula-file calculated.xaml
+
+# Rollup money column — SourceType=2
+crm --json metadata add-attribute account \
+  --kind money --schema-name new_TotalRevenue --display "Total Revenue" \
+  --precision 2 --type rollup --formula-file rollup.xaml
+
+# Dry-run previews the would-be POST body (SourceType + FormulaDefinition) without writing
+crm --dry-run --json metadata add-attribute account \
+  --kind integer --schema-name new_Total --display "Total" \
+  --type rollup --formula-file rollup.xaml
+```
+
+`--kind` picks the data type; `--type` layers rollup or calculated on top. The
+server enforces which base types each source supports (e.g. a rollup must be a
+numeric or datetime column) and rejects an unsupported pairing — the CLI only
+rejects `--type rollup`/`calculated` on `--kind lookup`/`customer` up front. Both
+honour `--json`, `--dry-run`, and `--solution`, and work on on-prem (NTLM v9.x)
+and Dataverse online (OAuth). `--type simple` is the default and rejects
+`--formula-file`; `--type rollup` / `calculated` require it.
+
 ## Verify a metadata change landed (`--expect`)
 
 A metadata change isn't readable until it's published. The repeatable `--expect ATTR=VALUE` flag on `metadata attribute` turns the read-back into a self-checking verify step — pair it with a create + publish to poll until the definition reflects the change:
