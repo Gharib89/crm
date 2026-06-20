@@ -32,6 +32,23 @@ def test_retrieve_entity_ribbon_uses_inline_string_literals(make_fake_backend, i
         "RetrieveEntityRibbon(EntityName='cwx_ticket',RibbonLocationFilter='All')")
 
 
+def test_retrieve_application_ribbon_calls_parameterless_function(make_fake_backend, inject_backend):
+    b64 = FIXTURE.read_text()
+    # The application ribbon response uses a different key than the entity one.
+    be = inject_backend(make_fake_backend(
+        responses={"get": {"CompressedApplicationRibbonXml": b64}}))
+    root = ribbon.retrieve_application_ribbon(be)  # type: ignore[arg-type]
+    assert root.tag == "RibbonDiffXml"
+    # Verified live: the function takes no parameters.
+    assert be.last_path == "RetrieveApplicationRibbon()"
+
+
+def test_retrieve_application_ribbon_missing_key_raises(make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(responses={"get": {}}))
+    with pytest.raises(ValueError, match="CompressedApplicationRibbonXml"):
+        ribbon.retrieve_application_ribbon(be)  # type: ignore[arg-type]
+
+
 SAMPLE_DIFF = """
 <RibbonDiffXml>
   <CustomActions>

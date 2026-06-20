@@ -169,6 +169,15 @@ class TestRetrieveDependencies:
         fn_path = f"RetrieveDependentComponents(ObjectId={ENTITY_ID},ComponentType=1)"
         assert any(fn_path in r.url for r in m.request_history)
 
+    def test_required_issues_correct_url(self, backend: D365Backend) -> None:
+        with req_mock.Mocker() as m:
+            _mock_entity_resolve(m, backend)
+            _mock_dep_function(m, backend, func="RetrieveRequiredComponents")
+            result = dep_mod.retrieve_dependencies(backend, "entity", "new_widget", for_="required")
+        assert result["for"] == "required"
+        fn_path = f"RetrieveRequiredComponents(ObjectId={ENTITY_ID},ComponentType=1)"
+        assert any(fn_path in r.url for r in m.request_history)
+
     def test_can_delete_true_when_empty(self, backend: D365Backend) -> None:
         with req_mock.Mocker() as m:
             _mock_entity_resolve(m, backend)

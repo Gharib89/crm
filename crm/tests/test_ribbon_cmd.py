@@ -19,6 +19,38 @@ def test_ribbon_export_prints_xml(monkeypatch):
     assert "RibbonDiffXml" in res.output
 
 
+def test_ribbon_export_application_prints_xml(monkeypatch):
+    xml = "<RibbonDiffXml><CustomActions/></RibbonDiffXml>"
+    called = {}
+
+    def _fake_app(backend):
+        called["app"] = True
+        return ET.fromstring(xml)
+
+    monkeypatch.setattr(ribbon_mod, "retrieve_application_ribbon", _fake_app)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, ["--json", "ribbon", "export", "--application"])
+    assert res.exit_code == 0, res.output
+    assert called.get("app") is True
+    data = json.loads(res.output)
+    assert data["data"]["application"] is True
+    assert "RibbonDiffXml" in data["data"]["ribbonxml"]
+
+
+def test_ribbon_export_requires_entity_or_application(monkeypatch):
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, ["--json", "ribbon", "export"])
+    assert res.exit_code != 0
+    assert "application" in res.output.lower() or "entity" in res.output.lower()
+
+
+def test_ribbon_export_rejects_entity_with_application(monkeypatch):
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(
+        cli, ["--json", "ribbon", "export", "cwx_ticket", "--application"])
+    assert res.exit_code != 0
+
+
 def test_ribbon_export_json_no_output_emits_envelope(monkeypatch):
     xml = "<RibbonDiffXml><CustomActions/></RibbonDiffXml>"
     monkeypatch.setattr(
