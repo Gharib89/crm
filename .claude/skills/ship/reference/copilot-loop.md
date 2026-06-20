@@ -33,22 +33,59 @@ conversation.
    some APIs return success but silently no-op.
 5. **Repeat to the ceiling.**
 
-## The 3-round hard ceiling
+## Counting rounds — what increments the counter
 
-Stop requesting after **~3 rounds**. It's a hard ceiling, not a soft target —
-later rounds are re-read artifacts and nits, not new signal. After the third
-round closes, move to CI + the merge gate.
+A **round** is one *substantive* bot review of the current committed tree: a real
+read that lands with either actionable comments or a clean pass. Count them so the
+ceiling is unambiguous:
 
-For small, targeted PRs (single bug fix, doc tweak), **one round is enough** —
-address round 1, then go straight to the merge gate. Don't re-request. A
-`docs`-class change is **capped at one round** by rule (it often draws zero
-actionable comments — a clean read plus green CI is the green light; proceed).
+- **+1 — round 1:** the automatic review on PR creation (step 1). Always the first
+  round.
+- **+1 — each re-requested review that lands** (step 4) with a real read: a body
+  with comments, or a zero-comment clean pass.
+- **Does NOT count** (free retries — never burn the ceiling on these):
+  - an **infra-flake** body ("encountered an error and was unable to review");
+  - a re-request that yields **no review at all** within the poll window;
+  - a **push with no re-request** — the bot doesn't re-read on push
+    (`review_on_push: false`), so it produces no round.
+
+## The ceiling — split by change class
+
+Hard ceilings, not soft targets — past the budget, reviews are re-read artifacts
+and nits, not new signal. Match the budget to the change:
+
+| Change | Round budget |
+|--------|--------------|
+| `docs`-class | **1** (hard cap — often zero actionable comments; clean read + green CI is the green light) |
+| **small** — passes the small-lane test (below) | **1** — round 1 (automatic) is the review gate; address it, then straight to the merge gate; don't re-request |
+| everything else (full lane) | **up to 3** |
+
+**"Small" is the small-lane test, not a vibe.** Spend the **1**-round budget only
+when a change passes *all three* keys of *The small lane* (SKILL.md): **no
+public-surface change**, **provable without a live call**, **single-concern**.
+Miss any one — or you're unsure — and it's **not** small: take the full **3**.
+(A bugfix still qualifies; small means narrow + locally provable + invisible to
+the documented surface, not zero-behavior — the full keys are in SKILL.md.) The
+budget is **revocable**: if a "small" PR turns out to touch public surface, or
+round 1 surfaces a real bug, it has downgraded to the full lane and its budget is
+now **3**.
+
+When the budget is spent, **triage any remaining items and proceed** to CI + the
+merge gate — do not re-request.
+
+**A post-budget fix does not reopen the budget.** Once a class's rounds are spent,
+a later CI-red fix or extra push earns another round **only if the class still has
+budget left** — full lane only; `docs` and small are capped at **1**, so they get
+**none** (proceed on green) — **and** the fix **materially changed behavior**. A
+lint / format / flake fix never earns a round. The **3-round ceiling** is the
+absolute cap regardless: a full-lane change never exceeds it.
 
 ## What counts as "done reviewing"
 
 - **Clean pass:** a review with zero actionable comments. That plus green CI is
   the green light — don't mistake a quiet clean review for "hasn't run yet".
-- **Ceiling reached:** ~3 rounds done, remaining items triaged. Proceed.
+- **Ceiling reached:** the change's round budget is spent, remaining items
+  triaged. Proceed.
 
 ## Infra flakes — don't burn the ceiling on them
 

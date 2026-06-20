@@ -1,83 +1,39 @@
 # Cloud ship routine
 
 A claude.ai **routine** (research preview) that ships the oldest open
-`ready-for-agent` issue to a merge-ready PR via `/ship`, then stops at the human
-merge gate. One issue per fire. Manage at https://claude.ai/code/routines or via
-`/schedule` in the CLI.
+`ready-for-agent` issue to a merge-ready PR via the **`cloud-ship` skill** (which
+composes the **`ship`** skill), then stops at the merge gate without merging. One
+issue per fire. Manage at https://claude.ai/code/routines or via `/schedule` in the CLI.
 
-## Routine prompt (self-contained — paste verbatim into the routine's Instructions)
+## Routine prompt (fixed — paste once; never re-paste on a behavior change)
+
+The agent behavior lives in the repo-tracked **`cloud-ship` skill**
+(`.claude/skills/cloud-ship/`), which the cloud sandbox gets via its clone of
+`main`. So the routine's Instructions are a short, **fixed** pointer that only
+*invokes* the skill — change what a fire does by editing the skill and merging to
+`main` (the next clone picks it up), **not** by editing this prompt. Paste this
+verbatim into the routine's Instructions once:
 
 ```
 Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
 
-1. Provision the sandbox: from the repo root run `bash scripts/cloud-ship-bootstrap.sh`.
-   It installs the crm CLI, builds the active `agent-cloud` profile from the
-   environment's D365_* connection variables, and confirms the cloud org via whoami.
-   If it exits non-zero, report the failure and STOP.
-2. Pick the work item (gh reads GH_TOKEN from the environment):
-   NUM=$(gh issue list --repo Gharib89/crm --label ready-for-agent --state open \
-         --json number --jq 'sort_by(.number)[0].number // empty')
-   If NUM is empty, report "nothing ready" and STOP — do not open a PR.
-   Do NOT claim it here — /ship claims it in its phase 1 (removes ready-for-agent,
-   adds agent-working, comments). Since the claim drops ready-for-agent, this picker
-   never returns an issue that is already claimed or has an open PR.
-3. Rename the working branch off the sandbox default. A cloud fire starts you on an
-   auto `claude/<random>` branch; the repo convention (and /ship's) is
-   `<type>/<slug>-$NUM` — `<type>` = `fix` for a bug, `feat` otherwise, `<slug>` a
-   short kebab summary of the issue title. Switch before any commit so the PR branch
-   is semantic, not the `claude/...` name:
-   git switch -c fix/<slug>-$NUM   # or feat/<slug>-$NUM
-   Then run /ship on issue $NUM by INVOKING THE SKILL TOOL (skill `ship`) — do not
-   paraphrase or inline its steps from this prompt. /ship composes the `tdd` and
-   `review` skills (all three ship as sibling skills in the clone's
-   `.claude/skills/`): when /ship reaches those phases, invoke `tdd` / `review` via
-   the Skill tool too — never hand-roll their logic inline. /ship's first action is
-   to create its phase task list; if the Task tools (`TaskCreate`/`TaskUpdate`/
-   `TaskList`) aren't loaded, run `ToolSearch` (`select:TaskCreate,TaskUpdate,TaskList`)
-   before concluding they're unavailable — only if that returns nothing, track the
-   ten phases in a markdown checklist instead and keep going (the list is a
-   progress/resume aid, not a gate). Pin `--profile agent-cloud` on every crm
-   command. Put "Closes #$NUM" in the PR body so merging auto-closes the issue and
-   drops it from the queue. Follow the repo CLAUDE.md for test/gate/docs-sync/commit
-   rules. Cloud Dataverse org ONLY — never on-prem; an issue that can only be verified
-   on-prem counts as blocked (step 4).
-4. If /ship CANNOT produce a merge-ready PR (ambiguous/underspecified, on-prem-only,
-   or CI cannot be made green): do not leave it stuck as agent-working and do not
-   return it to ready-for-agent (that would loop it forever). Hand it to a human:
-   gh issue edit "$NUM" --repo Gharib89/crm --remove-label agent-working --add-label ready-for-human
-   gh issue comment "$NUM" --repo Gharib89/crm --body "<one-line reason it is blocked>"
-   then STOP.
-5. On success /ship reaches the merge gate. The gate's instruction is to "wait" for
-   the user to reply "merge" — that is written for an interactive CLI session. This is
-   a one-shot hourly fire with NO in-session human, so do NOT wait, do NOT poll, and
-   do NOT merge: the moment the PR is merge-ready (CI green, Copilot review addressed
-   within the ≤3-round ceiling, mergeable), post the PR link + disposition summary and
-   END the fire. A human merges out of band later; the squash "Closes #$NUM" closes
-   the issue then. Leave the issue labeled agent-working — it has the open PR, so later
-   fires skip it until the merge closes it.
+Invoke the `cloud-ship` skill via the Skill tool and follow it exactly — do not
+paraphrase or inline its steps. The skill is a sibling in the clone's
+`.claude/skills/` (alongside `ship`, `tdd`, `review`); it bootstraps the sandbox,
+picks the oldest open `ready-for-agent` issue, ships it via `ship`, and stops at
+the merge gate without merging.
 
-Working standards (the operator's global coding philosophy, not in the cloned repo;
-the repo's own CLAUDE.md and /ship already cover tests, gates, and the merge flow):
-- Don't build the wrong thing. Surface tradeoffs; if the issue is ambiguous or
-  underspecified, STOP and report rather than guessing.
-- Simplicity first. Minimum code that solves the problem — no features beyond what
-  was asked, no abstractions for single-use code, no configurability that wasn't
-  requested, no error handling for impossible cases. "Would a senior engineer call
-  this overcomplicated?"
-- Surgical changes. Touch only what you must. Read a file before editing it and grep
-  for callers before changing a function. Don't improve/refactor adjacent code; match
-  existing style. Remove only orphans your change created; mention unrelated dead
-  code, don't delete it. Every changed line must trace to the issue.
-- Plan first on multi-step or architectural work; delegate research/parallel analysis
-  to subagents to protect context. Find root causes — no symptom patches, no
-  TODO-as-excuse, no commented-out blocks, no swallowed errors. Run an elegance pass
-  on your own non-trivial new code (not adjacent existing code).
-- Comments: document public APIs and non-obvious WHY (constraints, invariants,
-  workarounds); skip narrative comments on internals.
-- Keep the PR and disposition summary concise, but always include the WHY.
+If the Skill tool cannot find `cloud-ship`, the repo clone is missing or stale —
+report that and STOP rather than improvising the routine by hand.
 ```
 
 The routine's model selector should be set to the strongest available coding model.
+
+> **Why a skill, not an inline prompt.** Earlier the full routine logic lived in
+> this prompt block, so every behavior tweak meant re-pasting it into the claude.ai
+> routine config by hand. Moving it into a tracked skill (`.claude/skills/cloud-ship/`)
+> makes the repo the single source of truth — version-controlled and reviewable —
+> and keeps the pasted prompt fixed.
 
 ## Cloud environment config (claude.ai web UI — "Edit routine" → environment)
 
