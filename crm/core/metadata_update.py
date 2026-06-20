@@ -382,8 +382,11 @@ def _build_relationship_changes(
     menu_behavior: str | None,
     menu_label: str | None,
     menu_order: int | None,
+    is_hierarchical: bool | None,
 ) -> dict[str, Any]:
     changes: dict[str, Any] = {}
+    if is_hierarchical is not None:
+        changes["IsHierarchical"] = is_hierarchical
     if cascade:
         for name, value in cascade.items():
             if name not in mc.CASCADE_KEYS:
@@ -414,6 +417,7 @@ def update_relationship(
     menu_behavior: str | None = None,
     menu_label: str | None = None,
     menu_order: int | None = None,
+    is_hierarchical: bool | None = None,
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
@@ -436,11 +440,12 @@ def update_relationship(
         menu_behavior=menu_behavior,
         menu_label=menu_label,
         menu_order=menu_order,
+        is_hierarchical=is_hierarchical,
     )
     if not changes:
         raise D365Error(
             "nothing to update — pass at least one of "
-            "--cascade-*/--menu-behavior/--menu-label/--menu-order."
+            "--cascade-*/--menu-behavior/--menu-label/--menu-order/--hierarchical."
         )
 
     resolve = _read(
@@ -469,11 +474,13 @@ def update_relationship(
     if odata_cast == _MANY_TO_MANY_CAST and (
         cascade or menu_behavior is not None
         or menu_label is not None or menu_order is not None
+        or is_hierarchical is not None
     ):
         raise D365Error(
-            f"relationship {schema_name!r} is many-to-many; cascade and "
-            "associated-menu updates are only valid for one-to-many "
-            "relationships (N:N side-specific menus are not supported)."
+            f"relationship {schema_name!r} is many-to-many; cascade, "
+            "associated-menu, and hierarchical updates are only valid for "
+            "one-to-many relationships (N:N side-specific menus are not "
+            "supported, and IsHierarchical is a 1:N property)."
         )
 
     # Read the merge base from the typed cast path — it is the only projection

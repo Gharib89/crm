@@ -649,6 +649,117 @@ class TestCreateEntity:
             )
 
 
+class TestCreateVirtualEntity:
+    _PROVIDER = "7015a531-cc0d-4537-b5f2-c882a1eb65ad"
+    _SOURCE = "22222222-2222-2222-2222-222222222222"
+
+    def test_virtual_create_posts_external_and_provider_props(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='new_movie')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId":
+                         backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")},
+            )
+            m.get(
+                backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)"),
+                json={"LogicalName": "new_movie", "EntitySetName": "new_movies"},
+            )
+            info = meta_mod_local.create_entity(
+                backend,
+                schema_name="new_Movie",
+                display_name="Movie",
+                data_provider_id=self._PROVIDER,
+                data_source_id=self._SOURCE,
+                external_name="People",
+                external_collection_name="People",
+            )
+        assert info["created"] is True
+        body = next(r for r in m.request_history if r.method == "POST").json()
+        assert body["ExternalName"] == "People"
+        assert body["ExternalCollectionName"] == "People"
+        assert body["DataProviderId"] == self._PROVIDER
+        assert body["DataSourceId"] == self._SOURCE
+
+    def test_virtual_data_source_optional(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='new_movie')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId":
+                         backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")},
+            )
+            m.get(
+                backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)"),
+                json={"LogicalName": "new_movie", "EntitySetName": "new_movies"},
+            )
+            meta_mod_local.create_entity(
+                backend,
+                schema_name="new_Movie",
+                display_name="Movie",
+                data_provider_id=self._PROVIDER,
+                external_name="People",
+                external_collection_name="People",
+            )
+        body = next(r for r in m.request_history if r.method == "POST").json()
+        assert "DataSourceId" not in body
+
+    def test_non_virtual_create_omits_external_props(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='new_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("EntityDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId":
+                         backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")},
+            )
+            m.get(
+                backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)"),
+                json={"LogicalName": "new_project", "EntitySetName": "new_projects"},
+            )
+            meta_mod_local.create_entity(
+                backend, schema_name="new_Project", display_name="Project",
+            )
+        body = next(r for r in m.request_history if r.method == "POST").json()
+        for k in ("ExternalName", "ExternalCollectionName", "DataProviderId", "DataSourceId"):
+            assert k not in body
+
+    def test_virtual_requires_external_name(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with pytest.raises(D365Error, match="external-name"):
+            meta_mod_local.create_entity(
+                backend, schema_name="new_Movie", display_name="Movie",
+                data_provider_id=self._PROVIDER,
+                external_collection_name="People",
+            )
+
+    def test_virtual_requires_data_provider(self, backend):
+        from crm.core import metadata as meta_mod_local
+        with pytest.raises(D365Error, match="data-provider"):
+            meta_mod_local.create_entity(
+                backend, schema_name="new_Movie", display_name="Movie",
+                external_name="People",
+                external_collection_name="People",
+            )
+
+
 class TestCreateEntityReadback:
     _MD_ID = "11111111-1111-1111-1111-111111111111"
 

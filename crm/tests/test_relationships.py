@@ -124,6 +124,66 @@ class TestCreateOneToMany:
         assert info["created"] is True
         assert "relationship_lookup_error" in info
 
+    def test_hierarchical_sets_flag_in_body(self, backend):
+        from crm.core import relationships as rel
+        rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_account')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("RelationshipDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": rel_url},
+            )
+            m.get(
+                rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                json={"SchemaName": "new_account_new_account",
+                      "ReferencingAttribute": "new_parentaccountid"},
+            )
+            rel.create_one_to_many(
+                backend,
+                schema_name="new_account_new_account",
+                referenced_entity="account",
+                referencing_entity="account",
+                lookup_schema="new_ParentAccountId",
+                lookup_display="Parent Account",
+                is_hierarchical=True,
+            )
+        body = next(r for r in m.request_history if r.method == "POST").json()
+        assert body["IsHierarchical"] is True
+
+    def test_non_hierarchical_omits_flag(self, backend):
+        from crm.core import relationships as rel
+        rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("RelationshipDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": rel_url},
+            )
+            m.get(
+                rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                json={"SchemaName": "new_account_new_project"},
+            )
+            rel.create_one_to_many(
+                backend,
+                schema_name="new_account_new_project",
+                referenced_entity="account",
+                referencing_entity="new_project",
+                lookup_schema="new_AccountId",
+                lookup_display="Account",
+            )
+        body = next(r for r in m.request_history if r.method == "POST").json()
+        assert "IsHierarchical" not in body
+
 
 class TestCreateCustomerRelationships:
     def _mock_not_exists(self, m, backend, entity, lookup_logical):
@@ -463,3 +523,71 @@ class TestDeleteRelationshipDryRun:
         assert info["blockers"] == []
         delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
         assert delete_reqs == []
+
+
+class TestCanRelate:
+    def test_eligibility_referenced_posts_action(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("CanBeReferenced"),
+                   json={"CanBeReferenced": True})
+            info = rel.can_relate(backend, "account", role="referenced")
+        assert info == {"entity": "account", "as": "referenced", "eligible": True}
+        post = next(r for r in m.request_history if r.method == "POST")
+        assert post.url.endswith("/CanBeReferenced")
+        assert post.json() == {"EntityName": "account"}
+
+    def test_eligibility_referencing_posts_action(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("CanBeReferencing"),
+                   json={"CanBeReferencing": False})
+            info = rel.can_relate(backend, "new_widget", role="referencing")
+        assert info["eligible"] is False
+        assert info["as"] == "referencing"
+
+    def test_eligibility_many_to_many_posts_action(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("CanManyToMany"),
+                   json={"CanManyToMany": True})
+            info = rel.can_relate(backend, "contact", role="many-to-many")
+        assert info["eligible"] is True
+
+    def test_valid_partners_referenced_gets_referencing_entities(self, backend):
+        from crm.core import relationships as rel
+        url = backend.url_for("GetValidReferencingEntities(ReferencedEntityName='account')")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"EntityNames": ["contact", "new_project"]})
+            info = rel.can_relate(backend, "account", role="referenced",
+                                  valid_partners=True)
+        assert info["entity"] == "account"
+        assert info["as"] == "referenced"
+        assert info["valid_partners"] == ["contact", "new_project"]
+        assert info["count"] == 2
+
+    def test_valid_partners_referencing_gets_referenced_entities(self, backend):
+        from crm.core import relationships as rel
+        url = backend.url_for("GetValidReferencedEntities(ReferencingEntityName='new_widget')")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"EntityNames": ["account"]})
+            info = rel.can_relate(backend, "new_widget", role="referencing",
+                                  valid_partners=True)
+        assert info["valid_partners"] == ["account"]
+
+    def test_valid_partners_many_to_many_gets_global_list(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("GetValidManyToMany"),
+                  json={"EntityNames": ["contact", "account"]})
+            info = rel.can_relate(backend, "contact", role="many-to-many",
+                                  valid_partners=True)
+        assert info["valid_partners"] == ["contact", "account"]
+        # GetValidManyToMany is global — it takes no entity parameter.
+        get = next(r for r in m.request_history if r.method == "GET")
+        assert get.url.endswith("/GetValidManyToMany")
+
+    def test_rejects_bad_role(self, backend):
+        from crm.core import relationships as rel
+        with pytest.raises(D365Error, match="role"):
+            rel.can_relate(backend, "account", role="bogus")

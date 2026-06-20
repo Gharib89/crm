@@ -464,6 +464,10 @@ def create_entity(
     has_activities: bool = False,
     has_notes: bool = False,
     is_activity: bool = False,
+    data_provider_id: str | None = None,
+    data_source_id: str | None = None,
+    external_name: str | None = None,
+    external_collection_name: str | None = None,
     solution: str | None = None,
     if_exists: str = "error",
 ) -> dict[str, Any]:
@@ -482,6 +486,15 @@ def create_entity(
         has_activities: Enable activities on the entity.
         has_notes: Enable notes (annotations) on the entity.
         is_activity: Create as an activity entity (mutually exclusive with most options).
+        data_provider_id: Virtual-entity data provider GUID. Setting any of the
+            four `external_*` / `data_*` arguments marks this a *virtual* table
+            (its rows live in an external store). Virtual tables are read-only on
+            v9.1 and require the data-provider (and optional data-source) records
+            to exist first. `external_name`, `external_collection_name`, and
+            `data_provider_id` are required together; `data_source_id` is optional.
+        data_source_id: Virtual-entity data source GUID (optional).
+        external_name: External table name this virtual entity maps to.
+        external_collection_name: External collection (plural) name.
         solution: Optional `uniquename` to add the entity to a specific solution
             via the `MSCRM.SolutionUniqueName` header.
 
@@ -499,6 +512,29 @@ def create_entity(
 
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
+
+    # Virtual table: any external/data-provider argument opts in; the server
+    # rejects a partial set, so require the three load-bearing values together
+    # (data_source_id stays optional — the docs allow a null source at create
+    # time). Standard tables must leave all four null or the server faults.
+    is_virtual = any((data_provider_id, data_source_id, external_name,
+                      external_collection_name))
+    if is_virtual:
+        if not external_name:
+            raise D365Error(
+                "a virtual table requires --external-name (the external table "
+                "name its rows map to)."
+            )
+        if not external_collection_name:
+            raise D365Error(
+                "a virtual table requires --external-collection-name (the "
+                "external collection/plural name)."
+            )
+        if not data_provider_id:
+            raise D365Error(
+                "a virtual table requires --data-provider (the data-provider "
+                "record GUID); create the data-provider/data-source records first."
+            )
 
     prefix, _, _ = schema_name.partition("_")
     logical_name = schema_name.lower()
@@ -552,6 +588,12 @@ def create_entity(
     }
     if description:
         body["Description"] = label(description)
+    if is_virtual:
+        body["ExternalName"] = external_name
+        body["ExternalCollectionName"] = external_collection_name
+        body["DataProviderId"] = data_provider_id
+        if data_source_id:
+            body["DataSourceId"] = data_source_id
 
     headers = {}
     if solution:

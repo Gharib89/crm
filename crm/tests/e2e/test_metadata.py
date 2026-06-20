@@ -33,6 +33,33 @@ def test_metadata_list_entities_managed_filter(backend):
         assert ent.get("IsCustomEntity") is False
 
 
+@covers("metadata can-relate")
+def test_e2e_can_relate_eligibility_and_partners(backend):
+    """Read-only: account is eligible to be referenced, and the valid-partner
+    lists come back non-empty. Exercises both a Can* action and a GetValid*
+    function across all three roles."""
+    from crm.core import relationships as rel
+    # account is a standard table that can be the primary (one) side.
+    elig = rel.can_relate(backend, "account", role="referenced")
+    assert elig["eligible"] is True
+    assert elig["as"] == "referenced"
+
+    # All three eligibility actions answer with a bool (no fault).
+    for role in ("referenced", "referencing", "many-to-many"):
+        r = rel.can_relate(backend, "account", role=role)
+        assert isinstance(r["eligible"], bool)
+
+    # Valid-partner discovery via the GetValid* functions returns a list.
+    partners = rel.can_relate(backend, "account", role="referenced",
+                              valid_partners=True)
+    assert partners["count"] == len(partners["valid_partners"])
+    assert partners["count"] > 0
+
+    m2m = rel.can_relate(backend, "account", role="many-to-many",
+                         valid_partners=True)
+    assert isinstance(m2m["valid_partners"], list)
+
+
 @covers("metadata create-entity")
 def test_e2e_create_custom_entity_reads_back_set_name(backend):
     """§3.3: create a unique custom entity, assert returned entity_set_name resolves via metadata.list_entities."""
