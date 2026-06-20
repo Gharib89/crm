@@ -217,6 +217,7 @@ cannot: workflows, gotchas, and the JSON contract. For per-domain detail:
 | automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA activation | `reference/automation.md` |
 | security: roles & assignment | `reference/security.md` |
 | field (column) security: profiles, column permissions, assign to users/teams | `reference/fieldsec.md` |
+| duplicate-detection rules: create/condition/publish/unpublish, check a candidate record | `reference/dup.md` |
 | server-side audit history (`audit history` / `audit detail`) — distinct from `session audit` | `reference/troubleshooting.md` |
 | errors, retries, connection diagnostics, session/audit, on-prem vs cloud | `reference/troubleshooting.md` |
 | reporting a bug / requesting a feature | `reference/feedback.md` |
