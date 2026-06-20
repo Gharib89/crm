@@ -47,7 +47,7 @@ environment's `D365_*` variables, and confirms the cloud org via WhoAmI.
 
 ```
 NUM=$(gh issue list --repo Gharib89/crm --label ready-for-agent --state open \
-      --json number --jq 'sort_by(.number)[0].number // empty')
+      --limit 200 --json number --jq 'sort_by(.number)[0].number // empty')
 ```
 
 **Completion:** `NUM` holds the oldest open `ready-for-agent` issue. Empty →
@@ -110,14 +110,16 @@ the merge closes it.
 
 ## Working standards
 
-The operator's global coding philosophy is **not** in the clone (only the repo's
-own `CLAUDE.md` is). Read **[reference/working-standards.md](reference/working-standards.md)**
-before `ship` implements and hold it through the whole fire — `ship`, `tdd`, and
-the repo `CLAUDE.md` cover tests / gates / merge flow; this fills the judgment
-layer they assume.
+The operator's global coding philosophy does **not** live in the repo's own
+`CLAUDE.md` (the clone carries only that) — so it's reproduced here. Read
+**[reference/working-standards.md](reference/working-standards.md)** before `ship`
+implements and hold it through the whole fire — `ship`, `tdd`, and the repo
+`CLAUDE.md` cover tests / gates / merge flow; this fills the judgment layer they
+assume.
 
 ## Reference files
 
-- `reference/working-standards.md` — the operator's engineering standards (absent
-  from the clone): build the right thing, simplicity, surgical changes, root cause,
-  comments, concise PRs.
+- `reference/working-standards.md` — the operator's engineering standards
+  (reproduced here from their global `CLAUDE.md`, which the clone doesn't carry):
+  build the right thing, simplicity, surgical changes, root cause, comments,
+  concise PRs.

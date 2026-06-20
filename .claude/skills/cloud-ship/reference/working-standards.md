@@ -1,9 +1,10 @@
 # Working standards
 
-The operator's global coding philosophy. It is **not** in the cloned repo — the
-clone carries only the repo's own `CLAUDE.md`, and `ship` / `tdd` / `review`
-cover tests, gates, and the merge flow. These standards fill the engineering-
-judgment layer those assume. Hold them through the whole fire.
+The operator's global coding philosophy, reproduced here. It does **not** live in
+the repo's own `CLAUDE.md` (the clone carries only that, plus `ship` / `tdd` /
+`review`, which cover tests, gates, and the merge flow) — so this file carries it
+into the fire. These standards fill the engineering-judgment layer those assume.
+Hold them through the whole fire.
 
 - **Don't build the wrong thing.** Surface tradeoffs; if the issue is ambiguous or
   underspecified, STOP and report rather than guessing. (This is also `ship`'s
