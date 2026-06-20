@@ -214,6 +214,37 @@ runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
 `{_dry_run, would_delete: true, <id>}` — neither issues the write. To take a chart
 *out* of a solution without deleting it, use `solution remove-component`.
 
+## Dashboards — `dashboard` (systemform type=0)
+
+Author organization-owned system dashboards headlessly instead of using the
+dashboard designer. A dashboard is a `systemform` with `type = 0`; the verbs scope
+every read to that type, so other form types never appear.
+
+```bash
+crm --json dashboard list                              # org dashboards (no formxml)
+crm --json dashboard get <id>                          # single dashboard, with formxml
+crm --json dashboard create --name "Sales" --formxml dash.xml
+crm --json dashboard delete <id>
+```
+
+**The CLI does not author FormXml** — it posts the file verbatim. To version a
+dashboard, capture its layout from `dashboard get` and recreate it:
+
+```bash
+crm --json dashboard get <id> | jq -r '.data.formxml' > dash.xml
+crm --json dashboard create --name "Sales" --formxml dash.xml
+```
+
+**Interactive (type-10) dashboards are not API-creatable.** Passing `--interactive`
+fails fast with a clear error rather than silently creating a standard dashboard —
+author interactive-experience dashboards in the designer.
+
+**Publish + solution + dry-run, same contract as the other customization verbs.**
+`create` runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
+`--require-solution` scope the write. Under `--dry-run`, `create` returns
+`{_dry_run, would_create: {entity_set, body}}` and `delete` returns
+`{_dry_run, would_delete: true, formid}` — neither issues the write.
+
 ## Decommission — deleting UI components
 
 `app` and `ribbon` have **no `delete` verb** — delete through the generic

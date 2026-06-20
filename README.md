@@ -403,6 +403,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); set as app icons |
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml; add-field / remove-field / set-field to edit form layouts without manual XML |
 | `chart`      | System & user charts (savedqueryvisualization / userqueryvisualization): list / get / create / delete; author from datadescription + presentationdescription XML or a web-resource visualization, headlessly (no chart designer) |
+| `dashboard`  | Organization-owned system dashboards (systemform type=0): list / get / create / delete; create from a FormXml file, headlessly (no dashboard designer). Interactive (type-10) dashboards are not API-creatable and are rejected with a clear error |
 | `plugin`     | Register/update/unregister plug-in assemblies, webhook service endpoints, SDK message processing steps (bind to a plug-in type or a service endpoint), and step entity images |
 | `security`   | List and assign security roles to users or teams; show a user's effective privileges (incl. team-inherited); grant / revoke / list record sharing (POA) |
 | `fieldsec`   | Column-level (field) security: create field security profiles, grant `--read`/`--create`/`--update` column permissions, assign profiles to users or teams, list / get |
