@@ -1,8 +1,8 @@
 # Phase 9 — the merge gate
 
-This is the one guaranteed human stop. Merging to the default branch is
-effectively irreversible, so a human makes the call. Your job is to make that
-call a 10-second yes/no by laying out everything they'd want to check.
+This is the merge gate — the one guaranteed human stop (rationale in the autonomy
+contract in SKILL.md). Your job is to make that call a 10-second yes/no by laying
+out everything they'd want to check.
 
 ## Post this summary, then stop
 
@@ -11,6 +11,7 @@ call a 10-second yes/no by laying out everything they'd want to check.
 
 PR:        <url>  (<branch> → <default-branch>)
 Issue:     <one-line restatement of what was asked>
+Lane:      <full | small — skipped: integrated test, local suite (CI), self-review (if auto-bot)>
 
 Implementation
   - <what was built, 1–3 lines>

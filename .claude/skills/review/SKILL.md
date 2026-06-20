@@ -37,7 +37,7 @@ Anything in the repo that documents how code should be written, such as `CODING_
 
 ### 4. Spawn both sub-agents in parallel
 
-Send a single message with two `Agent` tool calls. Use the `general-purpose` subagent for both.
+Send a single message with two `Agent` tool calls. Use the `general-purpose` subagent for both, with an explicit `model` per axis — **Standards (code review) on `opus`**, **Spec on `sonnet`** — never default-inherit. Standards judges code against the repo's rules (the heavier read); Spec checks requirement coverage (lighter). Fall back to the nearest available tier if one isn't exposed.
 
 **Standards sub-agent prompt** — include:
 
