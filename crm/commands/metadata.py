@@ -1187,42 +1187,6 @@ def metadata_state_relabel(ctx: CLIContext, entity, value, label_text, descripti
     _journal(ctx, entity, info, solution=solution)
 
 
-@metadata_group.command("set-transitions")
-@click.argument("entity")
-@click.option("--transition", "transitions", multiple=True, required=True,
-              help="Allowed status transition 'fromValue:toValue' (statuscode "
-                   "values). Repeatable. EnforceStateTransitions (which activates "
-                   "enforcement) is app-set/read-only and out of the CLI's reach.")
-@_solution_option
-@_publish_option
-@pass_ctx
-def metadata_set_transitions(ctx: CLIContext, entity, transitions, solution,
-                             require_solution, publish):
-    """Define allowed statuscode transitions (StatusOptionMetadata.TransitionData)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
-    publish = _resolve_publish(ctx, publish)
-    parsed: list[tuple[int, int]] = []
-    for item in transitions:
-        if ":" not in item:
-            raise click.UsageError(
-                f"--transition must be 'fromValue:toValue': {item!r}"
-            )
-        src, _, tgt = item.partition(":")
-        try:
-            parsed.append((int(src.strip()), int(tgt.strip())))
-        except ValueError as exc:
-            raise click.UsageError(
-                f"--transition values must be integers: {item!r}"
-            ) from exc
-    with d365_errors(ctx):
-        info = sm_mod.set_status_transitions(
-            ctx.backend(), entity, transitions=parsed,
-            publish=publish, solution=solution,
-        )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
-    _journal(ctx, entity, info, solution=solution)
-
-
 @metadata_group.command("create-mapping")
 @click.argument("relationship")
 @click.option("--from", "source_attr", default=None,

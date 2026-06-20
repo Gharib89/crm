@@ -56,31 +56,6 @@ class TestStateRelabel:
         assert fake.calls[0][1] == "UpdateStateValue"
 
 
-class TestSetTransitions:
-    def test_parses_and_sets(self, make_fake_backend, inject_backend, tmp_path):
-        options = {"OptionSet": {"Options": [
-            {"Value": 1, "TransitionData": None},
-            {"Value": 2, "TransitionData": None},
-        ]}}
-        fake = make_fake_backend(responses={"get": options, "put": None})
-        res = _run(
-            ["--json", "metadata", "set-transitions", "new_widget",
-             "--transition", "1:2", "--no-publish"],
-            inject_backend, fake, tmp_path,
-        )
-        assert res.exit_code == 0, res.output
-        assert json.loads(res.output)["data"]["transitions_set"] == [1]
-
-    def test_bad_transition_is_usage_error(self, make_fake_backend, inject_backend, tmp_path):
-        fake = make_fake_backend()
-        res = _run(
-            ["metadata", "set-transitions", "new_widget", "--transition", "nope"],
-            inject_backend, fake, tmp_path,
-        )
-        assert res.exit_code != 0
-        assert "fromValue:toValue" in res.output
-
-
 class TestCreateMapping:
     def _pair_backend(self, make_fake_backend):
         def _get(path):
@@ -103,10 +78,7 @@ class TestCreateMapping:
         assert any(p == "attributemaps" for _v, p, _k in fake.calls)
 
     def test_auto(self, make_fake_backend, inject_backend, tmp_path):
-        def _get(path):
-            return {"ReferencedEntity": "account", "ReferencingEntity": "new_widget"}
-        fake = make_fake_backend(responses={
-            "get": _get, "post": {"EntityMap": {"AttributeMaps": [{"a": 1}]}}})
+        fake = self._pair_backend(make_fake_backend)
         res = _run(
             ["--json", "metadata", "create-mapping", "new_account_new_widget", "--auto"],
             inject_backend, fake, tmp_path,

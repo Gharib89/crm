@@ -84,24 +84,23 @@ class TestCreateMapping:
 
 
 class TestAutoMap:
-    def test_posts_automapentity_with_pair(self, backend):
+    def test_posts_automapentity_with_entity_map_id(self, backend):
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_REL_PATH), json=dict(_PAIR))
-            m.post(
-                backend.url_for("AutoMapEntity"),
-                json={"EntityMap": {"AttributeMaps": [{"x": 1}, {"x": 2}]}},
-            )
+            m.get(backend.url_for("entitymaps"), json={"value": [{"entitymapid": _MAP_ID}]})
+            m.post(backend.url_for("AutoMapEntity"), status_code=204)
             out = mp.auto_map(backend, _REL)
         assert out["auto_mapped"] is True
-        assert out["mapping_count"] == 2
+        assert out["entity_map_id"] == _MAP_ID
+        # The Web API action takes EntityMapId (not the SDK's entity names).
         body = [r for r in m.request_history if r.method == "POST"][0].json()
-        assert body["SourceEntityName"] == "account"
-        assert body["TargetEntityName"] == "new_widget"
+        assert body == {"EntityMapId": _MAP_ID}
 
     def test_dry_run_does_not_post(self, dry_backend):
         with requests_mock.Mocker() as m:
             m.get(dry_backend.url_for(_REL_PATH), json=dict(_PAIR))
-            m.post(dry_backend.url_for("AutoMapEntity"), json={})
+            m.get(dry_backend.url_for("entitymaps"), json={"value": [{"entitymapid": _MAP_ID}]})
+            m.post(dry_backend.url_for("AutoMapEntity"), status_code=204)
             out = mp.auto_map(dry_backend, _REL)
         assert out["_dry_run"] is True
         assert out["would_auto_map"] is True

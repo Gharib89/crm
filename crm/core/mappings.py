@@ -117,26 +117,28 @@ def auto_map(
 ) -> dict[str, Any]:
     """Bulk-generate attribute maps for the pair via ``AutoMapEntity``.
 
-    Dataverse replaces any existing maps for the pair, so this is destructive to
-    prior manual maps (documented platform behavior).
+    Dataverse overwrites the pair's existing maps, so this is destructive to any
+    prior manual maps (documented platform behavior). The Web API ``AutoMapEntity``
+    action takes the ``EntityMapId`` to overwrite (not the entity names the SDK
+    request uses), so the relationship is first resolved to its entity map.
     """
     source, target = _resolve_pair(backend, relationship)
-    body = {"SourceEntityName": source, "TargetEntityName": target}
+    entity_map_id = _find_entity_map(backend, source, target)
+    body = {"EntityMapId": entity_map_id}
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post("AutoMapEntity", json_body=body, extra_headers=headers))
     if result.get("_dry_run"):
         result["would_auto_map"] = True
         result["source_entity"] = source
         result["target_entity"] = target
+        result["entity_map_id"] = entity_map_id
         return result
 
-    entity_map = as_dict(result.get("EntityMap"))
-    attribute_maps = entity_map.get("AttributeMaps") if entity_map else None
     return {
         "auto_mapped": True,
         "relationship": relationship,
         "source_entity": source,
         "target_entity": target,
-        "mapping_count": len(attribute_maps) if isinstance(attribute_maps, list) else None,
+        "entity_map_id": entity_map_id,
         "solution": solution,
     }
