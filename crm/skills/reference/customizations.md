@@ -102,12 +102,12 @@ crm --json ribbon add-button account --solution cwx_crmworx ...
 crm --json ribbon remove account --solution cwx_crmworx ...
 ```
 
-**`ribbon export` — `ENTITY` or `--application`, not both.** Pass `ENTITY` for a
-single table's ribbon, or `--application` / `-a` for the app-wide ribbon (the
-commands not bound to any specific table). Passing both, or neither, is an error.
-`--application` calls `RetrieveApplicationRibbon` (no parameters); the key in the
-response is `CompressedApplicationRibbonXml`, distinct from the entity path's
-`CompressedEntityXml`. Read-only.
+**`ribbon export` — give exactly one target.** An `ENTITY` exports that one
+table's ribbon; `--application` exports the app-wide ribbon (the commands not
+bound to any table). They are mutually exclusive — omitting both, or giving both,
+errors. The app-wide path returns its zipped XML under `CompressedApplicationRibbonXml`
+(not the entity path's `CompressedEntityXml`) — relevant only if you decode the
+raw `--dry-run` response yourself.
 
 This is why a cloned entity's ribbon does not come across (see the clone caveats in
 `reference/metadata.md`) — there is no API write path to copy it.

@@ -190,9 +190,6 @@ def solution_missing_components_cmd(ctx: CLIContext, solution_file):
     """
     with d365_errors(ctx):
         info = sol_mod.retrieve_missing_components(ctx.backend(), solution_file)
-    if "_dry_run" in info:
-        ctx.emit(True, data=info)
-        return
     ctx.emit(True, data=info["missing_components"], meta={"count": info["count"]})
 
 

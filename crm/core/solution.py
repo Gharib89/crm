@@ -532,8 +532,6 @@ def retrieve_missing_components(
     alias = urllib.parse.quote(f"binary'{b64}'", safe="")
     path = f"RetrieveMissingComponents(CustomizationFile=@p1)?@p1={alias}"
     result = as_dict(backend.get(path))
-    if result.get("_dry_run"):
-        return result
     missing: list[dict[str, Any]] = result.get("MissingComponents") or []
     return {"missing_components": missing, "count": len(missing)}
 

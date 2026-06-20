@@ -148,6 +148,19 @@ def test_metadata_dependencies(cli):
     assert isinstance(data.get("blockers"), list)
 
 
+@covers("metadata dependencies")
+def test_metadata_dependencies_for_required(cli):
+    # --for required lists what the target depends on (RetrieveRequiredComponents),
+    # the reverse direction of the default delete/dependents paths.
+    r = cli(["--json", "metadata", "dependencies", "account",
+             "--kind", "entity", "--for", "required"])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"]
+    assert env["data"].get("for") == "required"
+    assert isinstance(env["data"].get("blockers"), list)
+
+
 @covers("metadata export-spec")
 def test_metadata_export_spec(cli, tmp_path):
     out = str(tmp_path / "account_spec.json")

@@ -73,6 +73,20 @@ def test_ribbon_export_account(cli, tmp_path):
     assert env_stdout["data"].get("ribbonxml", "").lstrip().startswith("<")
 
 
+@covers("ribbon export")
+def test_ribbon_export_application(cli):
+    """--application exports the app-wide ribbon (RetrieveApplicationRibbon) — a
+    different Web API function and JSON shape than the per-entity path."""
+    r = cli(["--json", "ribbon", "export", "--application"])
+    assert r.returncode == 0, (
+        f"ribbon export --application failed:\n{r.stderr}\nstdout: {r.stdout}"
+    )
+    env = json.loads(r.stdout)
+    assert env["ok"], env
+    assert env["data"].get("application") is True
+    assert env["data"].get("ribbonxml", "").lstrip().startswith("<")
+
+
 # ── ribbon list ───────────────────────────────────────────────────────────────
 
 
