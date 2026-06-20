@@ -139,4 +139,5 @@ class TestAssign:
         result = CliRunner().invoke(cli, [
             "--json", "fieldsec", "assign", _PROFILE_ID,
             "--user", _USER_ID, "--team", "x"])
-        assert result.exit_code != 0
+        assert result.exit_code == 2
+        assert json.loads(result.output)["ok"] is False

@@ -119,12 +119,19 @@ def create_profile(
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
-    return {
+    profile_id = result.get("_entity_id")
+    out: dict[str, Any] = {
         "created": True,
         "name": name,
-        _PROFILE_ID: result.get("_entity_id"),
+        _PROFILE_ID: profile_id,
         "solution": solution,
     }
+    if not profile_id:
+        out["fieldsecurityprofile_lookup_error"] = (
+            "Could not parse fieldsecurityprofileid from response: "
+            f"{result.get('_entity_id_url')!r}"
+        )
+    return out
 
 
 def add_permission(
@@ -167,9 +174,10 @@ def add_permission(
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
-    return {
+    permission_id = result.get("_entity_id")
+    out: dict[str, Any] = {
         "created": True,
-        "fieldpermissionid": result.get("_entity_id"),
+        "fieldpermissionid": permission_id,
         "profile": profile_id,
         "entity": entity,
         "attribute": attribute,
@@ -178,6 +186,12 @@ def add_permission(
         "canupdate": body["canupdate"],
         "solution": solution,
     }
+    if not permission_id:
+        out["fieldpermission_lookup_error"] = (
+            "Could not parse fieldpermissionid from response: "
+            f"{result.get('_entity_id_url')!r}"
+        )
+    return out
 
 
 def assign(

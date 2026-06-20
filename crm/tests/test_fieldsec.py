@@ -121,6 +121,16 @@ class TestCreateProfile:
         with pytest.raises(D365Error):
             fieldsec.create_profile(backend, name="")
 
+    def test_unparsable_id_surfaces_lookup_error(self, backend):
+        # 204 with no OData-EntityId header → backend returns None → core still
+        # reports created but flags the missing id (mirrors views.create_view).
+        with requests_mock.Mocker() as m:
+            m.post(_profiles_url(backend), status_code=204)
+            out = fieldsec.create_profile(backend, name="P")
+        assert out["created"] is True
+        assert out["fieldsecurityprofileid"] is None
+        assert "fieldsecurityprofile_lookup_error" in out
+
     def test_dry_run_previews_without_posting(self, dry_backend):
         with requests_mock.Mocker():  # no POST registered → a real call would 404
             out = fieldsec.create_profile(dry_backend, name="P")
@@ -155,6 +165,17 @@ class TestAddPermission:
             fieldsec.add_permission(
                 backend, profile=_PROFILE_ID, entity="account", attribute="creditlimit",
             )
+
+    def test_unparsable_id_surfaces_lookup_error(self, backend):
+        with requests_mock.Mocker() as m:
+            m.post(_perms_url(backend), status_code=204)  # no OData-EntityId header
+            out = fieldsec.add_permission(
+                backend, profile=_PROFILE_ID, entity="account",
+                attribute="creditlimit", read=True,
+            )
+        assert out["created"] is True
+        assert out["fieldpermissionid"] is None
+        assert "fieldpermission_lookup_error" in out
 
     def test_resolves_profile_by_name(self, backend):
         with requests_mock.Mocker() as m:
