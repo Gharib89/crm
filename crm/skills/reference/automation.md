@@ -254,6 +254,50 @@ environment (cloud flows don't exist on-prem). `meta.count` is the row count.
 
 ## SLAs — `sla`
 
+The full lifecycle is **`sla create` → `sla add-kpi` (one or more) → `sla activate`**.
+Run them in that order.
+
+### Key design fact
+
+The Dataverse `sla` entity has **no FetchXML/condition attribute of its own** —
+per-KPI applicability conditions live on `slaitem`. So `--applicable-when` /
+`--success-criteria` are on `sla add-kpi` (not on `sla create`). `sla create`
+only takes `--applicable-from` (the SLA's date-anchor field, e.g. `createdon`).
+SLA failure/warning action steps are workflow/designer constructs — out of scope
+for the CLI.
+
+### `sla create` — JSON contract
+
+```json
+{"ok": true, "data": {
+  "created": true, "name": "...", "entity": "incident",
+  "slaid": "<guid>", "sla_enabled": "already|set", "solution": "..."}}
+```
+
+`sla_enabled`:
+- `already` — target entity's `IsSLAEnabled` flag was already true; nothing changed.
+- `set` — the command flipped the flag and published the metadata change.
+- `would_set` — dry-run preview: the flag would be flipped.
+
+The `IsSLAEnabled` GET runs live even in dry-run (reads-execute rule) so the
+preview is honest. Dry-run shape: `{_dry_run, would_create:{entity_set, body}, entity, sla_enabled}`.
+
+### `sla add-kpi` — JSON contract
+
+Attaches a KPI / SLA-item (`slaitem`) to an existing SLA. `--applicable-when`
+and `--success-criteria` each accept an inline string **or** a `*-file` path;
+exactly one source is required per condition.
+
+```json
+{"ok": true, "data": {
+  "created": true, "slaitemid": "<guid>",
+  "sla_id": "<guid>", "name": "firstresponsebykpiid", "solution": "..."}}
+```
+
+Dry-run shape: `{_dry_run, would_create:{entity_set, body}, sla_id}`.
+
+### `sla activate` — JSON contract
+
 An SLA cannot activate until every backing workflow (one per SLA item) is
 active. `sla activate <sla-guid>` orchestrates the whole sequence: backing
 workflows first (already-active ones skipped — re-running is safe), then the

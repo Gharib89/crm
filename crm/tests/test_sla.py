@@ -255,6 +255,224 @@ def _failure_result():
     }
 
 
+_NEW_SLA = "7a7a7a7a-1111-2222-3333-444444444444"
+_NEW_ITEM = "8b8b8b8b-1111-2222-3333-555555555555"
+_BUSINESS_HOURS = "9c9c9c9c-1111-2222-3333-666666666666"
+_FETCH = '<fetch><entity name="incident"><filter><condition attribute="prioritycode" operator="eq" value="1"/></filter></entity></fetch>'
+_SUCCESS = '<fetch><entity name="incident"><filter><condition attribute="statecode" operator="eq" value="1"/></filter></entity></fetch>'
+
+
+def _created_header(entity_set, guid):
+    return {"OData-EntityId":
+            f"https://crm.contoso.local/contoso/api/data/v9.1/{entity_set}({guid})"}
+
+
+def _incident_metadata(sla_enabled):
+    """A minimal EntityDefinitions body whose IsSLAEnabled BooleanManagedProperty
+    reflects `sla_enabled`."""
+    return {
+        "LogicalName": "incident",
+        "IsSLAEnabled": {
+            "Value": sla_enabled,
+            "CanBeChanged": True,
+            "ManagedPropertyLogicalName": "isslaenabled",
+        },
+    }
+
+
+class TestCreateSla:
+    def test_posts_record_and_reports_already_enabled(self, backend):
+        from crm.core.sla import create_sla
+        with requests_mock.Mocker() as m:
+            post = m.post(backend.url_for("slas"), status_code=204,
+                          headers=_created_header("slas", _NEW_SLA))
+            m.get(backend.url_for("EntityDefinitions(LogicalName='incident')"),
+                  json=_incident_metadata(True))
+            result = create_sla(backend, name="Gold SLA", entity="incident",
+                                applicable_from="createdon", solution="MySolution")
+
+        assert result["created"] is True
+        assert result["slaid"] == _NEW_SLA
+        assert result["sla_enabled"] == "already"
+        body = post.last_request.json()
+        assert body["name"] == "Gold SLA"
+        assert body["objecttypecode"] == "incident"
+        assert body["applicablefrom"] == "createdon"
+        # --solution is plumbed as the MSCRM.SolutionUniqueName write header.
+        assert post.last_request.headers["MSCRM.SolutionUniqueName"] == "MySolution"
+
+    def test_business_hours_bound_as_lookup(self, backend):
+        from crm.core.sla import create_sla
+        with requests_mock.Mocker() as m:
+            post = m.post(backend.url_for("slas"), status_code=204,
+                          headers=_created_header("slas", _NEW_SLA))
+            m.get(backend.url_for("EntityDefinitions(LogicalName='incident')"),
+                  json=_incident_metadata(True))
+            create_sla(backend, name="Gold", entity="incident",
+                       business_hours_id=_BUSINESS_HOURS)
+        body = post.last_request.json()
+        assert body["businesshoursid@odata.bind"] == f"/calendars({_BUSINESS_HOURS})"
+
+    def test_enables_sla_on_entity_when_not_enabled(self, backend):
+        """When the target entity is not SLA-enabled, create flips IsSLAEnabled
+        via a metadata PUT and publishes."""
+        from crm.core.sla import create_sla
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("slas"), status_code=204,
+                   headers=_created_header("slas", _NEW_SLA))
+            md_url = backend.url_for("EntityDefinitions(LogicalName='incident')")
+            m.get(md_url, json=_incident_metadata(False))
+            put = m.put(md_url, status_code=204)
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            result = create_sla(backend, name="Gold", entity="incident")
+
+        assert result["sla_enabled"] == "set"
+        assert put.call_count == 1
+        assert put.last_request.json()["IsSLAEnabled"]["Value"] is True
+
+    def test_dry_run_previews_without_posting(self, profile):
+        from crm.core.sla import create_sla
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(dry.url_for("EntityDefinitions(LogicalName='incident')"),
+                  json=_incident_metadata(False))
+            result = create_sla(dry, name="Gold", entity="incident")
+
+        assert result["_dry_run"] is True
+        assert result["would_create"]["entity_set"] == "slas"
+        assert result["would_create"]["body"]["objecttypecode"] == "incident"
+        assert result["sla_enabled"] == "would_set"
+        assert _requests(m, "POST") == []
+        assert _requests(m, "PUT") == []
+
+    def test_requires_name_and_entity(self, backend):
+        from crm.core.sla import create_sla
+        with pytest.raises(D365Error, match="name is required"):
+            create_sla(backend, name="", entity="incident")
+        with pytest.raises(D365Error, match="entity is required"):
+            create_sla(backend, name="Gold", entity="")
+
+
+class TestAddKpi:
+    def test_posts_slaitem_with_conditions(self, backend):
+        from crm.core.sla import add_kpi
+        with requests_mock.Mocker() as m:
+            post = m.post(backend.url_for("slaitems"), status_code=204,
+                          headers=_created_header("slaitems", _NEW_ITEM))
+            result = add_kpi(backend, sla_id=_SLA_ID, kpi="resolvebykpiid",
+                             applicable_when=_FETCH, success_criteria=_SUCCESS,
+                             solution="MySolution")
+
+        assert result["created"] is True
+        assert result["slaitemid"] == _NEW_ITEM
+        assert result["sla_id"] == _SLA_ID
+        body = post.last_request.json()
+        assert body["slaid@odata.bind"] == f"/slas({_SLA_ID})"
+        assert body["relatedfield"] == "resolvebykpiid"
+        assert body["applicablewhenxml"] == _FETCH
+        assert body["successconditionsxml"] == _SUCCESS
+        # name defaults to the KPI field when not given
+        assert body["name"] == "resolvebykpiid"
+        # --solution is plumbed as the MSCRM.SolutionUniqueName write header.
+        assert post.last_request.headers["MSCRM.SolutionUniqueName"] == "MySolution"
+
+    def test_explicit_name_overrides_kpi_default(self, backend):
+        from crm.core.sla import add_kpi
+        with requests_mock.Mocker() as m:
+            post = m.post(backend.url_for("slaitems"), status_code=204,
+                          headers=_created_header("slaitems", _NEW_ITEM))
+            add_kpi(backend, sla_id=_SLA_ID, kpi="resolvebykpiid", name="Resolve in 4h",
+                    applicable_when=_FETCH, success_criteria=_SUCCESS)
+        assert post.last_request.json()["name"] == "Resolve in 4h"
+
+    def test_dry_run_previews_without_posting(self, profile):
+        from crm.core.sla import add_kpi
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.post(dry.url_for("slaitems"), status_code=204)
+            result = add_kpi(dry, sla_id=_SLA_ID, kpi="resolvebykpiid",
+                             applicable_when=_FETCH, success_criteria=_SUCCESS)
+        assert result["_dry_run"] is True
+        assert result["would_create"]["entity_set"] == "slaitems"
+        assert result["sla_id"] == _SLA_ID
+        assert _requests(m, "POST") == []
+
+    def test_requires_conditions(self, backend):
+        from crm.core.sla import add_kpi
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="applicable_when is required"):
+                add_kpi(backend, sla_id=_SLA_ID, kpi="k",
+                        applicable_when="", success_criteria=_SUCCESS)
+            with pytest.raises(D365Error, match="success_criteria is required"):
+                add_kpi(backend, sla_id=_SLA_ID, kpi="k",
+                        applicable_when=_FETCH, success_criteria="")
+        assert m.request_history == []
+
+    def test_invalid_sla_guid_fails_before_request(self, backend):
+        from crm.core.sla import add_kpi
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="Invalid GUID"):
+                add_kpi(backend, sla_id="not-a-guid", kpi="k",
+                        applicable_when=_FETCH, success_criteria=_SUCCESS)
+        assert m.request_history == []
+
+
+class TestSlaCreateCommand:
+    def test_json_happy_path(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.commands import sla as sla_cmd
+        captured = {}
+
+        def _fake_create(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "slaid": _NEW_SLA, "name": kw["name"],
+                    "entity": kw["entity"], "sla_enabled": "set"}
+        monkeypatch.setattr(sla_cmd.sla_mod, "create_sla", _fake_create)
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--json", "--profile", "t", "sla", "create",
+            "--name", "Gold SLA", "--entity", "incident"])
+        assert result.exit_code == 0, result.output
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        assert envelope["data"]["sla_enabled"] == "set"
+        assert captured["name"] == "Gold SLA"
+        assert captured["entity"] == "incident"
+
+
+class TestSlaAddKpiCommand:
+    def test_resolves_success_criteria_from_file(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        crit = tmp_path / "success.xml"
+        crit.write_text(_SUCCESS, encoding="utf-8")
+        from crm.commands import sla as sla_cmd
+        captured = {}
+
+        def _fake_add(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "slaitemid": _NEW_ITEM, "sla_id": kw["sla_id"],
+                    "name": kw["kpi"]}
+        monkeypatch.setattr(sla_cmd.sla_mod, "add_kpi", _fake_add)
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--json", "--profile", "t", "sla", "add-kpi",
+            "--sla", _SLA_ID, "--kpi", "resolvebykpiid",
+            "--applicable-when", _FETCH,
+            "--success-criteria-file", str(crit)])
+        assert result.exit_code == 0, result.output
+        assert captured["applicable_when"] == _FETCH
+        assert captured["success_criteria"] == _SUCCESS
+
+    def test_missing_applicable_when_is_usage_error(self, monkeypatch, tmp_path):
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--json", "--profile", "t", "sla", "add-kpi",
+            "--sla", _SLA_ID, "--kpi", "k", "--success-criteria", _SUCCESS])
+        assert result.exit_code != 0
+        assert "--applicable-when" in result.output
+
+
 class TestSlaActivateCommand:
     def test_json_happy_path(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)

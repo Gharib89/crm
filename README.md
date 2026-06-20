@@ -411,7 +411,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `fieldsec`   | Column-level (field) security: create field security profiles, grant `--read`/`--create`/`--update` column permissions, assign profiles to users or teams, list / get |
 | `dup`        | Duplicate-detection rules: create a rule, add match conditions, publish (async) / unpublish, and `check` a candidate record against the published rules (`RetrieveDuplicates`); list / get |
 | `workflow`   | List, activate/deactivate, delete, trigger, clone, export, import, and migration-assess (classic-workflow → cloud-flow readiness) D365 workflow definitions |
-| `sla`        | Activate an SLA and its backing workflows, with structured per-step compile-error reporting |
+| `sla`        | Full SLA lifecycle: `create` an SLA for a target entity (auto-enabling `IsSLAEnabled` on that entity), `add-kpi` to attach KPI / SLA-item conditions (FetchXML `--applicable-when` / `--success-criteria`), and `activate` (activates backing workflows first, then the SLA, with structured per-step compile-error reporting) |
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |
 | `action`     | Call arbitrary OData functions and actions                 |
 | `audit`      | Retrieve server-side D365 audit change history (`audit history` / `audit detail`) — distinct from the local `session audit` journal |
