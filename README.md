@@ -402,6 +402,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch`; `--mode upsert`/`--mode delete` resolve records by GUID (`--id-column`) or alternate key (`--key`); `data delete` submits a **server-side BulkDelete async job** for records matching a FetchXML query |
 | `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); set as app icons |
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml; add-field / remove-field / set-field to edit form layouts without manual XML |
+| `chart`      | System & user charts (savedqueryvisualization / userqueryvisualization): list / get / create / delete; author from datadescription + presentationdescription XML or a web-resource visualization, headlessly (no chart designer) |
 | `plugin`     | Register/update/unregister plug-in assemblies, webhook service endpoints, SDK message processing steps (bind to a plug-in type or a service endpoint), and step entity images |
 | `security`   | List and assign security roles to users or teams; show a user's effective privileges (incl. team-inherited); grant / revoke / list record sharing (POA) |
 | `workflow`   | List, activate/deactivate, delete, trigger, clone, export, import, and migration-assess (classic-workflow → cloud-flow readiness) D365 workflow definitions |

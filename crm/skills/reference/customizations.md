@@ -171,6 +171,49 @@ JSON-escaped. Get `<formid>` from `form list`.
 On Unified Interface a cloned/added form may need adding to the model-driven app's form
 list to be visible.
 
+## Charts — `chart` (savedqueryvisualization / userqueryvisualization)
+
+Author charts headlessly instead of using the chart designer. System charts
+(org-wide, `savedqueryvisualization`) are the default; `--user` targets user-owned
+charts (`userqueryvisualization`), which have no `isdefault` flag and a
+`userqueryvisualizationid` id field.
+
+```bash
+crm --json chart list contact                          # system charts (default)
+crm --json chart list contact --user                   # user charts
+crm --json chart get <id>                              # single chart, with its XML
+crm --json chart delete <id> [--user]                  # delete
+```
+
+A chart carries two XML columns: `datadescription` (aggregate FetchXML, references
+the host table) and `presentationdescription` (series/areas rendering XML). To
+version a chart, capture both from `chart get` and recreate with `chart create`:
+
+```bash
+crm --json chart get <id> | jq -r '.data.datadescription' > c.data.xml
+crm --json chart get <id> | jq -r '.data.presentationdescription' > c.pres.xml
+crm --json chart create contact --name "By Method" \
+    --data-description c.data.xml --presentation-description c.pres.xml
+```
+
+**Two mutually exclusive create modes.** XML mode needs **both**
+`--data-description` and `--presentation-description`; web-resource mode is
+`--web-resource <name|GUID>` (resolved to its `webresourceid`). Passing both modes,
+or only one XML file, is a usage error.
+
+**Server validates the XML.** The presentation XML's chart-area count must match the
+data XML's category count, etc. — a malformed pair fails with a `400`
+(`The number of chart areas must be equal to the number of categories.`). When in
+doubt, start from a known-good chart captured via `chart get`.
+
+**Publish + solution + dry-run, same contract as the metadata verbs.** `create`
+runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
+`--require-solution` scope the write. Under `--dry-run`, `create` returns
+`{_dry_run, would_create: {entity_set, body}}` with the resolved body (a
+`--web-resource` name is resolved live first) and `delete` returns
+`{_dry_run, would_delete: true, <id>}` — neither issues the write. To take a chart
+*out* of a solution without deleting it, use `solution remove-component`.
+
 ## Decommission — deleting UI components
 
 `app` and `ribbon` have **no `delete` verb** — delete through the generic
