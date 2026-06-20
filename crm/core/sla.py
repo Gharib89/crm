@@ -75,7 +75,7 @@ def _ensure_sla_enabled(
     """Verify the target entity is SLA-enabled; enable + publish it if not.
 
     SLAs only apply to entities whose ``IsSLAEnabled`` metadata flag is set, so
-    `sla create` guarantees it (user story 45). The flag is read live even under
+    `sla create` guarantees it (issue #432). The flag is read live even under
     dry-run (reads-execute rule); the metadata write is suppressed in dry-run.
 
     Returns one of ``"already"`` (already enabled), ``"set"`` (flipped on now),

@@ -78,7 +78,7 @@ E2E_SKIP: dict[str, str] = {
     # request shapes (objecttypecode, IsSLAEnabled flip, slaitem condition columns)
     # are covered by the wire-level unit tests in crm/tests/test_sla.py.
     "sla create": "flips target-entity IsSLAEnabled metadata (publish-requiring, no inverse verb) + creates an SLA with no clean teardown; org-stateful, covered by wire-level unit tests",
-    "sla add-kpi": "needs a created SLA + a SLA-enabled entity with valid per-KPI FetchXML conditions first (org-stateful, same constraints as `sla create`); covered by wire-level unit tests",
+    "sla add-kpi": "needs a created SLA + an SLA-enabled entity with valid per-KPI FetchXML conditions first (org-stateful, same constraints as `sla create`); covered by wire-level unit tests",
 }
 
 

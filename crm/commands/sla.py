@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 from crm.core import sla as sla_mod
 from crm.cli import CLIContext, pass_ctx
+from crm.utils.d365_backend import D365Error, normalize_guid
 from crm.commands._helpers import (
     d365_errors,
     _admin_header_options,
@@ -86,6 +87,11 @@ def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
     FetchXML condition of its own — per-KPI `--applicable-when` /
     `--success-criteria` live on `sla add-kpi`.
     """
+    # Validate the optional business-hours GUID before building an authenticated
+    # backend (house rule: validate untrusted input before ctx.backend()).
+    with d365_errors(ctx):
+        if business_hours is not None and normalize_guid(business_hours) is None:
+            raise D365Error(f"Invalid GUID for --business-hours: {business_hours!r}")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     with d365_errors(ctx):
         info = sla_mod.create_sla(

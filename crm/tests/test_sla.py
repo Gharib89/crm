@@ -455,6 +455,25 @@ class TestSlaCreateCommand:
         assert captured["name"] == "Gold SLA"
         assert captured["entity"] == "incident"
 
+    def test_invalid_business_hours_fails_before_backend(self, monkeypatch, tmp_path):
+        """An invalid --business-hours GUID fails before an authenticated backend
+        is built (house rule: validate untrusted input before ctx.backend())."""
+        _seed_profile(tmp_path, monkeypatch)
+        from crm.cli import CLIContext
+
+        def _no_backend(self):
+            raise AssertionError("ctx.backend() must not be called")
+        monkeypatch.setattr(CLIContext, "backend", _no_backend)
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--json", "--profile", "t", "sla", "create",
+            "--name", "Gold", "--entity", "incident",
+            "--business-hours", "not-a-guid"])
+        assert result.exit_code != 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert "Invalid GUID for --business-hours" in envelope["error"]
+
 
 class TestSlaAddKpiCommand:
     def test_resolves_success_criteria_from_file(self, monkeypatch, tmp_path):
