@@ -404,6 +404,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "skill": "crm.commands.skill:skill_group",
         "sla": "crm.commands.sla:sla_group",
         "solution": "crm.commands.solution:solution_group",
+        "theme": "crm.commands.theme:theme_group",
         "translation": "crm.commands.translation:translation_group",
         "view": "crm.commands.view:view_group",
         "webresource": "crm.commands.webresource:webresource_group",

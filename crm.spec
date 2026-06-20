@@ -66,6 +66,7 @@ a = Analysis(
         'crm.commands.skill_registry',
         'crm.commands.sla',
         'crm.commands.solution',
+        'crm.commands.theme',
         'crm.commands.translation',
         'crm.commands.view',
         'crm.commands.webresource',

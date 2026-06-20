@@ -1,8 +1,9 @@
-# Customizations — apps, web resources, ribbon, forms, sitemap
+# Customizations — apps, web resources, ribbon, forms, charts, dashboards, themes, sitemap
 
 UI-layer customization: model-driven apps and their sitemaps, web resources, entity
-command-bar (ribbon) buttons, and entity forms. Groups: `app`, `webresource`,
-`ribbon`, `form`. Flags/choices: `crm <group> --help`.
+command-bar (ribbon) buttons, entity forms, charts, dashboards, and application
+themes. Groups: `app`, `webresource`, `ribbon`, `form`, `chart`, `dashboard`,
+`theme`. Flags/choices: `crm <group> --help`.
 
 ## Model-driven apps — `app` (appmodule)
 
@@ -244,6 +245,42 @@ author interactive-experience dashboards in the designer.
 `--require-solution` scope the write. Under `--dry-run`, `create` returns
 `{_dry_run, would_create: {entity_set, body}}` and `delete` returns
 `{_dry_run, would_delete: true, formid}` — neither issues the write.
+
+## Themes — `theme` (application branding)
+
+Author product branding (colors, logo) as code. A theme is an ordinary `themes`
+record; `publish` promotes one to the **active org-wide theme** via the
+`PublishTheme` action. Verbs: `list`, `get`, `create`, `update`, `publish`.
+
+```bash
+crm --json theme list                                  # all themes (summary cols)
+crm --json theme get <id>                              # one theme, full branding
+crm --json theme create --name "Corporate Blue" \
+    --set maincolor=#0066cc --set navbarbackgroundcolor=#002050
+crm --json theme update <id> --set maincolor=#ff0000   # change a color
+crm --json theme publish <id>                          # make it the active org theme
+```
+
+**Branding via `--set FIELD=VALUE` (repeatable).** Colors are `#rrggbb` strings on
+columns like `maincolor`, `navbarbackgroundcolor`, `navbarshelfcolor`,
+`headercolor`, `globallinkcolor`, `selectedlinkeffect`, `processcontrolcolor`,
+`pageheaderbackgroundcolor`, `panelheaderbackgroundcolor`. `--set` keys are used
+verbatim and VALUEs parse as JSON with a raw-string fallback. `--logo <name|GUID>`
+binds a web resource as the logo (create it first with `webresource create`).
+
+**Themes are NOT solution-aware.** A theme is not a solution component — it does
+**not** travel with a solution export, so there is no `--solution` flag and you
+should not expect a theme to appear in a packaged solution or move across orgs with
+one. Move branding between orgs by re-running `theme create`/`update`.
+
+**`publish` sets the active theme org-wide** and the CLI has no inverse verb to
+restore the previous one — capture the current default first (`theme list` →
+the row with `isdefaulttheme: true`) so you can re-`publish` it to roll back.
+
+**`--dry-run`** previews `create`/`update`/`publish` without writing
+(`would_create` / `would_update` / `would_publish`); a `--logo` name is resolved
+live first. There is no `theme delete` verb — drop a theme with
+`entity delete themes <id>`.
 
 ## Decommission — deleting UI components
 
