@@ -486,6 +486,124 @@ permission-limited, or a lookup with no readable target entity. When running wit
 `--json`, dropped columns and the reason are collected in `meta.warnings` so
 nothing is silently lost.
 
+## Add a statuscode option to a state
+
+```bash
+# Add a "Pending" status tied to the Active state (statecode 0)
+crm --json metadata status-add cwx_ticket --state 0 --label "Pending" --publish
+
+# Supply an explicit numeric value (must be unique; server validates)
+crm --json metadata status-add cwx_ticket --state 0 --label "Escalated" --value 100001 --publish
+
+# Preview without writing
+crm --dry-run --json metadata status-add cwx_ticket --state 0 --label "Pending"
+```
+
+`--state` is the `statecode` value the new option belongs to (e.g. `0` = Active on most
+entities; check `crm --json metadata picklist <entity> statecode` to confirm). When
+`--value` is omitted the server assigns the next available value with the publisher prefix.
+Pass `--publish` to publish immediately; without it the change is staged and
+`meta.warnings` will carry a "staged, not published" advisory.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "added": true,
+    "entity": "cwx_ticket",
+    "attribute": "statuscode",
+    "state_code": 0,
+    "value": 100003,
+    "solution": null
+  }
+}
+```
+
+## Relabel a statecode state option
+
+```bash
+# Rename the Inactive state (statecode 1) to "Closed"
+crm --json metadata state-relabel cwx_ticket --value 1 --label "Closed" --publish
+
+# Preserve existing labels in other languages while updating the default language
+crm --json metadata state-relabel cwx_ticket --value 1 --label "Closed" \
+    --merge-labels --publish
+
+# Dry-run preview
+crm --dry-run --json metadata state-relabel cwx_ticket --value 1 --label "Closed"
+```
+
+`--value` is the `statecode` integer to relabel. Typical values are `0` (Active) and `1`
+(Inactive), but custom entities may vary — check `crm --json metadata picklist <entity>
+statecode` first. `--merge-labels` sets `MergeLabels: true` on the server call, which
+preserves the translated label text for languages you are not updating; without it the
+server replaces all language labels. Pass `--solution` to scope the change to a solution.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "updated": true,
+    "entity": "cwx_ticket",
+    "attribute": "statecode",
+    "value": 1,
+    "solution": null
+  }
+}
+```
+
+## Create a field mapping on a 1:N relationship
+
+Field (attribute) mappings cause Dataverse to copy field values from the parent record
+onto a child record when the child is created in the context of the parent (e.g. from a
+sub-grid). The mapping direction is fixed by the relationship: the **referenced
+(parent/"1") entity is always the source**; the **referencing (child/"N") entity is
+always the target**. The target attribute must be the same type as the source and its
+maximum length must be at least as large as the source's maximum length.
+
+```bash
+# Single mapping: copy accountnumber from account (parent) to cwx_accountref (child)
+crm --json metadata create-mapping new_account_cwx_ticket \
+    --from accountnumber --to cwx_accountref --solution MyCust
+
+# Bulk-generate the likely mappings for the pair via AutoMapEntity
+# WARNING: --auto REPLACES all existing maps for the entity pair (Dataverse semantics)
+crm --json metadata create-mapping new_account_cwx_ticket --auto --solution MyCust
+
+# Preview a single mapping without writing
+crm --dry-run --json metadata create-mapping new_account_cwx_ticket \
+    --from accountnumber --to cwx_accountref
+```
+
+`--auto` calls the `AutoMapEntity` Web API action, which **overwrites** any manually
+created maps for the same entity pair — use it as an initial bulk setup, not as an
+additive operation. The relationship must be a 1:N (one-to-many) that supports mapping
+(an `entitymap` row must exist for the pair).
+
+```json
+{
+  "ok": true,
+  "data": {
+    "created": true,
+    "relationship": "new_account_cwx_ticket",
+    "source_entity": "account",
+    "target_entity": "cwx_ticket",
+    "source_attribute": "accountnumber",
+    "target_attribute": "cwx_accountref",
+    "entity_map_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "attribute_map_id": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",
+    "solution": "MyCust"
+  }
+}
+```
+
+**Note on status-reason transitions.** Custom state-model transitions
+(`StatusOptionMetadata.TransitionData` / `EnforceStateTransitions`) cannot be written
+over the Dataverse Web API — a PUT to the attribute definition returns 204 but silently
+drops option-level data, no Web API action accepts `TransitionData`, and
+`EnforceStateTransitions` is read-only over the API. Transitions are app-authored only
+(Power Apps designer / solution XML).
+
 ## List callable actions and functions
 
 ```bash

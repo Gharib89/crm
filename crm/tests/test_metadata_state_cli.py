@@ -1,5 +1,5 @@
 """CLI-layer tests for the metadata state-model / mapping commands:
-status-add, state-relabel, set-transitions, create-mapping."""
+status-add, state-relabel, create-mapping."""
 # pyright: basic
 
 from __future__ import annotations
@@ -55,6 +55,16 @@ class TestStateRelabel:
         assert json.loads(res.output)["data"]["updated"] is True
         assert fake.calls[0][1] == "UpdateStateValue"
 
+    def test_dry_run_previews(self, make_fake_backend, inject_backend, tmp_path):
+        fake = make_fake_backend(dry_run=True)
+        res = _run(
+            ["--json", "--dry-run", "metadata", "state-relabel", "new_widget",
+             "--value", "1", "--label", "Dormant"],
+            inject_backend, fake, tmp_path,
+        )
+        assert res.exit_code == 0, res.output
+        assert json.loads(res.output)["meta"]["dry_run"] is True
+
 
 class TestCreateMapping:
     def _pair_backend(self, make_fake_backend):
@@ -86,6 +96,17 @@ class TestCreateMapping:
         assert res.exit_code == 0, res.output
         assert json.loads(res.output)["data"]["auto_mapped"] is True
         assert any(p == "AutoMapEntity" for _v, p, _k in fake.calls)
+
+    def test_dry_run_previews(self, make_fake_backend, inject_backend, tmp_path):
+        fake = self._pair_backend(make_fake_backend)
+        fake.dry_run = True
+        res = _run(
+            ["--json", "--dry-run", "metadata", "create-mapping",
+             "new_account_new_widget", "--from", "name", "--to", "new_name"],
+            inject_backend, fake, tmp_path,
+        )
+        assert res.exit_code == 0, res.output
+        assert json.loads(res.output)["meta"]["dry_run"] is True
 
     def test_auto_with_from_is_usage_error(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend()
