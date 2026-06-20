@@ -427,7 +427,10 @@ picklist/state/status options — everything needed to build a valid record payl
 one call. Write verbs new in 0.5.0:
 
 - `metadata add-attribute <entity> --kind <k>` — add a column (15 kinds, incl. `customer` composite lookup); `--type rollup` or `--type calculated` layers rollup/calculated on top of a supported column kind (requires `--formula-file <xaml>` — XAML is editor-authored and sent verbatim)
-- `metadata create-one-to-many` / `create-many-to-many` — relationships
+- `metadata create-one-to-many` / `create-many-to-many` — relationships; `create-one-to-many` accepts `--hierarchical` to mark the 1:N as a parent/child hierarchy (self-referencing entity required)
+- `metadata update-relationship <schema>` — update cascade/menu on an existing relationship; `--hierarchical / --no-hierarchical` sets `IsHierarchical` on a 1:N (rejected for N:N)
+- `metadata can-relate <entity> --as referenced|referencing|many-to-many` — read-only eligibility check before creating a relationship; `--valid-partners` lists legal partner tables (N:N partner list is org-global, not entity-scoped)
+- `metadata create-entity` accepts `--data-provider`, `--data-source`, `--external-name`, `--external-collection-name` to create a VIRTUAL (external-data-backed) table; on v9.1 virtual tables are read-only and require the data-provider record to exist first
 - `metadata list-optionsets` / `get-optionset` / `create-optionset` / `update-optionset` / `delete-optionset` — global option sets
 - `metadata keys <entity>` / `create-key <entity> --key-attributes col1,col2` / `delete-key <entity> <key>` — read, create, and drop alternate keys (the natural-key index that `entity upsert --key` / `data import --mode upsert --key` match on)
 - `metadata delete-entity <logical-name>` — drop a custom entity (gated)

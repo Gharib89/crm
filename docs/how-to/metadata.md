@@ -137,6 +137,42 @@ crm --json metadata create-entity \
 ```
 Note the returned `entity_set_name` (plural, e.g. `cwx_tickets`) — that is what `entity`/`query` commands take, not the logical name.
 
+## Create a virtual (external-data-backed) table
+
+A virtual table maps to data held in an external store. Rows are never
+persisted in Dataverse — reads are delegated to the registered data provider
+at query time.
+
+**Prerequisites — configure first, create second.**
+
+1. Register a data provider record (the plugin assembly + registration that
+   knows how to query your external store) — obtain its GUID from
+   `crm query odata entitydataproviders` or your provider's documentation.
+2. Optionally register a data source record (connection config for the
+   provider) and note its GUID.
+
+Only then run `create-entity`:
+
+```bash
+crm --json metadata create-entity \
+  --schema-name cwx_ExternalProduct \
+  --display "External Product" \
+  --display-collection "External Products" \
+  --data-provider  "<data-provider-guid>" \
+  --external-name "products" \
+  --external-collection-name "products" \
+  --data-source "<data-source-guid>"   # optional
+```
+
+`--external-name`, `--external-collection-name`, and `--data-provider` are
+required together; `--data-source` is optional. Setting any of these flags
+creates a virtual table — omitting all of them creates an ordinary table.
+
+**Caveat — read-only on v9.1.** On-premises v9.1 virtual tables are
+**read-only**: create/update/delete operations are not supported and the
+server returns a fault. On Dataverse online the data provider determines
+write support.
+
 ## Add a picklist column bound to a global option set
 
 ```bash
@@ -188,6 +224,36 @@ generates values on insert. Placeholders include `{SEQNUM:n}` (zero-padded runni
 number) and `{RANDSTRING:n}` (random alphanumerics) — e.g. `INV-{SEQNUM:5}` →
 `INV-00042`. It is only valid with `--kind string`.
 
+## Check relationship eligibility before creating (can-relate)
+
+`metadata can-relate` is a read-only diagnostic you should run before
+`create-one-to-many` or `create-many-to-many` to avoid a server-side fault.
+
+```bash
+# Yes/no eligibility: can 'cwx_ticket' be the N-side (referencing) of a 1:N?
+crm --json metadata can-relate cwx_ticket --as referencing
+
+# List all tables that can legally be the 1-side (referenced) partner of 'account'
+crm --json metadata can-relate account --as referenced --valid-partners
+```
+
+**JSON shape — eligibility check** (no `--valid-partners`):
+```json
+{"ok": true, "data": {"entity": "cwx_ticket", "as": "referencing", "eligible": true}}
+```
+
+**JSON shape — partner list** (with `--valid-partners`):
+```json
+{"ok": true, "data": {"entity": "account", "as": "referenced",
+  "valid_partners": ["contact", "opportunity", ...], "count": 42}}
+```
+
+**Gotcha — N:N partner list is org-global.** When `--as many-to-many
+--valid-partners` is used, the partner list comes from `GetValidManyToMany`,
+which takes no entity argument. It returns all N:N-capable tables in the org —
+not partners specific to the entity you named. The eligibility check
+(`--as many-to-many` without `--valid-partners`) is entity-scoped.
+
 ## Create a 1:N relationship (adds a lookup on the N side)
 
 ```bash
@@ -196,6 +262,31 @@ crm --json metadata create-one-to-many --schema-name cwx_sla_cwx_ticket \
   --lookup-schema cwx_SLA --lookup-display "SLA Policy" --if-exists skip
 ```
 The response reports the `referencing_attribute` (the lookup column) the server generated on the N-side entity.
+
+## Create a hierarchical (parent/child) relationship
+
+A hierarchical relationship enables the `Above` / `Under` operators and the
+parent/child tree views in D365. Only one hierarchical relationship can be
+active per entity at a time, and the referenced and referencing entities must
+be the same (a self-referencing 1:N).
+
+```bash
+# Make cwx_ticket self-referential with a hierarchy
+crm --json metadata create-one-to-many \
+  --schema-name cwx_ticket_cwx_ticket_parent \
+  --referenced-entity cwx_ticket \
+  --referencing-entity cwx_ticket \
+  --lookup-schema cwx_ParentTicket \
+  --lookup-display "Parent Ticket" \
+  --hierarchical
+
+# Set (or clear) IsHierarchical on an existing 1:N relationship
+crm --json metadata update-relationship cwx_ticket_cwx_ticket_parent --hierarchical
+crm --json metadata update-relationship cwx_ticket_cwx_ticket_parent --no-hierarchical
+```
+
+`--hierarchical` is only accepted on 1:N relationships; passing it on an N:N
+schema name is rejected client-side with an error.
 
 ### Pre-flight a referenced object with `--dry-run`
 
