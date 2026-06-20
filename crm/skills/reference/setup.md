@@ -25,11 +25,12 @@ Open a new shell so PATH updates, then verify with `crm --version`.
 
 ## Configure
 
-The CLI authenticates with **NTLM (Windows Integrated)** for on-prem, or
-**OAuth 2.0 client-credentials** for Dataverse online. Run **`crm profile add`**
-once to create a connection profile — it infers the auth scheme from the URL
-(`*.dynamics.com` → OAuth, anything else → NTLM), prompts for what that scheme
-needs, stores the secret, verifies with WhoAmI, and activates the profile.
+The CLI authenticates with **Windows Integrated auth** for on-prem (`ntlm` by
+default; `kerberos` / `negotiate` also supported), or **OAuth 2.0
+client-credentials** for Dataverse online. Run **`crm profile add`** once to create
+a connection profile — it infers the scheme from the URL (`*.dynamics.com` → OAuth,
+anything else → `ntlm`), prompts for what that scheme needs, stores the secret,
+verifies with WhoAmI, and activates the profile.
 
 ```bash
 crm profile add          # interactive wizard (on a terminal)
