@@ -59,11 +59,21 @@ issue another fire already owns or that has an open PR.
 
 **3 · Branch, then ship.** A fire starts you on an auto `claude/<random>` branch.
 Switch to the repo's semantic convention **before any commit** so the PR branch
-isn't the `claude/...` name — `<type>/<slug>-$NUM`, `<type>` = `fix` for a bug,
-`feat` otherwise, `<slug>` a short kebab summary of the issue title:
+isn't the `claude/...` name — `<type>/<slug>-$NUM`, `<slug>` a short kebab summary
+of the issue title. Pick `<type>` by the **bump** the issue should produce (the PR
+title is the squash subject PSR reads):
+
+- `fix` — a bug, **or a PRD/umbrella sub-issue** (its body links a parent, e.g. a
+  `## Parent` section pointing at `#NNN`) **even if it adds a whole command group**.
+  A PRD takes **one** minor bump, on its capstone — not one per sub-issue. See
+  CLAUDE.md *Bump discipline*. Do **not** apply the `minor` label to a sub-issue PR.
+- `feat` — a standalone, genuinely-new capability that is **not** part of a PRD, or
+  the PRD **capstone** (the issue that completes/closes the parent). Only a `feat:`
+  title needs the `minor` label (bump-guard enforces this); a sub-issue patch does not.
 
 ```
-git switch -c fix/<slug>-$NUM   # or feat/<slug>-$NUM
+git switch -c fix/<slug>-$NUM   # PRD sub-issue or bug → patch
+# git switch -c feat/<slug>-$NUM # standalone new capability or PRD capstone → minor (needs `minor` label)
 ```
 
 Then **invoke the `ship` skill on issue $NUM**. While it runs:

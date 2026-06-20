@@ -77,7 +77,8 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 ## Permissions
 
 - Enable **"Allow unrestricted branch pushes"** for `Gharib89/crm` — `/ship` pushes
-  `feat/*` branches; without this, only `claude/*` pushes are allowed.
+  semantic branches (`fix/*` for PRD sub-issues and bugs, `feat/*` for standalone
+  capabilities / PRD capstones); without this, only `claude/*` pushes are allowed.
 - Connectors: all your connected MCP servers are added by default; a routine can use
   every tool from an included connector without asking. **Keep Microsoft Learn and
   Context7** (and Exa, if connected) — MCP traffic is brokered through Anthropic, so
