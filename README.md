@@ -438,6 +438,7 @@ one call. Write verbs new in 0.5.0:
 - `metadata status-add <entity> --state <stateCode> --label <text>` — add a `statuscode` option tied to a state (`InsertStatusValue`); `--value` is optional (server assigns the next value with publisher prefix if omitted)
 - `metadata state-relabel <entity> --value <stateCode> --label <text>` — relabel a `statecode` state option such as Active/Inactive (`UpdateStateValue`); `--merge-labels` preserves labels in other languages
 - `metadata create-mapping <relationship> --from <attr> --to <attr>` — create a field/attribute mapping on a 1:N relationship; `--auto` bulk-generates the likely mappings via `AutoMapEntity` (replaces any existing maps for the pair)
+- `metadata changes [--since <stamp>] [--entity <logical> ...] [--attributes]` — retrieve new/changed metadata since a version stamp (`RetrieveMetadataChanges`); save the returned `server_version_stamp` and pass it as `--since` next run to get only the delta. Omit `--since` for a baseline snapshot. Omit `--entity` to query every table (expensive on a baseline — scope with `--entity` when possible)
 
 `crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
 columns, option sets, relationships, views) from one declarative spec, in

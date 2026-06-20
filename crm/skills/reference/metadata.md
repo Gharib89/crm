@@ -337,6 +337,53 @@ for initial bulk setup; for additive changes use `--from`/`--to` on individual c
 }
 ```
 
+## Incremental metadata sync (`metadata changes`)
+
+`metadata changes` wraps `RetrieveMetadataChanges`. The contract: save the returned
+`server_version_stamp` and pass it back as `--since` next run to get only the delta.
+Omit `--since` for a baseline snapshot.
+
+```bash
+# Baseline — returns all visible metadata + a fresh stamp to save
+crm --json metadata changes
+
+# Delta — only entities changed since the prior stamp
+crm --json metadata changes --since "<saved stamp>"
+
+# Scope to specific tables (strongly recommended on baseline calls)
+crm --json metadata changes --since "<saved stamp>" --entity account --entity contact
+
+# Also expand column definitions (larger response)
+crm --json metadata changes --since "<saved stamp>" --entity account --attributes
+```
+
+**Critical gotcha — unfiltered baseline is expensive.** Omitting `--entity` on a
+baseline call (`--since` omitted) is equivalent to `RetrieveAllEntities` — a heavy
+call on orgs with many tables. Scope with `--entity` whenever you only need a known
+subset of tables.
+
+**JSON shape:**
+
+```json
+{
+  "server_version_stamp": "<opaque cursor — save, pass as --since next run>",
+  "entities": [
+    {
+      "logical_name": "account",
+      "schema_name": "Account",
+      "has_changed": true,
+      "attributes": [{"logical_name": "name", "attribute_type": "String", "has_changed": true}]
+    }
+  ],
+  "count": 1,
+  "deleted_count": 0
+}
+```
+
+`attributes[]` only appears when `--attributes` is passed. `deleted_count` is the
+count of deleted metadata components since the stamp — the API returns the count
+only, not their identities. This is a pure read; it runs live under `--dry-run`.
+
 ## Inspect the server's entity sets
 
 ```bash

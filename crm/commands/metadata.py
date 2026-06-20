@@ -114,6 +114,69 @@ def metadata_cache_clear(ctx: CLIContext):
     ctx.emit(True, data={"cleared": cleared})
 
 
+@metadata_group.command("changes")
+@click.option(
+    "--since",
+    default=None,
+    help="Prior ServerVersionStamp; return only metadata changed since it. "
+    "Omit for a baseline snapshot that returns a fresh stamp to save.",
+)
+@click.option(
+    "--entity",
+    "entities",
+    multiple=True,
+    help="Scope to an entity logical name (repeatable). Omit to query every "
+    "table — heavy on a baseline call.",
+)
+@click.option(
+    "--attributes",
+    "include_attributes",
+    is_flag=True,
+    help="Include attribute (column) definitions so column-level changes show.",
+)
+@pass_ctx
+def metadata_changes(ctx: CLIContext, since, entities, include_attributes):
+    """Retrieve new/changed metadata since a version stamp (RetrieveMetadataChanges).
+
+    Save the returned server_version_stamp and pass it as --since next time to
+    sync only what changed (plus a deleted_count). Omit --since for a baseline.
+    """
+    # Validate/normalize before touching the backend (fail fast, no wasted auth).
+    # An explicit empty --since would otherwise silently fall through to an
+    # expensive full-org baseline, so reject it — omit --since for a baseline.
+    if since is not None and not since.strip():
+        raise click.UsageError(
+            "--since must not be empty; omit it entirely for a baseline snapshot."
+        )
+    scoped = [e for e in entities if e.strip()] or None
+    with d365_errors(ctx):
+        info = meta_mod.metadata_changes(
+            ctx.backend(),
+            since=since,
+            entities=scoped,
+            attributes=include_attributes,
+        )
+    if ctx.json_mode:
+        ctx.emit(True, data=info, meta={"count": info["count"]})
+        return
+    headers = ["LogicalName", "SchemaName", "HasChanged"]
+    rows = [
+        [e.get("logical_name", ""), e.get("schema_name", ""), str(e.get("has_changed"))]
+        for e in info["entities"]
+    ]
+    # server_version_stamp + deleted_count ride in meta so they render in human
+    # mode too — the stamp is the value the caller must save for next time.
+    ctx.emit(
+        True,
+        table={"headers": headers, "rows": rows},
+        meta={
+            "count": info["count"],
+            "server_version_stamp": info["server_version_stamp"],
+            "deleted_count": info["deleted_count"],
+        },
+    )
+
+
 @metadata_group.command("entity")
 @click.argument("logical_name")
 @pass_ctx

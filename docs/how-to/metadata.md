@@ -604,6 +604,86 @@ drops option-level data, no Web API action accepts `TransitionData`, and
 `EnforceStateTransitions` is read-only over the API. Transitions are app-authored only
 (Power Apps designer / solution XML).
 
+## Track metadata changes incrementally (`metadata changes`)
+
+`metadata changes` wraps the Dataverse `RetrieveMetadataChanges` function. The
+pattern is: run once without `--since` to capture a baseline stamp, then pass the
+stamp back on subsequent runs to receive only the delta.
+
+### Step 1 — baseline snapshot (first run)
+
+```bash
+crm --json metadata changes > baseline.json
+# Save the stamp for later
+STAMP=$(python3 -c "import json,sys; print(json.load(sys.stdin)['data']['server_version_stamp'])" < baseline.json)
+```
+
+The response includes every entity visible to the filter at baseline time. The
+`server_version_stamp` value is opaque — treat it as a cursor string.
+
+### Step 2 — delta poll (subsequent runs)
+
+```bash
+crm --json metadata changes --since "$STAMP"
+```
+
+Only entities that changed since the stamp are returned in `data.entities`. The
+response carries a new `server_version_stamp` — replace your saved stamp with the
+new one before the next poll. `data.deleted_count` is the count of metadata
+components deleted since the stamp; the API does not return their details, only the
+count.
+
+### Scope to specific tables
+
+```bash
+crm --json metadata changes --since "$STAMP" --entity account --entity contact
+```
+
+Omitting `--entity` queries every table. **On a baseline call (no `--since`) this is
+equivalent to `RetrieveAllEntities` — a heavy call on orgs with many tables.** Always
+scope with `--entity` when you only care about a known subset, and reserve the
+unfiltered baseline for true full-org sync scenarios.
+
+### Include column definitions
+
+```bash
+crm --json metadata changes --since "$STAMP" --entity account --attributes
+```
+
+`--attributes` expands each returned entity with its attribute (column) definitions,
+so column-level changes are visible. This increases response size and latency
+proportionally.
+
+### JSON shape
+
+```json
+{
+  "ok": true,
+  "data": {
+    "server_version_stamp": "<opaque string — save and pass as --since next run>",
+    "entities": [
+      {
+        "logical_name": "account",
+        "schema_name": "Account",
+        "has_changed": true,
+        "attributes": [
+          {"logical_name": "name", "attribute_type": "String", "has_changed": true}
+        ]
+      }
+    ],
+    "count": 1,
+    "deleted_count": 0
+  },
+  "meta": {"count": 1}
+}
+```
+
+In `--json` mode the stamp and deleted count live in `data`
+(`server_version_stamp`, `deleted_count`) — read them there; `meta` only carries
+`count`. (In human-table mode they render from `meta` instead.) `attributes` is
+only present when `--attributes` is passed. This is a pure read — it runs live
+even under `--dry-run` (reads-execute rule).
+
 ## List callable actions and functions
 
 ```bash

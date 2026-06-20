@@ -7,9 +7,10 @@ quoting/path-building behind small helpers.
 from __future__ import annotations
 
 import difflib
-from typing import Any
+import json
+from typing import Any, cast
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 from crm.core import dependencies as dep_mod
 from crm.core import entity_names
 from crm.core import metadata_cache
@@ -933,4 +934,122 @@ def delete_entity_key(
         "entity": entity,
         "key": key_logical,
         "solution": solution,
+    }
+
+
+# ── Metadata change tracking (RetrieveMetadataChanges) ───────────────────────
+# RetrieveMetadataChanges is an unbound Web API *function* whose Query parameter
+# is an EntityQueryExpression complex type passed as raw (un-quoted) JSON via a
+# parameter alias, while ClientVersionStamp is an ordinary string literal. The
+# function returns a ServerVersionStamp to feed back as ClientVersionStamp on a
+# later call so only metadata changed since then comes back. Deletions are only
+# reported when both ClientVersionStamp and DeletedMetadataFilters are supplied.
+# Reference: https://learn.microsoft.com/power-apps/developer/data-platform/query-schema-definitions?tabs=webapi
+
+# All deleted-metadata kinds (Entity|Attribute|Relationship|Label|OptionSet); the
+# IsFlags "All" member, passed inline as an OData enum literal.
+_DELETED_METADATA_FILTER_ALL = "Microsoft.Dynamics.CRM.DeletedMetadataFilters'All'"
+
+
+def _build_changes_query(
+    entities: list[str] | None, attributes: bool
+) -> dict[str, Any]:
+    """Build the EntityQueryExpression for :func:`metadata_changes`.
+
+    Always selects entity ``SchemaName``/``DisplayName`` (``LogicalName``,
+    ``MetadataId`` and ``HasChanged`` are returned regardless). ``attributes``
+    expands column definitions; ``entities`` scopes the query to those logical
+    names (omit to query every table — heavy on a baseline call).
+    """
+    prop_names: list[str] = ["LogicalName", "SchemaName", "DisplayName"]
+    query: dict[str, Any] = {
+        "Properties": {"AllProperties": False, "PropertyNames": prop_names},
+        "LabelQuery": {"FilterLanguages": [1033], "MissingLabelBehavior": 0},
+    }
+    if attributes:
+        # When AttributeQuery is used, "Attributes" must be a requested property.
+        prop_names.append("Attributes")
+        query["AttributeQuery"] = {
+            "Properties": {
+                "AllProperties": False,
+                "PropertyNames": ["LogicalName", "AttributeType", "DisplayName"],
+            }
+        }
+    if entities:
+        query["Criteria"] = {
+            "FilterOperator": "Or",
+            "Conditions": [
+                {
+                    "ConditionOperator": "Equals",
+                    "PropertyName": "LogicalName",
+                    "Value": {"Type": "System.String", "Value": e},
+                }
+                for e in entities
+            ],
+        }
+    return query
+
+
+def _shape_changed_entity(entity: dict[str, Any]) -> dict[str, Any]:
+    """Project a raw EntityMetadata item to the fields the command surfaces."""
+    out: dict[str, Any] = {
+        "logical_name": entity.get("LogicalName"),
+        "schema_name": entity.get("SchemaName"),
+        "has_changed": entity.get("HasChanged"),
+    }
+    display = entity.get("DisplayName")
+    if isinstance(display, dict):
+        text = label_text(cast("dict[str, Any]", display))
+        if text:
+            out["display_name"] = text
+    attrs = entity.get("Attributes")
+    if isinstance(attrs, list):
+        out["attributes"] = [
+            {
+                "logical_name": a.get("LogicalName"),
+                "attribute_type": a.get("AttributeType"),
+                "has_changed": a.get("HasChanged"),
+            }
+            for a in cast("list[dict[str, Any]]", attrs)
+        ]
+    return out
+
+
+def metadata_changes(
+    backend: D365Backend,
+    *,
+    since: str | None = None,
+    entities: list[str] | None = None,
+    attributes: bool = False,
+) -> dict[str, Any]:
+    """Retrieve new/changed entity metadata via ``RetrieveMetadataChanges``.
+
+    Without ``since``, returns a baseline snapshot plus a fresh
+    ``server_version_stamp`` to save for next time. With ``since`` (a stamp from
+    a prior call), returns only metadata that changed since then, the count of
+    items deleted since then, and a new stamp. ``entities`` scopes to specific
+    logical names; ``attributes`` expands column definitions so column-level
+    changes are visible. This is a read, so it executes even under ``--dry-run``.
+    """
+    query = _build_changes_query(entities, attributes)
+    params: dict[str, str] = {"@p1": json.dumps(query, separators=(",", ":"))}
+    parts: list[str] = ["Query=@p1"]
+    if since:
+        parts.append("ClientVersionStamp=@p2")
+        params["@p2"] = odata_literal(since)
+        parts.append(f"DeletedMetadataFilters={_DELETED_METADATA_FILTER_ALL}")
+    resp = as_dict(backend.get(f"RetrieveMetadataChanges({','.join(parts)})", params=params))
+
+    raw_entities = resp.get("EntityMetadata")
+    entity_list: list[dict[str, Any]] = (
+        cast("list[dict[str, Any]]", raw_entities) if isinstance(raw_entities, list) else []
+    )
+    shaped = [_shape_changed_entity(e) for e in entity_list]
+    deleted = cast("dict[str, Any]", resp.get("DeletedMetadata") or {})
+    deleted_count = deleted.get("Count") or 0
+    return {
+        "server_version_stamp": resp.get("ServerVersionStamp"),
+        "entities": shaped,
+        "count": len(shaped),
+        "deleted_count": deleted_count,
     }
