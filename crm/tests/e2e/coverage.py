@@ -71,6 +71,14 @@ E2E_SKIP: dict[str, str] = {
     # test org on a throwaway theme. Happy path is covered by wire-level unit tests
     # in crm/tests/test_themes.py (TestPublishTheme).
     "theme publish": "publishing sets the active org-wide theme with no inverse CLI verb to restore the prior one (disruptive on a shared org); covered by wire-level unit tests",
+    # Creating a usable SLA is heavy, org-stateful setup: `sla create` flips the
+    # target entity's IsSLAEnabled metadata flag (a publish-requiring change with
+    # no inverse CLI verb to restore it) and SLA records have no clean teardown,
+    # and the cloud test org has no Customer Service / SLA configuration. The
+    # request shapes (objecttypecode, IsSLAEnabled flip, slaitem condition columns)
+    # are covered by the wire-level unit tests in crm/tests/test_sla.py.
+    "sla create": "flips target-entity IsSLAEnabled metadata (publish-requiring, no inverse verb) + creates an SLA with no clean teardown; org-stateful, covered by wire-level unit tests",
+    "sla add-kpi": "needs a created SLA + an SLA-enabled entity with valid per-KPI FetchXML conditions first (org-stateful, same constraints as `sla create`); covered by wire-level unit tests",
 }
 
 

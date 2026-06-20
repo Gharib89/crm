@@ -158,6 +158,7 @@ def _build_entity_changes(
     ownership: str | None,
     has_activities: bool | None,
     has_notes: bool | None,
+    is_sla_enabled: bool | None,
 ) -> dict[str, Any]:
     changes: dict[str, Any] = {}
     if display_name is not None:
@@ -173,6 +174,11 @@ def _build_entity_changes(
         changes["HasActivities"] = has_activities
     if has_notes is not None:
         changes["HasNotes"] = has_notes
+    if is_sla_enabled is not None:
+        # IsSLAEnabled is a BooleanManagedProperty; merging the sparse {"Value": …}
+        # onto the retrieved property object preserves CanBeChanged /
+        # ManagedPropertyLogicalName (the retrieve-merge-write contract).
+        changes["IsSLAEnabled"] = {"Value": is_sla_enabled}
     return changes
 
 
@@ -186,6 +192,7 @@ def update_entity(
     ownership: str | None = None,
     has_activities: bool | None = None,
     has_notes: bool | None = None,
+    is_sla_enabled: bool | None = None,
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
@@ -204,6 +211,7 @@ def update_entity(
         ownership=ownership,
         has_activities=has_activities,
         has_notes=has_notes,
+        is_sla_enabled=is_sla_enabled,
     )
     if not changes:
         raise D365Error(
