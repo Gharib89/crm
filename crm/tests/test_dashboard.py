@@ -16,6 +16,7 @@ _DASH_ROW = {
     "objecttypecode": "none",
     "description": "Org sales dashboard",
     "isdefault": False,
+    "type": 0,
     "formxml": "<form><tabs/></form>",
 }
 
@@ -56,17 +57,42 @@ class TestGetDashboard:
         with pytest.raises(D365Error):
             dashboard.get_dashboard(backend, "not-a-guid")
 
+    def test_rejects_non_dashboard_form(self, backend):
+        # systemforms is shared — a main-form id (type 2) must not project as one
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={**_DASH_ROW, "type": 2})
+            with pytest.raises(D365Error, match="not a dashboard"):
+                dashboard.get_dashboard(backend, _DASH_ID)
+
 
 class TestDeleteDashboard:
     def test_delete(self, backend):
         with requests_mock.Mocker() as m:
+            # pre-flight type check, then the delete
+            m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={"formid": _DASH_ID, "type": 0})
             m.delete(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
             result = dashboard.delete_dashboard(backend, _DASH_ID)
         assert result == {"deleted": True, "formid": _DASH_ID}
 
     def test_delete_dry_run_previews(self, dry_backend):
-        result = dashboard.delete_dashboard(dry_backend, _DASH_ID)
+        # the pre-flight GET runs even under dry-run (reads-execute); the DELETE
+        # is short-circuited by the backend.
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={"formid": _DASH_ID, "type": 0})
+            result = dashboard.delete_dashboard(dry_backend, _DASH_ID)
         assert result == {"_dry_run": True, "would_delete": True, "formid": _DASH_ID}
+
+    def test_delete_refuses_non_dashboard_form(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={"formid": _DASH_ID, "type": 2})
+            with pytest.raises(D365Error, match="not a dashboard"):
+                dashboard.delete_dashboard(backend, _DASH_ID)
+        # the destructive DELETE was never issued
+        assert all(r.method != "DELETE" for r in m.request_history)
 
 
 class TestCreateDashboard:

@@ -36,7 +36,9 @@ INTERACTIVE_TYPE = 10    # interactive-experience dashboard — not API-creatabl
 # org: every type-0 systemform carries objecttypecode == "none".
 _ORG_OBJECTTYPECODE = "none"
 
-_SELECT = "formid,name,objecttypecode,description,isdefault,formxml"
+# `type` is fetched so the by-id verbs can confirm the target is a dashboard
+# (see _require_dashboard_type); it is not projected into the output shape.
+_SELECT = "formid,name,objecttypecode,description,isdefault,type,formxml"
 # Lighter select for `list`, which omits the (large) formxml.
 _LIST_SELECT = "formid,name,objecttypecode,description,isdefault"
 
@@ -48,6 +50,20 @@ def _normalize_dashboard_id(dashboard_id: str) -> str:
     if rid is None:
         raise D365Error(f"Invalid dashboard id (expected GUID): {dashboard_id!r}")
     return rid
+
+
+def _require_dashboard_type(dashboard_id: str, form_type: Any) -> None:
+    """Refuse to operate on a non-dashboard ``systemform``.
+
+    ``systemforms`` is a shared set (main / quick-create / card / … forms all
+    live there), so a by-id ``get`` could project an unrelated form as a
+    dashboard and — worse — a by-id ``delete`` could destroy one. Both verbs
+    confirm ``type == 0`` first so the group stays scoped to dashboards.
+    """
+    if form_type != DASHBOARD_TYPE:
+        raise D365Error(
+            f"systemform {dashboard_id} is not a dashboard (type={form_type}); "
+            f"the dashboard verbs only operate on system dashboards (type {DASHBOARD_TYPE}).")
 
 
 def _project(row: dict[str, Any], *, with_xml: bool) -> dict[str, Any]:
@@ -78,22 +94,33 @@ def list_dashboards(backend: D365Backend) -> list[dict[str, Any]]:
 
 
 def get_dashboard(backend: D365Backend, dashboard_id: str) -> dict[str, Any]:
-    """Fetch a single dashboard by id, including its ``formxml``."""
+    """Fetch a single dashboard by id, including its ``formxml``.
+
+    Raises if the id resolves to a non-dashboard ``systemform`` (see
+    :func:`_require_dashboard_type`).
+    """
     dashboard_id = _normalize_dashboard_id(dashboard_id)
     row = as_dict(backend.get(
         f"{_FORM_SET}({dashboard_id})",
         params={"$select": _SELECT},
     ))
+    _require_dashboard_type(dashboard_id, row.get("type"))
     return _project(row, with_xml=True)
 
 
 def delete_dashboard(backend: D365Backend, dashboard_id: str) -> dict[str, Any]:
     """Delete a dashboard by id.
 
-    Dry-run returns ``{_dry_run, would_delete, formid}``; a real delete returns
+    Pre-flight GETs the form's ``type`` (a read, so it runs even under dry-run)
+    and refuses to delete a non-dashboard ``systemform`` — a mistyped id must
+    not destroy a main/quick-create form on the shared set. Dry-run returns
+    ``{_dry_run, would_delete, formid}``; a real delete returns
     ``{deleted, formid}``.
     """
     dashboard_id = _normalize_dashboard_id(dashboard_id)
+    row = as_dict(backend.get(
+        f"{_FORM_SET}({dashboard_id})", params={"$select": "formid,type"}))
+    _require_dashboard_type(dashboard_id, row.get("type"))
     result = backend.delete(f"{_FORM_SET}({dashboard_id})")
     if isinstance(result, dict) and result.get("_dry_run"):
         return {"_dry_run": True, "would_delete": True, _ID_FIELD: dashboard_id}

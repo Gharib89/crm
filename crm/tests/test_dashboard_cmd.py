@@ -16,6 +16,7 @@ _DASH = {
     "objecttypecode": "none",
     "description": "Org sales dashboard",
     "isdefault": False,
+    "type": 0,
     "formxml": "<form><tabs/></form>",
 }
 _NEW_ID = "99998888-7777-6666-5555-444433332222"
@@ -61,6 +62,7 @@ class TestDashboardDelete:
         _use_backend(monkeypatch, backend)
         did = _DASH["formid"]
         with rm_module.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({did})"), json={"formid": did, "type": 0})
             m.delete(backend.url_for(f"systemforms({did})"), status_code=204)
             result = CliRunner().invoke(cli, ["--json", "dashboard", "delete", did])
         assert result.exit_code == 0, result.output
@@ -98,7 +100,10 @@ class TestDashboardCreate:
             "--name", "X", "--formxml", self._formxml_file(tmp_path),
             "--interactive", "--no-publish"])
         assert result.exit_code != 0
-        assert "type-10" in result.output or "interactive" in result.output.lower()
+        # --json surfaces the rejection as the machine-readable error envelope
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "type-10" in env["error"]
 
     def test_create_requires_formxml(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
