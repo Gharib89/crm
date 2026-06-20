@@ -382,6 +382,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "chart": "crm.commands.chart:chart_group",
         "completion": "crm.commands.completion:completion_group",
         "connection": "crm.commands.connection:connection_group",
+        "connectionrole": "crm.commands.connectionrole:connectionrole_group",
         "dashboard": "crm.commands.dashboard:dashboard_group",
         "data": "crm.commands.data:data_group",
         "describe": "crm.commands.describe:describe_cmd",
