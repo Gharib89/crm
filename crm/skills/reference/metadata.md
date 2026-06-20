@@ -389,6 +389,75 @@ subset of tables.
 count of deleted metadata components since the stamp — the API returns the count
 only, not their identities. This is a pure read; it runs live under `--dry-run`.
 
+## Relationship eligibility (`metadata can-relate`)
+
+Run this **before** `create-one-to-many` or `create-many-to-many` to confirm
+both sides are eligible and to discover legal partners — avoids a server-side
+fault if an entity is ineligible for the chosen role.
+
+```bash
+# Eligibility check — can <entity> play this role?
+crm --json metadata can-relate <entity> --as referenced|referencing|many-to-many
+
+# Partner discovery — which tables are legal partners?
+crm --json metadata can-relate <entity> --as referenced|referencing|many-to-many \
+    --valid-partners
+```
+
+**JSON — eligibility check** (`data` only, no `--valid-partners`):
+
+```json
+{"entity": "account", "as": "referenced", "eligible": true}
+```
+
+**JSON — partner list** (`--valid-partners`):
+
+```json
+{"entity": "account", "as": "referenced", "valid_partners": ["contact", ...], "count": 42}
+```
+
+**Gotcha — N:N partner list is org-global, not entity-scoped.** When `--as
+many-to-many --valid-partners` is used, the underlying `GetValidManyToMany`
+action takes no entity argument and returns every N:N-capable table in the org.
+The eligibility check (`--as many-to-many` without `--valid-partners`) is still
+entity-scoped via `CanManyToMany`.
+
+## Hierarchical relationships
+
+`--hierarchical` on `create-one-to-many` (flag, default off) or
+`--hierarchical / --no-hierarchical` on `update-relationship` (tri-state,
+default unset — leaves the existing value alone) sets `IsHierarchical` on a
+1:N relationship.
+
+- **Self-referencing required.** The referenced and referencing entity must be
+  the same table — passing `--hierarchical` on a cross-entity 1:N is not
+  rejected client-side but will fault on the server.
+- **One per entity.** Only one hierarchical relationship may be active per
+  entity at a time; the server rejects a second.
+- **1:N only.** `--hierarchical / --no-hierarchical` is rejected client-side
+  when passed to `update-relationship` with an N:N schema name.
+
+## Virtual (external-data-backed) tables
+
+Set `--external-name`, `--external-collection-name`, and `--data-provider` on
+`metadata create-entity` to create a virtual table. `--data-source` is
+optional. All three of `--external-name`, `--external-collection-name`, and
+`--data-provider` are required together — supplying only some of them is a
+client-side usage error.
+
+**Workflow — create prerequisites first, entity second:**
+
+1. Find the data-provider record GUID:
+   `crm --json query odata entitydataproviders --select entitydataproviderid,name`
+2. Optionally find a data-source GUID:
+   `crm --json query odata entitydatasources --select entitydatasourceid,name`
+3. Run `metadata create-entity` with `--data-provider` (and optionally
+   `--data-source`) plus the two `--external-*` flags.
+
+**Caveat — read-only on v9.1.** On-premises v9.1 virtual tables are
+**read-only**. Any create/update/delete call against a virtual table returns a
+server fault. On Dataverse online, write support depends on the data provider.
+
 ## Inspect the server's entity sets
 
 ```bash

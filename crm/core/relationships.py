@@ -55,6 +55,86 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
     }
 
 
+# Relationship-eligibility wiring per role. Each role maps to its Can* action
+# (POST {"EntityName": …} → {"<Can…>": bool}) and its valid-partners GET
+# function. Note the many-to-many function (GetValidManyToMany) is *global* — it
+# takes no entity parameter, so its partner list is org-wide, not specific to
+# the queried entity (only the CanManyToMany eligibility check is entity-scoped).
+_RELATE_ROLES: dict[str, dict[str, str]] = {
+    "referenced": {
+        "action": "CanBeReferenced",
+        "partners_fn": "GetValidReferencingEntities",
+        "partners_param": "ReferencedEntityName",
+    },
+    "referencing": {
+        "action": "CanBeReferencing",
+        "partners_fn": "GetValidReferencedEntities",
+        "partners_param": "ReferencingEntityName",
+    },
+    "many-to-many": {
+        "action": "CanManyToMany",
+        "partners_fn": "GetValidManyToMany",
+        "partners_param": "",  # global function, no entity parameter
+    },
+}
+
+
+def can_relate(
+    backend: D365Backend,
+    entity: str,
+    *,
+    role: str,
+    valid_partners: bool = False,
+) -> dict[str, Any]:
+    """Check relationship eligibility, or list legal partner tables, for *entity*.
+
+    ``role`` is one of ``referenced`` / ``referencing`` / ``many-to-many``.
+
+    Default (``valid_partners=False``) answers "can *entity* play this role?" via
+    the matching Can* action (`CanBeReferenced` / `CanBeReferencing` /
+    `CanManyToMany`) → ``{"eligible": bool}``.
+
+    With ``valid_partners=True`` it returns the tables *entity* may legally pair
+    with via the matching GetValid* function → ``{"valid_partners": [...],
+    "count": n}``. For ``many-to-many`` the underlying `GetValidManyToMany`
+    function is org-global (it takes no entity argument), so the list is every
+    N:N-capable table, not partners specific to *entity*.
+
+    This is a read-only diagnostic: it issues no writes and has no `--dry-run`
+    behavior.
+    """
+    cfg = _RELATE_ROLES.get(role)
+    if cfg is None:
+        raise D365Error(
+            f"role must be one of {sorted(_RELATE_ROLES)}; got {role!r}."
+        )
+    if not entity:
+        raise D365Error("entity is required.")
+
+    if valid_partners:
+        fn = cfg["partners_fn"]
+        param = cfg["partners_param"]
+        path = (
+            f"{fn}({param}={odata_literal(entity)})" if param else fn
+        )
+        resp = as_dict(backend.get(path))
+        names = cast("list[str]", resp.get("EntityNames") or [])
+        return {
+            "entity": entity,
+            "as": role,
+            "valid_partners": names,
+            "count": len(names),
+        }
+
+    action = cfg["action"]
+    resp = as_dict(backend.post(action, json_body={"EntityName": entity}))
+    return {
+        "entity": entity,
+        "as": role,
+        "eligible": bool(resp.get(action)),
+    }
+
+
 def _snake(name: str) -> str:
     """Convert a PascalCase key to snake_case (e.g. RollupView → rollup_view).
 
@@ -255,6 +335,7 @@ def create_one_to_many(
     menu_label: str | None = None,
     menu_behavior: str = "UseCollectionName",
     menu_order: int = 10000,
+    is_hierarchical: bool = False,
     publish: bool = False,
     solution: str | None = None,
     if_exists: str = "error",
@@ -336,6 +417,11 @@ def create_one_to_many(
         # on the Lookup single-valued navigation property.
         "Lookup": lookup_payload,
     }
+    # A hierarchical 1:N is the self-referencing parent/child link the hierarchy
+    # visualizations and `Above`/`Under` operators read; the server defaults the
+    # flag false, so only emit it when requested.
+    if is_hierarchical:
+        body["IsHierarchical"] = True
 
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(

@@ -391,6 +391,34 @@ class TestUpdateRelationship:
         assert body["AssociatedMenuConfiguration"] == \
             _FULL_ONE_TO_MANY["AssociatedMenuConfiguration"]
 
+    def test_hierarchical_change_merges_into_put_preserving_rest(self, backend):
+        from crm.core import metadata_update as mu
+        resolve = backend.url_for(
+            "RelationshipDefinitions(SchemaName='new_account_new_account')"
+        )
+        cast = backend.url_for(
+            f"RelationshipDefinitions({_REL_ID})"
+            "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+        )
+        uncast = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(resolve, json={
+                "@odata.type": "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+                "MetadataId": _REL_ID,
+                "SchemaName": "new_account_new_account",
+                "RelationshipType": "OneToManyRelationship",
+            })
+            m.get(cast, json={**_FULL_ONE_TO_MANY, "IsHierarchical": False})
+            m.put(uncast, status_code=204)
+            mu.update_relationship(
+                backend, "new_account_new_account",
+                is_hierarchical=True,
+            )
+        body = m.request_history[-1].json()
+        assert body["IsHierarchical"] is True
+        # Unrelated config preserved by the retrieve-merge-write.
+        assert body["CascadeConfiguration"] == _FULL_ONE_TO_MANY["CascadeConfiguration"]
+
     def test_put_body_carries_discriminator_when_cast_get_omits_it(self, backend):
         # Under minimal OData metadata a GET to the cast path omits @odata.type
         # (it is inferable from the cast context), but the un-cast PUT target is
@@ -476,6 +504,18 @@ class TestUpdateRelationshipManyToManyGuards:
                 mu.update_relationship(
                     backend, "new_account_new_project_n_n",
                     menu_behavior="UseLabel",
+                )
+            assert put.call_count == 0
+
+    def test_hierarchical_on_n_n_raises_client_side_no_put(self, backend):
+        from crm.core import metadata_update as mu
+        with requests_mock.Mocker() as m:
+            _mock_resolve_n_n(m, backend)
+            put = m.put(requests_mock.ANY, status_code=204)
+            with pytest.raises(D365Error, match="one-to-many"):
+                mu.update_relationship(
+                    backend, "new_account_new_project_n_n",
+                    is_hierarchical=True,
                 )
             assert put.call_count == 0
 

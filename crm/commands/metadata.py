@@ -434,6 +434,18 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
 @click.option("--has-notes", is_flag=True)
 @click.option("--is-activity", is_flag=True,
               help="Create as an activity entity.")
+@click.option("--data-provider", "data_provider", default=None,
+              help="Virtual-table data-provider record GUID. Setting any --external-* "
+                   "/ --data-* option creates a VIRTUAL table (rows live in an external "
+                   "store). Virtual tables are READ-ONLY on v9.1 and require the "
+                   "data-provider (and optional data-source) records to exist FIRST — "
+                   "configure those prerequisites before running this.")
+@click.option("--data-source", "data_source", default=None,
+              help="Virtual-table data-source record GUID (optional).")
+@click.option("--external-name", "external_name", default=None,
+              help="External table name a virtual table maps to (required for virtual).")
+@click.option("--external-collection-name", "external_collection_name", default=None,
+              help="External collection/plural name (required for virtual).")
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the entity already exists: error (default) or skip (no-op success).")
@@ -442,9 +454,16 @@ def metadata_dependencies(ctx: CLIContext, target, kind, for_):
 def metadata_create_entity(
     ctx: CLIContext, schema_name, display_name, display_collection, primary_attr_schema,
     primary_attr_label, primary_max_length, description, ownership,
-    has_activities, has_notes, is_activity, solution, require_solution, if_exists, publish,
+    has_activities, has_notes, is_activity, data_provider, data_source,
+    external_name, external_collection_name, solution, require_solution, if_exists, publish,
 ):
-    """Create a new custom entity (table)."""
+    """Create a new custom entity (table).
+
+    Pass --external-name/--external-collection-name/--data-provider to create a
+    VIRTUAL table instead, backed by an external data source. Virtual tables are
+    read-only on v9.1 and require the data-provider/data-source records to exist
+    first.
+    """
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
@@ -462,6 +481,10 @@ def metadata_create_entity(
             has_activities=has_activities,
             has_notes=has_notes,
             is_activity=is_activity,
+            data_provider_id=data_provider,
+            data_source_id=data_source,
+            external_name=external_name,
+            external_collection_name=external_collection_name,
             solution=solution,
             if_exists=if_exists,
         )
@@ -624,6 +647,8 @@ def metadata_update_attribute(
 @click.option("--menu-behavior", type=_MENU, default=None)
 @click.option("--menu-label", default=None)
 @click.option("--menu-order", type=int, default=None)
+@click.option("--hierarchical/--no-hierarchical", "hierarchical", default=None,
+              help="Set IsHierarchical on a 1:N relationship (rejected for N:N).")
 @click.option("--solution", default=None,
               help="Apply via MSCRM.SolutionUniqueName.")
 @_publish_option
@@ -631,7 +656,7 @@ def metadata_update_attribute(
 def metadata_update_relationship(
     ctx: CLIContext, schema_name, cascade_assign, cascade_delete, cascade_reparent,
     cascade_share, cascade_unshare, cascade_merge, menu_behavior, menu_label,
-    menu_order, solution, publish,
+    menu_order, hierarchical, solution, publish,
 ):
     """Update a relationship definition (retrieve-merge-write)."""
     publish = _resolve_publish(ctx, publish)
@@ -651,6 +676,7 @@ def metadata_update_relationship(
             menu_behavior=menu_behavior,
             menu_label=menu_label,
             menu_order=menu_order,
+            is_hierarchical=hierarchical,
             publish=publish,
             solution=solution,
         )
@@ -689,6 +715,42 @@ def metadata_relationships(ctx: CLIContext, logical_name):
             ctx.skin.info("none")
             continue
         ctx.skin.table(headers, [[r.get(h, "") for h in headers] for r in rows])
+
+
+@metadata_group.command("can-relate")
+@click.argument("entity")
+@click.option("--as", "role", required=True,
+              type=click.Choice(["referenced", "referencing", "many-to-many"]),
+              help="Role to test: referenced (1 side), referencing (N side), "
+                   "or many-to-many.")
+@click.option("--valid-partners", is_flag=True, default=False,
+              help="List the tables ENTITY may legally pair with (GetValid* "
+                   "functions) instead of the yes/no eligibility check. Note: "
+                   "many-to-many lists ALL N:N-capable tables org-wide, not "
+                   "partners specific to ENTITY.")
+@pass_ctx
+def metadata_can_relate(ctx: CLIContext, entity, role, valid_partners):
+    """Check whether ENTITY can take part in a relationship (read-only).
+
+    Without --valid-partners, answers the yes/no eligibility check for the role.
+    With --valid-partners, lists the legal partner tables. Use this before
+    create-one-to-many / create-many-to-many to avoid a server-side fault.
+    """
+    with d365_errors(ctx):
+        info = rel_mod.can_relate(
+            ctx.backend(), entity, role=role, valid_partners=valid_partners,
+        )
+    if ctx.json_mode:
+        ctx.emit(True, data=info)
+        return
+    if valid_partners:
+        partners = info.get("valid_partners", [])
+        ctx.emit(True, table={"headers": ["ValidPartner"],
+                              "rows": [[p] for p in partners]},
+                 meta={"count": info.get("count", 0), "entity": entity, "as": role})
+        return
+    ctx.emit(True, table={"headers": ["Entity", "As", "Eligible"],
+                          "rows": [[entity, role, str(info.get("eligible"))]]})
 
 
 @metadata_group.command("delete-entity")
@@ -962,6 +1024,10 @@ def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution, require_sol
 @click.option("--menu-label", default=None)
 @click.option("--menu-behavior", type=_MENU, default="UseCollectionName")
 @click.option("--menu-order", type=int, default=10000)
+@click.option("--hierarchical", is_flag=True, default=False,
+              help="Mark the 1:N as hierarchical (IsHierarchical). Use with a "
+                   "self-referencing relationship (referenced == referencing entity) "
+                   "to enable the parent/child hierarchy and Above/Under operators.")
 @_solution_option
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error",
               help="If the relationship already exists: error (default) or skip (no-op success).")
@@ -972,7 +1038,7 @@ def metadata_create_one_to_many(
     lookup_display, lookup_required, lookup_description,
     cascade_assign, cascade_delete, cascade_reparent, cascade_share,
     cascade_unshare, cascade_merge, menu_label, menu_behavior, menu_order,
-    solution, require_solution, if_exists, publish,
+    hierarchical, solution, require_solution, if_exists, publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
     solution, warning = _resolve_solution(ctx, solution, require_solution)
@@ -996,6 +1062,7 @@ def metadata_create_one_to_many(
             menu_label=menu_label,
             menu_behavior=menu_behavior,
             menu_order=menu_order,
+            is_hierarchical=hierarchical,
             publish=publish,
             solution=solution,
             if_exists=if_exists,
