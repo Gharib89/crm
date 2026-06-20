@@ -57,6 +57,7 @@ a = Analysis(
         'crm.commands.profile',
         'crm.commands.query',
         'crm.commands.repl',
+        'crm.commands.report',
         'crm.commands.ribbon',
         'crm.commands.scaffold',
         'crm.commands.security',

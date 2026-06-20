@@ -142,6 +142,7 @@ nav:
       - chart: how-to/chart.md
       - dashboard: how-to/dashboard.md
       - theme: how-to/theme.md
+      - report: how-to/report.md
       - plugin: how-to/plugin.md
       - security: how-to/security.md
       - fieldsec: how-to/fieldsec.md
