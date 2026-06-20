@@ -104,7 +104,8 @@ class TestDupPublish:
             result = CliRunner().invoke(cli, ["--json", "dup", "publish", _RULE_ID])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
-        assert data["published"] is True
+        assert data["status"] == "submitted"
+        assert data["published"] is False
         assert data["job_id"] == _JOB_ID
 
 

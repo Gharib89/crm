@@ -267,7 +267,8 @@ class TestPublishRule:
             m.post(_publish_url(backend), status_code=200,
                    json={"asyncoperationid": _JOB_ID, "statecode": 0, "statuscode": 0})
             out = dup.publish_rule(backend, _RULE_ID)
-        assert out["published"] is True
+        # submitted only — the async build job has not completed, so not yet active
+        assert out["published"] is False
         assert out["job_id"] == _JOB_ID
         assert out["status"] == "submitted"
 
@@ -279,6 +280,7 @@ class TestPublishRule:
                   json={"statecode": 3, "statuscode": 30})
             out = dup.publish_rule(backend, _RULE_ID, wait=True)
         assert out["status"] == "completed"
+        assert out["published"] is True
 
     def test_resolves_rule_by_name(self, backend):
         with requests_mock.Mocker() as m:

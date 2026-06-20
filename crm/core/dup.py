@@ -1,16 +1,18 @@
 """Duplicate-detection rules via the D365 Web API.
 
 Wraps the ``duplicaterule`` + ``duplicaterulecondition`` entities and the
-``PublishDuplicateRule`` / ``UnpublishDuplicateRule`` async actions, plus the
+``PublishDuplicateRule`` / ``UnpublishDuplicateRule`` actions, plus the
 ``RetrieveDuplicates`` function used to test a candidate record against the
 published rules.
 
 A duplicate rule binds a *base* entity to a *matching* entity (the same entity
 for the common within-table case) and carries one or more conditions, each
 comparing a base column to a matching column with an operator. A freshly
-created rule is **unpublished** — ``publish`` submits the async match-code build
-job; only published rules participate in detection. Publishing/unpublishing are
-asynchronous operations, so both reuse :meth:`D365Backend.poll_async_operation`.
+created rule is **unpublished** — only published rules participate in detection.
+The two state transitions are asymmetric: ``PublishDuplicateRule`` is a *bound*,
+**asynchronous** action (it submits a match-code build job, polled via
+:meth:`D365Backend.poll_async_operation`), whereas ``UnpublishDuplicateRule`` is
+an *unbound*, **synchronous** action that completes immediately.
 
 Every public function takes the backend first and returns a plain dict (or list
 of dicts) — the Click layer owns all formatting. Click-free so the module stays
@@ -101,7 +103,7 @@ def list_rules(
         "$orderby": "name",
     }
     if entity:
-        params["$filter"] = f"baseentityname eq '{entity}'"
+        params["$filter"] = f"baseentityname eq {odata_literal(entity)}"
     return backend.get_collection(RULES_SET, params=params)
 
 
@@ -294,14 +296,17 @@ def publish_rule(
     result: dict[str, Any] = {
         _RULE_ID: rule_id,
         "action": "PublishDuplicateRule",
-        "published": True,
         "job_id": job_id,
     }
     if not wait or not job_id:
+        # The match-code build job is still running — the rule is not yet active.
+        # Report the submitted state without claiming completion.
         result["status"] = "submitted"
+        result["published"] = False
         return result
     backend.poll_async_operation(job_id, timeout=timeout)
     result["status"] = "completed"
+    result["published"] = True
     return result
 
 
@@ -352,7 +357,9 @@ def check(
     if not record:
         raise D365Error("record is required (the candidate to check).")
     match = matching_entity or entity
-    business_entity = {"@odata.type": f"Microsoft.Dynamics.CRM.{entity}", **record}
+    # The @odata.type cast must match ENTITY and win over any caller-supplied
+    # "@odata.type" in the payload, so set it last (after spreading the record).
+    business_entity = {**record, "@odata.type": f"Microsoft.Dynamics.CRM.{entity}"}
     # RetrieveDuplicates is a function whose BusinessEntity parameter is an
     # entity; entity-typed and complex function params must travel as parameter
     # aliases in the query string (the server rejects them inline). PagingInfo is
