@@ -67,6 +67,15 @@ class TestScope:
         assert data["created"] is True
         assert m.last_request.json()["associatedobjecttypecode"] == "account"
 
+    def test_dry_run(self, dry_backend, monkeypatch):
+        _use_backend(monkeypatch, dry_backend)
+        with rm_module.Mocker():
+            result = CliRunner().invoke(cli, [
+                "--json", "--dry-run", "connectionrole", "scope", _ROLE_A,
+                "--entity", "account"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"]["_dry_run"] is True
+
 
 class TestMatch:
     def test_match_roles(self, backend, monkeypatch):
@@ -81,3 +90,11 @@ class TestMatch:
         data = json.loads(result.output)["data"]
         assert data["matched"] is True
         assert data["role_b"] == _ROLE_B
+
+    def test_dry_run(self, dry_backend, monkeypatch):
+        _use_backend(monkeypatch, dry_backend)
+        with rm_module.Mocker():
+            result = CliRunner().invoke(cli, [
+                "--json", "--dry-run", "connectionrole", "match", _ROLE_A, _ROLE_B])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"]["_dry_run"] is True

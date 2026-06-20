@@ -124,6 +124,7 @@ nav:
   - How-to:
       - profile: how-to/profile.md
       - connection: how-to/connection.md
+      - connectionrole: how-to/connectionrole.md
       - entity: how-to/entity.md
       - query: how-to/query.md
       - metadata: how-to/metadata.md

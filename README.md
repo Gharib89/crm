@@ -393,6 +393,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | Group        | Purpose                                                    |
 |--------------|------------------------------------------------------------|
 | `connection` | Profiles, WhoAmI, preflight diagnostic (`doctor`), reachability checks |
+| `connectionrole` | Connection roles: `create` a role, `scope` it to an entity type, `match` two roles as reciprocal partners |
 | `entity`     | Record CRUD (get/create/update/upsert/delete); `upsert` accepts `--key ATTR[,ATTR...]` to match by alternate key instead of a primary GUID (key values read from `--data`, key attrs stripped from the body), plus `--if-none-match` for a create-only upsert (412 if the record exists); `clone` (single-record clone, lookups rebound to the same parents, `--override`/`--unset`; `--with-children` also clones the custom 1:N child rows, repointing them to the new parent — continue-and-report on failure, `--skip-child-entity` prunes); `children` (per-1:N related-record counts via chunked `$batch`, not one query per relationship) |
 | `query`      | OData v4 and FetchXML queries; `query odata --apply` runs server-side `$apply` aggregation / group-by / distinct |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
