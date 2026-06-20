@@ -139,6 +139,7 @@ nav:
       - webresource: how-to/webresource.md
       - ribbon: how-to/ribbon.md
       - form: how-to/form.md
+      - chart: how-to/chart.md
       - plugin: how-to/plugin.md
       - security: how-to/security.md
       - async: how-to/async.md
