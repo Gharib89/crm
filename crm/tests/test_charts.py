@@ -335,3 +335,22 @@ class TestCreateChart:
             )
         body = m.last_request.json()
         assert body["description"] == "A test chart"
+
+    def test_create_chart_dry_run(self, dry_backend):
+        from crm.core import charts
+        with requests_mock.Mocker() as m:
+            m.post(dry_backend.url_for("savedqueryvisualizations"), status_code=204, headers={
+                "OData-EntityId": dry_backend.url_for(f"savedqueryvisualizations({_SYSTEM_ID})"),
+            })
+            result = charts.create_chart(
+                dry_backend,
+                entity="contact",
+                name="My Chart",
+                data_description="<datadefinition/>",
+                presentation_description="<Chart/>",
+            )
+        assert result.get("_dry_run") is True
+        assert result.get("would_create") is True
+        assert result.get("name") == "My Chart"
+        assert result.get("primaryentitytypecode") == "contact"
+        assert not m.called

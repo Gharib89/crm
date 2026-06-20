@@ -80,8 +80,8 @@ def test_chart_create_get_delete_system(backend, cli, request, unique):
 
     # Create
     with (
-        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as df,
-        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as pf,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False, encoding="utf-8") as df,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False, encoding="utf-8") as pf,
     ):
         df.write(_DATA_XML)
         pf.write(_PRES_XML)
@@ -153,8 +153,8 @@ def test_chart_create_get_delete_user(backend, cli, request, unique):
     request.addfinalizer(_cleanup)
 
     with (
-        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as df,
-        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as pf,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False, encoding="utf-8") as df,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False, encoding="utf-8") as pf,
     ):
         df.write(_DATA_XML)
         pf.write(_PRES_XML)

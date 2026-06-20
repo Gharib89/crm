@@ -19,7 +19,7 @@ from crm.core import charts as charts_mod
 
 @click.group("chart")
 def chart_group() -> None:
-    """Author system and user charts (savedqueryvisualization) headlessly."""
+    """Author system and user charts (savedqueryvisualization / userqueryvisualization) headlessly."""
 
 
 @chart_group.command("list")
@@ -71,10 +71,10 @@ def chart_delete(ctx: CLIContext, chart_id: str, user_owned: bool) -> None:
 @click.argument("entity")
 @click.option("--name", required=True, help="Chart display name.")
 @click.option("--data-description", "data_description_file",
-              type=click.Path(exists=True),
+              type=click.Path(exists=True, dir_okay=False, readable=True),
               help="Path to datadescription XML file (mutually exclusive with --web-resource).")
 @click.option("--presentation-description", "presentation_description_file",
-              type=click.Path(exists=True),
+              type=click.Path(exists=True, dir_okay=False, readable=True),
               help="Path to presentationdescription XML file (mutually exclusive with --web-resource).")
 @click.option("--web-resource", "web_resource",
               default=None,

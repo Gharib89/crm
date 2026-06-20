@@ -289,7 +289,7 @@ def create_chart(
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(entity_set, json_body=body, extra_headers=headers))
     if result.get("_dry_run"):
-        return result
+        return {"_dry_run": True, "would_create": True, "name": name, id_field: None, "primaryentitytypecode": entity}
 
     entity_id_url = result.get("_entity_id_url") or ""
     chart_id = result.get("_entity_id")
