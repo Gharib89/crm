@@ -47,6 +47,7 @@ a = Analysis(
         'crm.commands.data',
         'crm.commands.describe',
         'crm.commands.entity',
+        'crm.commands.fieldsec',
         'crm.commands.form',
         'crm.commands.metadata',
         'crm.commands.plugin',
