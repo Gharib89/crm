@@ -74,6 +74,11 @@ def fieldsec_add_permission(ctx: CLIContext, profile, entity, attribute,
 
     Pass at least one of --read / --create / --update.
     """
+    # A missing-flag combination is a CLI usage error (exit 2 / usage envelope),
+    # matching how `assign` rejects its principal flags — caught before the backend
+    # is built. The core function repeats the check for direct (non-CLI) callers.
+    if not (read or create or update):
+        raise click.UsageError("pass at least one of --read / --create / --update.")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     with d365_errors(ctx):
         info = fieldsec_mod.add_permission(

@@ -109,13 +109,15 @@ class TestAddPermission:
         data = json.loads(result.output)["data"]
         assert data["fieldpermissionid"] == _NEW_PERM_ID
 
-    def test_no_grant_is_error_envelope(self, backend, monkeypatch):
+    def test_no_grant_is_usage_error(self, backend, monkeypatch):
+        # A missing-flag combination is a Click usage error (exit 2), not a
+        # backend D365Error — matching the CLI's flag-combination convention.
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker():
             result = CliRunner().invoke(cli, [
                 "--json", "fieldsec", "add-permission", _PROFILE_ID,
                 "account", "creditlimit"])
-        assert result.exit_code == 1
+        assert result.exit_code == 2
         assert json.loads(result.output)["ok"] is False
 
 
