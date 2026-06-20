@@ -2,8 +2,8 @@
 
 A claude.ai **routine** (research preview) that ships the oldest open
 `ready-for-agent` issue to a merge-ready PR via the **`cloud-ship` skill** (which
-composes `/ship`), then stops at the merge gate without merging. One issue per
-fire. Manage at https://claude.ai/code/routines or via `/schedule` in the CLI.
+composes the **`ship`** skill), then stops at the merge gate without merging. One
+issue per fire. Manage at https://claude.ai/code/routines or via `/schedule` in the CLI.
 
 ## Routine prompt (fixed — paste once; never re-paste on a behavior change)
 

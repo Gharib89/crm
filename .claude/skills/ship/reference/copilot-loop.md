@@ -73,10 +73,12 @@ now **3**.
 When the budget is spent, **triage any remaining items and proceed** to CI + the
 merge gate — do not re-request.
 
-**A post-ceiling fix does not reopen the budget.** If CI goes red after the budget
-is spent, or you push another fix, it earns a fresh round **only if it materially
-changed behavior** — and the **3-round hard ceiling still caps the total** (no
-fourth round). A lint / format / flake fix never earns a round.
+**A post-budget fix does not reopen the budget.** Once a class's rounds are spent,
+a later CI-red fix or extra push earns another round **only if the class still has
+budget left** — full lane only; `docs` and small are capped at **1**, so they get
+**none** (proceed on green) — **and** the fix **materially changed behavior**. A
+lint / format / flake fix never earns a round. The **3-round ceiling** is the
+absolute cap regardless: a full-lane change never exceeds it.
 
 ## What counts as "done reviewing"
 
