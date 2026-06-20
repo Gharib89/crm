@@ -4,10 +4,18 @@
 
 ## Export the current ribbon
 
+Export a single entity's composed ribbon, or the application-wide ribbon (commands
+not bound to any specific table):
+
 ```bash
-crm ribbon export cwx_ticket            # readable XML to stdout
+crm ribbon export cwx_ticket            # one table's ribbon — readable XML to stdout
 crm ribbon export cwx_ticket --output ribbon.xml
+crm ribbon export --application         # application-wide ribbon to stdout
+crm ribbon export --application --output app_ribbon.xml
 ```
+
+Pass `ENTITY` for one table's ribbon, or `--application` / `-a` for the app-wide
+ribbon. Passing both, or neither, is an error. Read-only.
 
 ## List custom buttons
 

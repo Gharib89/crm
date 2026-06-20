@@ -19,7 +19,7 @@ optimized for AI agents or shell scripting. This harness gives you:
   mutating command; `crm session audit` to review it
 - `--cache-metadata` for a persistent per-profile entity-definition cache
   (speeds up repeated one-shot agent calls; env: `CRM_CACHE_METADATA=1`)
-- `crm ribbon` to read and edit entity command-bar buttons (export / list / add-button / remove) without manual solution-XML editing
+- `crm ribbon` to read and edit entity command-bar buttons (export / list / add-button / remove) without manual solution-XML editing; `ribbon export --application` exports the application-wide ribbon
 - `crm solution layer-conflicts` to detect components shared by a managed and an unmanaged solution (unmanaged-layer conflicts) — works on-prem too, where XrmToolBox's layer explorer can't
 
 ## Documentation
@@ -399,7 +399,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
 | `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
-| `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / apply-upgrade (separate promote) / uninstall |
+| `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / missing-components (pre-import dependency check against the target org) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / apply-upgrade (separate promote) / uninstall |
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch`; `--mode upsert`/`--mode delete` resolve records by GUID (`--id-column`) or alternate key (`--key`); `data delete` submits a **server-side BulkDelete async job** for records matching a FetchXML query |
 | `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); set as app icons |
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml; add-field / remove-field / set-field to edit form layouts without manual XML |
@@ -432,7 +432,7 @@ one call. Write verbs new in 0.5.0:
 - `metadata keys <entity>` / `create-key <entity> --key-attributes col1,col2` / `delete-key <entity> <key>` — read, create, and drop alternate keys (the natural-key index that `entity upsert --key` / `data import --mode upsert --key` match on)
 - `metadata delete-entity <logical-name>` — drop a custom entity (gated)
 - `metadata delete-attribute <entity> <attribute>` / `delete-relationship <schema-name>` — drop a custom column or relationship (gated)
-- `metadata dependencies <target> [--kind entity|attribute|optionset|relationship] [--for delete|dependents]` — pre-delete dependency preview: returns `can_delete` + `blockers[]`; pass `--check-dependencies` on a `metadata delete-*` verb (delete-entity, delete-attribute, delete-relationship, delete-optionset) to fold this into the preview
+- `metadata dependencies <target> [--kind entity|attribute|optionset|relationship] [--for delete|dependents|required]` — pre-delete dependency preview: returns `can_delete` + `blockers[]`; `--for required` lists what the target itself depends on (`RetrieveRequiredComponents`); pass `--check-dependencies` on a `metadata delete-*` verb (delete-entity, delete-attribute, delete-relationship, delete-optionset) to fold this into the preview
 - `metadata export-spec <logical_name> [--with-views] [--with-relationships] [-o FILE]` — project a live entity into a `crm apply -f`–consumable desired-state spec (round-trip). Pure GETs; `-o` writes the bare YAML directly. Custom columns that cannot be represented (permission limits, unsupported formats) are reported in `meta.warnings` instead of silently dropped.
 - `metadata clone-entity <source> <new-schema-name>` — duplicate a custom entity (skeleton + opt-in `--with-forms` / `--with-views` / `--with-workflows` / `--with-charts`, or `--with-all`) purely over the Web API. The ribbon is not cloned (no API write path); N:N and parent-side relationships are not cloned.
 - `metadata status-add <entity> --state <stateCode> --label <text>` — add a `statuscode` option tied to a state (`InsertStatusValue`); `--value` is optional (server assigns the next value with publisher prefix if omitted)

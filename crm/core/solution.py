@@ -534,7 +534,7 @@ def retrieve_missing_components(
     result = as_dict(backend.get(path))
     if result.get("_dry_run"):
         return result
-    missing = result.get("MissingComponents") or []
+    missing: list[dict[str, Any]] = result.get("MissingComponents") or []
     return {"missing_components": missing, "count": len(missing)}
 
 

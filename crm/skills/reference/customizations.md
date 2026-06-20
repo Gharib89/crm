@@ -95,11 +95,19 @@ A button that runs a web resource needs that **web resource to already exist** �
 create it first (above).
 
 ```bash
-crm --json ribbon export account                 # read current RibbonDiffXml
+crm --json ribbon export account                 # one table's composed RibbonDiffXml
+crm --json ribbon export --application           # application-wide ribbon (no ENTITY)
 crm --json ribbon list account --solution cwx_crmworx
 crm --json ribbon add-button account --solution cwx_crmworx ...
 crm --json ribbon remove account --solution cwx_crmworx ...
 ```
+
+**`ribbon export` — `ENTITY` or `--application`, not both.** Pass `ENTITY` for a
+single table's ribbon, or `--application` / `-a` for the app-wide ribbon (the
+commands not bound to any specific table). Passing both, or neither, is an error.
+`--application` calls `RetrieveApplicationRibbon` (no parameters); the key in the
+response is `CompressedApplicationRibbonXml`, distinct from the entity path's
+`CompressedEntityXml`. Read-only.
 
 This is why a cloned entity's ribbon does not come across (see the clone caveats in
 `reference/metadata.md`) — there is no API write path to copy it.

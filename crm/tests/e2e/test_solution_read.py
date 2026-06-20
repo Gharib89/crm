@@ -104,6 +104,38 @@ def test_solution_validate_against_org_version_ok(cli, backend, ephemeral_soluti
                 if f["check"] == "package-version" and f["severity"] == "error"]
 
 
+@covers("solution missing-components")
+def test_solution_missing_components_self_exported(cli, backend, ephemeral_solution, tmp_path):
+    """Export the throwaway solution then check its missing components against the same
+    org. A self-exported zip is guaranteed to need nothing from the exporting org —
+    the result must be an empty list with ok=true and meta.count=0.
+    """
+    from crm.core import solution as sol_mod
+
+    zip_path = tmp_path / f"{ephemeral_solution}_mc.zip"
+    try:
+        sol_mod.export_solution(backend, ephemeral_solution, zip_path)
+    except Exception as exc:
+        pytest.skip(f"export failed, cannot check missing-components: {exc}")
+
+    result = cli(["--json", "solution", "missing-components", str(zip_path)])
+    assert result.returncode == 0, (
+        f"solution missing-components failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    assert isinstance(env["data"], list), (
+        f"expected data to be a list, got: {type(env['data'])}: {env}"
+    )
+    # A solution exported from this org has no missing dependencies on this org.
+    assert env["data"] == [], (
+        f"expected no missing components for a self-exported solution, got: {env['data']}"
+    )
+    assert env.get("meta", {}).get("count") == 0, (
+        f"expected meta.count=0, got: {env.get('meta')}"
+    )
+
+
 @covers("solution layer-conflicts")
 @pytest.mark.requires_cloud
 def test_solution_layer_conflicts_no_overlap(cli, backend, ephemeral_solution):
