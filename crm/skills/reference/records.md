@@ -551,7 +551,8 @@ crm --json action function RetrieveCurrentOrganization \
 (state change, journalled). Both run unbound by default and can bind to a
 collection or a single record (e.g. a function bound to a `systemusers` record).
 Pick `function` vs `invoke` by the operation's OData kind, not by whether it
-binds. Run `crm describe action` for the exact bind flags.
+binds. Run `crm describe action` for the exact bind flags. **Discover** what's
+callable with `crm metadata list-actions` / `crm metadata list-functions`.
 
 To pass a **record-reference** param to a function (e.g. `Target` on
 `RetrievePrincipalAccess`/`CalculateRollupField`), give the value as a JSON object

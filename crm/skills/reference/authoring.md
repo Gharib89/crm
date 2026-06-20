@@ -2,7 +2,10 @@
 
 Stand up tables, columns, option sets, and views — declaratively or imperatively.
 Commands: top-level `apply`, `scaffold table`, `view create`, the `metadata create-*`
-verbs, and the publish flow. Flags/choices: `crm describe apply`, `crm <group> --help`.
+and `update-*` verbs, and the publish flow. Flags/choices: `crm describe apply`,
+`crm <group> --help`. **To change existing schema:** re-apply the spec (idempotent —
+unchanged resources skip) or use the imperative `metadata update-attribute` /
+`update-entity` / `update-optionset` / `update-relationship` verbs.
 
 ## Declarative apply — `apply -f spec.yaml`
 

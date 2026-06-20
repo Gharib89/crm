@@ -51,8 +51,8 @@ one. Create exactly these ten items:
 - [ ] 1 · Understand — fetch issue, derive success, claim it, apply spec precedence
 - [ ] 2 · Implement — classify (docs/code/infra), then TDD per class
 - [ ] 3 · Integrated test — live-test only what you touched, on the reported target
-- [ ] 4 · Self-review — `review` skill on the diff, auto-triage findings
-- [ ] 5 · Local gate — mirror the full CI checks, all green
+- [ ] 4 · Docs-sync + self-review — sync docs first so the review covers them, then `review` skill on the diff, auto-triage findings
+- [ ] 5 · Local gate — mirror the full CI checks (covers the synced docs), all green
 - [ ] 6 · Open PR — ready (non-draft), Conventional-Commit title, reflect on the issue
 - [ ] 7 · Review-bot loop — only if the repo has a bot; drive to the ceiling
 - [ ] 8 · CI — resolve any base-branch conflict, then land the checks green
