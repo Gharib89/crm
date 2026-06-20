@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.8.1 (2026-06-20)
+
+### Bug Fixes
+
+- **solution**: Add help string to 'solution info' command
+  ([`468de62`](https://github.com/Gharib89/crm/commit/468de627d5b7164ea7fd4f1243a3c18a1769f3fd))
+
+### Documentation
+
+- Audit crm skill CLI coverage + slim router; add skill-authoring tooling
+  ([`b7fe5ec`](https://github.com/Gharib89/crm/commit/b7fe5ecac82a9a3d666770aaa6f01ca1a31f0168))
+
+
 ## v1.3.1 (2026-06-20)
 
 ### Bug Fixes
