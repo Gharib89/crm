@@ -46,8 +46,9 @@ environment's `D365_*` variables, and confirms the cloud org via WhoAmI.
 **2 · Pick the work item.** `gh` reads `GH_TOKEN` from the environment:
 
 ```
-NUM=$(gh issue list --repo Gharib89/crm --label ready-for-agent --state open \
-      --limit 200 --json number --jq 'sort_by(.number)[0].number // empty')
+NUM=$(gh issue list --repo Gharib89/crm \
+      --search "label:ready-for-agent state:open sort:created-asc" \
+      --limit 1 --json number --jq '.[0].number // empty')
 ```
 
 **Completion:** `NUM` holds the oldest open `ready-for-agent` issue. Empty →
