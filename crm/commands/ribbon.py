@@ -36,12 +36,13 @@ def ribbon_export(ctx: CLIContext, entity, application, output):
     Pass ENTITY for one table's ribbon, or --application for the app-wide ribbon
     (the commands not bound to a specific table). Read-only.
     """
+    # Invalid argument combinations are usage errors (exit 2, ADR 0001), not
+    # operational failures — raise UsageError so the CLI's --json usage envelope
+    # handles them consistently.
     if application and entity:
-        ctx.emit(False, error="pass either ENTITY or --application, not both")
-        return
+        raise click.UsageError("pass either ENTITY or --application, not both")
     if not application and not entity:
-        ctx.emit(False, error="ENTITY is required unless --application is given")
-        return
+        raise click.UsageError("ENTITY is required unless --application is given")
     label = {"application": True} if application else {"entity": entity}
     if ctx.dry_run:
         path = ("RetrieveApplicationRibbon()" if application
@@ -60,7 +61,11 @@ def ribbon_export(ctx: CLIContext, entity, application, output):
         return
     pretty = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
     if output:
-        Path(output).write_text(pretty, encoding="utf-8")
+        try:
+            Path(output).write_text(pretty, encoding="utf-8")
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output}: {exc}")
+            return
         ctx.emit(True, data={**label, "output": output})
     elif ctx.json_mode:
         ctx.emit(True, data={**label, "ribbonxml": pretty})

@@ -40,7 +40,8 @@ def test_ribbon_export_application_prints_xml(monkeypatch):
 def test_ribbon_export_requires_entity_or_application(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, ["--json", "ribbon", "export"])
-    assert res.exit_code != 0
+    # Invalid arg combination is a usage error (exit 2, ADR 0001).
+    assert res.exit_code == 2
     assert "application" in res.output.lower() or "entity" in res.output.lower()
 
 
@@ -48,7 +49,7 @@ def test_ribbon_export_rejects_entity_with_application(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(
         cli, ["--json", "ribbon", "export", "cwx_ticket", "--application"])
-    assert res.exit_code != 0
+    assert res.exit_code == 2
 
 
 def test_ribbon_export_json_no_output_emits_envelope(monkeypatch):

@@ -188,8 +188,12 @@ def solution_missing_components_cmd(ctx: CLIContext, solution_file):
     the connected org (the import target): an empty result means the org already
     has everything the solution requires. Read-only — run before importing.
     """
-    with d365_errors(ctx):
-        info = sol_mod.retrieve_missing_components(ctx.backend(), solution_file)
+    try:
+        with d365_errors(ctx):
+            info = sol_mod.retrieve_missing_components(ctx.backend(), solution_file)
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not read {solution_file}: {exc}")
+        return
     ctx.emit(True, data=info["missing_components"], meta={"count": info["count"]})
 
 
