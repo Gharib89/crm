@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.3.1 (2026-06-20)
+
+### Bug Fixes
+
+- Add --type rollup|calculated and --formula-file to metadata add-attribute
+  ([#443](https://github.com/Gharib89/crm/pull/443),
+  [`edcbd0d`](https://github.com/Gharib89/crm/commit/edcbd0d5ebf0d256a6b304163102f4515e7359f7))
+
+
 ## v1.0.0 (2026-06-18)
 
 - Initial Release
