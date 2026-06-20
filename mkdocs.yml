@@ -143,6 +143,7 @@ nav:
       - plugin: how-to/plugin.md
       - security: how-to/security.md
       - fieldsec: how-to/fieldsec.md
+      - dup: how-to/dup.md
       - async: how-to/async.md
       - session: how-to/session.md
       - completion: how-to/completion.md

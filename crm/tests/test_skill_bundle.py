@@ -13,7 +13,7 @@ EXPECTED_REFERENCES = {
     "customization-lifecycle.md",
     "records.md", "metadata.md", "authoring.md", "solutions.md",
     "customizations.md", "automation.md", "security.md", "fieldsec.md",
-    "troubleshooting.md", "feedback.md",
+    "dup.md", "troubleshooting.md", "feedback.md",
 }
 
 # Repo-only paths an end user (skill installed without the repo) would not have.
