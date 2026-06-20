@@ -32,6 +32,7 @@ def test_create_mapping_lifecycle(backend, ephemeral_entity, unique):
     # name attribute (string, default len 200 ≥ 20 satisfies the target-length
     # rule). Direction is fixed: account is the referenced (source) side.
     primary = meta_mod.entity_info(backend, ephemeral_entity).get("PrimaryNameAttribute")
+    assert isinstance(primary, str) and primary
     created = mp.create_mapping(
         backend, rel_schema, source_attr="accountnumber", target_attr=primary,
     )
