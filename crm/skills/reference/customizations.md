@@ -109,6 +109,44 @@ no progress ticks. The command has not hung; **do not retry** a slow call (a sec
 parallel attempt races the first import). Confirm the outcome afterward with
 `ribbon list`.
 
+## Charts — `chart` (savedqueryvisualization / userqueryvisualization)
+
+```bash
+# Inspect
+crm --json chart list contact                            # system charts for 'contact'
+crm --json chart list contact --user                    # user charts
+crm --json chart get <savedqueryvisualizationid>        # full record incl. XML
+crm --json chart get <userqueryvisualizationid> --user
+
+# Create from XML files (datadescription + presentationdescription)
+crm --json chart create contact \
+    --name "Contacts by Source" \
+    --data-description ./data.xml \
+    --presentation-description ./pres.xml \
+    --solution MySolution \
+    --no-publish
+
+# Create from a web-resource script (mutually exclusive with XML files)
+crm --json chart create contact \
+    --name "D3 Chart" \
+    --web-resource cwx_/scripts/contacts_chart.js
+
+# User-owned chart (userqueryvisualization)
+crm --json chart create contact --name "My Chart" \
+    --data-description ./data.xml --presentation-description ./pres.xml --user
+
+# Delete
+crm --json chart delete <savedqueryvisualizationid>
+crm --json chart delete <userqueryvisualizationid> --user
+```
+
+# Create modes are mutually exclusive:
+#   --data-description + --presentation-description  → XML-based chart
+#   --web-resource <name>                            → script visualization
+# --publish (default) runs PublishAllXml; --no-publish defers it.
+# --solution <unique_name> sets MSCRM.SolutionUniqueName on the write.
+# --dry-run returns {_dry_run: true, would_*} on writes; reads still run.
+
 ## Forms — `form` (entity main forms / systemform)
 
 ```bash

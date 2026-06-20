@@ -375,6 +375,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
     _lazy_commands = {
         "action": "crm.commands.action:action_group",
         "app": "crm.commands.app:app_group",
+        "chart": "crm.commands.chart:chart_group",
         "apply": "crm.commands.apply:apply_cmd",
         "async": "crm.commands.async_ops:async_group",
         "audit": "crm.commands.audit:audit_group",

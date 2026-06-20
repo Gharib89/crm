@@ -1,10 +1,9 @@
-"""Read and clone savedqueryvisualization (system chart) records.
+"""Read, clone, create, get, list, and delete system and user charts.
 
 Mirrors forms.py (read_entity_forms / clone_form_to_entity). A chart is read
 from the `savedqueryvisualizations` set, its stored XML entity-retargeted, and
 recreated against a new `primaryentitytypecode`. Chart retarget logic is
-isolated here so it is testable independently of the clone orchestrator, and so
-a future `crm chart` command can wrap it the way `view` wraps `views.py`.
+isolated here so it is testable independently of the clone orchestrator.
 
 A chart binds to its host entity via ``primaryentitytypecode`` — the
 logical-name STRING (not an ObjectTypeCode integer). It carries two XML columns:
@@ -15,6 +14,10 @@ logical-name STRING (not an ObjectTypeCode integer). It carries two XML columns:
 - ``presentationdescription`` is rendering XML (series/axes keyed by data
   *alias* such as ``aggregate_column``) and carries no entity reference. A
   defensive word-boundary swap is applied anyway; it is expected to be a no-op.
+
+Entity sets:
+  - ``savedqueryvisualizations`` — system (org-wide) charts
+  - ``userqueryvisualizations`` — user-owned charts
 """
 
 from __future__ import annotations
@@ -23,12 +26,37 @@ import re
 from typing import Any
 
 from crm.core.metadata import maybe_publish
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    odata_literal,
+)
+
+_SYSTEM_CHART_SET = "savedqueryvisualizations"
+_USER_CHART_SET = "userqueryvisualizations"
 
 _CHART_SELECT = (
     "savedqueryvisualizationid,name,primaryentitytypecode,"
     "datadescription,presentationdescription,description,isdefault"
 )
+_USER_CHART_SELECT = (
+    "userqueryvisualizationid,name,primaryentitytypecode,"
+    "datadescription,presentationdescription,description"
+)
+
+
+def _chart_set(user: bool) -> str:
+    return _USER_CHART_SET if user else _SYSTEM_CHART_SET
+
+
+def _chart_id_field(user: bool) -> str:
+    return "userqueryvisualizationid" if user else "savedqueryvisualizationid"
+
+
+def _chart_select(user: bool) -> str:
+    return _USER_CHART_SELECT if user else _CHART_SELECT
 
 
 def retarget_chartxml(xml: str, *, src_entity: str, dst_entity: str) -> str:
@@ -120,5 +148,160 @@ def clone_chart_to_entity(
     if savedqueryvisualizationid is None:
         out["chart_lookup_error"] = (
             f"Could not parse savedqueryvisualizationid from response: {entity_id_url!r}")
+    maybe_publish(backend, out, publish)
+    return out
+
+
+def list_entity_charts(
+    backend: D365Backend,
+    entity_logical_name: str,
+    *,
+    user: bool = False,
+) -> list[dict[str, Any]]:
+    """List an entity's charts.
+
+    Returns system charts by default (``savedqueryvisualizations``); pass
+    ``user=True`` for user charts (``userqueryvisualizations``).
+    """
+    entity_set = _chart_set(user)
+    id_field = _chart_id_field(user)
+    filt = f"primaryentitytypecode eq {odata_literal(entity_logical_name)}"
+    rows = backend.get_collection(
+        entity_set,
+        params={"$select": _chart_select(user), "$filter": filt},
+    )
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        rec: dict[str, Any] = {
+            id_field: row.get(id_field),
+            "name": row.get("name", ""),
+            "primaryentitytypecode": row.get("primaryentitytypecode"),
+            "datadescription": row.get("datadescription") or "",
+            "presentationdescription": row.get("presentationdescription") or "",
+            "description": row.get("description"),
+        }
+        if not user:
+            rec["isdefault"] = bool(row.get("isdefault", False))
+        result.append(rec)
+    return result
+
+
+def get_chart(
+    backend: D365Backend,
+    chart_id: str,
+    *,
+    user: bool = False,
+) -> dict[str, Any]:
+    """Fetch a single chart by ID.
+
+    Reads from ``savedqueryvisualizations`` (system) or
+    ``userqueryvisualizations`` (user) depending on ``user``.
+    """
+    entity_set = _chart_set(user)
+    id_field = _chart_id_field(user)
+    row = as_dict(
+        backend.get(f"{entity_set}({chart_id})",
+                    params={"$select": _chart_select(user)})
+    )
+    rec: dict[str, Any] = {
+        id_field: row.get(id_field),
+        "name": row.get("name", ""),
+        "primaryentitytypecode": row.get("primaryentitytypecode"),
+        "datadescription": row.get("datadescription") or "",
+        "presentationdescription": row.get("presentationdescription") or "",
+        "description": row.get("description"),
+    }
+    if not user:
+        rec["isdefault"] = bool(row.get("isdefault", False))
+    return rec
+
+
+def delete_chart(
+    backend: D365Backend,
+    chart_id: str,
+    *,
+    user: bool = False,
+) -> dict[str, Any]:
+    """Delete a chart by ID.
+
+    Dry-run returns ``{_dry_run, would_delete, <id_field>}``;
+    a real delete returns ``{deleted, <id_field>}``.
+    """
+    entity_set = _chart_set(user)
+    id_field = _chart_id_field(user)
+    result = backend.delete(f"{entity_set}({chart_id})")
+    if isinstance(result, dict) and result.get("_dry_run"):
+        return {"_dry_run": True, "would_delete": True, id_field: chart_id}
+    return {"deleted": True, id_field: chart_id}
+
+
+def create_chart(
+    backend: D365Backend,
+    *,
+    entity: str,
+    name: str,
+    data_description: str | None = None,
+    presentation_description: str | None = None,
+    web_resource: str | None = None,
+    user: bool = False,
+    solution: str | None = None,
+    publish: bool = False,
+    description: str | None = None,
+) -> dict[str, Any]:
+    """Create a system or user chart.
+
+    Pass either ``data_description`` + ``presentation_description`` (XML-based
+    chart from source control) **or** ``web_resource`` (name or GUID of a web
+    resource visualization) — the two paths are mutually exclusive.
+
+    ``user=True`` creates a ``userqueryvisualization``; the default creates a
+    ``savedqueryvisualization`` (org-wide system chart).
+    ``publish=True`` runs ``PublishAllXml`` after creation.
+    """
+    entity_set = _chart_set(user)
+    id_field = _chart_id_field(user)
+    body: dict[str, Any] = {
+        "name": name,
+        "primaryentitytypecode": entity,
+    }
+    if description is not None:
+        body["description"] = description
+
+    if web_resource is not None:
+        wrid = normalize_guid(web_resource)
+        if wrid is None:
+            wrid = backend.resolve_id_by_name(
+                "webresourceset",
+                filter_field="name",
+                id_field="webresourceid",
+                value=web_resource,
+            )
+            if not wrid:
+                raise D365Error(
+                    f"Web resource not found: {web_resource!r}",
+                    code="WebResourceNotFound",
+                )
+        body["webresourceid@odata.bind"] = f"/webresourceset({wrid})"
+    else:
+        body["datadescription"] = data_description or ""
+        body["presentationdescription"] = presentation_description or ""
+
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post(entity_set, json_body=body, extra_headers=headers))
+    if result.get("_dry_run"):
+        return result
+
+    entity_id_url = result.get("_entity_id_url") or ""
+    chart_id = result.get("_entity_id")
+    out: dict[str, Any] = {
+        "created": True,
+        "name": name,
+        id_field: chart_id,
+        "primaryentitytypecode": entity,
+    }
+    if chart_id is None:
+        out["chart_lookup_error"] = (
+            f"Could not parse {id_field} from response: {entity_id_url!r}"
+        )
     maybe_publish(backend, out, publish)
     return out

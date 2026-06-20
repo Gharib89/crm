@@ -42,6 +42,7 @@ a = Analysis(
         'crm.commands.audit',
         'crm.commands.batch',
         'crm.commands.completion',
+        'crm.commands.chart',
         'crm.commands.completion_registry',
         'crm.commands.connection',
         'crm.commands.data',
