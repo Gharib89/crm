@@ -118,7 +118,7 @@ def can_relate(
             f"{fn}({param}={odata_literal(entity)})" if param else fn
         )
         resp = as_dict(backend.get(path))
-        names = resp.get("EntityNames") or []
+        names = cast("list[str]", resp.get("EntityNames") or [])
         return {
             "entity": entity,
             "as": role,
