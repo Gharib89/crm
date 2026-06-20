@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.12.0 (2026-06-20)
+
+### Features
+
+- **metadata**: Hierarchical relationships, virtual entities, can-relate
+  ([#454](https://github.com/Gharib89/crm/pull/454),
+  [`99e2815`](https://github.com/Gharib89/crm/commit/99e28151bd654528219014cf825698b0930eab04))
+
+
 ## v1.11.0 (2026-06-20)
 
 ### Bug Fixes
