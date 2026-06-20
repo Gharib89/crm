@@ -1,9 +1,9 @@
-# Customizations — apps, web resources, ribbon, forms, charts, dashboards, themes, sitemap
+# Customizations — apps, web resources, ribbon, forms, charts, dashboards, themes, reports, sitemap
 
 UI-layer customization: model-driven apps and their sitemaps, web resources, entity
-command-bar (ribbon) buttons, entity forms, charts, dashboards, and application
-themes. Groups: `app`, `webresource`, `ribbon`, `form`, `chart`, `dashboard`,
-`theme`. Flags/choices: `crm <group> --help`.
+command-bar (ribbon) buttons, entity forms, charts, dashboards, application
+themes, and custom reports. Groups: `app`, `webresource`, `ribbon`, `form`, `chart`,
+`dashboard`, `theme`, `report`. Flags/choices: `crm <group> --help`.
 
 ## Model-driven apps — `app` (appmodule)
 
@@ -281,6 +281,45 @@ the row with `isdefaulttheme: true`) so you can re-`publish` it to roll back.
 (`would_create` / `would_update` / `would_publish`); a `--logo` name is resolved
 live first. There is no `theme delete` verb — drop a theme with
 `entity delete themes <id>`.
+
+## Reports — `report` (reports entity)
+
+Register custom reports headlessly without the Report Wizard. Two kinds:
+`create --body-file` uploads an SSRS RDL file; `create --url` registers an
+external link report. Verbs: `list`, `get`, `create`, `set-category`, `delete`.
+
+```bash
+crm --json report list                                 # all reports (summary cols)
+crm --json report get <id>                             # one report, body included
+crm --json report create --name "Pipeline" --body-file pipeline.rdl
+crm --json report create --name "Ext Dash" --url "https://example.com/dash"
+crm --json report set-category <id> --category sales
+crm --json report delete <id>
+```
+
+**`--org` makes a report org-wide by setting `ispersonal=false`** on the `reports`
+record — this is the Web API path for org-wide visibility. The deprecated SDK
+message `MakeAvailableToOrganizationReport` has no Web API binding and is never
+used. Without `--org`, reports are personal (`ispersonal=true`).
+
+**The CLI uploads RDL content verbatim** — it does not author or validate the
+XML. Dataverse online only accepts RDLs using the fetch data provider; on-prem
+v9.x uses the standard D365 data source. RDL authoring is out of scope.
+
+**Reports are solution-aware.** `create` and `set-category` honor `--solution` /
+`--require-solution` to scope the write to an unmanaged solution.
+
+**`set-category` creates a `reportcategory` record** (categorycode 1–4: sales,
+service, marketing, administrative). A report can belong to multiple areas.
+Capture the returned `reportcategoryid` to remove a category later:
+
+```bash
+crm --json report set-category <id> --category sales   # → data.reportcategoryid
+crm entity delete reportcategories <reportcategoryid> --yes
+```
+
+**`--dry-run`** previews `create` without writing — returns
+`{_dry_run, would_create: {entity_set, body}}`.
 
 ## Decommission — deleting UI components
 

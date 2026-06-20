@@ -150,7 +150,8 @@ def create_report(
                 "would_create": {"entity_set": _REPORT_SET, "body": payload}}
 
     headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post(_REPORT_SET, json_body=payload, extra_headers=headers))
+    result = as_dict(backend.post(
+        _REPORT_SET, json_body=payload, extra_headers=headers))
     report_id = result.get("_entity_id")
     out: dict[str, Any] = {"created": True, "name": name, _ID_FIELD: report_id}
     if report_id is None:
