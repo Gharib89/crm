@@ -60,6 +60,12 @@ E2E_SKIP: dict[str, str] = {
     "plugin unregister-assembly": "requires a registered plugin assembly to unregister; register-assembly is in E2E_SKIP (needs a prebuilt signed .dll)",
     "plugin unregister-step": "requires a registered plugin step to unregister; creating one needs a registered assembly (register-assembly is in E2E_SKIP)",
     "audit detail": "needs a pre-existing audit row to decode; the cloud test org has org-level auditing disabled (isauditenabled=false) and an empty audits table, and enabling org auditing + generating audited data is not safe/deterministic within e2e",
+    # The server rejects creating a fieldpermission unless the target attribute is
+    # field-secured (IsSecured=true + published) first — verified live: error
+    # 0x8004f508 "… is NOT secured …". Securing a standard attribute is heavy,
+    # org-stateful metadata setup with teardown risk; the happy path is covered by
+    # the wire-level unit tests in crm/tests/test_fieldsec.py.
+    "fieldsec add-permission": "creating a fieldpermission requires a field-secured attribute (IsSecured=true + publish) first; org-stateful metadata setup, covered by wire-level unit tests",
 }
 
 

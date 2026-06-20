@@ -405,6 +405,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `chart`      | System & user charts (savedqueryvisualization / userqueryvisualization): list / get / create / delete; author from datadescription + presentationdescription XML or a web-resource visualization, headlessly (no chart designer) |
 | `plugin`     | Register/update/unregister plug-in assemblies, webhook service endpoints, SDK message processing steps (bind to a plug-in type or a service endpoint), and step entity images |
 | `security`   | List and assign security roles to users or teams; show a user's effective privileges (incl. team-inherited); grant / revoke / list record sharing (POA) |
+| `fieldsec`   | Column-level (field) security: create field security profiles, grant `--read`/`--create`/`--update` column permissions, assign profiles to users or teams, list / get |
 | `workflow`   | List, activate/deactivate, delete, trigger, clone, export, import, and migration-assess (classic-workflow → cloud-flow readiness) D365 workflow definitions |
 | `sla`        | Activate an SLA and its backing workflows, with structured per-step compile-error reporting |
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |

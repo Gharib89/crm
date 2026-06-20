@@ -142,6 +142,7 @@ nav:
       - chart: how-to/chart.md
       - plugin: how-to/plugin.md
       - security: how-to/security.md
+      - fieldsec: how-to/fieldsec.md
       - async: how-to/async.md
       - session: how-to/session.md
       - completion: how-to/completion.md
