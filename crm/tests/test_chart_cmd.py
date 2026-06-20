@@ -80,6 +80,16 @@ class TestChartDelete:
         assert env["data"] == {"deleted": True, "savedqueryvisualizationid": cid}
 
 
+class TestReadFile:
+    def test_unreadable_path_raises_usage_error(self, tmp_path):
+        import click
+        import pytest
+        from crm.commands.chart import _read_file
+        # A directory can't be read as a file → OSError → clean UsageError.
+        with pytest.raises(click.UsageError):
+            _read_file(str(tmp_path))
+
+
 class TestChartCreate:
     def _post_mock(self, m, backend):
         m.post(_sys_url(backend), status_code=204,

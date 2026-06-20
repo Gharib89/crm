@@ -117,9 +117,11 @@ crm chart delete 1111aaaa-2222-bbbb-3333-cccccccccccc
 crm chart delete 1111aaaa-2222-bbbb-3333-cccccccccccc --user
 ```
 
-Under `--dry-run`, delete returns `{_dry_run: true, would_delete: true, <id>}`
-without issuing the `DELETE`. To remove a chart from a solution (rather than
-delete it), use `crm solution remove-component`.
+Under `--dry-run`, delete returns
+`{_dry_run: true, would_delete: true, savedqueryvisualizationid: <id>}` (or
+`userqueryvisualizationid` with `--user`) without issuing the `DELETE`. To remove
+a chart from a solution (rather than delete it), use
+`crm solution remove-component`.
 
 ## Relationship to `metadata clone-entity --with-charts`
 

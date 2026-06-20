@@ -71,8 +71,14 @@ def chart_delete(ctx: CLIContext, chart_id: str, user_owned: bool) -> None:
 def _read_file(path: str | None) -> str | None:
     if path is None:
         return None
-    with open(path, encoding="utf-8") as fh:
-        return fh.read()
+    # click.Path(exists=True, readable=True) validates at parse time, but a
+    # permission edge or a delete-after-check race can still fail the open —
+    # surface it as a clean usage error (mirrors _helpers.parsing._load_payload).
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError as exc:
+        raise click.UsageError(f"cannot read {path}: {exc}") from exc
 
 
 @chart_group.command("create")
