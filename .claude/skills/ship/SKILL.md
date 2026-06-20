@@ -220,8 +220,9 @@ convention.
 plus green CI is the review gate. Otherwise drive it to a ceiling — poll,
 auto-triage and fix valid comments (same auto-triage as phase 4, on the judgment tier),
 re-request later rounds via the project's mechanism, **3-round hard ceiling**.
-Scale to the change: a small/targeted PR needs **one** round, a `docs` change is
-capped at **one**. Mechanics and traps:
+Scale to the change: a **small-lane** change (the three-key test in *The small
+lane*) needs **one** round, a `docs` change is capped at **one**, everything else
+is **up to 3**. Mechanics and traps:
 **[reference/copilot-loop.md](reference/copilot-loop.md).**
 
 **8 · CI.** CI usually runs concurrently from PR-open, so phases 7 and 8 overlap.
