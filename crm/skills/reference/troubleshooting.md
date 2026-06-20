@@ -60,6 +60,7 @@ before guessing:
 
 ```bash
 crm --json connection doctor          # or the top-level alias: crm doctor
+crm --json connection test            # reachability: WhoAmI + reported API version
 crm --json connection whoami          # confirm the live target (check @odata.context host)
 crm --json connection status          # active profile + resolved config
 ```

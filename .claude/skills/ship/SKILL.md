@@ -102,8 +102,9 @@ integrated test no-ops by construction (nothing user-visible changed; nothing li
 to test). On top of that, two explicit cuts:
 
 - **Skip phase 4 self-review *iff* the repo has an auto-review bot** — its automatic
-  round-1 (phase 7) is the review gate. No bot → keep one phase-4 pass, else the
-  change gets no review.
+  round-1 (phase 7) is the review gate. No bot → keep the phase-4 self-review pass,
+  else the change gets no review. (Phase-4 docs-sync is a no-op here either way —
+  items 1–2 hold.)
 - **Local gate = the secret/security scan + the one regression test node** (run
   that node locally for red→green proof). Lean on CI for the rest of the suite,
   lint, and type-check — CI re-runs them, and a red CI on a small change is a cheap
@@ -173,34 +174,37 @@ the bug was reported against — **detail in
 [reference/implement.md](reference/implement.md).** A `docs` change has nothing to
 integration-test — skip to the local gate.
 
-**4 · Self-review.** Invoke the `review` skill against the diff (it runs its two
-axes on their own tiers — opus for code, sonnet for spec).
-**Auto-triage** each finding: harden rather than rip out capability, verify nits
-against the **pinned** dependency versions, reject known non-issues; fix the valid
-ones; record a one-line disposition per finding for the merge summary.
+**4 · Sync docs, then self-review.** Sync docs **before** reviewing, so the review
+reads the docs edits as part of the diff (the whole point of this ordering: a review
+run on a docs-less diff never checks the docs).
 
-**5 · Local gate.** *Precondition:* phase 3 passed **or** the class is `docs` — if
-neither holds, you skipped a verification; stop and go back.
-
-**Docs-sync gate (conditional) — run it first.** Fire **only if this change altered
-the documented surface or observable behavior** — added/removed/renamed a command,
+**Docs-sync (conditional) — do this first.** Fire **only if this change altered the
+documented surface or observable behavior** — added/removed/renamed a command,
 flag, option, or choice; changed a default, an output format, or an API/output
 contract; or changed a documented behavior. Then bring the project's documented
 artifacts (README, `docs/`, any shipped skill, tests/coverage) back in line **per
 the project's docs-sync rules** — using the project's docs-sync subagent at the
 mechanical tier if it has one, else by hand — and fold the edits into this change.
-Do this **before** the gate below, so the docs build, link-check, and tests cover
-its new files. **Skip** when nothing user-visible changed — an internal refactor
-(`infra`), a bugfix that restores already-documented behavior, test-only / build /
-tooling changes, or pure comments; when you skip, say so in one line at the merge
-gate.
+**Skip** when nothing user-visible changed — an internal refactor (`infra`), a
+bugfix that restores already-documented behavior, test-only / build / tooling
+changes, or pure comments; when you skip, say so in one line at the merge gate.
 
-Then run the project's full verification green before opening the PR, **mirroring
-the checks CI actually runs** (per project instructions) — not a fixed triad:
-tests, lint, type-check, docs build, **and any secret/security scan the repo gates
-on** (cheap to pre-empt locally, expensive to discover after the PR is open). If you
-can't run a check locally, at least *anticipate* it. **Small lane:** this gate is
-the secret scan + the proving test only (suite via CI) — see *The small lane*.
+**Self-review.** Invoke the `review` skill against the diff — now including the
+docs-sync edits — (it runs its two axes on their own tiers — opus for code, sonnet
+for spec). **Auto-triage** each finding: harden rather than rip out capability,
+verify nits against the **pinned** dependency versions, reject known non-issues; fix
+the valid ones; record a one-line disposition per finding for the merge summary.
+
+**5 · Local gate.** *Precondition:* phase 3 passed **or** the class is `docs` — if
+neither holds, you skipped a verification; stop and go back.
+
+Run the project's full verification green before opening the PR, **mirroring the
+checks CI actually runs** (per project instructions) — not a fixed triad: tests,
+lint, type-check, docs build (which now covers the phase-4 docs-sync edits), **and
+any secret/security scan the repo gates on** (cheap to pre-empt locally, expensive
+to discover after the PR is open). If you can't run a check locally, at least
+*anticipate* it. **Small lane:** this gate is the secret scan + the proving test
+only (suite via CI) — see *The small lane*.
 
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
 project's automated review. Title it as a Conventional-Commit subject derived from

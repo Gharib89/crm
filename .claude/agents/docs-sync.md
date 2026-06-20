@@ -34,9 +34,9 @@ For every changed CLI command / flag / choice / default / behavior, verify each 
 
 ## Updating the skill
 
-When `crm/skills/` needs changes, **invoke the `write-a-skill` skill** (via the Skill tool) and follow its process verbatim — it is the single source of truth for skill structure, progressive disclosure, and the description-writing rules. Do not re-derive your own skill methodology.
+When `crm/skills/` needs changes, **invoke the `writing-great-skills` skill** (via the Skill tool) and follow its principles — it is the single source of truth for skill structure, progressive disclosure, and the description-writing rules. Do not re-derive your own skill methodology.
 
-Then layer these **crm-specific constraints** on top of write-a-skill's generic guidance (they override on conflict):
+Then layer these **crm-specific constraints** on top of that generic guidance (they override on conflict):
 
 - **Self-contained.** The skill ships to users who have only the skill, **not the repo**. Never link a shipped skill file to a repo path (`docs/**`, `CONTEXT.md`, `README.md`) — inline what's needed, or put it in a sibling `reference/*.md`.
 - **Don't restate the CLI.** The skill states only what `crm describe` / `--help` **cannot**: workflows, gotchas, the JSON contract. **Never** restate flags, choices, or defaults — those live in `--help` and drift.

@@ -45,6 +45,7 @@ crm --json solution remove-component --solution CRMWorx --type 61 --id <guid> --
 
 ```bash
 crm solution list --unmanaged
+crm solution info MyCustomSolution            # inspect one solution by unique name
 crm solution export MyCustomSolution -o /tmp/snap.zip
 # returns {"output": "/tmp/snap.zip", "bytes": 123456, "managed": false, ...}
 ```

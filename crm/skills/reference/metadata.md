@@ -65,6 +65,7 @@ crm --json metadata picklist account statecode       # State
 crm --json metadata picklist account statuscode      # Status
 # data: raw {"OptionSet": {"Options": [{"Value": 1, "Label": {"UserLocalizedLabel": {"Label": "Active"}}}, ...]}}
 # meta.options: flattened [{"value": 1, "label": "Active"}, ...] — same for `metadata get-optionset <name>`
+# discover which global option sets exist: crm --json metadata list-optionsets
 ```
 
 `meta.options` (JSON mode only) flattens the nested labels to `[{value, label}]` so

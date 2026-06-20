@@ -20,65 +20,6 @@ live D365 server is a hard runtime dependency.
 - Pull bulk datasets to CSV/JSON, or import CSV/JSONL records in bulk.
 - Anything you'd otherwise script against the SOAP Organization Service.
 
-## Install
-
-The prebuilt `crm` binary bundles CPython and every dependency — no Python install
-needed. One line per host:
-
-**Windows (PowerShell):**
-
-```powershell
-irm https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.ps1 | iex
-```
-
-**Linux:**
-
-```bash
-curl -fsSL https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev/install.sh | sh
-```
-
-Open a new shell so PATH updates, then verify with `crm --version`.
-
-## Configure
-
-The CLI authenticates with **NTLM (Windows Integrated)** for on-prem, or
-**OAuth 2.0 client-credentials** for Dataverse online. Run **`crm profile add`**
-once to create a connection profile — it infers the auth scheme from the URL
-(`*.dynamics.com` → OAuth, anything else → NTLM), prompts for what that scheme
-needs, stores the secret, verifies with WhoAmI, and activates the profile.
-
-```bash
-crm profile add          # interactive wizard (on a terminal)
-```
-
-Or drive it non-interactively for scripting/CI:
-
-```bash
-# On-prem (NTLM)
-crm profile add --url https://crm.contoso.local/contoso \
-  --username alice --domain CONTOSO --password '...' --name onprem
-
-# Dataverse online (OAuth) — app registration instead of user/pass/domain
-crm profile add --url https://contoso.crm.dynamics.com \
-  --tenant-id <aad-tenant> --client-id <app-id> --client-secret '<secret>' --name cloud
-```
-
-The OAuth scope (`https://<host>/.default`) and authority
-(`https://login.microsoftonline.com/<tenant>`) are derived automatically; public
-cloud only. The bearer token is cached at `~/.crm/msal_token_cache.json` (`0600`).
-The app registration needs an **application user** with a security role in Dynamics.
-
-**No `.env`, no credential env vars.** The CLI reads credentials and connection
-config ONLY from a saved profile (or a per-run `--password`). There is no `.env`
-autoload and no `D365_*` / `CRM_*` environment-variable reading. The one retained
-env knob is `CRM_HOME` (state-directory override; default `~/.crm/`).
-
-Switch or inspect profiles with `crm profile use [name]` (no name → interactive
-picker; `--none` clears the active profile) and `crm profile list` (marks the
-active one). On a fresh machine, any connection command with no profile drops
-into `crm profile add` automatically on a terminal (under `--json`/no-TTY it
-errors cleanly telling you to run `crm profile add`).
-
 ## On-prem vs cloud
 
 Same Dataverse Web API; **only auth + API version differ** — the same commands run
@@ -90,10 +31,6 @@ against both targets.
 | API version | **v9.1 max** (`v9.2` → HTTP 501) | `v9.2` |
 | `CreateMultiple` / `UpdateMultiple` / `DeleteMultiple` | not available | available |
 | Solution import (sync + `ImportSolutionAsync` / `StageSolution`) | available | available |
-
-Profiles are explicit — there is no env-var override path. `crm profile list`
-shows the active profile and its target URL; `crm --json connection whoami`
-confirms the live host (check the `@odata.context`) before any mutation.
 
 ## Agent contract — JSON mode
 
@@ -177,8 +114,6 @@ non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit
 - **NTLM (on-prem) or OAuth client-credentials (online).** IFD/Claims, certificate
   credentials, and other OAuth flows (device-code, interactive, ROPC) are out of
   scope; OAuth targets the public cloud only.
-- **D365 CE on-prem 9.x or Dataverse online.** Same Web API; only auth differs.
-- **Real server required.** No local mocking; a live D365 server must be reachable.
 - **Secrets are saved by default.** `crm profile add` / `crm profile set-password`
   store the secret in the OS keyring, or a `0600` plaintext field in the profile
   file when the keyring is unavailable (WSL/headless) or `--store-password-plaintext`
@@ -186,28 +121,28 @@ non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit
   and the OAuth client secret. `crm profile delete-password` removes it. Resolution:
   `--password` (per-run override) > stored secret > TTY prompt. No env-var fallback.
 
-## Command discovery
+## Command discovery & where to look
 
 For exact flags, choices, and defaults, **never guess** — interrogate the CLI:
 
 - `crm describe [group]` — machine-readable catalogue of every command, option, and
   choice (no connection needed).
 - `crm <group> --help` — per-command options.
-- `crm --json connection whoami` — confirm the live target before any mutation.
+- `crm --json connection whoami` — confirm the live target (check the
+  `@odata.context`) before any mutation.
 
-Verb router: to **list or query records** use `crm query odata` (the `entity` group
-is single-record CRUD only — there is no `entity list` or `entity query`); to
-**browse metadata** use `crm metadata entities` / `crm metadata attributes` /
+The skill states only what those cannot: workflows, gotchas, and the JSON contract.
+
+**Verb router:** to **list or query records** use `crm query odata` (the `entity`
+group is single-record CRUD only — no `entity list` / `entity query`); to **browse
+metadata** use `crm metadata entities` / `crm metadata attributes` /
 `crm metadata list-*`.
 
-## Where to look
-
-For exact flags, choices, and defaults, run `crm describe <group>` or
-`crm <group> --help` — **never guess a flag.** The skill states only what those
-cannot: workflows, gotchas, and the JSON contract. For per-domain detail:
+For per-domain detail:
 
 | Working on… | Read |
 |---|---|
+| first-time setup: install the `crm` binary, create/switch a connection profile (NTLM or OAuth, secret storage), `--json`/no-TTY behavior | `reference/setup.md` |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, bulk import/export, ad-hoc `action` | `reference/records.md` |
 | metadata: browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache | `reference/metadata.md` |

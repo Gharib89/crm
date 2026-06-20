@@ -34,6 +34,10 @@ crm skill install --target claude --force
 
 ## When the CLI changes
 
+Use the **`writing-great-skills`** skill (`.claude/skills/writing-great-skills/`) as
+the authority for skill structure, progressive disclosure, and description-writing
+whenever you edit the skill — the two crm-specific rules above override it on conflict.
+
 After adding or changing a command, update the relevant `crm/skills/reference/*.md`
 (workflows and gotchas — not flag *definitions* already in `--help`; flags appear in examples) and the SKILL.md map if a new group appeared,
 then reinstall with `--force`. To detect drift against an install:
