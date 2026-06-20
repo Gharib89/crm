@@ -463,6 +463,21 @@ class TestSlaAddKpiCommand:
         assert captured["applicable_when"] == _FETCH
         assert captured["success_criteria"] == _SUCCESS
 
+    def test_unreadable_condition_file_is_clean_usage_error(self, monkeypatch, tmp_path):
+        """A non-UTF-8 condition file surfaces a clean usage error, not a raw
+        decode traceback (which would break the --json envelope)."""
+        _seed_profile(tmp_path, monkeypatch)
+        bad = tmp_path / "bad.xml"
+        bad.write_bytes(b"\xff\xfe not utf-8")
+        from crm.cli import cli
+        result = CliRunner().invoke(cli, [
+            "--json", "--profile", "t", "sla", "add-kpi",
+            "--sla", _SLA_ID, "--kpi", "k", "--applicable-when", _FETCH,
+            "--success-criteria-file", str(bad)])
+        assert result.exit_code != 0
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+        assert "cannot read --success-criteria-file" in result.output
+
     def test_missing_applicable_when_is_usage_error(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.cli import cli

@@ -31,7 +31,12 @@ def _inline_or_file(inline: str | None, file: str | None, flag: str) -> str:
     if inline:
         return inline
     if file:
-        return Path(file).read_text(encoding="utf-8")
+        # Surface an unreadable / non-UTF-8 file as a clean CLI error (mirrors
+        # _load_payload), not a raw traceback that would break the --json envelope.
+        try:
+            return Path(file).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise click.UsageError(f"cannot read {flag}-file: {exc}") from exc
     raise click.UsageError(f"{flag} (or {flag}-file) is required.")
 
 
