@@ -10,6 +10,8 @@ from crm.core import metadata_attrs as ma_mod
 from crm.core import metadata_cache as mc_mod
 from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
+from crm.core import status_meta as sm_mod
+from crm.core import mappings as mp_mod
 from crm.core import relationships as rel_mod
 from crm.core import dependencies as dep_mod
 from crm.core import export_spec as export_spec_mod
@@ -1132,6 +1134,89 @@ def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solu
                                        check_dependencies=check_dependencies)
     _emit_with_warning(ctx, info, warning)
     _journal(ctx, name, info, solution=solution)
+
+
+@metadata_group.command("status-add")
+@click.argument("entity")
+@click.option("--state", "state_code", type=int, required=True,
+              help="statecode value the new status belongs to (e.g. 0 = Active).")
+@click.option("--label", "label_text", required=True, help="Status option label.")
+@click.option("--value", type=int, default=None,
+              help="Explicit statuscode value. Omit to let the server assign one.")
+@click.option("--description", default=None)
+@_solution_option
+@_publish_option
+@pass_ctx
+def metadata_status_add(ctx: CLIContext, entity, state_code, label_text, value,
+                        description, solution, require_solution, publish):
+    """Add a statuscode option tied to a state (InsertStatusValue)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = sm_mod.add_status_value(
+            ctx.backend(), entity, state_code=state_code, label_text=label_text,
+            value=value, description=description, publish=publish, solution=solution,
+        )
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, entity, info, solution=solution)
+
+
+@metadata_group.command("state-relabel")
+@click.argument("entity")
+@click.option("--value", type=int, required=True,
+              help="statecode value to relabel (e.g. 1 = Inactive).")
+@click.option("--label", "label_text", required=True, help="New state label.")
+@click.option("--description", default=None)
+@click.option("--merge-labels/--no-merge-labels", default=False,
+              help="Preserve labels in untouched languages (MergeLabels).")
+@_solution_option
+@_publish_option
+@pass_ctx
+def metadata_state_relabel(ctx: CLIContext, entity, value, label_text, description,
+                           merge_labels, solution, require_solution, publish):
+    """Relabel a statecode state option (UpdateStateValue)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = sm_mod.relabel_state_value(
+            ctx.backend(), entity, value=value, label_text=label_text,
+            description=description, merge_labels=merge_labels,
+            publish=publish, solution=solution,
+        )
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, entity, info, solution=solution)
+
+
+@metadata_group.command("create-mapping")
+@click.argument("relationship")
+@click.option("--from", "source_attr", default=None,
+              help="Source (parent) attribute logical name.")
+@click.option("--to", "target_attr", default=None,
+              help="Target (child) attribute logical name.")
+@click.option("--auto", is_flag=True, default=False,
+              help="Bulk-generate likely mappings via AutoMapEntity (replaces "
+                   "any existing maps for the pair).")
+@_solution_option
+@pass_ctx
+def metadata_create_mapping(ctx: CLIContext, relationship, source_attr, target_attr,
+                            auto, solution, require_solution):
+    """Create a field mapping on a 1:N relationship, or --auto generate them."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    if auto:
+        if source_attr or target_attr:
+            raise click.UsageError("--auto cannot be combined with --from/--to.")
+        with d365_errors(ctx):
+            info = mp_mod.auto_map(ctx.backend(), relationship, solution=solution)
+    else:
+        if not (source_attr and target_attr):
+            raise click.UsageError("pass both --from and --to, or use --auto.")
+        with d365_errors(ctx):
+            info = mp_mod.create_mapping(
+                ctx.backend(), relationship, source_attr=source_attr,
+                target_attr=target_attr, solution=solution,
+            )
+    _emit_with_warning(ctx, info, warning)
+    _journal(ctx, relationship, info, solution=solution)
 
 
 from crm.core.metadata import list_actions, list_functions  # noqa: E402

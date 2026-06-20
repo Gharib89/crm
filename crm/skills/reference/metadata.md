@@ -263,6 +263,80 @@ The base `--kind` still picks the data type; the server enforces which base
 types support rollup vs calculated and rejects an unsupported pairing. The CLI
 only rejects `--type rollup`/`calculated` on `--kind lookup`/`customer` up front.
 
+## Status/state option model writes
+
+`metadata status-add` and `metadata state-relabel` modify the `statuscode` /
+`statecode` option sets on an entity. Two non-obvious points:
+
+- **Look up the statecode integer first.** `--state` (on `status-add`) and `--value`
+  (on `state-relabel`) take the raw integer, not a label. Confirm the integer before
+  writing:
+
+  ```bash
+  crm --json metadata picklist <entity> statecode
+  # meta.options: [{value: 0, label: "Active"}, {value: 1, label: "Inactive"}]
+  ```
+
+- **`--merge-labels` on `state-relabel`.** Without it the server replaces all
+  language labels, wiping translated labels you haven't touched. Pass `--merge-labels`
+  when the org has more than one language installed to preserve non-default-language
+  labels.
+
+- **Status transitions are app-authored only.** `StatusOptionMetadata.TransitionData`
+  and `EnforceStateTransitions` cannot be written over the Dataverse Web API. A
+  PUT to the attribute definition returns 204 but silently drops option-level data;
+  no Web API action accepts `TransitionData`; `EnforceStateTransitions` is read-only
+  over the API. There is no CLI verb for this — use the Power Apps designer or
+  solution XML.
+
+## Field mappings (`metadata create-mapping`)
+
+Field mappings copy field values from a parent record onto a child created in its
+context. The direction rule and the `--auto` destructive gotcha are the two things
+`--help` cannot tell you:
+
+**Direction is fixed — parent entity is always the source.** The 1:N relationship's
+`ReferencedEntity` (the "1"/parent side) is the map *source*; the `ReferencingEntity`
+(the "N"/child side) is the *target*. You cannot flip this. Pass the attribute logical
+names accordingly: `--from <parent-attr> --to <child-attr>`.
+
+**Type/length compatibility.** The source and target attributes must be the same type.
+For string-type attributes, the target's `MaxLength` must be at least as large as the
+source's `MaxLength` — the server rejects a narrower target.
+
+**`--auto` OVERWRITES existing maps.** `AutoMapEntity` replaces all `attributemap`
+rows for the entity pair in one call. Any maps you created manually are gone. Use it
+for initial bulk setup; for additive changes use `--from`/`--to` on individual calls.
+
+**JSON shape — single mapping:**
+
+```json
+{
+  "created": true,
+  "relationship": "<schema-name>",
+  "source_entity": "<referenced entity>",
+  "target_entity": "<referencing entity>",
+  "source_attribute": "<attr>",
+  "target_attribute": "<attr>",
+  "entity_map_id": "<guid>",
+  "attribute_map_id": "<guid>",
+  "solution": "<name or null>"
+}
+```
+
+**JSON shape — `--auto`:**
+
+```json
+{
+  "auto_mapped": true,
+  "relationship": "<schema-name>",
+  "source_entity": "<referenced entity>",
+  "target_entity": "<referencing entity>",
+  "entity_map_id": "<guid>",
+  "solution": "<name or null>"
+}
+```
+
 ## Inspect the server's entity sets
 
 ```bash
