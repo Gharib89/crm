@@ -64,6 +64,7 @@ def solution_list(ctx: CLIContext, managed):
 @click.argument("unique_name")
 @pass_ctx
 def solution_info_cmd(ctx: CLIContext, unique_name):
+    """Show details for one solution (version, managed state, publisher) by unique name."""
     with d365_errors(ctx):
         info = sol_mod.solution_info(ctx.backend(), unique_name)
     ctx.emit(True, data=info)
