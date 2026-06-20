@@ -372,3 +372,7 @@ class TestCheck:
     def test_empty_record_raises(self, backend):
         with pytest.raises(D365Error):
             dup.check(backend, entity="account", record={})
+
+    def test_non_positive_top_raises(self, backend):
+        with pytest.raises(D365Error):
+            dup.check(backend, entity="account", record={"name": "X"}, top=0)

@@ -356,6 +356,8 @@ def check(
         raise D365Error("entity is required.")
     if not record:
         raise D365Error("record is required (the candidate to check).")
+    if top < 1:
+        raise D365Error("top must be >= 1 (it is the RetrieveDuplicates page size).")
     match = matching_entity or entity
     # The @odata.type cast must match ENTITY and win over any caller-supplied
     # "@odata.type" in the payload, so set it last (after spreading the record).
