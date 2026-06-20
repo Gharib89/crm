@@ -48,6 +48,10 @@ _USER_CHART_SELECT = (
     "userqueryvisualizationid,name,primaryentitytypecode,"
     "datadescription,presentationdescription,description"
 )
+# Lighter selects for `list`, which projects to list columns only and never
+# returns the (potentially large) datadescription/presentationdescription XML.
+_CHART_LIST_SELECT = "savedqueryvisualizationid,name,primaryentitytypecode,isdefault"
+_USER_CHART_LIST_SELECT = "userqueryvisualizationid,name,primaryentitytypecode"
 
 
 def _chart_set(user: bool) -> str:
@@ -62,6 +66,19 @@ def _chart_select(user: bool) -> str:
     return _USER_CHART_SELECT if user else _CHART_SELECT
 
 
+def _chart_list_select(user: bool) -> str:
+    return _USER_CHART_LIST_SELECT if user else _CHART_LIST_SELECT
+
+
+def _normalize_chart_id(chart_id: str) -> str:
+    """Strip braces and validate *chart_id* as a GUID (raises on a bad id),
+    matching the id discipline of the other by-id core verbs."""
+    rid = normalize_guid(chart_id)
+    if rid is None:
+        raise D365Error(f"Invalid chart id (expected GUID): {chart_id!r}")
+    return rid
+
+
 def _project_chart(row: dict[str, Any], *, user: bool) -> dict[str, Any]:
     """Project a raw chart row into the CLI-owned dict shape (id field varies by
     target; ``isdefault`` is system-only)."""
@@ -73,6 +90,19 @@ def _project_chart(row: dict[str, Any], *, user: bool) -> dict[str, Any]:
         "datadescription": row.get("datadescription") or "",
         "presentationdescription": row.get("presentationdescription") or "",
         "description": row.get("description"),
+    }
+    if not user:
+        rec["isdefault"] = bool(row.get("isdefault", False))
+    return rec
+
+
+def _project_chart_summary(row: dict[str, Any], *, user: bool) -> dict[str, Any]:
+    """Project a chart row into list columns only (no XML)."""
+    id_field = _chart_id_field(user)
+    rec: dict[str, Any] = {
+        id_field: row.get(id_field),
+        "name": row.get("name", ""),
+        "primaryentitytypecode": row.get("primaryentitytypecode"),
     }
     if not user:
         rec["isdefault"] = bool(row.get("isdefault", False))
@@ -178,7 +208,9 @@ def list_entity_charts(
     *,
     user: bool = False,
 ) -> list[dict[str, Any]]:
-    """List an entity's charts.
+    """List an entity's charts as list-column summaries (id, name,
+    primaryentitytypecode, and isdefault for system charts) — the XML columns
+    are not fetched; use :func:`get_chart` for a chart's XML.
 
     System charts (``savedqueryvisualizations``) by default; ``user=True`` lists
     user charts (``userqueryvisualizations``).
@@ -186,9 +218,9 @@ def list_entity_charts(
     filt = f"primaryentitytypecode eq {odata_literal(entity_logical_name)}"
     rows = backend.get_collection(
         _chart_set(user),
-        params={"$select": _chart_select(user), "$filter": filt},
+        params={"$select": _chart_list_select(user), "$filter": filt},
     )
-    return [_project_chart(row, user=user) for row in rows]
+    return [_project_chart_summary(row, user=user) for row in rows]
 
 
 def get_chart(
@@ -198,6 +230,7 @@ def get_chart(
     user: bool = False,
 ) -> dict[str, Any]:
     """Fetch a single chart by id (system by default; ``user=True`` for user)."""
+    chart_id = _normalize_chart_id(chart_id)
     row = as_dict(backend.get(
         f"{_chart_set(user)}({chart_id})",
         params={"$select": _chart_select(user)},
@@ -217,6 +250,7 @@ def delete_chart(
     returns ``{deleted, <id_field>}``.
     """
     id_field = _chart_id_field(user)
+    chart_id = _normalize_chart_id(chart_id)
     result = backend.delete(f"{_chart_set(user)}({chart_id})")
     if isinstance(result, dict) and result.get("_dry_run"):
         return {"_dry_run": True, "would_delete": True, id_field: chart_id}

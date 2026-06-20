@@ -40,7 +40,11 @@ class TestChartList:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
-        assert env["data"][0]["savedqueryvisualizationid"] == _CHART["savedqueryvisualizationid"]
+        row = env["data"][0]
+        assert row["savedqueryvisualizationid"] == _CHART["savedqueryvisualizationid"]
+        # list returns list columns only — XML is fetched via `chart get`
+        assert "datadescription" not in row
+        assert "presentationdescription" not in row
 
     def test_list_user_charts_hits_userset(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
@@ -85,9 +89,9 @@ class TestChartCreate:
     def test_create_xml_mode(self, backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, backend)
         dd = tmp_path / "data.xml"
-        dd.write_text("<datadefinition/>")
+        dd.write_text("<datadefinition/>", encoding="utf-8")
         pd = tmp_path / "pres.xml"
-        pd.write_text("<Chart/>")
+        pd.write_text("<Chart/>", encoding="utf-8")
         with rm_module.Mocker() as m:
             self._post_mock(m, backend)
             result = CliRunner().invoke(cli, [
@@ -112,9 +116,9 @@ class TestChartCreate:
     def test_create_rejects_both_modes(self, backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, backend)
         dd = tmp_path / "data.xml"
-        dd.write_text("<datadefinition/>")
+        dd.write_text("<datadefinition/>", encoding="utf-8")
         pd = tmp_path / "pres.xml"
-        pd.write_text("<Chart/>")
+        pd.write_text("<Chart/>", encoding="utf-8")
         result = CliRunner().invoke(cli, [
             "--json", "chart", "create", "new_project", "--name", "X",
             "--data-description", str(dd), "--presentation-description", str(pd),
@@ -125,7 +129,7 @@ class TestChartCreate:
     def test_create_xml_mode_requires_both_files(self, backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, backend)
         dd = tmp_path / "data.xml"
-        dd.write_text("<datadefinition/>")
+        dd.write_text("<datadefinition/>", encoding="utf-8")
         result = CliRunner().invoke(cli, [
             "--json", "chart", "create", "new_project", "--name", "X",
             "--data-description", str(dd), "--no-publish"])
@@ -150,9 +154,9 @@ class TestChartCreate:
         # the POST and returns the {_dry_run, would_create} preview.
         _use_backend(monkeypatch, dry_backend)
         dd = tmp_path / "data.xml"
-        dd.write_text("<datadefinition/>")
+        dd.write_text("<datadefinition/>", encoding="utf-8")
         pd = tmp_path / "pres.xml"
-        pd.write_text("<Chart/>")
+        pd.write_text("<Chart/>", encoding="utf-8")
         result = CliRunner().invoke(cli, [
             "--json", "chart", "create", "new_project",
             "--name", "By Priority",

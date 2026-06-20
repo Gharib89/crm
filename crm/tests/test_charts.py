@@ -181,6 +181,13 @@ class TestGetChart:
         assert out["userqueryvisualizationid"] == cid
         assert "isdefault" not in out
 
+    def test_rejects_non_guid_id(self, backend):
+        from crm.core import charts
+        from crm.utils.d365_backend import D365Error
+        import pytest
+        with pytest.raises(D365Error):
+            charts.get_chart(backend, "not-a-guid")
+
 
 class TestDeleteChart:
     def test_deletes_system_chart(self, backend):
@@ -205,6 +212,13 @@ class TestDeleteChart:
         out = charts.delete_chart(dry_backend, cid)
         assert out == {"_dry_run": True, "would_delete": True,
                        "savedqueryvisualizationid": cid}
+
+    def test_rejects_non_guid_id(self, backend):
+        from crm.core import charts
+        from crm.utils.d365_backend import D365Error
+        import pytest
+        with pytest.raises(D365Error):
+            charts.delete_chart(backend, "not-a-guid")
 
 
 class TestCreateChart:

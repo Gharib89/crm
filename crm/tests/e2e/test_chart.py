@@ -36,9 +36,9 @@ _PRES_XML = (
 
 def _write_xml(tmp_path):
     dd = tmp_path / "data.xml"
-    dd.write_text(_DATA_XML)
+    dd.write_text(_DATA_XML, encoding="utf-8")
     pd = tmp_path / "pres.xml"
-    pd.write_text(_PRES_XML)
+    pd.write_text(_PRES_XML, encoding="utf-8")
     return str(dd), str(pd)
 
 

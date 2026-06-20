@@ -30,25 +30,18 @@ def chart_group() -> None:
 @pass_ctx
 def chart_list(ctx: CLIContext, entity: str, user_owned: bool) -> None:
     """List charts for ENTITY (system charts by default; --user for user charts)."""
+    # list_entity_charts returns list-column summaries only (no datadescription/
+    # presentationdescription XML) — use `chart get <id>` for a chart's XML.
     with d365_errors(ctx):
         charts = charts_mod.list_entity_charts(ctx.backend(), entity, user=user_owned)
     id_field = "userqueryvisualizationid" if user_owned else "savedqueryvisualizationid"
-    # Project to the list-oriented fields only — list_entity_charts also returns
-    # datadescription/presentationdescription (potentially large), which would
-    # bloat --json output and surprise consumers expecting list columns. Use
-    # `chart get <id>` to fetch a single chart's XML (mirrors form/view list).
-    listed = [
-        {"name": c.get("name", ""), id_field: c.get(id_field),
-         **({} if user_owned else {"isdefault": bool(c.get("isdefault", False))})}
-        for c in charts
-    ]
     headers = ["name", id_field] + ([] if user_owned else ["isdefault"])
     rows = [
-        [r["name"], r.get(id_field) or ""]
-        + ([] if user_owned else [str(r["isdefault"])])
-        for r in listed
+        [c["name"], c.get(id_field) or ""]
+        + ([] if user_owned else [str(c["isdefault"])])
+        for c in charts
     ]
-    ctx.emit(True, data=listed, table={"headers": headers, "rows": rows})
+    ctx.emit(True, data=charts, table={"headers": headers, "rows": rows})
 
 
 @chart_group.command("get")
