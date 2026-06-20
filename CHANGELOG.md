@@ -9,6 +9,36 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.11.0 (2026-06-20)
+
+### Bug Fixes
+
+- Use UsageError + guard file I/O in discovery read commands
+  ([#456](https://github.com/Gharib89/crm/pull/456),
+  [`66380fb`](https://github.com/Gharib89/crm/commit/66380fb2a28151c8dba9eb8370dc442272330365))
+
+### Chores
+
+- Re-trigger CI (missed synchronize dispatch) ([#456](https://github.com/Gharib89/crm/pull/456),
+  [`66380fb`](https://github.com/Gharib89/crm/commit/66380fb2a28151c8dba9eb8370dc442272330365))
+
+### Documentation
+
+- Sync README, how-to, skill, e2e for discovery reads
+  ([#456](https://github.com/Gharib89/crm/pull/456),
+  [`66380fb`](https://github.com/Gharib89/crm/commit/66380fb2a28151c8dba9eb8370dc442272330365))
+
+### Features
+
+- Add solution/metadata/ribbon discovery reads ([#456](https://github.com/Gharib89/crm/pull/456),
+  [`66380fb`](https://github.com/Gharib89/crm/commit/66380fb2a28151c8dba9eb8370dc442272330365))
+
+### Refactoring
+
+- Address self-review for discovery reads ([#456](https://github.com/Gharib89/crm/pull/456),
+  [`66380fb`](https://github.com/Gharib89/crm/commit/66380fb2a28151c8dba9eb8370dc442272330365))
+
+
 ## v1.10.0 (2026-06-20)
 
 ### Features
