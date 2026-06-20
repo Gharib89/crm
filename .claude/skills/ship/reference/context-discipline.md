@@ -21,6 +21,11 @@ decisions, not dumps. In rough order of impact:
   to "confirm" the change is pure cost.
 - **Targeted test nodes during the loop; full suite only at the local gate.** Name
   the nodes you touched; re-running the whole suite every cycle is slow noise.
+- **Delegate the noisy verification *runs*, not just reads.** The full local gate
+  (phase 5), live integration tests (phase 3), and CI polling (phase 8) each dump
+  volumes of output. Run them in a cheap-tier subagent (model-tier table in
+  SKILL.md) that returns a pass/fail summary plus only the failing lines — never
+  let raw suite / build / CI logs land in the main thread.
 - **One scratch file for the design/plan** (it survives a mid-run context
   summary); don't restate the same summary across turns.
 
@@ -32,7 +37,7 @@ harness task tools (`TaskCreate` per item; `TaskUpdate` to change status;
 first via `ToolSearch` (`select:TaskCreate,TaskUpdate,TaskList`) — in some
 harnesses they're deferred. (Older harnesses name this `TodoWrite`; use whichever
 this one exposes.) If `ToolSearch` also turns up nothing, the harness exposes no
-task tools at all (some sandboxes — e.g. cloud routines, agy — don't): fall back
+task tools at all (some sandboxes — e.g. cloud routines — don't): fall back
 to a plain markdown checklist you keep up to date in your replies. Don't stall on
 the missing tool — the list's *content* is what matters, not which tool holds it.
 

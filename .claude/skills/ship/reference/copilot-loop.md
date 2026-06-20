@@ -19,20 +19,14 @@ conversation.
    actionable). Tell the subagent explicitly: poll in a bounded loop, return only
    when the review has landed (or the cap is hit), and report review state +
    comments + final check conclusions in one message.
-3. **Auto-triage every comment** with the same judgment as the self-review (run
-   this triage / any re-invoked `review` skill on the **judgment tier** — opus, or
-   Gemini Pro in agy; the poll loop in step 2 is mechanical and stays on the
-   **cheap tier** — haiku / Flash. See the model-tier table in SKILL.md):
-   - Harden rather than remove capability when a comment flags a footgun.
-   - Verify nit-level claims against the **pinned** dependency versions before
-     acting — APIs the bot "remembers" may not match what's installed.
-   - Reject known non-issues the project has already documented as such; if the
-     bot re-raises one, confirm the project's known-non-issues note wasn't
-     trimmed before re-arguing.
-   - Fix the valid ones. Batch the fixes into **one push per round** (each round
-     costs review credits).
-   - Record a one-line disposition per comment (fixed / rejected-because / n/a)
-     for the merge summary.
+3. **Auto-triage every comment with the same triage as phase 4** (harden rather
+   than rip out capability, verify nits against the **pinned** versions, reject
+   documented non-issues, fix the valid ones, record a one-line disposition for the
+   merge summary) — run it on the **judgment tier**; the poll loop in step 2 stays
+   on the **cheap tier** (model-tier table in SKILL.md). Two phase-7 specifics:
+   - **Batch the fixes into one push per round** — each round costs review credits.
+   - If the bot **re-raises** a known non-issue, confirm the project's
+     known-non-issues note wasn't trimmed before re-arguing.
 4. **Re-request the next round** via the project's documented mechanism (the
    re-request path is project-specific — read project instructions; a plain push
    usually does **not** re-trigger it). **Verify the re-request actually took** —

@@ -1,12 +1,12 @@
 ---
 name: ship
 description: >-
-  Take a tracker issue all the way to a merge-ready PR in one explicit run:
-  isolate a worktree, implement test-first, run integrated tests, self-review,
-  open the PR, drive the automated code review to a ceiling, gate on green CI,
-  then STOP for human merge approval. Composes the `tdd` and `review` skills.
-  Explicit-only — invoke deliberately with an issue number; never fires on its own.
-user-invocable: true
+  Take a tracker issue all the way to a merge-ready PR in one run: isolate a
+  worktree, implement test-first, run integrated tests, self-review, open the PR,
+  drive the automated code review to a ceiling, gate on green CI, then stop at a
+  human merge gate. Composes the `tdd` and `review` skills. Use when the user
+  wants to ship an issue or take an issue through to a PR; also invoked by the
+  cloud ship routine.
 argument-hint: "[issue-number]"
 ---
 
@@ -17,18 +17,13 @@ a final human merge gate. You run `/ship <issue>`, walk away, and come back to a
 PR implemented test-first, integration-tested, self-reviewed, bot-reviewed, and
 CI-green — every decision summarized for you to approve before the merge.
 
-This skill is **generic**. Everything repo-specific lives in that repo's
-**project instructions** (`CLAUDE.md` / `AGENTS.md`). **Before starting, read them**
-and extract these; if any is missing, surface the gap — don't guess:
-
-- **Test command** + how to run it from an isolated worktree (venv/path quirks).
-- **Integrated/live test** targets, how to pick between them, credential setup.
-- **Local-gate commands** — *the full set CI runs* (lint, type-check, docs build,
-  any **secret/security scan**), so the local gate mirrors CI, not a fixed triad.
-- **Docs-sync rules** — what docs must ship in the same change.
-- **Commit-subject convention** (what release tooling reads on squash-merge).
-- **Review-bot mechanism** — *whether the repo has one at all*, how it's
-  triggered, how to re-request later rounds.
+This skill is **generic** — everything repo-specific lives in that repo's
+**project instructions** (`CLAUDE.md` / `AGENTS.md`). **Read them first** and pull
+what the phases below need; if any is missing, surface the gap — don't guess: the
+**test command** (run from a worktree), **integrated/live-test** targets + creds,
+the **full local-gate set CI runs** (not a fixed triad), **docs-sync rules**, the
+**commit-subject convention**, and **whether a review bot exists** + how to
+trigger/re-request it.
 
 ## The autonomy contract
 
@@ -38,7 +33,7 @@ three places:
 
 - **Merge gate (always).** Merging to the default branch is effectively
   irreversible; a human approves it. Never auto-merge.
-- **Ambiguity stop (phase 1, only if needed).** Issue too underspecified to derive
+- **Ambiguity rail (phase 1, only if needed).** Issue too underspecified to derive
   a plan → stop and ask rather than build the wrong thing.
 - **Integrated-test hand-off (phase 3, only if needed).** Live-test creds absent →
   hand the exact command back and wait.
@@ -47,7 +42,7 @@ Everything else — triaging your own and the bot's findings, fixing, re-running
 is **autonomous**, no mid-loop pause.
 
 **Never proceed on red.** Any failure before the merge gate (failing test, lint,
-type-check, CI) gets a bounded self-fix-and-retry. Still red after that, or the
+type-check, CI) gets a bounded self-fix-and-retry (~2 attempts). Still red after that, or the
 failure means the approach is wrong → **stop and report**; never merge on red.
 Make the report a **fast yes**: attach the concrete evidence (failing output /
 live error) and, if cheap, a **verified-working alternative** — a one-glance
@@ -73,16 +68,55 @@ installed version doesn't have, and acting on it would be a regression.
 Use the cheapest model that fits; reserve the strong model for judgment. Tag every
 subagent and the poll loop with a model explicitly — never default-inherit.
 
-| Work | Claude | Gemini (agy, when Claude tiers absent) |
-|------|--------|-----------------------------------------|
-| Investigation / mapping, poll loop | haiku | Flash |
-| Mechanical edits, `docs-sync` subagent | sonnet | Flash |
-| Review judgment (phases 4 & 7 triage, re-invoked `review` skill) | opus | Pro |
+| Work | Model |
+|------|-------|
+| Investigation / mapping, poll loops (review + CI) | haiku |
+| Mechanical edits & fixes, docs-sync helper, running the gates/tests, `review` skill's **Spec** axis | sonnet |
+| Triage judgment (phases 4 & 7), `review` skill's **Standards / code** axis | opus |
 
-Review is judgment — running it on the cheap tier under-reads diffs. Poll loops and
-file-mapping are mechanical — running them on the strong tier burns budget for
-nothing. Whichever family the host harness exposes, pick the matching row cell;
-fall back to the nearest available tier rather than running everything on one model.
+Triage and code review are judgment — running them on the cheap tier under-reads
+diffs. Poll loops, file-mapping, and running the gates are mechanical — running them
+on the strong tier burns budget for nothing. The `review` skill sets its own
+per-axis models (Standards = opus, Spec = sonnet). Fall back to the nearest
+available tier rather than running everything on one model.
+
+## The small lane
+
+Most issues run the full pipeline. A genuinely **small** change runs a reduced
+spine — skip the ceremony that can't matter, keep the safety that always does.
+
+**Small ⟺ all three hold** (assert at phase 2, announced like the class; when
+unsure, it's *not* small):
+
+1. **No public-surface change** — adds/removes/renames no command, flag, option, or
+   choice; changes no default, output format, or API/output contract.
+2. **Provable without a live call** — a unit/regression test fully proves it; no
+   need to hit the live target.
+3. **Single-concern** — no new dependency, no new logic branch beyond the fix itself.
+
+Behavior change is allowed — a bugfix *is* one. Small means narrow + locally
+provable + invisible to the documented surface, not zero-behavior.
+
+**What collapses.** Items 1–2 already make the docs-sync gate and the phase-3
+integrated test no-ops by construction (nothing user-visible changed; nothing live
+to test). On top of that, two explicit cuts:
+
+- **Skip phase 4 self-review *iff* the repo has an auto-review bot** — its automatic
+  round-1 (phase 7) is the review gate. No bot → keep one phase-4 pass, else the
+  change gets no review.
+- **Local gate = the secret/security scan only.** Lean on CI for the suite, lint,
+  and type-check — CI re-runs them, and a red CI on a small change is a cheap
+  round-trip.
+
+**The floor — never collapses, even for small:** the worktree (phase 0), **one
+regression test** proving any behavior change, the **local secret scan** (the repo
+may be public — a leaked cred is irreversible), the PR, CI, and the **merge gate**.
+
+**Revocable.** The lane is falsifiable: any later contradiction — CI red on
+behavior, the bot flags a real bug, the secret scan hits, or you find it touches
+public surface — **downgrades to the full lane** for the remaining phases (run the
+skipped integrated test / self-review, add the test). Downgrading once is cheap;
+shipping a non-small change as small is the failure.
 
 ## The pipeline
 
@@ -95,13 +129,21 @@ until that list exists.
 
 **Compose, don't reinline.** Load the `tdd` skill (phase 2) and the `review` skill
 (phases 4, 7) through the Skill tool when their phase begins — never hand-roll
-their logic. Run review work at the judgment tier (table above); mechanical helpers
-stay on the cheap tier.
+their logic. The `review` skill picks its own per-axis tiers (opus code / sonnet
+spec); run finding-**triage** at the judgment tier, mechanical helpers at the cheap
+tier (table above).
 
-**0 · Isolate.** Before any edit, create an isolated workspace on a fresh branch
-off the default branch — `EnterWorktree`, or `git worktree add`. Name the branch
-`<type>/<slug>-<issue>` where `<type>` matches the issue (feat/fix/…). All work,
-commits, and the PR happen from this branch; clean it up after merge. (The branch
+**0 · Isolate.** **Pre-flight:** confirm the issue is actionable and not already in
+flight — if it's closed, already has an open or merged PR, or a branch already
+exists for it, **stop and report** instead of opening a duplicate. (A picker-based
+runner like the cloud routine relies on the phase-1 `agent-working` claim to block
+concurrent re-picks; this guard catches a *manual* re-run or an already-shipped
+issue, where there is no picker.) Then create an isolated workspace on a fresh
+branch off the default branch — `EnterWorktree`, or `git worktree add`. Name the
+branch `<type>/<slug>-<issue>` where `<type>` matches the issue (feat/fix/…). All
+work, commits, and the PR happen from this branch; clean it up after merge.
+**Commit as you go** — intermediate messages don't matter, but the PR needs real
+commits. (The branch
 `<type>` is just a label — the commit/PR Conventional-Commit type may differ once
 you see the change, e.g. a `feat/`-branched enhancement best committed as `test:`
 or `docs:`. The squash subject, not the branch, drives release tooling.)
@@ -116,38 +158,47 @@ there's no issue or no documented convention). Don't claim if you stopped on the
 ambiguity rail; if you claim then stop blocked, hand the issue back.
 
 **2 · Implement.** Classify the change as `docs` / `code` / `infra`, announce the
-class and the skip path it implies, then implement test-first per class —
+class and the skip path it implies — **and whether it meets the small-lane
+checklist** (if so, announce that and take the reduced spine) — then implement
+test-first per class —
 **full detail (classes, TDD override, external-claim verification) in
-[reference/implement.md](reference/implement.md).**
+[reference/implement.md](reference/implement.md).** **Stay surgical** — implement
+only what the issue asks; every changed line should trace to it. An adjacent bug or
+cleanup you spot is **out of scope**: file a `needs-triage` issue for it and move
+on, don't fix it inline.
 
 **3 · Integrated test.** Live-test **only what you touched**, on the environment
 the bug was reported against — **detail in
 [reference/implement.md](reference/implement.md).** A `docs` change has nothing to
 integration-test — skip to the local gate.
 
-**4 · Self-review.** Invoke the `review` skill against the diff (judgment tier).
+**4 · Self-review.** Invoke the `review` skill against the diff (it runs its two
+axes on their own tiers — opus for code, sonnet for spec).
 **Auto-triage** each finding: harden rather than rip out capability, verify nits
 against the **pinned** dependency versions, reject known non-issues; fix the valid
 ones; record a one-line disposition per finding for the merge summary.
 
 **5 · Local gate.** *Precondition:* phase 3 passed **or** the class is `docs` — if
-neither holds, you skipped a verification; stop and go back. Run the project's full
-verification green before opening the PR, **mirroring the checks CI actually runs**
-(per project instructions) — not a fixed triad: tests, lint, type-check, docs
-build, **and any secret/security scan the repo gates on** (cheap to pre-empt
-locally, expensive to discover after the PR is open). If you can't run a check
-locally, at least *anticipate* it.
+neither holds, you skipped a verification; stop and go back.
 
-**Docs-sync gate (conditional).** Fire **only if this change altered the documented
-CLI surface or observable behavior** — added/removed/renamed a command, flag,
-option, or choice; changed a default, an output format, or the JSON contract; or
-changed a documented behavior. Then spawn the **`docs-sync`** subagent (mechanical
-tier) to bring README, `docs/`, the shipped `crm/skills/` skill, and e2e coverage
-back in line, and fold its `FIXED` edits into this change. **Skip** when nothing
-user-visible changed — an internal refactor (`infra`), a bugfix that restores
-already-documented behavior, test-only / build / tooling changes, or pure comments.
-When you skip, say so in one line at the merge gate. (No such subagent → apply the
-docs-sync rules by hand under the same condition.)
+**Docs-sync gate (conditional) — run it first.** Fire **only if this change altered
+the documented surface or observable behavior** — added/removed/renamed a command,
+flag, option, or choice; changed a default, an output format, or an API/output
+contract; or changed a documented behavior. Then bring the project's documented
+artifacts (README, `docs/`, any shipped skill, tests/coverage) back in line **per
+the project's docs-sync rules** — using the project's docs-sync subagent at the
+mechanical tier if it has one, else by hand — and fold the edits into this change.
+Do this **before** the gate below, so the docs build, link-check, and tests cover
+its new files. **Skip** when nothing user-visible changed — an internal refactor
+(`infra`), a bugfix that restores already-documented behavior, test-only / build /
+tooling changes, or pure comments; when you skip, say so in one line at the merge
+gate.
+
+Then run the project's full verification green before opening the PR, **mirroring
+the checks CI actually runs** (per project instructions) — not a fixed triad:
+tests, lint, type-check, docs build, **and any secret/security scan the repo gates
+on** (cheap to pre-empt locally, expensive to discover after the PR is open). If you
+can't run a check locally, at least *anticipate* it.
 
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
 project's automated review. Title it as a Conventional-Commit subject derived from
@@ -165,7 +216,7 @@ convention.
 **7 · Review-bot loop.** **Only if the repo has an automated reviewer configured**
 (per project instructions — never an assumption). If not, skip: phase-4 self-review
 plus green CI is the review gate. Otherwise drive it to a ceiling — poll,
-auto-triage and fix valid comments (same judgment + review tier as phase 4),
+auto-triage and fix valid comments (same auto-triage as phase 4, on the judgment tier),
 re-request later rounds via the project's mechanism, **3-round hard ceiling**.
 Scale to the change: a small/targeted PR needs **one** round, a `docs` change is
 capped at **one**. Mechanics and traps:
