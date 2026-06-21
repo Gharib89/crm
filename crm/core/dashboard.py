@@ -397,7 +397,16 @@ def _commit_tile(
     extra: dict[str, Any],
 ) -> dict[str, Any]:
     """Build the result dict and PATCH the dashboard's ``formxml`` (or preview
-    under dry-run) via the shared direct-PATCH commit."""
+    under dry-run) via the shared direct-PATCH commit.
+
+    Like the forms family, this does not opt into ``commit_xml_patch``'s
+    read-back T3 (``read_back=None``): a Web API GET returns the *published*
+    layer, so an in-process read-back only verifies on a ``--publish`` write and
+    would silently skip T3 on the (recommended) ``--no-publish`` batching path.
+    The structural T3 — classid intact, refs landed verbatim, rowspan invariant
+    — is asserted by the live e2e (``test_dashboard_add_chart_and_view``) on the
+    published layer instead.
+    """
     out: dict[str, Any] = {
         _ID_FIELD: dashboard_id, "name": dashboard.get("name"), "action": action}
     out.update({k: v for k, v in extra.items() if v is not None})
