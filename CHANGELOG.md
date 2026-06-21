@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.18.0 (2026-06-21)
+
+### Documentation
+
+- Clarify hide-action confirmation UX (interactive prompt, --yes skips)
+  ([#479](https://github.com/Gharib89/crm/pull/479),
+  [`74aab32`](https://github.com/Gharib89/crm/commit/74aab32d809b4e404bcf5c4f7f527c3d19e2809e))
+
+### Features
+
+- Add `ribbon hide-button` to hide OOB command-bar buttons
+  ([#479](https://github.com/Gharib89/crm/pull/479),
+  [`74aab32`](https://github.com/Gharib89/crm/commit/74aab32d809b4e404bcf5c4f7f527c3d19e2809e))
+
+### Testing
+
+- Satisfy pyright basic-mode optional/attribute checks in ribbon tests
+  ([#479](https://github.com/Gharib89/crm/pull/479),
+  [`74aab32`](https://github.com/Gharib89/crm/commit/74aab32d809b4e404bcf5c4f7f527c3d19e2809e))
+
+
 ## v1.17.0 (2026-06-21)
 
 ### Features
