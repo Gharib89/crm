@@ -62,10 +62,10 @@ class _Mutation:
     def __init__(
         self,
         *,
-        added: "set[str]",
-        removed: "set[str]",
-        verify: "Callable[[ET.Element], None]",
-        warning: "str | None" = None,
+        added: set[str],
+        removed: set[str],
+        verify: Callable[[ET.Element], None],
+        warning: str | None = None,
     ) -> None:
         self.added = added
         self.removed = removed
@@ -76,10 +76,10 @@ class _Mutation:
 # --- tree helpers ---------------------------------------------------------------
 
 
-def _node_ids(root: "ET.Element") -> "set[str]":
+def _node_ids(root: ET.Element) -> set[str]:
     """Every Area / Group / SubArea ``Id`` in ``root`` (live nodes only — a
     commented-out node is not matched by ``iter``)."""
-    ids: "set[str]" = set()
+    ids: set[str] = set()
     for tag in _NODE_TAGS:
         for el in root.iter(tag):
             nid = el.get("Id")
@@ -88,7 +88,7 @@ def _node_ids(root: "ET.Element") -> "set[str]":
     return ids
 
 
-def _find(root: "ET.Element", tag: str, node_id: str) -> "ET.Element | None":
+def _find(root: ET.Element, tag: str, node_id: str) -> ET.Element | None:
     for el in root.iter(tag):
         if el.get("Id") == node_id:
             return el
@@ -114,7 +114,7 @@ def _safe_comment(text: str) -> str:
     return text + " " if text.endswith("-") else text
 
 
-def _load(backend: D365Backend, sitemap_id: str) -> "tuple[str, str]":
+def _load(backend: D365Backend, sitemap_id: str) -> tuple[str, str]:
     """Resolve ``sitemap_id`` to a GUID and GET its current ``sitemapxml``."""
     rid = normalize_guid(sitemap_id)
     if rid is None:
@@ -132,11 +132,11 @@ def _edit(
     sitemap_id: str,
     *,
     action: str,
-    extra: "dict[str, Any]",
-    mutate: "Callable[[ET.Element], _Mutation]",
+    extra: dict[str, Any],
+    mutate: Callable[[ET.Element], _Mutation],
     publish: bool,
-    solution: "str | None",
-) -> "dict[str, Any]":
+    solution: str | None,
+) -> dict[str, Any]:
     """The shared SiteMap read-modify-write: GET → parse → ``mutate`` → PATCH.
 
     Reuses :func:`xml_edit.commit_xml_patch` for the dry-run / PATCH / publish
@@ -150,7 +150,7 @@ def _edit(
     mut = mutate(root)
     after_xml = xml_edit.serialize_xml(root)
 
-    result: "dict[str, Any]" = {"sitemapid": rid, "action": action}
+    result: dict[str, Any] = {"sitemapid": rid, "action": action}
     result.update({k: v for k, v in extra.items() if v is not None})
     if mut.warning:
         result["cascade_warning"] = mut.warning
@@ -182,15 +182,15 @@ def add_area(
     *,
     area_id: str,
     title: str,
-    icon: "str | None" = None,
+    icon: str | None = None,
     show_groups: bool = False,
     publish: bool = False,
-    solution: "str | None" = None,
-) -> "dict[str, Any]":
+    solution: str | None = None,
+) -> dict[str, Any]:
     """Splice a new ``<Area>`` (with a plain ``Title``) into the sitemap."""
     aid = _validate_node_id(area_id, kind="Area")
 
-    def mutate(root: "ET.Element") -> _Mutation:
+    def mutate(root: ET.Element) -> _Mutation:
         if _find(root, "Area", aid) is not None:
             raise D365Error(f"Area {aid!r} already exists in the sitemap.")
         attrs = {"Id": aid, "Title": title}
@@ -200,7 +200,7 @@ def add_area(
             attrs["Icon"] = icon
         ET.SubElement(root, "Area", attrs)
 
-        def verify(rb: "ET.Element") -> None:
+        def verify(rb: ET.Element) -> None:
             if not xml_edit.node_present(rb, "Area", Id=aid):
                 raise D365Error(f"read-back: Area {aid!r} absent after publish.")
 
@@ -222,13 +222,13 @@ def add_group(
     group_id: str,
     title: str,
     publish: bool = False,
-    solution: "str | None" = None,
-) -> "dict[str, Any]":
+    solution: str | None = None,
+) -> dict[str, Any]:
     """Splice a new ``<Group>`` (unique within its parent Area) under an Area."""
     aid = area_id.strip()
     gid = _validate_node_id(group_id, kind="Group")
 
-    def mutate(root: "ET.Element") -> _Mutation:
+    def mutate(root: ET.Element) -> _Mutation:
         area = _find(root, "Area", aid)
         if area is None:
             raise D365Error(f"parent Area {aid!r} not found in the sitemap.")
@@ -236,7 +236,7 @@ def add_group(
             raise D365Error(f"Group {gid!r} already exists in Area {aid!r}.")
         ET.SubElement(area, "Group", {"Id": gid, "Title": title})
 
-        def verify(rb: "ET.Element") -> None:
+        def verify(rb: ET.Element) -> None:
             if not xml_edit.node_present(rb, "Group", Id=gid):
                 raise D365Error(f"read-back: Group {gid!r} absent after publish.")
 
@@ -253,10 +253,10 @@ def add_group(
 def _subarea_content(
     backend: D365Backend,
     *,
-    entity: "str | None",
-    url: "str | None",
-    dashboard: "str | None",
-) -> "tuple[str, str]":
+    entity: str | None,
+    url: str | None,
+    dashboard: str | None,
+) -> tuple[str, str]:
     """Resolve the exactly-one-of content mode to a ``(attribute, value)`` pair.
 
     ``--entity`` is validated to exist (a dangling ``Entity=`` silently hides the
@@ -289,14 +289,14 @@ def add_subarea(
     area_id: str,
     group_id: str,
     sub_id: str,
-    entity: "str | None" = None,
-    url: "str | None" = None,
-    dashboard: "str | None" = None,
-    title: "str | None" = None,
-    icon: "str | None" = None,
+    entity: str | None = None,
+    url: str | None = None,
+    dashboard: str | None = None,
+    title: str | None = None,
+    icon: str | None = None,
     publish: bool = False,
-    solution: "str | None" = None,
-) -> "dict[str, Any]":
+    solution: str | None = None,
+) -> dict[str, Any]:
     """Splice a new ``<SubArea>`` under a Group (exactly-one-of content mode)."""
     sid = _validate_node_id(sub_id, kind="SubArea")
     aid = area_id.strip()
@@ -304,7 +304,7 @@ def add_subarea(
     content_attr, content_val = _subarea_content(
         backend, entity=entity, url=url, dashboard=dashboard)
 
-    def mutate(root: "ET.Element") -> _Mutation:
+    def mutate(root: ET.Element) -> _Mutation:
         area = _find(root, "Area", aid)
         if area is None:
             raise D365Error(f"parent Area {aid!r} not found in the sitemap.")
@@ -321,7 +321,7 @@ def add_subarea(
             attrs["Icon"] = icon
         ET.SubElement(group, "SubArea", attrs)
 
-        def verify(rb: "ET.Element") -> None:
+        def verify(rb: ET.Element) -> None:
             if not xml_edit.node_present(rb, "SubArea", Id=sid):
                 raise D365Error(
                     f"read-back: SubArea {sid!r} absent after publish.")
@@ -344,8 +344,8 @@ def remove_node(
     node_id: str,
     comment_out: bool = False,
     publish: bool = False,
-    solution: "str | None" = None,
-) -> "dict[str, Any]":
+    solution: str | None = None,
+) -> dict[str, Any]:
     """Remove (or comment out) the Area / Group / SubArea with ``node_id``.
 
     Removing an Area or Group cascades to its descendants — a warning names how
@@ -356,9 +356,9 @@ def remove_node(
     if not nid:
         raise D365Error("remove-node --id must not be empty.")
 
-    def mutate(root: "ET.Element") -> _Mutation:
+    def mutate(root: ET.Element) -> _Mutation:
         parents = {child: parent for parent in root.iter() for child in parent}
-        target: "ET.Element | None" = None
+        target: ET.Element | None = None
         tag = ""
         for candidate in _NODE_TAGS:
             target = _find(root, candidate, nid)
@@ -373,7 +373,7 @@ def remove_node(
             raise D365Error("cannot remove the SiteMap root element.")
 
         removed = _node_ids(target)
-        warning: "str | None" = None
+        warning: str | None = None
         descendants = len(removed) - 1
         if tag in ("Area", "Group") and descendants:
             warning = (
@@ -386,7 +386,7 @@ def remove_node(
             parent.insert(
                 index, ET.Comment(_safe_comment(xml_edit.serialize_xml(target))))
 
-        def verify(rb: "ET.Element") -> None:
+        def verify(rb: ET.Element) -> None:
             if nid in _node_ids(rb):
                 raise D365Error(
                     f"read-back: node {nid!r} still present after publish.")

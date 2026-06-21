@@ -26,11 +26,15 @@ def _data(result):
     return env["data"]
 
 
-def _sitemapxml(cli, sitemap_id: str) -> ET.Element:
-    """Re-GET the live sitemapxml and parse it (the T3 read-back surface)."""
+def _sitemap_raw(cli, sitemap_id: str) -> str:
+    """Re-GET the live sitemapxml string (the T3 read-back surface)."""
     got = _data(cli(["--json", "query", "odata",
                      f"sitemaps({sitemap_id})", "--select", "sitemapxml"]))
-    return ET.fromstring(got["sitemapxml"])
+    return got["sitemapxml"]
+
+
+def _sitemapxml(cli, sitemap_id: str) -> ET.Element:
+    return ET.fromstring(_sitemap_raw(cli, sitemap_id))
 
 
 def _has(root: ET.Element, tag: str, node_id: str) -> bool:
@@ -84,6 +88,14 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
         root = _sitemapxml(cli, sitemap_id)
         assert not _has(root, "SubArea", "cwx_opscontacts")
         assert _has(root, "Group", "cwx_opsgrp")  # parent survives
+
+        # remove-node --comment-out (publish → soft-delete must stay well-formed)
+        _data(cli(["--json", "sitemap", "remove-node", sitemap_id,
+                   "--id", "cwx_opsgrp", "--comment-out", "--publish"]))
+        raw = _sitemap_raw(cli, sitemap_id)
+        ET.fromstring(raw)  # the commented node round-trips (well-formed)
+        assert not _has(ET.fromstring(raw), "Group", "cwx_opsgrp")  # not live
+        assert "cwx_opsgrp" in raw  # survives only inside the XML comment
     finally:
         deleted = _data(cli(["--json", "entity", "delete", "sitemaps",
                              sitemap_id, "--yes"]))
