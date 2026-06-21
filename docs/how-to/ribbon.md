@@ -49,7 +49,7 @@ methods are available; choose based on reversibility:
 | Method | Reversibility | Gate |
 |---|---|---|
 | `display-rule` (default) | Reversible — delete the override to restore | none |
-| `hide-action` | **One-way trapdoor** — removable only by a new solution version | `--yes` required |
+| `hide-action` | **One-way trapdoor** — removable only by a new solution version | confirm prompt (`--yes` to skip) |
 
 `--target-id` is the OOB button (control) Id as shown by `crm ribbon export ENTITY`.
 The command validates it against the live composed ribbon — a typo errors immediately
@@ -71,8 +71,8 @@ crm ribbon hide-button account --solution MySolution \
 The original command definition is unchanged; remove the override to undo.
 
 `--method hide-action` writes a `HideCustomAction` element. This is **irreversible**
-without shipping a new solution version, so the command requires explicit `--yes`
-confirmation.
+without shipping a new solution version, so the command asks for confirmation first;
+pass `--yes` to skip the prompt (required for `--json` / non-interactive runs).
 
 Neither method touches the button's `classid`, `Command`, or `TemplateAlias`.
 Both emit a warning that overriding or hiding an OOB command is on unsupported

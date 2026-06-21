@@ -129,9 +129,10 @@ exact `Id=` attribute on the `<Button>` or `<FlyoutAnchor>` element.
 `--method display-rule` (default) overrides the button's command with two always-false
 platform DisplayRules. **Reversible** — delete the override to restore the button.
 `--method hide-action` writes a `HideCustomAction`. **One-way trapdoor** — the button
-cannot be restored without shipping a new solution version; the command therefore gates
-this method behind `--yes`. Neither method touches the button's `classid`, `Command`,
-or `TemplateAlias`. Both warn that hiding OOB commands is unsupported ground.
+cannot be restored without shipping a new solution version; the command therefore prompts
+for confirmation, and `--yes` skips that prompt (required to run non-interactively, e.g.
+under `--json`). Neither method touches the button's `classid`, `Command`, or
+`TemplateAlias`. Both warn that hiding OOB commands is unsupported ground.
 
 ## Forms — `form` (entity main forms / systemform)
 
