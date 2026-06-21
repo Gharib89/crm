@@ -75,6 +75,29 @@ directive only.
 
 The new SubArea Id must be **unique across all node ids** in the document.
 
+## Move (reorder) a node
+
+Reorder an existing Area, Group, or SubArea within its parent without touching its
+attributes or children. Exactly one destination mode is required:
+
+```bash
+# Move directly before a sibling (same parent and node type)
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --before cwx_contacts --publish
+
+# Move directly after a sibling
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --after cwx_contacts --publish
+
+# Move to a 0-based position among same-type siblings
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --index 0 --publish
+```
+
+The anchor for `--before` / `--after` must share the moved node's **parent and node
+type** (e.g. you cannot anchor a Group move on an Area Id). `--index` must be in
+range. A mismatch or out-of-range index is a clear error — no write is issued.
+
+`move-node` is a pure permutation: it only repositions the node; its attributes,
+children, and descendant structure are never modified.
+
 ## Remove (or comment out) a node
 
 ```bash
