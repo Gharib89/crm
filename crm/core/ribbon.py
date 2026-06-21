@@ -169,6 +169,33 @@ def build_button_ids(
     )
 
 
+# The two platform DisplayRules that, required together, can never both be true
+# (a command cannot be legacy-web-only AND modern-only) — so a CommandDefinition
+# carrying both is always hidden. MS-documented reversible hide; reuse verbatim as
+# fixed platform refs, never regenerate. See `hide_button_display_rule`.
+RIBBON_HIDE_DISPLAY_RULES: tuple[str, str] = (
+    "Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern")
+
+# Composed-ribbon control elements that carry an ``Id`` a hide can target.
+_COMPOSED_CONTROL_TAGS = frozenset({
+    "Button", "SplitButton", "ToggleButton", "FlyoutAnchor", "Group", "Control",
+    "MenuSection",
+})
+
+
+def find_composed_element(composed_root: ET.Element, target_id: str) -> ET.Element | None:
+    """Locate a control in a composed ribbon (RetrieveEntityRibbon) by its ``Id``.
+
+    Searches the control-bearing tags only, so a typo'd ``--target-id`` resolves to
+    None (a hard error upstream) rather than silently no-op'ing — the #1 ribbon
+    defect. Returns the element (so the caller can read its ``Command``) or None.
+    """
+    for el in composed_root.iter():
+        if el.tag in _COMPOSED_CONTROL_TAGS and el.get("Id") == target_id:
+            return el
+    return None
+
+
 def find_entity_node(cust_root: ET.Element, entity: str) -> ET.Element:
     """Locate the ``<Entity>`` whose ``<Name>`` matches ``entity`` (case-insensitive)."""
     target = entity.lower()
@@ -237,6 +264,53 @@ def add_custom_action(
         "Library": f"$webresource:{webresource}", "FunctionName": function,
     })
     ET.SubElement(jsf, "CrmParameter", {"Value": param})
+
+
+def hide_button_display_rule(ribbon_diff: ET.Element, command_id: str) -> None:
+    """Hide an OOB button reversibly by overriding its CommandDefinition.
+
+    Emits ``<CommandDefinition Id="{command_id}">`` with empty ``EnableRules`` /
+    ``Actions`` and ``DisplayRules`` carrying both ``Mscrm.HideOnModern`` and
+    ``Mscrm.ShowOnlyOnModern`` — a pair that can never both be true, so the command
+    is always hidden. This is the Microsoft-documented reversible alternative to the
+    one-way ``HideCustomAction``; deleting the override restores the default.
+
+    Raises ValueError if the command is already overridden in this diff.
+    """
+    cmds = ribbon_diff.find("CommandDefinitions")
+    if cmds is None:
+        raise ValueError("RibbonDiffXml missing CommandDefinitions")
+    if any(c.get("Id") == command_id for c in cmds.findall("CommandDefinition")):
+        raise ValueError(
+            f"command {command_id!r} is already overridden in this solution's ribbon")
+    cdef = ET.SubElement(cmds, "CommandDefinition", {"Id": command_id})
+    ET.SubElement(cdef, "EnableRules")
+    rules = ET.SubElement(cdef, "DisplayRules")
+    for rule_id in RIBBON_HIDE_DISPLAY_RULES:
+        ET.SubElement(rules, "DisplayRule", {"Id": rule_id})
+    ET.SubElement(cdef, "Actions")
+
+
+def hide_button_hide_action(ribbon_diff: ET.Element, target_id: str) -> None:
+    """Hide an OOB ribbon element via a ``<HideCustomAction>`` — a one-way trapdoor.
+
+    Unlike `hide_button_display_rule`, a HideCustomAction removes the element from
+    ribbon processing entirely and **cannot be removed except by a new version of
+    the installing solution** (MS-documented). Callers must gate this behind an
+    explicit irreversibility confirmation.
+
+    Raises ValueError if ``target_id`` is already hidden in this diff.
+    """
+    actions = ribbon_diff.find("CustomActions")
+    if actions is None:
+        raise ValueError("RibbonDiffXml missing CustomActions")
+    if any(h.get("Location") == target_id
+           for h in actions.findall("HideCustomAction")):
+        raise ValueError(f"element {target_id!r} is already hidden in this solution's ribbon")
+    ET.SubElement(actions, "HideCustomAction", {
+        "HideActionId": f"{target_id}.HideAction",
+        "Location": target_id,
+    })
 
 
 def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:

@@ -163,6 +163,120 @@ def test_ribbon_remove_deletes_button(monkeypatch):
     assert captured["remaining"] == 0
 
 
+_COMPOSED = (
+    "<RibbonDefinitions><RibbonDefinition><Tabs><Tab><Groups><Group><Controls>"
+    "<Button Id='Mscrm.HomepageGrid.account.Deactivate' "
+    "Command='Mscrm.HomepageGrid.Deactivate' TemplateAlias='o2'/>"
+    "</Controls></Group></Groups></Tab></Tabs></RibbonDefinition></RibbonDefinitions>")
+
+
+def _patch_apply_capturing(monkeypatch, captured):
+    def fake_apply(backend, *, solution, entity, mutate, publish=True, **kw):
+        root = ET.fromstring(
+            "<ImportExportXml><Entities><Entity><Name>account</Name>"
+            "</Entity></Entities></ImportExportXml>")
+        mutate(root)
+        captured["root"] = root
+        captured["solution"] = solution
+        captured["publish"] = publish
+        return {"status": "succeeded"}
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr(ribbon_mod, "retrieve_entity_ribbon",
+                        lambda backend, entity: ET.fromstring(_COMPOSED))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+
+
+def test_ribbon_hide_button_display_rule_overrides_command(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_apply_capturing(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
+    assert res.exit_code == 0, res.output
+    root = captured["root"]
+    assert isinstance(root, ET.Element)
+    cdef = root.find(".//CommandDefinition[@Id='Mscrm.HomepageGrid.Deactivate']")
+    assert cdef is not None
+    rule_ids = [r.get("Id") for r in cdef.findall("DisplayRules/DisplayRule")]
+    assert rule_ids == ["Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern"]
+    data = json.loads(res.output)
+    assert data["ok"] is True
+    # unsupported-OOB-reuse warning is emitted
+    warnings = data.get("meta", {}).get("warnings") or []
+    assert any("unsupported" in w.lower() for w in warnings)
+
+
+def test_ribbon_hide_button_rejects_unresolved_target(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_apply_capturing(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.Typo.NotARealButton"])
+    assert res.exit_code == 1
+    assert "not found" in res.output.lower() or "resolve" in res.output.lower()
+    # never reached apply (no silent no-op)
+    assert "root" not in captured
+
+
+def test_ribbon_hide_button_hide_action_requires_confirm(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_apply_capturing(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate",
+        "--method", "hide-action"], input="n\n")
+    assert res.exit_code == 1
+    assert "root" not in captured  # aborted before mutating
+
+
+def test_ribbon_hide_button_hide_action_emits_hidecustomaction(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_apply_capturing(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate",
+        "--method", "hide-action", "--yes"])
+    assert res.exit_code == 0, res.output
+    root = captured["root"]
+    assert isinstance(root, ET.Element)
+    hide = root.find(".//HideCustomAction")
+    assert hide is not None
+    assert hide.get("Location") == "Mscrm.HomepageGrid.account.Deactivate"
+
+
+def test_ribbon_hide_button_no_publish_passes_through(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_apply_capturing(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate", "--no-publish"])
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is False
+
+
+def test_ribbon_hide_button_dry_run_does_not_import(monkeypatch):
+    """--dry-run validates the target and previews via the export short-circuit in
+    apply_ribbon_change, without importing/publishing (same as add-button/remove)."""
+    imported: list[str] = []
+
+    def fake_export(backend, name, output_path, **kw):
+        return {"_dry_run": True, "would_export": name}
+
+    monkeypatch.setattr(ribbon_mod, "export_solution", fake_export)
+    monkeypatch.setattr(ribbon_mod, "import_solution",
+                        lambda *a, **k: imported.append("x"))
+    monkeypatch.setattr(ribbon_mod, "publish_all", lambda *a, **k: None)
+    monkeypatch.setattr(ribbon_mod, "retrieve_entity_ribbon",
+                        lambda backend, entity: ET.fromstring(_COMPOSED))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "--dry-run", "ribbon", "hide-button", "account",
+        "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
+    assert res.exit_code == 0, res.output
+    assert imported == []  # never imported under --dry-run
+
+
 def test_ribbon_remove_unknown_button_errors(monkeypatch):
     cust = ("<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
             "<RibbonDiffXml><CustomActions/><CommandDefinitions/></RibbonDiffXml>"

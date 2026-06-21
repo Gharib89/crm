@@ -100,6 +100,7 @@ crm --json ribbon export --application           # application-wide ribbon (no E
 crm --json ribbon list account --solution cwx_crmworx
 crm --json ribbon add-button account --solution cwx_crmworx ...
 crm --json ribbon remove account --solution cwx_crmworx ...
+crm --json ribbon hide-button account --solution cwx_crmworx --target-id <OOB_Id>
 ```
 
 **`ribbon export` — give exactly one target.** An `ENTITY` exports that one
@@ -113,10 +114,25 @@ This is why a cloned entity's ribbon does not come across (see the clone caveats
 `reference/metadata.md`) — there is no API write path to copy it.
 
 **Ribbon writes are slow and synchronous.** Because every write rides the solution-zip
-pipeline, `add-button` / `remove` run a **full solution import per call** — 60–120s with
+pipeline, `add-button` / `remove` / `hide-button` run a **full solution import per call** — 60–120s with
 no progress ticks. The command has not hung; **do not retry** a slow call (a second,
 parallel attempt races the first import). Confirm the outcome afterward with
 `ribbon list`.
+
+**`hide-button` — validate the target-id first.** `--target-id` is the OOB control Id
+from `crm ribbon export ENTITY`. The command validates it against the live composed
+ribbon before touching the solution, so a typo errors immediately rather than silently
+completing a full import with no effect. If validation fails, re-export and find the
+exact `Id=` attribute on the `<Button>` or `<FlyoutAnchor>` element.
+
+**Two hide methods — choose by reversibility.**
+`--method display-rule` (default) overrides the button's command with two always-false
+platform DisplayRules. **Reversible** — delete the override to restore the button.
+`--method hide-action` writes a `HideCustomAction`. **One-way trapdoor** — the button
+cannot be restored without shipping a new solution version; the command therefore prompts
+for confirmation, and `--yes` skips that prompt (required to run non-interactively, e.g.
+under `--json`). Neither method touches the button's `classid`, `Command`, or
+`TemplateAlias`. Both warn that hiding OOB commands is unsupported ground.
 
 ## Forms — `form` (entity main forms / systemform)
 

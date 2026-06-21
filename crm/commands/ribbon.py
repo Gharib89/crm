@@ -14,8 +14,15 @@ from crm.commands._helpers import (
     _destructive_option,
     _handle_d365_error, _journal, _confirm_destructive,
     _solution_option, _resolve_solution, d365_errors,
-    _output_option,
+    _output_option, _publish_option, _resolve_publish,
 )
+
+# OOB ribbon commands are Microsoft-published; reusing or overriding them is
+# outside Microsoft's supported customization surface (it can break on platform
+# updates). We still allow it — both hide methods are documented — but warn.
+_OOB_REUSE_WARNING = (
+    "Overriding or hiding an out-of-box ribbon command is on unsupported ground "
+    "and may change across platform updates.")
 
 
 @click.group("ribbon")
@@ -213,3 +220,88 @@ def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
     ctx.emit(True, data={"removed": button_id, "result": result},
              warnings=[warning] if warning else None)
     _journal(ctx, button_id, result, solution=solution)
+
+
+@ribbon_group.command("hide-button")
+@click.argument("entity")
+@click.option("--target-id", "target_id", required=True,
+              help="The OOB button (control) Id to hide, as it appears in "
+                   "`crm ribbon export ENTITY`.")
+@click.option("--method", type=click.Choice(["display-rule", "hide-action"]),
+              default="display-rule", show_default=True,
+              help="display-rule: reversible (override the command with two "
+                   "always-false DisplayRules). hide-action: HideCustomAction, a "
+                   "one-way trapdoor removable only by a new solution version.")
+@_destructive_option
+@_publish_option
+@_solution_option
+@pass_ctx
+def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
+                       solution, require_solution):
+    """Hide an out-of-box command-bar button (reversibly by default).
+
+    Validates --target-id against the live composed ribbon so a typo errors instead
+    of silently doing nothing. Never touches the button's classid/Command/
+    TemplateAlias. `display-rule` overrides the button's command with two
+    always-false platform DisplayRules; `hide-action` writes a HideCustomAction,
+    which is irreversible without a new solution version and is gated behind --yes.
+    """
+    solution, warning = _resolve_solution(ctx, solution, True)
+    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
+    publish = _resolve_publish(ctx, publish)
+
+    # T2: resolve --target-id in the live composed ribbon; a typo must error here,
+    # not silently no-op after a full export/import round-trip (#1 ribbon defect).
+    try:
+        composed = ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    element = ribbon_mod.find_composed_element(composed, target_id)
+    if element is None:
+        ctx.emit(False, error=(
+            f"target-id {target_id!r} not found in the composed ribbon for "
+            f"{entity!r}; check `crm ribbon export {entity}`"))
+        return
+    command_id = element.get("Command")
+    if method == "display-rule" and not command_id:
+        ctx.emit(False, error=(
+            f"target-id {target_id!r} has no Command to override; use "
+            "--method hide-action to hide this element"))
+        return
+
+    if method == "hide-action":
+        _confirm_destructive(
+            ctx, "ribbon element", target_id, yes,
+            message=(f"HideCustomAction on {target_id!r} is IRREVERSIBLE without a "
+                     "new solution version. Continue?"))
+
+    def mutate(cust_root):
+        node = ribbon_mod.find_entity_node(cust_root, entity)
+        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+        if method == "display-rule":
+            assert command_id is not None  # guarded above
+            ribbon_mod.hide_button_display_rule(diff, command_id)
+        else:
+            ribbon_mod.hide_button_hide_action(diff, target_id)
+
+    try:
+        result = ribbon_mod.apply_ribbon_change(
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate,
+            publish=publish)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    warnings = [_OOB_REUSE_WARNING]
+    if warning:
+        warnings.append(warning)
+    ctx.emit(True, data={"hidden": target_id, "method": method,
+                         "command": command_id, "result": result},
+             warnings=warnings)
+    _journal(ctx, target_id, result, solution=solution)

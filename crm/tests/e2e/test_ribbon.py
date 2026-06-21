@@ -1,8 +1,9 @@
 # pyright: basic
-"""E2E tests for ribbon verbs: export / list / add-button + remove."""
+"""E2E tests for ribbon verbs: export / list / add-button + remove / hide-button."""
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -217,4 +218,95 @@ def test_ribbon_add_and_remove_button(
     button_ids_after = [b.get("button_id") for b in list_after_env["data"]]
     assert actual_button_id not in button_ids_after, (
         f"button {actual_button_id!r} still present after remove: {button_ids_after}"
+    )
+
+
+# ── ribbon hide-button (hide an OOB button reversibly) ────────────────────────
+
+
+def _composed_ribbon(cli, entity: str) -> ET.Element:
+    """Export and parse the composed ribbon XML for ``entity``."""
+    r = cli(["--json", "ribbon", "export", entity])
+    assert r.returncode == 0, f"ribbon export failed:\n{r.stderr}\n{r.stdout}"
+    return ET.fromstring(json.loads(r.stdout)["data"]["ribbonxml"])
+
+
+def _pick_oob_button(root: ET.Element) -> tuple[str, str]:
+    """Return (button_id, command) for an OOB button carrying an Mscrm.* command."""
+    for btn in root.iter("Button"):
+        bid, cmd = btn.get("Id"), btn.get("Command")
+        if bid and cmd and cmd.startswith("Mscrm."):
+            return bid, cmd
+    pytest.skip("no OOB button with an Mscrm.* command found in composed ribbon")
+
+
+@covers("ribbon hide-button")
+@pytest.mark.slow
+def test_ribbon_hide_button_display_rule(
+    cli, backend, ephemeral_entity, ephemeral_solution
+):
+    """Hide an OOB button on ephemeral_entity via the reversible display-rule method,
+    then re-read the composed ribbon (RetrieveEntityRibbon) and assert the target's
+    command now carries the two always-false platform DisplayRules — asserting the
+    parsed value, since customizations.xml is reserialized on the round-trip (T3)."""
+    _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
+
+    before = _composed_ribbon(cli, ephemeral_entity)
+    target_id, command_id = _pick_oob_button(before)
+
+    hide = cli([
+        "--json", "ribbon", "hide-button", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--target-id", target_id,
+    ])
+    assert hide.returncode == 0, (
+        f"ribbon hide-button failed:\n{hide.stderr}\nstdout: {hide.stdout}"
+    )
+    env = json.loads(hide.stdout)
+    assert env["ok"], env
+    assert env["data"].get("hidden") == target_id, env["data"]
+    assert env["data"].get("method") == "display-rule", env["data"]
+
+    # T3: the composed ribbon's overridden command carries both false DisplayRules.
+    after = _composed_ribbon(cli, ephemeral_entity)
+    cdef = after.find(f".//CommandDefinition[@Id='{command_id}']")
+    assert cdef is not None, f"command {command_id!r} absent from composed ribbon"
+    rule_ids = {r.get("Id") for r in cdef.findall("DisplayRules/DisplayRule")}
+    assert {"Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern"} <= rule_ids, (
+        f"expected the two always-false rules on {command_id!r}, got {rule_ids}"
+    )
+
+
+@covers("ribbon hide-button")
+@pytest.mark.slow
+def test_ribbon_hide_button_hide_action_removes_element(
+    cli, backend, ephemeral_entity, ephemeral_solution
+):
+    """Hide an OOB button via the one-way hide-action method, then re-read the
+    composed ribbon and assert the element is gone — HideCustomAction removes the
+    element from ribbon processing (T3: target absent). Irreversible, but the
+    ephemeral entity is torn down after, so the hide does not outlive the test."""
+    _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
+
+    before = _composed_ribbon(cli, ephemeral_entity)
+    target_id, _ = _pick_oob_button(before)
+
+    hide = cli([
+        "--json", "ribbon", "hide-button", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--target-id", target_id,
+        "--method", "hide-action", "--yes",
+    ])
+    assert hide.returncode == 0, (
+        f"ribbon hide-button (hide-action) failed:\n{hide.stderr}\nstdout: {hide.stdout}"
+    )
+    env = json.loads(hide.stdout)
+    assert env["ok"], env
+    assert env["data"].get("method") == "hide-action", env["data"]
+
+    # T3: the hidden control is absent from the composed ribbon.
+    after = _composed_ribbon(cli, ephemeral_entity)
+    ids_after = {b.get("Id") for b in after.iter("Button")}
+    assert target_id not in ids_after, (
+        f"button {target_id!r} still present after hide-action"
     )

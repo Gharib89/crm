@@ -40,3 +40,40 @@ crm ribbon add-button cwx_ticket --solution MySolution \
 crm ribbon remove cwx_ticket --solution MySolution \
     --button-id cwx_ticket.form.Validate.CustomAction --yes
 ```
+
+## Hide an out-of-box button
+
+Use `hide-button` to suppress an OOB command-bar button you cannot delete. Two
+methods are available; choose based on reversibility:
+
+| Method | Reversibility | Gate |
+|---|---|---|
+| `display-rule` (default) | Reversible — delete the override to restore | none |
+| `hide-action` | **One-way trapdoor** — removable only by a new solution version | confirm prompt (`--yes` to skip) |
+
+`--target-id` is the OOB button (control) Id as shown by `crm ribbon export ENTITY`.
+The command validates it against the live composed ribbon — a typo errors immediately
+instead of silently doing nothing after a slow solution import round-trip.
+
+```bash
+# Reversible: override the OOB command with two always-false DisplayRules
+crm ribbon hide-button account --solution MySolution \
+    --target-id Mscrm.Form.account.Save
+
+# Irreversible: write a HideCustomAction (gated behind --yes)
+crm ribbon hide-button account --solution MySolution \
+    --target-id Mscrm.Form.account.Save \
+    --method hide-action --yes
+```
+
+`--method display-rule` overrides the button's command with the platform's own
+`Mscrm.HideOnModern` and `Mscrm.ShowOnlyOnModern` DisplayRules (both always false).
+The original command definition is unchanged; remove the override to undo.
+
+`--method hide-action` writes a `HideCustomAction` element. This is **irreversible**
+without shipping a new solution version, so the command asks for confirmation first;
+pass `--yes` to skip the prompt (required for `--json` / non-interactive runs).
+
+Neither method touches the button's `classid`, `Command`, or `TemplateAlias`.
+Both emit a warning that overriding or hiding an OOB command is on unsupported
+ground and may change across platform updates.
