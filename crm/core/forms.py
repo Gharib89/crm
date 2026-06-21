@@ -10,10 +10,10 @@ can wrap it the way `view` wraps `views.py`.
 from __future__ import annotations
 
 import re
-import uuid
 import xml.etree.ElementTree as ET
 from typing import Any, cast
 
+from crm.core import xml_edit
 from crm.core.metadata import attribute_info, label_text, maybe_publish
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
@@ -93,9 +93,6 @@ def retarget_formxml(formxml: str, *, src_entity: str, dst_entity: str) -> str:
     return re.sub(rf"\b{re.escape(src_entity)}\b", dst_entity, formxml)
 
 
-_GUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-_ANY_GUID_RE = re.compile(_GUID)
-
 # The form-INTERNAL registration ids whose GUID values must be fresh per clone.
 # Matched by attribute name, case-sensitively and value-as-GUID only, so that:
 #   - `(?<!\w)id`  hits ANY element's lowercase `id="{GUID}"` (tab/section/cell/
@@ -109,7 +106,7 @@ _ANY_GUID_RE = re.compile(_GUID)
 _REGEN_ATTR_RE = re.compile(
     r"""(?P<attr>(?<![\w])id|labelid|uniqueid|handlerUniqueId|libraryUniqueId)
         (?P<eq>\s*=\s*)(?P<q>["'])
-        (?P<brace>\{)?(?P<guid>""" + _GUID + r""")(?(brace)\})(?P=q)""",
+        (?P<brace>\{)?(?P<guid>""" + xml_edit.GUID + r""")(?(brace)\})(?P=q)""",
     re.VERBOSE,
 )
 
@@ -135,27 +132,11 @@ def regenerate_form_clone_ids(formxml: str) -> str:
     """
     if not formxml:
         return formxml
-    mapping: dict[str, str] = {}
-
-    def _repl(m: "re.Match[str]") -> str:
-        old = m.group("guid").lower()
-        if old not in mapping:
-            mapping[old] = str(uuid.uuid4())
-        brace = "{" if m.group("brace") else ""
-        close = "}" if m.group("brace") else ""
-        return (f"{m.group('attr')}{m.group('eq')}{m.group('q')}"
-                f"{brace}{mapping[old]}{close}{m.group('q')}")
-
-    new_xml = _REGEN_ATTR_RE.sub(_repl, formxml)
-    new_ids = set(mapping.values())
-    untouched_before = sorted(
-        g.lower() for g in _ANY_GUID_RE.findall(formxml) if g.lower() not in mapping)
-    untouched_after = sorted(
-        g.lower() for g in _ANY_GUID_RE.findall(new_xml) if g.lower() not in new_ids)
-    if untouched_before != untouched_after:
-        raise D365Error(
-            "form-clone id regeneration altered a non-target GUID (external "
-            "reference); refusing to POST a possibly corrupt form.")
+    new_xml, mapping = xml_edit.regenerate_guids(formxml, _REGEN_ATTR_RE)
+    xml_edit.assert_external_guids_intact(
+        formxml, new_xml, regenerated=mapping,
+        message="form-clone id regeneration altered a non-target GUID (external "
+                "reference); refusing to POST a possibly corrupt form.")
     return new_xml
 
 
@@ -177,16 +158,13 @@ _LABEL_LANGUAGECODE = "1033"
 
 def _fresh_cell_id() -> str:
     """A brace-wrapped uuid4 for a newly inserted cell, matching FormXml style."""
-    return "{" + str(uuid.uuid4()) + "}"
+    return xml_edit.fresh_guid()
 
 
 def _parse_formxml(formxml: str) -> "ET.Element":
     """Parse FormXml, turning a malformed payload into a ``D365Error`` so the CLI
     emits its standard error envelope rather than a raw ``ParseError`` traceback."""
-    try:
-        return ET.fromstring(formxml)
-    except ET.ParseError as exc:
-        raise D365Error(f"Could not parse the form's FormXml: {exc}") from exc
+    return xml_edit.parse_xml(formxml, label="form's FormXml")
 
 
 def _id_matches(value: str | None, given: str) -> bool:
@@ -285,7 +263,7 @@ def add_field_to_formxml(
             f"duplicate it. Use set-field to move it.")
     target = _resolve_target_section(root, tab, section)
     _append_cell(target, _build_field_cell(datafieldname, classid, label))
-    return ET.tostring(root, encoding="unicode")
+    return xml_edit.serialize_xml(root)
 
 
 def _parent_map(root: "ET.Element") -> "dict[ET.Element, ET.Element]":
@@ -322,7 +300,7 @@ def remove_field_from_formxml(formxml: str, *, datafieldname: str) -> str:
     """
     root = _parse_formxml(formxml)
     _detach_field_cell(root, _parent_map(root), datafieldname)
-    return ET.tostring(root, encoding="unicode")
+    return xml_edit.serialize_xml(root)
 
 
 def move_field_in_formxml(
@@ -339,7 +317,7 @@ def move_field_in_formxml(
     target = _resolve_target_section(root, tab, section)
     cell = _detach_field_cell(root, _parent_map(root), datafieldname)
     _append_cell(target, cell)
-    return ET.tostring(root, encoding="unicode")
+    return xml_edit.serialize_xml(root)
 
 
 def read_entity_forms(
@@ -437,28 +415,21 @@ def _commit_form_change(
 ) -> dict[str, Any]:
     """PATCH a form's ``formxml`` (or preview under dry-run), then maybe publish.
 
-    Under ``backend.dry_run`` no write is issued: the form/attribute reads have
-    already run and the returned dict carries a ``would_*`` flag previewing the
-    change. Otherwise the new FormXml is PATCHed onto the systemform and, if
-    ``publish`` is set, published.
+    Thin forms-specific adapter over ``xml_edit.commit_xml_patch`` (the shared
+    direct-PATCH commit): builds the result dict from the form/attribute metadata
+    and delegates the dry-run / PATCH / publish flow. Forms do not opt into the
+    read-back T3 (``read_back=None``), preserving the original behavior.
     """
-    formid = form_row.get("formid")
     out: dict[str, Any] = {
-        "formid": formid, "form": form_row.get("name"),
+        "formid": form_row.get("formid"), "form": form_row.get("name"),
         "attribute": attribute, "action": action,
     }
     if extra:
         out.update({k: v for k, v in extra.items() if v is not None})
-    if backend.dry_run:
-        out["_dry_run"] = True
-        out[_DRY_RUN_FLAG[action]] = True
-        return out
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    backend.patch(f"systemforms({formid})",
-                  json_body={"formxml": new_formxml}, extra_headers=headers)
-    out["updated"] = True
-    maybe_publish(backend, out, publish)
-    return out
+    return xml_edit.commit_xml_patch(
+        backend, entity_set="systemforms", record_id=str(form_row.get("formid")),
+        column="formxml", new_xml=new_formxml, result=out,
+        dry_run_flag=_DRY_RUN_FLAG[action], publish=publish, solution=solution)
 
 
 def add_form_field(
