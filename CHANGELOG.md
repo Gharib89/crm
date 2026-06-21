@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.25.0 (2026-06-21)
+
+### Documentation
+
+- Document sitemap move-node (reorder) ([#491](https://github.com/Gharib89/crm/pull/491),
+  [`408d7ab`](https://github.com/Gharib89/crm/commit/408d7ab3ef6e5b0afb1bec18b8a8ba01455bb318))
+
+### Features
+
+- Add sitemap move-node to reorder a navigation node
+  ([#491](https://github.com/Gharib89/crm/pull/491),
+  [`408d7ab`](https://github.com/Gharib89/crm/commit/408d7ab3ef6e5b0afb1bec18b8a8ba01455bb318))
+
+- Add sitemap move-node to reorder a navigation node (B12)
+  ([#491](https://github.com/Gharib89/crm/pull/491),
+  [`408d7ab`](https://github.com/Gharib89/crm/commit/408d7ab3ef6e5b0afb1bec18b8a8ba01455bb318))
+
+### Refactoring
+
+- Tighten move-node same-type sibling semantics and test typing
+  ([#491](https://github.com/Gharib89/crm/pull/491),
+  [`408d7ab`](https://github.com/Gharib89/crm/commit/408d7ab3ef6e5b0afb1bec18b8a8ba01455bb318))
+
+
 ## v1.24.0 (2026-06-21)
 
 ### Bug Fixes
