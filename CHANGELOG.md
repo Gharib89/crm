@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.21.0 (2026-06-21)
+
+### Documentation
+
+- Clarify set-label solution requirement; e2e selects provisioned LCID
+  ([#484](https://github.com/Gharib89/crm/pull/484),
+  [`267129c`](https://github.com/Gharib89/crm/commit/267129c3056e6854600e316f612a891903c11558))
+
+- Sync set-label docs + strengthen e2e LocLabel/tooltip assertions
+  ([#484](https://github.com/Gharib89/crm/pull/484),
+  [`267129c`](https://github.com/Gharib89/crm/commit/267129c3056e6854600e316f612a891903c11558))
+
+### Features
+
+- Add `ribbon set-label` to set custom-button labels/tooltips
+  ([#484](https://github.com/Gharib89/crm/pull/484),
+  [`267129c`](https://github.com/Gharib89/crm/commit/267129c3056e6854600e316f612a891903c11558))
+
+- Add `ribbon set-label` to set custom-button labels/tooltips (B11)
+  ([#484](https://github.com/Gharib89/crm/pull/484),
+  [`267129c`](https://github.com/Gharib89/crm/commit/267129c3056e6854600e316f612a891903c11558))
+
+### Testing
+
+- Tighten set-label --lcid e2e assertion to resolved label or directive
+  ([#484](https://github.com/Gharib89/crm/pull/484),
+  [`267129c`](https://github.com/Gharib89/crm/commit/267129c3056e6854600e316f612a891903c11558))
+
+
 ## v1.20.1 (2026-06-21)
 
 ### Bug Fixes
