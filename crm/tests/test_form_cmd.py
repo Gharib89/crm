@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 import requests_mock as rm_module
 
 from click.testing import CliRunner
@@ -670,3 +671,144 @@ class TestFormListHandlers:
                 "--json", "form", "list-handlers", "new_project"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"] == []
+
+
+# ---------------------------------------------------------------------------
+# crm form add/remove/rename/move-tab and -section  (#460)
+# ---------------------------------------------------------------------------
+
+
+class TestFormTabCommands:
+    def test_add_tab_patches_with_new_tab(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-tab", "new_project", "new_tab",
+                "--label", "New Tab", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert 'name="new_tab"' in body["formxml"]
+        assert 'IsUserDefined="1"' in body["formxml"]
+        assert json.loads(result.output)["data"]["updated"] is True
+
+    def test_remove_tab_refuses_orphaning_without_force(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-tab", "new_project", "general",
+                "--no-publish"])
+        assert result.exit_code != 0
+        assert "new_name" in result.output  # the orphaned field is named
+        assert patched.call_count == 0  # no write on refusal
+
+    def test_remove_tab_force_surfaces_orphans(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-tab", "new_project", "general",
+                "--force", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert 'name="general"' not in body["formxml"]
+        assert json.loads(result.output)["data"]["orphaned"] == ["new_name"]
+
+    def test_remove_only_tab_refused(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        one_tab = dict(_FORM_LAYOUT, formxml=(
+            '<form><tabs><tab name="solo" id="{aaaa1111-0000-0000-0000-'
+            '000000000001}"><columns><column><sections><section name="s" '
+            'id="{bbbb2222-0000-0000-0000-000000000002}"><rows/></section>'
+            '</sections></column></columns></tab></tabs></form>'))
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [one_tab]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-tab", "new_project", "solo",
+                "--no-publish"])
+        assert result.exit_code != 0
+        assert "only tab" in result.output
+        assert patched.call_count == 0
+
+    def test_rename_tab_sets_label(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "rename-tab", "new_project", "general",
+                "--label", "Overview", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        assert 'description="Overview"' in m.last_request.json()["formxml"]
+
+    def test_columns_out_of_range_rejected(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-tab", "new_project", "t",
+                "--columns", "7", "--no-publish"])
+        assert result.exit_code != 0
+        assert patched.call_count == 0
+
+
+class TestFormSectionCommands:
+    def test_add_section_patches_into_tab(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-section", "new_project", "new_sec",
+                "--tab", "details", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        assert 'name="new_sec"' in m.last_request.json()["formxml"]
+
+    def test_remove_section_refuses_orphaning_without_force(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-section", "new_project", "summary",
+                "--tab", "general", "--no-publish"])
+        assert result.exit_code != 0
+        assert "new_name" in result.output
+        assert patched.call_count == 0
+
+
+# Each new verb honors --dry-run: reads run, no PATCH fires, response carries the
+# would_* flag (issue #460 AC: "--dry-run (would_*, zero HTTP)").
+_DRY_RUN_CASES = [
+    (["form", "add-tab", "new_project", "new_tab"], "would_add"),
+    (["form", "remove-tab", "new_project", "details"], "would_remove"),
+    (["form", "rename-tab", "new_project", "general", "--label", "X"],
+     "would_rename"),
+    (["form", "move-tab", "new_project", "details"], "would_move"),
+    (["form", "add-section", "new_project", "new_sec", "--tab", "details"],
+     "would_add"),
+    (["form", "remove-section", "new_project", "extra", "--tab", "details"],
+     "would_remove"),
+    (["form", "rename-section", "new_project", "summary", "--tab", "general",
+      "--label", "X"], "would_rename"),
+    (["form", "move-section", "new_project", "extra", "--tab", "details"],
+     "would_move"),
+]
+
+
+@pytest.mark.parametrize("args,flag", _DRY_RUN_CASES)
+def test_tab_section_verb_dry_run_does_not_write(dry_backend, monkeypatch, args, flag):
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: dry_backend)
+    with rm_module.Mocker() as m:
+        m.get(_forms_url(dry_backend), json={"value": [_FORM_LAYOUT]})
+        patched = m.patch(_form_pk_url(dry_backend), status_code=204)
+        result = CliRunner().invoke(cli, ["--json", "--dry-run", *args])
+    assert result.exit_code == 0, result.output
+    assert patched.call_count == 0  # zero HTTP write under dry-run
+    assert json.loads(result.output)["data"][flag] is True

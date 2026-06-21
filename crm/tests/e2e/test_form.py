@@ -255,6 +255,10 @@ def test_form_remove_field_roundtrip(cli, ephemeral_entity, tmp_path):
 # editors, each verb publishes (the GET returns the *published* snapshot, so the
 # edit is only visible on re-export after PublishAllXml) and T3 is the re-export
 # assertion that the named tab is present (add/rename/move) or absent (remove).
+#
+# Not @requires_cloud — pure FormXml surgery runs on both targets. CI executes the
+# cloud leg; the on-prem v9.x leg is local-only (VPN) and run by the maintainer
+# against the agent-on-prem profile, matching the form clone precedent (#268).
 
 
 @covers("form add-tab")
