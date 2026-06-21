@@ -88,6 +88,8 @@ For "let the agent customize", prefer assigning the OOB `System Customizer` role
 
 ### Gotchas
 
+**`--if-exists skip` does not add the role to `--solution`.** When an existing same-name role is returned via `--if-exists skip`, it is reused unchanged — solution membership is not applied retroactively. To guarantee placement in a solution, the role must be newly created in the same call.
+
 **`--replace` is destructive.** It wipes every privilege not in the resolved set. Use `--add` when layering; reserve `--replace` for a full reset (e.g. freshly created roles).
 
 **Privilege counts are org-specific and resolved live.** Never hardcode how many privileges an `--all-entities` call will produce — the count varies by org.
