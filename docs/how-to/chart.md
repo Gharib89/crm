@@ -123,6 +123,137 @@ Under `--dry-run`, delete returns
 a chart from a solution (rather than delete it), use
 `crm solution remove-component`.
 
+## Update a chart's XML, name, or series type
+
+`chart update` replaces one or both XML columns, the display name, the
+description, or the chart type on every series — any combination, in one call:
+
+```bash
+crm chart update <id> --data-description new.data.xml
+crm chart update <id> --presentation-description new.pres.xml
+crm chart update <id> --name "Contacts by Region" --description "Q3 rollout"
+crm chart update <id> --type Bar
+crm chart update <id> --data-description d.xml --presentation-description p.xml
+```
+
+`--type` sets `ChartType` on **every** `<Series>` element in the
+presentationdescription (e.g. `Column`, `Bar`, `Line`, `Pie`).
+
+### Partial-XML update and the alias-coupling invariant
+
+When only one of `--data-description` / `--presentation-description` is
+supplied, the command reads the other column live from the server and validates
+the cross-container alias-coupling pair before PATCHing. This means:
+
+- Every `<attribute alias="…">` in the fetch must match a
+  `<measurecollection>` alias in the datadescription and a positionally-coupled
+  `<Series>` in the presentationdescription.
+- A mismatched pair is rejected before any write is issued.
+
+The chart's host entity (`primaryentitytypecode`) is never changed — re-homing
+a chart to a different table is not supported.
+
+### Publishing and solution
+
+`update` follows the same `--publish` / `--no-publish` / `--solution` /
+`--require-solution` contract as `create` (see above). For system charts the
+change is only visible in the UI after `PublishAllXml` runs; user charts
+(`--user`) are never published and take effect immediately.
+
+```bash
+crm chart update <id> --type Line --solution cwx_crmworx
+crm chart update <id> --name "New Name" --no-publish
+crm solution publish    # publish when ready
+```
+
+## Replace the inner fetch query
+
+`chart set-fetch` replaces the `<fetch>` element inside the datadescription
+while leaving the `<categorycollection>` (grouping categories) intact:
+
+```bash
+crm chart set-fetch <id> --fetch new_query.xml
+crm chart set-fetch <id> --fetch new_query.xml --user
+crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --no-publish
+```
+
+Use this when you need to change the query (entity, filters, linked entities)
+without rebuilding the full datadescription. The `--fetch` file should contain
+only the `<fetch>` element itself, not a full wrapped datadescription.
+
+The alias-coupling invariant is validated after the splice: the replacement
+`<fetch>` must still carry `<attribute>` elements whose aliases match the
+existing `<measurecollection>` aliases.
+
+## Add an aggregate series
+
+`chart add-series` adds one new aggregate series — a fetch attribute, a
+measurecollection entry, and a presentation `<Series>` — in one call:
+
+```bash
+crm chart add-series <id> --column estimatedvalue --aggregate sum --alias total_value
+crm chart add-series <id> --column opportunityid --aggregate count --alias opp_count
+```
+
+A chart is capped at **5 series**. A comparison chart (one with 2
+`<categorycollection>` categories) accepts exactly 1 series — attempting to add
+a second is refused.
+
+The `--alias` must be unique within the chart; the `--column` must be a logical
+name that exists on the chart's host entity (validated against live metadata).
+
+A series is modeled as one `<measurecollection>` per series — the server couples
+the inner `<Series>` count to a category's measurecollection count, not to its
+individual `<measure>` count. Keep that 1:1 mapping in mind when inspecting the
+raw XML.
+
+## Remove a series
+
+`chart remove-series` removes the series identified by its alias — the fetch
+attribute, its measurecollection entry, and the positionally-coupled
+presentation `<Series>`:
+
+```bash
+crm chart remove-series <id> --alias total_value
+crm chart remove-series <id> --alias opp_count --user
+```
+
+Removing the **last** series is refused — a chart must have at least one.
+
+## Change the grouping column
+
+`chart set-groupby` replaces the grouping (category) column in the fetch's
+`<entity>` element and in the datadescription's `<categorycollection>`:
+
+```bash
+crm chart set-groupby <id> --column createdon --dategrouping month
+crm chart set-groupby <id> --column ownerid
+```
+
+`--dategrouping` is only meaningful for date/datetime columns. It is rejected
+for non-date columns.
+
+The `--column` is validated against live entity metadata.
+
+## Publish gating — system vs user charts
+
+This applies to all editor verbs (`update`, `set-fetch`, `add-series`,
+`remove-series`, `set-groupby`):
+
+- **System charts** (`savedqueryvisualization`, the default) run
+  `PublishAllXml` by default. The change is only reflected in the UI after
+  publish. Use `--no-publish` to stage a batch of edits, then publish once with
+  `crm solution publish`.
+- **User charts** (`userqueryvisualization`, `--user`) are **never published**
+  — edits reflect immediately and `--publish` / `--no-publish` is accepted but
+  has no effect.
+
+!!! warning "Don't chain --no-publish edits"
+    Each editor verb reads the **published** snapshot before writing. A second
+    `--no-publish` edit reads the chart without the first edit's pending change
+    and overwrites it. To make several edits safely: either keep the default
+    (publish each step), or publish between edits with `crm solution publish`.
+
 ## Relationship to `metadata clone-entity --with-charts`
 
 `crm chart` is the standalone surface for the chart logic that
