@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.13.0 (2026-06-21)
+
+### Documentation
+
+- Clarify assert_external_guids_intact compares a multiset
+  ([#473](https://github.com/Gharib89/crm/pull/473),
+  [`6c1357e`](https://github.com/Gharib89/crm/commit/6c1357ec2d583513c6f5ae4ba176d8c957096f38))
+
+- **research**: Safe customization-XML editors feasibility study
+  ([`e46f05e`](https://github.com/Gharib89/crm/commit/e46f05ec07deae3bca9541b789b8fa1b40b3dc49))
+
+- **triage**: Document kind label axis (refactor, chore)
+  ([`f05c757`](https://github.com/Gharib89/crm/commit/f05c757fc1b0da4299b3412959f8a6957ed7cb95))
+
+- **triage**: Record SOAP-only messages as out-of-scope
+  ([#453](https://github.com/Gharib89/crm/pull/453),
+  [`f5e3928`](https://github.com/Gharib89/crm/commit/f5e3928340aed732abb2db35472dbdd52e6af084))
+
+### Features
+
+- Add form JS event/handler & library wiring verbs
+  ([#474](https://github.com/Gharib89/crm/pull/474),
+  [`a3cfdef`](https://github.com/Gharib89/crm/commit/a3cfdefff16651b7f471ef5f93448123fb340a01))
+
+### Refactoring
+
+- Enforce publish-before-read-back in commit_xml_patch
+  ([#473](https://github.com/Gharib89/crm/pull/473),
+  [`6c1357e`](https://github.com/Gharib89/crm/commit/6c1357ec2d583513c6f5ae4ba176d8c957096f38))
+
+- Extract shared xml_edit primitives + generalized direct-PATCH commit
+  ([#473](https://github.com/Gharib89/crm/pull/473),
+  [`6c1357e`](https://github.com/Gharib89/crm/commit/6c1357ec2d583513c6f5ae4ba176d8c957096f38))
+
+- Extract shared xml_edit primitives and generalize the direct-PATCH commit
+  ([#473](https://github.com/Gharib89/crm/pull/473),
+  [`6c1357e`](https://github.com/Gharib89/crm/commit/6c1357ec2d583513c6f5ae4ba176d8c957096f38))
+
+
 ## v1.12.0 (2026-06-20)
 
 ### Features
