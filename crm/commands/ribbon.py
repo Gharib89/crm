@@ -222,6 +222,81 @@ def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
     _journal(ctx, button_id, result, solution=solution)
 
 
+@ribbon_group.command("set-label")
+@click.argument("entity")
+@click.option("--button-id", "button_id", required=True,
+              help="The custom button's CustomAction Id (see `crm ribbon list`).")
+@click.option("--label", default=None, help="New button LabelText.")
+@click.option("--tooltip-title", "tooltip_title", default=None,
+              help="New button ToolTipTitle.")
+@click.option("--tooltip-description", "tooltip_description", default=None,
+              help="New button ToolTipDescription.")
+@click.option("--lcid", type=int, default=None,
+              help="Localize the text for this language (LCID) via a $LocLabels "
+                   "directive instead of setting it inline. Validated against the "
+                   "org's provisioned languages.")
+@_publish_option
+@_solution_option
+@pass_ctx
+def ribbon_set_label(ctx, entity, button_id, label, tooltip_title,
+                     tooltip_description, lcid, publish, solution,
+                     require_solution):
+    """Set a custom command-bar button's label and tooltips.
+
+    Touches only LabelText / ToolTipTitle / ToolTipDescription — the button's
+    Command, TemplateAlias, Sequence and Id are protected. Pass at least one of
+    --label / --tooltip-title / --tooltip-description. With --lcid the text is
+    localized through a CASE-SENSITIVE `$LocLabels:<id>` directive (the text lands
+    in a <Title languagecode=LCID> row), so it can be re-run per language; without
+    --lcid the text is set inline. Text is XML-escaped automatically.
+    """
+    solution, warning = _resolve_solution(ctx, solution, True)
+    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
+    publish = _resolve_publish(ctx, publish)
+    if label is None and tooltip_title is None and tooltip_description is None:
+        raise click.UsageError(
+            "pass at least one of --label / --tooltip-title / --tooltip-description")
+
+    if lcid is not None:
+        try:
+            provisioned = ribbon_mod.retrieve_provisioned_languages(ctx.backend())
+        except D365Error as exc:
+            _handle_d365_error(ctx, exc)
+            return
+        except ValueError as exc:
+            ctx.emit(False, error=str(exc))
+            return
+        if lcid not in provisioned:
+            ctx.emit(False, error=(
+                f"--lcid {lcid} is not provisioned on this org; "
+                f"provisioned languages: {sorted(provisioned)}"))
+            return
+
+    def mutate(cust_root):
+        node = ribbon_mod.find_entity_node(cust_root, entity)
+        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+        ribbon_mod.set_button_label(
+            diff, button_id=button_id, label=label, tooltip_title=tooltip_title,
+            tooltip_description=tooltip_description, lcid=lcid)
+
+    try:
+        result = ribbon_mod.apply_ribbon_change(
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate,
+            publish=publish)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    ctx.emit(True, data={"button_id": button_id, "label": label,
+                         "tooltip_title": tooltip_title,
+                         "tooltip_description": tooltip_description,
+                         "lcid": lcid, "result": result},
+             warnings=[warning] if warning else None)
+    _journal(ctx, button_id, result, solution=solution)
+
+
 @ribbon_group.command("hide-button")
 @click.argument("entity")
 @click.option("--target-id", "target_id", required=True,

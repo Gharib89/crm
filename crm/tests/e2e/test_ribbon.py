@@ -221,6 +221,126 @@ def test_ribbon_add_and_remove_button(
     )
 
 
+# ── ribbon set-label (relabel a custom button + LocLabels) ────────────────────
+
+
+@covers("ribbon set-label")
+@pytest.mark.slow
+def test_ribbon_set_label_relabels_custom_button(
+    cli, backend, ephemeral_entity, ephemeral_solution, unique, request, tmp_path
+):
+    """Add a custom button, set a new LabelText/ToolTip* (with XML-special chars),
+    then re-read the composed ribbon and assert the new values by parsed value.
+
+    Also exercises --lcid: localize the label for the org's base language via the
+    $LocLabels directive and assert the LocLabel <Title> row carries the text.
+    Protected attrs (Command/TemplateAlias) must survive the relabel.
+    """
+    _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
+
+    wr_name = f"new_e2esl_{unique}.js"
+    js_src = tmp_path / f"{unique}.js"
+    js_src.write_bytes(b"// e2e set-label test")
+    wr_result = cli([
+        "--json", "webresource", "create", "--name", wr_name,
+        "--file", str(js_src), "--display-name", f"E2E SetLabel WR {unique}",
+    ])
+    assert wr_result.returncode == 0, (
+        f"webresource create failed:\n{wr_result.stderr}\n{wr_result.stdout}"
+    )
+    wr_id = json.loads(wr_result.stdout)["data"].get("webresourceid")
+    assert wr_id, "webresourceid missing from create response"
+
+    def _cleanup_wr():
+        try:
+            backend.delete(f"webresourceset({wr_id})")
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup_wr)
+
+    add_result = cli([
+        "--json", "ribbon", "add-button", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--label", f"SL{unique}", "--location", "form",
+        "--webresource", wr_name, "--function", "ns.e2eSetLabel",
+        "--param", "PrimaryControl",
+    ])
+    assert add_result.returncode == 0, (
+        f"ribbon add-button failed:\n{add_result.stderr}\n{add_result.stdout}"
+    )
+    button_id = json.loads(add_result.stdout)["data"].get("button_id")
+    assert button_id, "button_id missing from add-button response"
+
+    # ── SET-LABEL (inline, with XML-special chars that must round-trip) ───────
+    new_label = f"Tom & {unique} <ok>"
+    new_tip = 'Title with "quotes" & <ampersand>'
+    new_desc = "Body & <desc> with 'apos'"
+    set_result = cli([
+        "--json", "ribbon", "set-label", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--button-id", button_id,
+        "--label", new_label, "--tooltip-title", new_tip,
+        "--tooltip-description", new_desc,
+    ])
+    assert set_result.returncode == 0, (
+        f"ribbon set-label failed:\n{set_result.stderr}\n{set_result.stdout}"
+    )
+    assert json.loads(set_result.stdout)["ok"]
+
+    # T3: re-read the composed ribbon; the Button carries all new ToolTip* values by
+    # parsed value (XML-escaping must have round-tripped), protected attrs intact.
+    composed = _composed_ribbon(cli, ephemeral_entity)
+    btns = [b for b in composed.iter("Button")
+            if b.get("LabelText") == new_label]
+    assert btns, (
+        f"no Button with the new LabelText {new_label!r} in composed ribbon"
+    )
+    btn = btns[0]
+    composed_btn_id = btn.get("Id")
+    assert btn.get("ToolTipTitle") == new_tip, btn.attrib
+    assert btn.get("ToolTipDescription") == new_desc, btn.attrib
+    assert btn.get("Command"), "protected Command attribute was lost"
+
+    # ── SET-LABEL (--lcid → $LocLabels directive) ─────────────────────────────
+    # Pick a language actually provisioned on this org so the test is not tied to a
+    # specific LCID being installed (the command rightly errors on an unprovisioned
+    # one). The first provisioned LCID is the org's base language.
+    from crm.core import ribbon as ribbon_mod
+    provisioned = ribbon_mod.retrieve_provisioned_languages(backend)
+    assert provisioned, "org reports no provisioned languages"
+    lcid = provisioned[0]
+    loc_label = f"Loc{unique}"
+    langs = cli(["--json", "ribbon", "set-label", ephemeral_entity,
+                 "--solution", ephemeral_solution, "--button-id", button_id,
+                 "--label", loc_label, "--lcid", str(lcid)])
+    assert langs.returncode == 0, (
+        f"ribbon set-label --lcid failed:\n{langs.stderr}\n{langs.stdout}"
+    )
+    env = json.loads(langs.stdout)
+    assert env["ok"], env
+    assert env["data"].get("lcid") == lcid, env["data"]
+
+    # T3: the localized write took effect end-to-end. RetrieveEntityRibbon resolves
+    # labels in the org's UI language, so when `lcid` is that language (the first
+    # provisioned LCID is the org base language) the button's LabelText resolves to
+    # the localized text; otherwise it carries the unresolved `$LocLabels:` directive
+    # that points at the row we wrote. Either is a pass; anything else (empty, stale
+    # text) is a regression. The raw LocLabel `<Title>` row is asserted by parsed
+    # value in the offline unit tests (the composed ribbon doesn't expose it).
+    after_loc = _composed_ribbon(cli, ephemeral_entity)
+    loc_btn = next((b for b in after_loc.iter("Button")
+                    if b.get("Id") == composed_btn_id), None)
+    assert loc_btn is not None, (
+        f"custom button {composed_btn_id!r} missing after --lcid relabel"
+    )
+    lt = loc_btn.get("LabelText", "")
+    assert lt == loc_label or lt.startswith("$LocLabels:"), (
+        f"expected the localized label {loc_label!r} or a $LocLabels directive, "
+        f"got {lt!r}"
+    )
+
+
 # ── ribbon hide-button (hide an OOB button reversibly) ────────────────────────
 
 

@@ -499,6 +499,122 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
     assert captured["check_collisions"] is False
 
 
+def test_retrieve_provisioned_languages_parses_lcids(make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(
+        responses={"get": {"RetrieveProvisionedLanguages": [1033, 1036]}}))
+    assert ribbon.retrieve_provisioned_languages(be) == [1033, 1036]  # type: ignore[arg-type]
+    assert be.last_path == "RetrieveProvisionedLanguages()"
+
+
+def test_retrieve_provisioned_languages_missing_key_raises(make_fake_backend, inject_backend):
+    be = inject_backend(make_fake_backend(responses={"get": {}}))
+    with pytest.raises(ValueError, match="RetrieveProvisionedLanguages"):
+        ribbon.retrieve_provisioned_languages(be)  # type: ignore[arg-type]
+
+
+# ── set_button_label ──────────────────────────────────────────────────────────
+
+
+def _diff_with_button() -> ET.Element:
+    """An empty RibbonDiffXml carrying one custom button (label 'Validate')."""
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="Mscrm.Form.cwx_ticket.MainTab.Save",
+        label="Validate", webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    return diff
+
+
+def test_set_button_label_inline_sets_attributes():
+    diff = _diff_with_button()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    ribbon.set_button_label(
+        diff, button_id=bid, label="Check", tooltip_title="Check it",
+        tooltip_description="Runs validation")
+    btn = diff.find(".//Button")
+    assert btn is not None
+    assert btn.get("LabelText") == "Check"
+    assert btn.get("ToolTipTitle") == "Check it"
+    assert btn.get("ToolTipDescription") == "Runs validation"
+    # no LocLabel rows were created for the inline path
+    assert diff.find(".//LocLabels/LocLabel") is None
+
+
+def test_set_button_label_protects_command_alias_sequence_id():
+    diff = _diff_with_button()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    btn = diff.find(".//Button")
+    assert btn is not None
+    before = (btn.get("Id"), btn.get("Command"), btn.get("TemplateAlias"),
+              btn.get("Sequence"))
+    ribbon.set_button_label(diff, button_id=bid, label="Renamed")
+    after = (btn.get("Id"), btn.get("Command"), btn.get("TemplateAlias"),
+             btn.get("Sequence"))
+    assert before == after
+    assert btn.get("LabelText") == "Renamed"
+
+
+def test_set_button_label_unknown_button_raises():
+    diff = _diff_with_button()
+    with pytest.raises(ValueError, match="not found"):
+        ribbon.set_button_label(diff, button_id="nope.CustomAction", label="x")
+
+
+def test_set_button_label_requires_a_field():
+    diff = _diff_with_button()
+    with pytest.raises(ValueError, match="at least one"):
+        ribbon.set_button_label(
+            diff, button_id="cwx_ticket.form.Validate.CustomAction")
+
+
+def test_set_button_label_loclabels_directive_and_title_row():
+    diff = _diff_with_button()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    btn = diff.find(".//Button")
+    assert btn is not None
+    btn_id = btn.get("Id")
+    ribbon.set_button_label(
+        diff, button_id=bid, label="Valider",
+        tooltip_title="Valider l'enregistrement", lcid=1036)
+    # the attribute now points at the $LocLabels directive, CASE-SENSITIVE id
+    assert btn.get("LabelText") == f"$LocLabels:{btn_id}.LabelText"
+    assert btn.get("ToolTipTitle") == f"$LocLabels:{btn_id}.ToolTipTitle"
+    # the LocLabel row carries the text in a <Title> for the lcid
+    label_loc = diff.find(
+        f".//LocLabels/LocLabel[@Id='{btn_id}.LabelText']")
+    assert label_loc is not None
+    title = label_loc.find("Titles/Title[@languagecode='1036']")
+    assert title is not None
+    assert title.get("description") == "Valider"
+
+
+def test_set_button_label_loclabels_second_language_reuses_loclabel():
+    diff = _diff_with_button()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    btn = diff.find(".//Button")
+    assert btn is not None
+    btn_id = btn.get("Id")
+    ribbon.set_button_label(diff, button_id=bid, label="Validate", lcid=1033)
+    ribbon.set_button_label(diff, button_id=bid, label="Valider", lcid=1036)
+    loc = diff.find(f".//LocLabels/LocLabel[@Id='{btn_id}.LabelText']")
+    assert loc is not None
+    titles = loc.findall("Titles/Title")
+    by_lang = {t.get("languagecode"): t.get("description") for t in titles}
+    assert by_lang == {"1033": "Validate", "1036": "Valider"}
+
+
+def test_set_button_label_xml_escapes_special_chars():
+    diff = _diff_with_button()
+    bid = "cwx_ticket.form.Validate.CustomAction"
+    nasty = 'A & B < C > "D"'
+    ribbon.set_button_label(diff, button_id=bid, label=nasty)
+    # round-trip through serialize+parse: the value must survive intact
+    reparsed = ET.fromstring(ET.tostring(diff, encoding="unicode"))
+    btn = reparsed.find(".//Button")
+    assert btn is not None and btn.get("LabelText") == nasty
+
+
 def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
     def fake_export(backend, name, output_path, **kw):
         _make_solution_zip(output_path, CUST_XML)

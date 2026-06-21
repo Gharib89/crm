@@ -313,6 +313,108 @@ def hide_button_hide_action(ribbon_diff: ET.Element, target_id: str) -> None:
     })
 
 
+def retrieve_provisioned_languages(backend: "D365Backend") -> list[int]:
+    """Return the LCIDs of the org's provisioned (enabled) languages.
+
+    Calls the parameterless ``RetrieveProvisionedLanguages`` Web API function,
+    whose response carries the locale IDs under a same-named key.
+    """
+    resp = backend.get("RetrieveProvisionedLanguages()")
+    if not isinstance(resp, dict) or "RetrieveProvisionedLanguages" not in resp:
+        raise ValueError(
+            "RetrieveProvisionedLanguages returned no RetrieveProvisionedLanguages list")
+    return [int(x) for x in resp["RetrieveProvisionedLanguages"]]
+
+
+# Button text attributes a `set-label` may write, in the order they are reported.
+# Everything else on the Button (Command/TemplateAlias/Sequence/Id) is protected.
+_LABEL_ATTRS: dict[str, str] = {
+    "label": "LabelText",
+    "tooltip_title": "ToolTipTitle",
+    "tooltip_description": "ToolTipDescription",
+}
+
+
+def _upsert_loclabel_title(
+    ribbon_diff: ET.Element, loclabel_id: str, lcid: int, text: str
+) -> None:
+    """Set ``text`` as the ``<Title>`` for ``lcid`` under ``<LocLabel Id=loclabel_id>``.
+
+    Creates the LocLabel / Titles / Title scaffold as needed; updates the existing
+    ``<Title>`` for that languagecode if one is already present (so a second
+    language adds a sibling Title rather than replacing the first). LocLabel Ids
+    are CASE-SENSITIVE — used verbatim.
+    """
+    loclabels = ribbon_diff.find("LocLabels")
+    if loclabels is None:
+        loclabels = ET.SubElement(ribbon_diff, "LocLabels")
+    loclabel = next((l for l in loclabels.findall("LocLabel")
+                     if l.get("Id") == loclabel_id), None)
+    if loclabel is None:
+        loclabel = ET.SubElement(loclabels, "LocLabel", {"Id": loclabel_id})
+    titles = loclabel.find("Titles")
+    if titles is None:
+        titles = ET.SubElement(loclabel, "Titles")
+    lang = str(lcid)
+    title = next((t for t in titles.findall("Title")
+                  if t.get("languagecode") == lang), None)
+    if title is None:
+        title = ET.SubElement(titles, "Title", {"languagecode": lang})
+    title.set("description", text)
+
+
+def set_button_label(
+    ribbon_diff: ET.Element,
+    *,
+    button_id: str,
+    label: str | None = None,
+    tooltip_title: str | None = None,
+    tooltip_description: str | None = None,
+    lcid: int | None = None,
+) -> None:
+    """Set a custom button's LabelText / ToolTipTitle / ToolTipDescription.
+
+    ``button_id`` is the CustomAction Id (what `ribbon list` / `remove` report).
+    Only the three text attributes are touched — Command, TemplateAlias, Sequence
+    and Id are protected. Pass at least one of ``label`` / ``tooltip_title`` /
+    ``tooltip_description``.
+
+    With ``lcid`` given the text is localized: the Button attribute is set to the
+    ``$LocLabels:<id>`` directive (CASE-SENSITIVE id ``{Button-Id}.{Attr}``) and
+    the actual text is stored in a ``<LocLabel>/<Titles>/<Title languagecode=lcid
+    description=text>`` row, so re-running for a second lcid adds a sibling Title.
+    Without ``lcid`` the text is written inline on the attribute (XML-escaped on
+    serialize by ElementTree).
+    """
+    fields = {"label": label, "tooltip_title": tooltip_title,
+              "tooltip_description": tooltip_description}
+    if all(v is None for v in fields.values()):
+        raise ValueError(
+            "set_button_label needs at least one of label / tooltip_title / "
+            "tooltip_description")
+    actions = ribbon_diff.find("CustomActions")
+    action = (next((a for a in actions.findall("CustomAction")
+                    if a.get("Id") == button_id), None)
+              if actions is not None else None)
+    button = action.find(".//Button") if action is not None else None
+    if button is None:
+        available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
+        raise ValueError(
+            f"button-id {button_id!r} not found as a custom Button; "
+            f"available: {available}")
+    btn_id = button.get("Id") or button_id
+    for key, text in fields.items():
+        if text is None:
+            continue
+        attr = _LABEL_ATTRS[key]
+        if lcid is None:
+            button.set(attr, text)
+        else:
+            loclabel_id = f"{btn_id}.{attr}"
+            button.set(attr, f"$LocLabels:{loclabel_id}")
+            _upsert_loclabel_title(ribbon_diff, loclabel_id, lcid, text)
+
+
 def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
     """Remove the CustomAction with ``button_id`` and its orphaned CommandDefinition.
 
