@@ -161,6 +161,51 @@ manual pipeline below for those.
 run for real (live metadata + form fetched), but no PATCH is issued and the response
 carries `would_add` / `would_remove` / `would_move: true`.
 
+### Wire JS event handlers — `add-library`, `add-handler`, `remove-handler`, `list-handlers`
+
+**Web resource must already exist.** The editor never creates web resources. Register
+with `webresource create` first, then wire.
+
+```bash
+# 1. Register the library only (idempotent — safe to repeat)
+crm --json form add-library cwx_ticket --library cwx_/scripts/ticket.js
+
+# 2. Wire a handler (registers the library too — deduped)
+crm --json form add-handler cwx_ticket \
+    --event onload --library cwx_/scripts/ticket.js --function App.onLoad
+
+# onchange needs --field naming a field that is already on the form
+crm --json form add-handler cwx_ticket \
+    --event onchange --field cwx_priority \
+    --library cwx_/scripts/ticket.js --function App.onPriorityChange
+
+# 3. Inspect
+crm --json form list-handlers cwx_ticket
+# → data: bare array [{event, field, function, library, enabled, pass_context, handler_unique_id}];
+#   meta: {formid, form}. Only <Handlers> (customizer-owned) — never <InternalHandlers>.
+
+# 4. Remove (event + function; add --field for onchange)
+crm --json form remove-handler cwx_ticket \
+    --event onload --function App.onLoad
+```
+
+**`--field` is required for `onchange`, invalid for `onload`/`onsave`.** The command
+also validates that `--field` is on the form before wiring. Duplicate handlers (same
+event + function) are refused.
+
+**`--dry-run`:** reads run for real; no PATCH. add-library → `would_add_library`,
+add-handler → `would_add_handler`, remove-handler → `would_remove_handler`.
+
+**Handlers vs InternalHandlers.** Every `<event>` element holds two sibling blocks:
+`<Handlers>` (customizer-owned, what the CLI writes) and `<InternalHandlers>`
+(platform-owned, never touched). `list-handlers` reports only `<Handlers>`. Do not
+hand-splice entries into `<InternalHandlers>`.
+
+**Publish gotcha — same as field editors.** `GET /systemforms` returns the *published*
+snapshot. Chain `--no-publish` edits on the same form and only the last write survives
+(each reads the published state). Publish each step, or batch the no-publish writes
+and publish once at the end with `crm solution publish`.
+
 ### Manual splice — fallback for unmapped control types
 
 Only needed when the attribute type has no mapped `classid` (see above):

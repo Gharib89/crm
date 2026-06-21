@@ -491,3 +491,182 @@ class TestFormFieldFormSelection:
                 "--no-publish"])
         assert result.exit_code != 0
         assert "--form" in result.output
+
+
+# --- event-handler & library wiring (issue #459) --------------------------------
+
+def _webresource_url(backend):
+    return backend.url_for("webresourceset")
+
+
+_WR_OK = {"value": [{"webresourceid": "99990000-0000-0000-0000-000000000001",
+                     "name": "new_lib.js", "webresourcetype": 3}]}
+
+
+class TestFormAddLibrary:
+    def test_registers_library(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json=_WR_OK)
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-library", "new_project",
+                "--library", "new_lib.js", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert '<Library name="new_lib.js"' in body["formxml"]
+        assert "libraryUniqueId" in body["formxml"]
+
+    def test_missing_web_resource_errors(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json={"value": []})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-library", "new_project",
+                "--library", "nope.js", "--no-publish"])
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+
+    def test_dry_run_does_not_write(self, dry_backend, monkeypatch):
+        backend = dry_backend
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json=_WR_OK)
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "--dry-run", "form", "add-library", "new_project",
+                "--library", "new_lib.js"])
+        assert result.exit_code == 0, result.output
+        assert patched.call_count == 0
+        assert json.loads(result.output)["data"]["would_add_library"] is True
+
+
+class TestFormAddHandler:
+    def test_wires_onload_handler(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json=_WR_OK)
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-handler", "new_project",
+                "--event", "onload", "--library", "new_lib.js",
+                "--function", "App.onLoad", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()["formxml"]
+        assert '<event name="onload"' in body
+        assert "<Handlers>" in body and "InternalHandlers" not in body
+        assert 'functionName="App.onLoad"' in body
+        assert '<Library name="new_lib.js"' in body
+
+    def test_onchange_requires_field(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json=_WR_OK)
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-handler", "new_project",
+                "--event", "onchange", "--library", "new_lib.js",
+                "--function", "App.c", "--no-publish"])
+        assert result.exit_code != 0
+        assert "onchange" in result.output
+
+    def test_onchange_field_must_be_on_form(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json=_WR_OK)
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-handler", "new_project",
+                "--event", "onchange", "--field", "ghost",
+                "--library", "new_lib.js", "--function", "App.c", "--no-publish"])
+        assert result.exit_code != 0
+        assert "not on the form" in result.output
+
+    def test_missing_web_resource_errors(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json={"value": []})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "add-handler", "new_project",
+                "--event", "onload", "--library", "nope.js",
+                "--function", "App.x", "--no-publish"])
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+
+    def test_dry_run_does_not_write(self, dry_backend, monkeypatch):
+        backend = dry_backend
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_webresource_url(backend), json=_WR_OK)
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "--dry-run", "form", "add-handler", "new_project",
+                "--event", "onload", "--library", "new_lib.js",
+                "--function", "App.onLoad"])
+        assert result.exit_code == 0, result.output
+        assert patched.call_count == 0
+        assert json.loads(result.output)["data"]["would_add_handler"] is True
+
+
+_LAYOUT_WITH_HANDLER = (
+    _LAYOUT_XML.replace(
+        "</tabs></form>",
+        '</tabs><events><event name="onload"><Handlers>'
+        '<Handler functionName="App.onLoad" libraryName="new_lib.js" '
+        'handlerUniqueId="{12345678-0000-0000-0000-000000000001}" '
+        'enabled="true" passExecutionContext="true" /></Handlers></event></events>'
+        '<formLibraries><Library name="new_lib.js" '
+        'libraryUniqueId="{22345678-0000-0000-0000-000000000002}" />'
+        '</formLibraries></form>'))
+_FORM_WITH_HANDLER = dict(_FORM_LAYOUT, formxml=_LAYOUT_WITH_HANDLER)
+
+
+class TestFormRemoveHandler:
+    def test_removes_handler(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_WITH_HANDLER]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-handler", "new_project",
+                "--event", "onload", "--function", "App.onLoad", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        assert 'functionName="App.onLoad"' not in m.last_request.json()["formxml"]
+
+    def test_absent_handler_errors(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "remove-handler", "new_project",
+                "--event", "onload", "--function", "App.nope", "--no-publish"])
+        assert result.exit_code != 0
+
+
+class TestFormListHandlers:
+    def test_lists_wired_handler(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_WITH_HANDLER]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "list-handlers", "new_project"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        handlers = env["data"]  # ADR 0008: bare array in data
+        assert len(handlers) == 1
+        assert handlers[0]["function"] == "App.onLoad"
+        assert handlers[0]["library"] == "new_lib.js"
+        assert env["meta"]["form"] == "Information"
+
+    def test_empty_when_none(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "list-handlers", "new_project"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"] == []

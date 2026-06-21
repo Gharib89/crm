@@ -13,7 +13,7 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Any, cast
 
-from crm.core import xml_edit
+from crm.core import webresource, xml_edit
 from crm.core.metadata import attribute_info, label_text, maybe_publish
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
@@ -320,6 +320,247 @@ def move_field_in_formxml(
     return xml_edit.serialize_xml(root)
 
 
+# --- FormXml event-handler & library wiring (issue #459) ------------------------
+#
+# JS event handlers and script libraries live OUTSIDE the <tabs> layout, in the
+# top-level <events> and <formLibraries> elements. The form element is xs:all, so
+# the position of these among the form's children is free — we append. A handler
+# is a <Handler> under <event>/<Handlers>; we target the customizer-owned
+# <Handlers>, never the platform's sibling <InternalHandlers>. Handler execution
+# follows the <Handlers> sequence order, so a new handler is always appended (the
+# existing order is preserved). Fresh handlerUniqueId/libraryUniqueId GUIDs are
+# minted brace-wrapped to match the rest of the FormXml the CLI writes; lookups
+# tolerate braces because a server read-back may return them unbraced. classid is
+# never touched, so each transform re-asserts classid integrity as a backstop.
+#
+# The schema (xs:string) accepts both braced and unbraced ids; FormXml booleans
+# are the literals "true"/"false".
+
+EVENT_CHOICES = ("onload", "onsave", "onchange")
+
+
+def _xml_bool(value: str | None, *, default: bool) -> bool:
+    """Read a FormXml boolean attribute (``"true"``/``"false"``)."""
+    if value is None:
+        return default
+    return value.strip().lower() == "true"
+
+
+def _ensure_library_registered(root: "ET.Element", library_name: str) -> None:
+    """Register ``library_name`` in ``<formLibraries>`` if absent (deduped no-op).
+
+    A handler resolves its function through a registered library, so wiring a
+    handler also ensures its library is present; ``add-library`` reuses this for
+    the standalone case. ``<formLibraries>`` requires at least one ``<Library>``,
+    so it is only created alongside the entry it holds.
+    """
+    libs = root.find("formLibraries")
+    if libs is not None and any(
+            lib.get("name") == library_name for lib in libs.findall("Library")):
+        return
+    if libs is None:
+        libs = ET.SubElement(root, "formLibraries")
+    lib = ET.SubElement(libs, "Library")
+    lib.set("name", library_name)
+    lib.set("libraryUniqueId", xml_edit.fresh_guid())
+
+
+def add_library_to_formxml(formxml: str, *, library_name: str) -> str:
+    """Return ``formxml`` with ``library_name`` registered in ``<formLibraries>``.
+
+    Idempotent: a library already registered is left untouched (no duplicate
+    ``<Library>``).
+    """
+    root = _parse_formxml(formxml)
+    _ensure_library_registered(root, library_name)
+    new_xml = xml_edit.serialize_xml(root)
+    xml_edit.assert_classids_intact(formxml, new_xml)
+    return new_xml
+
+
+def _find_event(
+    root: "ET.Element", *, event: str, field: str | None
+) -> "ET.Element | None":
+    """The ``<event>`` for this event name (matching ``attribute`` for onchange)."""
+    events = root.find("events")
+    if events is None:
+        return None
+    for ev in events.findall("event"):
+        if ev.get("name") != event:
+            continue
+        if event == "onchange":
+            if (ev.get("attribute") or "") == (field or ""):
+                return ev
+        else:
+            return ev
+    return None
+
+
+def _ensure_event(root: "ET.Element", *, event: str, field: str | None) -> "ET.Element":
+    """The existing ``<event>`` for this event, or a freshly appended one.
+
+    Merging into the existing element (never a duplicate ``<event>``) keeps a
+    single event node per form event, as the platform requires.
+    """
+    ev = _find_event(root, event=event, field=field)
+    if ev is not None:
+        return ev
+    events = root.find("events")
+    if events is None:
+        events = ET.SubElement(root, "events")
+    ev = ET.SubElement(events, "event")
+    ev.set("name", event)
+    if event == "onchange" and field:
+        ev.set("attribute", field)
+    return ev
+
+
+def _validate_event_field(
+    root: "ET.Element", event: str, field: str | None
+) -> None:
+    """Enforce the onchange/``--field`` pairing (T2).
+
+    onchange targets a specific attribute, so it needs a ``--field`` that is
+    actually on the form; the other events take no field.
+    """
+    if event == "onchange":
+        if not field:
+            raise D365Error("onchange handlers require --field <attribute>.")
+        if _find_field_control(root, field) is None:
+            raise D365Error(
+                f"Field {field!r} is not on the form; add it before wiring an "
+                f"onchange handler to it.")
+    elif field:
+        raise D365Error(f"--field applies only to onchange, not {event!r}.")
+
+
+def _handler_label(event: str, function: str, field: str | None) -> str:
+    """Human label for a handler in error text (includes the field for onchange)."""
+    where = f"{event} of {field!r}" if event == "onchange" and field else event
+    return f"{function!r} on {where}"
+
+
+def add_handler_to_formxml(
+    formxml: str, *, event: str, function: str, library_name: str,
+    field: str | None = None, params: "tuple[str, ...]" = (),
+    pass_context: bool = True, enabled: bool = True,
+) -> str:
+    """Return ``formxml`` with a ``<Handler>`` wiring ``function`` to ``event``.
+
+    Ensures ``library_name`` is registered, merges the handler into the event's
+    ``<Handlers>`` (creating the ``<event>``/``<Handlers>`` only when absent),
+    appends it last so existing handler order is preserved, and mints a fresh
+    ``handlerUniqueId``. Raises ``D365Error`` for an unsupported event, a bad
+    onchange/``--field`` pairing, or a handler already wired (no silent
+    duplicate).
+    """
+    if event not in EVENT_CHOICES:
+        raise D365Error(
+            f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
+    root = _parse_formxml(formxml)
+    _validate_event_field(root, event, field)
+    _ensure_library_registered(root, library_name)
+    ev = _ensure_event(root, event=event, field=field)
+    handlers = ev.find("Handlers")
+    if handlers is None:
+        handlers = ET.SubElement(ev, "Handlers")
+    if any(h.get("functionName") == function for h in handlers.findall("Handler")):
+        raise D365Error(
+            f"Handler {_handler_label(event, function, field)} is already wired; "
+            f"refusing to duplicate it.")
+    handler = ET.SubElement(handlers, "Handler")
+    handler.set("functionName", function)
+    handler.set("libraryName", library_name)
+    handler.set("handlerUniqueId", xml_edit.fresh_guid())
+    handler.set("enabled", "true" if enabled else "false")
+    handler.set("passExecutionContext", "true" if pass_context else "false")
+    if params:
+        handler.set("parameters", ",".join(params))
+    new_xml = xml_edit.serialize_xml(root)
+    xml_edit.assert_classids_intact(formxml, new_xml)
+    return new_xml
+
+
+def remove_handler_from_formxml(
+    formxml: str, *, event: str, function: str, field: str | None = None,
+) -> str:
+    """Return ``formxml`` with the ``function`` handler removed from ``event``.
+
+    Identifies the handler by event + function (+ field for onchange) and tidies
+    the now-empty ``<Handlers>``/``<event>``/``<events>`` so no invalid empty
+    container is left behind. Raises ``D365Error`` if the handler is absent.
+    """
+    if event not in EVENT_CHOICES:
+        raise D365Error(
+            f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
+    # onchange handlers are keyed by event + field, so removal needs the field to
+    # name one unambiguously (symmetry with add-handler); the others take none.
+    if event == "onchange" and not field:
+        raise D365Error("onchange handler removal requires --field <attribute>.")
+    if event != "onchange" and field:
+        raise D365Error(f"--field applies only to onchange, not {event!r}.")
+    root = _parse_formxml(formxml)
+    ev = _find_event(root, event=event, field=field)
+    handlers = ev.find("Handlers") if ev is not None else None
+    target = None
+    if handlers is not None:
+        target = next(
+            (h for h in handlers.findall("Handler")
+             if h.get("functionName") == function), None)
+    if ev is None or handlers is None or target is None:
+        raise D365Error(
+            f"No handler {_handler_label(event, function, field)} on the form.")
+    handlers.remove(target)
+    if not handlers.findall("Handler"):
+        ev.remove(handlers)
+    # An <event> with neither <Handlers> nor <InternalHandlers> is inert; drop it,
+    # then drop an emptied <events> (an empty <events> is schema-invalid).
+    events = root.find("events")
+    if ev.find("Handlers") is None and ev.find("InternalHandlers") is None:
+        if events is not None and ev in list(events):
+            events.remove(ev)
+    if events is not None and not events.findall("event"):
+        root.remove(events)
+    new_xml = xml_edit.serialize_xml(root)
+    xml_edit.assert_classids_intact(formxml, new_xml)
+    return new_xml
+
+
+def list_handlers_in_formxml(formxml: str) -> "list[dict[str, Any]]":
+    """List the customizer-wired ``<Handler>`` entries, in form order.
+
+    Reports only the editable ``<Handlers>`` (not the platform-owned
+    ``<InternalHandlers>``), one row per handler with its event, the onchange
+    field (or ``None``), function, library and flags.
+    """
+    root = _parse_formxml(formxml)
+    events = root.find("events")
+    out: list[dict[str, Any]] = []
+    if events is None:
+        return out
+    for ev in events.findall("event"):
+        handlers = ev.find("Handlers")
+        if handlers is None:
+            continue
+        for h in handlers.findall("Handler"):
+            # Read defaults mirror the platform's absent-attribute semantics: a
+            # handler with no `enabled` is active, one with no `passExecutionContext`
+            # does not receive it. (CLI-written handlers always set both explicitly,
+            # so they round-trip exactly; the defaults only cover externally-authored
+            # handlers that omit an attribute.)
+            out.append({
+                "event": ev.get("name") or "",
+                "field": ev.get("attribute"),
+                "function": h.get("functionName"),
+                "library": h.get("libraryName"),
+                "enabled": _xml_bool(h.get("enabled"), default=True),
+                "pass_context": _xml_bool(
+                    h.get("passExecutionContext"), default=False),
+                "handler_unique_id": h.get("handlerUniqueId"),
+            })
+    return out
+
+
 def read_entity_forms(
     backend: D365Backend,
     entity_logical_name: str,
@@ -405,6 +646,9 @@ _DRY_RUN_FLAG = {
     "add-field": "would_add",
     "remove-field": "would_remove",
     "set-field": "would_move",
+    "add-library": "would_add_library",
+    "add-handler": "would_add_handler",
+    "remove-handler": "would_remove_handler",
 }
 
 
@@ -488,6 +732,83 @@ def set_form_field(
     return _commit_form_change(
         backend, form_row, new_xml, attribute, action="set-field",
         publish=publish, solution=solution, extra={"tab": tab, "section": section})
+
+
+def _resolve_library_name(backend: D365Backend, library: str) -> str:
+    """The canonical web-resource name for ``library``, asserting it EXISTS.
+
+    The FormXml references a library by web-resource name (``<Library name>`` /
+    ``<Handler libraryName>``), and the editor never *creates* the resource — so
+    a missing one is a typed error here rather than a broken form later. Returns
+    the server's canonical name (a read that runs even under dry-run, so a
+    preview validates too).
+    """
+    return webresource.get_webresource(backend, library).get("name") or library
+
+
+def add_form_library(
+    backend: D365Backend, entity: str, library: str, *,
+    form: str | None = None, publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Register a JS library on an entity form (idempotent). Errors if the web
+    resource does not exist."""
+    library_name = _resolve_library_name(backend, library)
+    form_row = _select_form(read_entity_forms(backend, entity), form)
+    new_xml = add_library_to_formxml(
+        form_row.get("formxml", ""), library_name=library_name)
+    return _commit_form_change(
+        backend, form_row, new_xml, library_name, action="add-library",
+        publish=publish, solution=solution, extra={"library": library_name})
+
+
+def add_form_handler(
+    backend: D365Backend, entity: str, *, event: str, function: str, library: str,
+    field: str | None = None, params: "tuple[str, ...]" = (),
+    pass_context: bool = True, enabled: bool = True,
+    form: str | None = None, publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Wire a JS event handler on an entity form, registering its library.
+
+    Errors if the web resource does not exist, the event is unsupported, or the
+    onchange/``--field`` pairing is invalid.
+    """
+    library_name = _resolve_library_name(backend, library)
+    form_row = _select_form(read_entity_forms(backend, entity), form)
+    new_xml = add_handler_to_formxml(
+        form_row.get("formxml", ""), event=event, function=function,
+        library_name=library_name, field=field, params=params,
+        pass_context=pass_context, enabled=enabled)
+    return _commit_form_change(
+        backend, form_row, new_xml, function, action="add-handler",
+        publish=publish, solution=solution,
+        extra={"event": event, "library": library_name, "field": field})
+
+
+def remove_form_handler(
+    backend: D365Backend, entity: str, *, event: str, function: str,
+    field: str | None = None,
+    form: str | None = None, publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Remove a JS event handler from an entity form. Errors if it is absent."""
+    form_row = _select_form(read_entity_forms(backend, entity), form)
+    new_xml = remove_handler_from_formxml(
+        form_row.get("formxml", ""), event=event, function=function, field=field)
+    return _commit_form_change(
+        backend, form_row, new_xml, function, action="remove-handler",
+        publish=publish, solution=solution,
+        extra={"event": event, "field": field})
+
+
+def list_form_handlers(
+    backend: D365Backend, entity: str, *, form: str | None = None,
+) -> dict[str, Any]:
+    """Report the JS event handlers wired on an entity form (read-only)."""
+    form_row = _select_form(read_entity_forms(backend, entity), form)
+    return {
+        "formid": form_row.get("formid"),
+        "form": form_row.get("name"),
+        "handlers": list_handlers_in_formxml(form_row.get("formxml", "")),
+    }
 
 
 def clone_form_to_entity(

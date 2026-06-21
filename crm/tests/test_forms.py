@@ -502,3 +502,251 @@ class TestMalformedFormxml:
         from crm.utils.d365_backend import D365Error
         with pytest.raises(D365Error):
             forms.remove_field_from_formxml("<form><<>", datafieldname="x")
+
+
+# --- event-handler & library wiring (issue #459) --------------------------------
+
+import xml.etree.ElementTree as _ET  # noqa: E402
+
+
+def _events(formxml):
+    """Parse the form and return its <events> element (or None)."""
+    return _ET.fromstring(formxml).find("events")
+
+
+def _node(formxml, path):
+    """The etree node at ``path``, asserting it exists (narrows away Optional)."""
+    node = _ET.fromstring(formxml).find(path)
+    assert node is not None, f"node {path!r} not found in form"
+    return node
+
+
+def _event_nodes(formxml):
+    """All <event> elements under <events> (empty list when there are none)."""
+    return _ET.fromstring(formxml).findall("events/event")
+
+
+def _handlers(formxml, event, *, field=None):
+    """Return the <Handler> dicts under the named event's <Handlers>."""
+    from crm.core import forms
+    return [h for h in forms.list_handlers_in_formxml(formxml)
+            if h["event"] == event and (field is None or h["field"] == field)]
+
+
+class TestAddLibraryToFormxml:
+    def test_registers_library_with_fresh_unique_id(self):
+        from crm.core import forms
+        out = forms.add_library_to_formxml(_MAIN_FORMXML, library_name="new_lib.js")
+        libs = _ET.fromstring(out).findall("formLibraries/Library")
+        assert [l.get("name") for l in libs] == ["new_lib.js"]
+        assert libs[0].get("libraryUniqueId"), "library got no unique id"
+
+    def test_is_idempotent_no_duplicate(self):
+        from crm.core import forms
+        once = forms.add_library_to_formxml(_MAIN_FORMXML, library_name="new_lib.js")
+        twice = forms.add_library_to_formxml(once, library_name="new_lib.js")
+        libs = _ET.fromstring(twice).findall("formLibraries/Library")
+        assert len(libs) == 1
+
+    def test_preserves_existing_classids(self):
+        from crm.core import forms
+        out = forms.add_library_to_formxml(_MAIN_FORMXML, library_name="new_lib.js")
+        assert "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" in out
+
+
+class TestAddHandlerToFormxml:
+    def test_wires_handler_under_handlers_not_internal(self):
+        from crm.core import forms
+        out = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")
+        ev = _node(out, "events/event")
+        assert ev.get("name") == "onload"
+        assert ev.find("Handlers") is not None
+        assert ev.find("InternalHandlers") is None
+        h = _node(out, "events/event/Handlers/Handler")
+        assert h.get("functionName") == "App.onLoad"
+        assert h.get("libraryName") == "new_lib.js"
+        assert h.get("handlerUniqueId")
+        assert h.get("enabled") == "true"
+        assert h.get("passExecutionContext") == "true"
+
+    def test_also_registers_the_library(self):
+        from crm.core import forms
+        out = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")
+        names = [l.get("name") for l in _ET.fromstring(out).findall(
+            "formLibraries/Library")]
+        assert names == ["new_lib.js"]
+
+    def test_merges_into_existing_event_preserving_order(self):
+        from crm.core import forms
+        first = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.first",
+            library_name="new_lib.js")
+        second = forms.add_handler_to_formxml(
+            first, event="onload", function="App.second", library_name="new_lib.js")
+        events = _event_nodes(second)
+        assert len(events) == 1, "merged into one <event>, not a duplicate"
+        fns = [h.get("functionName")
+               for h in events[0].findall("Handlers/Handler")]
+        assert fns == ["App.first", "App.second"], "existing order not preserved"
+
+    def test_no_pass_context_and_disabled_flags(self):
+        from crm.core import forms
+        out = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onsave", function="App.onSave",
+            library_name="new_lib.js", pass_context=False, enabled=False)
+        h = _node(out, "events/event/Handlers/Handler")
+        assert h.get("enabled") == "false"
+        assert h.get("passExecutionContext") == "false"
+
+    def test_params_joined_comma_separated(self):
+        from crm.core import forms
+        out = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js", params=("a", "b", "c"))
+        h = _node(out, "events/event/Handlers/Handler")
+        assert h.get("parameters") == "a,b,c"
+
+    def test_onchange_targets_field_attribute(self):
+        from crm.core import forms
+        out = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onchange", function="App.onChange",
+            library_name="new_lib.js", field="new_name")
+        ev = _node(out, "events/event")
+        assert ev.get("name") == "onchange"
+        assert ev.get("attribute") == "new_name"
+
+    def test_onchange_requires_field(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="onchange"):
+            forms.add_handler_to_formxml(
+                _MAIN_FORMXML, event="onchange", function="App.onChange",
+                library_name="new_lib.js")
+
+    def test_onchange_field_must_be_on_form(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="not on the form"):
+            forms.add_handler_to_formxml(
+                _MAIN_FORMXML, event="onchange", function="App.onChange",
+                library_name="new_lib.js", field="not_a_field")
+
+    def test_field_rejected_for_non_onchange(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="onchange"):
+            forms.add_handler_to_formxml(
+                _MAIN_FORMXML, event="onload", function="App.onLoad",
+                library_name="new_lib.js", field="new_name")
+
+    def test_unsupported_event_rejected(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="Unsupported event"):
+            forms.add_handler_to_formxml(
+                _MAIN_FORMXML, event="onbogus", function="App.x",
+                library_name="new_lib.js")
+
+    def test_duplicate_handler_refused(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        once = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")
+        with pytest.raises(D365Error, match="already wired"):
+            forms.add_handler_to_formxml(
+                once, event="onload", function="App.onLoad",
+                library_name="new_lib.js")
+
+    def test_separate_onchange_events_per_field(self):
+        from crm.core import forms
+        out = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onchange", function="App.a",
+            library_name="new_lib.js", field="new_name")
+        out = forms.add_handler_to_formxml(
+            out, event="onchange", function="App.b",
+            library_name="new_lib.js", field="new_name")
+        # same field → merged into one event
+        evs = [e for e in _event_nodes(out) if e.get("name") == "onchange"]
+        assert len(evs) == 1
+        assert len(evs[0].findall("Handlers/Handler")) == 2
+
+    def test_preserves_classids(self):
+        from crm.core import forms
+        out = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")
+        assert "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" in out
+
+
+class TestRemoveHandlerFromFormxml:
+    def _wired(self):
+        from crm.core import forms
+        return forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")
+
+    def test_removes_the_handler_and_tidies_empty_containers(self):
+        from crm.core import forms
+        out = forms.remove_handler_from_formxml(
+            self._wired(), event="onload", function="App.onLoad")
+        # the only handler is gone → no leftover empty <events>
+        assert _events(out) is None
+
+    def test_keeps_sibling_handler(self):
+        from crm.core import forms
+        two = forms.add_handler_to_formxml(
+            self._wired(), event="onload", function="App.other",
+            library_name="new_lib.js")
+        out = forms.remove_handler_from_formxml(
+            two, event="onload", function="App.onLoad")
+        fns = [h["function"] for h in _handlers(out, "onload")]
+        assert fns == ["App.other"]
+
+    def test_absent_handler_errors(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="No handler"):
+            forms.remove_handler_from_formxml(
+                _MAIN_FORMXML, event="onload", function="App.nope")
+
+    def test_onchange_remove_requires_field(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="requires --field"):
+            forms.remove_handler_from_formxml(
+                _MAIN_FORMXML, event="onchange", function="App.c")
+
+    def test_onchange_removed_by_field(self):
+        from crm.core import forms
+        wired = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onchange", function="App.c",
+            library_name="new_lib.js", field="new_name")
+        out = forms.remove_handler_from_formxml(
+            wired, event="onchange", function="App.c", field="new_name")
+        assert _handlers(out, "onchange", field="new_name") == []
+
+
+class TestListHandlersInFormxml:
+    def test_empty_when_no_events(self):
+        from crm.core import forms
+        assert forms.list_handlers_in_formxml(_MAIN_FORMXML) == []
+
+    def test_reports_wired_handlers(self):
+        from crm.core import forms
+        wired = forms.add_handler_to_formxml(
+            _MAIN_FORMXML, event="onload", function="App.onLoad",
+            library_name="new_lib.js")
+        rows = forms.list_handlers_in_formxml(wired)
+        assert len(rows) == 1
+        r = rows[0]
+        assert r["event"] == "onload"
+        assert r["function"] == "App.onLoad"
+        assert r["library"] == "new_lib.js"
+        assert r["enabled"] is True
+        assert r["pass_context"] is True
+        assert r["field"] is None
