@@ -171,14 +171,16 @@ def commit_xml_patches(
     solution: "str | None" = None,
     read_back: "Callable[[dict[str, str]], None] | None" = None,
 ) -> "dict[str, Any]":
-    """PATCH one or more writable XML columns in a single request, then maybe publish.
+    """PATCH one or more writable columns in a single request, then maybe publish.
 
     The multi-column form of :func:`commit_xml_patch`, for an editor that must
     keep two coupled columns consistent in one write — a chart edit that touches
     both ``datadescription`` and ``presentationdescription`` (add/remove-series)
     cannot split them across two PATCHes without risking a half-applied chart.
-    The caller has already read and mutated every column in ``columns`` and
-    pre-seeded ``result`` with the edit's metadata.
+    ``columns`` are typically XML columns but may include plain scalar columns the
+    same edit sets (e.g. a chart's ``name`` / ``description``). The caller has
+    already read and mutated every column in ``columns`` and pre-seeded ``result``
+    with the edit's metadata.
 
     - Under ``backend.dry_run`` no write is issued — stamp ``result`` with
       ``_dry_run`` and ``dry_run_flag`` and return it (zero HTTP).

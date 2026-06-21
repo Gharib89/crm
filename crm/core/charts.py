@@ -499,6 +499,16 @@ def _validate_alias_coupling(
     if not measures:
         raise D365Error(
             "datadescription has no <measure>; a chart needs a series.")
+    # Every measure collection must carry exactly one aliased <measure>; an empty
+    # collection would still count toward the series total below (a server reject)
+    # without an alias for this check to catch.
+    for cat in cats:
+        for mc in _measure_collections(cat):
+            measure = mc.find("measure")
+            if measure is None or not measure.get("alias"):
+                raise D365Error(
+                    "every <measurecollection> must contain one aliased <measure> "
+                    "(alias-coupling violated).")
     for measure in measures:
         alias = measure.get("alias")
         if alias not in agg_aliases:
@@ -549,9 +559,11 @@ def _commit_chart_change(
     solution: str | None,
     read_back: "Callable[[dict[str, str]], None] | None" = None,
 ) -> dict[str, Any]:
-    """PATCH a chart's XML column(s) (or preview), then maybe publish + read-back.
+    """PATCH a chart's writable column(s) (or preview), then maybe publish + read-back.
 
-    Publish is forced off for user charts: a ``userqueryvisualization`` is a
+    ``columns`` holds the chart columns to write — the ``datadescription`` /
+    ``presentationdescription`` XML and/or the plain ``name`` / ``description``
+    fields. Publish is forced off for user charts: a ``userqueryvisualization`` is a
     personal view that is never part of the published customization layer, so
     ``PublishAllXml`` does not apply. System-chart edits publish by default and
     pass ``read_back`` through for the T3 verification of the published state.
