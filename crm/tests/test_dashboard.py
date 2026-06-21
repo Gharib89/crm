@@ -31,6 +31,26 @@ def _cells(formxml: str) -> list[ET.Element]:
     return list(ET.fromstring(formxml).iter("cell"))
 
 
+def _control(cell: ET.Element) -> ET.Element:
+    ctrl = cell.find("control")
+    assert ctrl is not None, "cell has no <control>"
+    return ctrl
+
+
+def _params_of(element: ET.Element) -> dict[str, str]:
+    parameters = element.find(".//control/parameters")
+    assert parameters is not None, "no <control>/<parameters>"
+    return {p.tag: (p.text or "") for p in parameters}
+
+
+def _component_cell(section: ET.Element) -> ET.Element:
+    return next(c for c in section.iter("cell") if c.find("control") is not None)
+
+
+def _rowspan(cell: ET.Element) -> int:
+    return int(cell.get("rowspan") or "0")
+
+
 _DASH_ROW = {
     "formid": _DASH_ID,
     "name": "Sales Overview",
@@ -181,14 +201,12 @@ class TestAddChartgridToFormxml:
             _DASH_FORMXML, params=self._params(), label="Accounts")
         cells = _cells(out)
         assert len(cells) == 1  # cell-count went 0 -> 1
-        control = cells[0].find("control")
-        assert control.get("classid") == dashboard.CHARTGRID_CLASSID
+        assert _control(cells[0]).get("classid") == dashboard.CHARTGRID_CLASSID
 
     def test_emits_parameters_verbatim(self):
         out = dashboard.add_chartgrid_to_formxml(
             _DASH_FORMXML, params=self._params(), label="Accounts")
-        params_el = _cells(out)[0].find("control/parameters")
-        got = {p.tag: p.text for p in params_el}
+        got = _params_of(_cells(out)[0])
         assert got["AutoExpand"] == "Fixed"
         assert got["TargetEntityType"] == "account"
         assert got["IsUserView"] == "false"
@@ -205,14 +223,13 @@ class TestAddChartgridToFormxml:
             _DASH_FORMXML, params=self._params(), label="A", rowspan=4)
         section = self._component_section(out)
         rows = section.findall("rows/row")
-        cell = section.find(".//cell")
-        assert int(cell.get("rowspan")) == len(rows) == 4
+        assert _rowspan(_component_cell(section)) == len(rows) == 4
 
     def test_rowspan_default_one_matches_single_row(self):
         out = dashboard.add_chartgrid_to_formxml(
             _DASH_FORMXML, params=self._params(), label="A")
         section = self._component_section(out)
-        assert int(section.find(".//cell").get("rowspan")) == \
+        assert _rowspan(_component_cell(section)) == \
             len(section.findall("rows/row")) == 1
 
     def _formxml_with_components(self, n: int) -> str:
@@ -293,8 +310,7 @@ class TestAddChartgridToFormxml:
         assert len(component_sections) == 2
         for sec in component_sections:
             rows = sec.findall("rows/row")
-            cell = next(c for c in sec.iter("cell") if c.find("control") is not None)
-            assert int(cell.get("rowspan")) == len(rows)
+            assert _rowspan(_component_cell(sec)) == len(rows)
 
     def test_distinct_control_ids_for_multiple_tiles(self):
         # Control ids must be unique within a dashboard's FormXml, else the
@@ -304,7 +320,7 @@ class TestAddChartgridToFormxml:
             _DASH_FORMXML, params=self._params(), label="A")
         twice = dashboard.add_chartgrid_to_formxml(
             once, params=self._params(), label="B")
-        control_ids = [c.find("control").get("id") for c in _cells(twice)]
+        control_ids = [_control(c).get("id") for c in _cells(twice)]
         assert len(control_ids) == 2
         assert len(set(control_ids)) == 2, control_ids
 
@@ -333,9 +349,7 @@ class TestAddChartToDashboard:
             out = dashboard.add_chart_to_dashboard(
                 backend, _DASH_ID, view=_VIEW_ID, chart=_VIS_ID)
         patch = next(r for r in m.request_history if r.method == "PATCH")
-        new_xml = patch.json()["formxml"]
-        params = {p.tag: p.text for p in
-                  ET.fromstring(new_xml).find(".//control/parameters")}
+        params = _params_of(ET.fromstring(patch.json()["formxml"]))
         assert params["ChartGridMode"] == "Chart"
         assert params["TargetEntityType"] == "account"  # derived from the view
         assert params["VisualizationId"].strip("{}").lower() == _VIS_ID
@@ -367,8 +381,7 @@ class TestAddViewToDashboard:
             dashboard.add_view_to_dashboard(
                 backend, _DASH_ID, view=_VIEW_ID, mode="all", records_per_page=25)
         patch = next(r for r in m.request_history if r.method == "PATCH")
-        params = {p.tag: p.text for p in
-                  ET.fromstring(patch.json()["formxml"]).find(".//control/parameters")}
+        params = _params_of(ET.fromstring(patch.json()["formxml"]))
         assert params["ChartGridMode"] == "All"
         assert params["RecordsPerPage"] == "25"
         assert "VisualizationId" not in params  # a grid carries no chart

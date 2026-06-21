@@ -111,6 +111,12 @@ def _component_cells(formxml):
     return root, [c for c in root.iter("cell") if c.find("control") is not None]
 
 
+def _control(cell):
+    ctrl = cell.find("control")
+    assert ctrl is not None, "cell has no <control>"
+    return ctrl
+
+
 @covers("dashboard add-chart", "dashboard add-view")
 @pytest.mark.slow
 def test_dashboard_add_chart_and_view(cli, tmp_path, unique):
@@ -152,10 +158,10 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique):
         assert len(cells) == 2, formxml
         # protected classid intact on every tile
         for cell in cells:
-            assert cell.find("control").get("classid", "").lower() == \
+            assert _control(cell).get("classid", "").lower() == \
                 _CHARTGRID_CLASSID, formxml
         # control ids unique (else publish would have rejected the second tile)
-        ctrl_ids = [c.find("control").get("id") for c in cells]
+        ctrl_ids = [_control(c).get("id") for c in cells]
         assert len(set(ctrl_ids)) == 2, ctrl_ids
         # refs landed verbatim
         assert view_id.lower() in formxml.lower()
@@ -163,8 +169,9 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique):
         # each component section satisfies rowspan == count(<row>)
         for section in root.iter("section"):
             for cell in section.iter("cell"):
-                if cell.find("control") is not None and cell.get("rowspan"):
-                    assert int(cell.get("rowspan")) == \
+                rowspan = cell.get("rowspan")
+                if cell.find("control") is not None and rowspan:
+                    assert int(rowspan) == \
                         len(section.findall("rows/row")), formxml
     finally:
         cli(["--json", "dashboard", "delete", dashboard_id])
