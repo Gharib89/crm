@@ -569,6 +569,7 @@ def list_handlers_in_formxml(formxml: str) -> "list[dict[str, Any]]":
                     h.get("passExecutionContext"), default=False),
                 "handler_unique_id": h.get("handlerUniqueId"),
             })
+    return out
 
 
 # --- FormXml tab / section structure surgery (add / remove / rename / move) -----
@@ -582,7 +583,7 @@ def list_handlers_in_formxml(formxml: str) -> "list[dict[str, Any]]":
 
 _SIBLING_GUARD_MSG = (
     "tab/section edit altered a sibling GUID (an external reference or another "
-    "element's id); refusing to POST a possibly corrupt form.")
+    "element's id); refusing to write a possibly corrupt form.")
 
 
 def _validate_columns(columns: int) -> None:

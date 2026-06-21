@@ -783,8 +783,9 @@ class TestFormSectionCommands:
         assert patched.call_count == 0
 
 
-# Each new verb honors --dry-run: reads run, no PATCH fires, response carries the
-# would_* flag (issue #460 AC: "--dry-run (would_*, zero HTTP)").
+# Each new verb honors --dry-run: the form GET runs for real, but no PATCH/write
+# fires and the response carries the would_* flag (issue #460 AC: "--dry-run
+# (would_*, zero HTTP)" — i.e. zero *write* traffic; the read still happens).
 _DRY_RUN_CASES = [
     (["form", "add-tab", "new_project", "new_tab"], "would_add"),
     (["form", "remove-tab", "new_project", "details"], "would_remove"),
