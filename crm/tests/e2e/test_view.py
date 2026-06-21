@@ -187,7 +187,7 @@ def _create_view(cli, backend, request, unique, *, name_prefix):
 def _cells(layoutxml: str) -> dict[str, str]:
     """{cell name: width} parsed from a view's layoutxml."""
     root = ElementTree.fromstring(layoutxml)
-    return {c.get("name"): (c.get("width") or "") for c in root.iter("cell")}
+    return {(c.get("name") or ""): (c.get("width") or "") for c in root.iter("cell")}
 
 
 @covers("view edit-columns")
