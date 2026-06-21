@@ -232,6 +232,80 @@ def test_remove_custom_action_unknown_returns_false():
     assert ribbon.remove_custom_action(diff, "nope.CustomAction") is False
 
 
+COMPOSED = """
+<RibbonDefinitions>
+  <RibbonDefinition>
+    <Tabs><Tab><Groups><Group><Controls>
+      <Button Id="Mscrm.HomepageGrid.account.Deactivate"
+              Command="Mscrm.HomepageGrid.Deactivate"
+              TemplateAlias="o2" LabelText="Deactivate"/>
+      <Button Id="Mscrm.HomepageGrid.account.Delete"
+              Command="Mscrm.DeleteSelectedRecord" LabelText="Delete"/>
+      <Group Id="Mscrm.HomepageGrid.account.MainTab.Actions"/>
+    </Controls></Group></Groups></Tab></Tabs>
+  </RibbonDefinition>
+</RibbonDefinitions>
+"""
+
+
+def test_find_composed_element_locates_button_by_id():
+    root = ET.fromstring(COMPOSED)
+    el = ribbon.find_composed_element(root, "Mscrm.HomepageGrid.account.Deactivate")
+    assert el is not None
+    assert el.tag == "Button"
+    assert el.get("Command") == "Mscrm.HomepageGrid.Deactivate"
+
+
+def test_find_composed_element_locates_group():
+    root = ET.fromstring(COMPOSED)
+    el = ribbon.find_composed_element(root, "Mscrm.HomepageGrid.account.MainTab.Actions")
+    assert el is not None and el.tag == "Group"
+
+
+def test_find_composed_element_missing_returns_none():
+    root = ET.fromstring(COMPOSED)
+    assert ribbon.find_composed_element(root, "Mscrm.Typo.NotHere") is None
+
+
+def test_hide_button_display_rule_emits_two_false_rules():
+    diff = _empty_diff()
+    ribbon.hide_button_display_rule(diff, "Mscrm.HomepageGrid.Deactivate")
+    cdef = diff.find(
+        ".//CommandDefinition[@Id='Mscrm.HomepageGrid.Deactivate']")
+    assert cdef is not None
+    rule_ids = [r.get("Id") for r in cdef.findall("DisplayRules/DisplayRule")]
+    assert rule_ids == ["Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern"]
+    # empty EnableRules + Actions so only the always-false display rules govern it
+    assert cdef.find("EnableRules") is not None
+    assert list(cdef.find("EnableRules")) == []
+    assert cdef.find("Actions") is not None
+    assert list(cdef.find("Actions")) == []
+
+
+def test_hide_button_display_rule_rejects_duplicate_override():
+    diff = _empty_diff()
+    ribbon.hide_button_display_rule(diff, "Mscrm.HomepageGrid.Deactivate")
+    with pytest.raises(ValueError, match="already overridden"):
+        ribbon.hide_button_display_rule(diff, "Mscrm.HomepageGrid.Deactivate")
+
+
+def test_hide_button_hide_action_emits_hidecustomaction():
+    diff = _empty_diff()
+    ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
+    actions = diff.find("CustomActions")
+    hide = actions.find("HideCustomAction")
+    assert hide is not None
+    assert hide.get("Location") == "Mscrm.HomepageGrid.account.Deactivate"
+    assert hide.get("HideActionId")  # a non-empty unique id
+
+
+def test_hide_button_hide_action_rejects_duplicate():
+    diff = _empty_diff()
+    ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
+    with pytest.raises(ValueError, match="already hidden"):
+        ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
+
+
 def _make_solution_zip(path, cust_xml: str) -> None:
     import zipfile as zf
     with zf.ZipFile(path, "w") as z:
