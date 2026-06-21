@@ -121,3 +121,58 @@ class TestDashboardCreate:
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
         assert env["data"]["would_create"]["entity_set"] == "systemforms"
+
+
+_DASH_FORMXML = (
+    '<form><tabs>'
+    '<tab name="tab0" id="{aaaaaaaa-0000-0000-0000-000000000001}">'
+    '<columns><column width="100%"><sections>'
+    '<section name="sec0" id="{aaaaaaaa-0000-0000-0000-000000000002}">'
+    '<rows/></section></sections></column></columns></tab>'
+    '</tabs></form>'
+)
+_VIEW_ID = "cccccccc-0000-0000-0000-000000000001"
+_VIS_ID = "dddddddd-0000-0000-0000-000000000001"
+
+
+class TestDashboardAddChart:
+    def _mock(self, m, backend):
+        did = _DASH["formid"]
+        m.get(backend.url_for(f"systemforms({did})"),
+              json={**_DASH, "formxml": _DASH_FORMXML})
+        m.get(backend.url_for(f"savedqueries({_VIEW_ID})"),
+              json={"savedqueryid": _VIEW_ID, "returnedtypecode": "account", "name": "v"})
+        m.get(backend.url_for(f"savedqueryvisualizations({_VIS_ID})"),
+              json={"savedqueryvisualizationid": _VIS_ID,
+                    "primaryentitytypecode": "account", "name": "c"})
+        m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
+
+    def test_add_chart(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            self._mock(m, backend)
+            result = CliRunner().invoke(cli, [
+                "--json", "dashboard", "add-chart", _DASH["formid"],
+                "--view", _VIEW_ID, "--chart", _VIS_ID, "--no-publish"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["updated"] is True
+        assert env["data"]["action"] == "add-chart"
+
+
+class TestDashboardAddView:
+    def test_add_view_dry_run(self, dry_backend, monkeypatch):
+        _use_backend(monkeypatch, dry_backend)
+        did = _DASH["formid"]
+        with rm_module.Mocker() as m:
+            m.get(dry_backend.url_for(f"systemforms({did})"),
+                  json={**_DASH, "formxml": _DASH_FORMXML})
+            m.get(dry_backend.url_for(f"savedqueries({_VIEW_ID})"),
+                  json={"savedqueryid": _VIEW_ID, "returnedtypecode": "account", "name": "v"})
+            result = CliRunner().invoke(cli, [
+                "--json", "dashboard", "add-view", did,
+                "--view", _VIEW_ID, "--mode", "all", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["_dry_run"] is True
+        assert env["data"]["would_add"] is True
