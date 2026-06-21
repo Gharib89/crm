@@ -148,6 +148,28 @@ definition is activated. Read-only from the caller's perspective: it cannot be
 deleted, deactivated, or edited directly — operations resolve to its definition.
 _Avoid_: activation copy, activation row.
 
+### Customization XML
+
+**Targeted structural editor**:
+A verb that edits one component type's customization XML through its own
+element grammar — it knows what a tab, a ribbon button, or a sitemap area
+*is*, mutates only the intended nodes, and refuses to touch protected ones
+(`classid`, fixed platform references). Today: `form` field add/remove/move,
+`ribbon add-button`/`remove`, `view create`, `app build-sitemap`, `chart
+create`. The only sanctioned shape for editing customization XML.
+_Avoid_: generic XML primitive (a path/XPath editor that mutates arbitrary
+nodes with no grammar — the silent-corruption surface the out-of-scope family
+rejects), "XML surgery" (the codebase already does targeted XML editing;
+"surgery" means the *unsupported* internal-serialization kind below).
+
+**Internal-serialization surgery**:
+Hand-writing or rewriting an *undocumented* internal serialization format with
+no supported Web API write path — BPF `clientdata`/process XAML authoring
+(#37), solution clone via export→GUID-regen→reimport (#166). Out of scope:
+no supported API, broad silent-corruption surface, live-org-only verification.
+Distinct from a targeted structural editor, which operates on documented
+customization XML through a known grammar.
+
 ## Relationships
 
 - Every **operational failure** is an **emit envelope** with `ok=false` and exits `1`.
