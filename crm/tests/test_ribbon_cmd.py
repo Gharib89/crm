@@ -377,6 +377,111 @@ def test_ribbon_add_custom_rule_rejects_missing_webresource(monkeypatch):
     assert "not found" in res.output
 
 
+_CUST_WITH_BUTTON = (
+    "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+    "<RibbonDiffXml><CustomActions>"
+    "<CustomAction Id='cwx_ticket.form.Validate.CustomAction'>"
+    "<CommandUIDefinition><Button Id='cwx_ticket.form.Validate.Button' "
+    "Command='cwx_ticket.form.Validate.Command' TemplateAlias='o1' "
+    "Sequence='50' LabelText='Validate'/>"
+    "</CommandUIDefinition></CustomAction></CustomActions>"
+    "<CommandDefinitions/><LocLabels/></RibbonDiffXml>"
+    "</Entity></Entities></ImportExportXml>")
+_BID = "cwx_ticket.form.Validate.CustomAction"
+
+
+def _patch_set_label_apply(monkeypatch, captured):
+    def fake_apply(backend, *, solution, entity, mutate, publish=True, **kw):
+        root = ET.fromstring(_CUST_WITH_BUTTON)
+        mutate(root)
+        captured["root"] = root
+        captured["solution"] = solution
+        captured["publish"] = publish
+        return {"status": "succeeded"}
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+
+
+def test_ribbon_set_label_inline_sets_labeltext(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_label_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Check"])
+    assert res.exit_code == 0, res.output
+    root = captured["root"]
+    assert isinstance(root, ET.Element)
+    btn = root.find(".//Button")
+    assert btn is not None and btn.get("LabelText") == "Check"
+    # protected attributes untouched
+    assert btn.get("Command") == "cwx_ticket.form.Validate.Command"
+    assert btn.get("TemplateAlias") == "o1"
+    data = json.loads(res.output)
+    assert data["ok"] is True
+    assert data["data"]["button_id"] == _BID
+
+
+def test_ribbon_set_label_requires_a_field(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_label_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID])
+    assert res.exit_code == 2  # usage error
+    assert "root" not in captured  # never reached apply
+
+
+def test_ribbon_set_label_lcid_validated_against_provisioned(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_label_apply(monkeypatch, captured)
+    monkeypatch.setattr(ribbon_mod, "retrieve_provisioned_languages",
+                        lambda backend: [1033])
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Valider", "--lcid", "9999"])
+    assert res.exit_code == 1
+    assert "provisioned" in res.output.lower()
+    assert "root" not in captured  # never mutated when lcid invalid
+
+
+def test_ribbon_set_label_lcid_uses_loclabels(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_label_apply(monkeypatch, captured)
+    monkeypatch.setattr(ribbon_mod, "retrieve_provisioned_languages",
+                        lambda backend: [1033, 1036])
+    res = CliRunner().invoke(cli, [
+        "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Valider", "--lcid", "1036"])
+    assert res.exit_code == 0, res.output
+    root = captured["root"]
+    assert isinstance(root, ET.Element)
+    btn = root.find(".//Button")
+    assert btn is not None
+    assert btn.get("LabelText", "").startswith("$LocLabels:")
+    title = root.find(".//LocLabels/LocLabel/Titles/Title[@languagecode='1036']")
+    assert title is not None and title.get("description") == "Valider"
+
+
+def test_ribbon_set_label_no_publish_passes_through(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_label_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Check", "--no-publish"])
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is False
+
+
+def test_ribbon_set_label_unknown_button_errors(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_set_label_apply(monkeypatch, captured)
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", "does.not.exist", "--label", "Check"])
+    assert res.exit_code == 1
+    assert "not found" in res.output
+
+
 def test_ribbon_remove_unknown_button_errors(monkeypatch):
     cust = ("<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
             "<RibbonDiffXml><CustomActions/><CommandDefinitions/></RibbonDiffXml>"
