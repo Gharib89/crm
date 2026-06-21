@@ -184,6 +184,44 @@ crm form set-field cwx_ticket cwx_priority \
 crm --dry-run form set-field cwx_ticket cwx_priority --tab "Details"  # would_move: true
 ```
 
+## Toggle field presentation properties
+
+```bash
+crm form set-field-props cwx_ticket cwx_priority --disabled --hidden
+```
+
+Toggles one or more presentation properties of an existing field on the form —
+locked/unlocked, disabled/enabled, show/hide label, visible/hidden. The field must
+already be on the form; use `add-field` first if it is not.
+
+At least one property flag is required; any omitted flag is left untouched.
+
+```bash
+crm form set-field-props cwx_ticket cwx_priority \
+    --locked --no-show-label --solution cwx_crmworx
+crm --dry-run form set-field-props cwx_ticket cwx_priority --visible
+```
+
+Under `--dry-run` the response carries `would_update: true`; no PATCH is issued.
+
+### Required-level is not a form property
+
+`--required LEVEL` does **not** set a form property. Required-level is attribute
+metadata — passing it here routes you to the correct command with a clear error
+rather than silently no-op'ing at the form layer:
+
+```
+Error: Required-level is attribute metadata, not a form property; setting it on a
+form has no effect. Use: crm metadata update-attribute cwx_ticket cwx_priority
+--required LEVEL
+```
+
+### Cell vs control attributes
+
+`disabled` is a `<control>` attribute; `locklevel`, `showlabel`, and `visible` are
+`<cell>` attributes. The FormXml schema rejects `visible` on a `<control>` — the CLI
+applies each flag to the correct element automatically.
+
 ## Wire JS event handlers
 
 The CLI manages JS script libraries and event handlers directly in the form's

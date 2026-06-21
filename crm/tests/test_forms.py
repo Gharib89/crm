@@ -458,6 +458,103 @@ class TestMoveFieldInFormxml:
                 _MAIN_FORMXML, datafieldname="nope", tab="details")
 
 
+def _control_attr(formxml, datafieldname, attr):
+    """The value of ``attr`` on ``datafieldname``'s <control>, or None if unset."""
+    for m in re.finditer(r"<control\b[^>]*>", formxml):
+        tag = m.group(0)
+        if re.search(rf'datafieldname="{re.escape(datafieldname)}"', tag):
+            hit = re.search(rf'\b{attr}="([^"]*)"', tag)
+            return hit.group(1) if hit else None
+    return None
+
+
+def _cell_attr(formxml, datafieldname, attr):
+    """The value of ``attr`` on the <cell> wrapping ``datafieldname``'s control."""
+    from crm.core import forms
+    root = forms._parse_formxml(formxml)
+    control = forms._find_field_control(root, datafieldname)
+    assert control is not None, f"{datafieldname!r} control not found"
+    cell = forms._parent_map(root).get(control)
+    return cell.get(attr) if cell is not None else None
+
+
+class TestSetFieldPropsInFormxml:
+    def test_disabled_sets_control_attribute(self):
+        from crm.core import forms
+        out = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", disabled=True)
+        assert _control_attr(out, "new_name", "disabled") == "true"
+
+    def test_enabled_sets_control_attribute_false(self):
+        from crm.core import forms
+        out = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", disabled=False)
+        assert _control_attr(out, "new_name", "disabled") == "false"
+
+    def test_visible_and_hidden_on_cell(self):
+        from crm.core import forms
+        # visible is a <cell> attribute — the FormXml schema rejects it on a
+        # <control> (verified live against Dataverse).
+        hidden = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", visible=False)
+        assert _cell_attr(hidden, "new_name", "visible") == "false"
+        shown = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", visible=True)
+        assert _cell_attr(shown, "new_name", "visible") == "true"
+
+    def test_locked_sets_cell_locklevel_integer(self):
+        from crm.core import forms
+        locked = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", locked=True)
+        # locklevel is an integer flag in FormXml (1 = locked, 0 = unlocked),
+        # not a "true"/"false" boolean like the other three.
+        assert _cell_attr(locked, "new_name", "locklevel") == "1"
+        unlocked = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", locked=False)
+        assert _cell_attr(unlocked, "new_name", "locklevel") == "0"
+
+    def test_show_label_toggles_cell_showlabel(self):
+        from crm.core import forms
+        out = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", show_label=False)
+        assert _cell_attr(out, "new_name", "showlabel") == "false"
+
+    def test_untouched_props_left_alone(self):
+        from crm.core import forms
+        # Only flip `disabled`; the other props the caller did not pass must stay
+        # exactly as they were in the source (here: absent on the field's cell/control).
+        out = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", disabled=True)
+        assert _cell_attr(out, "new_name", "showlabel") is None
+        assert _cell_attr(out, "new_name", "visible") is None
+        assert _cell_attr(out, "new_name", "locklevel") is None
+
+    def test_multiple_props_in_one_call(self):
+        from crm.core import forms
+        out = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name",
+            disabled=True, visible=False, locked=True, show_label=False)
+        assert _control_attr(out, "new_name", "disabled") == "true"
+        assert _cell_attr(out, "new_name", "visible") == "false"
+        assert _cell_attr(out, "new_name", "locklevel") == "1"
+        assert _cell_attr(out, "new_name", "showlabel") == "false"
+
+    def test_preserves_external_guids_and_classid(self):
+        from crm.core import forms
+        out = forms.set_field_props_in_formxml(
+            _MAIN_FORMXML, datafieldname="new_name", disabled=True)
+        assert "{ffffffff-0000-0000-0000-000000000006}" in out  # role ref
+        assert _control_attr(out, "new_name", "classid") == \
+            "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
+
+    def test_absent_field_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.set_field_props_in_formxml(
+                _MAIN_FORMXML, datafieldname="nope", disabled=True)
+
+
 class TestSelectForm:
     _A = {"formid": "11111111-1111-1111-1111-111111111111", "name": "Main",
           "type": 2, "formxml": "<form/>", "isdefault": False}

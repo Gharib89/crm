@@ -480,6 +480,85 @@ class TestFormSetField:
         assert "add-field" in result.output
 
 
+class TestFormSetFieldProps:
+    def test_disabled_patches_control_attribute(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "set-field-props", "new_project", "new_name",
+                "--disabled", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert 'datafieldname="new_name"' in body["formxml"]
+        assert 'disabled="true"' in body["formxml"]
+        data = json.loads(result.output)["data"]
+        assert data["updated"] is True
+        assert data["disabled"] is True
+
+    def test_multiple_toggles_in_one_call(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "set-field-props", "new_project", "new_name",
+                "--locked", "--hidden", "--no-show-label", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        xml = m.last_request.json()["formxml"]
+        assert 'locklevel="1"' in xml
+        assert 'visible="false"' in xml
+        assert 'showlabel="false"' in xml
+
+    def test_dry_run_does_not_write(self, dry_backend, monkeypatch):
+        backend = dry_backend
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "--dry-run", "form", "set-field-props",
+                "new_project", "new_name", "--disabled"])
+        assert result.exit_code == 0, result.output
+        assert patched.call_count == 0
+        data = json.loads(result.output)["data"]
+        assert data["would_update"] is True
+
+    def test_no_props_is_error(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "set-field-props", "new_project", "new_name",
+                "--no-publish"])
+        assert result.exit_code != 0
+        assert "at least one" in result.output.lower()
+
+    def test_required_routes_to_attribute_metadata(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            patched = m.patch(_form_pk_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "set-field-props", "new_project", "new_name",
+                "--required", "ApplicationRequired", "--no-publish"])
+        assert result.exit_code != 0
+        assert patched.call_count == 0  # never touches the form layer
+        # Routes the user to the attribute-metadata command, not a silent no-op.
+        assert "update-attribute" in result.output
+
+    def test_absent_field_suggests_add(self, backend, monkeypatch):
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+        with rm_module.Mocker() as m:
+            m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
+            result = CliRunner().invoke(cli, [
+                "--json", "form", "set-field-props", "new_project", "nope",
+                "--disabled", "--no-publish"])
+        assert result.exit_code != 0
+        assert "add-field" in result.output
+
+
 class TestFormFieldFormSelection:
     def test_ambiguous_forms_require_form_flag(self, backend, monkeypatch):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)

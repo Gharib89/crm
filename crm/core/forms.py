@@ -331,6 +331,47 @@ def move_field_in_formxml(
     return xml_edit.serialize_xml(root)
 
 
+def set_field_props_in_formxml(
+    formxml: str, *, datafieldname: str,
+    locked: bool | None = None, disabled: bool | None = None,
+    show_label: bool | None = None, visible: bool | None = None,
+) -> str:
+    """Return ``formxml`` with presentation properties toggled in place on
+    ``datafieldname``'s existing field.
+
+    Each property is tri-state: ``None`` leaves it untouched, so only the flags
+    the caller passed are written. ``locked``/``show_label``/``visible`` are
+    ``<cell>`` attributes; ``disabled`` is a ``<control>`` attribute (the FormXml
+    schema rejects ``visible`` on a ``<control>``). FormXml booleans are the
+    literals ``"true"``/``"false"``; ``locklevel`` is instead an integer flag
+    (``"1"`` locked / ``"0"`` unlocked). No id/classid is minted or changed — the
+    transform re-asserts classid integrity as a backstop. Raises ``D365Error`` if
+    the field is not on the form.
+    """
+    root = _parse_formxml(formxml)
+    control = _find_field_control(root, datafieldname)
+    if control is None:
+        raise D365Error(
+            f"Field {datafieldname!r} is not on the form; use add-field to add "
+            f"it first.")
+    cell = _parent_map(root).get(control)
+    if cell is None:
+        raise D365Error(
+            f"Field {datafieldname!r} is not in a cell layout; cannot set "
+            f"properties.")
+    if locked is not None:
+        cell.set("locklevel", "1" if locked else "0")
+    if show_label is not None:
+        cell.set("showlabel", "true" if show_label else "false")
+    if visible is not None:
+        cell.set("visible", "true" if visible else "false")
+    if disabled is not None:
+        control.set("disabled", "true" if disabled else "false")
+    new_xml = xml_edit.serialize_xml(root)
+    xml_edit.assert_classids_intact(formxml, new_xml)
+    return new_xml
+
+
 # --- FormXml event-handler & library wiring (issue #459) ------------------------
 #
 # JS event handlers and script libraries live OUTSIDE the <tabs> layout, in the
@@ -962,6 +1003,7 @@ _DRY_RUN_FLAG = {
     "add-field": "would_add",
     "remove-field": "would_remove",
     "set-field": "would_move",
+    "set-field-props": "would_update",
     "add-library": "would_add_library",
     "add-handler": "would_add_handler",
     "remove-handler": "would_remove_handler",
@@ -1184,6 +1226,48 @@ def move_form_section(
     return _commit_form_change(
         backend, form_row, new_xml, action="move-section", publish=publish,
         solution=solution, extra={"section": section, "tab": tab, "after": after})
+
+
+def set_form_field_props(
+    backend: D365Backend, entity: str, attribute: str, *,
+    form: str | None = None,
+    locked: bool | None = None, disabled: bool | None = None,
+    show_label: bool | None = None, visible: bool | None = None,
+    required: str | None = None,
+    publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Toggle presentation properties on ``attribute``'s existing form field.
+
+    ``locked``/``disabled``/``show_label``/``visible`` are tri-state — ``None``
+    leaves a property untouched, so only the flags the caller passed are written.
+    Errors (suggesting add-field) if the field is not already on the form, and
+    requires at least one property.
+
+    Required-level is intentionally NOT a form property: it is attribute metadata
+    (a different family), so ``required`` is routed with a clear ``D365Error`` to
+    ``crm metadata update-attribute`` rather than silently no-op'd at the form
+    layer.
+    """
+    if required is not None:
+        raise D365Error(
+            f"Required-level is attribute metadata, not a form property; setting "
+            f"it on a form has no effect. Use: crm metadata update-attribute "
+            f"{entity} {attribute} --required {required}")
+    if locked is None and disabled is None and show_label is None and visible is None:
+        raise D365Error(
+            "Set at least one property: --locked/--unlocked, --disabled/--enabled, "
+            "--show-label/--no-show-label, or --visible/--hidden.")
+    form_row = _select_form(read_entity_forms(backend, entity), form)
+    # The transform raises a D365Error with the add-field hint if the field is
+    # absent, so no separate presence pre-check is needed here.
+    new_xml = set_field_props_in_formxml(
+        form_row.get("formxml", ""), datafieldname=attribute,
+        locked=locked, disabled=disabled, show_label=show_label, visible=visible)
+    return _commit_form_change(
+        backend, form_row, new_xml, action="set-field-props",
+        publish=publish, solution=solution,
+        extra={"attribute": attribute, "locked": locked, "disabled": disabled,
+               "show_label": show_label, "visible": visible})
 
 
 def _resolve_library_name(backend: D365Backend, library: str) -> str:

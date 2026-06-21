@@ -216,6 +216,46 @@ def form_set_field(
     _journal(ctx, attribute, info, solution=solution)
 
 
+@form_group.command("set-field-props")
+@click.argument("entity")
+@click.argument("attribute")
+@click.option("--locked/--unlocked", "locked", default=None,
+              help="Lock the field against being moved/removed on the form "
+                   "(cell locklevel).")
+@click.option("--disabled/--enabled", "disabled", default=None,
+              help="Make the field read-only (control disabled).")
+@click.option("--show-label/--no-show-label", "show_label", default=None,
+              help="Show the field's label (cell showlabel).")
+@click.option("--visible/--hidden", "visible", default=None,
+              help="Show the field on the form (cell visible).")
+@click.option("--required", "required", metavar="LEVEL",
+              help="Required-level is attribute metadata, not a form property; "
+                   "passing it here routes you to `crm metadata update-attribute "
+                   "--required` instead of silently no-op'ing.")
+@_form_option
+@_publish_option
+@_solution_option
+@pass_ctx
+def form_set_field_props(
+    ctx: CLIContext, entity: str, attribute: str,
+    locked: bool | None, disabled: bool | None, show_label: bool | None,
+    visible: bool | None, required: str | None, form: str | None,
+    publish: bool, solution: str | None, require_solution: bool,
+) -> None:
+    """Toggle presentation properties of an existing field on an entity form."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = forms_mod.set_form_field_props(
+            ctx.backend(), entity, attribute, form=form,
+            locked=locked, disabled=disabled, show_label=show_label,
+            visible=visible, required=required,
+            publish=publish, solution=solution,
+        )
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, attribute, info, solution=solution)
+
+
 _event_option = click.option(
     "--event", required=True,
     type=click.Choice(list(forms_mod.EVENT_CHOICES), case_sensitive=False),
