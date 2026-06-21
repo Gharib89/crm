@@ -83,7 +83,7 @@ class TestAddArea:
     def test_duplicate_area_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
-            with pytest.raises(D365Error, match="Area 'SFA' already exists"):
+            with pytest.raises(D365Error, match="node id 'SFA' already exists"):
                 sm.add_area(backend, _SID, area_id="SFA", title="dup")
             assert not any(r.method == "PATCH" for r in m.request_history)
 
@@ -141,11 +141,20 @@ class TestAddGroup:
                 sm.add_group(backend, _SID, area_id="NOPE", group_id="g",
                              title="t")
 
-    def test_duplicate_group_within_area_is_rejected(self, backend):
+    def test_duplicate_group_in_same_area_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
-            with pytest.raises(D365Error, match="Group 'SFA_Grp' already exists"):
+            with pytest.raises(D365Error, match="node id 'SFA_Grp' already exists"):
                 sm.add_group(backend, _SID, area_id="SFA", group_id="SFA_Grp",
+                             title="dup")
+
+    def test_duplicate_group_across_areas_is_rejected(self, backend):
+        # node ids are unique across the whole document — a group id already used
+        # in another Area cannot be reused (keeps remove-node by-id unambiguous).
+        with requests_mock.Mocker() as m:
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            with pytest.raises(D365Error, match="node id 'SFA_Grp' already exists"):
+                sm.add_group(backend, _SID, area_id="HLP", group_id="SFA_Grp",
                              title="dup")
 
 
@@ -225,7 +234,7 @@ class TestAddSubarea:
     def test_duplicate_subarea_id_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
-            with pytest.raises(D365Error, match="SubArea id 'nav_accts'"):
+            with pytest.raises(D365Error, match="node id 'nav_accts' already exists"):
                 sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
                                sub_id="nav_accts", url="https://x")
 

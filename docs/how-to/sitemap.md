@@ -14,7 +14,7 @@ All `sitemap` verbs take a `SITEMAP_ID` positional argument — the sitemap reco
 GUID. Retrieve it by name:
 
 ```bash
-crm --json query odata sitemaps --select sitemapname
+crm --json query odata sitemaps --select sitemapname,sitemapid
 ```
 
 The `sitemapid` in `data[]` is what you pass as `SITEMAP_ID`.
@@ -26,8 +26,10 @@ crm --json sitemap add-area <SITEMAP_ID> \
     --id cwx_sales --title "Sales" --publish
 ```
 
-`--id` must match `[a-zA-Z0-9_]+` and be **unique among Areas** in the document. A
-publisher prefix (e.g. `cwx_`) is recommended. `--icon` accepts a path string or
+`--id` must match `[a-zA-Z0-9_]+` and be **unique across all node ids** in the
+document (every Area / Group / SubArea Id — so `remove-node --id` is never
+ambiguous). A publisher prefix (e.g. `cwx_`) is recommended. `--icon` accepts a
+path string or
 the `$webresource:<name>` directive. `--show-groups` sets `ShowGroups='true'` on the
 new Area.
 
@@ -39,7 +41,7 @@ crm --json sitemap add-group <SITEMAP_ID> \
 ```
 
 `--area` is the Id of the parent Area (must already exist). The new Group Id must be
-**unique within that Area**.
+**unique across all node ids** in the document.
 
 ## Add a SubArea under a Group
 
@@ -71,8 +73,7 @@ in the UI.
 `--url` pointing at the web resource URL. The `$webresource:` prefix is the `--icon`
 directive only.
 
-The new SubArea Id must be **unique across the whole document** (not just within its
-parent Group).
+The new SubArea Id must be **unique across all node ids** in the document.
 
 ## Remove (or comment out) a node
 

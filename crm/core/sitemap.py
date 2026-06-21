@@ -11,8 +11,9 @@ the result back (T3).
 
 SiteMap-specific safety rules (verified live, on-prem v9.1 + cloud):
 
-- A new node ``Id`` matches ``[a-zA-Z0-9_]+`` and is unique in its scope (Area
-  among Areas; Group within its parent Area; SubArea across the whole document).
+- A new node ``Id`` matches ``[a-zA-Z0-9_]+`` and is unique across the whole
+  document (every Area / Group / SubArea Id) — matching ``build_sitemapxml`` and
+  keeping ``remove-node``'s by-Id targeting unambiguous.
 - ``ResourceId`` (the localized-label pointer) and ``IntroducedVersion`` (the
   solution-version stamp) are platform-owned: new nodes carry neither, so the
   editors never write or mutate them (the "never touch" rule holds by
@@ -93,6 +94,18 @@ def _find(root: ET.Element, tag: str, node_id: str) -> ET.Element | None:
         if el.get("Id") == node_id:
             return el
     return None
+
+
+def _require_unique(root: ET.Element, node_id: str) -> None:
+    """Reject a new node Id that collides with **any** existing node.
+
+    Node Ids are unique across the whole document (not just within their type or
+    parent), matching ``build_sitemapxml`` and — crucially — keeping
+    ``remove-node``'s by-Id targeting unambiguous: two nodes sharing an Id would
+    make a removal pick one arbitrarily.
+    """
+    if node_id in _node_ids(root):
+        raise D365Error(f"node id {node_id!r} already exists in the sitemap.")
 
 
 def _validate_node_id(node_id: str, *, kind: str) -> str:
@@ -191,8 +204,7 @@ def add_area(
     aid = _validate_node_id(area_id, kind="Area")
 
     def mutate(root: ET.Element) -> _Mutation:
-        if _find(root, "Area", aid) is not None:
-            raise D365Error(f"Area {aid!r} already exists in the sitemap.")
+        _require_unique(root, aid)
         attrs = {"Id": aid, "Title": title}
         if show_groups:
             attrs["ShowGroups"] = "true"
@@ -224,7 +236,7 @@ def add_group(
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
-    """Splice a new ``<Group>`` (unique within its parent Area) under an Area."""
+    """Splice a new ``<Group>`` under an Area (Id unique across the document)."""
     aid = area_id.strip()
     gid = _validate_node_id(group_id, kind="Group")
 
@@ -232,13 +244,17 @@ def add_group(
         area = _find(root, "Area", aid)
         if area is None:
             raise D365Error(f"parent Area {aid!r} not found in the sitemap.")
-        if _find(area, "Group", gid) is not None:
-            raise D365Error(f"Group {gid!r} already exists in Area {aid!r}.")
+        _require_unique(root, gid)
         ET.SubElement(area, "Group", {"Id": gid, "Title": title})
 
         def verify(rb: ET.Element) -> None:
-            if not xml_edit.node_present(rb, "Group", Id=gid):
-                raise D365Error(f"read-back: Group {gid!r} absent after publish.")
+            # parent-aware: the new Group must land *under the named Area*, not
+            # merely exist somewhere in the document.
+            area_rb = _find(rb, "Area", aid)
+            if area_rb is None or _find(area_rb, "Group", gid) is None:
+                raise D365Error(
+                    f"read-back: Group {gid!r} not under Area {aid!r} after "
+                    "publish.")
 
         return _Mutation(added={gid}, removed=set(), verify=verify)
 
@@ -314,8 +330,7 @@ def add_subarea(
         if group is None:
             raise D365Error(
                 f"parent Group {gid!r} not found in Area {aid!r}.")
-        if sid in _node_ids(root):
-            raise D365Error(f"SubArea id {sid!r} already exists in the sitemap.")
+        _require_unique(root, sid)
         attrs = {"Id": sid, content_attr: content_val}
         if title:
             attrs["Title"] = title
@@ -324,9 +339,13 @@ def add_subarea(
         ET.SubElement(group, "SubArea", attrs)
 
         def verify(rb: ET.Element) -> None:
-            if not xml_edit.node_present(rb, "SubArea", Id=sid):
+            # parent-aware: the new SubArea must land under the named Group.
+            area_rb = _find(rb, "Area", aid)
+            group_rb = _find(area_rb, "Group", gid) if area_rb is not None else None
+            if group_rb is None or _find(group_rb, "SubArea", sid) is None:
                 raise D365Error(
-                    f"read-back: SubArea {sid!r} absent after publish.")
+                    f"read-back: SubArea {sid!r} not under {aid}/{gid} after "
+                    "publish.")
 
         return _Mutation(added={sid}, removed=set(), verify=verify)
 

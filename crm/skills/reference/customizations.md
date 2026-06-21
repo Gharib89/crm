@@ -71,17 +71,17 @@ parsed XML tree → PATCH → publish → T3 read-back. Complements `app build-s
 **Find the sitemap GUID first:**
 
 ```bash
-crm --json query odata sitemaps --select sitemapname
+crm --json query odata sitemaps --select sitemapname,sitemapid
 # → data[].sitemapid is the SITEMAP_ID positional arg
 ```
 
 **The four verbs:**
 
 ```bash
-# Add an Area (id unique among Areas; publisher-prefix recommended)
+# Add an Area (id unique across all node ids; publisher-prefix recommended)
 crm --json sitemap add-area <SITEMAP_ID> --id cwx_sales --title "Sales" --publish
 
-# Add a Group (id unique within the parent Area)
+# Add a Group under an Area
 crm --json sitemap add-group <SITEMAP_ID> \
     --area cwx_sales --id cwx_grp --title "Customers" --publish
 
@@ -109,8 +109,9 @@ crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --publi
   the `--icon` directive only, not a content binding.
 - **`ResourceId` and `IntroducedVersion` are never written.** These are
   platform-owned — new nodes get only `Title`; the CLI never touches them.
-- **SubArea Ids are unique across the whole document** (not just within their Group).
-  Area Ids are unique among Areas; Group Ids are unique within their parent Area.
+- **Every new node Id is unique across the whole document** (all Area / Group /
+  SubArea Ids), matching `build_sitemapxml` — this keeps `remove-node --id`
+  unambiguous, since it targets by Id across all node types.
 - **`remove-node` cascades** — removing an Area or Group that has descendants emits a
   `meta.warnings` cascade advisory. Use `--dry-run` first to preview the subtree.
 - **`--comment-out`** replaces the node with a well-formed XML comment instead of
