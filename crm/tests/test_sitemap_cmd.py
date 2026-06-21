@@ -56,6 +56,22 @@ class TestSetTitlePairing:
         assert result.exit_code == 2, result.output
         assert "one --title per --lcid" in result.output
 
+    def test_duplicate_lcid_is_in_command_error_exit_1(self, backend, monkeypatch):
+        # A repeated --lcid is in-command validation, not a malformed invocation:
+        # per ADR 0001 it exits 1 (the ok:false envelope), like add-area's
+        # id-grammar checks — distinct from the exit-2 pair-count usage error.
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for("RetrieveProvisionedLanguages()"),
+                  json={"RetrieveProvisionedLanguages": [1033]})
+            result = CliRunner().invoke(cli, [
+                "--json", "sitemap", "set-title", _SID, "--id", "SFA",
+                "--lcid", "1033", "--title", "A",
+                "--lcid", "1033", "--title", "B", "--no-publish"])
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False and "duplicate --lcid 1033" in env["error"]
+
     def test_repeatable_pairs_reach_core(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
@@ -82,6 +98,19 @@ class TestSetDescriptionPairing:
             "--lcid", "1033", "--lcid", "1031", "--description", "Only one"])
         assert result.exit_code == 2, result.output
         assert "one --description per --lcid" in result.output
+
+    def test_duplicate_lcid_is_in_command_error_exit_1(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for("RetrieveProvisionedLanguages()"),
+                  json={"RetrieveProvisionedLanguages": [1033]})
+            result = CliRunner().invoke(cli, [
+                "--json", "sitemap", "set-description", _SID, "--id", "SFA",
+                "--lcid", "1033", "--description", "A",
+                "--lcid", "1033", "--description", "B", "--no-publish"])
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False and "duplicate --lcid 1033" in env["error"]
 
 
 class TestCascadeWarningRouting:

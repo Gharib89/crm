@@ -141,9 +141,11 @@ crm --json sitemap set-description <SITEMAP_ID> \
   ignored by the platform, so the rejection is intentional — install the language pack
   first.
 - **One Title/Description per LCID — updates in place, never duplicates.** Re-setting
-  the same LCID replaces the existing element. Passing the same `--lcid` twice in one
-  call is a usage error (exit 2); mismatched `--lcid` / `--title` (or `--description`)
-  counts is also exit 2.
+  the same LCID replaces the existing element. A duplicate `--lcid` in one call (or a
+  non-4-digit `--lcid` / blank text) is an in-command validation error — exit 1, the
+  normal `ok:false` envelope — matching `add-area`'s id-grammar checks; only a
+  *mismatched* `--lcid` / `--title` (or `--description`) count is a Click usage error
+  (exit 2).
 - **Strict child-element ordering within a node.** The XSD requires `<Titles>` before
   `<Descriptions>` before child nodes (Group/SubArea). A new container is spliced into
   the correct position — never appended after child nodes, which would be

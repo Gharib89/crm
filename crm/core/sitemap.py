@@ -625,7 +625,12 @@ def _require_installed_lcids(backend: D365Backend, lcids: list[int]) -> None:
     A ``<Title>`` / ``<Description>`` for an un-provisioned language is silently
     ignored by the platform, so the editor refuses it up front rather than write
     dead text."""
-    installed = set(retrieve_provisioned_languages(backend))
+    try:
+        installed = set(retrieve_provisioned_languages(backend))
+    except ValueError as exc:  # malformed RetrieveProvisionedLanguages response
+        # Re-raise as D365Error so it surfaces through the CLI's error envelope
+        # (d365_errors only traps D365Error), not as an unhandled traceback.
+        raise D365Error(f"could not read installed languages: {exc}") from exc
     bad = [lcid for lcid in lcids if lcid not in installed]
     if bad:
         listed = ", ".join(str(x) for x in sorted(installed))
