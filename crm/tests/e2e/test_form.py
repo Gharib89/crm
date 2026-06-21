@@ -385,6 +385,44 @@ def test_form_set_field_roundtrip(cli, ephemeral_entity, tmp_path):
              "--publish"], check=False)
 
 
+@covers("form set-field-props")
+@pytest.mark.slow
+def test_form_set_field_props_roundtrip(cli, ephemeral_entity, tmp_path):
+    """Add `createdon`, toggle its presentation props with set-field-props
+    (publishing), then assert each flag landed on the right cell/control in the
+    re-exported, published FormXml: disabled on the <control>, and
+    locklevel/showlabel/visible on its <cell>. Removes the field to leave the
+    form clean."""
+    import re as _re
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    form_name = forms[0]["name"]
+    try:
+        cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish"])
+        r = cli(["--json", "form", "set-field-props", ephemeral_entity, "createdon",
+                 "--disabled", "--hidden", "--locked", "--no-show-label", "--publish"])
+        assert r.returncode == 0, f"set-field-props failed:\n{r.stderr}\n{r.stdout}"
+        data = json.loads(r.stdout)["data"]
+        assert data["updated"] is True, data
+
+        xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        # `disabled` is a <control> attribute.
+        ctrl = _re.search(r'<control\b[^>]*datafieldname="createdon"[^>]*/?>', xml)
+        assert ctrl, f"createdon control missing from exported form:\n{xml}"
+        assert 'disabled="true"' in ctrl.group(0), ctrl.group(0)
+        # locklevel / showlabel / visible are <cell> attributes (the schema rejects
+        # `visible` on a <control>); locklevel is an integer flag, the rest booleans.
+        cell = _re.search(r'(<cell\b[^>]*>)(?:(?!</cell>).)*?datafieldname="createdon"',
+                          xml, _re.DOTALL)
+        assert cell, "createdon cell missing from exported form"
+        cell_tag = cell.group(1)  # the cell's opening tag, captured above
+        assert 'locklevel="1"' in cell_tag, cell_tag
+        assert 'showlabel="false"' in cell_tag, cell_tag
+        assert 'visible="false"' in cell_tag, cell_tag
+    finally:
+        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
+             "--publish"], check=False)
+
+
 # ── event-handler & library wiring (issue #459) ─────────────────────────────────
 #
 # One round-trip over the four wiring verbs against the session ephemeral_entity's

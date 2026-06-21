@@ -161,6 +161,31 @@ manual pipeline below for those.
 run for real (live metadata + form fetched), but no PATCH is issued and the response
 carries `would_add` / `would_remove` / `would_move: true`.
 
+### Toggle field presentation properties — `set-field-props`
+
+```bash
+crm --json form set-field-props cwx_ticket cwx_priority \
+    --disabled --hidden --locked --no-show-label --publish
+# → data: {updated: true, published: true, disabled: true, visible: false, locked: true, show_label: false}
+```
+
+Toggles presentation attributes of an existing field in-place (no GUID/classid
+surface). At least one flag is required; omitted flags are left untouched — and only
+the flags you pass echo back in the result (keyed by flag name, e.g. `locked`, not the
+underlying `locklevel`). Errors if the field is not on the form — use `add-field` first.
+
+**`--required` routes to metadata, not the form.** Required-level is an attribute
+metadata property, not a form property. Passing `--required LEVEL` here errors with a
+clear redirect to `crm metadata update-attribute ENTITY ATTRIBUTE --required LEVEL`
+rather than silently no-op'ing at the form layer.
+
+**Cell vs control — where each flag lands.** `disabled` is a `<control>` attribute;
+`locklevel`, `showlabel`, and `visible` are `<cell>` attributes. The FormXml schema
+rejects `visible` on a `<control>` — the CLI applies each flag to the correct element.
+
+**`--dry-run`** returns `{_dry_run: true, would_update: true, …}` (plus the echoed
+flags) with no PATCH.
+
 ### Wire JS event handlers — `add-library`, `add-handler`, `remove-handler`, `list-handlers`
 
 **Web resource must already exist.** The editor never creates web resources. Register
