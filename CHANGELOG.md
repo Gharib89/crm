@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.20.1 (2026-06-21)
+
+### Bug Fixes
+
+- Add --solution to security create-role ([#485](https://github.com/Gharib89/crm/pull/485),
+  [`fe292b1`](https://github.com/Gharib89/crm/commit/fe292b13bf598f1ea0017eb52ab700c152e881be))
+
+- Document if-exists-skip rationale; pyright-clean entity test
+  ([#485](https://github.com/Gharib89/crm/pull/485),
+  [`fe292b1`](https://github.com/Gharib89/crm/commit/fe292b13bf598f1ea0017eb52ab700c152e881be))
+
+### Documentation
+
+- Document create-role --solution and if-exists-skip nuance
+  ([#485](https://github.com/Gharib89/crm/pull/485),
+  [`fe292b1`](https://github.com/Gharib89/crm/commit/fe292b13bf598f1ea0017eb52ab700c152e881be))
+
+### Testing
+
+- E2e for create-role --solution membership (cloud-verified)
+  ([#485](https://github.com/Gharib89/crm/pull/485),
+  [`fe292b1`](https://github.com/Gharib89/crm/commit/fe292b13bf598f1ea0017eb52ab700c152e881be))
+
+
 ## v1.20.0 (2026-06-21)
 
 ### Features
