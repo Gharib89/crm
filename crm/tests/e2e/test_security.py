@@ -328,6 +328,51 @@ def test_create_role_and_set_privileges_roundtrip(cli, backend, unique, request)
     )
 
 
+@covers("security create-role")
+def test_create_role_into_solution(cli, backend, unique, ephemeral_solution, request):
+    """Create a role with --solution and assert it lands in that solution as a
+    component (componenttype 20 = Role). The role is deleted in a finalizer.
+
+    Verifies the MSCRM.SolutionUniqueName create-header mechanism end-to-end: a
+    role record is a solution component, so the header alone adds it — no
+    separate AddSolutionComponent call.
+    """
+    # Resolve the throwaway solution's id to scope the component lookup.
+    sol_resp = backend.get(
+        "solutions",
+        params={"$select": "solutionid",
+                "$filter": f"uniquename eq '{ephemeral_solution}'", "$top": "1"},
+    )
+    sol_rows = sol_resp.get("value", [])
+    assert sol_rows, f"could not resolve solutionid for {ephemeral_solution!r}"
+    solution_id = sol_rows[0]["solutionid"].lower()
+
+    role_name = f"e2e_solrole_{unique}"
+    created = cli([
+        "--json", "security", "create-role", role_name,
+        "--solution", ephemeral_solution, "--yes",
+    ])
+    assert created.returncode == 0, (
+        f"create-role --solution failed:\n{created.stderr}\nstdout: {created.stdout}"
+    )
+    role_id = json.loads(created.stdout)["data"]["roleid"]
+    assert role_id, "create-role did not return a roleid"
+
+    request.addfinalizer(lambda: _safe_delete(backend, f"roles({role_id})"))
+
+    # The role must be registered as a component (type 20) of the solution.
+    comps = backend.get(
+        "solutioncomponents",
+        params={"$select": "objectid,_solutionid_value,componenttype",
+                "$filter": f"objectid eq {role_id} and componenttype eq 20"},
+    )
+    owning = {r.get("_solutionid_value", "").lower() for r in comps.get("value", [])}
+    assert solution_id in owning, (
+        f"role {role_id} not a component of solution {ephemeral_solution!r} "
+        f"({solution_id}); found in solutions: {owning}"
+    )
+
+
 def _safe_delete(backend, path):
     try:
         backend.delete(path)
