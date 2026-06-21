@@ -57,6 +57,22 @@ def _prefers_representation(backend: RecordingBackend) -> bool:
     return "return=representation" in directives
 
 
+# ── create() merges extra_headers with Prefer ──────────────────────────────
+
+
+def test_create_merges_extra_headers_with_prefer(monkeypatch):
+    """A caller's extra_headers ride the create POST alongside Prefer (#483)."""
+    from crm.core import entity as entity_mod
+
+    backend = RecordingBackend()
+    entity_mod.create(
+        backend, "roles", {"name": "x"},
+        extra_headers={"MSCRM.SolutionUniqueName": "mysol"},
+    )
+    assert _prefers_representation(backend)
+    assert backend.headers.get("MSCRM.SolutionUniqueName") == "mysol"
+
+
 # ── resolver unit table ───────────────────────────────────────────────────
 
 

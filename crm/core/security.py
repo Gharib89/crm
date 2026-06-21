@@ -424,12 +424,20 @@ def create_role(
     *,
     business_unit: str | None = None,
     if_exists: str = "error",
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """Create a security role, returning ``{roleid, name, businessunitid}``.
 
     ``business_unit`` (GUID) defaults to the caller's own business unit (WhoAmI).
     ``if_exists`` controls a same-name/same-BU collision: ``error`` (default)
     raises; ``skip`` returns the existing role's id with ``existed: True``.
+
+    ``solution`` (an unmanaged solution's unique name) adds the new role to that
+    solution as a component, via the ``MSCRM.SolutionUniqueName`` create header
+    (roles are solution components, so no separate AddSolutionComponent call is
+    needed). Solution membership applies only to a *newly created* role: with
+    ``if_exists='skip'`` an existing role is returned unchanged and is **not**
+    added to ``solution``.
     """
     if business_unit is None:
         bu = _caller_business_unit(backend)
@@ -457,8 +465,10 @@ def create_role(
         # Stable preview shape (mirrors themes/dashboard/charts cores) rather
         # than leaking the backend's raw request echo.
         return {"_dry_run": True,
-                "would_create": {"entity_set": _ROLES_SET, "body": payload}}
-    result = entity_mod.create(backend, _ROLES_SET, payload)
+                "would_create": {"entity_set": _ROLES_SET, "body": payload,
+                                  "solution": solution}}
+    extra_headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = entity_mod.create(backend, _ROLES_SET, payload, extra_headers=extra_headers)
     return {
         "roleid": str(result.get("roleid", "")),
         "name": str(result.get("name", name)),

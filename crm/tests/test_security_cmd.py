@@ -442,7 +442,7 @@ class TestCreateRole:
         _stub_backend(monkeypatch, backend)
         calls = []
 
-        def _fake(b, name, *, business_unit, if_exists):
+        def _fake(b, name, *, business_unit, if_exists, solution=None):
             calls.append((name, business_unit, if_exists))
             return {"roleid": "role-9", "name": name, "businessunitid": "bu-1"}
 
@@ -456,6 +456,37 @@ class TestCreateRole:
         env = json.loads(result.stdout)
         assert env["ok"] is True
         assert env["data"]["roleid"] == "role-9"
+
+    def test_solution_forwarded(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        seen = {}
+
+        def _fake(b, name, *, business_unit, if_exists, solution=None):
+            seen["solution"] = solution
+            return {"roleid": "role-9", "name": name, "businessunitid": "bu-1"}
+
+        monkeypatch.setattr("crm.commands.security.security_mod.create_role", _fake)
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "create-role", "R",
+            "--solution", "mysol", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert seen["solution"] == "mysol"
+
+    def test_unresolved_solution_warning_in_meta(self, monkeypatch, backend):
+        # No --solution and no profile default (isolated_home) → advisory warning.
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.create_role",
+            lambda *a, **k: {"roleid": "role-9", "name": "R", "businessunitid": "bu-1"},
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "create-role", "R", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.stdout)
+        warnings = env["meta"]["warnings"]
+        assert any("solution" in w.lower() for w in warnings)
 
     def test_without_yes_non_interactive_aborts(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
