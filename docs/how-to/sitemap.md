@@ -112,6 +112,97 @@ crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accounts --comment-out --pu
 (cascade warning surfaced in `meta.warnings`). The command proceeds — pass
 `--dry-run` first to preview exactly which subtree would be swept.
 
+## Set localized titles on a node
+
+`set-title` writes `<Title LCID="…" Title="…"/>` elements inside a `<Titles>` block
+on an Area, Group, or SubArea. Pass `--lcid` and `--title` as a pair; both flags are
+repeatable and paired positionally (first `--lcid` matches first `--title`, and so
+on).
+
+```bash
+# Set a single English title on a node
+crm --json sitemap set-title <SITEMAP_ID> \
+    --id cwx_sales --lcid 1033 --title "Sales" --publish
+
+# Set titles for multiple languages in one call
+crm --json sitemap set-title <SITEMAP_ID> \
+    --id cwx_sales \
+    --lcid 1033 --title "Sales" \
+    --lcid 1031 --title "Vertrieb" \
+    --publish
+```
+
+**`--lcid` must name an installed language.** Before the PATCH, the CLI calls
+`RetrieveProvisionedLanguages` and rejects any LCID that is not provisioned on the
+org. A `<Title>` for an un-provisioned language is silently ignored by the platform,
+so the rejection is intentional — install the language pack first.
+
+**One Title per LCID — updates in place.** If a `<Title>` for that LCID already
+exists, it is updated rather than duplicated. The XSD permits duplicate LCIDs, but
+the CLI enforces uniqueness: passing the same `--lcid` twice in a single call is a
+usage error (exit 2). A mismatched count of `--lcid` and `--title` flags is also a
+usage error.
+
+**`ResourceId` is never touched.** The platform-owned localized-label pointer is
+left intact; only the inline `Title=` attribute of the `<Title>` element is written.
+
+**Strict child-element ordering is preserved.** Within a node, the XSD requires
+`<Titles>` before `<Descriptions>` before child nodes (Group/SubArea). When the CLI
+splices in a new `<Titles>` container it inserts it at the correct position — never
+after child nodes, which would be schema-invalid and fail on import.
+
+The JSON response echoes `action`, `node_id`, and `titles` as a list of
+`{lcid, title}` objects:
+
+```json
+{ "ok": true,
+  "data": {"sitemapid": "…", "action": "set-title", "node_id": "cwx_sales",
+           "titles": [{"lcid": 1033, "title": "Sales"}, {"lcid": 1031, "title": "Vertrieb"}],
+           "updated": true, "published": true},
+  "meta": {} }
+```
+
+## Set localized descriptions on a node
+
+`set-description` writes `<Description LCID="…" Description="…"/>` elements inside a
+`<Descriptions>` block. The shape is identical to `set-title` — `--lcid` and
+`--description` are paired positionally and repeatable.
+
+```bash
+# Set a single English description
+crm --json sitemap set-description <SITEMAP_ID> \
+    --id cwx_sales --lcid 1033 --description "Sales area" --publish
+
+# Set descriptions for multiple languages
+crm --json sitemap set-description <SITEMAP_ID> \
+    --id cwx_sales \
+    --lcid 1033 --description "Sales area" \
+    --lcid 1031 --description "Vertriebsbereich" \
+    --publish
+```
+
+All the same rules apply as for `set-title`: `--lcid` is cross-checked against
+provisioned languages, one Description per LCID (updates in place, duplicate LCID in
+a single call is exit 2), `ResourceId` is untouched, and strict
+`<Titles>` → `<Descriptions>` → child-node ordering is respected.
+
+The JSON response echoes `action`, `node_id`, and `descriptions` as a list of
+`{lcid, description}` objects:
+
+```json
+{ "ok": true,
+  "data": {"sitemapid": "…", "action": "set-description", "node_id": "cwx_sales",
+           "descriptions": [{"lcid": 1033, "description": "Sales area"}],
+           "updated": true, "published": true},
+  "meta": {} }
+```
+
+> **Note on the legacy `Title=`/`Description=` attributes.** The SiteMap XSD
+> deprecates the plain `Title` and `Description` attributes on nodes in favour of
+> the `<Titles>`/`<Descriptions>` child elements. `add-area`, `add-group`, and
+> `add-subarea` still write the legacy `Title` attribute — that is unchanged. Use
+> `set-title` / `set-description` when you need true per-LCID localisation.
+
 ## Publish-gated read-back — and why not to chain `--no-publish` edits
 
 > **Gotcha — `sitemapxml` reads/writes go through the published layer.** A Web

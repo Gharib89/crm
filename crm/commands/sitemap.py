@@ -159,6 +159,65 @@ def sitemap_move_node(ctx: CLIContext, sitemap_id, node_id, before, after, index
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
+@sitemap_group.command("set-title")
+@click.argument("sitemap_id")
+@click.option("--id", "node_id", required=True,
+              help="Id of the Area/Group/SubArea to title.")
+@click.option("--lcid", "lcids", type=int, multiple=True, required=True,
+              help="4-digit locale ID (repeatable; paired positionally with "
+                   "--title; must be an installed language).")
+@click.option("--title", "titles", multiple=True, required=True,
+              help="Localized title for the matching --lcid (repeatable).")
+@_solution_option
+@_publish_option
+@pass_ctx
+def sitemap_set_title(ctx: CLIContext, sitemap_id, node_id, lcids, titles,
+                      solution, require_solution, publish):
+    """Set localized title(s) on a node in the sitemap SITEMAP_ID."""
+    if len(lcids) != len(titles):
+        raise click.UsageError(
+            f"Provide one --title per --lcid (got {len(lcids)} --lcid and "
+            f"{len(titles)} --title).")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = sitemap_mod.set_title(
+            ctx.backend(), sitemap_id, node_id=node_id,
+            titles=list(zip(lcids, titles)), publish=publish, solution=solution)
+    _emit(ctx, info, warning)
+    _journal(ctx, sitemap_id, info, solution=solution)
+
+
+@sitemap_group.command("set-description")
+@click.argument("sitemap_id")
+@click.option("--id", "node_id", required=True,
+              help="Id of the Area/Group/SubArea to describe.")
+@click.option("--lcid", "lcids", type=int, multiple=True, required=True,
+              help="4-digit locale ID (repeatable; paired positionally with "
+                   "--description; must be an installed language).")
+@click.option("--description", "descriptions", multiple=True, required=True,
+              help="Localized description for the matching --lcid (repeatable).")
+@_solution_option
+@_publish_option
+@pass_ctx
+def sitemap_set_description(ctx: CLIContext, sitemap_id, node_id, lcids,
+                            descriptions, solution, require_solution, publish):
+    """Set localized description(s) on a node in the sitemap SITEMAP_ID."""
+    if len(lcids) != len(descriptions):
+        raise click.UsageError(
+            f"Provide one --description per --lcid (got {len(lcids)} --lcid and "
+            f"{len(descriptions)} --description).")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = sitemap_mod.set_description(
+            ctx.backend(), sitemap_id, node_id=node_id,
+            descriptions=list(zip(lcids, descriptions)), publish=publish,
+            solution=solution)
+    _emit(ctx, info, warning)
+    _journal(ctx, sitemap_id, info, solution=solution)
+
+
 @sitemap_group.command("remove-node")
 @click.argument("sitemap_id")
 @click.option("--id", "node_id", required=True,

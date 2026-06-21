@@ -40,6 +40,7 @@ from typing import Any, Callable
 
 from crm.core import xml_edit
 from crm.core.entity_names import resolve_logical_name
+from crm.core.ribbon import retrieve_provisioned_languages
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
 
 _SITEMAP_SET = "sitemaps"
@@ -538,3 +539,185 @@ def move_node(
         extra["after"] = after
     return _edit(backend, sitemap_id, action="move-node", extra=extra,
                  mutate=mutate, publish=publish, solution=solution)
+
+
+# --- set-title / set-description (localized) ------------------------------------
+
+# A nav node's children follow a strict sequence in the SiteMap XSD:
+# ``Titles`` → ``Descriptions`` → child nodes (Group / SubArea / Privilege). A
+# naive append of a localized container *after* the child nodes is a
+# schema-invalid import, so a new container is spliced at the rank this map
+# dictates (anything not listed — a child node — ranks last).
+_CONTAINER_RANK = {"Titles": 0, "Descriptions": 1}
+
+
+def _container_index(node: ET.Element, container_tag: str) -> int:
+    """Index at which a ``Titles`` / ``Descriptions`` container belongs in ``node``.
+
+    Returns the first position whose existing child ranks at or after the new
+    container, so ``Titles`` lands first and ``Descriptions`` lands right after an
+    existing ``Titles`` — both ahead of the node's child nodes, honoring the
+    strict child sequence. Comments/PIs (non-string tags) are skipped."""
+    rank = _CONTAINER_RANK[container_tag]
+    for i, child in enumerate(node):
+        if not isinstance(child.tag, str):
+            continue
+        if _CONTAINER_RANK.get(child.tag, 2) >= rank:
+            return i
+    return len(node)
+
+
+def _child_order_ok(node: ET.Element) -> bool:
+    """True if ``node``'s element children are in schema order (Titles →
+    Descriptions → child nodes)."""
+    ranks = [_CONTAINER_RANK.get(c.tag, 2) for c in node if isinstance(c.tag, str)]
+    return ranks == sorted(ranks)
+
+
+def _normalize_entries(
+    entries: list[tuple[int, str]], *, item_tag: str
+) -> list[tuple[int, str]]:
+    """Validate the ``(LCID, text)`` pairs for a localized set, enforcing one per
+    LCID.
+
+    Rejects an empty set, a blank value, and a repeated LCID: the XSD permits
+    duplicate ``<Title>`` / ``<Description>`` elements per language, but a node
+    surfaces only one, so the CLI enforces one-per-LCID rather than let a typo
+    strand a shadow entry. The text is preserved verbatim (only blank is
+    rejected)."""
+    label = item_tag.lower()
+    if not entries:
+        raise D365Error(f"set-{label} needs at least one --lcid/--{label} pair.")
+    seen: set[int] = set()
+    norm: list[tuple[int, str]] = []
+    for lcid, text in entries:
+        if not (text or "").strip():
+            raise D365Error(f"{item_tag} for LCID {lcid} must not be empty.")
+        if lcid in seen:
+            raise D365Error(
+                f"duplicate --lcid {lcid}: one {label} per language.")
+        seen.add(lcid)
+        norm.append((lcid, text))
+    return norm
+
+
+def _require_installed_lcids(backend: D365Backend, lcids: list[int]) -> None:
+    """Reject any LCID not provisioned in the org (cross-checked live).
+
+    A ``<Title>`` / ``<Description>`` for an un-provisioned language is silently
+    ignored by the platform, so the editor refuses it up front rather than write
+    dead text."""
+    installed = set(retrieve_provisioned_languages(backend))
+    bad = [lcid for lcid in lcids if lcid not in installed]
+    if bad:
+        listed = ", ".join(str(x) for x in sorted(installed))
+        raise D365Error(
+            f"LCID(s) {', '.join(str(b) for b in bad)} are not installed "
+            f"languages (installed: {listed}).")
+
+
+def _set_localized(
+    backend: D365Backend,
+    sitemap_id: str,
+    *,
+    node_id: str,
+    entries: list[tuple[int, str]],
+    container_tag: str,
+    item_tag: str,
+    action: str,
+    publish: bool,
+    solution: str | None,
+) -> dict[str, Any]:
+    """Shared read-modify-write for ``set-title`` / ``set-description``.
+
+    Finds (or creates, in schema order) the ``container_tag`` element on the node,
+    then upserts one ``item_tag`` element per LCID — updating an existing entry
+    for that language in place so no duplicate is ever minted. ``ResourceId`` and
+    every other attribute on the node are left untouched."""
+    nid = node_id.strip()
+    if not nid:
+        raise D365Error(f"{action} --id must not be empty.")
+    norm = _normalize_entries(entries, item_tag=item_tag)
+    _require_installed_lcids(backend, [lcid for lcid, _ in norm])
+
+    def mutate(root: ET.Element) -> _Mutation:
+        node, _tag = _locate(root, nid)
+        if node is None:
+            raise D365Error(
+                f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
+        container = node.find(container_tag)
+        if container is None:
+            container = ET.Element(container_tag)
+            node.insert(_container_index(node, container_tag), container)
+        for lcid, text in norm:
+            existing = next(
+                (c for c in container.findall(item_tag)
+                 if c.get("LCID") == str(lcid)), None)
+            if existing is None:
+                ET.SubElement(
+                    container, item_tag, {"LCID": str(lcid), item_tag: text})
+            else:  # one element per LCID — update in place, never duplicate
+                existing.set(item_tag, text)
+
+        def verify(rb: ET.Element) -> None:
+            rb_node, _ = _locate(rb, nid)
+            rb_container = (
+                rb_node.find(container_tag) if rb_node is not None else None)
+            if rb_node is None or rb_container is None:
+                raise D365Error(
+                    f"read-back: {container_tag} absent on node {nid!r} after "
+                    "publish.")
+            for lcid, text in norm:
+                if not any(
+                    c.get("LCID") == str(lcid) and c.get(item_tag) == text
+                    for c in rb_container.findall(item_tag)):
+                    raise D365Error(
+                        f"read-back: {item_tag} LCID={lcid} absent on node "
+                        f"{nid!r} after publish.")
+            if not _child_order_ok(rb_node):
+                raise D365Error(
+                    f"read-back: node {nid!r} children are out of schema order "
+                    "(Titles → Descriptions → child nodes) after publish.")
+
+        return _Mutation(added=set(), removed=set(), verify=verify)
+
+    extra: dict[str, Any] = {
+        "node_id": nid,
+        container_tag.lower(): [
+            {"lcid": lcid, item_tag.lower(): text} for lcid, text in norm],
+    }
+    return _edit(backend, sitemap_id, action=action, extra=extra,
+                 mutate=mutate, publish=publish, solution=solution)
+
+
+def set_title(
+    backend: D365Backend,
+    sitemap_id: str,
+    *,
+    node_id: str,
+    titles: list[tuple[int, str]],
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Set localized ``<Title>`` text (one per LCID) on a nav node's ``<Titles>``."""
+    return _set_localized(
+        backend, sitemap_id, node_id=node_id, entries=titles,
+        container_tag="Titles", item_tag="Title", action="set-title",
+        publish=publish, solution=solution)
+
+
+def set_description(
+    backend: D365Backend,
+    sitemap_id: str,
+    *,
+    node_id: str,
+    descriptions: list[tuple[int, str]],
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Set localized ``<Description>`` text (one per LCID) on a node's
+    ``<Descriptions>``."""
+    return _set_localized(
+        backend, sitemap_id, node_id=node_id, entries=descriptions,
+        container_tag="Descriptions", item_tag="Description",
+        action="set-description", publish=publish, solution=solution)

@@ -46,6 +46,44 @@ class TestExactlyOneContentMode:
         assert result.exit_code == 2, result.output
 
 
+class TestSetTitlePairing:
+    def test_mismatched_lcid_title_counts_is_usage_error(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "sitemap", "set-title", _SID, "--id", "SFA",
+            "--lcid", "1033", "--lcid", "1031", "--title", "Only one"])
+        # one --title for two --lcid is a CLI usage error (exit 2)
+        assert result.exit_code == 2, result.output
+        assert "one --title per --lcid" in result.output
+
+    def test_repeatable_pairs_reach_core(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for("RetrieveProvisionedLanguages()"),
+                  json={"RetrieveProvisionedLanguages": [1033, 1031]})
+            m.get(_sitemaps_url(backend), json={"sitemapxml": _SEED})
+            m.patch(_sitemaps_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "sitemap", "set-title", _SID, "--id", "SFA",
+                "--lcid", "1033", "--title", "Sales",
+                "--lcid", "1031", "--title", "Vertrieb", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["action"] == "set-title"
+        assert env["data"]["titles"] == [
+            {"lcid": 1033, "title": "Sales"}, {"lcid": 1031, "title": "Vertrieb"}]
+
+
+class TestSetDescriptionPairing:
+    def test_mismatched_counts_is_usage_error(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "sitemap", "set-description", _SID, "--id", "SFA",
+            "--lcid", "1033", "--lcid", "1031", "--description", "Only one"])
+        assert result.exit_code == 2, result.output
+        assert "one --description per --lcid" in result.output
+
+
 class TestCascadeWarningRouting:
     def test_cascade_goes_to_warnings_not_data(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)

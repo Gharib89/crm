@@ -127,3 +127,56 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
         deleted = _data(cli(["--json", "entity", "delete", "sitemaps",
                              sitemap_id, "--yes"]))
         assert deleted["deleted"] is True
+
+
+@covers("sitemap set-title", "sitemap set-description")
+@pytest.mark.slow
+def test_sitemap_set_localized_title_description(cli, unique):
+    """Set a localized <Title>/<Description> on a nav node over the live RMW
+    path and assert the published layer carries them in schema-valid element
+    order (Titles → Descriptions → child nodes), one entry per LCID."""
+    name = f"E2E SiteMap L10n {unique}"
+    uniq = f"cwx_l10n_{unique}"
+    created = _data(cli([
+        "--json", "app", "build-sitemap", name,
+        "--area", "cwxarea:CWX Area",
+        "--group", "cwxarea/cwxgrp:CWX Group",
+        "--subarea", "cwxarea/cwxgrp:entity=account:Accounts",
+        "--unique-name", uniq, "--no-publish"]))
+    sitemap_id = created["sitemapid"]
+    assert sitemap_id, created
+
+    try:
+        # 1033 (en-US) is the base language on the test orgs; set a localized
+        # title + description on the Area (which has a Group child).
+        _data(cli(["--json", "sitemap", "set-title", sitemap_id,
+                   "--id", "cwxarea", "--lcid", "1033", "--title", "Sales L10n",
+                   "--publish"]))
+        _data(cli(["--json", "sitemap", "set-description", sitemap_id,
+                   "--id", "cwxarea", "--lcid", "1033",
+                   "--description", "Sales area", "--publish"]))
+
+        area = next(a for a in _sitemapxml(cli, sitemap_id).iter("Area")
+                    if a.get("Id") == "cwxarea")
+        # T3: containers spliced ahead of the child node, in schema order
+        tags = [c.tag for c in area if isinstance(c.tag, str)]
+        assert tags == ["Titles", "Descriptions", "Group"], tags
+        title = area.find("Titles/Title")
+        assert title is not None
+        assert title.get("LCID") == "1033" and title.get("Title") == "Sales L10n"
+        desc = area.find("Descriptions/Description")
+        assert desc is not None
+        assert desc.get("LCID") == "1033" and desc.get("Description") == "Sales area"
+
+        # re-setting the same LCID updates in place — no duplicate <Title>
+        _data(cli(["--json", "sitemap", "set-title", sitemap_id,
+                   "--id", "cwxarea", "--lcid", "1033", "--title", "Selling",
+                   "--publish"]))
+        area = next(a for a in _sitemapxml(cli, sitemap_id).iter("Area")
+                    if a.get("Id") == "cwxarea")
+        assert [t.get("Title") for t in area.findall("Titles/Title")] == [
+            "Selling"], ET.tostring(area, "unicode")
+    finally:
+        deleted = _data(cli(["--json", "entity", "delete", "sitemaps",
+                             sitemap_id, "--yes"]))
+        assert deleted["deleted"] is True

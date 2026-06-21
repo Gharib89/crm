@@ -75,7 +75,7 @@ crm --json query odata sitemaps --select sitemapname,sitemapid
 # → data[].sitemapid is the SITEMAP_ID positional arg
 ```
 
-**The five verbs:**
+**The seven verbs:**
 
 ```bash
 # Add an Area (id unique across all node ids; publisher-prefix recommended)
@@ -101,6 +101,14 @@ crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --index 0 --publish
 # Remove (or soft-delete with --comment-out)
 crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accts --publish
 crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --publish
+
+# Set localized titles — --lcid/--title paired positionally, repeatable
+crm --json sitemap set-title <SITEMAP_ID> \
+    --id cwx_sales --lcid 1033 --title "Sales" --lcid 1031 --title "Vertrieb" --publish
+
+# Set localized descriptions — same shape as set-title
+crm --json sitemap set-description <SITEMAP_ID> \
+    --id cwx_sales --lcid 1033 --description "Sales area" --publish
 ```
 
 **Workflow-level gotchas the `--help` doesn't surface:**
@@ -127,6 +135,22 @@ crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --publi
 - **`--comment-out`** replaces the node with a well-formed XML comment instead of
   deleting it — a reversible soft-delete. The commented node is not a live node, so
   its id frees up for reuse (uniqueness checks scan live nodes only).
+- **`set-title` / `set-description` — `--lcid` must be provisioned.** Before the
+  PATCH, the CLI calls `RetrieveProvisionedLanguages` and rejects any LCID not
+  installed on the org. A title/description for an un-provisioned language is silently
+  ignored by the platform, so the rejection is intentional — install the language pack
+  first.
+- **One Title/Description per LCID — updates in place, never duplicates.** Re-setting
+  the same LCID replaces the existing element. Passing the same `--lcid` twice in one
+  call is a usage error (exit 2); mismatched `--lcid` / `--title` (or `--description`)
+  counts is also exit 2.
+- **Strict child-element ordering within a node.** The XSD requires `<Titles>` before
+  `<Descriptions>` before child nodes (Group/SubArea). A new container is spliced into
+  the correct position — never appended after child nodes, which would be
+  schema-invalid and fail on import.
+- **`ResourceId` on Title/Description elements is never written.** The
+  platform-owned localized-label pointer is left intact; only the inline text
+  attribute is set.
 
 **Publish-gated T3 read-back — the key gotcha:**
 

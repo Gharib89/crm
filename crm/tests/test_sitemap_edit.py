@@ -451,6 +451,204 @@ class TestMoveNode:
                 sm.move_node(backend, _SID, node_id="s1", index=2, publish=True)
 
 
+# ── set-title / set-description (localized) ───────────────────────────────────
+
+# A node that already carries a localized <Titles> and a child Group, so the
+# in-place update and the Descriptions-ordering paths can be exercised.
+_TITLED_SEED = (
+    '<SiteMap>'
+    '<Area Id="SFA" ResourceId="Area_Sales">'
+    '<Titles><Title LCID="1033" Title="Sales" /></Titles>'
+    '<Group Id="SFA_Grp"><SubArea Id="nav_accts" Entity="account" /></Group>'
+    '</Area></SiteMap>'
+)
+
+
+def _langs_url(backend) -> str:
+    return backend.url_for("RetrieveProvisionedLanguages()")
+
+
+def _with_langs(m: requests_mock.Mocker, backend, *lcids: int) -> None:
+    """Stub the live installed-languages probe (defaults to en-US + de-DE)."""
+    m.get(_langs_url(backend),
+          json={"RetrieveProvisionedLanguages": list(lcids or (1033, 1031))})
+
+
+def _titles(node: ET.Element) -> list[tuple[str, str]]:
+    """(LCID, Title) pairs of a node's <Titles>/<Title> children."""
+    container = node.find("Titles")
+    return [] if container is None else [
+        (t.get("LCID") or "", t.get("Title") or "") for t in container]
+
+
+class TestSetTitle:
+    def test_creates_titles_container_before_child_nodes(self, backend):
+        # SFA already has a <Titles> and a <Group>; add a second language and
+        # assert <Titles> stays the first child (ahead of <Group>).
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
+            m.patch(_url(backend), status_code=204)
+            sm.set_title(backend, _SID, node_id="SFA", titles=[(1031, "Vertrieb")])
+            area = sm._find(_patched_root(m), "Area", "SFA")
+        assert area is not None
+        assert area[0].tag == "Titles"  # container leads the child sequence
+        assert ("1031", "Vertrieb") in _titles(area)
+        # the pre-existing language is preserved
+        assert ("1033", "Sales") in _titles(area)
+
+    def test_creates_titles_on_node_without_one(self, backend):
+        # nav_accts (a SubArea) has no <Titles> yet → one is created at index 0.
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
+            m.patch(_url(backend), status_code=204)
+            sm.set_title(backend, _SID, node_id="nav_accts",
+                         titles=[(1033, "Accounts")])
+            sub = sm._find(_patched_root(m), "SubArea", "nav_accts")
+        assert sub is not None and sub[0].tag == "Titles"
+        assert _titles(sub) == [("1033", "Accounts")]
+
+    def test_updates_existing_lcid_in_place_no_duplicate(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
+            m.patch(_url(backend), status_code=204)
+            sm.set_title(backend, _SID, node_id="SFA", titles=[(1033, "Selling")])
+            area = sm._find(_patched_root(m), "Area", "SFA")
+        assert area is not None
+        # exactly one <Title> for 1033, with the new text (no shadow sibling)
+        assert _titles(area) == [("1033", "Selling")]
+
+    def test_two_lcids_in_one_call_become_siblings(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend, 1033, 1031)
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            m.patch(_url(backend), status_code=204)
+            sm.set_title(backend, _SID, node_id="HLP",
+                         titles=[(1033, "Help"), (1031, "Hilfe")])
+            area = sm._find(_patched_root(m), "Area", "HLP")
+        assert area is not None
+        assert set(_titles(area)) == {("1033", "Help"), ("1031", "Hilfe")}
+
+    def test_resourceid_untouched(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
+            m.patch(_url(backend), status_code=204)
+            sm.set_title(backend, _SID, node_id="SFA", titles=[(1033, "x")])
+            area = sm._find(_patched_root(m), "Area", "SFA")
+        assert area is not None and area.get("ResourceId") == "Area_Sales"
+
+    def test_duplicate_lcid_in_one_call_rejected(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            with pytest.raises(D365Error, match="duplicate --lcid 1033"):
+                sm.set_title(backend, _SID, node_id="HLP",
+                             titles=[(1033, "Help"), (1033, "Again")])
+            assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_uninstalled_lcid_rejected(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend, 1033)  # only en-US installed
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            with pytest.raises(D365Error, match="not installed languages"):
+                sm.set_title(backend, _SID, node_id="HLP", titles=[(1031, "Hilfe")])
+            assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_empty_title_rejected(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            with pytest.raises(D365Error, match="must not be empty"):
+                sm.set_title(backend, _SID, node_id="HLP", titles=[(1033, "   ")])
+
+    def test_no_entries_rejected(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            with pytest.raises(D365Error, match="at least one"):
+                sm.set_title(backend, _SID, node_id="HLP", titles=[])
+
+    def test_unknown_node_rejected(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            with pytest.raises(D365Error, match="no Area, Group or SubArea"):
+                sm.set_title(backend, _SID, node_id="ghost", titles=[(1033, "x")])
+
+    def test_dry_run_previews_without_writing(self, dry_backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, dry_backend)
+            m.get(_url(dry_backend), json={"sitemapxml": _SEED})
+            out = sm.set_title(dry_backend, _SID, node_id="HLP",
+                               titles=[(1033, "Help")])
+            assert not any(r.method == "PATCH" for r in m.request_history)
+        assert out["_dry_run"] is True and out["would_edit"] is True
+        area = sm._find(ET.fromstring(out["sitemapxml"]), "Area", "HLP")
+        assert area is not None and _titles(area) == [("1033", "Help")]
+
+    def test_publish_runs_t3_read_back(self, backend):
+        published = _SEED.replace(
+            '<Area Id="HLP" ResourceId="Area_Help">',
+            '<Area Id="HLP" ResourceId="Area_Help">'
+            '<Titles><Title LCID="1033" Title="Help" /></Titles>')
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), [
+                {"json": {"sitemapxml": _SEED}},
+                {"json": {"sitemapxml": published}}])
+            m.patch(_url(backend), status_code=204)
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = sm.set_title(backend, _SID, node_id="HLP",
+                               titles=[(1033, "Help")], publish=True)
+        assert out["updated"] is True and out["published"] is True
+
+    def test_t3_read_back_fails_when_title_absent(self, backend):
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), [
+                {"json": {"sitemapxml": _SEED}},
+                {"json": {"sitemapxml": _SEED}}])  # published layer still untitled
+            m.patch(_url(backend), status_code=204)
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            with pytest.raises(D365Error, match="read-back"):
+                sm.set_title(backend, _SID, node_id="HLP",
+                             titles=[(1033, "Help")], publish=True)
+
+
+class TestSetDescription:
+    def test_description_lands_after_titles_before_child_nodes(self, backend):
+        # SFA: <Titles> then <Group>. A new <Descriptions> must splice between
+        # them (Titles → Descriptions → child nodes).
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
+            m.patch(_url(backend), status_code=204)
+            sm.set_description(backend, _SID, node_id="SFA",
+                               descriptions=[(1033, "Sales area")])
+            area = sm._find(_patched_root(m), "Area", "SFA")
+        assert area is not None
+        tags = [c.tag for c in area]
+        assert tags == ["Titles", "Descriptions", "Group"]
+        desc = area.find("Descriptions")
+        assert desc is not None
+        assert [(d.get("LCID"), d.get("Description")) for d in desc] == [
+            ("1033", "Sales area")]
+
+    def test_creates_descriptions_when_no_titles(self, backend):
+        # HLP has neither <Titles> nor <Descriptions> but has a <Group>; the new
+        # <Descriptions> still lands ahead of the child node.
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            m.patch(_url(backend), status_code=204)
+            sm.set_description(backend, _SID, node_id="HLP",
+                               descriptions=[(1033, "Help area")])
+            area = sm._find(_patched_root(m), "Area", "HLP")
+        assert area is not None
+        assert [c.tag for c in area] == ["Descriptions", "Group"]
+
+
 # ── shared RMW seam ───────────────────────────────────────────────────────────
 
 
