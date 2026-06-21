@@ -530,6 +530,16 @@ class TestSetRolePrivileges:
         assert calls["replace"] is True
         assert calls["all_entities"] is True
 
+    def test_add_and_replace_mutually_exclusive(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "set-role-privileges", "role-1",
+            "--access", "read", "--all-entities", "--depth", "global",
+            "--add", "--replace", "--yes",
+        ])
+        assert result.exit_code == 2, result.output  # click.UsageError
+        assert "mutually exclusive" in result.output
+
     def test_warnings_surface_in_meta(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         monkeypatch.setattr(

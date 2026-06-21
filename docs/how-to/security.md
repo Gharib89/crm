@@ -88,9 +88,11 @@ CLI does not implement.
 ## Create a security role
 
 ```bash
-crm --json security create-role "Agent Read-Only"
+crm --json security create-role "Agent Read-Only" --yes
 ```
 
+`create-role` is confirmation-gated, so pass `--yes` in non-interactive /
+automation contexts (under `--json`, a missing `--yes` aborts on a non-TTY).
 Creates a new security role with the given display name. The role is created in
 the caller's business unit by default (resolved from `WhoAmI`). Pass
 `--business-unit GUID` to target a different business unit.
@@ -100,7 +102,7 @@ The role starts with **no privileges**. Grant privileges immediately after with
 
 ```bash
 # Skip if a same-name role already exists in the same BU (returns the existing role id)
-crm --json security create-role "Agent Read-Only" --if-exists skip
+crm --json security create-role "Agent Read-Only" --if-exists skip --yes
 ```
 
 `--if-exists error` (default) raises an error if a role with the same name

@@ -104,21 +104,24 @@ def create_role(ctx: CLIContext, name, business_unit, if_exists, yes):
               help="Privilege depth: basic|local|deep|global (aliases "
                    "user|businessunit|parentchild|organization). Clamped per "
                    "privilege to the levels it supports.")
-@click.option("--add", "mode", flag_value="add", default=True,
+@click.option("--add", "add", is_flag=True,
               help="Merge privileges into the role (default, non-destructive).")
-@click.option("--replace", "mode", flag_value="replace",
+@click.option("--replace", "replace", is_flag=True,
               help="Replace the role's privileges with exactly the resolved set.")
 @_destructive_option
 @pass_ctx
 def set_role_privileges(ctx: CLIContext, role, access, entities, all_entities,
-                        privilege, depth, mode, yes):
+                        privilege, depth, add, replace, yes):
     """Add or replace a security role's privileges (ROLE is a role id or name).
 
     Resolve privileges from access×entity selectors and/or explicit privilege
     names, clamp the requested --depth per privilege, then grant them. --replace
     wipes any privilege not in the resolved set. Use --dry-run to preview.
     """
-    replace = mode == "replace"
+    # Contradictory flags must fail fast — silently last-wins would risk a
+    # surprise --replace (which wipes privileges) on a security-sensitive verb.
+    if add and replace:
+        raise click.UsageError("--add and --replace are mutually exclusive")
     if not ctx.dry_run:
         verb = "Replace" if replace else "Add"
         scope = "ALL entities" if all_entities else (entities or "named privileges")
