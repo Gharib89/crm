@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.23.0 (2026-06-21)
+
+### Bug Fixes
+
+- Address Copilot review on view editors ([#489](https://github.com/Gharib89/crm/pull/489),
+  [`c65e815`](https://github.com/Gharib89/crm/commit/c65e8156566d1e23826ce11524d115cbc5fa6fb6))
+
+- Insert new view column attribute before order/filter in fetchxml
+  ([#489](https://github.com/Gharib89/crm/pull/489),
+  [`c65e815`](https://github.com/Gharib89/crm/commit/c65e8156566d1e23826ce11524d115cbc5fa6fb6))
+
+### Documentation
+
+- Document view edit-columns / set-order (B7) ([#489](https://github.com/Gharib89/crm/pull/489),
+  [`c65e815`](https://github.com/Gharib89/crm/commit/c65e8156566d1e23826ce11524d115cbc5fa6fb6))
+
+### Features
+
+- View edit-columns / set-order editors (B7) ([#489](https://github.com/Gharib89/crm/pull/489),
+  [`c65e815`](https://github.com/Gharib89/crm/commit/c65e8156566d1e23826ce11524d115cbc5fa6fb6))
+
+### Refactoring
+
+- Hoist attribute_info_or_raise to metadata, reuse in views
+  ([#489](https://github.com/Gharib89/crm/pull/489),
+  [`c65e815`](https://github.com/Gharib89/crm/commit/c65e8156566d1e23826ce11524d115cbc5fa6fb6))
+
+### Testing
+
+- Fix pyright return-type on e2e _cells helper ([#489](https://github.com/Gharib89/crm/pull/489),
+  [`c65e815`](https://github.com/Gharib89/crm/commit/c65e8156566d1e23826ce11524d115cbc5fa6fb6))
+
+
 ## v1.22.0 (2026-06-21)
 
 ### Bug Fixes
