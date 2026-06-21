@@ -66,6 +66,7 @@ a = Analysis(
         'crm.commands.session',
         'crm.commands.skill',
         'crm.commands.skill_registry',
+        'crm.commands.sitemap',
         'crm.commands.sla',
         'crm.commands.solution',
         'crm.commands.theme',
