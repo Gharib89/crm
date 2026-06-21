@@ -305,3 +305,124 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
                          "command": command_id, "result": result},
              warnings=warnings)
     _journal(ctx, target_id, result, solution=solution)
+
+
+@ribbon_group.command("set-rules")
+@click.argument("entity")
+@click.option("--command-id", "command_id", required=True,
+              help="The CommandDefinition Id whose rules to set (see `crm ribbon list`).")
+@click.option("--enable-rule", "enable_rules", multiple=True, metavar="RULE_ID",
+              help="Enable-rule id to reference (repeatable). Replaces the command's "
+                   "enable rules with exactly these, in order.")
+@click.option("--display-rule", "display_rules", multiple=True, metavar="RULE_ID",
+              help="Display-rule id to reference (repeatable). Replaces the command's "
+                   "display rules with exactly these, in order.")
+@_publish_option
+@_solution_option
+@pass_ctx
+def ribbon_set_rules(ctx, entity, command_id, enable_rules, display_rules,
+                     publish, solution, require_solution):
+    """Set the enable/display rule references on a command's CommandDefinition.
+
+    Each rule id is a platform rule (validated against a curated `Mscrm.*`
+    allow-list) or a custom rule (e.g. one added with `ribbon add-custom-rule`).
+    The CommandDefinition Id is never touched.
+    """
+    if not enable_rules and not display_rules:
+        raise click.UsageError("pass at least one --enable-rule or --display-rule")
+    solution, warning = _resolve_solution(ctx, solution, True)
+    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
+    publish = _resolve_publish(ctx, publish)
+    try:
+        ribbon_mod.validate_rule_ids(enable_rules, kind="enable")
+        ribbon_mod.validate_rule_ids(display_rules, kind="display")
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+
+    warnings = [warning] if warning else []
+    if ribbon_mod.is_oob_command(command_id):
+        warnings.append(_OOB_REUSE_WARNING)
+
+    def mutate(cust_root):
+        node = ribbon_mod.find_entity_node(cust_root, entity)
+        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+        ribbon_mod.set_command_rules(
+            diff, command_id=command_id,
+            enable_rules=enable_rules, display_rules=display_rules)
+
+    try:
+        result = ribbon_mod.apply_ribbon_change(
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate,
+            publish=publish)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    ctx.emit(True, data={"command_id": command_id,
+                         "enable_rules": list(enable_rules),
+                         "display_rules": list(display_rules),
+                         "result": result},
+             warnings=warnings or None)
+    _journal(ctx, command_id, result, solution=solution)
+
+
+@ribbon_group.command("add-custom-rule")
+@click.argument("entity")
+@click.option("--command-id", "command_id", required=True,
+              help="The CommandDefinition Id to attach the rule to.")
+@click.option("--webresource", required=True,
+              help="JS web resource holding the rule function, e.g. 'cwx_/scripts/x.js'.")
+@click.option("--function", required=True,
+              help="JavaScript function returning bool/Promise, e.g. 'ns.canRun'.")
+@_publish_option
+@_solution_option
+@pass_ctx
+def ribbon_add_custom_rule(ctx, entity, command_id, webresource, function,
+                           publish, solution, require_solution):
+    """Add a custom (JavaScript) enable rule to a command and reference it.
+
+    Defines an EnableRule whose CustomRule calls the given web-resource function,
+    then references it on the command. The web resource must already exist. The
+    CommandDefinition Id is never touched.
+    """
+    solution, warning = _resolve_solution(ctx, solution, True)
+    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
+    publish = _resolve_publish(ctx, publish)
+    try:
+        ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
+        rule_id = ribbon_mod.build_custom_rule_id(command_id, function)
+    except (D365Error, ValueError) as exc:
+        if isinstance(exc, D365Error):
+            _handle_d365_error(ctx, exc)
+        else:
+            ctx.emit(False, error=str(exc))
+        return
+
+    warnings = [warning] if warning else []
+    if ribbon_mod.is_oob_command(command_id):
+        warnings.append(_OOB_REUSE_WARNING)
+
+    def mutate(cust_root):
+        node = ribbon_mod.find_entity_node(cust_root, entity)
+        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+        ribbon_mod.add_custom_rule(
+            diff, command_id=command_id, rule_id=rule_id,
+            webresource=webresource, function=function)
+
+    try:
+        result = ribbon_mod.apply_ribbon_change(
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate,
+            publish=publish)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    except ValueError as exc:
+        ctx.emit(False, error=str(exc))
+        return
+    ctx.emit(True, data={"command_id": command_id, "rule_id": rule_id,
+                         "result": result},
+             warnings=warnings or None)
+    _journal(ctx, rule_id, result, solution=solution)

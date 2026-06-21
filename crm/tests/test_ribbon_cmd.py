@@ -275,6 +275,106 @@ def test_ribbon_hide_button_dry_run_does_not_import(monkeypatch):
         "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
     assert res.exit_code == 0, res.output
     assert imported == []  # never imported under --dry-run
+_CUST_WITH_COMMAND = (
+    "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
+    "<RibbonDiffXml><CustomActions/><CommandDefinitions>"
+    "<CommandDefinition Id='cwx_ticket.form.Validate.Command'>"
+    "<EnableRules/><DisplayRules/><Actions/></CommandDefinition>"
+    "</CommandDefinitions><RuleDefinitions/></RibbonDiffXml>"
+    "</Entity></Entities></ImportExportXml>")
+
+
+def test_ribbon_set_rules_applies(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, **kw):
+        root = ET.fromstring(_CUST_WITH_COMMAND)
+        mutate(root)
+        cdef = root.find(".//CommandDefinition[@Id='cwx_ticket.form.Validate.Command']")
+        assert cdef is not None
+        captured["enable"] = [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")]
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-rules", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--enable-rule", "Mscrm.SelectionCountExactlyOne",
+        "--enable-rule", "Mscrm.ShowOnGrid"])
+    assert res.exit_code == 0, res.output
+    assert captured["enable"] == ["Mscrm.SelectionCountExactlyOne", "Mscrm.ShowOnGrid"]
+
+
+def test_ribbon_set_rules_requires_a_rule(monkeypatch):
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-rules", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command"])
+    assert res.exit_code == 2  # usage error
+    assert "enable-rule" in res.output or "display-rule" in res.output
+
+
+def test_ribbon_set_rules_rejects_unknown_platform_id(monkeypatch):
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-rules", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--enable-rule", "Mscrm.Typooo"])
+    assert res.exit_code == 1
+    assert "not a recognized platform rule" in res.output
+
+
+def test_ribbon_set_rules_warns_on_oob_command(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: {"status": "succeeded"})
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-rules", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "Mscrm.SavePrimary",
+        "--display-rule", "Mscrm.HideOnModern"])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert any("unsupported" in w.lower()
+               for w in (data.get("meta", {}).get("warnings") or []))
+
+
+def test_ribbon_add_custom_rule_applies(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_apply(backend, *, solution, entity, mutate, **kw):
+        root = ET.fromstring(_CUST_WITH_COMMAND)
+        mutate(root)
+        rule = root.find(".//RuleDefinitions/EnableRules/EnableRule/CustomRule")
+        captured["library"] = rule.get("Library") if rule is not None else None
+        return {"status": "succeeded"}
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-custom-rule", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--webresource", "cwx_/scripts/x.js", "--function", "ns.canRun"])
+    assert res.exit_code == 0, res.output
+    assert captured["library"] == "$webresource:cwx_/scripts/x.js"
+    data = json.loads(res.output)
+    assert data["data"]["rule_id"] == \
+        "cwx_ticket.form.Validate.Command.nscanRun.EnableRule"
+
+
+def test_ribbon_add_custom_rule_rejects_missing_webresource(monkeypatch):
+    def boom(backend, name):
+        raise ValueError(f"web resource {name!r} not found")
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id", boom)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-custom-rule", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--webresource", "cwx_/missing.js", "--function", "ns.canRun"])
+    assert res.exit_code == 1
+    assert "not found" in res.output
 
 
 def test_ribbon_remove_unknown_button_errors(monkeypatch):

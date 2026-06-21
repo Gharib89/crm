@@ -305,6 +305,141 @@ def test_hide_button_hide_action_rejects_duplicate():
     ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
     with pytest.raises(ValueError, match="already hidden"):
         ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
+def _diff_with_command() -> ET.Element:
+    """A RibbonDiffXml carrying one custom CommandDefinition with empty rule sets."""
+    diff = _empty_diff()
+    ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
+    ribbon.add_custom_action(
+        diff, ids=ids, group="G", label="Validate",
+        webresource="cwx_/scripts/x.js", function="ns.fn",
+        param="PrimaryControl", sequence=50)
+    return diff
+
+
+def test_set_command_rules_sets_enable_refs_in_order():
+    diff = _diff_with_command()
+    cmd = "cwx_ticket.form.Validate.Command"
+    ribbon.set_command_rules(
+        diff, command_id=cmd,
+        enable_rules=["Mscrm.SelectionCountExactlyOne", "Mscrm.ShowOnGrid"],
+        display_rules=[])
+    cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
+    assert cdef is not None
+    refs = [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")]
+    # exact set AND order preserved (T3: no drop, no reorder)
+    assert refs == ["Mscrm.SelectionCountExactlyOne", "Mscrm.ShowOnGrid"]
+
+
+def test_set_command_rules_sets_display_refs_and_leaves_enable_untouched():
+    diff = _diff_with_command()
+    cmd = "cwx_ticket.form.Validate.Command"
+    ribbon.set_command_rules(
+        diff, command_id=cmd, enable_rules=["custom.MyRule"], display_rules=[])
+    # a second call touching only display rules must not drop the enable refs
+    ribbon.set_command_rules(
+        diff, command_id=cmd, enable_rules=[], display_rules=["Mscrm.HideOnModern"])
+    cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
+    assert cdef is not None
+    assert [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")] == \
+        ["custom.MyRule"]
+    assert [e.get("Id") for e in cdef.findall("DisplayRules/DisplayRule")] == \
+        ["Mscrm.HideOnModern"]
+
+
+def test_set_command_rules_replaces_not_appends():
+    diff = _diff_with_command()
+    cmd = "cwx_ticket.form.Validate.Command"
+    ribbon.set_command_rules(diff, command_id=cmd,
+                             enable_rules=["Mscrm.ShowOnGrid"], display_rules=[])
+    ribbon.set_command_rules(diff, command_id=cmd,
+                             enable_rules=["Mscrm.ShowOnQuickAction"], display_rules=[])
+    cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
+    assert cdef is not None
+    assert [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")] == \
+        ["Mscrm.ShowOnQuickAction"]
+
+
+def test_set_command_rules_never_touches_command_id():
+    diff = _diff_with_command()
+    cmd = "cwx_ticket.form.Validate.Command"
+    ribbon.set_command_rules(diff, command_id=cmd,
+                             enable_rules=["Mscrm.ShowOnGrid"], display_rules=[])
+    assert diff.find(f".//CommandDefinition[@Id='{cmd}']") is not None
+
+
+def test_set_command_rules_unknown_command_raises():
+    diff = _diff_with_command()
+    with pytest.raises(ValueError, match="command-id .* not found"):
+        ribbon.set_command_rules(diff, command_id="nope.Command",
+                                 enable_rules=["Mscrm.ShowOnGrid"], display_rules=[])
+
+
+def test_validate_rule_ids_accepts_known_platform_and_custom():
+    ribbon.validate_rule_ids(["Mscrm.ShowOnGrid", "custom.Rule"], kind="enable")
+    ribbon.validate_rule_ids(["Mscrm.HideOnModern"], kind="display")
+
+
+def test_validate_rule_ids_rejects_bad_kind():
+    with pytest.raises(ValueError, match="kind must be"):
+        ribbon.validate_rule_ids(["custom.Rule"], kind="bogus")
+
+
+def test_validate_rule_ids_rejects_unknown_platform_id():
+    with pytest.raises(ValueError, match="not a recognized platform rule"):
+        ribbon.validate_rule_ids(["Mscrm.Typooo"], kind="enable")
+
+
+def test_validate_rule_ids_rejects_miscased_platform_prefix():
+    # A case typo on the prefix must not slip through as if it were a custom id
+    # (the server silently ignores the mis-cased platform rule otherwise).
+    with pytest.raises(ValueError, match="not a recognized platform rule"):
+        ribbon.validate_rule_ids(["mscrm.ShowOnGrid"], kind="enable")
+
+
+def test_validate_rule_ids_rejects_enable_id_used_as_display():
+    # Mscrm.ShowOnGrid is an enable rule; using it as a display rule is rejected.
+    with pytest.raises(ValueError, match="not a recognized platform rule"):
+        ribbon.validate_rule_ids(["Mscrm.ShowOnGrid"], kind="display")
+
+
+def test_is_oob_command():
+    assert ribbon.is_oob_command("Mscrm.SavePrimary") is True
+    assert ribbon.is_oob_command("cwx_ticket.form.Validate.Command") is False
+
+
+def test_build_custom_rule_id_deterministic():
+    rid = ribbon.build_custom_rule_id("cwx_ticket.form.Validate.Command", "ns.canRun")
+    assert rid == "cwx_ticket.form.Validate.Command.nscanRun.EnableRule"
+
+
+def test_add_custom_rule_defines_and_references():
+    diff = _diff_with_command()
+    cmd = "cwx_ticket.form.Validate.Command"
+    rid = ribbon.build_custom_rule_id(cmd, "ns.canRun")
+    ribbon.add_custom_rule(diff, command_id=cmd, rule_id=rid,
+                           webresource="cwx_/scripts/x.js", function="ns.canRun")
+    # rule defined in RuleDefinitions with a CustomRule pointing at the webresource
+    rule = diff.find(f".//RuleDefinitions/EnableRules/EnableRule[@Id='{rid}']")
+    assert rule is not None
+    custom = rule.find("CustomRule")
+    assert custom is not None
+    assert custom.get("Library") == "$webresource:cwx_/scripts/x.js"
+    assert custom.get("FunctionName") == "ns.canRun"
+    # referenced on the command's EnableRules
+    cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
+    assert cdef is not None
+    assert any(e.get("Id") == rid for e in cdef.findall("EnableRules/EnableRule"))
+
+
+def test_add_custom_rule_rejects_duplicate():
+    diff = _diff_with_command()
+    cmd = "cwx_ticket.form.Validate.Command"
+    rid = ribbon.build_custom_rule_id(cmd, "ns.canRun")
+    ribbon.add_custom_rule(diff, command_id=cmd, rule_id=rid,
+                           webresource="cwx_/scripts/x.js", function="ns.canRun")
+    with pytest.raises(ValueError, match="already exists"):
+        ribbon.add_custom_rule(diff, command_id=cmd, rule_id=rid,
+                               webresource="cwx_/scripts/x.js", function="ns.canRun")
 
 
 def _make_solution_zip(path, cust_xml: str) -> None:

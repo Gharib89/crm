@@ -101,6 +101,12 @@ crm --json ribbon list account --solution cwx_crmworx
 crm --json ribbon add-button account --solution cwx_crmworx ...
 crm --json ribbon remove account --solution cwx_crmworx ...
 crm --json ribbon hide-button account --solution cwx_crmworx --target-id <OOB_Id>
+crm --json ribbon set-rules account --solution cwx_crmworx \
+    --command-id account.form.MyBtn.Command \
+    --enable-rule Mscrm.SelectionCountExactlyOne
+crm --json ribbon add-custom-rule account --solution cwx_crmworx \
+    --command-id account.form.MyBtn.Command \
+    --webresource cwx_/scripts/ribbon.js --function ns.canRun
 ```
 
 **`ribbon export` — give exactly one target.** An `ENTITY` exports that one
@@ -114,10 +120,30 @@ This is why a cloned entity's ribbon does not come across (see the clone caveats
 `reference/metadata.md`) — there is no API write path to copy it.
 
 **Ribbon writes are slow and synchronous.** Because every write rides the solution-zip
-pipeline, `add-button` / `remove` / `hide-button` run a **full solution import per call** — 60–120s with
-no progress ticks. The command has not hung; **do not retry** a slow call (a second,
-parallel attempt races the first import). Confirm the outcome afterward with
-`ribbon list`.
+pipeline, `add-button` / `remove` / `hide-button` / `set-rules` / `add-custom-rule`
+run a **full solution import per call** — 60–120s with no progress ticks. The
+command has not hung; **do not retry** a slow call (a second, parallel attempt
+races the first import). Confirm the outcome afterward with `ribbon list`.
+
+**Platform rule allow-list — the server silently ignores unknown `Mscrm.*` ids.**
+`set-rules` validates each `Mscrm.*` id against a curated allow-list and rejects
+unrecognised platform ids before touching the solution, because the server would
+otherwise accept the import and silently discard the unrecognised rule with no error.
+Custom (non-`Mscrm.`) ids pass through — they reference rules defined in the same
+solution. Allowed platform enable rules: `Mscrm.SelectionCountExactlyOne`,
+`Mscrm.ShowOnGrid`, `Mscrm.ShowOnQuickAction`, `Mscrm.ShowOnGridAndQuickAction`.
+Allowed platform display rules: `Mscrm.HideOnModern`, `Mscrm.ShowOnlyOnModern`.
+
+**OOB command warning.** Both `set-rules` and `add-custom-rule` emit a
+`meta.warnings` entry when `--command-id` is an out-of-the-box (`Mscrm.*`) command.
+This is a warning, not a block — the write proceeds — but editing OOB commands is
+unsupported ground and can break silently on a platform upgrade.
+
+**`add-custom-rule` rule id.** The generated rule id (`data.rule_id`) follows the
+pattern `{command_id}.{slug(function)}.EnableRule`. The rule is both defined in
+`RuleDefinitions` and referenced on the command in the same write. To use the same
+rule on other commands, pass the returned `rule_id` to `ribbon set-rules
+--enable-rule`.
 
 **`hide-button` — validate the target-id first.** `--target-id` is the OOB control Id
 from `crm ribbon export ENTITY`. The command validates it against the live composed
