@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.17.0 (2026-06-21)
+
+### Features
+
+- Chart editors — update/set-fetch/add-series/remove-series/set-groupby (B5)
+  ([#478](https://github.com/Gharib89/crm/pull/478),
+  [`16739c4`](https://github.com/Gharib89/crm/commit/16739c43cb6734aa1ab65d19421cb8ec8852a00d))
+
+
 ## v1.16.0 (2026-06-21)
 
 ### Bug Fixes
