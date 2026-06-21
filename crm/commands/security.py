@@ -55,6 +55,90 @@ def list_roles(ctx: CLIContext, business_unit, name_contains):
 
 
 
+def _csv(value: str | None) -> list[str]:
+    """Split a comma-separated option value into a clean list (empty → [])."""
+    return [v.strip() for v in value.split(",") if v.strip()] if value else []
+
+
+@security_group.command("create-role")
+@click.argument("name")
+@click.option("--business-unit", "business_unit", metavar="GUID", default=None,
+              help="Business unit GUID for the role (defaults to the caller's).")
+@click.option("--if-exists", "if_exists", type=click.Choice(["error", "skip"]),
+              default="error", show_default=True,
+              help="On a same-name role in the same business unit: error, or "
+                   "skip (reuse the existing role).")
+@_destructive_option
+@pass_ctx
+def create_role(ctx: CLIContext, name, business_unit, if_exists, yes):
+    """Create a security role (NAME is the role's display name).
+
+    The role starts with no privileges; grant them with
+    `security set-role-privileges`. Use --dry-run to preview without writing.
+    """
+    if not ctx.dry_run:
+        _confirm_destructive(ctx, "role", name, yes,
+                             message=f"Create security role {name!r}?")
+    with d365_errors(ctx):
+        result = security_mod.create_role(
+            ctx.backend(), name, business_unit=business_unit, if_exists=if_exists,
+        )
+    ctx.emit(True, data=result)
+    _journal(ctx, name, result)
+
+
+@security_group.command("set-role-privileges")
+@click.argument("role")
+@click.option("--access", default=None, metavar="LIST",
+              help="Comma-separated access types: "
+                   "read,write,create,delete,append,appendto,assign,share. "
+                   "Requires --entities or --all-entities.")
+@click.option("--entities", default=None, metavar="LIST",
+              help="Comma-separated entity logical names to scope --access to.")
+@click.option("--all-entities", "all_entities", is_flag=True,
+              help="Apply --access across every entity (org-wide).")
+@click.option("--privilege", "privilege", default=None, metavar="LIST",
+              help="Explicit privilege names (comma-separated), e.g. "
+                   "prvCreateEntity. The escape hatch for non-entity privileges.")
+@click.option("--depth", required=True, metavar="LEVEL",
+              help="Privilege depth: basic|local|deep|global (aliases "
+                   "user|businessunit|parentchild|organization). Clamped per "
+                   "privilege to the levels it supports.")
+@click.option("--add", "mode", flag_value="add", default=True,
+              help="Merge privileges into the role (default, non-destructive).")
+@click.option("--replace", "mode", flag_value="replace",
+              help="Replace the role's privileges with exactly the resolved set.")
+@_destructive_option
+@pass_ctx
+def set_role_privileges(ctx: CLIContext, role, access, entities, all_entities,
+                        privilege, depth, mode, yes):
+    """Add or replace a security role's privileges (ROLE is a role id or name).
+
+    Resolve privileges from access×entity selectors and/or explicit privilege
+    names, clamp the requested --depth per privilege, then grant them. --replace
+    wipes any privilege not in the resolved set. Use --dry-run to preview.
+    """
+    replace = mode == "replace"
+    if not ctx.dry_run:
+        verb = "Replace" if replace else "Add"
+        scope = "ALL entities" if all_entities else (entities or "named privileges")
+        message = (
+            f"{verb} privileges on role {role} (access=[{access or '-'}], "
+            f"scope={scope}) at depth {depth}? "
+            + ("--replace wipes privileges not in the resolved set." if replace else "")
+        )
+        _confirm_destructive(ctx, "role", role, yes, message=message)
+    with d365_errors(ctx):
+        result = security_mod.set_role_privileges(
+            ctx.backend(), role,
+            access=_csv(access), entities=_csv(entities), all_entities=all_entities,
+            privilege_names=_csv(privilege), depth=depth, replace=replace,
+        )
+    warnings = result.pop("warnings", None) or None
+    ctx.emit(True, data=result, warnings=warnings)
+    _journal(ctx, role, result)
+
+
 @security_group.command("list-user-roles")
 @click.argument("user_id")
 @pass_ctx

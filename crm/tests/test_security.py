@@ -449,3 +449,241 @@ class TestListAccess:
     def test_invalid_record_id_raises_d365error(self, backend):
         with pytest.raises(D365Error, match="record id must be a GUID"):
             sec.list_access(backend, "accounts", "not-a-guid")
+
+
+# ── create_role ────────────────────────────────────────────────────────────
+
+
+_PRV_READ = "886b280c-6396-4d56-a0a3-2c1b0a50ceb0"
+_PRV_WRITE = "7863e80f-0ab2-4d67-a641-37d9f342c7e3"
+_PRV_CREATE = "d26fe964-230b-42dd-ad93-5cc879de411e"
+_PRV_GLOBAL_ONLY = "341e3ebf-74b8-4335-84f3-7f617bb7d081"
+
+_ADD_ACTION = "Microsoft.Dynamics.CRM.AddPrivilegesRole"
+_REPLACE_ACTION = "Microsoft.Dynamics.CRM.ReplacePrivilegesRole"
+
+
+def _meta_priv(name, ptype, *, basic=True, local=True, deep=True, glob=True, pid=None):
+    """One EntityMetadata.Privileges entry (PascalCase metadata shape)."""
+    return {
+        "CanBeBasic": basic, "CanBeLocal": local, "CanBeDeep": deep, "CanBeGlobal": glob,
+        "Name": name, "PrivilegeId": pid or _PRV_READ, "PrivilegeType": ptype,
+    }
+
+
+def _entity_priv(name, pid, *, basic=True, local=True, deep=True, glob=True):
+    """One `privileges` entity row (lower-case entity shape)."""
+    return {
+        "name": name, "privilegeid": pid,
+        "canbebasic": basic, "canbelocal": local, "canbedeep": deep, "canbeglobal": glob,
+    }
+
+
+class TestCreateRole:
+    def test_defaults_business_unit_to_caller(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("WhoAmI"), json={"BusinessUnitId": _BU_ID})
+            m.get(backend.url_for("roles"), json={"value": []})
+            m.post(backend.url_for("roles"),
+                   json={"roleid": _ROLE_ID, "name": "Agent Read-Only"})
+            result = sec.create_role(backend, "Agent Read-Only")
+        assert result == {"roleid": _ROLE_ID, "name": "Agent Read-Only",
+                          "businessunitid": _BU_ID}
+        body = json.loads(m.request_history[-1].body)
+        assert body["name"] == "Agent Read-Only"
+        assert body["businessunitid@odata.bind"] == f"/businessunits({_BU_ID})"
+
+    def test_explicit_business_unit_is_normalized(self, backend):
+        braced = "{CCCCCCCC-DDDD-EEEE-FFFF-000000000000}"
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})
+            m.post(backend.url_for("roles"), json={"roleid": _ROLE_ID, "name": "R"})
+            sec.create_role(backend, "R", business_unit=braced)
+        body = json.loads(m.request_history[-1].body)
+        assert body["businessunitid@odata.bind"] == f"/businessunits({_BU_ID})"
+
+    def test_invalid_business_unit_raises(self, backend):
+        with pytest.raises(D365Error, match="business_unit must be a GUID"):
+            sec.create_role(backend, "R", business_unit="nope")
+
+    def test_existing_name_errors_by_default(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": [{"roleid": _ROLE_ID}]})
+            with pytest.raises(D365Error, match="already exists"):
+                sec.create_role(backend, "Dup", business_unit=_BU_ID)
+
+    def test_if_exists_skip_returns_existing(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": [{"roleid": _ROLE_ID}]})
+            result = sec.create_role(backend, "Dup", business_unit=_BU_ID,
+                                     if_exists="skip")
+        assert result == {"roleid": _ROLE_ID, "name": "Dup",
+                          "businessunitid": _BU_ID, "existed": True}
+
+
+# ── set_role_privileges ──────────────────────────────────────────────────────
+
+
+def _action_url(backend, action):
+    return backend.url_for(f"roles({_ROLE_ID})/{action}")
+
+
+class TestSetRolePrivileges:
+    def test_access_entities_builds_clamped_body(self, backend):
+        privs = [
+            _meta_priv("prvReadAccount", "Read", pid=_PRV_READ),
+            _meta_priv("prvWriteAccount", "Write", pid=_PRV_WRITE),
+        ]
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": privs})
+            m.post(_action_url(backend, _ADD_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read", "write"], entities=["account"],
+                depth="global",
+            )
+        assert result["mode"] == "add"
+        assert result["count"] == 2
+        body = json.loads(m.request_history[-1].body)
+        sent = {p["PrivilegeId"]: p["Depth"] for p in body["Privileges"]}
+        assert sent == {_PRV_READ: "Global", _PRV_WRITE: "Global"}
+
+    def test_replace_uses_replace_action(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(_action_url(backend, _REPLACE_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read"], entities=["account"],
+                depth="global", replace=True,
+            )
+        assert result["mode"] == "replace"
+        assert _REPLACE_ACTION in m.request_history[-1].url
+
+    def test_depth_clamped_to_supported_with_warning(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("privileges"),
+                  json={"value": [_entity_priv("prvCreateEntity", _PRV_GLOBAL_ONLY,
+                                               basic=False, local=False, deep=False,
+                                               glob=True)]})
+            m.post(_action_url(backend, _ADD_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, _ROLE_ID, privilege_names=["prvCreateEntity"], depth="basic",
+            )
+        body = json.loads(m.request_history[-1].body)
+        assert body["Privileges"][0]["Depth"] == "Global"
+        assert any("clamped" in w for w in result["warnings"])
+
+    def test_all_entities_filters_by_accessright_bitmask(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("privileges"),
+                  json={"value": [_entity_priv("prvReadAccount", _PRV_READ),
+                                  _entity_priv("prvReadContact", _PRV_WRITE)]})
+            m.post(_action_url(backend, _ADD_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read"], all_entities=True, depth="global",
+            )
+        assert result["count"] == 2
+        qs = m.request_history[0].qs
+        assert qs["$filter"][0] == "accessright eq 1"
+
+    def test_missing_access_for_entity_is_skipped_with_warning(self, backend):
+        # account metadata exposes only Read here — requesting assign skips + warns.
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(_action_url(backend, _ADD_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read", "assign"], entities=["account"],
+                depth="global",
+            )
+        assert result["count"] == 1
+        assert any("no assign privilege" in w for w in result["warnings"])
+
+    def test_all_skipped_raises_empty(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            with pytest.raises(D365Error, match="no privileges resolved"):
+                sec.set_role_privileges(
+                    backend, _ROLE_ID, access=["assign"], entities=["account"],
+                    depth="global",
+                )
+
+    def test_unknown_privilege_name_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("privileges"), json={"value": []})
+            with pytest.raises(D365Error, match="unknown privilege"):
+                sec.set_role_privileges(
+                    backend, _ROLE_ID, privilege_names=["prvNope"], depth="global",
+                )
+
+    def test_unknown_entity_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions(LogicalName='nope')"),
+                  status_code=404, json={"error": {"message": "Not found"}})
+            with pytest.raises(D365Error, match="unknown entity"):
+                sec.set_role_privileges(
+                    backend, _ROLE_ID, access=["read"], entities=["nope"], depth="global",
+                )
+
+    def test_access_without_entity_scope_raises(self, backend):
+        with pytest.raises(D365Error, match="requires an entity scope"):
+            sec.set_role_privileges(backend, _ROLE_ID, access=["read"], depth="global")
+
+    def test_entities_and_all_entities_mutually_exclusive(self, backend):
+        with pytest.raises(D365Error, match="not both"):
+            sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read"], entities=["account"],
+                all_entities=True, depth="global",
+            )
+
+    def test_no_selectors_raises(self, backend):
+        with pytest.raises(D365Error, match="at least one selector"):
+            sec.set_role_privileges(backend, _ROLE_ID, depth="global")
+
+    def test_unknown_access_raises(self, backend):
+        with pytest.raises(D365Error, match="unknown access type"):
+            sec.set_role_privileges(
+                backend, _ROLE_ID, access=["fly"], entities=["account"], depth="global",
+            )
+
+    def test_unknown_depth_raises(self, backend):
+        with pytest.raises(D365Error, match="unknown depth"):
+            sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read"], entities=["account"], depth="cosmic",
+            )
+
+    def test_role_name_resolved_to_id(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": [{"roleid": _ROLE_ID}]})
+            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(_action_url(backend, _ADD_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, "Agent Read-Only", access=["read"], entities=["account"],
+                depth="global",
+            )
+        assert result["roleid"] == _ROLE_ID
+
+    def test_ambiguous_role_name_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"),
+                  json={"value": [{"roleid": _ROLE_ID}, {"roleid": _GUID}]})
+            with pytest.raises(D365Error, match="ambiguous"):
+                sec.set_role_privileges(
+                    backend, "Dup Role", access=["read"], entities=["account"],
+                    depth="global",
+                )
+
+    def test_depth_alias_organization_maps_to_global(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(_action_url(backend, _ADD_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read"], entities=["account"],
+                depth="organization",
+            )
+        assert result["depth"] == "Global"
+        assert json.loads(m.request_history[-1].body)["Privileges"][0]["Depth"] == "Global"

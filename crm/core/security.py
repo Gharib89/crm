@@ -48,6 +48,37 @@ _PRINCIPAL_TYPES: dict[str, tuple[str, str]] = {
     "org": ("organization", "organizationid"),
 }
 
+# ── Role authoring (create-role / set-role-privileges) ─────────────────────
+
+# Bound actions on mscrm.role for privilege authoring.
+_ADD_PRIVILEGES_ACTION = "Microsoft.Dynamics.CRM.AddPrivilegesRole"
+_REPLACE_PRIVILEGES_ACTION = "Microsoft.Dynamics.CRM.ReplacePrivilegesRole"
+
+# Privilege depth levels, lowest → highest. The list index is the rank used when
+# clamping a requested depth to the levels a privilege actually supports.
+_DEPTH_ORDER: tuple[str, ...] = ("Basic", "Local", "Deep", "Global")
+
+# Friendly/alias depth name (lower-case) → canonical Web API Depth enum member.
+_DEPTH_ALIASES: dict[str, str] = {
+    "basic": "Basic", "user": "Basic",
+    "local": "Local", "businessunit": "Local",
+    "deep": "Deep", "parentchild": "Deep",
+    "global": "Global", "organization": "Global",
+}
+
+# Access keyword → AccessRights bitmask (the `privileges` entity's `accessright`
+# column). Canonical platform enum values — verified live on cloud + on-prem.
+_ACCESS_BITMASK: dict[str, int] = {
+    "read": 1, "write": 2, "append": 4, "appendto": 16,
+    "create": 32, "delete": 65536, "share": 262144, "assign": 524288,
+}
+
+# Access keyword → metadata PrivilegeType enum member (EntityMetadata.Privileges).
+_ACCESS_PRIVILEGE_TYPE: dict[str, str] = {
+    "read": "Read", "write": "Write", "append": "Append", "appendto": "AppendTo",
+    "create": "Create", "delete": "Delete", "share": "Share", "assign": "Assign",
+}
+
 # ── Reads ────────────────────────────────────────────────────────────────
 
 
@@ -357,3 +388,319 @@ def list_access(
     result = as_dict(backend.get(path, params={"@p1": target}))
     accesses: list[dict[str, Any]] = result.get("PrincipalAccesses", [])
     return [_normalize_shared_principal(pa) for pa in accesses]
+
+
+# ── Role authoring ─────────────────────────────────────────────────────────
+
+
+def _caller_business_unit(backend: D365Backend) -> str:
+    """Resolve the caller's business unit GUID via WhoAmI (default for new roles)."""
+    info = as_dict(backend.get("WhoAmI"))
+    bu = info.get("BusinessUnitId")
+    if not bu:
+        raise D365Error("could not resolve the caller's business unit from WhoAmI")
+    return str(bu)
+
+
+def _find_role_by_name(backend: D365Backend, name: str, business_unit: str) -> str | None:
+    """Return the roleid of a role with this name in the business unit, or None."""
+    escaped = name.replace("'", "''")
+    rows = backend.get_collection(
+        _ROLES_SET,
+        params={
+            "$select": "roleid",
+            "$filter": f"name eq '{escaped}' and _businessunitid_value eq {business_unit}",
+            "$top": "1",
+        },
+    )
+    if rows:
+        return str(rows[0].get("roleid"))
+    return None
+
+
+def create_role(
+    backend: D365Backend,
+    name: str,
+    *,
+    business_unit: str | None = None,
+    if_exists: str = "error",
+) -> dict[str, Any]:
+    """Create a security role, returning ``{roleid, name, businessunitid}``.
+
+    ``business_unit`` (GUID) defaults to the caller's own business unit (WhoAmI).
+    ``if_exists`` controls a same-name/same-BU collision: ``error`` (default)
+    raises; ``skip`` returns the existing role's id with ``existed: True``.
+    """
+    if business_unit is None:
+        bu = _caller_business_unit(backend)
+    else:
+        normalized = normalize_guid(business_unit)
+        if normalized is None:
+            raise D365Error(f"business_unit must be a GUID; got {business_unit!r}")
+        bu = normalized
+
+    existing = _find_role_by_name(backend, name, bu)
+    if existing is not None:
+        if if_exists == "skip":
+            return {"roleid": existing, "name": name,
+                    "businessunitid": bu, "existed": True}
+        raise D365Error(
+            f"a role named {name!r} already exists in business unit {bu} "
+            "(use --if-exists skip to reuse it)"
+        )
+
+    payload: dict[str, Any] = {
+        "name": name,
+        "businessunitid@odata.bind": f"/businessunits({bu})",
+    }
+    result = entity_mod.create(backend, _ROLES_SET, payload)
+    if "_dry_run" in result:
+        return result
+    return {
+        "roleid": str(result.get("roleid", "")),
+        "name": str(result.get("name", name)),
+        "businessunitid": bu,
+    }
+
+
+def _normalize_depth(depth: str) -> str:
+    """Map a friendly/alias depth to its canonical Web API enum member."""
+    canonical = _DEPTH_ALIASES.get(depth.strip().lower())
+    if canonical is None:
+        valid = ", ".join(sorted(set(_DEPTH_ALIASES)))
+        raise D365Error(f"unknown depth {depth!r}; valid: {valid}")
+    return canonical
+
+
+def _validate_access(access: list[str]) -> list[str]:
+    """Lower-case, validate, and de-dupe a list of access keywords."""
+    normalized: list[str] = []
+    for raw in access:
+        key = raw.strip().lower()
+        if key not in _ACCESS_BITMASK:
+            valid = ", ".join(_ACCESS_BITMASK)
+            raise D365Error(f"unknown access type {raw!r}; valid: {valid}")
+        if key not in normalized:
+            normalized.append(key)
+    return normalized
+
+
+def _norm_priv(raw: dict[str, Any]) -> dict[str, Any]:
+    """Normalize a raw privilege to ``{name, privilegeid, supported}``.
+
+    ``supported`` is the list of depths the privilege allows. Accepts both the
+    metadata shape (PascalCase ``CanBeBasic`` …, ``Name``, ``PrivilegeId``) and
+    the ``privileges`` entity shape (lower-case ``canbebasic`` …, ``name``,
+    ``privilegeid``).
+    """
+    def flag(*keys: str) -> bool:
+        for key in keys:
+            if key in raw:
+                return bool(raw[key])
+        return False
+
+    supported: list[str] = []
+    if flag("CanBeBasic", "canbebasic"):
+        supported.append("Basic")
+    if flag("CanBeLocal", "canbelocal"):
+        supported.append("Local")
+    if flag("CanBeDeep", "canbedeep"):
+        supported.append("Deep")
+    if flag("CanBeGlobal", "canbeglobal"):
+        supported.append("Global")
+    return {
+        "name": str(raw.get("Name") or raw.get("name") or ""),
+        "privilegeid": str(raw.get("PrivilegeId") or raw.get("privilegeid") or ""),
+        "supported": supported,
+    }
+
+
+def _clamp_depth(requested: str, supported: list[str]) -> str:
+    """Resolve the requested depth to one the privilege supports.
+
+    Returns the requested depth when supported. Otherwise clamps down to the
+    highest supported level below it; if none is lower (e.g. a Global-only
+    customization privilege), returns the lowest supported level. Returns the
+    requested depth unchanged when the privilege advertises no levels.
+    """
+    if not supported:
+        return requested
+    if requested in supported:
+        return requested
+    rank = _DEPTH_ORDER.index
+    lower = [d for d in supported if rank(d) < rank(requested)]
+    if lower:
+        return max(lower, key=rank)
+    return min(supported, key=rank)
+
+
+def _resolve_role_id(backend: D365Backend, role: str) -> str:
+    """Resolve a role argument (GUID or unique role name) to a roleid."""
+    gid = normalize_guid(role)
+    if gid is not None:
+        return gid
+    escaped = role.replace("'", "''")
+    rows = backend.get_collection(
+        _ROLES_SET,
+        params={"$select": "roleid,name", "$filter": f"name eq '{escaped}'"},
+    )
+    if not rows:
+        raise D365Error(f"no role found named {role!r}")
+    if len(rows) > 1:
+        raise D365Error(
+            f"role name {role!r} is ambiguous ({len(rows)} matches across business "
+            "units); pass the role id instead"
+        )
+    return str(rows[0].get("roleid"))
+
+
+_PRIV_SELECT = "name,privilegeid,canbebasic,canbelocal,canbedeep,canbeglobal"
+
+
+def _entity_privileges(backend: D365Backend, logical: str) -> list[dict[str, Any]]:
+    """Fetch the Privileges complex property for one entity's metadata.
+
+    Raises :class:`D365Error` with a clean message when the entity is unknown.
+    """
+    path = f"EntityDefinitions(LogicalName='{logical}')"
+    try:
+        result = as_dict(backend.get(path, params={"$select": "Privileges"}))
+    except D365Error as exc:
+        if exc.status == 404:
+            raise D365Error(f"unknown entity {logical!r}") from exc
+        raise
+    privileges = result.get("Privileges")
+    if isinstance(privileges, list):
+        return cast("list[dict[str, Any]]", privileges)
+    return []
+
+
+def _all_entity_privileges(backend: D365Backend, access: list[str]) -> list[dict[str, Any]]:
+    """Fetch every privilege matching the requested access types, org-wide."""
+    clauses = " or ".join(f"accessright eq {_ACCESS_BITMASK[a]}" for a in access)
+    return backend.get_collection(
+        "privileges", params={"$select": _PRIV_SELECT, "$filter": clauses},
+    )
+
+
+def _named_privileges(backend: D365Backend, names: list[str]) -> list[dict[str, Any]]:
+    """Fetch privileges by exact name; raise if any requested name is unknown."""
+    clauses = " or ".join(f"name eq '{n.replace(chr(39), chr(39) * 2)}'" for n in names)
+    rows = backend.get_collection(
+        "privileges", params={"$select": _PRIV_SELECT, "$filter": clauses},
+    )
+    found = {str(r.get("name")) for r in rows}
+    missing = [n for n in names if n not in found]
+    if missing:
+        raise D365Error(f"unknown privilege(s): {', '.join(missing)}")
+    return rows
+
+
+def set_role_privileges(
+    backend: D365Backend,
+    role: str,
+    *,
+    access: list[str] | None = None,
+    entities: list[str] | None = None,
+    all_entities: bool = False,
+    privilege_names: list[str] | None = None,
+    depth: str,
+    replace: bool = False,
+) -> dict[str, Any]:
+    """Add or replace a role's privileges from typed selectors.
+
+    Selectors (≥1 required): ``access`` (+ ``entities`` or ``all_entities``)
+    and/or explicit ``privilege_names``. ``depth`` is required (friendly name or
+    alias) and is clamped per privilege to the levels it supports. ``replace``
+    swaps the role's privileges for exactly the resolved set; otherwise the set
+    is merged (added).
+
+    Returns ``{roleid, mode, depth, privileges, count, warnings}``. A requested
+    access×entity combo with no matching privilege is skipped with a warning; an
+    empty resolved set is an error (never sends an empty replace).
+    """
+    access = access or []
+    entities = entities or []
+    privilege_names = privilege_names or []
+
+    if entities and all_entities:
+        raise D365Error("provide either --entities or --all-entities, not both")
+    if access:
+        access = _validate_access(access)
+        if not entities and not all_entities:
+            raise D365Error(
+                "--access requires an entity scope: add --entities or --all-entities"
+            )
+    elif entities or all_entities:
+        raise D365Error("--entities/--all-entities require --access")
+    if not access and not privilege_names:
+        raise D365Error(
+            "provide at least one selector: --access (with --entities/--all-entities) "
+            "or --privilege"
+        )
+
+    requested_depth = _normalize_depth(depth)
+    role_id = _resolve_role_id(backend, role)
+
+    warnings: list[str] = []
+    resolved: dict[str, dict[str, Any]] = {}
+
+    def add(raw: dict[str, Any]) -> None:
+        norm = _norm_priv(raw)
+        pid = str(norm["privilegeid"])
+        if not pid:
+            return
+        chosen = _clamp_depth(requested_depth, norm["supported"])
+        if chosen != requested_depth:
+            warnings.append(f"{norm['name']}: depth clamped {requested_depth} → {chosen}")
+        prev = resolved.get(pid)
+        if prev is None or _DEPTH_ORDER.index(chosen) > _DEPTH_ORDER.index(prev["depth"]):
+            resolved[pid] = {"name": norm["name"], "privilegeid": pid, "depth": chosen}
+
+    if access and entities:
+        for ent in entities:
+            logical = ent.strip().lower()
+            by_type: dict[str, dict[str, Any]] = {}
+            for raw in _entity_privileges(backend, logical):
+                ptype = raw.get("PrivilegeType")
+                if isinstance(ptype, str):
+                    by_type[ptype] = raw
+            for key in access:
+                raw = by_type.get(_ACCESS_PRIVILEGE_TYPE[key])
+                if raw is None:
+                    warnings.append(f"{logical}: no {key} privilege (skipped)")
+                    continue
+                add(raw)
+    if access and all_entities:
+        for raw in _all_entity_privileges(backend, access):
+            add(raw)
+    if privilege_names:
+        for raw in _named_privileges(backend, privilege_names):
+            add(raw)
+
+    privileges = sorted(resolved.values(), key=lambda p: str(p["name"]))
+    if not privileges:
+        raise D365Error("no privileges resolved for the given selectors; nothing to apply")
+
+    action = _REPLACE_PRIVILEGES_ACTION if replace else _ADD_PRIVILEGES_ACTION
+    body = {
+        "Privileges": [
+            {"PrivilegeId": p["privilegeid"], "Depth": p["depth"]} for p in privileges
+        ]
+    }
+    path = f"{entity_mod.build_record_path(_ROLES_SET, role_id)}/{action}"
+    result = as_dict(backend.post(path, json_body=body))
+
+    out: dict[str, Any] = {
+        "roleid": role_id,
+        "mode": "replace" if replace else "add",
+        "depth": requested_depth,
+        "privileges": privileges,
+        "count": len(privileges),
+        "warnings": warnings,
+    }
+    if "_dry_run" in result:
+        out["dry_run"] = result
+    else:
+        out["applied"] = True
+    return out
