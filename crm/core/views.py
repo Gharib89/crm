@@ -596,6 +596,8 @@ _MULTI_VALUE_OPS = frozenset({
 
 # Single-value operators (value carried in the `value` attribute) — everything
 # below plus any operator not in the three sets above.
+# `neq` is the deprecated alias of `ne`; the fetch.xsd enum still lists it
+# ("remains for backward compatability only"), so it is accepted here.
 _SINGLE_VALUE_OPS = frozenset({
     "eq", "ne", "neq", "lt", "le", "gt", "ge",
     "like", "not-like", "begins-with", "not-begin-with",
@@ -717,6 +719,47 @@ def _iter_entity_conditions(
 
     walk(entity)
     return found
+
+
+def _prune_empty_filters(
+    entity: "ElementTree.Element", emptied: "list[ElementTree.Element]"
+) -> None:
+    """Remove each filter in ``emptied`` that has no conditions and no child
+    filters, cascading to any ancestor filter the prune leaves empty.
+
+    Only filters reachable from ``emptied`` (the ones a removal touched) and the
+    ancestors they empty are pruned — a pre-existing empty filter elsewhere is
+    left alone. Dedupe by identity so a filter listed twice isn't removed twice.
+    """
+    parent_of: "dict[int, ElementTree.Element]" = {}
+    by_id: "dict[int, ElementTree.Element]" = {}
+
+    def walk(el: "ElementTree.Element") -> None:
+        for child in list(el):
+            if child.tag == "link-entity":
+                continue
+            if child.tag == "filter":
+                parent_of[id(child)] = el
+                by_id[id(child)] = child
+                walk(child)
+
+    walk(entity)
+    queue = [id(f) for f in emptied]
+    pruned: set[int] = set()
+    while queue:
+        fid = queue.pop()
+        if fid in pruned:
+            continue
+        filt = by_id.get(fid)
+        parent = parent_of.get(fid)
+        if filt is None or parent is None:
+            continue
+        if filt.findall("condition") or filt.findall("filter"):
+            continue
+        parent.remove(filt)
+        pruned.add(fid)
+        if parent.tag == "filter":
+            queue.append(id(parent))
 
 
 def add_view_filter(
@@ -857,16 +900,7 @@ def remove_view_filter(
         removed.append({"attribute": attr, "operator": op,
                         "values": want_values or []})
 
-    # Prune any filter our removal left with no conditions and no nested filters.
-    # Dedupe by identity: removing several conditions from one filter lists it
-    # more than once, and a second parent.remove(filt) would raise.
-    pruned: set[int] = set()
-    for parent, filt in touched_filters:
-        if id(filt) in pruned:
-            continue
-        if not filt.findall("condition") and not filt.findall("filter"):
-            parent.remove(filt)
-            pruned.add(id(filt))
+    _prune_empty_filters(fent, [f for _p, f in touched_filters])
 
     result: dict[str, Any] = {
         "savedqueryid": sqid, "name": row.get("name", ""),

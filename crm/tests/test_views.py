@@ -860,6 +860,26 @@ class TestRemoveViewFilter:
         assert "cwx_priority" not in fetch
         assert "<filter" not in fetch  # emptied filter pruned once, no crash
 
+    def test_remove_cascades_prune_to_emptied_parent_filter(self, backend):
+        """Removing the last condition in a nested filter prunes the inner filter
+        AND its now-empty parent, matching the documented pruning behavior."""
+        from crm.core import views
+        nested = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and"><filter type="or">'
+            '<condition attribute="cwx_priority" operator="eq" value="1" />'
+            '</filter></filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=nested))
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_priority", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert "<filter" not in fetch  # both inner and emptied parent pruned
+
     def test_remove_duplicate_spec_errors_cleanly(self, backend):
         """The same condition listed twice yields a clean NotFound on the second
         pass, not an ElementTree ValueError."""
