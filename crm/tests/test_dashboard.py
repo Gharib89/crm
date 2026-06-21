@@ -234,9 +234,16 @@ class TestAddChartgridToFormxml:
         assert _rowspan(_component_cell(section)) == \
             len(section.findall("rows/row")) == 1
 
+    @staticmethod
+    def _existing_cell_id(i: int) -> str:
+        # A valid placeholder GUID (not a real org id) so the pure-append guard,
+        # which keys on a strict GUID regex, actually polices these pre-existing
+        # <cell id=...> values against an accidental rewrite.
+        return f"{{cccc0000-0000-0000-0000-0000000000{i:02d}}}"
+
     def _formxml_with_components(self, n: int) -> str:
         cells = "".join(
-            f'<row><cell id="{{cell-{i}}}"><control id="c{i}" '
+            f'<row><cell id="{self._existing_cell_id(i)}"><control id="c{i}" '
             f'classid="{dashboard.CHARTGRID_CLASSID}"><parameters/></control>'
             f'</cell></row>' for i in range(n))
         return (
@@ -301,7 +308,9 @@ class TestAddChartgridToFormxml:
         out = dashboard.add_chartgrid_to_formxml(
             self._formxml_with_components(2), params=self._params(), label="A")
         ids = {c.get("id") for c in _cells(out)}
-        assert "{cell-0}" in ids and "{cell-1}" in ids  # untouched
+        # the two pre-existing cell ids survive verbatim (guard would raise else)
+        assert self._existing_cell_id(0) in ids
+        assert self._existing_cell_id(1) in ids
         assert len(ids) == 3  # cell-count +1
 
     def test_each_tile_gets_its_own_section_keeping_invariant(self):
