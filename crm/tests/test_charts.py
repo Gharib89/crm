@@ -448,6 +448,16 @@ class TestPureXmlHelpers:
         assert 'name="createdon" groupby="true"' in out
         assert 'dategrouping="month"' in out
 
+    def test_set_groupby_clears_stale_dategrouping(self):
+        from crm.core.charts import _set_groupby
+        dated = _EDIT_DATA.replace(
+            '<attribute name="new_priority" groupby="true" alias="groupby_column" />',
+            '<attribute name="createdon" groupby="true" dategrouping="month" '
+            'alias="groupby_column" />')
+        out = _set_groupby(dated, column="new_priority", dategrouping=None)
+        assert 'name="new_priority"' in out
+        assert "dategrouping" not in out
+
 
 class TestAliasCoupling:
     def _root(self, xml):

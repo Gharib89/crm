@@ -370,7 +370,10 @@ def _entity_el(fetch: ET.Element) -> ET.Element:
 
 
 def _fetch_attrs(data_root: ET.Element) -> list[ET.Element]:
-    return list(_entity_el(_fetch_el(data_root)).findall("attribute"))
+    """Every ``<attribute>`` in the fetch — including those inside a
+    ``<link-entity>`` — since a category/measure alias may bind to a linked
+    column, so the alias-coupling check must see them all."""
+    return list(_fetch_el(data_root).iter("attribute"))
 
 
 def _categories(data_root: ET.Element) -> list[ET.Element]:
@@ -876,4 +879,8 @@ def _set_groupby(data_xml: str, *, column: str, dategrouping: str | None) -> str
     target.set("name", column)
     if dategrouping is not None:
         target.set("dategrouping", dategrouping)
+    else:
+        # Clear any stale interval from the previous column — a dategrouping left
+        # on a non-date column is invalid.
+        target.attrib.pop("dategrouping", None)
     return serialize_xml(root)

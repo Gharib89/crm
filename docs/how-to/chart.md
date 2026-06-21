@@ -250,11 +250,13 @@ This applies to all editor verbs (`update`, `set-fetch`, `add-series`,
   — edits reflect immediately and `--publish` / `--no-publish` is accepted but
   has no effect.
 
-!!! warning "Don't chain --no-publish edits"
-    Each editor verb reads the **published** snapshot before writing. A second
-    `--no-publish` edit reads the chart without the first edit's pending change
-    and overwrites it. To make several edits safely: either keep the default
-    (publish each step), or publish between edits with `crm solution publish`.
+!!! warning "Don't chain --no-publish edits on a *system* chart"
+    A system-chart editor reads the **published** snapshot before writing, so a
+    second `--no-publish` edit reads the chart without the first edit's pending
+    change and overwrites it. To make several system-chart edits safely: either
+    keep the default (publish each step), or publish between edits with
+    `crm solution publish`. User charts (`--user`) are unaffected — they aren't
+    published, so each edit reads the previous one's result.
 
 ## Relationship to `metadata clone-entity --with-charts`
 
