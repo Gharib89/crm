@@ -184,6 +184,167 @@ crm form set-field cwx_ticket cwx_priority \
 crm --dry-run form set-field cwx_ticket cwx_priority --tab "Details"  # would_move: true
 ```
 
+## Wire JS event handlers
+
+The CLI manages JS script libraries and event handlers directly in the form's
+`<formLibraries>` and `<events>` XML without any manual FormXml editing. The three
+mutating verbs mirror the field editors and share the same `--form`, `--publish`,
+`--solution`, `--json`, and `--dry-run` conventions; `list-handlers` is read-only
+(`--form` and `--json` only).
+
+**Prerequisite: the web resource must already exist.** The editor never creates
+web resources — register them first with `crm webresource create`, then wire them.
+
+### Register a script library
+
+```bash
+crm form add-library cwx_ticket --library cwx_/scripts/ticket.js
+```
+
+Registers `cwx_/scripts/ticket.js` in the form's `<formLibraries>`. The
+operation is idempotent — if the library is already registered, the command
+succeeds without adding a duplicate entry. Under `--dry-run` the response
+carries `would_add_library: true` and issues no PATCH.
+
+```bash
+crm form add-library cwx_ticket --library cwx_/scripts/ticket.js \
+    --solution cwx_crmworx
+crm --dry-run form add-library cwx_ticket --library cwx_/scripts/ticket.js
+```
+
+### Wire an event handler
+
+`form add-handler` registers the library (deduped) **and** adds the handler in
+one call. The handler lands in `<Handlers>` (the customizer-owned block) and is
+always appended last, so existing handler order is preserved.
+
+```bash
+# onload — fires when the form opens
+crm form add-handler cwx_ticket \
+    --event onload \
+    --library cwx_/scripts/ticket.js \
+    --function App.onLoad
+
+# onsave — fires when the record is saved
+crm form add-handler cwx_ticket \
+    --event onsave \
+    --library cwx_/scripts/ticket.js \
+    --function App.onSave
+
+# onchange — fires when a specific field changes; --field is required
+crm form add-handler cwx_ticket \
+    --event onchange --field cwx_priority \
+    --library cwx_/scripts/ticket.js \
+    --function App.onPriorityChange
+```
+
+**`--field` is required for `onchange`, and invalid for `onload`/`onsave`.**
+The command also validates that `--field` names a field that is already on the
+form — add it first with `crm form add-field` if needed.
+
+**Duplicate handlers are refused.** Adding the same event + function combination
+a second time errors rather than creating a duplicate entry.
+
+Additional options (defaults shown):
+
+- `--pass-context` / `--no-pass-context` — pass the execution context as the
+  function's first argument (default: on).
+- `--enabled` / `--no-enabled` — whether the handler is active (default: on).
+- `--param` — repeatable; emitted as a comma-separated `parameters` attribute.
+
+```bash
+crm form add-handler cwx_ticket \
+    --event onload \
+    --library cwx_/scripts/ticket.js \
+    --function App.onLoad \
+    --no-pass-context \
+    --param "debug=false" \
+    --param "verbose=true"
+```
+
+Under `--dry-run` the response carries `would_add_handler: true`.
+
+### List handlers
+
+`form list-handlers` is read-only — no `--publish` or `--solution` flag.
+
+```bash
+crm form list-handlers cwx_ticket
+```
+
+Output columns: `event`, `field` (blank for onload/onsave), `function`, `library`,
+`enabled`, `pass_context`. Per the output contract, `data` is a **bare array** of
+handler rows and the resolved form goes to `meta`:
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "event":            "onload",
+      "field":            null,
+      "function":         "App.onLoad",
+      "library":          "cwx_/scripts/ticket.js",
+      "enabled":          true,
+      "pass_context":     true,
+      "handler_unique_id":"<guid>"
+    }
+  ],
+  "meta": { "formid": "<guid>", "form": "Ticket Main Form" }
+}
+```
+
+Only the customizer-wired `<Handlers>` are listed — the platform-internal
+`<InternalHandlers>` are never reported.
+
+### Remove a handler
+
+```bash
+crm form remove-handler cwx_ticket \
+    --event onload --function App.onLoad
+
+# onchange requires --field
+crm form remove-handler cwx_ticket \
+    --event onchange --field cwx_priority --function App.onPriorityChange
+```
+
+Removes the handler identified by event + function (plus field for onchange).
+Tidies any now-empty `<Handlers>`, `<event>`, or `<events>` containers so no
+invalid empty XML is left behind. Errors if the handler is not found.
+
+```bash
+crm --dry-run form remove-handler cwx_ticket \
+    --event onload --function App.onLoad   # would_remove_handler: true, no PATCH
+```
+
+### Publishing and the publish-then-read-back gotcha
+
+These verbs run `PublishAllXml` by default (same as the field editors). Because
+`GET /systemforms` returns the **published** FormXml, an unpublished PATCH is
+invisible on re-export and in the UI — always publish before verifying with
+`form list-handlers` or `form export`.
+
+!!! warning "Don't chain `--no-publish` edits to one form"
+    Each verb recomputes the FormXml from the **published** snapshot. A second
+    `--no-publish` edit overwrites any pending unpublished change from the first.
+    Keep the default (publish each), or publish between edits — only the last
+    `--no-publish` write survives otherwise.
+
+```bash
+crm form add-handler cwx_ticket \
+    --event onload --library cwx_/scripts/ticket.js \
+    --function App.onLoad --no-publish    # stage only
+crm solution publish                       # publish when ready
+```
+
+### Handlers vs InternalHandlers
+
+The FormXml `<events>` element contains two sibling blocks per event:
+`<Handlers>` (customizer-owned) and `<InternalHandlers>` (platform-owned).
+The CLI only reads and writes `<Handlers>`. Do not hand-splice entries into
+`<InternalHandlers>` — those are managed by the platform and survive upgrades
+independently.
+
 ## Export a form's formxml
 
 ```bash

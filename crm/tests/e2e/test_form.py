@@ -273,3 +273,76 @@ def test_form_set_field_roundtrip(cli, ephemeral_entity, tmp_path):
     finally:
         cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
              "--publish"], check=False)
+
+
+# ── event-handler & library wiring (issue #459) ─────────────────────────────────
+#
+# One round-trip over the four wiring verbs against the session ephemeral_entity's
+# Main form, publishing each change and asserting on the re-exported (published)
+# FormXml — the same publish-then-read-back contract as the field editors above.
+# Needs a real JS web resource to reference (the editor never creates one), so the
+# test creates a throwaway one and deletes it in teardown.
+
+
+@covers("form add-library", "form add-handler", "form remove-handler",
+        "form list-handlers")
+@pytest.mark.slow
+def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique):
+    """add-library → add-handler (onload + onchange) → list-handlers → remove-handler,
+    publishing each step and verifying via re-export that the handler lands under
+    <Handlers> (not <InternalHandlers>) and is gone after removal."""
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    form_name = forms[0]["name"]
+    wr_name = f"new_e2e_lib_{unique}.js"
+    src = tmp_path / f"{unique}.js"
+    src.write_bytes(b"// e2e handler-wiring test")
+    create = cli(["--json", "webresource", "create", "--name", wr_name,
+                  "--file", str(src), "--display-name", f"E2E lib {unique}"])
+    assert create.returncode == 0, f"wr create failed:\n{create.stderr}\n{create.stdout}"
+    try:
+        # add-library (idempotent register)
+        r = cli(["--json", "form", "add-library", ephemeral_entity,
+                 "--library", wr_name, "--publish"])
+        assert r.returncode == 0, f"add-library failed:\n{r.stderr}\n{r.stdout}"
+        xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        assert f'name="{wr_name}"' in xml, "library not registered in published form"
+
+        # add-handler onload
+        r = cli(["--json", "form", "add-handler", ephemeral_entity,
+                 "--event", "onload", "--library", wr_name,
+                 "--function", "App.onLoad", "--publish"])
+        assert r.returncode == 0, f"add-handler failed:\n{r.stderr}\n{r.stdout}"
+        xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        assert 'functionName="App.onLoad"' in xml, "handler not in published form"
+        # the wired handler must sit under <Handlers>, never <InternalHandlers>
+        import re as _re
+        onload_m = _re.search(r'<event name="onload".*?</event>', xml, _re.S)
+        assert onload_m is not None, "onload event missing from published form"
+        assert "App.onLoad" in onload_m.group(0).split("<Handlers>", 1)[1]
+
+        # add-handler onchange on a field that is on the form
+        cli(["--json", "form", "add-field", ephemeral_entity, "createdon", "--publish"])
+        r = cli(["--json", "form", "add-handler", ephemeral_entity,
+                 "--event", "onchange", "--field", "createdon", "--library", wr_name,
+                 "--function", "App.onChange", "--publish"])
+        assert r.returncode == 0, f"onchange add-handler failed:\n{r.stderr}\n{r.stdout}"
+
+        # list-handlers reflects what was wired
+        listed = json.loads(cli(["--json", "form", "list-handlers",
+                                 ephemeral_entity]).stdout)["data"]
+        fns = {h["function"] for h in listed}
+        assert {"App.onLoad", "App.onChange"} <= fns, f"list-handlers missing wiring: {listed}"
+
+        # remove-handler, then assert absent on read-back
+        r = cli(["--json", "form", "remove-handler", ephemeral_entity,
+                 "--event", "onload", "--function", "App.onLoad", "--publish"])
+        assert r.returncode == 0, f"remove-handler failed:\n{r.stderr}\n{r.stdout}"
+        xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        assert 'functionName="App.onLoad"' not in xml, "handler still present after remove"
+    finally:
+        cli(["--json", "form", "remove-handler", ephemeral_entity, "--event",
+             "onchange", "--field", "createdon", "--function", "App.onChange",
+             "--publish"], check=False)
+        cli(["--json", "form", "remove-field", ephemeral_entity, "createdon",
+             "--publish"], check=False)
+        cli(["--json", "webresource", "delete", wr_name, "--yes"], check=False)
