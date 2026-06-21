@@ -454,10 +454,12 @@ class TestListAccess:
 # ── create_role ────────────────────────────────────────────────────────────
 
 
-_PRV_READ = "886b280c-6396-4d56-a0a3-2c1b0a50ceb0"
-_PRV_WRITE = "7863e80f-0ab2-4d67-a641-37d9f342c7e3"
-_PRV_CREATE = "d26fe964-230b-42dd-ad93-5cc879de411e"
-_PRV_GLOBAL_ONLY = "341e3ebf-74b8-4335-84f3-7f617bb7d081"
+# Opaque placeholder privilege ids — the mocked tests only assert the request
+# shape, so these need not be real (project rule: no live-export GUIDs).
+_PRV_READ = "11111111-0000-0000-0000-00000000000a"
+_PRV_WRITE = "11111111-0000-0000-0000-00000000000b"
+_PRV_CREATE = "11111111-0000-0000-0000-00000000000c"
+_PRV_GLOBAL_ONLY = "11111111-0000-0000-0000-00000000000d"
 
 _ADD_ACTION = "Microsoft.Dynamics.CRM.AddPrivilegesRole"
 _REPLACE_ACTION = "Microsoft.Dynamics.CRM.ReplacePrivilegesRole"
