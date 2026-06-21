@@ -245,10 +245,11 @@ def commit_xml_patch(
     ``read_back`` without ``publish`` is therefore a programming error and is
     rejected up front rather than allowed to silently false-negative.
     """
-    rb: "Callable[[dict[str, str]], None] | None" = None
-    if read_back is not None:
-        _rb = read_back
-        rb = lambda cols: _rb(cols[column])  # noqa: E731
+    def _read_back_one(cols: "dict[str, str]") -> None:
+        assert read_back is not None  # rb is only wired when read_back is set
+        read_back(cols[column])
+
+    rb = _read_back_one if read_back is not None else None
     return commit_xml_patches(
         backend, entity_set=entity_set, record_id=record_id,
         columns={column: new_xml}, result=result, dry_run_flag=dry_run_flag,

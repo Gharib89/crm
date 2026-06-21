@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import requests_mock as rm_module
 
@@ -178,8 +179,6 @@ class TestChartCreate:
         assert env["data"]["would_create"]["entity_set"] == "savedqueryvisualizations"
 
 
-import re as _re
-
 _EDIT_DATA = (
     '<datadefinition><fetchcollection>'
     '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
@@ -208,7 +207,7 @@ def _edit_mocks(m, backend):
     """Register GET chart + GET metadata + PATCH for an editor command run."""
     url = backend.url_for(f"savedqueryvisualizations({_EDIT_ID})")
     m.get(url, json=_EDIT_CHART)
-    m.get(_re.compile("EntityDefinitions"), json={"AttributeType": "Money"})
+    m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Money"})
     m.patch(url, status_code=204)
 
 
@@ -298,7 +297,7 @@ class TestChartSetGroupbyCmd:
             # get_chart still reads live under dry-run (reads-execute); metadata too
             m.get(dry_backend.url_for(f"savedqueryvisualizations({_EDIT_ID})"),
                   json=_EDIT_CHART)
-            m.get(_re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "set-groupby", _EDIT_ID,
                 "--column", "new_priority", "--no-publish"])

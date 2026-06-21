@@ -397,6 +397,12 @@ def _inner_series(pres_root: ET.Element) -> list[ET.Element]:
     return list(wrapper.findall("Series")) if wrapper is not None else []
 
 
+def _pres_root_of(chart: dict[str, Any]) -> ET.Element | None:
+    """Parse a chart dict's presentationdescription, or None when it is empty."""
+    pres = chart.get("presentationdescription") or ""
+    return parse_xml(pres, label="chart presentationdescription") if pres else None
+
+
 def _validate_fetch_metadata(
     backend: D365Backend, *, expected_entity: str, data_root: ET.Element
 ) -> None:
@@ -610,7 +616,9 @@ def set_chart_fetch(
     data_root = parse_xml(new_data, label="chart datadescription")
     _validate_fetch_metadata(
         backend, expected_entity=current["primaryentitytypecode"], data_root=data_root)
-    _validate_alias_coupling(data_root)
+    # The presentationdescription is unchanged but the new fetch's aliases must
+    # still couple to its series, so validate the full three-layer pair.
+    _validate_alias_coupling(data_root, _pres_root_of(current))
 
     def _verify(cols: dict[str, str]) -> None:
         parse_xml(cols["datadescription"], label="chart datadescription")
@@ -705,7 +713,7 @@ def set_chart_groupby(
     attribute_info_or_raise(backend, current["primaryentitytypecode"], column)
     new_data = _set_groupby(current["datadescription"], column=column, dategrouping=dategrouping)
     data_root = parse_xml(new_data, label="chart datadescription")
-    _validate_alias_coupling(data_root)
+    _validate_alias_coupling(data_root, _pres_root_of(current))
 
     def _verify(cols: dict[str, str]) -> None:
         root = parse_xml(cols["datadescription"], label="chart datadescription")
