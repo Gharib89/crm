@@ -61,11 +61,13 @@ def _layout_options(fn):
     fn = click.option("--tab", default=None,
                       help="Target tab (name or id; default: first tab).")(fn)
     fn = click.option("--section", default=None,
-                      help="Target section (name or id; default: first section).")(fn)
-    fn = click.option("--rowspan", type=int, default=1, show_default=True,
+                      help="Add to an existing section (name or id); default: "
+                           "a new section per tile (one component per section).")(fn)
+    fn = click.option("--rowspan", type=click.IntRange(min=1), default=1,
+                      show_default=True,
                       help="Cell rowspan; the section is padded to match it.")(fn)
-    fn = click.option("--colspan", type=int, default=1, show_default=True,
-                      help="Cell colspan.")(fn)
+    fn = click.option("--colspan", type=click.IntRange(min=1), default=1,
+                      show_default=True, help="Cell colspan.")(fn)
     fn = click.option("--force", is_flag=True,
                       help="Add beyond the default six-component cap.")(fn)
     return fn
@@ -106,8 +108,9 @@ def dashboard_add_chart(
 @click.option("--mode", type=click.Choice(["list", "all"]), default="list",
               show_default=True,
               help="Grid only (list) or grid with the chart toggle (all).")
-@click.option("--records-per-page", "records_per_page", type=int, default=10,
-              show_default=True, help="Rows shown per page in the grid.")
+@click.option("--records-per-page", "records_per_page",
+              type=click.IntRange(min=1), default=10, show_default=True,
+              help="Rows shown per page in the grid.")
 @_layout_options
 @_solution_option
 @_publish_option

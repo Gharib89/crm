@@ -287,6 +287,14 @@ class TestAddChartgridToFormxml:
         sec0 = next(s for s in root.iter("section") if s.get("name") == "sec0")
         assert any(c.find("control") is not None for c in sec0.iter("cell"))
 
+    def test_refuses_occupied_named_section(self):
+        # Co-locating a second component into a section that already has one
+        # would break rowspan == count(<row>) for the first cell — reject it.
+        with pytest.raises(D365Error, match="already has a component"):
+            dashboard.add_chartgrid_to_formxml(
+                self._formxml_with_components(1), params=self._params(),
+                label="A", section="s")
+
     def test_preserves_existing_components(self):
         out = dashboard.add_chartgrid_to_formxml(
             self._formxml_with_components(2), params=self._params(), label="A")

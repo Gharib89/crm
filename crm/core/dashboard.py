@@ -16,6 +16,7 @@ clear error rather than silently creating a different kind of record.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections import Counter
 from typing import Any
 
 from crm.core import xml_edit
@@ -268,6 +269,16 @@ def _count_components(root: "ET.Element") -> int:
     return sum(1 for cell in root.iter("cell") if cell.find("control") is not None)
 
 
+def _guid_counter(xml: str) -> "Counter[str]":
+    """Multiset of every (lowercased) GUID in ``xml`` — for the pure-append guard."""
+    return Counter(g.lower() for g in xml_edit.ANY_GUID_RE.findall(xml))
+
+
+def _section_has_component(section: "ET.Element") -> bool:
+    """Whether ``section`` already hosts a component (a ``<cell>`` with a control)."""
+    return any(c.find("control") is not None for c in section.iter("cell"))
+
+
 def _unique_control_id(root: "ET.Element", base: str = "ChartGrid") -> str:
     """A control ``id`` not already used by any control on the dashboard.
 
@@ -311,27 +322,39 @@ def add_chartgrid_to_formxml(
             f"default cap). Pass --force to add more.")
     target_tab = _resolve_target_tab(root, tab)
     is_new_section = section is None
-    target = (_new_tile_section(target_tab, colspan=colspan) if is_new_section
-              else _resolve_named_section(target_tab, section))
+    if is_new_section:
+        target = _new_tile_section(target_tab, colspan=colspan)
+    else:
+        target = _resolve_named_section(target_tab, section)
+        # A section can hold only one component while keeping the
+        # rowspan == count(<row>) invariant (adding a second cell would
+        # invalidate the first's rowspan and risk a publish-time rejection), so
+        # refuse to co-locate into an already-occupied section.
+        if _section_has_component(target):
+            raise D365Error(
+                f"Section {section!r} already has a component; a dashboard "
+                f"component needs its own section. Omit --section to add a new "
+                f"one, or target an empty section.")
     cell = _build_chartgrid_cell(
         control_id=_unique_control_id(root, control_id),
         params=params, label=label, colspan=colspan)
     _append_tile(target, cell, rowspan=rowspan)
     new_xml = xml_edit.serialize_xml(root)
-    # The splice introduces new GUIDs: the fresh cell id, an optional fresh
-    # section id, the view/visualization refs, and the (deliberately repeated)
-    # ChartGrid classid constant. Exclude every GUID in the added subtree (the
-    # new section, or just the new cell when co-locating) from the before/after
-    # *multiset* diff — so the extra classid occurrence is not miscounted — while
-    # every other GUID must stay intact, catching a stray rewrite or drop of a
-    # pre-existing id, classid or external reference (the shared #275 guard,
-    # applied to an additive edit).
+    # The splice must be a pure append: the new XML's GUIDs equal the old ones
+    # plus exactly the added subtree's (the new section, or just the new cell
+    # when co-locating). Asserting that *multiset* equality catches any stray
+    # rewrite or drop of a pre-existing id, classid or external reference. A
+    # plain set-exclusion guard would have a blind spot here precisely because
+    # the ChartGrid classid (and a shared view ref) is duplicated across tiles —
+    # excusing it globally would stop policing its other occurrences — so the
+    # count-exact check is used instead.
     added_subtree = target if is_new_section else cell
-    added = xml_edit.guid_set(xml_edit.serialize_xml(added_subtree))
-    xml_edit.assert_external_guids_intact(
-        formxml, new_xml, regenerated={g: g for g in added},
-        message="dashboard tile add altered a pre-existing id/classid/external "
-                "reference; refusing to write a possibly corrupt dashboard.")
+    if (_guid_counter(new_xml)
+            != _guid_counter(formxml) + _guid_counter(
+                xml_edit.serialize_xml(added_subtree))):
+        raise D365Error(
+            "dashboard tile add altered a pre-existing id/classid/external "
+            "reference; refusing to write a possibly corrupt dashboard.")
     return new_xml
 
 
