@@ -518,6 +518,19 @@ class TestAddWebresourceToDashboard:
                 backend, _DASH_ID, webresource="new_/logic.js")
         assert "form-enabled" in out["warning"]
 
+    def test_no_spurious_warning_when_type_absent(self, backend):
+        # an absent webresourcetype is not evidence the resource won't render —
+        # it must not produce a "type None is not form-enabled" warning
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={**_DASH_ROW, "formxml": _DASH_FORMXML})
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID, "name": "new_/p.html"}]})
+            m.patch(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
+            out = dashboard.add_webresource_to_dashboard(
+                backend, _DASH_ID, webresource="new_/p.html")
+        assert "warning" not in out
+
     def test_missing_webresource_refused(self, backend):
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"systemforms({_DASH_ID})"),

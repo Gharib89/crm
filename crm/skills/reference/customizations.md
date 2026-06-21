@@ -598,12 +598,13 @@ trimmed so the `rowspan == count(<row>)` invariant is maintained.
 **No layout options.** `remove-component` has no `--tab` / `--section` / `--rowspan`
 / `--colspan` / `--force` flags — those are add-only.
 
-**JSON contract — same as the other tile verbs:**
+**JSON contract — same as the other tile verbs:** `data` always carries
+`updated: true` on a real write; `published: true` is added only with `--publish`.
 
 ```json
 { "ok": true,
   "data": {"action": "remove-component", "cell_id": "…", "control_id": "…",
-           "published": true},
+           "updated": true},
   "meta": {} }
 ```
 

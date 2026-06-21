@@ -622,7 +622,9 @@ def _resolve_webresource(backend: D365Backend, ref: str) -> tuple[str, str | Non
         raise D365Error(f"web resource {ref!r} resolved with no name.")
     wtype = row.get("webresourcetype")
     warning = None
-    if wtype not in _FORM_ENABLED_WEBRESOURCE_TYPES:
+    # Warn only when the type is known and not form-enabled — an absent type
+    # (the column was not returned) is not evidence the resource won't render.
+    if wtype is not None and wtype not in _FORM_ENABLED_WEBRESOURCE_TYPES:
         warning = (
             f"web resource {name!r} (type {wtype}) is not form-enabled; "
             f"it may not render on the dashboard.")
