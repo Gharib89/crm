@@ -398,7 +398,8 @@ def test_ribbon_set_rules_and_add_custom_rule(
     rule_id = rule_env["data"]["rule_id"]
     assert rule_id, f"rule_id missing: {rule_env['data']}"
 
-    # ── VERIFY (T3): the exported composed ribbon carries the command's rules ──
+    # ── VERIFY (T3): parse the exported ribbon and assert the command's rule
+    #    set matches EXACTLY, in order — no drop, no reorder (asserted by value) ─
     out_file = tmp_path / "ribbon.xml"
     export_result = cli([
         "--json", "ribbon", "export", ephemeral_entity, "--output", str(out_file),
@@ -406,9 +407,13 @@ def test_ribbon_set_rules_and_add_custom_rule(
     assert export_result.returncode == 0, (
         f"ribbon export failed:\n{export_result.stderr}\nstdout: {export_result.stdout}"
     )
-    xml_text = out_file.read_text(encoding="utf-8")
-    assert command_id in xml_text, (
-        f"command {command_id!r} absent from exported ribbon"
-    )
-    # the custom enable rule's id (and therefore its CustomRule) round-tripped
-    assert rule_id in xml_text, f"custom rule {rule_id!r} absent from exported ribbon"
+    root = ET.fromstring(out_file.read_text(encoding="utf-8"))
+    cdef = next((c for c in root.iter("CommandDefinition")
+                 if c.get("Id") == command_id), None)
+    assert cdef is not None, f"command {command_id!r} absent from exported ribbon"
+    enable_refs = [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")]
+    display_refs = [d.get("Id") for d in cdef.findall("DisplayRules/DisplayRule")]
+    # set-rules set enable=[Mscrm.SelectionCountExactlyOne]; add-custom-rule then
+    # appended the custom rule reference — exact ordered set, no drop/reorder.
+    assert enable_refs == ["Mscrm.SelectionCountExactlyOne", rule_id], enable_refs
+    assert display_refs == ["Mscrm.HideOnModern"], display_refs
