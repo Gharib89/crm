@@ -321,11 +321,13 @@ def test_ribbon_set_label_relabels_custom_button(
     assert env["ok"], env
     assert env["data"].get("lcid") == lcid, env["data"]
 
-    # T3: the localized write took effect end-to-end — re-read the composed ribbon
-    # and assert the same button still carries a non-empty LabelText: either the
-    # localized text resolved (UI language == lcid) or the $LocLabels directive
-    # pointing at the LocLabel row the command wrote. (The LocLabel <Title> row is
-    # asserted by parsed value in the offline unit tests.)
+    # T3: the localized write took effect end-to-end. RetrieveEntityRibbon resolves
+    # labels in the org's UI language, so when `lcid` is that language (the first
+    # provisioned LCID is the org base language) the button's LabelText resolves to
+    # the localized text; otherwise it carries the unresolved `$LocLabels:` directive
+    # that points at the row we wrote. Either is a pass; anything else (empty, stale
+    # text) is a regression. The raw LocLabel `<Title>` row is asserted by parsed
+    # value in the offline unit tests (the composed ribbon doesn't expose it).
     after_loc = _composed_ribbon(cli, ephemeral_entity)
     loc_btn = next((b for b in after_loc.iter("Button")
                     if b.get("Id") == composed_btn_id), None)
@@ -333,9 +335,9 @@ def test_ribbon_set_label_relabels_custom_button(
         f"custom button {composed_btn_id!r} missing after --lcid relabel"
     )
     lt = loc_btn.get("LabelText", "")
-    assert lt == loc_label or lt.startswith("$LocLabels:") or lt, (
-        f"expected the localized label {loc_label!r}, a $LocLabels directive, or a "
-        f"non-empty resolved label; got {lt!r}"
+    assert lt == loc_label or lt.startswith("$LocLabels:"), (
+        f"expected the localized label {loc_label!r} or a $LocLabels directive, "
+        f"got {lt!r}"
     )
 
 
