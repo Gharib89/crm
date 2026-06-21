@@ -77,3 +77,66 @@ pass `--yes` to skip the prompt (required for `--json` / non-interactive runs).
 Neither method touches the button's `classid`, `Command`, or `TemplateAlias`.
 Both emit a warning that overriding or hiding an OOB command is on unsupported
 ground and may change across platform updates.
+
+## Set enable/display rules
+
+Replace the enable or display rule references on an existing custom
+`CommandDefinition` with an exact, ordered set. At least one `--enable-rule` or
+`--display-rule` is required; a category with no flags is left untouched.
+
+```bash
+# Show the command only when exactly one row is selected (platform rule)
+crm ribbon set-rules cwx_ticket --solution MySolution \
+    --command-id cwx_ticket.form.Validate.Command \
+    --enable-rule Mscrm.SelectionCountExactlyOne
+
+# Combine a platform rule with a custom one, and auto-publish
+crm ribbon set-rules cwx_ticket --solution MySolution \
+    --command-id cwx_ticket.form.Validate.Command \
+    --enable-rule Mscrm.SelectionCountExactlyOne \
+    --enable-rule cwx_ticket.form.Validate.myCustomRule.EnableRule \
+    --publish
+
+# Suppress the button on modern UI only (display rule)
+crm ribbon set-rules cwx_ticket --solution MySolution \
+    --command-id cwx_ticket.form.Validate.Command \
+    --display-rule Mscrm.HideOnModern
+```
+
+Platform (`Mscrm.*`) rule ids are validated against a curated allow-list — the
+server silently ignores an unknown `Mscrm.*` id, so passing one that isn't
+recognised is rejected with a clear error. Allowed platform enable rules:
+`Mscrm.SelectionCountExactlyOne`, `Mscrm.ShowOnGrid`, `Mscrm.ShowOnQuickAction`,
+`Mscrm.ShowOnGridAndQuickAction`. Allowed platform display rules:
+`Mscrm.HideOnModern`, `Mscrm.ShowOnlyOnModern`. Custom (non-`Mscrm.`) ids pass
+through. The `CommandDefinition` `Id` is never touched.
+
+Use `ribbon list` to find command ids; the command warns when `--command-id`
+matches an out-of-the-box (`Mscrm.*`) command (editing OOB commands is
+unsupported and may break on upgrade).
+
+## Add a custom (JavaScript) rule
+
+Define a custom `EnableRule` that calls a JavaScript function in a web resource,
+and attach it to a command in one step. The web resource must already exist (see
+`crm webresource create`). The generated rule id is
+`{command_id}.{slug(function)}.EnableRule`.
+
+```bash
+# Create a custom enable rule that calls cwx_.ns.canValidate() and wire it
+crm ribbon add-custom-rule cwx_ticket --solution MySolution \
+    --command-id cwx_ticket.form.Validate.Command \
+    --webresource cwx_/scripts/ribbon.js \
+    --function ns.canValidate
+
+# Dry-run: preview without writing
+crm --dry-run ribbon add-custom-rule cwx_ticket --solution MySolution \
+    --command-id cwx_ticket.form.Validate.Command \
+    --webresource cwx_/scripts/ribbon.js \
+    --function ns.canValidate
+```
+
+The command prints the generated `rule_id` in `data.rule_id` — capture it to
+pass to `ribbon set-rules --enable-rule` in a subsequent step, or chain them in
+sequence since `add-custom-rule` also references the rule on the command
+automatically. The `CommandDefinition` `Id` is never touched.
