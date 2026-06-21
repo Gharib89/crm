@@ -437,7 +437,8 @@ def create_role(
     (roles are solution components, so no separate AddSolutionComponent call is
     needed). Solution membership applies only to a *newly created* role: with
     ``if_exists='skip'`` an existing role is returned unchanged and is **not**
-    added to ``solution``.
+    added to ``solution`` (adding an existing component would need a separate
+    AddSolutionComponent call; the header only rides the create POST).
     """
     if business_unit is None:
         bu = _caller_business_unit(backend)
