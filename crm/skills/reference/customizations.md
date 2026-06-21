@@ -349,6 +349,34 @@ author interactive-experience dashboards in the designer.
 `{_dry_run, would_create: {entity_set, body}}` and `delete` returns
 `{_dry_run, would_delete: true, formid}` — neither issues the write.
 
+### Splicing tiles — `add-chart` and `add-view`
+
+`add-chart` splices a ChartGrid tile (chart + grid) into an existing dashboard's
+FormXml; `add-view` splices a view-only grid tile. Both PATCH the `formxml` column
+directly (same path as `create`) and run `PublishAllXml` by default.
+
+```bash
+crm --json dashboard add-chart <dashboard-id> --view <savedqueryid> --chart <savedqueryvisualizationid>
+crm --json dashboard add-view  <dashboard-id> --view <savedqueryid>
+```
+
+**`--view` and `--chart` are GUIDs.** The chart (`savedqueryvisualization`) must be
+org-owned and its primary entity must match the view's entity — the CLI rejects a
+mismatch up front (live ref validation). Get chart GUIDs from `crm --json chart list <entity>`.
+
+**One component per section by default.** Each tile lands in its own new section so
+the `rowspan == count(<row>)` layout invariant holds. Pass `--section <name|id>` to
+co-locate a tile into an existing named section instead.
+
+**Six-component cap is `--force`-overridable**, never a hard block.
+
+**Control ids are auto-uniqued** — the server rejects duplicate ids at publish time
+and the CLI prevents that on the write.
+
+**Publish-layer gotcha.** `dashboard get` returns the *published* FormXml. An
+`add-chart` or `add-view` without `--publish` will not appear in a subsequent
+`dashboard get` — publish first, then verify.
+
 ## Themes — `theme` (application branding)
 
 Author product branding (colors, logo) as code. A theme is an ordinary `themes`
