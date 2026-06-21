@@ -750,3 +750,252 @@ class TestListHandlersInFormxml:
         assert r["enabled"] is True
         assert r["pass_context"] is True
         assert r["field"] is None
+
+
+def _tabs(formxml):
+    """Tab logical names in document order."""
+    import xml.etree.ElementTree as ET
+    return [t.get("name") for t in ET.fromstring(formxml).findall("./tabs/tab")]
+
+
+def _sections(formxml, tab_name):
+    """Section names in document order within the named tab."""
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(formxml)
+    tab = next(t for t in root.findall("./tabs/tab") if t.get("name") == tab_name)
+    return [s.get("name")
+            for s in tab.findall("./columns/column/sections/section")]
+
+
+# The external GUIDs that must survive every tab/section transform untouched.
+_EXTERNAL_GUIDS = (
+    "{4273edbd-ac1d-40d3-9fb2-095c621b552d}",  # existing control classid
+    "{ffffffff-0000-0000-0000-000000000006}",  # <Role Id> security-role ref
+)
+
+
+def _assert_external_guids_survive(out):
+    low = out.lower()
+    for g in _EXTERNAL_GUIDS:
+        assert g in low, f"external GUID {g} not preserved: {out}"
+
+
+class TestAddTabToFormxml:
+    def test_appends_tab_with_label_and_userdefined(self):
+        from crm.core import forms
+        out = forms.add_tab_to_formxml(_MAIN_FORMXML, name="new_tab", label="New Tab")
+        assert _tabs(out) == ["general", "details", "new_tab"]
+        assert 'description="New Tab"' in out
+        assert 'IsUserDefined="1"' in out
+
+    def test_new_tab_carries_nonempty_section_skeleton(self):
+        from crm.core import forms
+        out = forms.add_tab_to_formxml(_MAIN_FORMXML, name="new_tab", label="New Tab")
+        # the tab is non-empty: it has a starter section (an empty tab renders broken)
+        assert _sections(out, "new_tab"), "new tab has no section skeleton"
+
+    def test_new_tab_id_is_fresh_and_braced(self):
+        from crm.core import forms
+        out = forms.add_tab_to_formxml(_MAIN_FORMXML, name="new_tab", label="New Tab")
+        tab_ids = re.findall(r'<tab\b[^>]*\bid="(\{[^"]+\})"', out)
+        assert len(tab_ids) == len(set(tab_ids))  # all braced, all unique
+        # the new tab's id is not any sibling's id
+        assert "{aaaaaaaa-0000-0000-0000-000000000001}" in tab_ids
+
+    def test_preserves_external_guids(self):
+        from crm.core import forms
+        _assert_external_guids_survive(
+            forms.add_tab_to_formxml(_MAIN_FORMXML, name="new_tab", label="x"))
+
+    def test_after_inserts_following_named_tab(self):
+        from crm.core import forms
+        out = forms.add_tab_to_formxml(
+            _MAIN_FORMXML, name="new_tab", label="x", after="general")
+        assert _tabs(out) == ["general", "new_tab", "details"]
+
+    def test_duplicate_name_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.add_tab_to_formxml(_MAIN_FORMXML, name="general", label="x")
+
+    def test_columns_out_of_range_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.add_tab_to_formxml(_MAIN_FORMXML, name="t", label="x", columns=5)
+        with pytest.raises(D365Error):
+            forms.add_tab_to_formxml(_MAIN_FORMXML, name="t", label="x", columns=0)
+
+    def test_columns_emit_layout_columns(self):
+        from crm.core import forms
+        import xml.etree.ElementTree as ET
+        out = forms.add_tab_to_formxml(
+            _MAIN_FORMXML, name="new_tab", label="x", columns=3)
+        root = ET.fromstring(out)
+        tab = next(t for t in root.findall("./tabs/tab") if t.get("name") == "new_tab")
+        assert len(tab.findall("./columns/column")) == 3
+
+
+class TestRemoveTabFromFormxml:
+    def test_removes_named_tab_only(self):
+        from crm.core import forms
+        out = forms.remove_tab_from_formxml(_MAIN_FORMXML, tab="details")
+        assert _tabs(out) == ["general"]
+
+    def test_refuses_removing_the_only_tab(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        one_tab = forms.remove_tab_from_formxml(_MAIN_FORMXML, tab="details")
+        with pytest.raises(D365Error, match="only tab"):
+            forms.remove_tab_from_formxml(one_tab, tab="general")
+
+    def test_refuses_orphaning_remove_without_force(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        # the "general" tab holds the bound new_name control
+        with pytest.raises(D365Error, match="new_name"):
+            forms.remove_tab_from_formxml(_MAIN_FORMXML, tab="general")
+
+    def test_force_removes_tab_with_bound_fields(self):
+        from crm.core import forms
+        out = forms.remove_tab_from_formxml(_MAIN_FORMXML, tab="general", force=True)
+        assert _tabs(out) == ["details"]
+        assert "new_name" not in out
+
+    def test_preserves_external_guids(self):
+        from crm.core import forms
+        # removing the empty details tab keeps the role ref + control classid
+        _assert_external_guids_survive(
+            forms.remove_tab_from_formxml(_MAIN_FORMXML, tab="details"))
+
+
+class TestRenameTabInFormxml:
+    def test_sets_label_keeps_name(self):
+        from crm.core import forms
+        out = forms.rename_tab_in_formxml(
+            _MAIN_FORMXML, tab="general", label="Overview")
+        assert _tabs(out) == ["general", "details"]  # logical name unchanged
+        assert 'description="Overview"' in out
+
+    def test_preserves_all_guids(self):
+        from crm.core import forms
+        import xml.etree.ElementTree as ET
+        before = sorted(re.findall(r"\{[^}]+\}", _MAIN_FORMXML))
+        out = forms.rename_tab_in_formxml(_MAIN_FORMXML, tab="general", label="X")
+        assert sorted(re.findall(r"\{[^}]+\}", out)) == before
+        ET.fromstring(out)  # still well-formed
+
+
+class TestMoveTabInFormxml:
+    def test_moves_to_front_by_default(self):
+        from crm.core import forms
+        out = forms.move_tab_in_formxml(_MAIN_FORMXML, tab="details")
+        assert _tabs(out) == ["details", "general"]
+
+    def test_after_reorders_following_named_tab(self):
+        from crm.core import forms
+        out = forms.move_tab_in_formxml(_MAIN_FORMXML, tab="general", after="details")
+        assert _tabs(out) == ["details", "general"]
+
+    def test_preserves_all_guids(self):
+        from crm.core import forms
+        before = sorted(re.findall(r"\{[^}]+\}", _MAIN_FORMXML))
+        out = forms.move_tab_in_formxml(_MAIN_FORMXML, tab="details")
+        assert sorted(re.findall(r"\{[^}]+\}", out)) == before
+
+
+class TestAddSectionToFormxml:
+    def test_appends_section_to_target_tab(self):
+        from crm.core import forms
+        out = forms.add_section_to_formxml(
+            _MAIN_FORMXML, name="new_sec", label="New", tab="details")
+        assert _sections(out, "details") == ["extra", "new_sec"]
+        assert 'IsUserDefined="1"' in out
+
+    def test_defaults_to_first_tab(self):
+        from crm.core import forms
+        out = forms.add_section_to_formxml(_MAIN_FORMXML, name="new_sec", label="N")
+        assert "new_sec" in _sections(out, "general")
+
+    def test_after_inserts_following_named_section(self):
+        from crm.core import forms
+        out = forms.add_section_to_formxml(
+            _MAIN_FORMXML, name="new_sec", label="N", tab="general", after="summary")
+        assert _sections(out, "general") == ["summary", "new_sec"]
+
+    def test_duplicate_name_in_tab_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.add_section_to_formxml(
+                _MAIN_FORMXML, name="summary", label="x", tab="general")
+
+    def test_columns_out_of_range_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error):
+            forms.add_section_to_formxml(
+                _MAIN_FORMXML, name="s", label="x", columns=9)
+
+    def test_preserves_external_guids(self):
+        from crm.core import forms
+        _assert_external_guids_survive(
+            forms.add_section_to_formxml(_MAIN_FORMXML, name="s", label="x"))
+
+
+class TestRemoveSectionFromFormxml:
+    def test_removes_named_section(self):
+        from crm.core import forms
+        out = forms.remove_section_from_formxml(
+            _MAIN_FORMXML, section="extra", tab="details")
+        assert _sections(out, "details") == []
+
+    def test_refuses_orphaning_remove_without_force(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        with pytest.raises(D365Error, match="new_name"):
+            forms.remove_section_from_formxml(
+                _MAIN_FORMXML, section="summary", tab="general")
+
+    def test_force_removes_section_with_bound_fields(self):
+        from crm.core import forms
+        out = forms.remove_section_from_formxml(
+            _MAIN_FORMXML, section="summary", tab="general", force=True)
+        assert "new_name" not in out
+        assert _sections(out, "general") == []
+
+    def test_preserves_external_guids(self):
+        from crm.core import forms
+        # removing the empty "extra" section keeps the role ref + control classid
+        _assert_external_guids_survive(
+            forms.remove_section_from_formxml(
+                _MAIN_FORMXML, section="extra", tab="details"))
+
+
+class TestRenameSectionInFormxml:
+    def test_sets_label_keeps_name(self):
+        from crm.core import forms
+        out = forms.rename_section_in_formxml(
+            _MAIN_FORMXML, section="summary", label="Highlights", tab="general")
+        assert _sections(out, "general") == ["summary"]
+        assert 'description="Highlights"' in out
+
+
+class TestMoveSectionInFormxml:
+    def test_reorders_section_after_sibling(self):
+        from crm.core import forms
+        # add a second section to "general", then move it ahead of "summary"
+        two = forms.add_section_to_formxml(
+            _MAIN_FORMXML, name="new_sec", label="N", tab="general")
+        assert _sections(two, "general") == ["summary", "new_sec"]
+        out = forms.move_section_in_formxml(two, section="new_sec", tab="general")
+        assert _sections(out, "general") == ["new_sec", "summary"]
+
+    def test_preserves_all_guids(self):
+        from crm.core import forms
+        two = forms.add_section_to_formxml(
+            _MAIN_FORMXML, name="new_sec", label="N", tab="general")
+        before = sorted(re.findall(r"\{[^}]+\}", two))
+        out = forms.move_section_in_formxml(two, section="new_sec", tab="general")
+        assert sorted(re.findall(r"\{[^}]+\}", out)) == before

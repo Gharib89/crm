@@ -206,6 +206,31 @@ snapshot. Chain `--no-publish` edits on the same form and only the last write su
 (each reads the published state). Publish each step, or batch the no-publish writes
 and publish once at the end with `crm solution publish`.
 
+### Edit the tab/section skeleton — `form {add,remove,rename,move}-{tab,section}`
+
+Eight verbs edit the form's tab/section structure (the same PATCH + publish-gotcha
+pipeline as the field verbs; `--dry-run` returns `would_add` / `would_remove` /
+`would_rename` / `would_move`):
+
+```bash
+crm --json form add-tab cwx_ticket cwx_details --label "Details"     # tab + starter section
+crm --json form add-section cwx_ticket cwx_status --tab cwx_details  # section into a tab
+crm --json form move-tab cwx_ticket cwx_details --after "General"    # reorder
+crm --json form remove-tab cwx_ticket cwx_details --force            # --force orphans bound fields
+```
+
+Gotchas the flags don't tell you:
+
+- A **new tab always carries a non-empty starter section** — an empty tab is
+  XSD-valid but renders broken, so the verbs never produce one. `add-section` is the
+  way to create a section to target before `add-field` on a sectionless tab.
+- `rename-{tab,section}` changes the **display label only**; the logical `name`
+  (what form scripts and `--tab`/`--section`/`--after` match on) is left intact.
+- `remove-{tab,section}` **refuses an orphaning remove** (a tab/section still holding
+  bound fields) and `remove-tab` refuses the **only** tab. Pass `--force` to remove
+  anyway; the orphaned field names come back in the response under `orphaned`.
+- Sections default to the **first tab** when `--tab` is omitted.
+
 ### Manual splice — fallback for unmapped control types
 
 Only needed when the attribute type has no mapped `classid` (see above):

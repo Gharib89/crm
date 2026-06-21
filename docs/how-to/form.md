@@ -345,6 +345,54 @@ The CLI only reads and writes `<Handlers>`. Do not hand-splice entries into
 `<InternalHandlers>` — those are managed by the platform and survive upgrades
 independently.
 
+## Edit the tab & section structure
+
+Beyond placing fields, you can edit the form's tab/section skeleton directly —
+no manual FormXml editing. Eight verbs cover tabs and sections symmetrically:
+`add-tab`, `remove-tab`, `rename-tab`, `move-tab` and `add-section`,
+`remove-section`, `rename-section`, `move-section`. Each PATCHes the
+`systemform` record and honors `--form`, `--publish` / `--no-publish`,
+`--solution`, and the global `--dry-run` (which returns `would_add` /
+`would_remove` / `would_rename` / `would_move` with no PATCH) — the same
+conventions and publish gotcha as the field verbs above.
+
+### Tabs
+
+```bash
+crm form add-tab cwx_ticket cwx_details --label "Details"           # append a tab
+crm form add-tab cwx_ticket cwx_details --after "General" --columns 2   # 2-column tab, after "General"
+crm form rename-tab cwx_ticket cwx_details --label "Ticket Details" # change its display label
+crm form move-tab cwx_ticket cwx_details --after "General"          # reorder (no --after ⇒ move to front)
+crm form remove-tab cwx_ticket cwx_details                         # remove
+```
+
+A new tab is created with a fresh internal id, `IsUserDefined="1"`, the requested
+number of layout columns (`--columns`, 1–4, default 1), and a **non-empty starter
+section** — an empty tab is XSD-valid but renders broken. `rename-tab` changes
+only the **display label**; the logical `name` is left intact because form scripts
+bind to it.
+
+`remove-tab` refuses to remove the **only** tab on the form, and refuses to remove
+a tab that still **holds bound fields** (which would orphan them) unless you pass
+`--force` — in which case the orphaned field names are surfaced in the output.
+
+### Sections
+
+```bash
+crm form add-section cwx_ticket cwx_status --tab cwx_details --label "Status"
+crm form add-section cwx_ticket cwx_status --tab cwx_details --after "Summary" --columns 2
+crm form rename-section cwx_ticket cwx_status --tab cwx_details --label "Ticket Status"
+crm form move-section cwx_ticket cwx_status --tab cwx_details          # reorder within the tab
+crm form remove-section cwx_ticket cwx_status --tab cwx_details
+```
+
+Sections default to the **first tab** when `--tab` is omitted, mirroring
+`add-field`. A new section gets a fresh id, `IsUserDefined="1"`, and the requested
+cell-column count (`--columns`, 1–4, default 1). `add-section` is also how you
+**create a section to target** before `add-field` on a tab that has none.
+`remove-section` refuses an orphaning remove without `--force`, exactly like
+`remove-tab`.
+
 ## Export a form's formxml
 
 ```bash

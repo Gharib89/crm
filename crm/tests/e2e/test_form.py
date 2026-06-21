@@ -248,6 +248,112 @@ def test_form_remove_field_roundtrip(cli, ephemeral_entity, tmp_path):
     assert 'datafieldname="createdon"' not in xml, "control still present after remove"
 
 
+# ── form tab editors: add-tab / remove-tab / rename-tab / move-tab (#460) ───────
+#
+# Operate on the session ephemeral_entity's Main form, adding throwaway tabs we
+# remove again in `finally` so the shared form is left clean. As with the field
+# editors, each verb publishes (the GET returns the *published* snapshot, so the
+# edit is only visible on re-export after PublishAllXml) and T3 is the re-export
+# assertion that the named tab is present (add/rename/move) or absent (remove).
+
+
+@covers("form add-tab")
+@covers("form rename-tab")
+@covers("form move-tab")
+@covers("form remove-tab")
+@pytest.mark.slow
+def test_form_tab_editors_roundtrip(cli, ephemeral_entity, tmp_path):
+    """Add two tabs (the second placed `--after` the first), rename the first,
+    reorder the second to the front, then remove both — asserting presence on
+    re-export at each step and absence after removal (T3)."""
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    assert forms, "ephemeral entity has no Main form"
+    form_name = forms[0]["name"]
+    tab_a, tab_b = "cwx_e2e_tab_a", "cwx_e2e_tab_b"
+    try:
+        r = cli(["--json", "form", "add-tab", ephemeral_entity, tab_a, "--publish"])
+        assert r.returncode == 0, f"add-tab failed:\n{r.stderr}\n{r.stdout}"
+        xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+        assert f'name="{tab_a}"' in xml, "added tab not on re-exported form"
+
+        r = cli(["--json", "form", "add-tab", ephemeral_entity, tab_b,
+                 "--after", tab_a, "--publish"])
+        assert r.returncode == 0, f"add-tab --after failed:\n{r.stderr}\n{r.stdout}"
+        assert f'name="{tab_b}"' in _export_formxml(
+            cli, ephemeral_entity, form_name, tmp_path)
+
+        r = cli(["--json", "form", "rename-tab", ephemeral_entity, tab_a,
+                 "--label", "E2E Renamed", "--publish"])
+        assert r.returncode == 0, f"rename-tab failed:\n{r.stderr}\n{r.stdout}"
+        assert "E2E Renamed" in _export_formxml(
+            cli, ephemeral_entity, form_name, tmp_path)
+
+        r = cli(["--json", "form", "move-tab", ephemeral_entity, tab_b, "--publish"])
+        assert r.returncode == 0, f"move-tab failed:\n{r.stderr}\n{r.stdout}"
+    finally:
+        for tab in (tab_a, tab_b):
+            cli(["--json", "form", "remove-tab", ephemeral_entity, tab, "--force",
+                 "--publish"], check=False)
+    xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
+    assert f'name="{tab_a}"' not in xml and f'name="{tab_b}"' not in xml, (
+        "removed tabs still present on re-export")
+
+
+# ── form section editors: add/remove/rename/move-section (#460) ──────────────────
+#
+# Host the throwaway sections inside a freshly-added tab so the test fully controls
+# their container regardless of the stock form's shape; the tab (and its sections)
+# are removed in `finally`.
+
+
+@covers("form add-section")
+@covers("form rename-section")
+@covers("form move-section")
+@covers("form remove-section")
+@pytest.mark.slow
+def test_form_section_editors_roundtrip(cli, ephemeral_entity, tmp_path):
+    """Within a throwaway tab, add two sections (the second `--after` the first),
+    rename the first, reorder the second, then remove one — asserting presence on
+    re-export and absence after removal (T3)."""
+    forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
+    form_name = forms[0]["name"]
+    host_tab = "cwx_e2e_stab"
+    sec_a, sec_b = "cwx_e2e_sec_a", "cwx_e2e_sec_b"
+    try:
+        cli(["--json", "form", "add-tab", ephemeral_entity, host_tab, "--publish"])
+
+        r = cli(["--json", "form", "add-section", ephemeral_entity, sec_a,
+                 "--tab", host_tab, "--publish"])
+        assert r.returncode == 0, f"add-section failed:\n{r.stderr}\n{r.stdout}"
+        assert f'name="{sec_a}"' in _export_formxml(
+            cli, ephemeral_entity, form_name, tmp_path)
+
+        r = cli(["--json", "form", "add-section", ephemeral_entity, sec_b,
+                 "--tab", host_tab, "--after", sec_a, "--publish"])
+        assert r.returncode == 0, f"add-section --after failed:\n{r.stderr}\n{r.stdout}"
+        assert f'name="{sec_b}"' in _export_formxml(
+            cli, ephemeral_entity, form_name, tmp_path)
+
+        r = cli(["--json", "form", "rename-section", ephemeral_entity, sec_a,
+                 "--tab", host_tab, "--label", "E2E Section", "--publish"])
+        assert r.returncode == 0, f"rename-section failed:\n{r.stderr}\n{r.stdout}"
+        assert "E2E Section" in _export_formxml(
+            cli, ephemeral_entity, form_name, tmp_path)
+
+        r = cli(["--json", "form", "move-section", ephemeral_entity, sec_b,
+                 "--tab", host_tab, "--publish"])
+        assert r.returncode == 0, f"move-section failed:\n{r.stderr}\n{r.stdout}"
+
+        r = cli(["--json", "form", "remove-section", ephemeral_entity, sec_a,
+                 "--tab", host_tab, "--publish"])
+        assert r.returncode == 0, f"remove-section failed:\n{r.stderr}\n{r.stdout}"
+        assert f'name="{sec_a}"' not in _export_formxml(
+            cli, ephemeral_entity, form_name, tmp_path)
+    finally:
+        cli(["--json", "form", "remove-tab", ephemeral_entity, host_tab, "--force",
+             "--publish"], check=False)
+
+
 @covers("form set-field")
 @pytest.mark.slow
 def test_form_set_field_roundtrip(cli, ephemeral_entity, tmp_path):
