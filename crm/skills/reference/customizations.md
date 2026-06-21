@@ -535,34 +535,80 @@ author interactive-experience dashboards in the designer.
 `{_dry_run, would_create: {entity_set, body}}` and `delete` returns
 `{_dry_run, would_delete: true, formid}` — neither issues the write.
 
-### Splicing tiles — `add-chart` and `add-view`
+### Splicing tiles — `add-chart`, `add-view`, `add-iframe`, `add-webresource`
 
-`add-chart` splices a ChartGrid tile (chart + grid) into an existing dashboard's
-FormXml; `add-view` splices a view-only grid tile. Both PATCH the `formxml` column
-directly (same path as `create`) and run `PublishAllXml` by default.
+All four tile-add verbs PATCH the `formxml` column directly and run `PublishAllXml`
+by default.
 
 ```bash
 crm --json dashboard add-chart <dashboard-id> --view <savedqueryid> --chart <savedqueryvisualizationid>
 crm --json dashboard add-view  <dashboard-id> --view <savedqueryid>
+crm --json dashboard add-iframe <dashboard-id> --url https://example.com/embed
+crm --json dashboard add-webresource <dashboard-id> --webresource cwx_/pages/summary.html
 ```
 
-**`--view` and `--chart` are GUIDs.** The chart (`savedqueryvisualization`) must be
+**`add-chart` live ref validation.** The chart (`savedqueryvisualization`) must be
 org-owned and its primary entity must match the view's entity — the CLI rejects a
-mismatch up front (live ref validation). Get chart GUIDs from `crm --json chart list <entity>`.
+mismatch up front. Get chart GUIDs from `crm --json chart list <entity>`.
+
+**`add-iframe` — empty URL is refused.** A blank `--url` silently renders the tile
+empty in the UI; the CLI refuses it before writing. Always supply a non-empty URL.
+
+**`add-webresource` — validates existence, warns on non-form-enabled types.** The
+CLI resolves the web resource (by GUID or unique name) before writing and emits a
+`meta.warnings` advisory if it is not form-enabled — only HTML, image (PNG/JPG/GIF/
+ICO/SVG), and Silverlight types render as a tile. CSS/JS/data/XSL/RESX types earn
+the warning but the write still proceeds.
 
 **One component per section by default.** Each tile lands in its own new section so
 the `rowspan == count(<row>)` layout invariant holds. Pass `--section <name|id>` to
 place a tile in an existing **empty** section instead — a section already holding a
-component is refused (one component per section keeps the invariant).
+component is refused.
 
 **Six-component cap is `--force`-overridable**, never a hard block.
 
 **Control ids are auto-uniqued** — the server rejects duplicate ids at publish time
 and the CLI prevents that on the write.
 
-**Publish-layer gotcha.** `dashboard get` returns the *published* FormXml. An
-`add-chart` or `add-view` without `--publish` will not appear in a subsequent
-`dashboard get` — publish first, then verify.
+**Publish-layer gotcha.** `dashboard get` returns the *published* FormXml. Any
+tile-add without `--publish` will not appear in a subsequent `dashboard get` —
+publish first, then verify.
+
+### Removing a tile — `remove-component`
+
+```bash
+crm --json dashboard remove-component <dashboard-id> --index 0
+crm --json dashboard remove-component <dashboard-id> --cell-id <id>
+crm --json dashboard remove-component <dashboard-id> --view <savedqueryid>
+crm --json dashboard remove-component <dashboard-id> --chart <chart-id>
+crm --json dashboard remove-component <dashboard-id> --url https://example.com/embed
+```
+
+**Exactly one selector.** Passing more than one or none is a usage error. A value
+selector (`--view`, `--chart`, `--url`) that matches zero components or more than one
+is also refused — switch to `--cell-id` or `--index` to resolve the ambiguity.
+
+**`--index` is 0-based** among all component cells in document order. Export the
+FormXml first (`dashboard get` → jq `.data.formxml`) to find the right position or
+cell id before removing.
+
+**Row-padding is reconciled automatically** after removal — empty `<row>` stubs are
+trimmed so the `rowspan == count(<row>)` invariant is maintained.
+
+**No layout options.** `remove-component` has no `--tab` / `--section` / `--rowspan`
+/ `--colspan` / `--force` flags — those are add-only.
+
+**JSON contract — same as the other tile verbs:** `data` always carries
+`updated: true` on a real write; `published: true` is added only with `--publish`.
+
+```json
+{ "ok": true,
+  "data": {"action": "remove-component", "cell_id": "…", "control_id": "…",
+           "updated": true},
+  "meta": {} }
+```
+
+Under `--dry-run`: `{_dry_run: true, would_remove: true, cell_id: "…", control_id: "…"}`.
 
 ## Themes — `theme` (application branding)
 

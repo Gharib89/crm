@@ -421,3 +421,267 @@ class TestAddViewToDashboard:
                 dry_backend, _DASH_ID, view=_VIEW_ID)
         assert out["_dry_run"] is True and out["would_add"] is True
         assert all(r.method != "PATCH" for r in m.request_history)
+
+
+_WR_ID = "eeeeeeee-0000-0000-0000-000000000001"
+
+
+class TestAddIframeToDashboard:
+    """Orchestrator: splice an IFRAME tile, PATCH formxml."""
+
+    def _mock(self, m, backend, formxml=_DASH_FORMXML):
+        m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+              json={**_DASH_ROW, "formxml": formxml})
+        m.patch(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
+
+    def test_patches_iframe_with_protected_classid_and_url(self, backend):
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend)
+            out = dashboard.add_iframe_to_dashboard(
+                backend, _DASH_ID, url="https://example.com/x",
+                security=True, scrolling=True, border=True, pass_parameters=True)
+        patch = next(r for r in m.request_history if r.method == "PATCH")
+        cell = _cells(patch.json()["formxml"])[0]
+        assert _control(cell).get("classid") == dashboard.IFRAME_CLASSID
+        params = _params_of(cell)
+        assert params["Url"] == "https://example.com/x"
+        # the four typed-boolean flags map to "true"
+        assert params["Security"] == "true"
+        assert params["Scrolling"] == "true"
+        assert params["Border"] == "true"
+        assert params["PassParameters"] == "true"
+        assert out["updated"] is True
+        assert out["action"] == "add-iframe"
+
+    def test_flags_default_to_false(self, backend):
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend)
+            dashboard.add_iframe_to_dashboard(
+                backend, _DASH_ID, url="https://example.com/x")
+        patch = next(r for r in m.request_history if r.method == "PATCH")
+        params = _params_of(_cells(patch.json()["formxml"])[0])
+        assert params["Security"] == "false"
+        assert params["Scrolling"] == "false"
+        assert params["Border"] == "false"
+        assert params["PassParameters"] == "false"
+
+    def test_empty_url_refused(self, backend):
+        # the documented footgun: an IFRAME with no <Url> renders blank
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend)
+            with pytest.raises(D365Error, match="non-empty"):
+                dashboard.add_iframe_to_dashboard(backend, _DASH_ID, url="   ")
+        assert all(r.method != "PATCH" for r in m.request_history)
+
+
+class TestAddWebresourceToDashboard:
+    """Orchestrator: validate the web resource exists, splice a tile."""
+
+    def _mock_by_name(self, m, backend, *, name="new_/page.html", wtype=1):
+        m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+              json={**_DASH_ROW, "formxml": _DASH_FORMXML})
+        m.get(backend.url_for("webresourceset"),
+              json={"value": [{"webresourceid": _WR_ID, "name": name,
+                               "webresourcetype": wtype}]})
+        m.patch(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
+
+    def test_patches_webresource_url_directive(self, backend):
+        with requests_mock.Mocker() as m:
+            self._mock_by_name(m, backend, name="new_/page.html")
+            out = dashboard.add_webresource_to_dashboard(
+                backend, _DASH_ID, webresource="new_/page.html")
+        patch = next(r for r in m.request_history if r.method == "PATCH")
+        cell = _cells(patch.json()["formxml"])[0]
+        assert _control(cell).get("classid") == dashboard.IFRAME_CLASSID
+        # the resource name is carried via the $webresource: directive in <Url>
+        assert _params_of(cell)["Url"] == "$webresource:new_/page.html"
+        assert out["webresource"] == "new_/page.html"
+        assert "warning" not in out  # an HTML web resource is form-enabled
+
+    def test_resolves_by_id(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={**_DASH_ROW, "formxml": _DASH_FORMXML})
+            m.get(backend.url_for(f"webresourceset({_WR_ID})"),
+                  json={"webresourceid": _WR_ID, "name": "new_/page.html",
+                        "webresourcetype": 1})
+            m.patch(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
+            out = dashboard.add_webresource_to_dashboard(
+                backend, _DASH_ID, webresource=_WR_ID)
+        assert out["webresource"] == "new_/page.html"
+
+    def test_warns_when_not_form_enabled(self, backend):
+        # a Script (JScript, type 3) web resource does not render as a tile
+        with requests_mock.Mocker() as m:
+            self._mock_by_name(m, backend, name="new_/logic.js", wtype=3)
+            out = dashboard.add_webresource_to_dashboard(
+                backend, _DASH_ID, webresource="new_/logic.js")
+        assert "form-enabled" in out["warning"]
+
+    def test_no_spurious_warning_when_type_absent(self, backend):
+        # an absent webresourcetype is not evidence the resource won't render —
+        # it must not produce a "type None is not form-enabled" warning
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={**_DASH_ROW, "formxml": _DASH_FORMXML})
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID, "name": "new_/p.html"}]})
+            m.patch(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
+            out = dashboard.add_webresource_to_dashboard(
+                backend, _DASH_ID, webresource="new_/p.html")
+        assert "warning" not in out
+
+    def test_missing_webresource_refused(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={**_DASH_ROW, "formxml": _DASH_FORMXML})
+            m.get(backend.url_for("webresourceset"), json={"value": []})
+            with pytest.raises(D365Error):
+                dashboard.add_webresource_to_dashboard(
+                    backend, _DASH_ID, webresource="new_/missing.html")
+        assert all(r.method != "PATCH" for r in m.request_history)
+
+
+def _dashboard_with(*tiles: str) -> str:
+    """Build a dashboard FormXml, one component per section, from <control>
+    fragments — each tile becomes its own section/row/cell."""
+    sections = "".join(
+        f'<section name="sec{i}" id="{{aaaa0000-0000-0000-0000-0000000000{i:02d}}}">'
+        f'<rows><row><cell id="{{cccc0000-0000-0000-0000-0000000000{i:02d}}}" '
+        f'rowspan="1">{tile}</cell></row></rows></section>'
+        for i, tile in enumerate(tiles))
+    return (
+        '<form><tabs><tab name="t" id="{aaaa0000-0000-0000-0000-0000000000ff}">'
+        f'<columns><column width="100%"><sections>{sections}</sections>'
+        '</column></columns></tab></tabs></form>')
+
+
+def _chart_tile(view_id: str, *, control="ChartGrid", vis: str | None = None) -> str:
+    vis_el = f"<VisualizationId>{{{vis}}}</VisualizationId>" if vis else ""
+    return (f'<control id="{control}" classid="{dashboard.CHARTGRID_CLASSID}">'
+            f'<parameters><ViewId>{{{view_id}}}</ViewId>{vis_el}</parameters>'
+            f'</control>')
+
+
+def _iframe_tile(url: str, *, control="IFRAME") -> str:
+    return (f'<control id="{control}" classid="{dashboard.IFRAME_CLASSID}">'
+            f'<parameters><Url>{url}</Url></parameters></control>')
+
+
+_RV = "cccccccc-0000-0000-0000-000000000001"
+_RV2 = "cccccccc-0000-0000-0000-000000000002"
+_RVIS = "dddddddd-0000-0000-0000-000000000001"
+
+
+class TestRemoveComponentFromFormxml:
+    """The pure FormXml transform that detaches one component cell."""
+
+    def _xml(self):
+        return _dashboard_with(
+            _chart_tile(_RV, control="ChartGrid", vis=_RVIS),
+            _chart_tile(_RV2, control="ChartGrid_2"),
+            _iframe_tile("https://example.com/a", control="IFRAME"))
+
+    def test_remove_by_view(self):
+        out, removed = dashboard.remove_component_from_formxml(
+            self._xml(), view=_RV2)
+        root = ET.fromstring(out)
+        views = [p.text for p in root.iter("ViewId")]
+        assert f"{{{_RV2}}}" not in views
+        assert f"{{{_RV}}}" in views  # the other chart survives
+        assert removed["control_id"] == "ChartGrid_2"
+
+    def test_remove_by_chart(self):
+        out, _ = dashboard.remove_component_from_formxml(self._xml(), chart=_RVIS)
+        vis = [p.text for p in ET.fromstring(out).iter("VisualizationId")]
+        assert f"{{{_RVIS}}}" not in vis
+
+    def test_remove_by_url(self):
+        out, removed = dashboard.remove_component_from_formxml(
+            self._xml(), url="https://example.com/a")
+        assert "example.com" not in out
+        assert removed["control_id"] == "IFRAME"
+
+    def test_remove_by_cell_id(self):
+        out, removed = dashboard.remove_component_from_formxml(
+            self._xml(), cell_id="cccc0000-0000-0000-0000-000000000001")
+        ids = {c.get("id") for c in _cells(out)}
+        assert "{cccc0000-0000-0000-0000-000000000001}" not in ids
+        assert removed["cell_id"] == "{cccc0000-0000-0000-0000-000000000001}"
+
+    def test_remove_by_index(self):
+        out, _ = dashboard.remove_component_from_formxml(self._xml(), index=0)
+        # index 0 (first component, the ChartGrid with _RV + _RVIS) is gone
+        assert f"{{{_RV}}}" not in [p.text for p in ET.fromstring(out).iter("ViewId")]
+
+    def test_index_out_of_range_refused(self):
+        with pytest.raises(D365Error, match="out of range"):
+            dashboard.remove_component_from_formxml(self._xml(), index=9)
+
+    def test_ambiguous_selector_refused(self):
+        # two components share the same ViewId -> the --view selector is ambiguous
+        xml = _dashboard_with(_chart_tile(_RV, control="A"),
+                              _chart_tile(_RV, control="B"))
+        with pytest.raises(D365Error, match="match that selector"):
+            dashboard.remove_component_from_formxml(xml, view=_RV)
+
+    def test_no_match_refused(self):
+        with pytest.raises(D365Error, match="No dashboard component"):
+            dashboard.remove_component_from_formxml(
+                self._xml(), url="https://nope.example")
+
+    def test_requires_exactly_one_selector(self):
+        with pytest.raises(D365Error, match="exactly one"):
+            dashboard.remove_component_from_formxml(self._xml())
+        with pytest.raises(D365Error, match="exactly one"):
+            dashboard.remove_component_from_formxml(
+                self._xml(), view=_RV, chart=_RVIS)
+
+    def test_preserves_other_components(self):
+        out, _ = dashboard.remove_component_from_formxml(self._xml(), index=1)
+        # the other two components survive untouched (guard would raise otherwise)
+        controls = {c.get("id") for c in ET.fromstring(out).iter("control")}
+        assert controls == {"ChartGrid", "IFRAME"}
+
+    def test_rowspan_invariant_after_removal(self):
+        # a tile in a section with rowspan-padding leaves rowspan == count(<row>)
+        once = dashboard.add_chartgrid_to_formxml(
+            _DASH_FORMXML,
+            params={"ViewId": f"{{{_RV}}}", "ChartGridMode": "Chart"},
+            label="A", rowspan=4)
+        # now remove it; the emptied section collapses to a single placeholder row
+        out, _ = dashboard.remove_component_from_formxml(once, view=_RV)
+        root = ET.fromstring(out)
+        for section in root.iter("section"):
+            cells = [c for c in section.iter("cell") if c.find("control") is not None]
+            if cells:
+                for cell in cells:
+                    assert _rowspan(cell) == len(section.findall("rows/row"))
+
+
+class TestRemoveComponentFromDashboard:
+    def _mock(self, m, backend, formxml):
+        m.get(backend.url_for(f"systemforms({_DASH_ID})"),
+              json={**_DASH_ROW, "formxml": formxml})
+        m.patch(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
+
+    def test_removes_and_patches(self, backend):
+        xml = _dashboard_with(_chart_tile(_RV, control="ChartGrid"))
+        with requests_mock.Mocker() as m:
+            self._mock(m, backend, xml)
+            out = dashboard.remove_component_from_dashboard(
+                backend, _DASH_ID, view=_RV)
+        patch = next(r for r in m.request_history if r.method == "PATCH")
+        assert f"{{{_RV}}}" not in patch.json()["formxml"]
+        assert out["action"] == "remove-component"
+        assert out["updated"] is True
+
+    def test_dry_run_previews_would_remove(self, dry_backend):
+        xml = _dashboard_with(_chart_tile(_RV, control="ChartGrid"))
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for(f"systemforms({_DASH_ID})"),
+                  json={**_DASH_ROW, "formxml": xml})
+            out = dashboard.remove_component_from_dashboard(
+                dry_backend, _DASH_ID, view=_RV)
+        assert out["_dry_run"] is True and out["would_remove"] is True
+        assert all(r.method != "PATCH" for r in m.request_history)

@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from typing import Any
 
+from crm.core import webresource as webresource_mod
 from crm.core import xml_edit
 from crm.core.metadata import maybe_publish
 from crm.utils.d365_backend import (
@@ -35,6 +36,19 @@ _ID_FIELD = "formid"
 # constant (a chart/grid tile on a dashboard). It is a *protected* external
 # reference: emitted verbatim, never regenerated (see add_chartgrid_to_formxml).
 CHARTGRID_CLASSID = "{E7A81278-8635-4D9E-8D4D-59480B391C5B}"
+
+# The IFRAME control's classid — the platform constant for both an IFRAME tile
+# and a web-resource tile on a dashboard (a web resource is hosted in the same
+# IFRAME control, its name carried in the <Url> via the $webresource: directive).
+# Confirmed live on-prem; protected exactly like CHARTGRID_CLASSID.
+IFRAME_CLASSID = "{FD2A7985-3187-444E-908D-6624B21F69C0}"
+
+# Web resource types that render on a form/dashboard (the "form-enabled" set):
+# Webpage (HTML)=1, images PNG/JPG/GIF/ICO/SVG=5/6/7/10/11, Silverlight (XAP)=8.
+# CSS(2), Script(3), Data XML(4), XSL(9), RESX(12) do not render as a tile — a
+# web resource of one of those types earns a warning (the platform still accepts
+# it; the SDK does not enforce the restriction the designer applies).
+_FORM_ENABLED_WEBRESOURCE_TYPES = frozenset({1, 5, 6, 7, 8, 10, 11})
 
 # The base-language label code used for an inserted tile label (matches the
 # dashboards/forms the project targets; multi-language authoring is out of scope).
@@ -240,13 +254,15 @@ def _place_tile(section: "ET.Element", cell: "ET.Element", *, rowspan: int) -> N
     cell.set("rowspan", str(need))
 
 
-def _build_chartgrid_cell(
-    *, control_id: str, params: dict[str, str], label: str, colspan: int,
+def _build_tile_cell(
+    *, control_id: str, classid: str, params: dict[str, str], label: str,
+    colspan: int,
 ) -> "ET.Element":
-    """A fresh ChartGrid ``<cell>`` (fresh cell id, label, control, params).
+    """A fresh tile ``<cell>`` (fresh cell id, label, control, params).
 
-    The control carries the protected :data:`CHARTGRID_CLASSID` verbatim and a
-    ``<parameters>`` bag in the order ``params`` is given.
+    The control carries the protected ``classid`` verbatim (the ChartGrid or the
+    IFRAME platform constant) and a ``<parameters>`` bag in the order ``params``
+    is given.
     """
     cell = ET.Element("cell")
     cell.set("id", xml_edit.fresh_guid())
@@ -260,7 +276,7 @@ def _build_chartgrid_cell(
     lab.set("languagecode", _LABEL_LANGUAGECODE)
     control = ET.SubElement(cell, "control")
     control.set("id", control_id)
-    control.set("classid", CHARTGRID_CLASSID)
+    control.set("classid", classid)
     parameters = ET.SubElement(control, "parameters")
     for key, value in params.items():
         ET.SubElement(parameters, key).text = value
@@ -311,7 +327,23 @@ def add_chartgrid_to_formxml(
     force: bool = False,
     control_id: str = "ChartGrid",
 ) -> str:
-    """Return ``formxml`` with a new ChartGrid ``<cell>`` spliced into a section.
+    """Splice a ChartGrid ``<cell>`` into ``formxml`` (see
+    :func:`_splice_tile_into_formxml` for the layout invariant and guard)."""
+    return _splice_tile_into_formxml(
+        formxml, classid=CHARTGRID_CLASSID, params=params, label=label,
+        tab=tab, section=section, rowspan=rowspan, colspan=colspan,
+        force=force, control_id=control_id)
+
+
+def _splice_tile_into_formxml(
+    formxml: str, *, classid: str, params: dict[str, str], label: str,
+    tab: str | None = None, section: str | None = None,
+    rowspan: int = 1, colspan: int = 1,
+    force: bool = False,
+    control_id: str = "ChartGrid",
+) -> str:
+    """Return ``formxml`` with a new ``<cell>`` (a control of ``classid``)
+    spliced into a section.
 
     By default the tile lands in a fresh ``<section>`` of the target tab (the
     first tab unless ``tab`` selects another) — one component per section, so
@@ -344,9 +376,9 @@ def add_chartgrid_to_formxml(
                 f"Section {section!r} already has a component; a dashboard "
                 f"component needs its own section. Omit --section to add a new "
                 f"one, or target an empty section.")
-    cell = _build_chartgrid_cell(
+    cell = _build_tile_cell(
         control_id=_unique_control_id(root, control_id),
-        params=params, label=label, colspan=colspan)
+        classid=classid, params=params, label=label, colspan=colspan)
     _place_tile(target, cell, rowspan=rowspan)
     new_xml = xml_edit.serialize_xml(root)
     # The splice must be a pure append: the new XML's GUIDs equal the old ones
@@ -426,7 +458,7 @@ _GRID_TOGGLES = {
 def _commit_tile(
     backend: D365Backend, dashboard_id: str, dashboard: dict[str, Any],
     new_xml: str, *, action: str, publish: bool, solution: str | None,
-    extra: dict[str, Any],
+    extra: dict[str, Any], dry_run_flag: str = "would_add",
 ) -> dict[str, Any]:
     """Build the result dict and PATCH the dashboard's ``formxml`` (or preview
     under dry-run) via the shared direct-PATCH commit.
@@ -444,7 +476,7 @@ def _commit_tile(
     out.update({k: v for k, v in extra.items() if v is not None})
     return xml_edit.commit_xml_patch(
         backend, entity_set=_FORM_SET, record_id=dashboard_id, column="formxml",
-        new_xml=new_xml, result=out, dry_run_flag="would_add",
+        new_xml=new_xml, result=out, dry_run_flag=dry_run_flag,
         publish=publish, solution=solution)
 
 
@@ -529,6 +561,239 @@ def add_view_to_dashboard(
         publish=publish, solution=solution,
         extra={"view": view_id, "entity": entity, "mode": mode,
                "tab": tab, "section": section})
+
+
+def _bool_param(flag: bool) -> str:
+    """A FormXml typed-boolean parameter value."""
+    return "true" if flag else "false"
+
+
+def add_iframe_to_dashboard(
+    backend: D365Backend, dashboard_id: str, *,
+    url: str, security: bool = False, scrolling: bool = False,
+    border: bool = False, pass_parameters: bool = False,
+    tab: str | None = None, section: str | None = None,
+    rowspan: int = 1, colspan: int = 1, force: bool = False,
+    publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Add an IFRAME tile to a dashboard.
+
+    ``url`` must be non-empty — an IFRAME with an empty ``<Url>`` is the
+    documented footgun (it silently renders blank), so it is refused. The
+    ``security`` (restrict cross-frame scripting), ``scrolling``, ``border`` and
+    ``pass_parameters`` flags become typed-boolean FormXml parameters. The
+    protected :data:`IFRAME_CLASSID` is emitted verbatim.
+    """
+    if not url or not url.strip():
+        raise D365Error("--url must be a non-empty URL for an IFRAME tile.")
+    info = get_dashboard(backend, dashboard_id)
+    params = {
+        "Url": url,
+        "PassParameters": _bool_param(pass_parameters),
+        "Security": _bool_param(security),
+        "Scrolling": _bool_param(scrolling),
+        "Border": _bool_param(border),
+    }
+    new_xml = _splice_tile_into_formxml(
+        info["formxml"], classid=IFRAME_CLASSID, params=params, label="IFRAME",
+        control_id="IFRAME", tab=tab, section=section,
+        rowspan=rowspan, colspan=colspan, force=force)
+    return _commit_tile(
+        backend, info[_ID_FIELD], info, new_xml, action="add-iframe",
+        publish=publish, solution=solution,
+        extra={"url": url, "tab": tab, "section": section})
+
+
+def _resolve_webresource(backend: D365Backend, ref: str) -> tuple[str, str | None]:
+    """Validate ``ref`` is an existing web resource (by id or unique name) and
+    return its ``(name, warning)``. The name is what the tile's
+    ``<Url>$webresource:NAME</Url>`` references; ``warning`` is non-None when the
+    resource is not form-enabled (it may not render as a tile). Raises if the web
+    resource does not exist."""
+    wid = normalize_guid(ref)
+    if wid is not None:
+        row = as_dict(backend.get(
+            f"webresourceset({wid})",
+            params={"$select": "webresourceid,name,webresourcetype"}))
+    else:
+        row = webresource_mod.get_webresource(backend, ref)
+    name = row.get("name")
+    if not name:
+        raise D365Error(f"web resource {ref!r} resolved with no name.")
+    wtype = row.get("webresourcetype")
+    warning = None
+    # Warn only when the type is known and not form-enabled — an absent type
+    # (the column was not returned) is not evidence the resource won't render.
+    if wtype is not None and wtype not in _FORM_ENABLED_WEBRESOURCE_TYPES:
+        warning = (
+            f"web resource {name!r} (type {wtype}) is not form-enabled; "
+            f"it may not render on the dashboard.")
+    return str(name), warning
+
+
+def add_webresource_to_dashboard(
+    backend: D365Backend, dashboard_id: str, *,
+    webresource: str,
+    tab: str | None = None, section: str | None = None,
+    rowspan: int = 1, colspan: int = 1, force: bool = False,
+    publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Add a web-resource tile to a dashboard.
+
+    ``webresource`` is a web resource id or unique name; it is validated to
+    exist and a warning is folded in (under ``warning``) if it is not
+    form-enabled. The resource is hosted in an IFRAME control (the protected
+    :data:`IFRAME_CLASSID`), referenced by the ``$webresource:`` directive in
+    the tile's ``<Url>``.
+    """
+    info = get_dashboard(backend, dashboard_id)
+    name, warning = _resolve_webresource(backend, webresource)
+    params = {"Url": f"$webresource:{name}"}
+    new_xml = _splice_tile_into_formxml(
+        info["formxml"], classid=IFRAME_CLASSID, params=params, label=name,
+        control_id="WebResource", tab=tab, section=section,
+        rowspan=rowspan, colspan=colspan, force=force)
+    result = _commit_tile(
+        backend, info[_ID_FIELD], info, new_xml, action="add-webresource",
+        publish=publish, solution=solution,
+        extra={"webresource": name, "tab": tab, "section": section})
+    if warning:
+        result["warning"] = warning
+    return result
+
+
+def _component_param(cell: "ET.Element", name: str) -> str | None:
+    """The text of a component's ``<parameters>/<name>`` child (or None)."""
+    el = cell.find(f"./control/parameters/{name}")
+    return el.text if el is not None else None
+
+
+def _component_matches(
+    cell: "ET.Element", *,
+    cell_id: str | None, view: str | None, chart: str | None, url: str | None,
+) -> bool:
+    """Whether a component ``cell`` matches the (single) given selector."""
+    if cell_id is not None:
+        return _id_matches(cell.get("id"), cell_id)
+    if view is not None:
+        return _id_matches(_component_param(cell, "ViewId"), view)
+    if chart is not None:
+        return _id_matches(_component_param(cell, "VisualizationId"), chart)
+    if url is not None:
+        return _component_param(cell, "Url") == url
+    return False
+
+
+def _reconcile_section_rows(section: "ET.Element") -> None:
+    """Re-establish ``rowspan == count(<row>)`` for ``section`` after a removal.
+
+    Drops every empty ``<row/>`` then re-pads to the largest ``rowspan`` among
+    the section's remaining component cells (or to a single placeholder row when
+    no component remains) — so the row count stays aligned with what the section
+    actually holds, never leaving the padding the removed tile required."""
+    rows = section.find("rows")
+    if rows is None:
+        return
+    occupied = [r for r in rows.findall("row") if r.findall("cell")]
+    for empty in [r for r in rows.findall("row") if not r.findall("cell")]:
+        rows.remove(empty)
+    remaining = [c for c in section.iter("cell") if c.find("control") is not None]
+    need = max((int(c.get("rowspan") or "1") for c in remaining), default=1)
+    need = max(need, len(occupied))
+    while len(rows.findall("row")) < need:
+        ET.SubElement(rows, "row")
+
+
+def remove_component_from_formxml(
+    formxml: str, *,
+    cell_id: str | None = None, index: int | None = None,
+    view: str | None = None, chart: str | None = None, url: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Return ``(new_formxml, removed)`` with one component cell removed.
+
+    Exactly one selector must be given: ``cell_id`` (the cell's id), ``index``
+    (0-based position among components in document order), ``view`` (a component
+    whose ``ViewId`` matches), ``chart`` (its ``VisualizationId``), or ``url``
+    (its ``Url``). A selector that matches no component, or — for the value
+    selectors — more than one, is refused (an ambiguous target). After removing
+    the cell, the section's empty ``<row/>`` padding is reconciled so the
+    ``rowspan == count(<row>)`` invariant still holds. A guard refuses to return
+    FormXml in which anything but the removed cell's own subtree changed.
+    """
+    selectors = [s for s in (cell_id, index, view, chart, url) if s is not None]
+    if len(selectors) != 1:
+        raise D365Error(
+            "remove-component needs exactly one of "
+            "--cell-id / --index / --view / --chart / --url.")
+    root = xml_edit.parse_xml(formxml, label="dashboard's FormXml")
+    # parent maps so a matched cell can be detached from its row/section
+    cell_to_row = {c: r for r in root.iter("row") for c in r.findall("cell")}
+    row_to_section = {
+        r: s for s in root.iter("section") for r in s.findall("./rows/row")}
+    components = [c for c in root.iter("cell") if c.find("control") is not None]
+
+    if index is not None:
+        if index < 0 or index >= len(components):
+            raise D365Error(
+                f"--index {index} is out of range; the dashboard has "
+                f"{len(components)} component(s) (0-based).")
+        target = components[index]
+    else:
+        matches = [
+            c for c in components
+            if _component_matches(
+                c, cell_id=cell_id, view=view, chart=chart, url=url)]
+        if not matches:
+            raise D365Error("No dashboard component matches that selector.")
+        if len(matches) > 1:
+            raise D365Error(
+                f"{len(matches)} components match that selector; refine it "
+                f"(e.g. --cell-id / --index) to target exactly one.")
+        target = matches[0]
+
+    control = target.find("control")
+    removed = {
+        "cell_id": target.get("id"),
+        "control_id": control.get("id") if control is not None else None,
+    }
+    removed_subtree = xml_edit.serialize_xml(target)
+    row = cell_to_row.get(target)
+    if row is None:  # pragma: no cover - every cell lives in a row in valid XML
+        raise D365Error("Component cell is not inside a <row>; cannot remove it.")
+    row.remove(target)
+    section = row_to_section.get(row)
+    if section is not None:
+        _reconcile_section_rows(section)
+
+    new_xml = xml_edit.serialize_xml(root)
+    # Pure-removal guard: the new XML's GUID multiset plus the removed subtree's
+    # must equal the original's — i.e. only the target cell's ids/refs left, and
+    # no surviving id/classid/external reference was rewritten or dropped.
+    if (_guid_counter(new_xml) + _guid_counter(removed_subtree)
+            != _guid_counter(formxml)):
+        raise D365Error(
+            "dashboard component removal altered a surviving id/classid/external "
+            "reference; refusing to write a possibly corrupt dashboard.")
+    return new_xml, removed
+
+
+def remove_component_from_dashboard(
+    backend: D365Backend, dashboard_id: str, *,
+    cell_id: str | None = None, index: int | None = None,
+    view: str | None = None, chart: str | None = None, url: str | None = None,
+    publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Remove one component from a dashboard, selected by cell-id / index /
+    view / chart / url (exactly one). See :func:`remove_component_from_formxml`
+    for the selector and invariant rules."""
+    info = get_dashboard(backend, dashboard_id)
+    new_xml, removed = remove_component_from_formxml(
+        info["formxml"], cell_id=cell_id, index=index,
+        view=view, chart=chart, url=url)
+    return _commit_tile(
+        backend, info[_ID_FIELD], info, new_xml, action="remove-component",
+        publish=publish, solution=solution, extra=removed,
+        dry_run_flag="would_remove")
 
 
 def create_dashboard(

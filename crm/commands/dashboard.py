@@ -134,6 +134,121 @@ def dashboard_add_view(
     _journal(ctx, dashboard_id, info, solution=solution)
 
 
+@dashboard_group.command("add-iframe")
+@click.argument("dashboard_id")
+@click.option("--url", required=True,
+              help="The IFRAME URL (must be non-empty).")
+@click.option("--security", is_flag=True,
+              help="Restrict cross-frame scripting (the FormXml Security flag).")
+@click.option("--scrolling", is_flag=True, help="Show IFRAME scrollbars.")
+@click.option("--border", is_flag=True, help="Draw a border around the IFRAME.")
+@click.option("--pass-parameters", "pass_parameters", is_flag=True,
+              help="Pass record object-type code and id as URL parameters.")
+@_layout_options
+@_solution_option
+@_publish_option
+@pass_ctx
+def dashboard_add_iframe(
+    ctx: CLIContext, dashboard_id: str, url: str, security: bool,
+    scrolling: bool, border: bool, pass_parameters: bool,
+    tab: str | None, section: str | None, rowspan: int, colspan: int,
+    force: bool, solution: str | None, require_solution: bool, publish: bool,
+) -> None:
+    """Add an IFRAME tile to dashboard DASHBOARD_ID's FormXml."""
+    # A blank-ish --url (Click's required=True still admits '' / '   ') is a usage
+    # error caught here (exit 2) before a backend is built, not a late core error.
+    url = (url or "").strip()
+    if not url:
+        raise click.UsageError("--url must be a non-empty URL.")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = dashboard_mod.add_iframe_to_dashboard(
+            ctx.backend(), dashboard_id, url=url, security=security,
+            scrolling=scrolling, border=border, pass_parameters=pass_parameters,
+            tab=tab, section=section, rowspan=rowspan, colspan=colspan,
+            force=force, solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, dashboard_id, info, solution=solution)
+
+
+@dashboard_group.command("add-webresource")
+@click.argument("dashboard_id")
+@click.option("--webresource", required=True,
+              help="Web resource id (GUID) or unique name to embed.")
+@_layout_options
+@_solution_option
+@_publish_option
+@pass_ctx
+def dashboard_add_webresource(
+    ctx: CLIContext, dashboard_id: str, webresource: str,
+    tab: str | None, section: str | None, rowspan: int, colspan: int,
+    force: bool, solution: str | None, require_solution: bool, publish: bool,
+) -> None:
+    """Add a web-resource tile to dashboard DASHBOARD_ID's FormXml."""
+    # As with --url: a blank-ish --webresource is a usage error here (exit 2),
+    # before a backend is built, not a late core error.
+    webresource = (webresource or "").strip()
+    if not webresource:
+        raise click.UsageError("--webresource must be a non-empty id or name.")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = dashboard_mod.add_webresource_to_dashboard(
+            ctx.backend(), dashboard_id, webresource=webresource,
+            tab=tab, section=section, rowspan=rowspan, colspan=colspan,
+            force=force, solution=solution, publish=publish)
+    # fold a not-form-enabled advisory into the warnings channel
+    wr_warning = info.pop("warning", None) if isinstance(info, dict) else None
+    combined = "; ".join(w for w in (warning, wr_warning) if w) or None
+    _emit_with_warning(ctx, info, combined, meta=ctx.staged_meta())
+    _journal(ctx, dashboard_id, info, solution=solution)
+
+
+@dashboard_group.command("remove-component")
+@click.argument("dashboard_id")
+@click.option("--cell-id", "cell_id", default=None,
+              help="Remove the component cell with this id.")
+@click.option("--index", type=int, default=None,
+              help="Remove the component at this 0-based position.")
+@click.option("--view", default=None,
+              help="Remove the component whose ViewId is this savedquery id.")
+@click.option("--chart", default=None,
+              help="Remove the component whose VisualizationId is this id.")
+@click.option("--url", default=None,
+              help="Remove the IFRAME/web-resource component with this Url.")
+@_solution_option
+@_publish_option
+@pass_ctx
+def dashboard_remove_component(
+    ctx: CLIContext, dashboard_id: str, cell_id: str | None, index: int | None,
+    view: str | None, chart: str | None, url: str | None,
+    solution: str | None, require_solution: bool, publish: bool,
+) -> None:
+    """Remove one component from dashboard DASHBOARD_ID, selected by exactly one
+    of --cell-id / --index / --view / --chart / --url."""
+    # Strip first, so a blank-ish flag (--url '' / '   ') is treated as missing
+    # and yields a usage error (exit 2) here — before a backend is built — rather
+    # than a confusing core error (exit 1). --index is an int (0 is valid), so
+    # selectors are counted by "is not None", not truthiness.
+    cell_id = (cell_id or "").strip() or None
+    view = (view or "").strip() or None
+    chart = (chart or "").strip() or None
+    url = (url or "").strip() or None
+    if sum(1 for v in (cell_id, index, view, chart, url) if v is not None) != 1:
+        raise click.UsageError(
+            "Provide exactly one of --cell-id, --index, --view, --chart or --url.")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = dashboard_mod.remove_component_from_dashboard(
+            ctx.backend(), dashboard_id, cell_id=cell_id, index=index,
+            view=view, chart=chart, url=url,
+            solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, dashboard_id, info, solution=solution)
+
+
 def _read_file(path: str) -> str:
     # click.Path(exists=True, readable=True) validates at parse time, but a
     # permission edge or a delete-after-check race can still fail the open —

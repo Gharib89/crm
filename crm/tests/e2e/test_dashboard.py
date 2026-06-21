@@ -175,3 +175,83 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique):
                         len(section.findall("rows/row")), formxml
     finally:
         cli(["--json", "dashboard", "delete", dashboard_id])
+
+
+# ── dashboard add-iframe / add-webresource / remove-component ─────────────────
+
+_IFRAME_CLASSID = "{fd2a7985-3187-444e-908d-6624b21f69c0}"
+# Web resource types that render as a dashboard tile (form-enabled): HTML(1),
+# images(5,6,7,10,11), Silverlight(8) — mirrors the core's form-enabled set.
+_FORM_ENABLED_WR_TYPES = {1, 5, 6, 7, 8, 10, 11}
+
+
+def _form_enabled_webresource(cli):
+    """Discover a live, form-enabled web resource name (else skip)."""
+    result = cli(["--json", "webresource", "list"])
+    assert result.returncode == 0, result.stderr
+    for row in json.loads(result.stdout)["data"]:
+        if row.get("webresourcetype") in _FORM_ENABLED_WR_TYPES:
+            return row["name"]
+    pytest.skip("no form-enabled web resource on the org to embed")
+
+
+@covers("dashboard add-iframe", "dashboard add-webresource",
+        "dashboard remove-component")
+@pytest.mark.slow
+def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique):
+    """Add an IFRAME and a web-resource tile, then remove one, reading back.
+
+    Publishes so the Web API GET returns the edited (published) layer. Asserts
+    the protected IFRAME classid landed on both tiles, the URL / $webresource:
+    directive landed verbatim, and remove-component drops exactly the targeted
+    tile (leaving the other and its classid intact).
+    """
+    wr_name = _form_enabled_webresource(cli)
+    iframe_url = "https://example.com/embedded"
+
+    name = f"E2E IFRAME {unique}"
+    created = cli(["--json", "dashboard", "create", "--name", name,
+                   "--formxml", _write_formxml(tmp_path), "--no-publish"])
+    assert created.returncode == 0, created.stderr
+    dashboard_id = json.loads(created.stdout)["data"]["formid"]
+
+    try:
+        added = cli(["--json", "dashboard", "add-iframe", dashboard_id,
+                     "--url", iframe_url, "--security", "--border", "--publish"])
+        assert added.returncode == 0, (
+            f"add-iframe failed:\n{added.stderr}\nstdout: {added.stdout}")
+        assert json.loads(added.stdout)["data"]["updated"] is True
+
+        added2 = cli(["--json", "dashboard", "add-webresource", dashboard_id,
+                      "--webresource", wr_name, "--publish"])
+        assert added2.returncode == 0, (
+            f"add-webresource failed:\n{added2.stderr}\nstdout: {added2.stdout}")
+
+        got = cli(["--json", "dashboard", "get", dashboard_id])
+        assert got.returncode == 0, got.stderr
+        formxml = json.loads(got.stdout)["data"]["formxml"]
+        root, cells = _component_cells(formxml)
+        assert len(cells) == 2, formxml
+        # protected IFRAME classid intact on both tiles
+        for cell in cells:
+            assert _control(cell).get("classid", "").lower() == \
+                _IFRAME_CLASSID, formxml
+        # the URL and the $webresource: directive landed verbatim
+        assert iframe_url in formxml, formxml
+        assert f"$webresource:{wr_name}" in formxml, formxml
+
+        removed = cli(["--json", "dashboard", "remove-component", dashboard_id,
+                       "--url", iframe_url, "--publish"])
+        assert removed.returncode == 0, (
+            f"remove-component failed:\n{removed.stderr}\nstdout: {removed.stdout}")
+
+        got2 = cli(["--json", "dashboard", "get", dashboard_id])
+        formxml2 = json.loads(got2.stdout)["data"]["formxml"]
+        _, cells2 = _component_cells(formxml2)
+        # the IFRAME tile is gone; the web-resource tile (and its classid) stays
+        assert len(cells2) == 1, formxml2
+        assert iframe_url not in formxml2, formxml2
+        assert f"$webresource:{wr_name}" in formxml2, formxml2
+        assert _control(cells2[0]).get("classid", "").lower() == _IFRAME_CLASSID
+    finally:
+        cli(["--json", "dashboard", "delete", dashboard_id])

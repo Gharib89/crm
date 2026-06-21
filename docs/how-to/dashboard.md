@@ -175,3 +175,98 @@ crm dashboard add-view <dashboard-id> --view <v> --mode all
 `--records-per-page` sets the row count per page in the grid (default 10).
 
 All placement, cap, and publish options work identically to `add-chart`.
+
+## Add an IFRAME tile — `dashboard add-iframe`
+
+Splices an IFRAME tile into an existing dashboard's FormXml:
+
+```bash
+crm dashboard add-iframe 1111aaaa-2222-bbbb-3333-cccccccccccc \
+    --url https://example.com/embed
+```
+
+`--url` is **required and must be non-empty.** An IFRAME tile with an empty URL
+renders silently blank in the UI — the CLI refuses it before writing.
+
+The `--security`, `--scrolling`, `--border`, and `--pass-parameters` flags map
+directly to the FormXml typed-boolean parameters that control cross-frame
+scripting restriction, scrollbar visibility, border rendering, and whether the
+record's object-type code and id are appended as URL query parameters
+respectively.
+
+All placement, cap, and publish options work identically to `add-chart`.
+
+### Preview without writing
+
+```bash
+crm --dry-run dashboard add-iframe <id> --url https://example.com/embed
+```
+
+Returns `{_dry_run: true, would_add: true, url: "..."}` without patching the
+dashboard.
+
+## Add a web-resource tile — `dashboard add-webresource`
+
+Splices a web-resource tile into an existing dashboard's FormXml:
+
+```bash
+crm dashboard add-webresource 1111aaaa-2222-bbbb-3333-cccccccccccc \
+    --webresource cwx_/pages/summary.html
+```
+
+`--webresource` accepts either a GUID or the web resource's unique name. The CLI
+validates the web resource exists before writing; it emits a warning (in
+`meta.warnings`) when the resource is not form-enabled — CSS, scripts, data XML,
+XSL, and RESX types do not render as dashboard tiles (only HTML, images, and
+Silverlight do). The write still proceeds; the warning is advisory.
+
+The tile's `<Url>` is set to `$webresource:<name>` — the platform directive that
+resolves the resource's hosted URL on the server side.
+
+All placement, cap, and publish options work identically to `add-chart`.
+
+### Preview without writing
+
+```bash
+crm --dry-run dashboard add-webresource <id> --webresource cwx_/pages/summary.html
+```
+
+Returns `{_dry_run: true, would_add: true, webresource: "..."}` (the web resource
+is still resolved live to validate it exists; no PATCH is issued).
+
+## Remove a tile — `dashboard remove-component`
+
+Removes exactly one tile from an existing dashboard's FormXml, selected by
+**exactly one** of five selectors:
+
+```bash
+crm dashboard remove-component <dashboard-id> --index 0        # first tile (0-based)
+crm dashboard remove-component <dashboard-id> --cell-id <id>   # by cell id in FormXml
+crm dashboard remove-component <dashboard-id> --view <savedqueryid>
+crm dashboard remove-component <dashboard-id> --chart <savedqueryvisualizationid>
+crm dashboard remove-component <dashboard-id> --url https://example.com/embed
+```
+
+Passing more than one selector, or none, is a usage error. Passing a value
+selector (`--view`, `--chart`, `--url`) that matches no component or more than one
+component is also refused — for an ambiguous multi-match, switch to `--cell-id` or
+`--index` to target exactly one tile.
+
+`--index` is 0-based among all component cells in document order. Use
+`crm --json dashboard get <id> | jq -r '.data.formxml'` to inspect the FormXml
+and find the right index or cell id before removing.
+
+After removal the CLI reconciles the section's empty `<row>` padding so the
+`rowspan == count(<row>)` layout invariant is maintained.
+
+`remove-component` does **not** accept the tile layout options (`--tab`,
+`--section`, `--rowspan`, `--colspan`, `--force`) — those are add-only.
+
+### Preview without writing
+
+```bash
+crm --dry-run dashboard remove-component <id> --index 0
+```
+
+Returns `{_dry_run: true, would_remove: true, cell_id: "...", control_id: "..."}`
+without patching the dashboard.
