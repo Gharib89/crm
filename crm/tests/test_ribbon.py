@@ -389,6 +389,13 @@ def test_validate_rule_ids_rejects_unknown_platform_id():
         ribbon.validate_rule_ids(["Mscrm.Typooo"], kind="enable")
 
 
+def test_validate_rule_ids_rejects_miscased_platform_prefix():
+    # A case typo on the prefix must not slip through as if it were a custom id
+    # (the server silently ignores the mis-cased platform rule otherwise).
+    with pytest.raises(ValueError, match="not a recognized platform rule"):
+        ribbon.validate_rule_ids(["mscrm.ShowOnGrid"], kind="enable")
+
+
 def test_validate_rule_ids_rejects_enable_id_used_as_display():
     # Mscrm.ShowOnGrid is an enable rule; using it as a display rule is rejected.
     with pytest.raises(ValueError, match="not a recognized platform rule"):

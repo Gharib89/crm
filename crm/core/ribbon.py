@@ -389,7 +389,12 @@ def validate_rule_ids(rule_ids: "Sequence[str]", *, kind: str) -> None:
     else:
         raise ValueError(f"kind must be 'enable' or 'display', not {kind!r}")
     for rid in rule_ids:
-        if rid.startswith(_OOB_COMMAND_PREFIX) and rid not in allowed:
+        # Match the prefix case-insensitively but compare the full id against the
+        # canonical-case allow-list: a mis-cased id like 'mscrm.ShowOnGrid' is a
+        # platform-rule typo the server would silently ignore, so it must be
+        # rejected here rather than slip through as if it were a custom id.
+        if (rid.lower().startswith(_OOB_COMMAND_PREFIX.lower())
+                and rid not in allowed):
             raise ValueError(
                 f"{kind}-rule id {rid!r} is not a recognized platform rule — the "
                 f"server silently ignores an unknown Mscrm.* rule. Allowed platform "
