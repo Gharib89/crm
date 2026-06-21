@@ -418,3 +418,121 @@ def remove_node(
     return _edit(backend, sitemap_id, action="remove-node",
                  extra={"node_id": nid, "comment_out": comment_out},
                  mutate=mutate, publish=publish, solution=solution)
+
+
+# --- move-node ------------------------------------------------------------------
+
+
+def _locate(root: ET.Element, node_id: str) -> tuple[ET.Element | None, str]:
+    """Find the Area / Group / SubArea with ``node_id`` (Ids are document-unique)."""
+    for tag in _NODE_TAGS:
+        el = _find(root, tag, node_id)
+        if el is not None:
+            return el, tag
+    return None, ""
+
+
+def move_node(
+    backend: D365Backend,
+    sitemap_id: str,
+    *,
+    node_id: str,
+    before: str | None = None,
+    after: str | None = None,
+    index: int | None = None,
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Reorder the Area / Group / SubArea ``node_id`` within its parent.
+
+    Exactly one destination is given: ``before`` / ``after`` an anchor sibling, or
+    a 0-based ``index`` among the parent's same-type children. The anchor must
+    share the moved node's parent **and** node type; ``index`` must be in range.
+    This is a pure permutation — the moved node's attributes and children are
+    never touched, only its position among its siblings.
+    """
+    nid = node_id.strip()
+    if not nid:
+        raise D365Error("move-node --id must not be empty.")
+    chosen = [k for k, v in (("before", before), ("after", after),
+                             ("index", index)) if v is not None]
+    if len(chosen) != 1:
+        raise D365Error(
+            "move-node needs exactly one of --before, --after or --index "
+            f"(got {len(chosen)}).")
+
+    def mutate(root: ET.Element) -> _Mutation:
+        parents = {child: parent for parent in root.iter() for child in parent}
+        target, tag = _locate(root, nid)
+        if target is None:
+            raise D365Error(
+                f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
+        parent = parents.get(target)
+        if parent is None:  # unreachable: a node Id never sits on the root
+            raise D365Error("cannot move the SiteMap root element.")
+
+        if index is not None:
+            count = sum(1 for c in parent if c.tag in _NODE_TAGS)
+            if not 0 <= index < count:
+                raise D365Error(
+                    f"--index {index} is out of range for {tag} {nid!r}: the "
+                    f"parent has {count} {tag} child(ren) (valid 0..{count - 1}).")
+            parent.remove(target)
+            remaining = [c for c in parent if c.tag in _NODE_TAGS]
+            if index < len(remaining):
+                parent.insert(list(parent).index(remaining[index]), target)
+            elif remaining:
+                parent.insert(list(parent).index(remaining[-1]) + 1, target)
+            else:
+                parent.append(target)
+        else:
+            flag = "before" if before is not None else "after"
+            anchor_id = (before if before is not None else after or "").strip()
+            anchor, anchor_tag = _locate(root, anchor_id)
+            if anchor is None:
+                raise D365Error(
+                    f"anchor node {anchor_id!r} not found in the sitemap.")
+            if anchor is target:
+                raise D365Error(
+                    f"--{flag} {anchor_id!r} cannot be the node being moved.")
+            if anchor_tag != tag:
+                raise D365Error(
+                    f"anchor {anchor_id!r} is a {anchor_tag}, not a {tag}; move "
+                    f"requires an anchor of the same node type as {nid!r}.")
+            if parents.get(anchor) is not parent:
+                raise D365Error(
+                    f"anchor {anchor_id!r} is not a sibling of {nid!r} (they "
+                    "must share the same parent).")
+            parent.remove(target)
+            pos = list(parent).index(anchor)
+            parent.insert(pos if flag == "before" else pos + 1, target)
+
+        expected = [c.get("Id") for c in parent
+                    if c.tag in _NODE_TAGS and c.get("Id")]
+        parent_tag, parent_id = parent.tag, parent.get("Id")
+
+        def verify(rb: ET.Element) -> None:
+            # parent is the SiteMap root (moving an Area) → it carries no Id.
+            parent_rb = rb if parent_id is None else _find(rb, parent_tag, parent_id)
+            if parent_rb is None:
+                raise D365Error(
+                    f"read-back: parent {parent_tag} {parent_id!r} missing after "
+                    "publish.")
+            order = [c.get("Id") for c in parent_rb
+                     if c.tag in _NODE_TAGS and c.get("Id")]
+            if order != expected:
+                raise D365Error(
+                    f"read-back: {tag} {nid!r} is not at the requested position "
+                    "after publish.")
+
+        return _Mutation(added=set(), removed=set(), verify=verify)
+
+    extra: dict[str, Any] = {"node_id": nid}
+    if index is not None:
+        extra["index"] = index
+    elif before is not None:
+        extra["before"] = before
+    else:
+        extra["after"] = after
+    return _edit(backend, sitemap_id, action="move-node", extra=extra,
+                 mutate=mutate, publish=publish, solution=solution)

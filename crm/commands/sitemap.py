@@ -126,6 +126,39 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
+@sitemap_group.command("move-node")
+@click.argument("sitemap_id")
+@click.option("--id", "node_id", required=True,
+              help="Id of the Area/Group/SubArea to reorder.")
+@click.option("--before", default=None,
+              help="Move directly before this sibling Id (same parent + type).")
+@click.option("--after", default=None,
+              help="Move directly after this sibling Id (same parent + type).")
+@click.option("--index", type=int, default=None,
+              help="Move to this 0-based position among its same-type siblings.")
+@_solution_option
+@_publish_option
+@pass_ctx
+def sitemap_move_node(ctx: CLIContext, sitemap_id, node_id, before, after, index,
+                      solution, require_solution, publish):
+    """Reorder a node within its parent in the sitemap SITEMAP_ID."""
+    # Strip first, so a blank-ish anchor (--before '' / '   ') is treated as
+    # missing and still yields a usage error (exit 2), not a confusing core error.
+    before = (before or "").strip() or None
+    after = (after or "").strip() or None
+    if sum(1 for v in (before, after, index) if v is not None) != 1:
+        raise click.UsageError(
+            "Provide exactly one of --before, --after or --index.")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = sitemap_mod.move_node(
+            ctx.backend(), sitemap_id, node_id=node_id, before=before,
+            after=after, index=index, publish=publish, solution=solution)
+    _emit(ctx, info, warning)
+    _journal(ctx, sitemap_id, info, solution=solution)
+
+
 @sitemap_group.command("remove-node")
 @click.argument("sitemap_id")
 @click.option("--id", "node_id", required=True,
