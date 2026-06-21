@@ -13,7 +13,9 @@ from crm.utils.d365_backend import D365Error
 _DASH_ID = "11112222-3333-4444-5555-666677778888"
 _NEW_ID = "99998888-7777-6666-5555-444433332222"
 
-# A minimal but valid dashboard FormXml: one tab with one empty section.
+# A minimal but valid dashboard FormXml: one tab with one empty section. The
+# section carries a leading empty <row/> placeholder — the common real-dashboard
+# shape — so the tile-placement logic is exercised against it.
 _DASH_FORMXML = (
     '<form><tabs>'
     '<tab name="tab0" id="{aaaaaaaa-0000-0000-0000-000000000001}">'
@@ -21,7 +23,7 @@ _DASH_FORMXML = (
     '<columns><column width="100%"><sections>'
     '<section name="sec0" id="{aaaaaaaa-0000-0000-0000-000000000002}">'
     '<labels><label description="Sec" languagecode="1033"/></labels>'
-    '<rows/></section>'
+    '<rows><row /></rows></section>'
     '</sections></column></columns></tab>'
     '</tabs></form>'
 )

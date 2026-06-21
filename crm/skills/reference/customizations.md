@@ -366,7 +366,8 @@ mismatch up front (live ref validation). Get chart GUIDs from `crm --json chart 
 
 **One component per section by default.** Each tile lands in its own new section so
 the `rowspan == count(<row>)` layout invariant holds. Pass `--section <name|id>` to
-co-locate a tile into an existing named section instead.
+place a tile in an existing **empty** section instead — a section already holding a
+component is refused (one component per section keeps the invariant).
 
 **Six-component cap is `--force`-overridable**, never a hard block.
 

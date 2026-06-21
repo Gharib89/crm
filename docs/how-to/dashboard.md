@@ -118,8 +118,10 @@ rejects a mismatch before writing.
 ### Tile placement
 
 By default each tile lands in its own **new section** so that the
-`rowspan == count(<row>)` layout invariant holds per component. To co-locate a
-tile into an existing named section, pass `--section <name|id>`:
+`rowspan == count(<row>)` layout invariant holds per component. To place a tile
+in an existing section, pass `--section <name|id>` — the section must be
+**empty** (have no component yet), since a section holds at most one component
+while keeping the invariant; targeting an occupied section is refused:
 
 ```bash
 crm dashboard add-chart <dashboard-id> --view <v> --chart <c> \

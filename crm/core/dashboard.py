@@ -211,20 +211,29 @@ def _new_tile_section(target_tab: "ET.Element", *, colspan: int) -> "ET.Element"
     return section
 
 
-def _append_tile(section: "ET.Element", cell: "ET.Element", *, rowspan: int) -> None:
-    """Append ``cell`` as a new ``<row>`` and reconcile the section's ``<row>``
-    count to the cell's ``rowspan`` (the ``rowspan == count(<row>)`` invariant).
+def _place_tile(section: "ET.Element", cell: "ET.Element", *, rowspan: int) -> None:
+    """Place ``cell`` in the section's first row and reconcile the section's
+    ``<row>`` count to the cell's ``rowspan`` (the ``rowspan == count(<row>)``
+    invariant).
 
-    Existing rows are never dropped: the count is grown to
-    ``max(rowspan, current)`` with empty ``<row/>`` padding and the cell's
-    ``rowspan`` is set to that final count, so the invariant holds without
-    corrupting any content already in the section.
+    The cell goes in the **first** row — reusing a leading empty placeholder row
+    when the section was scaffolded with one (the common real-dashboard shape),
+    else inserting a fresh first row — so a cell with ``rowspan = N`` always
+    starts at the top of its section; a cell placed lower could span past the
+    grid. The row count is then grown (never shrunk, so existing content is kept)
+    to ``max(rowspan, current)`` with empty ``<row/>`` padding, and the cell's
+    ``rowspan`` set to that final count.
     """
     rows = section.find("rows")
     if rows is None:
         rows = ET.SubElement(section, "rows")
-    row = ET.SubElement(rows, "row")
-    row.append(cell)
+    existing = rows.findall("row")
+    if existing and not existing[0].findall("cell"):
+        existing[0].append(cell)  # reuse a leading empty placeholder row
+    else:
+        row = ET.Element("row")
+        row.append(cell)
+        rows.insert(0, row)
     need = max(rowspan, len(rows.findall("row")))
     while len(rows.findall("row")) < need:
         ET.SubElement(rows, "row")
@@ -241,7 +250,7 @@ def _build_chartgrid_cell(
     """
     cell = ET.Element("cell")
     cell.set("id", xml_edit.fresh_guid())
-    # rowspan is finalized by _append_tile (row-count reconciliation); colspan is
+    # rowspan is finalized by _place_tile (row-count reconciliation); colspan is
     # set here as it is not touched by the layout invariant.
     cell.set("colspan", str(colspan))
     cell.set("showlabel", "true")
@@ -338,7 +347,7 @@ def add_chartgrid_to_formxml(
     cell = _build_chartgrid_cell(
         control_id=_unique_control_id(root, control_id),
         params=params, label=label, colspan=colspan)
-    _append_tile(target, cell, rowspan=rowspan)
+    _place_tile(target, cell, rowspan=rowspan)
     new_xml = xml_edit.serialize_xml(root)
     # The splice must be a pure append: the new XML's GUIDs equal the old ones
     # plus exactly the added subtree's (the new section, or just the new cell
