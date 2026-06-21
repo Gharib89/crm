@@ -755,9 +755,11 @@ def add_view_filter(
 
     added: list[dict[str, Any]] = []
     for attr, op, tokens in conditions:
+        # Pure validation (operator + cardinality) before the metadata GET, so an
+        # invalid condition fails fast without a wasted backend round-trip.
         _validate_operator(op)
-        attribute_info_or_raise(backend, entity, attr)
         values = _coerce_values(op, tokens)
+        attribute_info_or_raise(backend, entity, attr)
         target = _entity_filter_of_type(fent, filter_type)
         if target is None:
             target = ElementTree.Element("filter")
@@ -826,15 +828,17 @@ def remove_view_filter(
     fetch_root = parse_xml(fetchxml, label="fetchxml")
     fent = _fetch_entity(fetch_root)
 
-    candidates = _iter_entity_conditions(fent)
     removed: list[dict[str, Any]] = []
     touched_filters: "list[tuple[ElementTree.Element, ElementTree.Element]]" = []
     for attr, op, tokens in conditions:
         _validate_operator(op)
         want_values = _coerce_values(op, tokens) if tokens else None
+        # Re-derive candidates per spec: a prior iteration may have removed
+        # elements, so the walk must reflect the current tree (a single pre-built
+        # list would hold stale Element references and double-remove a condition).
         matches = [
             (parent, filt, cond)
-            for parent, filt, cond in candidates
+            for parent, filt, cond in _iter_entity_conditions(fent)
             if cond.get("attribute") == attr and cond.get("operator") == op
             and (want_values is None or _condition_values(cond) == want_values)
         ]
@@ -854,9 +858,15 @@ def remove_view_filter(
                         "values": want_values or []})
 
     # Prune any filter our removal left with no conditions and no nested filters.
+    # Dedupe by identity: removing several conditions from one filter lists it
+    # more than once, and a second parent.remove(filt) would raise.
+    pruned: set[int] = set()
     for parent, filt in touched_filters:
+        if id(filt) in pruned:
+            continue
         if not filt.findall("condition") and not filt.findall("filter"):
             parent.remove(filt)
+            pruned.add(id(filt))
 
     result: dict[str, Any] = {
         "savedqueryid": sqid, "name": row.get("name", ""),

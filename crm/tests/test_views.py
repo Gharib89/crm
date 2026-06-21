@@ -625,6 +625,19 @@ class TestAddViewFilter:
                     backend, entity=_ENTITY, view="Active Tickets",
                     conditions=[("cwx_closed", "null", ["1"])])
 
+    def test_add_cardinality_checked_before_metadata_lookup(self, backend):
+        """A cardinality error surfaces without a metadata GET (fail fast). No
+        /Attributes mock is registered, so a stray lookup would raise a different
+        error than the cardinality D365Error asserted here."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="exactly two values"):
+                views.add_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("cwx_amount", "between", ["5"])])
+        assert not any("/Attributes" in (r.url or "") for r in m.request_history)
+
     def test_add_unknown_operator_errors(self, backend):
         from crm.core import views
         with requests_mock.Mocker() as m:
@@ -823,6 +836,41 @@ class TestRemoveViewFilter:
         with pytest.raises(D365Error, match="nothing to do"):
             views.remove_view_filter(
                 backend, entity=_ENTITY, view="Active Tickets", conditions=[])
+
+    def test_remove_two_conditions_from_same_filter(self, backend):
+        """Removing several conditions from one filter drops all and prunes the
+        now-empty filter exactly once (no double-remove crash)."""
+        from crm.core import views
+        two_cond = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and">'
+            '<condition attribute="statecode" operator="eq" value="0" />'
+            '<condition attribute="cwx_priority" operator="eq" value="2" />'
+            '</filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=two_cond))
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("statecode", "eq", []), ("cwx_priority", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert "statecode" not in fetch
+        assert "cwx_priority" not in fetch
+        assert "<filter" not in fetch  # emptied filter pruned once, no crash
+
+    def test_remove_duplicate_spec_errors_cleanly(self, backend):
+        """The same condition listed twice yields a clean NotFound on the second
+        pass, not an ElementTree ValueError."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_patch(m, backend)
+            with pytest.raises(D365Error, match="no condition matches"):
+                views.remove_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("statecode", "eq", []), ("statecode", "eq", [])])
 
     def test_remove_does_not_validate_attribute_existence(self, backend):
         """A filter on a since-deleted column can still be removed (no metadata
