@@ -8,12 +8,15 @@ metadata-write precedent.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from xml.etree import ElementTree
 from xml.sax.saxutils import quoteattr
 
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
-from crm.core.metadata import maybe_publish
+from crm.utils.d365_backend import (
+    D365Backend, D365Error, as_dict, normalize_guid, odata_literal,
+)
+from crm.core.metadata import attribute_info_or_raise, maybe_publish
+from crm.core.xml_edit import commit_xml_patches, parse_xml, serialize_xml
 
 # savedquery.querytype optionset values (friendly name → code). See
 # https://learn.microsoft.com/power-apps/developer/model-driven-apps/customize-entity-views#types-of-views
@@ -242,3 +245,389 @@ def read_entity_views(
         result.append(view)
 
     return result
+
+
+# --- View XML editors (edit-columns / set-order) --------------------------------
+#
+# Edit an existing saved query's grid columns (layoutxml) and sort order
+# (fetchxml) in place, keeping the two documents coupled. The MISMATCH INVARIANT
+# — every non-PK layoutxml ``<cell name>`` must have a fetchxml
+# ``<attribute name>`` — is what keeps a column from rendering with no data
+# source: add writes BOTH, remove drops BOTH, and the primary-key cell+attribute
+# are protected. layoutjson is cleared on a column edit so the platform rebuilds
+# it from the new layoutxml (a stale layoutjson otherwise drives the modern
+# read-only grid with the old columns).
+
+# The savedquery types whose layoutxml is a column-editable grid. System query
+# types with no grid layout (e.g. 8192, offline filters) are refused.
+_EDITABLE_QUERYTYPES = frozenset(QUERY_TYPES.values())
+
+_VIEW_EDIT_SELECT = (
+    "savedqueryid,name,returnedtypecode,querytype,"
+    "layoutxml,fetchxml,layoutjson,iscustomizable"
+)
+
+
+def _require_customizable(row: dict[str, Any]) -> None:
+    """Refuse to PATCH a view whose ``IsCustomizable`` managed property is false.
+
+    ``iscustomizable`` is a ``BooleanManagedProperty`` (``{"Value": bool, ...}``);
+    only an explicit ``False`` blocks the edit — a missing property can't be
+    judged, and the server is the final authority.
+    """
+    ic = row.get("iscustomizable")
+    value: Any = (
+        cast("dict[str, Any]", ic).get("Value") if isinstance(ic, dict) else ic)
+    if value is False:
+        raise D365Error(
+            f"View {row.get('name')!r} is not customizable "
+            "(IsCustomizable.Value is false); refusing to PATCH.",
+            code="NotCustomizable")
+
+
+def _resolve_editable_view(
+    backend: D365Backend, *, entity: str, view: str, query_type: str
+) -> dict[str, Any]:
+    """Resolve EXACTLY ONE editable savedquery by name+returnedtypecode+querytype.
+
+    ``view`` is either a savedqueryid (GUID) or a view name. savedqueries has no
+    alternate key, so a name resolves by ``name`` + ``returnedtypecode`` +
+    ``querytype`` and must match exactly one row (a GUID resolves directly).
+    Refuses a query type with no editable grid layout and a non-customizable
+    view. Returns the raw row (layoutxml/fetchxml/layoutjson/iscustomizable).
+    """
+    if query_type not in QUERY_TYPES:
+        raise D365Error(
+            f"unknown query_type {query_type!r}; "
+            f"expected one of {', '.join(QUERY_TYPES)}.")
+    querytype = QUERY_TYPES[query_type]
+    vid = normalize_guid(view)
+    if vid is not None:
+        row = as_dict(backend.get(
+            f"savedqueries({vid})", params={"$select": _VIEW_EDIT_SELECT}))
+        if not row.get("savedqueryid"):
+            raise D365Error(f"No savedquery with id {view!r}.", code="NotFound")
+        rtc = row.get("returnedtypecode")
+        if rtc and rtc != entity:
+            raise D365Error(
+                f"savedquery {view!r} is on {rtc!r}, not {entity!r}.",
+                code="EntityMismatch")
+    else:
+        rows = backend.get_collection(
+            "savedqueries",
+            params={
+                "$filter": (f"name eq {odata_literal(view)} "
+                            f"and returnedtypecode eq {odata_literal(entity)} "
+                            f"and querytype eq {querytype}"),
+                "$select": _VIEW_EDIT_SELECT,
+            })
+        if not rows:
+            raise D365Error(
+                f"No {query_type} view named {view!r} on {entity}.",
+                code="NotFound")
+        if len(rows) > 1:
+            raise D365Error(
+                f"{len(rows)} views named {view!r} on {entity} "
+                f"(querytype {querytype}); resolve by savedqueryid instead.",
+                code="Ambiguous")
+        row = rows[0]
+    qt = row.get("querytype")
+    if qt not in _EDITABLE_QUERYTYPES:
+        raise D365Error(
+            f"savedquery querytype {qt} has no editable grid layout; "
+            f"edit-columns / set-order support querytypes "
+            f"{sorted(_EDITABLE_QUERYTYPES)}.",
+            code="NotEditable")
+    _require_customizable(row)
+    return row
+
+
+# --- pure XML helpers (no backend; unit-tested independently) -------------------
+
+
+def _layout_row(root: "ElementTree.Element") -> "ElementTree.Element":
+    row = root.find(".//row")
+    if row is None:
+        raise D365Error("layoutxml has no <row>; cannot edit columns.")
+    return row
+
+
+def _fetch_entity(root: "ElementTree.Element") -> "ElementTree.Element":
+    ent = root.find("entity")
+    if ent is None:
+        raise D365Error("fetchxml has no <entity>; cannot edit.")
+    return ent
+
+
+def _cell_names(row: "ElementTree.Element") -> list[str]:
+    return [c.get("name") or "" for c in row.findall("cell")]
+
+
+def _attr_names(entity: "ElementTree.Element") -> list[str]:
+    return [a.get("name") or "" for a in entity.findall("attribute")]
+
+
+def _find_cell(row: "ElementTree.Element",
+               name: str) -> "ElementTree.Element | None":
+    for c in row.findall("cell"):
+        if c.get("name") == name:
+            return c
+    return None
+
+
+def _find_attr(entity: "ElementTree.Element",
+               name: str) -> "ElementTree.Element | None":
+    for a in entity.findall("attribute"):
+        if a.get("name") == name:
+            return a
+    return None
+
+
+def _last_attribute_index(entity: "ElementTree.Element") -> int:
+    last = -1
+    for i, child in enumerate(list(entity)):
+        if child.tag == "attribute":
+            last = i
+    return last
+
+
+def _assert_mismatch_invariant(
+    layout_row: "ElementTree.Element",
+    fetch_entity: "ElementTree.Element",
+    *, pk: str,
+) -> None:
+    """Every non-PK layout ``<cell name>`` must have a fetch ``<attribute name>``.
+
+    A column with no backing fetch attribute renders empty, so the layout and
+    fetch documents must stay coupled. Dotted/aliased cell names (linked-entity
+    columns) are left to the server — this tool only adds/removes simple columns.
+    The PK attribute must always remain in the fetch.
+    """
+    attrs = set(_attr_names(fetch_entity))
+    if pk not in attrs:
+        raise D365Error(
+            f"fetchxml is missing the primary-key attribute {pk!r}.")
+    for name in _cell_names(layout_row):
+        if name and name != pk and "." not in name and name not in attrs:
+            raise D365Error(
+                f"column {name!r} has no matching fetch <attribute>; "
+                "the layout and fetch would be out of sync.")
+
+
+def edit_view_columns(
+    backend: D365Backend,
+    *,
+    entity: str,
+    view: str,
+    query_type: str = "public",
+    add: "list[tuple[str, int]] | None" = None,
+    remove: "list[str] | None" = None,
+    width: "list[tuple[str, int]] | None" = None,
+    reorder: "list[str] | None" = None,
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Edit an existing view's grid columns (layoutxml + fetchxml), in place.
+
+    ``add`` is ``[(logicalname, width)]`` (adds both the layout cell and the
+    fetch attribute), ``remove`` drops both, ``width`` resizes existing cells,
+    and ``reorder`` is a permutation of the current column names. ``reorder`` is
+    exclusive of the other operations. Each added column is validated to exist,
+    width must be > 0, and the primary-key column cannot be removed.
+    """
+    add = add or []
+    remove = remove or []
+    width = width or []
+    has_other = bool(add or remove or width)
+    if reorder is not None and has_other:
+        raise D365Error(
+            "--reorder cannot be combined with --add / --remove / --width.")
+    if reorder is None and not has_other:
+        raise D365Error(
+            "nothing to do: pass --add, --remove, --width, or --reorder.")
+
+    row = _resolve_editable_view(backend, entity=entity, view=view,
+                                 query_type=query_type)
+    sqid = row.get("savedqueryid")
+    layoutxml = row.get("layoutxml") or ""
+    fetchxml = row.get("fetchxml") or ""
+    if not layoutxml:
+        raise D365Error(
+            f"view {view!r} has no layoutxml; it is not column-editable.")
+    if not fetchxml:
+        raise D365Error(f"view {view!r} has no fetchxml; cannot edit columns.")
+
+    layout_root = parse_xml(layoutxml, label="layoutxml")
+    fetch_root = parse_xml(fetchxml, label="fetchxml")
+    lrow = _layout_row(layout_root)
+    fent = _fetch_entity(fetch_root)
+    # The layout <row id="..."> attribute is the view's primary-key attribute;
+    # it is authoritative (a few system tables don't follow the <entity>id
+    # convention), so prefer it over guessing.
+    pk = lrow.get("id") or f"{entity}id"
+    fetch_changed = False
+
+    existing = _cell_names(lrow)
+    for name, w in add:
+        if w <= 0:
+            raise D365Error(f"column width must be positive: {name!r}={w}.")
+        if name in existing:
+            raise D365Error(f"column {name!r} is already on the view.")
+        attribute_info_or_raise(backend, entity, name)
+        cell = ElementTree.SubElement(lrow, "cell")
+        cell.set("name", name)
+        cell.set("width", str(w))
+        existing.append(name)
+        if _find_attr(fent, name) is None:
+            # Insert after the last <attribute>, not at the end — a new attribute
+            # placed after <order>/<filter> siblings is invalid/ignored FetchXML.
+            attr = ElementTree.Element("attribute")
+            attr.set("name", name)
+            fent.insert(_last_attribute_index(fent) + 1, attr)
+            fetch_changed = True
+
+    for name in remove:
+        if name == pk:
+            raise D365Error(f"cannot remove the primary-key column {pk!r}.")
+        cell = _find_cell(lrow, name)
+        if cell is None:
+            raise D365Error(f"column {name!r} is not on the view.")
+        lrow.remove(cell)
+        attr = _find_attr(fent, name)
+        if attr is not None:
+            fent.remove(attr)
+            fetch_changed = True
+
+    for name, w in width:
+        if w <= 0:
+            raise D365Error(f"column width must be positive: {name!r}={w}.")
+        cell = _find_cell(lrow, name)
+        if cell is None:
+            raise D365Error(f"column {name!r} is not on the view.")
+        cell.set("width", str(w))
+
+    if reorder is not None:
+        current = _cell_names(lrow)
+        if sorted(reorder) != sorted(current):
+            raise D365Error(
+                "--reorder must list exactly the current columns "
+                f"({', '.join(current)}); got {', '.join(reorder)}.")
+        by_name = {c.get("name"): c for c in lrow.findall("cell")}
+        for c in lrow.findall("cell"):
+            lrow.remove(c)
+        for name in reorder:
+            lrow.append(by_name[name])
+
+    _assert_mismatch_invariant(lrow, fent, pk=pk)
+
+    columns: dict[str, str] = {
+        "layoutxml": serialize_xml(layout_root),
+        "layoutjson": "",
+    }
+    if fetch_changed:
+        columns["fetchxml"] = serialize_xml(fetch_root)
+
+    result: dict[str, Any] = {
+        "savedqueryid": sqid, "name": row.get("name", ""),
+        "entity": entity, "action": "edit-columns",
+        "columns": _cell_names(lrow),
+    }
+
+    def _verify(cols: dict[str, str]) -> None:
+        lr = _layout_row(parse_xml(cols["layoutxml"], label="layoutxml"))
+        # The read-back only returns the columns that were PATCHed. On a
+        # width-/reorder-only edit the fetch is untouched, so it is absent from
+        # the read-back and the local (unchanged) fetch entity is identical to
+        # the server's — checking the invariant against it is checking the
+        # server doc.
+        fe = (_fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
+              if cols.get("fetchxml") else fent)
+        _assert_mismatch_invariant(lr, fe, pk=pk)
+
+    return commit_xml_patches(
+        backend, entity_set="savedqueries", record_id=str(sqid),
+        columns=columns, result=result, dry_run_flag="would_update",
+        publish=publish, solution=solution,
+        read_back=_verify if publish else None)
+
+
+def set_view_order(
+    backend: D365Backend,
+    *,
+    entity: str,
+    view: str,
+    query_type: str = "public",
+    order: "list[tuple[str, bool]] | None" = None,
+    add_order: "list[tuple[str, bool]] | None" = None,
+    clear_order: bool = False,
+    publish: bool = False,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Set an existing view's sort order (fetchxml ``<order>`` elements).
+
+    ``order`` replaces the current sort with ``[(attribute, descending)]``,
+    ``add_order`` appends, and ``clear_order`` removes all sorting. Each order
+    attribute is validated to exist. Only the entity's direct ``<order>``
+    children are touched — ``<filter>`` / ``<condition>`` / ``<link-entity>``
+    siblings are left intact.
+    """
+    order = order or []
+    add_order = add_order or []
+    if not (order or add_order or clear_order):
+        raise D365Error(
+            "nothing to do: pass --order, --add-order, or --clear-order.")
+
+    row = _resolve_editable_view(backend, entity=entity, view=view,
+                                 query_type=query_type)
+    sqid = row.get("savedqueryid")
+    fetchxml = row.get("fetchxml") or ""
+    if not fetchxml:
+        raise D365Error(f"view {view!r} has no fetchxml; cannot set order.")
+    fetch_root = parse_xml(fetchxml, label="fetchxml")
+    fent = _fetch_entity(fetch_root)
+
+    if clear_order or order:
+        new_orders: list[tuple[str, bool]] = list(order)
+    else:
+        new_orders = [
+            (o.get("attribute") or "",
+             (o.get("descending") or "").lower() == "true")
+            for o in fent.findall("order")
+        ]
+    new_orders += list(add_order)
+
+    for attr, _desc in new_orders:
+        attribute_info_or_raise(backend, entity, attr)
+
+    for o in fent.findall("order"):
+        fent.remove(o)
+    insert_at = _last_attribute_index(fent) + 1
+    for i, (attr, desc) in enumerate(new_orders):
+        el = ElementTree.Element("order")
+        el.set("attribute", attr)
+        el.set("descending", "true" if desc else "false")
+        fent.insert(insert_at + i, el)
+
+    result: dict[str, Any] = {
+        "savedqueryid": sqid, "name": row.get("name", ""),
+        "entity": entity, "action": "set-order",
+        "order": [{"attribute": a, "descending": d} for a, d in new_orders],
+    }
+
+    def _verify(cols: dict[str, str]) -> None:
+        fe = _fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
+        got = [
+            (o.get("attribute") or "",
+             (o.get("descending") or "").lower() == "true")
+            for o in fe.findall("order")
+        ]
+        if got != new_orders:
+            raise D365Error(
+                "read-back: the view sort order did not land as expected.")
+
+    return commit_xml_patches(
+        backend, entity_set="savedqueries", record_id=str(sqid),
+        columns={"fetchxml": serialize_xml(fetch_root)},
+        result=result, dry_run_flag="would_update",
+        publish=publish, solution=solution,
+        read_back=_verify if publish else None)

@@ -118,26 +118,52 @@ view of the same type. **Gotcha:** `view list` shows only public views, so a
 non-public view you create this way will not appear there — capture its
 `savedqueryid` from the `view create` output if you need to edit it later.
 
-### Edit an existing view
-
-`view create` only makes new views. To change an existing one, PATCH its
-`savedquery` row — locate the GUID by name (`view list <entity>` lists every
-public view's `savedqueryid`), update `fetchxml`/`layoutxml`, then
-publish the owning entity:
+### Edit an existing view's columns — `view edit-columns`
 
 ```bash
-crm --json view list account                                          # find the savedqueryid by name
-crm entity update savedqueries <savedqueryid> --data-file view.json   # {"fetchxml":"…","layoutxml":"…"}
-crm solution publish --xml \
-    '<importexportxml><entities><entity>account</entity></entities></importexportxml>'
+crm --json view edit-columns account "All Accounts" \
+    --add telephone1:120 --remove fax --width name:200
+crm --json view edit-columns account "All Accounts" \
+    --reorder name,telephone1,emailaddress1
 ```
 
-Use `--data-file`, **not** inline `--data` — both blobs are XML full of double
-quotes (`version="1.0"`, `name="resultset"`), which must be JSON-escaped; a file
-keeps that escaping sane and copy-paste-safe.
+**Mismatch invariant.** `--add` writes both the layoutxml `<cell>` and the fetchxml
+`<attribute>` in one PATCH — a cell without a matching attribute leaves a column with
+no data, so the CLI always keeps them coupled. Likewise `--remove` drops both. The
+primary-key cell+attribute are protected and cannot be removed.
 
-`returnedtypecode` is the entity **logical name** — a string like `account`, **not**
-an int — so identify the target view by `name` or by `returnedtypecode eq '<logical>'`.
+**Ambiguous name → resolve by GUID.** The savedquery table has no alternate key.
+`edit-columns` resolves by `name + returnedtypecode + querytype`; if more than one
+row matches, the command errors. Run `crm --json view list <entity>` to get the
+`savedqueryid`, then pass that GUID as the `<view>` argument.
+
+**Non-public views.** Pass `--query-type` (advanced-find, associated, quick-find,
+lookup) to target a non-public view. `view list` shows only public views.
+
+**Publish-then-read-back.** Under `--publish` (the default) the command publishes
+and then GETs the view back to confirm the edit landed. Under `--no-publish` the
+read-back is skipped — a subsequent GET returns the *published* (pre-edit) snapshot
+until you publish. `layoutjson` is cleared on every column edit so the platform
+rebuilds it from the new layoutxml (a stale layoutjson drives the modern grid with
+the old columns).
+
+**Managed-layer warning.** Editing an out-of-box or managed view creates an
+unmanaged layer that a solution upgrade may revert. The `--help` text carries this
+warning too; it's repeated here because it is the most common surprise.
+
+### Set a view's sort order — `view set-order`
+
+```bash
+crm --json view set-order account "All Accounts" \
+    --order "name asc" --order "createdon desc"
+crm --json view set-order account "All Accounts" --add-order "modifiedon desc"
+crm --json view set-order account "All Accounts" --clear-order
+```
+
+Only the entity's direct `<order>` children are touched — `<filter>`, `<condition>`,
+and `<link-entity>` elements are left intact. Order attributes are validated against
+live metadata before any write. Same ambiguous-name, managed-layer, and
+publish-then-read-back notes as `edit-columns`.
 
 ## Stage many changes, then publish once
 

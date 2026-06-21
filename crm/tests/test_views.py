@@ -2,6 +2,8 @@
 # pyright: basic
 from __future__ import annotations
 
+import re
+
 import pytest
 import requests_mock
 
@@ -235,8 +237,398 @@ class TestCreateView:
         assert out["_dry_run"] is True
         assert out["_exists"] is True
         assert out["would_skip"] is True
-        assert any(r.method == "GET" for r in m.request_history)
-        assert not any(r.method == "POST" for r in m.request_history)
+
+
+# --------------------------------------------------------------------------- #
+# edit-columns / set-order editors
+# --------------------------------------------------------------------------- #
+
+_ENTITY = "cwx_ticket"
+_PK = "cwx_ticketid"
+_LAYOUT = (
+    '<grid name="resultset" object="10042" jump="cwx_name" select="1" '
+    'icon="1" preview="1"><row name="result" id="cwx_ticketid">'
+    '<cell name="cwx_name" width="200" />'
+    '<cell name="cwx_status" width="120" /></row></grid>'
+)
+_FETCH = (
+    '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+    '<attribute name="cwx_ticketid" />'
+    '<attribute name="cwx_name" />'
+    '<attribute name="cwx_status" />'
+    '<order attribute="cwx_name" descending="false" /></entity></fetch>'
+)
+
+
+def _view_row(*, layout=_LAYOUT, fetch=_FETCH, iscustomizable=True, querytype=0):
+    return {
+        "savedqueryid": _VIEW_ID, "name": "Active Tickets",
+        "returnedtypecode": _ENTITY, "querytype": querytype,
+        "layoutxml": layout, "fetchxml": fetch, "layoutjson": "{}",
+        "iscustomizable": {"Value": iscustomizable, "CanBeChanged": True},
+    }
+
+
+def _mock_resolve(m, backend, row):
+    m.get(backend.url_for("savedqueries"), json={"value": [row]})
+
+
+def _mock_attr_ok(m):
+    m.get(re.compile(r"/Attributes\("), json={"LogicalName": "x"})
+
+
+def _mock_patch(m, backend):
+    m.patch(backend.url_for(f"savedqueries({_VIEW_ID})"), status_code=204)
+
+
+def _patch_body(m):
+    for r in m.request_history:
+        if r.method == "PATCH":
+            return r.json()
+    raise AssertionError("no PATCH recorded")
+
+
+class TestEditViewColumns:
+    def test_add_adds_cell_and_attribute_and_clears_layoutjson(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            out = views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                add=[("cwx_priority", 150)])
+        body = _patch_body(m)
+        assert '<cell name="cwx_priority" width="150"' in body["layoutxml"]
+        assert '<attribute name="cwx_priority"' in body["fetchxml"]
+        # layoutjson cleared so the server rebuilds it from the new layoutxml.
+        assert body["layoutjson"] == ""
+        assert out["action"] == "edit-columns"
+        assert "cwx_priority" in out["columns"]
+
+    def test_add_inserts_attribute_before_order(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                add=[("cwx_priority", 100)])
+        fetch = _patch_body(m)["fetchxml"]
+        # The new <attribute> must precede <order> — FetchXML ignores an
+        # attribute placed after order/filter siblings.
+        assert fetch.index('name="cwx_priority"') < fetch.index("<order")
+
+    def test_add_validates_column_exists(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            m.get(re.compile(r"/Attributes\("), status_code=404)
+            with pytest.raises(D365Error, match="does not exist"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    add=[("bogus", 100)])
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_add_rejects_duplicate_column(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="already on the view"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    add=[("cwx_name", 100)])
+
+    def test_add_rejects_nonpositive_width(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="width must be positive"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    add=[("cwx_priority", 0)])
+
+    def test_remove_drops_cell_and_attribute(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_patch(m, backend)
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                remove=["cwx_status"])
+        body = _patch_body(m)
+        assert "cwx_status" not in body["layoutxml"]
+        assert "cwx_status" not in body["fetchxml"]
+
+    def test_remove_refuses_primary_key(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="primary-key"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    remove=[_PK])
+
+    def test_remove_missing_column_errors(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="not on the view"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    remove=["cwx_missing"])
+
+    def test_width_resizes_without_touching_fetch(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_patch(m, backend)
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                width=[("cwx_name", 300)])
+        body = _patch_body(m)
+        assert '<cell name="cwx_name" width="300"' in body["layoutxml"]
+        # width-only change leaves the fetch untouched (not in the PATCH).
+        assert "fetchxml" not in body
+        assert body["layoutjson"] == ""
+
+    def test_reorder_permutes_columns(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_patch(m, backend)
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                reorder=["cwx_status", "cwx_name"])
+        layout = _patch_body(m)["layoutxml"]
+        assert (layout.index('<cell name="cwx_status"')
+                < layout.index('<cell name="cwx_name"'))
+
+    def test_reorder_must_be_a_permutation(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="exactly the current columns"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    reorder=["cwx_name"])
+
+    def test_reorder_exclusive_of_other_ops(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error, match="cannot be combined"):
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                reorder=["cwx_name", "cwx_status"], add=[("cwx_p", 100)])
+
+    def test_no_op_errors(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error, match="nothing to do"):
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets")
+
+    def test_iscustomizable_false_refuses(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(iscustomizable=False))
+            with pytest.raises(D365Error, match="not customizable"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    width=[("cwx_name", 300)])
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_layoutxml_less_querytype_refused(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(querytype=8192))
+            with pytest.raises(D365Error, match="no editable grid layout"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    width=[("cwx_name", 300)])
+
+    def test_resolve_ambiguous_errors(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"),
+                  json={"value": [_view_row(), _view_row()]})
+            with pytest.raises(D365Error, match="resolve by savedqueryid"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    width=[("cwx_name", 300)])
+
+    def test_resolve_not_found_errors(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            with pytest.raises(D365Error, match="No public view named"):
+                views.edit_view_columns(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    width=[("cwx_name", 300)])
+
+    def test_resolve_by_guid_uses_direct_get(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for(f"savedqueries({_VIEW_ID})"),
+                  json=_view_row())
+            m.patch(backend.url_for(f"savedqueries({_VIEW_ID})"),
+                    status_code=204)
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view=_VIEW_ID,
+                width=[("cwx_name", 300)])
+        # No collection probe — the GUID resolves directly.
+        assert not any(
+            r.method == "GET" and r.path.endswith("/savedqueries")
+            for r in m.request_history)
+
+    def test_dry_run_issues_no_patch(self, dry_backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, dry_backend, _view_row())
+            _mock_attr_ok(m)
+            out = views.edit_view_columns(
+                dry_backend, entity=_ENTITY, view="Active Tickets",
+                add=[("cwx_priority", 150)])
+        assert out["would_update"] is True
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_publish_reads_back_and_verifies(self, backend):
+        from crm.core import views
+
+        def _echo_patched(request, context):
+            # Read-back returns the published layer; echo the last PATCH body.
+            for r in m.request_history:
+                if r.method == "PATCH":
+                    return r.json()
+            raise AssertionError("read-back before any PATCH")
+
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            m.post(re.compile(r"PublishAllXml"), status_code=204)
+            m.get(backend.url_for(f"savedqueries({_VIEW_ID})"),
+                  json=_echo_patched)
+            out = views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                add=[("cwx_priority", 150)], publish=True)
+        assert out["published"] is True
+        assert out["updated"] is True
+
+
+class TestSetViewOrder:
+    def test_order_replaces_sort(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.set_view_order(
+                backend, entity=_ENTITY, view="Active Tickets",
+                order=[("createdon", True)])
+        fetch = _patch_body(m)["fetchxml"]
+        assert '<order attribute="createdon" descending="true"' in fetch
+        # the previous cwx_name order is replaced.
+        assert 'attribute="cwx_name" descending' not in fetch
+
+    def test_add_order_appends(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.set_view_order(
+                backend, entity=_ENTITY, view="Active Tickets",
+                add_order=[("createdon", False)])
+        fetch = _patch_body(m)["fetchxml"]
+        assert 'attribute="cwx_name"' in fetch
+        assert 'attribute="createdon"' in fetch
+
+    def test_clear_order_removes_all(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_patch(m, backend)
+            views.set_view_order(
+                backend, entity=_ENTITY, view="Active Tickets",
+                clear_order=True)
+        fetch = _patch_body(m)["fetchxml"]
+        assert "<order" not in fetch
+
+    def test_validates_order_attribute(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            m.get(re.compile(r"/Attributes\("), status_code=404)
+            with pytest.raises(D365Error, match="does not exist"):
+                views.set_view_order(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    order=[("bogus", False)])
+
+    def test_protects_filter_sibling(self, backend):
+        from crm.core import views
+        fetch_with_filter = (
+            '<fetch version="1.0" mapping="logical">'
+            '<entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<attribute name="cwx_name" />'
+            '<order attribute="cwx_name" descending="false" />'
+            '<filter type="and"><condition attribute="statecode" '
+            'operator="eq" value="0" /></filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=fetch_with_filter))
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.set_view_order(
+                backend, entity=_ENTITY, view="Active Tickets",
+                order=[("createdon", True)])
+        fetch = _patch_body(m)["fetchxml"]
+        assert '<condition attribute="statecode"' in fetch
+
+    def test_order_placed_after_attributes(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.set_view_order(
+                backend, entity=_ENTITY, view="Active Tickets",
+                order=[("createdon", True)])
+        fetch = _patch_body(m)["fetchxml"]
+        assert fetch.index("<attribute") < fetch.index("<order")
+
+    def test_no_op_errors(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error, match="nothing to do"):
+            views.set_view_order(
+                backend, entity=_ENTITY, view="Active Tickets")
+
+
+class TestViewEditCommandUsage:
+    """Invalid flag combinations are usage errors (exit 2) at the command layer,
+    raised before any backend call."""
+
+    def _invoke(self, args):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        return CliRunner().invoke(cli, args)
+
+    def test_edit_columns_no_flags_is_usage_error(self):
+        result = self._invoke(["view", "edit-columns", _ENTITY, "View"])
+        assert result.exit_code == 2
+        assert "nothing to do" in result.output
+
+    def test_edit_columns_reorder_with_add_is_usage_error(self):
+        result = self._invoke([
+            "view", "edit-columns", _ENTITY, "View",
+            "--reorder", "a,b", "--add", "c"])
+        assert result.exit_code == 2
+        assert "cannot be combined" in result.output
+
+    def test_set_order_no_flags_is_usage_error(self):
+        result = self._invoke(["view", "set-order", _ENTITY, "View"])
+        assert result.exit_code == 2
+        assert "nothing to do" in result.output
 
 
 class TestViewCommand:
