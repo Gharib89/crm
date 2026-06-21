@@ -516,12 +516,15 @@ def _norm_priv(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _clamp_depth(requested: str, supported: list[str]) -> str:
-    """Resolve the requested depth to one the privilege supports.
+    """Resolve the requested depth to a level the privilege actually supports.
 
-    Returns the requested depth when supported. Otherwise clamps down to the
-    highest supported level below it; if none is lower (e.g. a Global-only
-    customization privilege), returns the lowest supported level. Returns the
-    requested depth unchanged when the privilege advertises no levels.
+    The goal is to never send an unsupported depth (the server rejects it).
+    Returns the requested depth when supported; otherwise clamps *down* to the
+    highest supported level below it. When nothing lower exists — e.g. a
+    Global-only customization privilege requested at Basic — there is no lower
+    valid level, so the only correct resolution is *up* to the lowest (only)
+    supported level. Returns the requested depth unchanged when the privilege
+    advertises no levels at all (let the server decide).
     """
     if not supported:
         return requested
