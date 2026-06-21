@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.20.0 (2026-06-21)
+
+### Features
+
+- Author custom security roles — `security create-role` + `security set-role-privileges`
+  ([`3018c65`](https://github.com/Gharib89/crm/commit/3018c65e1cc849e02b16e12b602bab283f241bf1))
+
+
 ## v1.19.0 (2026-06-21)
 
 ### Bug Fixes
