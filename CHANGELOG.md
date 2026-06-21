@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.19.0 (2026-06-21)
+
+### Bug Fixes
+
+- Harden ribbon validate_rule_ids against invalid kind; clarify docs
+  ([#481](https://github.com/Gharib89/crm/pull/481),
+  [`6934f34`](https://github.com/Gharib89/crm/commit/6934f343f01a998213f78637b7e00b33bcf5c196))
+
+- Reject mis-cased Mscrm.* ribbon rule ids (case-insensitive prefix guard)
+  ([#481](https://github.com/Gharib89/crm/pull/481),
+  [`6934f34`](https://github.com/Gharib89/crm/commit/6934f343f01a998213f78637b7e00b33bcf5c196))
+
+### Documentation
+
+- Ribbon set-rules / add-custom-rule (how-to, skill, README)
+  ([#481](https://github.com/Gharib89/crm/pull/481),
+  [`6934f34`](https://github.com/Gharib89/crm/commit/6934f343f01a998213f78637b7e00b33bcf5c196))
+
+### Features
+
+- Ribbon set-rules / add-custom-rule (enable/display rules)
+  ([#481](https://github.com/Gharib89/crm/pull/481),
+  [`6934f34`](https://github.com/Gharib89/crm/commit/6934f343f01a998213f78637b7e00b33bcf5c196))
+
+### Testing
+
+- Assert ElementTree.find results non-None in ribbon rule tests (pyright)
+  ([#481](https://github.com/Gharib89/crm/pull/481),
+  [`6934f34`](https://github.com/Gharib89/crm/commit/6934f343f01a998213f78637b7e00b33bcf5c196))
+
+- Assert ribbon rule set by parsed value in e2e T3 (no drop/reorder)
+  ([#481](https://github.com/Gharib89/crm/pull/481),
+  [`6934f34`](https://github.com/Gharib89/crm/commit/6934f343f01a998213f78637b7e00b33bcf5c196))
+
+
 ## v1.18.0 (2026-06-21)
 
 ### Documentation
