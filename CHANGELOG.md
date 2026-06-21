@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.22.0 (2026-06-21)
+
+### Bug Fixes
+
+- Address review — usage-error for exclusive flags, cleaner JSON keys
+  ([#486](https://github.com/Gharib89/crm/pull/486),
+  [`f6d6fe2`](https://github.com/Gharib89/crm/commit/f6d6fe234b97fbc917372839ad599a5102948d44))
+
+- Uniform global node-id uniqueness + parent-aware sitemap T3
+  ([#486](https://github.com/Gharib89/crm/pull/486),
+  [`f6d6fe2`](https://github.com/Gharib89/crm/commit/f6d6fe234b97fbc917372839ad599a5102948d44))
+
+- Warn against chaining --no-publish sitemap edits; strip subarea flags
+  ([#486](https://github.com/Gharib89/crm/pull/486),
+  [`f6d6fe2`](https://github.com/Gharib89/crm/commit/f6d6fe234b97fbc917372839ad599a5102948d44))
+
+### Documentation
+
+- Sync sitemap live-edit verbs (README, how-to, skill) + bundle spec
+  ([#486](https://github.com/Gharib89/crm/pull/486),
+  [`f6d6fe2`](https://github.com/Gharib89/crm/commit/f6d6fe234b97fbc917372839ad599a5102948d44))
+
+### Features
+
+- Add sitemap live-edit verbs (add-area/group/subarea, remove-node)
+  ([#486](https://github.com/Gharib89/crm/pull/486),
+  [`f6d6fe2`](https://github.com/Gharib89/crm/commit/f6d6fe234b97fbc917372839ad599a5102948d44))
+
+- Sitemap live-edit verbs (add-area/group/subarea, remove-node) (B6)
+  ([#486](https://github.com/Gharib89/crm/pull/486),
+  [`f6d6fe2`](https://github.com/Gharib89/crm/commit/f6d6fe234b97fbc917372839ad599a5102948d44))
+
+### Refactoring
+
+- Unquote annotations + cover comment-out T3 in sitemap e2e
+  ([#486](https://github.com/Gharib89/crm/pull/486),
+  [`f6d6fe2`](https://github.com/Gharib89/crm/commit/f6d6fe234b97fbc917372839ad599a5102948d44))
+
+
 ## v1.21.0 (2026-06-21)
 
 ### Documentation
