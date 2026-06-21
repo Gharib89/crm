@@ -106,7 +106,7 @@ For "let the agent customize", prefer assigning the OOB `System Customizer` role
   "data": {
     "roleid": "<guid>",
     "mode": "add",
-    "depth": "global",
+    "depth": "Global",
     "privileges": [
       {"name": "prvReadAccount", "privilegeid": "<guid>", "depth": "Global"}
     ],

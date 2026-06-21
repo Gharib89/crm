@@ -107,8 +107,9 @@ crm --json security create-role "Agent Read-Only" --if-exists skip
 already exists in the same business unit. `--if-exists skip` returns the
 existing role's id instead, making the call idempotent.
 
-Pass `--dry-run` to preview the creation without writing. Returns
-`{roleid, name, businessunitid}`.
+A real run returns `{roleid, name, businessunitid}`. Pass `--dry-run` to
+preview the creation without writing — it returns a `{_dry_run, would_create}`
+preview instead (no role is created, so there is no `roleid`).
 
 ## Grant privileges to a security role
 
@@ -182,7 +183,7 @@ crm security set-role-privileges <roleid> \
   "data": {
     "roleid": "<guid>",
     "mode": "add",
-    "depth": "global",
+    "depth": "Global",
     "privileges": [
       {"name": "prvReadAccount", "privilegeid": "<guid>", "depth": "Global"}
     ],

@@ -453,9 +453,12 @@ def create_role(
         "name": name,
         "businessunitid@odata.bind": f"/businessunits({bu})",
     }
+    if backend.dry_run:
+        # Stable preview shape (mirrors themes/dashboard/charts cores) rather
+        # than leaking the backend's raw request echo.
+        return {"_dry_run": True,
+                "would_create": {"entity_set": _ROLES_SET, "body": payload}}
     result = entity_mod.create(backend, _ROLES_SET, payload)
-    if "_dry_run" in result:
-        return result
     return {
         "roleid": str(result.get("roleid", "")),
         "name": str(result.get("name", name)),
@@ -565,7 +568,8 @@ def _entity_privileges(backend: D365Backend, logical: str) -> list[dict[str, Any
 
     Raises :class:`D365Error` with a clean message when the entity is unknown.
     """
-    path = f"EntityDefinitions(LogicalName='{logical}')"
+    escaped = logical.replace("'", "''")
+    path = f"EntityDefinitions(LogicalName='{escaped}')"
     try:
         result = as_dict(backend.get(path, params={"$select": "Privileges"}))
     except D365Error as exc:
@@ -686,14 +690,6 @@ def set_role_privileges(
         raise D365Error("no privileges resolved for the given selectors; nothing to apply")
 
     action = _REPLACE_PRIVILEGES_ACTION if replace else _ADD_PRIVILEGES_ACTION
-    body = {
-        "Privileges": [
-            {"PrivilegeId": p["privilegeid"], "Depth": p["depth"]} for p in privileges
-        ]
-    }
-    path = f"{entity_mod.build_record_path(_ROLES_SET, role_id)}/{action}"
-    result = as_dict(backend.post(path, json_body=body))
-
     out: dict[str, Any] = {
         "roleid": role_id,
         "mode": "replace" if replace else "add",
@@ -702,8 +698,17 @@ def set_role_privileges(
         "count": len(privileges),
         "warnings": warnings,
     }
-    if "_dry_run" in result:
-        out["dry_run"] = result
-    else:
-        out["applied"] = True
+    if backend.dry_run:
+        # The resolved `privileges`/`count` above are the preview; add a stable
+        # `would_apply` marker rather than POSTing or echoing transport details.
+        out["would_apply"] = {"action": out["mode"], "count": len(privileges)}
+        return out
+    body = {
+        "Privileges": [
+            {"PrivilegeId": p["privilegeid"], "Depth": p["depth"]} for p in privileges
+        ]
+    }
+    path = f"{entity_mod.build_record_path(_ROLES_SET, role_id)}/{action}"
+    backend.post(path, json_body=body)
+    out["applied"] = True
     return out

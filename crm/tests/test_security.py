@@ -522,6 +522,16 @@ class TestCreateRole:
         assert result == {"roleid": _ROLE_ID, "name": "Dup",
                           "businessunitid": _BU_ID, "existed": True}
 
+    def test_dry_run_returns_would_create_without_post(self, dry_backend):
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for("WhoAmI"), json={"BusinessUnitId": _BU_ID})
+            m.get(dry_backend.url_for("roles"), json={"value": []})
+            result = sec.create_role(dry_backend, "Agent Read-Only")
+        assert result["_dry_run"] is True
+        assert result["would_create"]["entity_set"] == "roles"
+        assert result["would_create"]["body"]["name"] == "Agent Read-Only"
+        assert all(h.method != "POST" for h in m.request_history)
+
 
 # ── set_role_privileges ──────────────────────────────────────────────────────
 
@@ -677,6 +687,19 @@ class TestSetRolePrivileges:
                     backend, "Dup Role", access=["read"], entities=["account"],
                     depth="global",
                 )
+
+    def test_dry_run_returns_would_apply_without_post(self, dry_backend):
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            result = sec.set_role_privileges(
+                dry_backend, _ROLE_ID, access=["read"], entities=["account"],
+                depth="global",
+            )
+        assert result["count"] == 1
+        assert result["would_apply"] == {"action": "add", "count": 1}
+        assert "applied" not in result
+        assert all(h.method != "POST" for h in m.request_history)
 
     def test_depth_alias_organization_maps_to_global(self, backend):
         with requests_mock.Mocker() as m:
