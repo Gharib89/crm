@@ -1,4 +1,4 @@
-"""Live SiteMap navigation editors (add/remove Area, Group, SubArea).
+"""Live SiteMap navigation editors (add/move/remove Area, Group, SubArea).
 
 Complements ``app build-sitemap`` / ``app set-sitemap`` (which POST a whole new
 SiteMapXml): these verbs edit an *existing* sitemap in place over the

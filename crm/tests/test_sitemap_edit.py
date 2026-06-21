@@ -309,7 +309,7 @@ _MOVE_SEED = (
 
 def _order(parent: ET.Element, tag: str) -> list[str]:
     """Ordered Ids of ``parent``'s direct ``tag`` children."""
-    return [c.get("Id") for c in parent if c.tag == tag]
+    return [c.get("Id") or "" for c in parent if c.tag == tag]
 
 
 def _move_seeded(m: requests_mock.Mocker, backend, *, patch: bool = True) -> None:
@@ -332,6 +332,7 @@ class TestMoveNode:
             _move_seeded(m, backend)
             sm.move_node(backend, _SID, node_id="s1", after="s3")
             g1 = sm._find(_patched_root(m), "Group", "G1")
+        assert g1 is not None
         assert _order(g1, "SubArea") == ["s2", "s3", "s1"]
 
     def test_move_to_index_reorders_within_parent(self, backend):
@@ -339,6 +340,7 @@ class TestMoveNode:
             _move_seeded(m, backend)
             sm.move_node(backend, _SID, node_id="s1", index=2)
             g1 = sm._find(_patched_root(m), "Group", "G1")
+        assert g1 is not None
         assert _order(g1, "SubArea") == ["s2", "s3", "s1"]
 
     def test_move_to_index_zero(self, backend):
@@ -346,6 +348,7 @@ class TestMoveNode:
             _move_seeded(m, backend)
             sm.move_node(backend, _SID, node_id="s3", index=0)
             g1 = sm._find(_patched_root(m), "Group", "G1")
+        assert g1 is not None
         assert _order(g1, "SubArea") == ["s3", "s1", "s2"]
 
     def test_move_is_pure_permutation_attrs_untouched(self, backend):
@@ -353,7 +356,9 @@ class TestMoveNode:
             _move_seeded(m, backend)
             sm.move_node(backend, _SID, node_id="s1", index=2)
             g1 = sm._find(_patched_root(m), "Group", "G1")
+        assert g1 is not None
         moved = sm._find(g1, "SubArea", "s1")
+        assert moved is not None
         # only its position changed — its attributes are carried verbatim
         assert moved.get("Entity") == "account"
         assert moved.get("Title") == "Accounts"
@@ -412,6 +417,7 @@ class TestMoveNode:
             assert [r.method for r in m.request_history] == ["GET"]
         assert out["_dry_run"] is True and out["would_edit"] is True
         g1 = sm._find(ET.fromstring(out["sitemapxml"]), "Group", "G1")
+        assert g1 is not None
         assert _order(g1, "SubArea") == ["s2", "s3", "s1"]
 
     def test_publish_t3_verifies_new_position(self, backend):

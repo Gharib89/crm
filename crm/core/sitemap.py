@@ -472,13 +472,13 @@ def move_node(
             raise D365Error("cannot move the SiteMap root element.")
 
         if index is not None:
-            count = sum(1 for c in parent if c.tag in _NODE_TAGS)
+            count = sum(1 for c in parent if c.tag == tag)
             if not 0 <= index < count:
                 raise D365Error(
                     f"--index {index} is out of range for {tag} {nid!r}: the "
                     f"parent has {count} {tag} child(ren) (valid 0..{count - 1}).")
             parent.remove(target)
-            remaining = [c for c in parent if c.tag in _NODE_TAGS]
+            remaining = [c for c in parent if c.tag == tag]
             if index < len(remaining):
                 parent.insert(list(parent).index(remaining[index]), target)
             elif remaining:
@@ -507,8 +507,11 @@ def move_node(
             pos = list(parent).index(anchor)
             parent.insert(pos if flag == "before" else pos + 1, target)
 
-        expected = [c.get("Id") for c in parent
-                    if c.tag in _NODE_TAGS and c.get("Id")]
+        # Siblings of a node are always its own type — the SiteMap hierarchy is
+        # strict (SiteMap→Area→Group→SubArea), so a parent's direct children are
+        # homogeneous. Filtering by ``tag`` keeps the order check to same-type
+        # siblings, matching the move semantics.
+        expected = [c.get("Id") for c in parent if c.tag == tag and c.get("Id")]
         parent_tag, parent_id = parent.tag, parent.get("Id")
 
         def verify(rb: ET.Element) -> None:
@@ -518,8 +521,7 @@ def move_node(
                 raise D365Error(
                     f"read-back: parent {parent_tag} {parent_id!r} missing after "
                     "publish.")
-            order = [c.get("Id") for c in parent_rb
-                     if c.tag in _NODE_TAGS and c.get("Id")]
+            order = [c.get("Id") for c in parent_rb if c.tag == tag and c.get("Id")]
             if order != expected:
                 raise D365Error(
                     f"read-back: {tag} {nid!r} is not at the requested position "
