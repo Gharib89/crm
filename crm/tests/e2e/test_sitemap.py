@@ -129,6 +129,9 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
         assert deleted["deleted"] is True
 
 
+# Not @requires_cloud / @requires_onprem — localized <Titles>/<Descriptions>
+# editing is pure SiteMapXml surgery over the publish-gated RMW seam, identical
+# on both targets; CI runs it on each leg (union coverage).
 @covers("sitemap set-title", "sitemap set-description")
 @pytest.mark.slow
 def test_sitemap_set_localized_title_description(cli, unique):

@@ -563,6 +563,28 @@ class TestSetTitle:
             with pytest.raises(D365Error, match="must not be empty"):
                 sm.set_title(backend, _SID, node_id="HLP", titles=[(1033, "   ")])
 
+    @pytest.mark.parametrize("bad_lcid", [99, 999, 10000, 0])
+    def test_non_four_digit_lcid_rejected(self, backend, bad_lcid):
+        # Rejected up front (no live probe needed) — the spec requires a 4-digit
+        # locale ID; a clearer error than a downstream "not installed".
+        with pytest.raises(D365Error, match="4-digit locale ID"):
+            sm.set_title(backend, _SID, node_id="HLP", titles=[(bad_lcid, "x")])
+
+    def test_titles_splice_ahead_of_commented_out_child(self, backend):
+        # A node whose only child is a --comment-out soft-delete: a new <Titles>
+        # must still land first and the order check must ignore the comment.
+        seed = (
+            '<SiteMap><Area Id="X"><Group Id="G">'
+            '<!--<SubArea Id="old" Entity="account" />--></Group></Area></SiteMap>')
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": seed})
+            m.patch(_url(backend), status_code=204)
+            sm.set_title(backend, _SID, node_id="G", titles=[(1033, "Grp")])
+            grp = sm._find(_patched_root(m), "Group", "G")
+        assert grp is not None and grp[0].tag == "Titles"
+        assert sm._child_order_ok(grp)
+
     def test_no_entries_rejected(self, backend):
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)

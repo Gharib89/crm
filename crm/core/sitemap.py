@@ -557,20 +557,35 @@ def _container_index(node: ET.Element, container_tag: str) -> int:
     Returns the first position whose existing child ranks at or after the new
     container, so ``Titles`` lands first and ``Descriptions`` lands right after an
     existing ``Titles`` — both ahead of the node's child nodes, honoring the
-    strict child sequence. Comments/PIs (non-string tags) are skipped."""
+    strict child sequence. A comment node (e.g. a ``--comment-out`` soft-delete)
+    has a non-string tag that matches no rank key, so it falls to the child-node
+    rank — a container is spliced ahead of it, which is schema-correct."""
     rank = _CONTAINER_RANK[container_tag]
     for i, child in enumerate(node):
-        if not isinstance(child.tag, str):
-            continue
         if _CONTAINER_RANK.get(child.tag, 2) >= rank:
             return i
     return len(node)
 
 
+# Element children that follow the containers in the strict sequence.
+_CHILD_NODE_TAGS = frozenset((*_NODE_TAGS, "Privilege"))
+
+
 def _child_order_ok(node: ET.Element) -> bool:
-    """True if ``node``'s element children are in schema order (Titles →
-    Descriptions → child nodes)."""
-    ranks = [_CONTAINER_RANK.get(c.tag, 2) for c in node if isinstance(c.tag, str)]
+    """True if ``node``'s child *elements* are in schema order (Titles →
+    Descriptions → child nodes).
+
+    Only the schema's known element tags are ranked; comment / PI nodes (whose
+    tag is not one of these strings) are ignored, so a ``--comment-out``
+    soft-deleted child never trips the order check wherever it sits."""
+    ranks: list[int] = []
+    for child in node:
+        if child.tag == "Titles":
+            ranks.append(0)
+        elif child.tag == "Descriptions":
+            ranks.append(1)
+        elif child.tag in _CHILD_NODE_TAGS:
+            ranks.append(2)
     return ranks == sorted(ranks)
 
 
@@ -591,6 +606,9 @@ def _normalize_entries(
     seen: set[int] = set()
     norm: list[tuple[int, str]] = []
     for lcid, text in entries:
+        if not 1000 <= lcid <= 9999:
+            raise D365Error(
+                f"--lcid {lcid} must be a 4-digit locale ID (e.g. 1033).")
         if not (text or "").strip():
             raise D365Error(f"{item_tag} for LCID {lcid} must not be empty.")
         if lcid in seen:
