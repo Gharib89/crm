@@ -140,3 +140,95 @@ new sort). `--clear-order` removes all sorting and is normally used on its own.
 
 The same **ambiguous-name**, **managed-layer**, and **publish-then-read-back**
 notes from `edit-columns` apply here too.
+
+## Add FetchXML filter conditions (`add-filter`)
+
+`add-filter` appends one or more `<condition>` elements to the entity-level
+`<filter>` in the view's FetchXML — no manual XML editing required. If the
+view has no entity-level filter yet, one is created with the type you specify
+(`--type and` by default). Existing conditions and any `<link-entity>` filters
+are never touched.
+
+```bash
+# Add a single condition: active tickets only
+crm --json view add-filter cwx_ticket "Active Tickets" \
+  --condition "statecode eq 0"
+
+# Add two conditions at once (both go into the same and-filter)
+crm --json view add-filter cwx_ticket "Active Tickets" \
+  --condition "cwx_priority eq 1" \
+  --condition "cwx_severity ne 3"
+
+# Add an in-list condition (multiple values)
+crm --json view add-filter cwx_ticket "Active Tickets" \
+  --condition "cwx_priority in 1 2 3"
+
+# Add a between condition (exactly two values)
+crm --json view add-filter cwx_ticket "Active Tickets" \
+  --condition "createdon between 2024-01-01 2024-12-31"
+
+# Add a no-value condition (null operators take no value)
+crm --json view add-filter cwx_ticket "Active Tickets" \
+  --condition "cwx_resolvedon null"
+
+# Use an or-filter instead of the default and-filter
+crm --json view add-filter cwx_ticket "Active Tickets" \
+  --condition "cwx_priority eq 1" \
+  --condition "cwx_priority eq 2" \
+  --type or
+```
+
+**Operator format.** `--condition` is `'<attribute> <operator> [value ...]'`
+whitespace-split. The operator must be a FetchXML condition operator (the
+fetch.xsd `ConditionOperator` enum — see the
+[FetchXML operators reference](https://learn.microsoft.com/power-apps/developer/data-platform/fetchxml/reference/operators));
+an unknown operator is rejected.
+
+**Value cardinality must match the operator:**
+
+| Operator family | Example operators | Values |
+|---|---|---|
+| No-value | `null`, `not-null`, `today`, `this-month`, `eq-userid` | none |
+| Range | `between`, `not-between` | exactly two |
+| List | `in`, `not-in`, `contain-values`, `not-contain-values` | one or more (emitted as child `<value>` elements) |
+| Single-value | `eq`, `ne`, `like`, `gt`, `on-or-after`, `last-x-days`, … | one (remaining tokens joined, so values may contain spaces: `name eq Contoso Ltd`) |
+
+**Attribute validation.** `add-filter` checks that the condition attribute
+exists on the entity before writing. An unknown attribute is rejected.
+
+The same **ambiguous-name**, **managed-layer**, and **publish-then-read-back**
+notes from `edit-columns` apply here too.
+
+## Remove FetchXML filter conditions (`remove-filter`)
+
+`remove-filter` deletes one or more `<condition>` elements from the
+entity-level `<filter>`. Link-entity filters are never searched.
+
+```bash
+# Remove by attribute + operator (unambiguous)
+crm --json view remove-filter cwx_ticket "Active Tickets" \
+  --condition "statecode eq 0"
+
+# Add value(s) to disambiguate when multiple conditions share the same
+# attribute and operator
+crm --json view remove-filter cwx_ticket "Active Tickets" \
+  --condition "cwx_priority in 1 2 3"
+
+# Remove a filter condition even if its attribute no longer exists
+# (useful for cleaning up filters on deleted columns)
+crm --json view remove-filter cwx_ticket "Active Tickets" \
+  --condition "cwx_deleted_field eq 1"
+```
+
+**Match semantics.** A condition is matched on attribute + operator; if you
+supply values, they must also match (to disambiguate when several conditions
+share the same attribute and operator). No match, or more than one match,
+is an error — add values to disambiguate. The attribute does **not** need to
+still exist on the entity, so filters on since-deleted columns can be cleaned
+up.
+
+**Empty filter pruning.** If removing a condition leaves the `<filter>`
+element empty, it is pruned from the FetchXML entirely.
+
+The same **ambiguous-name**, **managed-layer**, and **publish-then-read-back**
+notes from `edit-columns` apply here too.

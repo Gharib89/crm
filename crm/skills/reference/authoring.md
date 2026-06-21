@@ -165,6 +165,49 @@ and `<link-entity>` elements are left intact. Order attributes are validated aga
 live metadata before any write. Same ambiguous-name, managed-layer, and
 publish-then-read-back notes as `edit-columns`.
 
+### Add FetchXML filter conditions — `view add-filter`
+
+```bash
+crm --json view add-filter cwx_ticket "Active Tickets" \
+    --condition "statecode eq 0"
+crm --json view add-filter cwx_ticket "Active Tickets" \
+    --condition "cwx_priority in 1 2 3" --condition "cwx_severity ne 3"
+crm --json view add-filter cwx_ticket "Active Tickets" \
+    --condition "cwx_resolvedon null"
+```
+
+Conditions are appended to the entity-level `<filter>` (created if absent).
+`<link-entity>` filters and existing conditions are never touched. The condition
+attribute is validated against live metadata before any write.
+
+**Operator cardinality** — the non-obvious part: no-value operators (`null`,
+`not-null`, `today`, `eq-userid`, …) take no value tokens;
+`between`/`not-between` take exactly two; `in`/`not-in`/`contain-values`/
+`not-contain-values` take a list (emitted as child `<value>` elements);
+all other operators take a single value (remaining tokens are joined, so
+`name eq Contoso Ltd` works). Wrong cardinality is rejected before any write.
+
+Same ambiguous-name, managed-layer, and publish-then-read-back notes as
+`edit-columns`.
+
+### Remove FetchXML filter conditions — `view remove-filter`
+
+```bash
+crm --json view remove-filter cwx_ticket "Active Tickets" \
+    --condition "statecode eq 0"
+# disambiguate when attribute+operator match multiple conditions:
+crm --json view remove-filter cwx_ticket "Active Tickets" \
+    --condition "cwx_priority in 1 2 3"
+```
+
+Matched on attribute + operator; supply values to disambiguate. No match or
+multiple matches → error. The attribute need not still exist on the entity (so
+filters on deleted columns can be cleaned up). An empty `<filter>` after
+removal is pruned. Link-entity filters are never searched.
+
+Same ambiguous-name, managed-layer, and publish-then-read-back notes as
+`edit-columns`.
+
 ## Stage many changes, then publish once
 
 By default each create/update metadata command auto-publishes. The global

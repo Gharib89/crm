@@ -551,6 +551,340 @@ def edit_view_columns(
         read_back=_verify if publish else None)
 
 
+# --- View FetchXML filter editors (add-filter / remove-filter) ------------------
+#
+# Edit a saved query's FetchXML <condition> filters in place. A condition's
+# operator must be one of the fetch.xsd ConditionOperator enum values, and the
+# value cardinality must match the operator: `null`/`today` take none, `between`
+# takes two, `in` takes a list (child <value> elements), everything else takes a
+# single value. The operator/cardinality tables below are transcribed from the
+# FetchXML "condition operator values" reference
+# (learn.microsoft.com/power-apps/developer/data-platform/fetchxml/reference/operators,
+# retrieved 2026-06). Some operators are version-gated server-side (e.g. on v9.1);
+# we validate the enum + cardinality and leave any further rejection to the
+# backend. link-entity filters and existing sibling conditions are never touched.
+
+# Operators that take no value (neither a value attribute nor child elements):
+# null/not-null, the relative-date operators, and the current-user/business
+# context operators.
+_NO_VALUE_OPS = frozenset({
+    "null", "not-null",
+    "today", "tomorrow", "yesterday",
+    "last-seven-days", "next-seven-days",
+    "last-week", "this-week", "next-week",
+    "last-month", "this-month", "next-month",
+    "last-year", "this-year", "next-year",
+    "last-fiscal-period", "this-fiscal-period", "next-fiscal-period",
+    "last-fiscal-year", "this-fiscal-year", "next-fiscal-year",
+    "eq-userid", "ne-userid", "eq-businessid", "ne-businessid",
+    "eq-userlanguage",
+    "eq-useroruserhierarchy", "eq-useroruserhierarchyandteams",
+    "eq-useroruserteams", "eq-userteams",
+})
+
+# Operators requiring exactly two values (emitted as child <value> elements).
+_TWO_VALUE_OPS = frozenset({
+    "between", "not-between",
+    "in-fiscal-period-and-year",
+    "in-or-after-fiscal-period-and-year", "in-or-before-fiscal-period-and-year",
+})
+
+# Operators taking a list of values (one or more child <value> elements).
+_MULTI_VALUE_OPS = frozenset({
+    "in", "not-in", "contain-values", "not-contain-values",
+})
+
+# Single-value operators (value carried in the `value` attribute) — everything
+# below plus any operator not in the three sets above.
+_SINGLE_VALUE_OPS = frozenset({
+    "eq", "ne", "neq", "lt", "le", "gt", "ge",
+    "like", "not-like", "begins-with", "not-begin-with",
+    "ends-with", "not-end-with",
+    "on", "on-or-after", "on-or-before",
+    "above", "eq-or-above", "under", "eq-or-under", "not-under",
+    "in-fiscal-period", "in-fiscal-year",
+    "last-x-days", "last-x-weeks", "last-x-months", "last-x-years",
+    "last-x-hours", "last-x-fiscal-periods", "last-x-fiscal-years",
+    "next-x-days", "next-x-weeks", "next-x-months", "next-x-years",
+    "next-x-hours", "next-x-fiscal-periods", "next-x-fiscal-years",
+    "olderthan-x-days", "olderthan-x-weeks", "olderthan-x-months",
+    "olderthan-x-years", "olderthan-x-hours", "olderthan-x-minutes",
+})
+
+# The full fetch.xsd ConditionOperator enum — membership validation catches typos.
+_FETCH_OPERATORS = (
+    _NO_VALUE_OPS | _TWO_VALUE_OPS | _MULTI_VALUE_OPS | _SINGLE_VALUE_OPS)
+
+
+def _validate_operator(op: str) -> None:
+    if op not in _FETCH_OPERATORS:
+        raise D365Error(
+            f"unknown FetchXML operator {op!r}; "
+            "see the fetch.xsd condition-operator enum.")
+
+
+def _coerce_values(op: str, tokens: "list[str]") -> "list[str]":
+    """Interpret the raw value tokens for an operator, enforcing its cardinality.
+
+    A single-value operator joins its tokens into one value (so a value may
+    contain spaces); multi/two-value operators keep each whitespace token as a
+    separate value; no-value operators must be given none.
+    """
+    if op in _NO_VALUE_OPS:
+        if tokens:
+            raise D365Error(f"operator {op!r} takes no value; got {tokens}.")
+        return []
+    if op in _TWO_VALUE_OPS:
+        if len(tokens) != 2:
+            raise D365Error(
+                f"operator {op!r} requires exactly two values; got {len(tokens)}.")
+        return list(tokens)
+    if op in _MULTI_VALUE_OPS:
+        if not tokens:
+            raise D365Error(f"operator {op!r} requires at least one value.")
+        return list(tokens)
+    # single-value (default): join so a value with spaces survives the split.
+    if not tokens:
+        raise D365Error(f"operator {op!r} requires a value.")
+    return [" ".join(tokens)]
+
+
+def _build_condition(
+    attr: str, op: str, values: "list[str]"
+) -> "ElementTree.Element":
+    """Build a `<condition>` element from a validated (attr, op, values) spec."""
+    cond = ElementTree.Element("condition")
+    cond.set("attribute", attr)
+    cond.set("operator", op)
+    if not values:
+        return cond
+    if op in _MULTI_VALUE_OPS or op in _TWO_VALUE_OPS:
+        for v in values:
+            ve = ElementTree.SubElement(cond, "value")
+            ve.text = v
+    else:
+        cond.set("value", values[0])
+    return cond
+
+
+def _condition_values(cond: "ElementTree.Element") -> "list[str]":
+    """The values on a `<condition>` — its `value` attribute or child elements."""
+    v = cond.get("value")
+    if v is not None:
+        return [v]
+    return [(ve.text or "") for ve in cond.findall("value")]
+
+
+def _entity_filter_of_type(
+    entity: "ElementTree.Element", filter_type: str
+) -> "ElementTree.Element | None":
+    """The entity's direct-child `<filter>` of the given type (default 'and')."""
+    for f in entity.findall("filter"):
+        if (f.get("type") or "and") == filter_type:
+            return f
+    return None
+
+
+def _filter_insert_index(entity: "ElementTree.Element") -> int:
+    """Index to insert a new `<filter>`: after the last attribute/order/filter,
+    which keeps it before any `<link-entity>` (link-entities follow filters)."""
+    idx = 0
+    for i, child in enumerate(list(entity)):
+        if child.tag in ("attribute", "all-attributes", "order", "filter"):
+            idx = i + 1
+    return idx
+
+
+def _iter_entity_conditions(
+    entity: "ElementTree.Element",
+) -> "list[tuple[ElementTree.Element, ElementTree.Element, ElementTree.Element]]":
+    """All `(parent, filter, condition)` reachable from the entity without
+    descending into `<link-entity>` — so link-entity filters stay untouched.
+
+    Recurses through nested `<filter>` elements. ``parent`` is the filter's own
+    parent element (needed to prune a filter left empty by a removal).
+    """
+    found: "list[tuple[ElementTree.Element, ElementTree.Element, ElementTree.Element]]" = []
+
+    def walk(el: "ElementTree.Element") -> None:
+        for child in list(el):
+            if child.tag == "link-entity":
+                continue
+            if child.tag == "filter":
+                for cond in child.findall("condition"):
+                    found.append((el, child, cond))
+                walk(child)
+
+    walk(entity)
+    return found
+
+
+def add_view_filter(
+    backend: D365Backend,
+    *,
+    entity: str,
+    view: str,
+    query_type: str = "public",
+    conditions: "list[tuple[str, str, list[str]]]",
+    filter_type: str = "and",
+    publish: bool = False,
+    solution: "str | None" = None,
+) -> dict[str, Any]:
+    """Add FetchXML `<condition>` filters to an existing view, in place.
+
+    Each ``conditions`` entry is ``(attribute, operator, value_tokens)``. The
+    attribute is validated to exist, the operator against the fetch.xsd enum, and
+    the token count against the operator's cardinality. New conditions are
+    appended to the entity-level ``<filter type=filter_type>`` (created if absent);
+    ``filter_type`` is ``and`` or ``or``. Existing conditions and link-entity
+    filters are left intact.
+    """
+    if not conditions:
+        raise D365Error("nothing to do: pass at least one --condition.")
+    if filter_type not in ("and", "or"):
+        raise D365Error(f"filter type must be 'and' or 'or'; got {filter_type!r}.")
+
+    row = _resolve_editable_view(backend, entity=entity, view=view,
+                                 query_type=query_type)
+    sqid = row.get("savedqueryid")
+    fetchxml = row.get("fetchxml") or ""
+    if not fetchxml:
+        raise D365Error(f"view {view!r} has no fetchxml; cannot add a filter.")
+    fetch_root = parse_xml(fetchxml, label="fetchxml")
+    fent = _fetch_entity(fetch_root)
+
+    added: list[dict[str, Any]] = []
+    for attr, op, tokens in conditions:
+        _validate_operator(op)
+        attribute_info_or_raise(backend, entity, attr)
+        values = _coerce_values(op, tokens)
+        target = _entity_filter_of_type(fent, filter_type)
+        if target is None:
+            target = ElementTree.Element("filter")
+            target.set("type", filter_type)
+            fent.insert(_filter_insert_index(fent), target)
+        target.append(_build_condition(attr, op, values))
+        added.append({"attribute": attr, "operator": op, "values": values})
+
+    result: dict[str, Any] = {
+        "savedqueryid": sqid, "name": row.get("name", ""),
+        "entity": entity, "action": "add-filter",
+        "filter_type": filter_type, "conditions": added,
+    }
+
+    def _verify(cols: dict[str, str]) -> None:
+        fe = _fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
+        present = _iter_entity_conditions(fe)
+        for spec in added:
+            if not any(
+                c.get("attribute") == spec["attribute"]
+                and c.get("operator") == spec["operator"]
+                and _condition_values(c) == spec["values"]
+                for _p, _f, c in present
+            ):
+                raise D365Error(
+                    "read-back: condition "
+                    f"{spec['attribute']} {spec['operator']} did not land.")
+
+    return commit_xml_patches(
+        backend, entity_set="savedqueries", record_id=str(sqid),
+        columns={"fetchxml": serialize_xml(fetch_root)},
+        result=result, dry_run_flag="would_update",
+        publish=publish, solution=solution,
+        read_back=_verify if publish else None)
+
+
+def remove_view_filter(
+    backend: D365Backend,
+    *,
+    entity: str,
+    view: str,
+    query_type: str = "public",
+    conditions: "list[tuple[str, str, list[str]]]",
+    publish: bool = False,
+    solution: "str | None" = None,
+) -> dict[str, Any]:
+    """Remove FetchXML `<condition>` filters from an existing view, in place.
+
+    Each ``conditions`` entry is ``(attribute, operator, value_tokens)``; a
+    condition matches on attribute + operator, and on its values too when value
+    tokens are given (use them to disambiguate). A spec matching no condition, or
+    more than one, is an error (add a value to disambiguate). A filter left with
+    no conditions or nested filters is removed. link-entity filters are never
+    searched, and the attribute is not required to still exist (so a filter on a
+    deleted column can be cleaned up).
+    """
+    if not conditions:
+        raise D365Error("nothing to do: pass at least one --condition.")
+
+    row = _resolve_editable_view(backend, entity=entity, view=view,
+                                 query_type=query_type)
+    sqid = row.get("savedqueryid")
+    fetchxml = row.get("fetchxml") or ""
+    if not fetchxml:
+        raise D365Error(f"view {view!r} has no fetchxml; cannot remove a filter.")
+    fetch_root = parse_xml(fetchxml, label="fetchxml")
+    fent = _fetch_entity(fetch_root)
+
+    candidates = _iter_entity_conditions(fent)
+    removed: list[dict[str, Any]] = []
+    touched_filters: "list[tuple[ElementTree.Element, ElementTree.Element]]" = []
+    for attr, op, tokens in conditions:
+        _validate_operator(op)
+        want_values = _coerce_values(op, tokens) if tokens else None
+        matches = [
+            (parent, filt, cond)
+            for parent, filt, cond in candidates
+            if cond.get("attribute") == attr and cond.get("operator") == op
+            and (want_values is None or _condition_values(cond) == want_values)
+        ]
+        if not matches:
+            raise D365Error(
+                f"no condition matches {attr} {op}"
+                + (f" {' '.join(tokens)}" if tokens else "") + ".",
+                code="NotFound")
+        if len(matches) > 1:
+            raise D365Error(
+                f"{len(matches)} conditions match {attr} {op}; "
+                "specify the value to disambiguate.", code="Ambiguous")
+        parent, filt, cond = matches[0]
+        filt.remove(cond)
+        touched_filters.append((parent, filt))
+        removed.append({"attribute": attr, "operator": op,
+                        "values": want_values or []})
+
+    # Prune any filter our removal left with no conditions and no nested filters.
+    for parent, filt in touched_filters:
+        if not filt.findall("condition") and not filt.findall("filter"):
+            parent.remove(filt)
+
+    result: dict[str, Any] = {
+        "savedqueryid": sqid, "name": row.get("name", ""),
+        "entity": entity, "action": "remove-filter", "conditions": removed,
+    }
+
+    def _verify(cols: dict[str, str]) -> None:
+        fe = _fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
+        present = _iter_entity_conditions(fe)
+        for spec in removed:
+            if any(
+                c.get("attribute") == spec["attribute"]
+                and c.get("operator") == spec["operator"]
+                and (not spec["values"] or _condition_values(c) == spec["values"])
+                for _p, _f, c in present
+            ):
+                raise D365Error(
+                    "read-back: condition "
+                    f"{spec['attribute']} {spec['operator']} is still present.")
+
+    return commit_xml_patches(
+        backend, entity_set="savedqueries", record_id=str(sqid),
+        columns={"fetchxml": serialize_xml(fetch_root)},
+        result=result, dry_run_flag="would_update",
+        publish=publish, solution=solution,
+        read_back=_verify if publish else None)
+
+
 def set_view_order(
     backend: D365Backend,
     *,
