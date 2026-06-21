@@ -27,10 +27,14 @@ _DATA_XML = (
     '<measurecollection><measure alias="aggregate_column" /></measurecollection>'
     '</category></categorycollection></datadefinition>'
 )
+# The series must bind to a named chart area (Series ChartArea="…" ↔ ChartArea
+# Name="…"); Dataverse online rejects an unbound area with "The number of chart
+# areas must be equal to the number of categories" (on-prem v9.x is laxer).
 _PRES_XML = (
-    '<Chart><Series><Series ChartType="Doughnut">'
+    '<Chart><Series><Series ChartType="Doughnut" ChartArea="Default">'
     '<SmartLabelStyle Enabled="True" /><Points /></Series></Series>'
-    '<ChartAreas><ChartArea><AxisY /><AxisX /></ChartArea></ChartAreas></Chart>'
+    '<ChartAreas><ChartArea Name="Default"><AxisY /><AxisX /></ChartArea>'
+    '</ChartAreas></Chart>'
 )
 
 
@@ -139,3 +143,85 @@ def test_chart_user_lifecycle(cli, tmp_path, unique):
         deleted = cli(["--json", "chart", "delete", chart_id, "--user"])
         assert deleted.returncode == 0, deleted.stderr
         assert json.loads(deleted.stdout)["data"]["deleted"] is True
+
+
+# ── chart editors: update / set-fetch / add-series / remove-series / set-groupby ─
+
+# A replacement <fetch> for set-fetch: same aliases (so the categorycollection
+# still couples), grouped by gendercode instead of preferredcontactmethodcode.
+_FETCH_XML = (
+    '<fetch mapping="logical" aggregate="true"><entity name="contact">'
+    '<attribute name="gendercode" groupby="true" alias="groupby_column" />'
+    '<attribute name="fullname" aggregate="count" alias="aggregate_column" />'
+    '</entity></fetch>'
+)
+
+
+@covers("chart update", "chart set-fetch", "chart add-series",
+        "chart remove-series", "chart set-groupby")
+@pytest.mark.slow
+def test_chart_editor_lifecycle(cli, tmp_path, unique):
+    """Exercise every chart editor on a freshly-created USER chart, then delete.
+
+    Editors run against a userqueryvisualization (--user): a user chart is not
+    part of the published customization layer, so each edit lands immediately and
+    is verified by reading the chart back — without an org-wide PublishAllXml on
+    a shared org. (A system-chart edit only reflects on GET after publish, which
+    is why the published + T3 read-back path is covered by the offline unit
+    tests rather than here.)
+    """
+    name = f"E2E Edit Chart {unique}"
+    dd, pd = _write_xml(tmp_path)
+    created = cli([
+        "--json", "chart", "create", "contact", "--name", name,
+        "--data-description", dd, "--presentation-description", pd,
+        "--user", "--no-publish"])
+    assert created.returncode == 0, (
+        f"chart create failed:\n{created.stderr}\nstdout: {created.stdout}")
+    chart_id = json.loads(created.stdout)["data"]["userqueryvisualizationid"]
+    assert chart_id
+
+    def _get():
+        got = cli(["--json", "chart", "get", chart_id, "--user"])
+        assert got.returncode == 0, got.stderr
+        return json.loads(got.stdout)["data"]
+
+    try:
+        # update: rename + change the chart type
+        upd = cli(["--json", "chart", "update", chart_id,
+                   "--name", f"{name} v2", "--type", "Bar", "--user", "--no-publish"])
+        assert upd.returncode == 0, f"update failed:\n{upd.stderr}\n{upd.stdout}"
+        data = _get()
+        assert data["name"] == f"{name} v2", data
+        assert 'ChartType="Bar"' in data["presentationdescription"], data
+
+        # add-series: a second count measure (1 category, 2 series ≤ cap)
+        add = cli(["--json", "chart", "add-series", chart_id,
+                   "--column", "telephone1", "--aggregate", "count",
+                   "--alias", "series2", "--user", "--no-publish"])
+        assert add.returncode == 0, f"add-series failed:\n{add.stderr}\n{add.stdout}"
+        assert 'alias="series2"' in _get()["datadescription"]
+
+        # remove-series: drop the one just added
+        rm = cli(["--json", "chart", "remove-series", chart_id,
+                  "--alias", "series2", "--user", "--no-publish"])
+        assert rm.returncode == 0, f"remove-series failed:\n{rm.stderr}\n{rm.stdout}"
+        assert "series2" not in _get()["datadescription"]
+
+        # set-groupby: regroup by a different column
+        gb = cli(["--json", "chart", "set-groupby", chart_id,
+                  "--column", "gendercode", "--user", "--no-publish"])
+        assert gb.returncode == 0, f"set-groupby failed:\n{gb.stderr}\n{gb.stdout}"
+        assert 'name="gendercode"' in _get()["datadescription"]
+
+        # set-fetch: swap the inner <fetch> wholesale
+        fx = tmp_path / "fetch.xml"
+        fx.write_text(_FETCH_XML, encoding="utf-8")
+        sf = cli(["--json", "chart", "set-fetch", chart_id,
+                  "--fetch", str(fx), "--user", "--no-publish"])
+        assert sf.returncode == 0, f"set-fetch failed:\n{sf.stderr}\n{sf.stdout}"
+        data = _get()
+        assert '<category alias="groupby_column">' in data["datadescription"], data
+    finally:
+        deleted = cli(["--json", "chart", "delete", chart_id, "--user"])
+        assert deleted.returncode == 0, deleted.stderr

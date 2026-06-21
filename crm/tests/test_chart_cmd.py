@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import requests_mock as rm_module
 
@@ -176,3 +177,147 @@ class TestChartCreate:
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
         assert env["data"]["would_create"]["entity_set"] == "savedqueryvisualizations"
+
+
+_EDIT_DATA = (
+    '<datadefinition><fetchcollection>'
+    '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
+    '<attribute name="new_priority" groupby="true" alias="groupby_column" />'
+    '<attribute name="new_projectid" aggregate="count" alias="aggregate_column" />'
+    '</entity></fetch></fetchcollection>'
+    '<categorycollection><category alias="groupby_column">'
+    '<measurecollection><measure alias="aggregate_column" /></measurecollection>'
+    '</category></categorycollection></datadefinition>'
+)
+_EDIT_PRES = ('<Chart><Series><Series ChartType="Column" /></Series>'
+              '<ChartAreas><ChartArea /></ChartAreas></Chart>')
+_EDIT_CHART = {
+    "savedqueryvisualizationid": _CHART["savedqueryvisualizationid"],
+    "name": "Projects by Priority",
+    "primaryentitytypecode": "new_project",
+    "datadescription": _EDIT_DATA,
+    "presentationdescription": _EDIT_PRES,
+    "description": None,
+    "isdefault": False,
+}
+_EDIT_ID = _EDIT_CHART["savedqueryvisualizationid"]
+
+
+def _edit_mocks(m, backend):
+    """Register GET chart + GET metadata + PATCH for an editor command run."""
+    url = backend.url_for(f"savedqueryvisualizations({_EDIT_ID})")
+    m.get(url, json=_EDIT_CHART)
+    m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Money"})
+    m.patch(url, status_code=204)
+
+
+class TestChartUpdateCmd:
+    def test_update_name_and_type(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            _edit_mocks(m, backend)
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "update", _EDIT_ID,
+                "--name", "Renamed", "--type", "Bar", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert body["name"] == "Renamed"
+        assert 'ChartType="Bar"' in body["presentationdescription"]
+
+    def test_update_data_from_file(self, backend, monkeypatch, tmp_path):
+        _use_backend(monkeypatch, backend)
+        dd = tmp_path / "data.xml"
+        dd.write_text(_EDIT_DATA, encoding="utf-8")
+        with rm_module.Mocker() as m:
+            _edit_mocks(m, backend)
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "update", _EDIT_ID,
+                "--data-description", str(dd), "--no-publish"])
+        assert result.exit_code == 0, result.output
+        assert m.last_request.json()["datadescription"] == _EDIT_DATA
+
+
+class TestChartSetFetchCmd:
+    def test_set_fetch_replaces_inner_fetch(self, backend, monkeypatch, tmp_path):
+        _use_backend(monkeypatch, backend)
+        fetch = tmp_path / "fetch.xml"
+        fetch.write_text(
+            '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
+            '<attribute name="new_stage" groupby="true" alias="groupby_column" />'
+            '<attribute name="new_projectid" aggregate="count" alias="aggregate_column" />'
+            '</entity></fetch>', encoding="utf-8")
+        with rm_module.Mocker() as m:
+            _edit_mocks(m, backend)
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "set-fetch", _EDIT_ID,
+                "--fetch", str(fetch), "--no-publish"])
+        assert result.exit_code == 0, result.output
+        assert 'name="new_stage"' in m.last_request.json()["datadescription"]
+
+
+class TestChartSeriesCmd:
+    def test_add_series(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            _edit_mocks(m, backend)
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "add-series", _EDIT_ID,
+                "--column", "new_budget", "--aggregate", "sum",
+                "--alias", "series2", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        assert 'alias="series2"' in m.last_request.json()["datadescription"]
+
+    def test_remove_series_requires_known_alias(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            _edit_mocks(m, backend)
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "remove-series", _EDIT_ID,
+                "--alias", "ghost", "--no-publish"])
+        assert result.exit_code != 0
+        assert "ghost" in result.output.lower()
+
+
+class TestChartSetGroupbyCmd:
+    def test_set_groupby_with_dategrouping(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        url = backend.url_for(f"savedqueryvisualizations({_EDIT_ID})")
+        with rm_module.Mocker() as m:
+            m.get(url, json=_EDIT_CHART)
+            m.patch(url, status_code=204)
+            # --dategrouping requires a date column
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "DateTime"})
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "set-groupby", _EDIT_ID,
+                "--column", "createdon", "--dategrouping", "month", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        body = m.last_request.json()
+        assert 'name="createdon"' in body["datadescription"]
+        assert 'dategrouping="month"' in body["datadescription"]
+
+    def test_set_groupby_dategrouping_rejects_non_date_column(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        url = backend.url_for(f"savedqueryvisualizations({_EDIT_ID})")
+        with rm_module.Mocker() as m:
+            m.get(url, json=_EDIT_CHART)
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "set-groupby", _EDIT_ID,
+                "--column", "new_priority", "--dategrouping", "month", "--no-publish"])
+        assert result.exit_code != 0
+        assert "date column" in result.output.lower()
+
+    def test_set_groupby_dry_run_previews(self, dry_backend, monkeypatch):
+        _use_backend(monkeypatch, dry_backend)
+        with rm_module.Mocker() as m:
+            # get_chart still reads live under dry-run (reads-execute); metadata too
+            m.get(dry_backend.url_for(f"savedqueryvisualizations({_EDIT_ID})"),
+                  json=_EDIT_CHART)
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "set-groupby", _EDIT_ID,
+                "--column", "new_priority", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["_dry_run"] is True
+        assert env["data"]["would_update"] is True

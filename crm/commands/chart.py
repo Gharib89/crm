@@ -159,3 +159,182 @@ def chart_create(
         )
     _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
+
+
+_user_option = click.option(
+    "--user", "user_owned", is_flag=True,
+    help="Edit a user chart (userqueryvisualization) instead of a system chart. "
+         "User charts are never published.")
+
+
+@chart_group.command("update")
+@click.argument("chart_id")
+@click.option("--data-description", "data_description_file",
+              type=click.Path(exists=True, dir_okay=False, readable=True),
+              help="Replace the datadescription XML from this file.")
+@click.option("--presentation-description", "presentation_description_file",
+              type=click.Path(exists=True, dir_okay=False, readable=True),
+              help="Replace the presentationdescription XML from this file.")
+@click.option("--name", default=None, help="New chart display name.")
+@click.option("--description", default=None, help="New chart description.")
+@click.option("--type", "chart_type", default=None,
+              help="Set the chart type (ChartType) on every series, e.g. Column, Bar, Line, Pie.")
+@_user_option
+@_solution_option
+@_publish_option
+@pass_ctx
+def chart_update(
+    ctx: CLIContext,
+    chart_id: str,
+    data_description_file: str | None,
+    presentation_description_file: str | None,
+    name: str | None,
+    description: str | None,
+    chart_type: str | None,
+    user_owned: bool,
+    solution: str | None,
+    require_solution: bool,
+    publish: bool,
+) -> None:
+    """Update a chart's XML, name/description, or series chart type.
+
+    On a partial XML update (only one of --data-description /
+    --presentation-description) the other column is read live so the
+    alias-coupling pair is validated together. The chart's host entity
+    (primaryentitytypecode) is never changed.
+    """
+    data_xml = _read_file(data_description_file)
+    pres_xml = _read_file(presentation_description_file)
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = charts_mod.update_chart(
+            ctx.backend(), chart_id,
+            data_description=data_xml, presentation_description=pres_xml,
+            name=name, description=description, chart_type=chart_type,
+            user=user_owned, publish=publish, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, chart_id, info, solution=solution)
+
+
+@chart_group.command("set-fetch")
+@click.argument("chart_id")
+@click.option("--fetch", "fetch_file", required=True,
+              type=click.Path(exists=True, dir_okay=False, readable=True),
+              help="Path to a file with the replacement <fetch> element.")
+@_user_option
+@_solution_option
+@_publish_option
+@pass_ctx
+def chart_set_fetch(
+    ctx: CLIContext,
+    chart_id: str,
+    fetch_file: str,
+    user_owned: bool,
+    solution: str | None,
+    require_solution: bool,
+    publish: bool,
+) -> None:
+    """Replace the inner <fetch> of a chart's datadescription (keeps its categories)."""
+    fetch_xml = _read_file(fetch_file) or ""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = charts_mod.set_chart_fetch(
+            ctx.backend(), chart_id, fetch=fetch_xml,
+            user=user_owned, publish=publish, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, chart_id, info, solution=solution)
+
+
+@chart_group.command("add-series")
+@click.argument("chart_id")
+@click.option("--column", required=True, help="Logical name of the column to aggregate.")
+@click.option("--aggregate", required=True,
+              type=click.Choice(["count", "countcolumn", "sum", "avg", "min", "max"]),
+              help="Aggregate function applied to --column.")
+@click.option("--alias", required=True, help="Unique alias for the new series.")
+@_user_option
+@_solution_option
+@_publish_option
+@pass_ctx
+def chart_add_series(
+    ctx: CLIContext,
+    chart_id: str,
+    column: str,
+    aggregate: str,
+    alias: str,
+    user_owned: bool,
+    solution: str | None,
+    require_solution: bool,
+    publish: bool,
+) -> None:
+    """Add an aggregate series to a chart (fetch attribute + measure + presentation series)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = charts_mod.add_chart_series(
+            ctx.backend(), chart_id, column=column, aggregate=aggregate, alias=alias,
+            user=user_owned, publish=publish, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, chart_id, info, solution=solution)
+
+
+@chart_group.command("remove-series")
+@click.argument("chart_id")
+@click.option("--alias", required=True, help="Alias of the series to remove.")
+@_user_option
+@_solution_option
+@_publish_option
+@pass_ctx
+def chart_remove_series(
+    ctx: CLIContext,
+    chart_id: str,
+    alias: str,
+    user_owned: bool,
+    solution: str | None,
+    require_solution: bool,
+    publish: bool,
+) -> None:
+    """Remove an aggregate series from a chart by its alias (refuses the last series)."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = charts_mod.remove_chart_series(
+            ctx.backend(), chart_id, alias=alias,
+            user=user_owned, publish=publish, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, chart_id, info, solution=solution)
+
+
+@chart_group.command("set-groupby")
+@click.argument("chart_id")
+@click.option("--column", required=True, help="Logical name of the grouping (category) column.")
+@click.option("--dategrouping", default=None,
+              type=click.Choice(
+                  ["day", "week", "month", "quarter", "year",
+                   "fiscal-period", "fiscal-year"]),
+              help="Date grouping interval (only for date columns).")
+@_user_option
+@_solution_option
+@_publish_option
+@pass_ctx
+def chart_set_groupby(
+    ctx: CLIContext,
+    chart_id: str,
+    column: str,
+    dategrouping: str | None,
+    user_owned: bool,
+    solution: str | None,
+    require_solution: bool,
+    publish: bool,
+) -> None:
+    """Set a chart's grouping (category) column, optionally with a date grouping."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = charts_mod.set_chart_groupby(
+            ctx.backend(), chart_id, column=column, dategrouping=dategrouping,
+            user=user_owned, publish=publish, solution=solution)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, chart_id, info, solution=solution)

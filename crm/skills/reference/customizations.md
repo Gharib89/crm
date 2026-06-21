@@ -318,6 +318,53 @@ runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
 `{_dry_run, would_delete: true, <id>}` — neither issues the write. To take a chart
 *out* of a solution without deleting it, use `solution remove-component`.
 
+### Chart editors — `update`, `set-fetch`, `add-series`, `remove-series`, `set-groupby`
+
+Five in-place editor verbs mutate a chart without recreating it. All honor
+`--user`, `--solution`, `--require-solution`, and `--publish` / `--no-publish`.
+
+```bash
+# update: replace XML, name, description, or ChartType on every <Series>
+crm --json chart update <id> --data-description d.xml --presentation-description p.xml
+crm --json chart update <id> --name "New Name" --type Bar
+
+# set-fetch: swap the inner <fetch> element, keeping the categorycollection
+crm --json chart set-fetch <id> --fetch new_query.xml
+
+# add-series / remove-series: add or drop one aggregate series
+crm --json chart add-series <id> --column estimatedvalue --aggregate sum --alias total
+crm --json chart remove-series <id> --alias total
+
+# set-groupby: change the grouping (category) column
+crm --json chart set-groupby <id> --column createdon --dategrouping month
+```
+
+**Alias-coupling invariant.** A chart's three XML layers are tightly coupled:
+each fetch `<attribute alias="X">` must correspond to a `<measurecollection>`
+alias `X` in the datadescription and a positionally-coupled `<Series>` in the
+presentationdescription. All editor verbs enforce this invariant. On a partial
+`update` (only one XML column given), the other column is read live first so
+the full pair can be validated before any write.
+
+**Series cap and comparison-chart rule.** A chart is capped at 5 series. A
+comparison chart (2 `<categorycollection>` categories) pairs two groupings
+against exactly 1 series, so `add-series` / `remove-series` refuse it (use
+`update` to replace its XML); violating the cap is rejected before the write.
+`set-groupby --dategrouping` is rejected for a non-date column.
+
+**`--fetch` file format.** Pass the bare `<fetch>` element — not a wrapped
+datadescription — to `set-fetch`.
+
+**`primaryentitytypecode` is protected.** No editor verb re-homes a chart to a
+different table. To move a chart, use `chart get` to export it and `chart create`
+on the new entity.
+
+**Publish gating — system vs user.** System charts (`savedqueryvisualization`)
+only reflect an edit after `PublishAllXml`; chaining `--no-publish` edits means
+each verb reads the *published* snapshot and the last write wins. User charts
+(`--user`, `userqueryvisualization`) are never published — edits reflect
+immediately regardless of the `--publish` flag.
+
 ## Dashboards — `dashboard` (systemform type=0)
 
 Author organization-owned system dashboards headlessly instead of using the
