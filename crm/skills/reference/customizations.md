@@ -75,7 +75,7 @@ crm --json query odata sitemaps --select sitemapname,sitemapid
 # → data[].sitemapid is the SITEMAP_ID positional arg
 ```
 
-**The four verbs:**
+**The five verbs:**
 
 ```bash
 # Add an Area (id unique across all node ids; publisher-prefix recommended)
@@ -92,6 +92,11 @@ crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_grp --id cwx_page --url "/WebResources/cwx_.html" --publish
 crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_grp --id cwx_dash --dashboard <guid> --publish
+
+# Reorder a node within its parent — exactly one of --before / --after / --index
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --before cwx_dash --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --after cwx_dash --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --index 0 --publish
 
 # Remove (or soft-delete with --comment-out)
 crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accts --publish
@@ -112,6 +117,11 @@ crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --publi
 - **Every new node Id is unique across the whole document** (all Area / Group /
   SubArea Ids), matching `build_sitemapxml` — this keeps `remove-node --id`
   unambiguous, since it targets by Id across all node types.
+- **`move-node` anchor must share parent and node type.** The `--before` / `--after`
+  sibling must be in the same parent container and be the same node type (Area/Group/
+  SubArea) as the moved node. `--index` must be in range. Any mismatch or
+  out-of-range value is a clear error with no write. `move-node` is a pure
+  permutation — it never modifies the node's attributes or children.
 - **`remove-node` cascades** — removing an Area or Group that has descendants emits a
   `meta.warnings` cascade advisory. Use `--dry-run` first to preview the subtree.
 - **`--comment-out`** replaces the node with a well-formed XML comment instead of

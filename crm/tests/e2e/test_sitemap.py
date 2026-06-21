@@ -42,7 +42,7 @@ def _has(root: ET.Element, tag: str, node_id: str) -> bool:
 
 
 @covers("sitemap add-area", "sitemap add-group", "sitemap add-subarea",
-        "sitemap remove-node")
+        "sitemap move-node", "sitemap remove-node")
 @pytest.mark.slow
 def test_sitemap_live_edit_lifecycle(cli, unique):
     """Build a throwaway sitemap, then add/remove nav nodes over the live RMW
@@ -71,6 +71,11 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
                    "--area", "cwx_ops", "--group", "cwx_opsgrp",
                    "--id", "cwx_opscontacts", "--entity", "contact",
                    "--title", "Contacts", "--publish"]))
+        # a second SubArea, so move-node has a sibling to reorder against
+        _data(cli(["--json", "sitemap", "add-subarea", sitemap_id,
+                   "--area", "cwx_ops", "--group", "cwx_opsgrp",
+                   "--id", "cwx_opsaccts", "--entity", "account",
+                   "--title", "Accounts", "--publish"]))
 
         root = _sitemapxml(cli, sitemap_id)
         assert _has(root, "Area", "cwx_ops"), ET.tostring(root, "unicode")
@@ -81,6 +86,28 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
                    if s.get("Id") == "cwx_opscontacts")
         assert sub.get("Entity") == "contact"
         assert sub.get("WebResource") is None
+
+        # add order under the group is [contacts, accts]
+        grp = next(g for g in root.iter("Group") if g.get("Id") == "cwx_opsgrp")
+        order = [s.get("Id") for s in grp if s.tag == "SubArea"]
+        assert order == ["cwx_opscontacts", "cwx_opsaccts"], order
+
+        # move-node (publish → T3 asserts the new order on the published layer):
+        # reorder contacts after accts.
+        _data(cli(["--json", "sitemap", "move-node", sitemap_id,
+                   "--id", "cwx_opscontacts", "--after", "cwx_opsaccts",
+                   "--publish"]))
+        root = _sitemapxml(cli, sitemap_id)
+        grp = next(g for g in root.iter("Group") if g.get("Id") == "cwx_opsgrp")
+        order = [s.get("Id") for s in grp if s.tag == "SubArea"]
+        assert order == ["cwx_opsaccts", "cwx_opscontacts"], order
+        # the moved node kept its attributes (pure permutation)
+        sub = next(s for s in grp if s.get("Id") == "cwx_opscontacts")
+        assert sub.get("Entity") == "contact"
+
+        # tidy the extra SubArea before tearing down the rest
+        _data(cli(["--json", "sitemap", "remove-node", sitemap_id,
+                   "--id", "cwx_opsaccts", "--publish"]))
 
         # remove-node (publish → T3 asserts absence on the published layer)
         _data(cli(["--json", "sitemap", "remove-node", sitemap_id,
