@@ -310,3 +310,105 @@ def test_ribbon_hide_button_hide_action_removes_element(
     assert target_id not in ids_after, (
         f"button {target_id!r} still present after hide-action"
     )
+# ── ribbon set-rules + add-custom-rule (lifecycle) ────────────────────────────
+
+
+@covers("ribbon set-rules", "ribbon add-custom-rule")
+@pytest.mark.slow
+def test_ribbon_set_rules_and_add_custom_rule(
+    cli, backend, ephemeral_entity, ephemeral_solution, unique, request, tmp_path
+):
+    """Add a custom button, then set platform rules on its command and attach a
+    custom JS enable rule — verifying both new verbs survive the live
+    export → import → publish round-trip and land in the exported ribbon (T3).
+    """
+    _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
+
+    wr_name = f"new_e2err_{unique}.js"
+    js_func = "ns.e2eRuleTest"
+    button_label = f"E2ERule{unique}"
+
+    js_src = tmp_path / f"{unique}.js"
+    js_src.write_bytes(b"// e2e rule test")
+    wr_result = cli([
+        "--json", "webresource", "create",
+        "--name", wr_name, "--file", str(js_src),
+        "--display-name", f"E2E Rule WR {unique}",
+    ])
+    assert wr_result.returncode == 0, (
+        f"webresource create failed:\n{wr_result.stderr}\nstdout: {wr_result.stdout}"
+    )
+    wr_env = json.loads(wr_result.stdout)
+    assert wr_env["ok"], wr_env
+    wr_id = wr_env["data"].get("webresourceid")
+    assert wr_id, f"webresourceid missing: {wr_env['data']}"
+
+    def _cleanup_wr():
+        try:
+            backend.delete(f"webresourceset({wr_id})")
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup_wr)
+
+    # ── ADD-BUTTON (creates the CommandDefinition the rules attach to) ─────────
+    add_result = cli([
+        "--json", "ribbon", "add-button", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--label", button_label, "--location", "form",
+        "--webresource", wr_name, "--function", js_func,
+        "--param", "PrimaryControl",
+    ])
+    assert add_result.returncode == 0, (
+        f"ribbon add-button failed:\n{add_result.stderr}\nstdout: {add_result.stdout}"
+    )
+    add_env = json.loads(add_result.stdout)
+    assert add_env["ok"], add_env
+    button_id = add_env["data"]["button_id"]
+    # the CommandDefinition id shares the button's base, suffixed .Command
+    command_id = button_id[: -len(".CustomAction")] + ".Command"
+
+    # ── SET-RULES ─────────────────────────────────────────────────────────────
+    set_result = cli([
+        "--json", "ribbon", "set-rules", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--command-id", command_id,
+        "--enable-rule", "Mscrm.SelectionCountExactlyOne",
+        "--display-rule", "Mscrm.HideOnModern",
+    ])
+    assert set_result.returncode == 0, (
+        f"ribbon set-rules failed:\n{set_result.stderr}\nstdout: {set_result.stdout}"
+    )
+    set_env = json.loads(set_result.stdout)
+    assert set_env["ok"], set_env
+    assert set_env["data"]["enable_rules"] == ["Mscrm.SelectionCountExactlyOne"]
+
+    # ── ADD-CUSTOM-RULE ───────────────────────────────────────────────────────
+    rule_result = cli([
+        "--json", "ribbon", "add-custom-rule", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--command-id", command_id,
+        "--webresource", wr_name, "--function", js_func,
+    ])
+    assert rule_result.returncode == 0, (
+        f"ribbon add-custom-rule failed:\n{rule_result.stderr}\nstdout: {rule_result.stdout}"
+    )
+    rule_env = json.loads(rule_result.stdout)
+    assert rule_env["ok"], rule_env
+    rule_id = rule_env["data"]["rule_id"]
+    assert rule_id, f"rule_id missing: {rule_env['data']}"
+
+    # ── VERIFY (T3): the exported composed ribbon carries the command's rules ──
+    out_file = tmp_path / "ribbon.xml"
+    export_result = cli([
+        "--json", "ribbon", "export", ephemeral_entity, "--output", str(out_file),
+    ])
+    assert export_result.returncode == 0, (
+        f"ribbon export failed:\n{export_result.stderr}\nstdout: {export_result.stdout}"
+    )
+    xml_text = out_file.read_text(encoding="utf-8")
+    assert command_id in xml_text, (
+        f"command {command_id!r} absent from exported ribbon"
+    )
+    # the custom enable rule's id (and therefore its CustomRule) round-tripped
+    assert rule_id in xml_text, f"custom rule {rule_id!r} absent from exported ribbon"

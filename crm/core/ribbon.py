@@ -14,7 +14,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from crm.core.solution import export_solution, import_solution, publish_all
 from crm.core.solution_validate import validate_solution
@@ -335,6 +335,161 @@ def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
         if cdef is not None:
             cmds.remove(cdef)
     return True
+
+
+# ── Enable/display rules (B3, issue #465) ───────────────────────────────────
+# Curated allow-list of predefined platform rule ids. The server SILENTLY
+# IGNORES an unknown `Mscrm.*` rule reference (the command then misbehaves with
+# no error), so a misspelled platform id is a footgun — we reject any `Mscrm.*`
+# id not on this list as a likely typo. Custom (non-`Mscrm.`) rule ids are
+# accepted as-is: they reference rules defined in the same solution (e.g. via
+# `add_custom_rule`). The lists are grouped by the rule kind they may reference,
+# grounded in the documented predefined rules; extend as new ids are needed.
+# https://learn.microsoft.com/power-apps/developer/model-driven-apps/define-ribbon-enable-rules
+PLATFORM_ENABLE_RULES: frozenset[str] = frozenset({
+    "Mscrm.SelectionCountExactlyOne",
+    "Mscrm.ShowOnGrid",
+    "Mscrm.ShowOnQuickAction",
+    "Mscrm.ShowOnGridAndQuickAction",
+})
+# Mscrm.HideOnModern + Mscrm.ShowOnlyOnModern are the always-false modern-UI
+# display rules (the pair the hide-button editor reuses verbatim).
+PLATFORM_DISPLAY_RULES: frozenset[str] = frozenset({
+    "Mscrm.HideOnModern",
+    "Mscrm.ShowOnlyOnModern",
+})
+
+_OOB_COMMAND_PREFIX = "Mscrm."
+
+# CommandDefinition children occur in this schema order; a created container must
+# be inserted so the sequence stays XSD-valid.
+_COMMAND_CHILD_ORDER = ("EnableRules", "DisplayRules", "Actions")
+
+
+def is_oob_command(command_id: str) -> bool:
+    """Heuristic: out-of-the-box (platform) command ids are ``Mscrm.*`` prefixed.
+
+    Custom commands created by `add_custom_action` are ``{entity}.{location}.…``.
+    Editing rules on an OOB command is unsupported ground (warned, not blocked).
+    """
+    return command_id.startswith(_OOB_COMMAND_PREFIX)
+
+
+def validate_rule_ids(rule_ids: "Sequence[str]", *, kind: str) -> None:
+    """Reject any ``Mscrm.*`` id not in the curated allow-list for ``kind``.
+
+    ``kind`` is ``"enable"`` or ``"display"``. Non-``Mscrm.`` (custom) ids pass —
+    they reference rules defined in the solution. Raises ValueError on an
+    unrecognized platform id (which the server would otherwise silently ignore).
+    """
+    allowed = PLATFORM_ENABLE_RULES if kind == "enable" else PLATFORM_DISPLAY_RULES
+    for rid in rule_ids:
+        if rid.startswith(_OOB_COMMAND_PREFIX) and rid not in allowed:
+            raise ValueError(
+                f"{kind}-rule id {rid!r} is not a recognized platform rule — the "
+                f"server silently ignores an unknown Mscrm.* rule. Allowed platform "
+                f"{kind} rules: {sorted(allowed)}. For a custom rule, define it with "
+                f"`ribbon add-custom-rule`.")
+
+
+def find_command_definition(ribbon_diff: ET.Element, command_id: str) -> ET.Element:
+    """Locate the ``<CommandDefinition Id=command_id>`` in a RibbonDiffXml."""
+    cmds = ribbon_diff.find("CommandDefinitions")
+    if cmds is not None:
+        cdef = next((c for c in cmds.findall("CommandDefinition")
+                     if c.get("Id") == command_id), None)
+        if cdef is not None:
+            return cdef
+    available = [c.get("Id") for c in ribbon_diff.iter("CommandDefinition")]
+    raise ValueError(
+        f"command-id {command_id!r} not found; available: {available}")
+
+
+def _ensure_command_child(cdef: ET.Element, tag: str) -> ET.Element:
+    """Return the CommandDefinition's ``<tag>`` child, creating it in schema order."""
+    child = cdef.find(tag)
+    if child is not None:
+        return child
+    child = ET.Element(tag)
+    after = set(_COMMAND_CHILD_ORDER[_COMMAND_CHILD_ORDER.index(tag) + 1:])
+    idx = next((i for i, el in enumerate(list(cdef)) if el.tag in after), len(cdef))
+    cdef.insert(idx, child)
+    return child
+
+
+def _set_rule_refs(
+    cdef: ET.Element, container_tag: str, ref_tag: str, rule_ids: "Sequence[str]"
+) -> None:
+    """Replace ``cdef``'s ``<container_tag>`` children with one ref per id, in order."""
+    container = _ensure_command_child(cdef, container_tag)
+    for el in list(container):
+        container.remove(el)
+    for rid in rule_ids:
+        ET.SubElement(container, ref_tag, {"Id": rid})
+
+
+def set_command_rules(
+    ribbon_diff: ET.Element,
+    *,
+    command_id: str,
+    enable_rules: "Sequence[str]",
+    display_rules: "Sequence[str]",
+) -> None:
+    """Set a command's enable/display rule references to exactly the given ids.
+
+    Replaces the ``<EnableRules>`` / ``<DisplayRules>`` children of the target
+    CommandDefinition with one reference element per id, in the order given (so
+    the exported set matches with no drop or reorder). A category passed an empty
+    list is left untouched. The CommandDefinition ``Id`` is never modified.
+    """
+    cdef = find_command_definition(ribbon_diff, command_id)
+    if enable_rules:
+        _set_rule_refs(cdef, "EnableRules", "EnableRule", enable_rules)
+    if display_rules:
+        _set_rule_refs(cdef, "DisplayRules", "DisplayRule", display_rules)
+
+
+def build_custom_rule_id(command_id: str, function: str) -> str:
+    """Deterministic id for a custom enable rule: ``{command_id}.{slug(fn)}.EnableRule``."""
+    slug = slugify(function)
+    if not slug:
+        raise ValueError(
+            f"function {function!r} produces an empty slug; cannot derive a rule id")
+    return f"{command_id}.{slug}.EnableRule"
+
+
+def add_custom_rule(
+    ribbon_diff: ET.Element,
+    *,
+    command_id: str,
+    rule_id: str,
+    webresource: str,
+    function: str,
+) -> None:
+    """Define a custom (JavaScript) enable rule and reference it on a command.
+
+    Adds an ``<EnableRule Id=rule_id><CustomRule Library=$webresource:.. FunctionName=..>``
+    to ``/RuleDefinitions/EnableRules`` and a matching ``<EnableRule Id=rule_id>``
+    reference under the command's ``<EnableRules>``. The CommandDefinition ``Id``
+    is never modified. Raises ValueError if ``rule_id`` is already defined.
+    """
+    cdef = find_command_definition(ribbon_diff, command_id)
+    rule_defs = ribbon_diff.find("RuleDefinitions")
+    if rule_defs is None:
+        rule_defs = ET.SubElement(ribbon_diff, "RuleDefinitions")
+    enable_defs = rule_defs.find("EnableRules")
+    if enable_defs is None:
+        enable_defs = ET.SubElement(rule_defs, "EnableRules")
+    if any(r.get("Id") == rule_id for r in enable_defs.findall("EnableRule")):
+        raise ValueError(
+            f"custom rule id {rule_id!r} already exists — that function is already "
+            f"wired on this command")
+    rule = ET.SubElement(enable_defs, "EnableRule", {"Id": rule_id})
+    ET.SubElement(rule, "CustomRule", {
+        "Library": f"$webresource:{webresource}", "FunctionName": function})
+    refs = _ensure_command_child(cdef, "EnableRules")
+    if not any(r.get("Id") == rule_id for r in refs.findall("EnableRule")):
+        ET.SubElement(refs, "EnableRule", {"Id": rule_id})
 
 
 def _rewrite_customizations(
