@@ -41,3 +41,17 @@ Triage state (above) is orthogonal to two sizing axes applied alongside it. An i
 | `XL`  | Extra-large — new subsystem / design-gated    |
 
 Implementation order is **derived** from these (`priority × effort × dependencies`), not stored as a label — a rank label rots the moment a higher issue ships.
+
+## Kind
+
+What the change *is* — a third orthogonal axis, aligned with the Conventional Commit type that drives the release bump (see `CLAUDE.md` → "Release"). An issue carries at most one.
+
+| Label           | Commit type  | Meaning                                            |
+| --------------- | ------------ | -------------------------------------------------- |
+| `enhancement`   | `feat:`      | New feature or capability                          |
+| `bug`           | `fix:`       | Broken behavior to repair                          |
+| `documentation` | `docs:`      | Docs-only change                                   |
+| `refactor`      | `refactor:`  | Behavior-preserving restructure — no functional change |
+| `chore`         | `chore:`     | Tooling, deps, or housekeeping — no behavior change |
+
+`refactor` is the right kind for a prefactor that makes a later change easy ("make the change easy, then make the easy change") — its acceptance bar is that no shipped behavior changes. `chore` covers release plumbing, dependency bumps, and CI/tooling that ships no product behavior.
