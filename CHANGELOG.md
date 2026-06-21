@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.24.0 (2026-06-21)
+
+### Bug Fixes
+
+- Harden dashboard web-resource warning and correct skill JSON contract
+  ([#490](https://github.com/Gharib89/crm/pull/490),
+  [`f5b6d66`](https://github.com/Gharib89/crm/commit/f5b6d664c8d5869e9de99bc134634df31a60fe8e))
+
+- Reject blank --url / --webresource in the command layer
+  ([#490](https://github.com/Gharib89/crm/pull/490),
+  [`f5b6d66`](https://github.com/Gharib89/crm/commit/f5b6d664c8d5869e9de99bc134634df31a60fe8e))
+
+- Validate remove-component selectors in the command layer
+  ([#490](https://github.com/Gharib89/crm/pull/490),
+  [`f5b6d66`](https://github.com/Gharib89/crm/commit/f5b6d664c8d5869e9de99bc134634df31a60fe8e))
+
+### Documentation
+
+- Document dashboard add-iframe / add-webresource / remove-component
+  ([#490](https://github.com/Gharib89/crm/pull/490),
+  [`f5b6d66`](https://github.com/Gharib89/crm/commit/f5b6d664c8d5869e9de99bc134634df31a60fe8e))
+
+### Features
+
+- Add dashboard add-iframe / add-webresource / remove-component
+  ([#490](https://github.com/Gharib89/crm/pull/490),
+  [`f5b6d66`](https://github.com/Gharib89/crm/commit/f5b6d664c8d5869e9de99bc134634df31a60fe8e))
+
+### Testing
+
+- Use _rowspan helper to satisfy pyright on rowspan assertion
+  ([#490](https://github.com/Gharib89/crm/pull/490),
+  [`f5b6d66`](https://github.com/Gharib89/crm/commit/f5b6d664c8d5869e9de99bc134634df31a60fe8e))
+
+
 ## v1.23.0 (2026-06-21)
 
 ### Bug Fixes
