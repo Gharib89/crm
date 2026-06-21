@@ -479,7 +479,11 @@ def edit_view_columns(
         cell.set("width", str(w))
         existing.append(name)
         if _find_attr(fent, name) is None:
-            ElementTree.SubElement(fent, "attribute").set("name", name)
+            # Insert after the last <attribute>, not at the end — a new attribute
+            # placed after <order>/<filter> siblings is invalid/ignored FetchXML.
+            attr = ElementTree.Element("attribute")
+            attr.set("name", name)
+            fent.insert(_last_attribute_index(fent) + 1, attr)
             fetch_changed = True
 
     for name in remove:

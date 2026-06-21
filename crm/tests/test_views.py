@@ -306,6 +306,20 @@ class TestEditViewColumns:
         assert out["action"] == "edit-columns"
         assert "cwx_priority" in out["columns"]
 
+    def test_add_inserts_attribute_before_order(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.edit_view_columns(
+                backend, entity=_ENTITY, view="Active Tickets",
+                add=[("cwx_priority", 100)])
+        fetch = _patch_body(m)["fetchxml"]
+        # The new <attribute> must precede <order> — FetchXML ignores an
+        # attribute placed after order/filter siblings.
+        assert fetch.index('name="cwx_priority"') < fetch.index("<order")
+
     def test_add_validates_column_exists(self, backend):
         from crm.core import views
         with requests_mock.Mocker() as m:
