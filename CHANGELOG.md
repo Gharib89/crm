@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.15.0 (2026-06-21)
+
+### Features
+
+- Add form set-field-props editor for field presentation properties
+  ([#476](https://github.com/Gharib89/crm/pull/476),
+  [`30bc45f`](https://github.com/Gharib89/crm/commit/30bc45f4cd5b817afdf8469d90a6525709f81c67))
+
+
 ## v1.14.0 (2026-06-21)
 
 ### Documentation
