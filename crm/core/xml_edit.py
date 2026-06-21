@@ -104,10 +104,11 @@ def assert_external_guids_intact(
 ) -> None:
     """Refuse a transform that changed any GUID it was not meant to.
 
-    Compares the set of GUIDs present before and after the edit, excluding the
-    ones a family *deliberately* regenerated (``regenerated`` maps each replaced
-    source GUID to its fresh value, as returned by :func:`regenerate_guids`). If
-    the remaining — external — GUIDs differ, the edit touched a ``classid``, a
+    Compares the *multiset* of GUIDs present before and after the edit (sorted
+    lists, so a duplicate-count change is caught too), excluding the ones a family
+    *deliberately* regenerated (``regenerated`` maps each replaced source GUID to
+    its fresh value, as returned by :func:`regenerate_guids`). If the remaining —
+    external — GUIDs differ, the edit touched a ``classid``, a
     security-role ref, a view/quick-form lookup or some other external object, so
     raise ``D365Error`` rather than write a possibly corrupt artifact. This is the
     generalized form-clone guard (#275): a mutated external GUID is well-formed and
