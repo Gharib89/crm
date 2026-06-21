@@ -194,6 +194,7 @@ def test_ribbon_hide_button_display_rule_overrides_command(monkeypatch):
         "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
     assert res.exit_code == 0, res.output
     root = captured["root"]
+    assert isinstance(root, ET.Element)
     cdef = root.find(".//CommandDefinition[@Id='Mscrm.HomepageGrid.Deactivate']")
     assert cdef is not None
     rule_ids = [r.get("Id") for r in cdef.findall("DisplayRules/DisplayRule")]
@@ -236,7 +237,9 @@ def test_ribbon_hide_button_hide_action_emits_hidecustomaction(monkeypatch):
         "--target-id", "Mscrm.HomepageGrid.account.Deactivate",
         "--method", "hide-action", "--yes"])
     assert res.exit_code == 0, res.output
-    hide = captured["root"].find(".//HideCustomAction")
+    root = captured["root"]
+    assert isinstance(root, ET.Element)
+    hide = root.find(".//HideCustomAction")
     assert hide is not None
     assert hide.get("Location") == "Mscrm.HomepageGrid.account.Deactivate"
 

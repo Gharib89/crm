@@ -276,10 +276,10 @@ def test_hide_button_display_rule_emits_two_false_rules():
     rule_ids = [r.get("Id") for r in cdef.findall("DisplayRules/DisplayRule")]
     assert rule_ids == ["Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern"]
     # empty EnableRules + Actions so only the always-false display rules govern it
-    assert cdef.find("EnableRules") is not None
-    assert list(cdef.find("EnableRules")) == []
-    assert cdef.find("Actions") is not None
-    assert list(cdef.find("Actions")) == []
+    enable_rules = cdef.find("EnableRules")
+    actions = cdef.find("Actions")
+    assert enable_rules is not None and list(enable_rules) == []
+    assert actions is not None and list(actions) == []
 
 
 def test_hide_button_display_rule_rejects_duplicate_override():
@@ -293,6 +293,7 @@ def test_hide_button_hide_action_emits_hidecustomaction():
     diff = _empty_diff()
     ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
     actions = diff.find("CustomActions")
+    assert actions is not None
     hide = actions.find("HideCustomAction")
     assert hide is not None
     assert hide.get("Location") == "Mscrm.HomepageGrid.account.Deactivate"
