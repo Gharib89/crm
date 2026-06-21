@@ -256,30 +256,32 @@ def _subarea_content(
     entity: str | None,
     url: str | None,
     dashboard: str | None,
-) -> tuple[str, str]:
-    """Resolve the exactly-one-of content mode to a ``(attribute, value)`` pair.
+) -> tuple[str, str, str]:
+    """Resolve the exactly-one-of content mode to ``(cli_key, attribute, value)``.
 
-    ``--entity`` is validated to exist (a dangling ``Entity=`` silently hides the
-    node); ``--dashboard`` is validated as a GUID. Raises if zero or more than one
-    mode is supplied.
+    ``cli_key`` is the CLI-facing flag name (``entity`` / ``url`` / ``dashboard``)
+    the result echoes back; ``attribute`` is the SiteMap XML attribute it maps to
+    (``Entity`` / ``Url`` / ``DefaultDashboard``). ``--entity`` is validated to
+    exist (a dangling ``Entity=`` silently hides the node); ``--dashboard`` is
+    validated as a GUID. Raises if zero or more than one mode is supplied.
     """
     chosen = [(flag, val) for flag, val in
-              (("--entity", entity), ("--url", url), ("--dashboard", dashboard))
+              (("entity", entity), ("url", url), ("dashboard", dashboard))
               if val]
     if len(chosen) != 1:
         raise D365Error(
             "add-subarea needs exactly one of --entity, --url or --dashboard "
             f"(got {len(chosen)}).")
     flag, value = chosen[0]
-    if flag == "--entity":
+    if flag == "entity":
         # Resolve raises D365Error (with a close-match suggestion) on a miss.
-        return "Entity", resolve_logical_name(backend, value)
-    if flag == "--url":
-        return "Url", value
+        return "entity", "Entity", resolve_logical_name(backend, value)
+    if flag == "url":
+        return "url", "Url", value
     guid = normalize_guid(value)
     if guid is None:
         raise D365Error(f"--dashboard must be a dashboard GUID: {value!r}")
-    return "DefaultDashboard", guid
+    return "dashboard", "DefaultDashboard", guid
 
 
 def add_subarea(
@@ -301,7 +303,7 @@ def add_subarea(
     sid = _validate_node_id(sub_id, kind="SubArea")
     aid = area_id.strip()
     gid = group_id.strip()
-    content_attr, content_val = _subarea_content(
+    cli_key, content_attr, content_val = _subarea_content(
         backend, entity=entity, url=url, dashboard=dashboard)
 
     def mutate(root: ET.Element) -> _Mutation:
@@ -330,7 +332,7 @@ def add_subarea(
 
     return _edit(backend, sitemap_id, action="add-subarea",
                  extra={"area_id": aid, "group_id": gid, "sub_id": sid,
-                        content_attr.lower(): content_val},
+                        cli_key: content_val},
                  mutate=mutate, publish=publish, solution=solution)
 
 

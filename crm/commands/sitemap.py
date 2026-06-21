@@ -30,8 +30,13 @@ def sitemap_group() -> None:
 
 
 def _emit(ctx: CLIContext, info: dict, warning: str | None) -> None:
-    """Fold any cascade advisory in with the solution warning, then emit."""
-    cascade = info.get("cascade_warning")
+    """Fold any cascade advisory in with the solution warning, then emit.
+
+    The cascade advisory is moved out of ``data`` and onto the structured
+    warnings channel only — keeping the JSON ``data`` payload to identifying
+    fields, like the other mutating verbs.
+    """
+    cascade = info.pop("cascade_warning", None)
     merged = " ".join(w for w in (warning, cascade) if w) or None
     _emit_with_warning(ctx, info, merged, meta=ctx.staged_meta())
 
@@ -101,6 +106,9 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
                         entity, url, dashboard, title, icon,
                         solution, require_solution, publish):
     """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard)."""
+    if sum(v is not None for v in (entity, url, dashboard)) != 1:
+        raise click.UsageError(
+            "Provide exactly one of --entity, --url or --dashboard.")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
