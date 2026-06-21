@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.16.0 (2026-06-21)
+
+### Bug Fixes
+
+- Harden dashboard tile add per review (guard, occupied section, input ranges)
+  ([#477](https://github.com/Gharib89/crm/pull/477),
+  [`ba23f43`](https://github.com/Gharib89/crm/commit/ba23f43ef0e3da820ee34d55a6077e5b51e7eb52))
+
+- Top-align dashboard tile placement; clarify --section is empty-only
+  ([#477](https://github.com/Gharib89/crm/pull/477),
+  [`ba23f43`](https://github.com/Gharib89/crm/commit/ba23f43ef0e3da820ee34d55a6077e5b51e7eb52))
+
+### Documentation
+
+- Explain why dashboard tile commit skips the in-process T3 read-back
+  ([#477](https://github.com/Gharib89/crm/pull/477),
+  [`ba23f43`](https://github.com/Gharib89/crm/commit/ba23f43ef0e3da820ee34d55a6077e5b51e7eb52))
+
+- Sync dashboard add-chart / add-view tile editors
+  ([#477](https://github.com/Gharib89/crm/pull/477),
+  [`ba23f43`](https://github.com/Gharib89/crm/commit/ba23f43ef0e3da820ee34d55a6077e5b51e7eb52))
+
+### Features
+
+- Add dashboard add-chart / add-view (ChartGrid tiles)
+  ([#477](https://github.com/Gharib89/crm/pull/477),
+  [`ba23f43`](https://github.com/Gharib89/crm/commit/ba23f43ef0e3da820ee34d55a6077e5b51e7eb52))
+
+### Testing
+
+- Satisfy pyright on dashboard tile tests (assert Element non-None)
+  ([#477](https://github.com/Gharib89/crm/pull/477),
+  [`ba23f43`](https://github.com/Gharib89/crm/commit/ba23f43ef0e3da820ee34d55a6077e5b51e7eb52))
+
+- Use valid placeholder GUIDs for existing dashboard cells
+  ([#477](https://github.com/Gharib89/crm/pull/477),
+  [`ba23f43`](https://github.com/Gharib89/crm/commit/ba23f43ef0e3da820ee34d55a6077e5b51e7eb52))
+
+
 ## v1.15.0 (2026-06-21)
 
 ### Features
