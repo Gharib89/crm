@@ -99,6 +99,7 @@ crm --json ribbon export account                 # one table's composed RibbonDi
 crm --json ribbon export --application           # application-wide ribbon (no ENTITY)
 crm --json ribbon list account --solution cwx_crmworx
 crm --json ribbon add-button account --solution cwx_crmworx ...
+crm --json ribbon set-label account --solution cwx_crmworx --button-id <CustomAction_Id> ...
 crm --json ribbon remove account --solution cwx_crmworx ...
 crm --json ribbon hide-button account --solution cwx_crmworx --target-id <OOB_Id>
 crm --json ribbon set-rules account --solution cwx_crmworx \
@@ -120,10 +121,10 @@ This is why a cloned entity's ribbon does not come across (see the clone caveats
 `reference/metadata.md`) — there is no API write path to copy it.
 
 **Ribbon writes are slow and synchronous.** Because every write rides the solution-zip
-pipeline, `add-button` / `remove` / `hide-button` / `set-rules` / `add-custom-rule`
-run a **full solution import per call** — 60–120s with no progress ticks. The
-command has not hung; **do not retry** a slow call (a second, parallel attempt
-races the first import). Confirm the outcome afterward with `ribbon list`.
+pipeline, `add-button` / `set-label` / `remove` / `hide-button` / `set-rules` /
+`add-custom-rule` run a **full solution import per call** — 60–120s with no progress
+ticks. The command has not hung; **do not retry** a slow call (a second, parallel
+attempt races the first import). Confirm the outcome afterward with `ribbon list`.
 
 **Platform rule allow-list — the server silently ignores unknown `Mscrm.*` ids.**
 `set-rules` validates each `Mscrm.*` id against a curated allow-list and rejects
@@ -144,6 +145,15 @@ pattern `{command_id}.{slug(function)}.EnableRule`. The rule is both defined in
 `RuleDefinitions` and referenced on the command in the same write. To use the same
 rule on other commands, pass the returned `rule_id` to `ribbon set-rules
 --enable-rule`.
+
+**`set-label` — `$LocLabels` directive ids are case-sensitive.** When `--lcid` is
+given, the button attribute is set to a `$LocLabels:<id>` directive and the actual
+text lands in a `<Title languagecode=LCID>` row. The directive id is derived
+automatically (`{Button-Id}.{Attr}`) — if you hand-edit the RibbonDiffXml and
+misspell the id's casing, the label silently falls back to the raw directive string
+in the UI. `--lcid` is validated against the org's provisioned languages and errors
+if not provisioned. Re-running for a second LCID adds a sibling `<Title>` (does not
+overwrite).
 
 **`hide-button` — validate the target-id first.** `--target-id` is the OOB control Id
 from `crm ribbon export ENTITY`. The command validates it against the live composed

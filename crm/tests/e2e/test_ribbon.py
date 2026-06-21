@@ -274,20 +274,22 @@ def test_ribbon_set_label_relabels_custom_button(
 
     # ── SET-LABEL (inline, with XML-special chars that must round-trip) ───────
     new_label = f"Tom & {unique} <ok>"
-    new_tip = "Title with \"quotes\" & <ampersand>"
+    new_tip = 'Title with "quotes" & <ampersand>'
+    new_desc = "Body & <desc> with 'apos'"
     set_result = cli([
         "--json", "ribbon", "set-label", ephemeral_entity,
         "--solution", ephemeral_solution,
         "--button-id", button_id,
         "--label", new_label, "--tooltip-title", new_tip,
+        "--tooltip-description", new_desc,
     ])
     assert set_result.returncode == 0, (
         f"ribbon set-label failed:\n{set_result.stderr}\n{set_result.stdout}"
     )
     assert json.loads(set_result.stdout)["ok"]
 
-    # T3: re-read the composed ribbon; the Button carries the new values by parsed
-    # value (XML-escaping must have round-tripped), protected attrs intact.
+    # T3: re-read the composed ribbon; the Button carries all new ToolTip* values by
+    # parsed value (XML-escaping must have round-tripped), protected attrs intact.
     composed = _composed_ribbon(cli, ephemeral_entity)
     btns = [b for b in composed.iter("Button")
             if b.get("LabelText") == new_label]
@@ -295,19 +297,38 @@ def test_ribbon_set_label_relabels_custom_button(
         f"no Button with the new LabelText {new_label!r} in composed ribbon"
     )
     btn = btns[0]
+    composed_btn_id = btn.get("Id")
     assert btn.get("ToolTipTitle") == new_tip, btn.attrib
+    assert btn.get("ToolTipDescription") == new_desc, btn.attrib
     assert btn.get("Command"), "protected Command attribute was lost"
 
     # ── SET-LABEL (--lcid → $LocLabels directive) ─────────────────────────────
+    loc_label = f"Loc{unique}"
     langs = cli(["--json", "ribbon", "set-label", ephemeral_entity,
                  "--solution", ephemeral_solution, "--button-id", button_id,
-                 "--label", f"Loc{unique}", "--lcid", "1033"])
+                 "--label", loc_label, "--lcid", "1033"])
     assert langs.returncode == 0, (
         f"ribbon set-label --lcid failed:\n{langs.stderr}\n{langs.stdout}"
     )
     env = json.loads(langs.stdout)
     assert env["ok"], env
     assert env["data"].get("lcid") == 1033, env["data"]
+
+    # T3: the localized write took effect end-to-end — re-read the composed ribbon
+    # and assert (by parsed value) that the same button now resolves to the
+    # localized text (when the UI language == lcid) or carries the $LocLabels
+    # directive pointing at the LocLabel row the command wrote.
+    after_loc = _composed_ribbon(cli, ephemeral_entity)
+    loc_btn = next((b for b in after_loc.iter("Button")
+                    if b.get("Id") == composed_btn_id), None)
+    assert loc_btn is not None, (
+        f"custom button {composed_btn_id!r} missing after --lcid relabel"
+    )
+    lt = loc_btn.get("LabelText", "")
+    assert lt == loc_label or lt.startswith("$LocLabels:"), (
+        f"expected the localized label {loc_label!r} or a $LocLabels directive, "
+        f"got {lt!r}"
+    )
 
 
 # ── ribbon hide-button (hide an OOB button reversibly) ────────────────────────

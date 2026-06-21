@@ -41,6 +41,53 @@ crm ribbon remove cwx_ticket --solution MySolution \
     --button-id cwx_ticket.form.Validate.CustomAction --yes
 ```
 
+## Set a button's label and tooltips
+
+Use `set-label` to change the display text of a **custom** command-bar button —
+its LabelText, ToolTipTitle, and ToolTipDescription — without touching the button's
+Command, TemplateAlias, Sequence, or Id. Pass at least one of `--label`,
+`--tooltip-title`, or `--tooltip-description`.
+
+```bash
+# Set label and tooltip inline (text is XML-escaped automatically)
+crm ribbon set-label cwx_ticket \
+    --solution MySolution \
+    --button-id cwx_ticket.form.Validate.CustomAction \
+    --label "Validate Ticket" \
+    --tooltip-title "Validate" \
+    --tooltip-description "Runs the validation rules for this ticket."
+
+# Preview the change without importing
+crm --dry-run ribbon set-label cwx_ticket \
+    --solution MySolution \
+    --button-id cwx_ticket.form.Validate.CustomAction \
+    --label "Validate Ticket"
+
+# Localize for a specific language (e.g. Arabic, LCID 1025)
+crm ribbon set-label cwx_ticket \
+    --solution MySolution \
+    --button-id cwx_ticket.form.Validate.CustomAction \
+    --label "التحقق من التذكرة" \
+    --lcid 1025
+```
+
+`--button-id` is the CustomAction Id as reported by `crm ribbon list`. Use
+`--solution` to scope the change to an unmanaged solution; `--require-solution`
+errors if no solution resolves instead of using the org default.
+
+**Localization with `--lcid`.** When `--lcid <LCID>` is given, the button
+attribute is set to a `$LocLabels:<id>` directive and the actual text lands in a
+`<LocLabel>/<Titles>/<Title languagecode=LCID>` row inside the RibbonDiffXml. The
+LCID is validated against the org's provisioned languages and the command errors if
+the language is not provisioned. Re-running for a second LCID adds a sibling
+`<Title>` row rather than overwriting the first. The `$LocLabels` directive id is
+**case-sensitive** — it is derived automatically from the button Id and attribute
+name; do not hand-edit the directive.
+
+**Only custom buttons.** `set-label` locates the button by its CustomAction Id.
+Out-of-box buttons have no CustomAction entry and will not be found; use
+`hide-button` to suppress OOB buttons instead.
+
 ## Hide an out-of-box button
 
 Use `hide-button` to suppress an OOB command-bar button you cannot delete. Two
