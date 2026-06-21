@@ -56,6 +56,81 @@ def dashboard_delete(ctx: CLIContext, dashboard_id: str) -> None:
     ctx.emit(True, data=info)
 
 
+def _layout_options(fn):
+    """Stack the shared tile-placement options (tab/section/rowspan/colspan/force)."""
+    fn = click.option("--tab", default=None,
+                      help="Target tab (name or id; default: first tab).")(fn)
+    fn = click.option("--section", default=None,
+                      help="Target section (name or id; default: first section).")(fn)
+    fn = click.option("--rowspan", type=int, default=1, show_default=True,
+                      help="Cell rowspan; the section is padded to match it.")(fn)
+    fn = click.option("--colspan", type=int, default=1, show_default=True,
+                      help="Cell colspan.")(fn)
+    fn = click.option("--force", is_flag=True,
+                      help="Add beyond the default six-component cap.")(fn)
+    return fn
+
+
+@dashboard_group.command("add-chart")
+@click.argument("dashboard_id")
+@click.option("--view", required=True,
+              help="savedquery id (GUID) whose data the grid shows.")
+@click.option("--chart", required=True,
+              help="savedqueryvisualization id (GUID) to render; its primary "
+                   "entity must match the view's.")
+@_layout_options
+@_solution_option
+@_publish_option
+@pass_ctx
+def dashboard_add_chart(
+    ctx: CLIContext, dashboard_id: str, view: str, chart: str,
+    tab: str | None, section: str | None, rowspan: int, colspan: int,
+    force: bool, solution: str | None, require_solution: bool, publish: bool,
+) -> None:
+    """Add a chart tile (ChartGrid) to dashboard DASHBOARD_ID's FormXml."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = dashboard_mod.add_chart_to_dashboard(
+            ctx.backend(), dashboard_id, view=view, chart=chart,
+            tab=tab, section=section, rowspan=rowspan, colspan=colspan,
+            force=force, solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, dashboard_id, info, solution=solution)
+
+
+@dashboard_group.command("add-view")
+@click.argument("dashboard_id")
+@click.option("--view", required=True,
+              help="savedquery id (GUID) whose data the grid shows.")
+@click.option("--mode", type=click.Choice(["list", "all"]), default="list",
+              show_default=True,
+              help="Grid only (list) or grid with the chart toggle (all).")
+@click.option("--records-per-page", "records_per_page", type=int, default=10,
+              show_default=True, help="Rows shown per page in the grid.")
+@_layout_options
+@_solution_option
+@_publish_option
+@pass_ctx
+def dashboard_add_view(
+    ctx: CLIContext, dashboard_id: str, view: str, mode: str,
+    records_per_page: int, tab: str | None, section: str | None,
+    rowspan: int, colspan: int, force: bool,
+    solution: str | None, require_solution: bool, publish: bool,
+) -> None:
+    """Add a view-only grid tile (ChartGrid) to dashboard DASHBOARD_ID's FormXml."""
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = dashboard_mod.add_view_to_dashboard(
+            ctx.backend(), dashboard_id, view=view, mode=mode,
+            records_per_page=records_per_page, tab=tab, section=section,
+            rowspan=rowspan, colspan=colspan, force=force,
+            solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, dashboard_id, info, solution=solution)
+
+
 def _read_file(path: str) -> str:
     # click.Path(exists=True, readable=True) validates at parse time, but a
     # permission edge or a delete-after-check race can still fail the open —

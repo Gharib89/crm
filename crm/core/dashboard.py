@@ -15,8 +15,10 @@ clear error rather than silently creating a different kind of record.
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from typing import Any
 
+from crm.core import xml_edit
 from crm.core.metadata import maybe_publish
 from crm.utils.d365_backend import (
     D365Backend,
@@ -27,6 +29,15 @@ from crm.utils.d365_backend import (
 
 _FORM_SET = "systemforms"
 _ID_FIELD = "formid"
+
+# The ChartGrid control's classid — an MS-documented, live-verified platform
+# constant (a chart/grid tile on a dashboard). It is a *protected* external
+# reference: emitted verbatim, never regenerated (see add_chartgrid_to_formxml).
+CHARTGRID_CLASSID = "{E7A81278-8635-4D9E-8D4D-59480B391C5B}"
+
+# The base-language label code used for an inserted tile label (matches the
+# dashboards/forms the project targets; multi-language authoring is out of scope).
+_LABEL_LANGUAGECODE = "1033"
 
 # systemform.type option values (see Microsoft Learn "systemform EntityType").
 DASHBOARD_TYPE = 0       # standard system dashboard
@@ -125,6 +136,358 @@ def delete_dashboard(backend: D365Backend, dashboard_id: str) -> dict[str, Any]:
     if isinstance(result, dict) and result.get("_dry_run"):
         return {"_dry_run": True, "would_delete": True, _ID_FIELD: dashboard_id}
     return {"deleted": True, _ID_FIELD: dashboard_id}
+
+
+def _id_matches(value: str | None, given: str) -> bool:
+    """Whether a FormXml ``id`` attribute matches a user-supplied id, tolerating
+    braces and case (FormXml ids are brace-wrapped, case-insensitive GUIDs)."""
+    if not value:
+        return False
+    return value.strip("{}").lower() == given.strip("{}").lower()
+
+
+def _resolve_target_tab(root: "ET.Element", tab: str | None) -> "ET.Element":
+    """Pick the ``<tab>`` to operate on (default: the first), matched by name or
+    id. Raises ``D365Error`` naming the available tabs when one is absent."""
+    tabs = root.findall("./tabs/tab")
+    if not tabs:
+        raise D365Error("Dashboard has no <tab> layout.")
+    if tab is None:
+        return tabs[0]
+    target = next(
+        (t for t in tabs
+         if t.get("name") == tab or _id_matches(t.get("id"), tab)), None)
+    if target is None:
+        names = ", ".join(t.get("name") or "?" for t in tabs)
+        raise D365Error(f"No tab {tab!r} on the dashboard. Tabs: {names}.")
+    return target
+
+
+def _resolve_named_section(target_tab: "ET.Element", section: str) -> "ET.Element":
+    """Find an existing ``<section>`` in ``target_tab`` by name or id, or raise
+    ``D365Error`` naming the available sections."""
+    sections = target_tab.findall("./columns/column/sections/section")
+    target = next(
+        (s for s in sections
+         if s.get("name") == section or _id_matches(s.get("id"), section)), None)
+    if target is None:
+        names = ", ".join(s.get("name") or "?" for s in sections) or "(none)"
+        raise D365Error(
+            f"No section {section!r} in tab {target_tab.get('name')!r}. "
+            f"Sections: {names}.")
+    return target
+
+
+def _new_tile_section(target_tab: "ET.Element", *, colspan: int) -> "ET.Element":
+    """Append a fresh single-component ``<section>`` to ``target_tab``'s first
+    column and return it.
+
+    Each tile gets its own section so the ``rowspan == count(<row>)`` invariant
+    holds per component (it cannot hold for two cells sharing one section). The
+    section's ``columns`` grid is sized to the tile's ``colspan``. Raises
+    ``D365Error`` if the tab has no ``<columns>/<column>`` to host sections —
+    the documented "tab must have at least one section" prerequisite, applied to
+    the structural scaffold an add needs.
+    """
+    sections_el = target_tab.find("./columns/column/sections")
+    if sections_el is None:
+        raise D365Error(
+            f"Tab {target_tab.get('name')!r} has no <columns>/<column>/<sections> "
+            f"scaffold to add a section to.")
+    section = ET.Element("section")
+    sid = xml_edit.fresh_guid()
+    section.set("id", sid)
+    section.set("name", sid)
+    section.set("showlabel", "false")
+    section.set("showbar", "false")
+    section.set("columns", "1" * max(1, colspan))
+    labels = ET.SubElement(section, "labels")
+    label = ET.SubElement(labels, "label")
+    label.set("description", "")
+    label.set("languagecode", _LABEL_LANGUAGECODE)
+    ET.SubElement(section, "rows")
+    sections_el.append(section)
+    return section
+
+
+def _append_tile(section: "ET.Element", cell: "ET.Element", *, rowspan: int) -> None:
+    """Append ``cell`` as a new ``<row>`` and reconcile the section's ``<row>``
+    count to the cell's ``rowspan`` (the ``rowspan == count(<row>)`` invariant).
+
+    Existing rows are never dropped: the count is grown to
+    ``max(rowspan, current)`` with empty ``<row/>`` padding and the cell's
+    ``rowspan`` is set to that final count, so the invariant holds without
+    corrupting any content already in the section.
+    """
+    rows = section.find("rows")
+    if rows is None:
+        rows = ET.SubElement(section, "rows")
+    row = ET.SubElement(rows, "row")
+    row.append(cell)
+    need = max(rowspan, len(rows.findall("row")))
+    while len(rows.findall("row")) < need:
+        ET.SubElement(rows, "row")
+    cell.set("rowspan", str(need))
+
+
+def _build_chartgrid_cell(
+    *, control_id: str, params: dict[str, str], label: str, colspan: int,
+) -> "ET.Element":
+    """A fresh ChartGrid ``<cell>`` (fresh cell id, label, control, params).
+
+    The control carries the protected :data:`CHARTGRID_CLASSID` verbatim and a
+    ``<parameters>`` bag in the order ``params`` is given.
+    """
+    cell = ET.Element("cell")
+    cell.set("id", xml_edit.fresh_guid())
+    # rowspan is finalized by _append_tile (row-count reconciliation); colspan is
+    # set here as it is not touched by the layout invariant.
+    cell.set("colspan", str(colspan))
+    cell.set("showlabel", "true")
+    labels = ET.SubElement(cell, "labels")
+    lab = ET.SubElement(labels, "label")
+    lab.set("description", label)
+    lab.set("languagecode", _LABEL_LANGUAGECODE)
+    control = ET.SubElement(cell, "control")
+    control.set("id", control_id)
+    control.set("classid", CHARTGRID_CLASSID)
+    parameters = ET.SubElement(control, "parameters")
+    for key, value in params.items():
+        ET.SubElement(parameters, key).text = value
+    return cell
+
+
+# A dashboard holds up to six components by default. This is a *soft* cap (an
+# on-prem org can raise it via PowerShell), so --force overrides it rather than
+# the CLI hard-blocking. See the MS "dashboard components" guidance.
+_DEFAULT_COMPONENT_CAP = 6
+
+
+def _count_components(root: "ET.Element") -> int:
+    """Count existing dashboard components — ``<cell>``s that host a control."""
+    return sum(1 for cell in root.iter("cell") if cell.find("control") is not None)
+
+
+def _unique_control_id(root: "ET.Element", base: str = "ChartGrid") -> str:
+    """A control ``id`` not already used by any control on the dashboard.
+
+    Control ids must be unique within a dashboard's FormXml — a duplicate is
+    accepted by the PATCH but rejected at publish ("Duplicate id found for
+    control element"). Returns ``base`` if free, else ``base_2``, ``base_3``, …
+    """
+    used = {c.get("id") for c in root.iter("control")}
+    if base not in used:
+        return base
+    n = 2
+    while f"{base}_{n}" in used:
+        n += 1
+    return f"{base}_{n}"
+
+
+def add_chartgrid_to_formxml(
+    formxml: str, *, params: dict[str, str], label: str,
+    tab: str | None = None, section: str | None = None,
+    rowspan: int = 1, colspan: int = 1,
+    force: bool = False,
+    control_id: str = "ChartGrid",
+) -> str:
+    """Return ``formxml`` with a new ChartGrid ``<cell>`` spliced into a section.
+
+    By default the tile lands in a fresh ``<section>`` of the target tab (the
+    first tab unless ``tab`` selects another) — one component per section, so
+    the documented ``rowspan == count(<row>)`` grammar invariant holds for each
+    tile (it cannot hold for two cells sharing a section). Pass ``section`` to
+    co-locate the tile in an existing section instead. The section's ``<row>``
+    count is reconciled to the cell's ``rowspan`` to satisfy the invariant.
+
+    Refuses to exceed the default six-component cap unless ``force`` is set. A
+    guard re-reads every GUID the splice did not introduce and refuses to return
+    FormXml whose pre-existing ids/classids/external references changed.
+    """
+    root = xml_edit.parse_xml(formxml, label="dashboard's FormXml")
+    if not force and _count_components(root) >= _DEFAULT_COMPONENT_CAP:
+        raise D365Error(
+            f"Dashboard already has {_DEFAULT_COMPONENT_CAP} components (the "
+            f"default cap). Pass --force to add more.")
+    target_tab = _resolve_target_tab(root, tab)
+    is_new_section = section is None
+    target = (_new_tile_section(target_tab, colspan=colspan) if is_new_section
+              else _resolve_named_section(target_tab, section))
+    cell = _build_chartgrid_cell(
+        control_id=_unique_control_id(root, control_id),
+        params=params, label=label, colspan=colspan)
+    _append_tile(target, cell, rowspan=rowspan)
+    new_xml = xml_edit.serialize_xml(root)
+    # The splice introduces new GUIDs: the fresh cell id, an optional fresh
+    # section id, the view/visualization refs, and the (deliberately repeated)
+    # ChartGrid classid constant. Exclude every GUID in the added subtree (the
+    # new section, or just the new cell when co-locating) from the before/after
+    # *multiset* diff — so the extra classid occurrence is not miscounted — while
+    # every other GUID must stay intact, catching a stray rewrite or drop of a
+    # pre-existing id, classid or external reference (the shared #275 guard,
+    # applied to an additive edit).
+    added_subtree = target if is_new_section else cell
+    added = xml_edit.guid_set(xml_edit.serialize_xml(added_subtree))
+    xml_edit.assert_external_guids_intact(
+        formxml, new_xml, regenerated={g: g for g in added},
+        message="dashboard tile add altered a pre-existing id/classid/external "
+                "reference; refusing to write a possibly corrupt dashboard.")
+    return new_xml
+
+
+def _braced(guid: str) -> str:
+    """A normalized GUID in the brace-wrapped form FormXml uses."""
+    return "{" + guid + "}"
+
+
+def _resolve_view(backend: D365Backend, view: str) -> tuple[str, str]:
+    """Validate ``view`` is an existing savedquery and return its
+    ``(savedqueryid, returnedtypecode)`` — the latter is the tile's
+    ``TargetEntityType``. Refuses a non-GUID (savedqueries have no alternate
+    key, so a name cannot be resolved without an entity context)."""
+    vid = normalize_guid(view)
+    if vid is None:
+        raise D365Error(
+            f"--view must be a savedquery id (GUID): {view!r}")
+    row = as_dict(backend.get(
+        f"savedqueries({vid})",
+        params={"$select": "savedqueryid,returnedtypecode,name"}))
+    entity = row.get("returnedtypecode")
+    if not entity:
+        raise D365Error(f"savedquery {vid} has no returnedtypecode (entity).")
+    return vid, str(entity)
+
+
+def _resolve_visualization(
+    backend: D365Backend, chart: str, *, entity: str
+) -> str:
+    """Validate ``chart`` is an existing org-owned savedqueryvisualization whose
+    primary entity matches the grid's ``entity``; return its id. A mismatch is
+    refused — a chart bound to a different table renders broken on the grid."""
+    cid = normalize_guid(chart)
+    if cid is None:
+        raise D365Error(
+            f"--chart must be a savedqueryvisualization id (GUID): {chart!r}")
+    row = as_dict(backend.get(
+        f"savedqueryvisualizations({cid})",
+        params={"$select": "savedqueryvisualizationid,primaryentitytypecode,name"}))
+    primary = row.get("primaryentitytypecode")
+    if primary != entity:
+        raise D365Error(
+            f"visualization {cid} is bound to entity {primary!r}, but the view "
+            f"targets {entity!r}; a chart's primary entity must match its grid.")
+    return cid
+
+
+# The fixed grid behaviour flags every ChartGrid tile carries (live-verified on
+# the stock dashboards). They are presentation toggles, not references, so they
+# are constants rather than flags — keeping the tile's surface to what the issue
+# asked for (the view, the chart, the layout).
+_GRID_TOGGLES = {
+    "EnableQuickFind": "true",
+    "EnableViewPicker": "true",
+    "EnableJumpBar": "true",
+    "EnableChartPicker": "true",
+}
+
+
+def _commit_tile(
+    backend: D365Backend, dashboard_id: str, dashboard: dict[str, Any],
+    new_xml: str, *, action: str, publish: bool, solution: str | None,
+    extra: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the result dict and PATCH the dashboard's ``formxml`` (or preview
+    under dry-run) via the shared direct-PATCH commit."""
+    out: dict[str, Any] = {
+        _ID_FIELD: dashboard_id, "name": dashboard.get("name"), "action": action}
+    out.update({k: v for k, v in extra.items() if v is not None})
+    return xml_edit.commit_xml_patch(
+        backend, entity_set=_FORM_SET, record_id=dashboard_id, column="formxml",
+        new_xml=new_xml, result=out, dry_run_flag="would_add",
+        publish=publish, solution=solution)
+
+
+def add_chart_to_dashboard(
+    backend: D365Backend, dashboard_id: str, *,
+    view: str, chart: str,
+    tab: str | None = None, section: str | None = None,
+    rowspan: int = 1, colspan: int = 1, force: bool = False,
+    records_per_page: int = 10,
+    publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Add a chart (ChartGrid, ``ChartGridMode=Chart``) tile to a dashboard.
+
+    Validates that ``view`` is a savedquery (its ``returnedtypecode`` becomes the
+    tile's ``TargetEntityType``) and ``chart`` is an org-owned visualization on
+    that same entity, then splices a protected-classid ChartGrid cell into the
+    target section and PATCHes the dashboard's ``formxml``.
+    """
+    info = get_dashboard(backend, dashboard_id)
+    view_id, entity = _resolve_view(backend, view)
+    vis_id = _resolve_visualization(backend, chart, entity=entity)
+    params = {
+        "TargetEntityType": entity,
+        "ChartGridMode": "Chart",
+        **_GRID_TOGGLES,
+        "RecordsPerPage": str(records_per_page),
+        "ViewId": _braced(view_id),
+        "IsUserView": "false",
+        "ViewIds": "",
+        "AutoExpand": "Fixed",
+        "VisualizationId": _braced(vis_id),
+        "IsUserChart": "false",
+    }
+    new_xml = add_chartgrid_to_formxml(
+        info["formxml"], params=params, label=entity,
+        tab=tab, section=section, rowspan=rowspan, colspan=colspan, force=force)
+    return _commit_tile(
+        backend, info[_ID_FIELD], info, new_xml, action="add-chart",
+        publish=publish, solution=solution,
+        extra={"view": view_id, "chart": vis_id, "entity": entity,
+               "tab": tab, "section": section})
+
+
+# add-view ChartGridMode values, keyed by the friendly --mode token.
+_VIEW_MODES = {"list": "List", "all": "All"}
+
+
+def add_view_to_dashboard(
+    backend: D365Backend, dashboard_id: str, *,
+    view: str, mode: str = "list", records_per_page: int = 10,
+    tab: str | None = None, section: str | None = None,
+    rowspan: int = 1, colspan: int = 1, force: bool = False,
+    publish: bool = False, solution: str | None = None,
+) -> dict[str, Any]:
+    """Add a view-only grid (ChartGrid, no visualization) tile to a dashboard.
+
+    ``mode`` selects ``ChartGridMode``: ``list`` (grid only) or ``all`` (grid
+    with the chart toggle). Validates that ``view`` is a savedquery and derives
+    the tile's ``TargetEntityType`` from its entity.
+    """
+    grid_mode = _VIEW_MODES.get(mode)
+    if grid_mode is None:
+        raise D365Error(
+            f"--mode must be one of {', '.join(_VIEW_MODES)}; got {mode!r}.")
+    info = get_dashboard(backend, dashboard_id)
+    view_id, entity = _resolve_view(backend, view)
+    params = {
+        "TargetEntityType": entity,
+        "ChartGridMode": grid_mode,
+        **_GRID_TOGGLES,
+        "RecordsPerPage": str(records_per_page),
+        "ViewId": _braced(view_id),
+        "IsUserView": "false",
+        "ViewIds": "",
+        "AutoExpand": "Fixed",
+    }
+    new_xml = add_chartgrid_to_formxml(
+        info["formxml"], params=params, label=entity,
+        tab=tab, section=section, rowspan=rowspan, colspan=colspan, force=force)
+    return _commit_tile(
+        backend, info[_ID_FIELD], info, new_xml, action="add-view",
+        publish=publish, solution=solution,
+        extra={"view": view_id, "entity": entity, "mode": mode,
+               "tab": tab, "section": section})
 
 
 def create_dashboard(
