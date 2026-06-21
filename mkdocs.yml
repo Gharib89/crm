@@ -137,6 +137,7 @@ nav:
       - scaffold: how-to/scaffold.md
       - describe: how-to/describe.md
       - app: how-to/app.md
+      - sitemap: how-to/sitemap.md
       - webresource: how-to/webresource.md
       - ribbon: how-to/ribbon.md
       - form: how-to/form.md

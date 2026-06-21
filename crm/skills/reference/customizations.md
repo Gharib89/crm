@@ -2,7 +2,7 @@
 
 UI-layer customization: model-driven apps and their sitemaps, web resources, entity
 command-bar (ribbon) buttons, entity forms, charts, dashboards, application
-themes, and custom reports. Groups: `app`, `webresource`, `ribbon`, `form`, `chart`,
+themes, and custom reports. Groups: `app`, `sitemap`, `webresource`, `ribbon`, `form`, `chart`,
 `dashboard`, `theme`, `report`. Flags/choices: `crm <group> --help`.
 
 ## Model-driven apps — `app` (appmodule)
@@ -60,6 +60,93 @@ FK-blocking dependent rows first, then deletes the app; its `data` lists every d
 removed (real run `dependents_deleted: [{entity, id}]`; `--dry-run` previews them under
 `would_delete.dependents` and issues no DELETE). It **refuses a managed app** — uninstall
 the parent solution instead.
+
+## SiteMap live editor — `sitemap`
+
+Surgically edit an **existing** sitemap's navigation tree in place over the
+read-modify-write (RMW) seam: GET `sitemaps({id})?$select=sitemapxml` → mutate the
+parsed XML tree → PATCH → publish → T3 read-back. Complements `app build-sitemap` /
+`app set-sitemap` which POST a whole new SiteMapXml.
+
+**Find the sitemap GUID first:**
+
+```bash
+crm --json query odata sitemaps --select sitemapname,sitemapid
+# → data[].sitemapid is the SITEMAP_ID positional arg
+```
+
+**The four verbs:**
+
+```bash
+# Add an Area (id unique across all node ids; publisher-prefix recommended)
+crm --json sitemap add-area <SITEMAP_ID> --id cwx_sales --title "Sales" --publish
+
+# Add a Group under an Area
+crm --json sitemap add-group <SITEMAP_ID> \
+    --area cwx_sales --id cwx_grp --title "Customers" --publish
+
+# Add a SubArea — exactly one of --entity / --url / --dashboard
+crm --json sitemap add-subarea <SITEMAP_ID> \
+    --area cwx_sales --group cwx_grp --id cwx_accts --entity account --publish
+crm --json sitemap add-subarea <SITEMAP_ID> \
+    --area cwx_sales --group cwx_grp --id cwx_page --url "/WebResources/cwx_.html" --publish
+crm --json sitemap add-subarea <SITEMAP_ID> \
+    --area cwx_sales --group cwx_grp --id cwx_dash --dashboard <guid> --publish
+
+# Remove (or soft-delete with --comment-out)
+crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accts --publish
+crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --publish
+```
+
+**Workflow-level gotchas the `--help` doesn't surface:**
+
+- **Exactly one content binding per SubArea.** `--entity`, `--url`, and `--dashboard`
+  are mutually exclusive. Passing more than one, or none, is a usage error.
+- **`--entity` is validated live.** A logical name that doesn't exist in the org is
+  rejected before the PATCH — a dangling `Entity=` would silently hide the SubArea.
+- **There is no SubArea `WebResource` attribute.** A web-resource-backed SubArea uses
+  `--url` (pointing at the web resource URL path). The `$webresource:` prefix is
+  the `--icon` directive only, not a content binding.
+- **`ResourceId` and `IntroducedVersion` are never written.** These are
+  platform-owned — new nodes get only `Title`; the CLI never touches them.
+- **Every new node Id is unique across the whole document** (all Area / Group /
+  SubArea Ids), matching `build_sitemapxml` — this keeps `remove-node --id`
+  unambiguous, since it targets by Id across all node types.
+- **`remove-node` cascades** — removing an Area or Group that has descendants emits a
+  `meta.warnings` cascade advisory. Use `--dry-run` first to preview the subtree.
+- **`--comment-out`** replaces the node with a well-formed XML comment instead of
+  deleting it — a reversible soft-delete. The commented node is not a live node, so
+  its id frees up for reuse (uniqueness checks scan live nodes only).
+
+**Publish-gated T3 read-back — the key gotcha:**
+
+A Web API GET for `sitemapxml` returns the **published** layer, not the staged edit.
+An edit written with `--no-publish` will not appear in a re-fetch until
+`PublishAllXml` runs — on on-prem v9.x especially, a read-back before publish
+false-negatives. `--publish` (the default) runs `PublishAllXml` + a T3 read-back
+inside the verb itself.
+
+**Do NOT chain `--no-publish` edits to the same sitemap.** Each verb re-reads
+`sitemapxml` before mutating, so a second `--no-publish` edit reads the *published*
+layer (without the first edit) and PATCHes over it — silently discarding the first.
+For several edits, just run them sequentially with the default `--publish` (each
+publishes before the next reads); reserve `--no-publish` for a single staged edit
+you publish yourself.
+
+**JSON contract — same envelope as all customization verbs:**
+
+```json
+{ "ok": true,
+  "data": {"sitemapid": "…", "action": "add-area", "area_id": "cwx_sales",
+           "title": "Sales", "updated": true, "published": true},
+  "meta": {} }
+```
+
+`data` carries the edit's identifying fields (`action`, plus `area_id` /
+`group_id` / `sub_id` / `node_id` per verb). `meta.warnings` carries the cascade
+advisory (Area/Group with descendants removed) and any solution advisory.
+`--dry-run` returns `{_dry_run: true, would_edit: true, sitemapxml: "<…>"}` — reads
+run for real (parent validation, entity existence), no PATCH is issued.
 
 ## Web resources — `webresource` (HTML/JS/CSS/images)
 
