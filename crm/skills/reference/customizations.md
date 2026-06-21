@@ -347,8 +347,10 @@ presentationdescription. All editor verbs enforce this invariant. On a partial
 the full pair can be validated before any write.
 
 **Series cap and comparison-chart rule.** A chart is capped at 5 series. A
-comparison chart (2 `<categorycollection>` categories) accepts exactly 1
-series. Violating either is rejected before the write.
+comparison chart (2 `<categorycollection>` categories) pairs two groupings
+against exactly 1 series, so `add-series` / `remove-series` refuse it (use
+`update` to replace its XML); violating the cap is rejected before the write.
+`set-groupby --dategrouping` is rejected for a non-date column.
 
 **`--fetch` file format.** Pass the bare `<fetch>` element — not a wrapped
 datadescription — to `set-fetch`.

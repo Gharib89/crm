@@ -403,6 +403,19 @@ def _pres_root_of(chart: dict[str, Any]) -> ET.Element | None:
     return parse_xml(pres, label="chart presentationdescription") if pres else None
 
 
+def _reject_comparison(chart: dict[str, Any], verb: str) -> None:
+    """Refuse a per-series edit on a comparison chart (two categories).
+
+    A comparison chart pairs two categories against a single series, so adding
+    or removing a series can't keep both categories balanced — surface that
+    directly instead of letting the generic alias-coupling check fail later."""
+    data_root = parse_xml(chart.get("datadescription") or "", label="chart datadescription")
+    if len(_categories(data_root)) >= 2:
+        raise D365Error(
+            f"{verb} is not supported on a comparison chart (two categories); "
+            "use 'chart update' to replace the chart XML.")
+
+
 def _validate_fetch_metadata(
     backend: D365Backend, *, expected_entity: str, data_root: ET.Element
 ) -> None:
@@ -420,16 +433,32 @@ def _validate_fetch_metadata(
             f"fetch <entity name={name!r}> does not match the chart's "
             f"primaryentitytypecode {expected_entity!r}; re-homing a chart to "
             "another entity is not supported.")
-    for attr in _fetch_attrs(data_root):
+    # Validate the primary entity's attributes and every <link-entity>'s
+    # attributes against their own target entity — a typo'd column anywhere in
+    # the fetch otherwise lands a chart that renders empty.
+    _validate_entity_attributes(backend, entity, expected_entity)
+
+
+def _validate_entity_attributes(
+    backend: D365Backend, element: ET.Element, entity_name: str
+) -> None:
+    """Resolve each direct ``<attribute name>`` of ``element`` against
+    ``entity_name``'s metadata, then recurse into its ``<link-entity>`` children
+    (whose attributes belong to the link's target entity)."""
+    for attr in element.findall("attribute"):
         col = attr.get("name")
         if not col:
             continue
         try:
-            attribute_info(backend, expected_entity, col)
+            attribute_info(backend, entity_name, col)
         except D365Error as exc:
             raise D365Error(
-                f"fetch attribute {col!r} does not exist on {expected_entity!r}."
+                f"fetch attribute {col!r} does not exist on {entity_name!r}."
             ) from exc
+    for link in element.findall("link-entity"):
+        target = link.get("name")
+        if target:
+            _validate_entity_attributes(backend, link, target)
 
 
 def _validate_alias_coupling(
@@ -645,6 +674,7 @@ def add_chart_series(
     series count stays within the caps. Touches both XML columns in one PATCH."""
     chart_id = _normalize_chart_id(chart_id)
     current = get_chart(backend, chart_id, user=user)
+    _reject_comparison(current, "add-series")
     attribute_info_or_raise(backend, current["primaryentitytypecode"], column)
     new_data, new_pres = _append_series(
         current["datadescription"], current["presentationdescription"],
@@ -677,6 +707,7 @@ def remove_chart_series(
     the positionally-coupled presentation series). Refuses the last series."""
     chart_id = _normalize_chart_id(chart_id)
     current = get_chart(backend, chart_id, user=user)
+    _reject_comparison(current, "remove-series")
     new_data, new_pres = _drop_series(
         current["datadescription"], current["presentationdescription"], alias=alias)
     data_root = parse_xml(new_data, label="chart datadescription")
@@ -710,7 +741,11 @@ def set_chart_groupby(
     measure coupling is unaffected. Touches datadescription only."""
     chart_id = _normalize_chart_id(chart_id)
     current = get_chart(backend, chart_id, user=user)
-    attribute_info_or_raise(backend, current["primaryentitytypecode"], column)
+    info = attribute_info_or_raise(backend, current["primaryentitytypecode"], column)
+    if dategrouping is not None and (info.get("AttributeType") or "") != "DateTime":
+        raise D365Error(
+            f"--dategrouping is only valid for a date column; {column!r} is "
+            f"{info.get('AttributeType') or 'an unknown type'}.")
     new_data = _set_groupby(current["datadescription"], column=column, dategrouping=dategrouping)
     data_root = parse_xml(new_data, label="chart datadescription")
     _validate_alias_coupling(data_root, _pres_root_of(current))
@@ -726,10 +761,13 @@ def set_chart_groupby(
         action="set-groupby", publish=publish, solution=solution, read_back=_verify)
 
 
-def attribute_info_or_raise(backend: D365Backend, entity: str, column: str) -> None:
-    """Confirm ``column`` exists on ``entity`` in metadata, with a clean error."""
+def attribute_info_or_raise(
+    backend: D365Backend, entity: str, column: str
+) -> dict[str, Any]:
+    """Confirm ``column`` exists on ``entity`` and return its metadata, with a
+    clean error if it does not."""
     try:
-        attribute_info(backend, entity, column)
+        return attribute_info(backend, entity, column)
     except D365Error as exc:
         raise D365Error(f"attribute {column!r} does not exist on {entity!r}.") from exc
 

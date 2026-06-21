@@ -595,3 +595,95 @@ class TestChartEditPublishGating:
 def _set_groupby_helper():
     from crm.core.charts import _set_groupby
     return _set_groupby(_EDIT_DATA, column="createdon", dategrouping="month")
+
+
+# A comparison chart: two categories, one series.
+_COMPARISON_DATA = (
+    '<datadefinition><fetchcollection>'
+    '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
+    '<attribute name="new_priority" groupby="true" alias="groupby_column" />'
+    '<attribute name="new_stage" groupby="true" alias="groupby_column2" />'
+    '<attribute name="new_projectid" aggregate="count" alias="aggregate_column" />'
+    '</entity></fetch></fetchcollection>'
+    '<categorycollection>'
+    '<category alias="groupby_column"><measurecollection>'
+    '<measure alias="aggregate_column" /></measurecollection></category>'
+    '<category alias="groupby_column2"><measurecollection>'
+    '<measure alias="aggregate_column" /></measurecollection></category>'
+    '</categorycollection></datadefinition>'
+)
+
+
+class TestComparisonChartGuards:
+    def _chart(self):
+        c = dict(_EDIT_CHART)
+        c["datadescription"] = _COMPARISON_DATA
+        return c
+
+    def test_add_series_rejected_on_comparison_chart(self, backend):
+        from crm.core import charts
+        with requests_mock.Mocker() as m:
+            m.get(_edit_url(backend), json=self._chart())
+            with pytest.raises(D365Error, match="comparison"):
+                charts.add_chart_series(
+                    backend, _EDIT_ID, column="new_budget", aggregate="sum",
+                    alias="series2", publish=False)
+
+    def test_remove_series_rejected_on_comparison_chart(self, backend):
+        from crm.core import charts
+        with requests_mock.Mocker() as m:
+            m.get(_edit_url(backend), json=self._chart())
+            with pytest.raises(D365Error, match="comparison"):
+                charts.remove_chart_series(
+                    backend, _EDIT_ID, alias="aggregate_column", publish=False)
+
+
+class TestDategroupingValidation:
+    def test_dategrouping_rejected_for_non_date_column(self, backend):
+        from crm.core import charts
+        with requests_mock.Mocker() as m:
+            m.get(_edit_url(backend), json=_EDIT_CHART)
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
+            with pytest.raises(D365Error, match="date column"):
+                charts.set_chart_groupby(
+                    backend, _EDIT_ID, column="new_priority",
+                    dategrouping="month", publish=False)
+
+    def test_dategrouping_accepted_for_date_column(self, backend):
+        from crm.core import charts
+        with requests_mock.Mocker() as m:
+            m.get(_edit_url(backend), json=_EDIT_CHART)
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "DateTime"})
+            m.patch(_edit_url(backend), status_code=204)
+            out = charts.set_chart_groupby(
+                backend, _EDIT_ID, column="createdon", dategrouping="month", publish=False)
+        assert out["updated"] is True
+
+
+class TestLinkEntityValidation:
+    _DATA_WITH_LINK = (
+        '<datadefinition><fetchcollection>'
+        '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
+        '<attribute name="new_priority" groupby="true" alias="groupby_column" />'
+        '<attribute name="new_projectid" aggregate="count" alias="aggregate_column" />'
+        '<link-entity name="account" from="accountid" to="new_accountid">'
+        '<attribute name="ghostcol" />'
+        '</link-entity>'
+        '</entity></fetch></fetchcollection>'
+        '<categorycollection><category alias="groupby_column">'
+        '<measurecollection><measure alias="aggregate_column" /></measurecollection>'
+        '</category></categorycollection></datadefinition>'
+    )
+
+    def test_bad_link_entity_attribute_rejected(self, backend):
+        from crm.core import charts
+        with requests_mock.Mocker() as m:
+            m.get(_edit_url(backend), json=_EDIT_CHART)
+            # primary-entity attributes resolve; the link target's column 404s
+            m.get(re.compile(r"EntityDefinitions\(LogicalName='new_project'\)"),
+                  json={"AttributeType": "String"})
+            m.get(re.compile(r"EntityDefinitions\(LogicalName='account'\)"),
+                  status_code=404, json={"error": {"message": "Not found"}})
+            with pytest.raises(D365Error, match="ghostcol"):
+                charts.update_chart(
+                    backend, _EDIT_ID, data_description=self._DATA_WITH_LINK, publish=False)

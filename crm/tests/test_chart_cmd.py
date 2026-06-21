@@ -281,8 +281,12 @@ class TestChartSeriesCmd:
 class TestChartSetGroupbyCmd:
     def test_set_groupby_with_dategrouping(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
+        url = backend.url_for(f"savedqueryvisualizations({_EDIT_ID})")
         with rm_module.Mocker() as m:
-            _edit_mocks(m, backend)
+            m.get(url, json=_EDIT_CHART)
+            m.patch(url, status_code=204)
+            # --dategrouping requires a date column
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "DateTime"})
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "set-groupby", _EDIT_ID,
                 "--column", "createdon", "--dategrouping", "month", "--no-publish"])
@@ -290,6 +294,18 @@ class TestChartSetGroupbyCmd:
         body = m.last_request.json()
         assert 'name="createdon"' in body["datadescription"]
         assert 'dategrouping="month"' in body["datadescription"]
+
+    def test_set_groupby_dategrouping_rejects_non_date_column(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        url = backend.url_for(f"savedqueryvisualizations({_EDIT_ID})")
+        with rm_module.Mocker() as m:
+            m.get(url, json=_EDIT_CHART)
+            m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
+            result = CliRunner().invoke(cli, [
+                "--json", "chart", "set-groupby", _EDIT_ID,
+                "--column", "new_priority", "--dategrouping", "month", "--no-publish"])
+        assert result.exit_code != 0
+        assert "date column" in result.output.lower()
 
     def test_set_groupby_dry_run_previews(self, dry_backend, monkeypatch):
         _use_backend(monkeypatch, dry_backend)

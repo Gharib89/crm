@@ -186,3 +186,55 @@ class TestCommitXmlPatch:
                 column="formxml", new_xml="<form/>", result=self._base_result(),
                 dry_run_flag="would_add", publish=False, solution="mysol")
             assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "mysol"
+
+
+class TestCommitXmlPatches:
+    """The multi-column commit used by the chart editors (two coupled columns)."""
+    _ID = "11112222-3333-4444-5555-666677778888"
+
+    def _url(self, backend):
+        return backend.url_for(f"savedqueryvisualizations({self._ID})")
+
+    def test_patches_all_columns_in_one_request(self, backend):
+        with requests_mock.Mocker() as m:
+            m.patch(self._url(backend), status_code=204)
+            out = xml_edit.commit_xml_patches(
+                backend, entity_set="savedqueryvisualizations", record_id=self._ID,
+                columns={"datadescription": "<d/>", "presentationdescription": "<p/>"},
+                result={"action": "add-series"}, dry_run_flag="would_update",
+                publish=False)
+        body = m.last_request.json()
+        assert body == {"datadescription": "<d/>", "presentationdescription": "<p/>"}
+        assert out["updated"] is True
+
+    def test_publish_then_read_back_gets_all_columns(self, backend):
+        seen: list[str] = []
+        got: dict[str, str] = {}
+        with requests_mock.Mocker() as m:
+            m.patch(self._url(backend), status_code=204,
+                    additional_matcher=lambda r: seen.append("patch") is None or True)
+            m.post(backend.url_for("PublishAllXml"), status_code=204,
+                   additional_matcher=lambda r: seen.append("publish") is None or True)
+            m.get(self._url(backend),
+                  json={"datadescription": "<d published='1'/>",
+                        "presentationdescription": "<p published='1'/>"},
+                  additional_matcher=lambda r: seen.append("get") is None or True)
+            xml_edit.commit_xml_patches(
+                backend, entity_set="savedqueryvisualizations", record_id=self._ID,
+                columns={"datadescription": "<d/>", "presentationdescription": "<p/>"},
+                result={"action": "add-series"}, dry_run_flag="would_update",
+                publish=True, read_back=lambda cols: got.update(cols))
+        assert seen == ["patch", "publish", "get"]
+        # read-back receives every patched column, post-publish
+        assert got == {"datadescription": "<d published='1'/>",
+                       "presentationdescription": "<p published='1'/>"}
+        # the read-back GET selects exactly the patched columns
+        assert "datadescription" in m.request_history[-1].qs["$select"][0]
+        assert "presentationdescription" in m.request_history[-1].qs["$select"][0]
+
+    def test_read_back_without_publish_is_rejected(self, backend):
+        with pytest.raises(ValueError, match="read_back requires publish=True"):
+            xml_edit.commit_xml_patches(
+                backend, entity_set="savedqueryvisualizations", record_id=self._ID,
+                columns={"datadescription": "<d/>"}, result={},
+                dry_run_flag="would_update", publish=False, read_back=lambda _c: None)

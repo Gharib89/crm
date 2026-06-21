@@ -195,9 +195,10 @@ crm chart add-series <id> --column estimatedvalue --aggregate sum --alias total_
 crm chart add-series <id> --column opportunityid --aggregate count --alias opp_count
 ```
 
-A chart is capped at **5 series**. A comparison chart (one with 2
-`<categorycollection>` categories) accepts exactly 1 series — attempting to add
-a second is refused.
+A chart is capped at **5 series**. Per-series edits are not supported on a
+**comparison chart** (one with 2 `<categorycollection>` categories — it pairs
+two groupings against a single series); `add-series` / `remove-series` refuse it
+with a hint to use `chart update` instead.
 
 The `--alias` must be unique within the chart; the `--column` must be a logical
 name that exists on the chart's host entity (validated against live metadata).
@@ -218,7 +219,8 @@ crm chart remove-series <id> --alias total_value
 crm chart remove-series <id> --alias opp_count --user
 ```
 
-Removing the **last** series is refused — a chart must have at least one.
+Removing the **last** series is refused — a chart must have at least one — as is
+removing a series from a comparison chart (see `add-series` above).
 
 ## Change the grouping column
 
