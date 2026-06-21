@@ -1,8 +1,9 @@
 # pyright: basic
-"""E2E tests for view verbs: list, create."""
+"""E2E tests for view verbs: list, create, edit-columns, set-order."""
 from __future__ import annotations
 
 import json
+from xml.etree import ElementTree
 
 import pytest
 
@@ -150,3 +151,96 @@ def test_view_create_query_type_and_description(backend, cli, request, unique):
     assert rb.get("description") == description, (
         f"description mismatch: {rb.get('description')!r}"
     )
+
+
+# ── view edit-columns / set-order ───────────────────────────────────────────
+
+
+def _create_view(cli, backend, request, unique, *, name_prefix):
+    """Create a public view on contact and register cleanup; return its id."""
+    view_name = f"{name_prefix} {unique}"
+    otc = _resolve_otc(backend, "contact")
+    created_id: list[str] = []
+
+    def _cleanup():
+        if created_id:
+            try:
+                backend.delete(f"savedqueries({created_id[0]})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+    result = cli([
+        "--json", "view", "create", "contact",
+        "--name", view_name, "--otc", str(otc),
+        "--column", "contactid", "--column", "firstname",
+        "--no-publish",
+    ])
+    assert result.returncode == 0, (
+        f"view create failed:\n{result.stderr}\nstdout: {result.stdout}")
+    sqid = json.loads(result.stdout)["data"]["savedqueryid"]
+    assert sqid, "savedqueryid missing from create response"
+    created_id.append(sqid)
+    return sqid
+
+
+def _cells(layoutxml: str) -> dict[str, str]:
+    """{cell name: width} parsed from a view's layoutxml."""
+    root = ElementTree.fromstring(layoutxml)
+    return {c.get("name"): (c.get("width") or "") for c in root.iter("cell")}
+
+
+@covers("view edit-columns")
+@pytest.mark.slow
+def test_view_edit_columns_live(backend, cli, request, unique):
+    """Add + resize a column, publish, and verify the published layer landed."""
+    from crm.utils.d365_backend import as_dict
+
+    sqid = _create_view(cli, backend, request, unique, name_prefix="E2E EditCols")
+
+    # --publish drives the T3 read-back (a GET returns the published layer).
+    result = cli([
+        "--json", "view", "edit-columns", "contact", sqid,
+        "--add", "lastname:140", "--width", "firstname:160", "--publish",
+    ])
+    assert result.returncode == 0, (
+        f"view edit-columns failed:\n{result.stderr}\nstdout: {result.stdout}")
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    assert env["data"]["updated"] is True, env
+    assert "lastname" in env["data"]["columns"], env
+
+    rb = as_dict(backend.get(
+        f"savedqueries({sqid})", params={"$select": "layoutxml,fetchxml"}))
+    cells = _cells(rb["layoutxml"])
+    assert "lastname" in cells, f"lastname cell missing: {cells}"
+    assert cells.get("firstname") == "160", f"firstname width not 160: {cells}"
+    # Mismatch invariant: the new column is in the fetch too.
+    assert 'name="lastname"' in rb["fetchxml"], rb["fetchxml"]
+
+
+@covers("view set-order")
+@pytest.mark.slow
+def test_view_set_order_live(backend, cli, request, unique):
+    """Set a descending sort, publish, and verify the fetch <order> landed."""
+    from crm.utils.d365_backend import as_dict
+
+    sqid = _create_view(cli, backend, request, unique, name_prefix="E2E SetOrder")
+
+    result = cli([
+        "--json", "view", "set-order", "contact", sqid,
+        "--order", "createdon desc", "--publish",
+    ])
+    assert result.returncode == 0, (
+        f"view set-order failed:\n{result.stderr}\nstdout: {result.stdout}")
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    assert env["data"]["order"] == [
+        {"attribute": "createdon", "descending": True}], env
+
+    rb = as_dict(backend.get(
+        f"savedqueries({sqid})", params={"$select": "fetchxml"}))
+    root = ElementTree.fromstring(rb["fetchxml"])
+    orders = [(o.get("attribute"), o.get("descending"))
+              for o in root.iter("order")]
+    assert ("createdon", "true") in orders, f"order did not land: {orders}"

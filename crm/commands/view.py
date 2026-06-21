@@ -79,6 +79,21 @@ def _parse_order(raw: str) -> tuple[str, bool]:
         f"--order must be '<attribute>' or '<attribute> asc|desc': {raw!r}")
 
 
+def _parse_width(raw: str) -> tuple[str, int]:
+    """Parse '<logical>:<int>' for --width (width required, must be positive)."""
+    name, sep, w = raw.partition(":")
+    name = name.strip()
+    if not name or not sep:
+        raise click.BadParameter(f"--width must be 'logical:int': {raw!r}")
+    try:
+        width = int(w.strip())
+    except ValueError:
+        raise click.BadParameter(f"column width must be an int: {raw!r}")
+    if width <= 0:
+        raise click.BadParameter(f"column width must be positive: {raw!r}")
+    return name, width
+
+
 @view_group.command("create")
 @click.argument("entity")
 @click.option("--name", required=True, help="View display name.")
@@ -121,3 +136,88 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
     _emit_with_warning(ctx, info, warning,
                        meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
+
+
+_query_type_option = click.option(
+    "--query-type", type=click.Choice(list(views_mod.QUERY_TYPES)),
+    default="public", show_default=True,
+    help="Saved-query type to resolve the view by (with its name).")
+
+
+@view_group.command("edit-columns")
+@click.argument("entity")
+@click.argument("view")
+@_query_type_option
+@click.option("--add", "add", multiple=True,
+              help="Add a column 'logicalname[:width]' (repeatable). Adds both "
+                   "the layout cell and the fetch attribute.")
+@click.option("--remove", "remove", multiple=True,
+              help="Remove a column by logical name (repeatable).")
+@click.option("--width", "width", multiple=True,
+              help="Resize an existing column 'logicalname:width' (repeatable).")
+@click.option("--reorder", default=None,
+              help="Comma-separated logical names giving the new column order "
+                   "(must be a permutation of the current columns; "
+                   "not combinable with --add/--remove/--width).")
+@_solution_option
+@_publish_option
+@pass_ctx
+def view_edit_columns(ctx: CLIContext, entity, view, query_type,
+                      add, remove, width, reorder,
+                      solution, require_solution, publish):
+    """Edit the grid columns of VIEW on ENTITY (by name or savedqueryid).
+
+    \b
+    Editing an out-of-box / managed view creates an unmanaged layer that a
+    solution upgrade may revert.
+    """
+    add_parsed = [_parse_column(c) for c in add]
+    width_parsed = [_parse_width(w) for w in width]
+    reorder_parsed = (
+        [c.strip() for c in reorder.split(",") if c.strip()]
+        if reorder is not None else None)
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = views_mod.edit_view_columns(
+            ctx.backend(), entity=entity, view=view, query_type=query_type,
+            add=add_parsed, remove=list(remove), width=width_parsed,
+            reorder=reorder_parsed, solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, view, info, solution=solution)
+
+
+@view_group.command("set-order")
+@click.argument("entity")
+@click.argument("view")
+@_query_type_option
+@click.option("--order", "order", multiple=True,
+              help="Replace the sort with '<attribute> [asc|desc]' (repeatable "
+                   "to sort by several attributes, in order).")
+@click.option("--add-order", "add_order", multiple=True,
+              help="Append '<attribute> [asc|desc]' to the current sort "
+                   "(repeatable).")
+@click.option("--clear-order", is_flag=True, help="Remove all sorting.")
+@_solution_option
+@_publish_option
+@pass_ctx
+def view_set_order(ctx: CLIContext, entity, view, query_type,
+                   order, add_order, clear_order,
+                   solution, require_solution, publish):
+    """Set the sort order of VIEW on ENTITY (by name or savedqueryid).
+
+    \b
+    Editing an out-of-box / managed view creates an unmanaged layer that a
+    solution upgrade may revert.
+    """
+    order_parsed = [_parse_order(o) for o in order]
+    add_order_parsed = [_parse_order(o) for o in add_order]
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = views_mod.set_view_order(
+            ctx.backend(), entity=entity, view=view, query_type=query_type,
+            order=order_parsed, add_order=add_order_parsed,
+            clear_order=clear_order, solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, view, info, solution=solution)
