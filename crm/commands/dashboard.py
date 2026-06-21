@@ -217,6 +217,17 @@ def dashboard_remove_component(
 ) -> None:
     """Remove one component from dashboard DASHBOARD_ID, selected by exactly one
     of --cell-id / --index / --view / --chart / --url."""
+    # Strip first, so a blank-ish flag (--url '' / '   ') is treated as missing
+    # and yields a usage error (exit 2) here — before a backend is built — rather
+    # than a confusing core error (exit 1). --index is an int (0 is valid), so
+    # selectors are counted by "is not None", not truthiness.
+    cell_id = (cell_id or "").strip() or None
+    view = (view or "").strip() or None
+    chart = (chart or "").strip() or None
+    url = (url or "").strip() or None
+    if sum(1 for v in (cell_id, index, view, chart, url) if v is not None) != 1:
+        raise click.UsageError(
+            "Provide exactly one of --cell-id, --index, --view, --chart or --url.")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):

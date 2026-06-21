@@ -258,12 +258,18 @@ class TestDashboardRemoveComponent:
         assert env["data"]["updated"] is True
 
     def test_remove_component_requires_one_selector(self, backend, monkeypatch):
+        # a missing selector is a usage error (exit 2), raised in the command
+        # layer before a backend is built — not an operational core error.
         _use_backend(monkeypatch, backend)
-        did = _DASH["formid"]
-        with rm_module.Mocker() as m:
-            m.get(backend.url_for(f"systemforms({did})"),
-                  json={**_DASH, "formxml": self._xml()})
-            result = CliRunner().invoke(cli, [
-                "--json", "dashboard", "remove-component", did, "--no-publish"])
-        assert result.exit_code != 0
+        result = CliRunner().invoke(cli, [
+            "--json", "dashboard", "remove-component", _DASH["formid"],
+            "--no-publish"])
+        assert result.exit_code == 2, result.output
         assert json.loads(result.output)["ok"] is False
+
+    def test_remove_component_rejects_two_selectors(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "dashboard", "remove-component", _DASH["formid"],
+            "--index", "0", "--view", self._RV, "--no-publish"])
+        assert result.exit_code == 2, result.output
