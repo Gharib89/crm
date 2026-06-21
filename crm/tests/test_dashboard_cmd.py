@@ -176,3 +176,94 @@ class TestDashboardAddView:
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
         assert env["data"]["would_add"] is True
+
+
+_WR_ID = "eeeeeeee-0000-0000-0000-000000000001"
+
+
+class TestDashboardAddIframe:
+    def test_add_iframe(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        did = _DASH["formid"]
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({did})"),
+                  json={**_DASH, "formxml": _DASH_FORMXML})
+            m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "dashboard", "add-iframe", did,
+                "--url", "https://example.com/x", "--security", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["action"] == "add-iframe"
+        assert env["data"]["updated"] is True
+
+    def test_add_iframe_requires_url(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "dashboard", "add-iframe", _DASH["formid"], "--no-publish"])
+        assert result.exit_code != 0
+
+
+class TestDashboardAddWebresource:
+    def test_add_webresource_warns_not_form_enabled(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        did = _DASH["formid"]
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({did})"),
+                  json={**_DASH, "formxml": _DASH_FORMXML})
+            m.get(backend.url_for("webresourceset"),
+                  json={"value": [{"webresourceid": _WR_ID, "name": "new_/logic.js",
+                                   "webresourcetype": 3}]})
+            m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "dashboard", "add-webresource", did,
+                "--webresource", "new_/logic.js", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["action"] == "add-webresource"
+        # the not-form-enabled advisory rides the structured warnings channel
+        assert any("form-enabled" in w for w in env["meta"]["warnings"])
+        # the transient warning is not leaked as a data field
+        assert "warning" not in env["data"]
+
+
+class TestDashboardRemoveComponent:
+    _RV = "cccccccc-0000-0000-0000-000000000001"
+
+    def _xml(self):
+        return (
+            '<form><tabs><tab name="t" id="{aaaa0000-0000-0000-0000-0000000000ff}">'
+            '<columns><column width="100%"><sections>'
+            '<section name="s0" id="{aaaa0000-0000-0000-0000-000000000001}">'
+            f'<rows><row><cell id="{{cccc0000-0000-0000-0000-000000000001}}" '
+            f'rowspan="1"><control id="ChartGrid" '
+            f'classid="{{E7A81278-8635-4D9E-8D4D-59480B391C5B}}">'
+            f'<parameters><ViewId>{{{self._RV}}}</ViewId></parameters></control>'
+            '</cell></row></rows></section>'
+            '</sections></column></columns></tab></tabs></form>')
+
+    def test_remove_component(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        did = _DASH["formid"]
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({did})"),
+                  json={**_DASH, "formxml": self._xml()})
+            m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "dashboard", "remove-component", did,
+                "--view", self._RV, "--no-publish"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["action"] == "remove-component"
+        assert env["data"]["updated"] is True
+
+    def test_remove_component_requires_one_selector(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        did = _DASH["formid"]
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for(f"systemforms({did})"),
+                  json={**_DASH, "formxml": self._xml()})
+            result = CliRunner().invoke(cli, [
+                "--json", "dashboard", "remove-component", did, "--no-publish"])
+        assert result.exit_code != 0
+        assert json.loads(result.output)["ok"] is False
