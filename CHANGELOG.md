@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.14.0 (2026-06-21)
+
+### Documentation
+
+- Clarify sibling-guard message (PATCH not POST) and dry-run comment
+  ([#475](https://github.com/Gharib89/crm/pull/475),
+  [`64a1ae4`](https://github.com/Gharib89/crm/commit/64a1ae46df9f9ccc72101b1c68dd9dcf37b46545))
+
+### Features
+
+- Add form tab & section structure editors (B8) ([#475](https://github.com/Gharib89/crm/pull/475),
+  [`64a1ae4`](https://github.com/Gharib89/crm/commit/64a1ae46df9f9ccc72101b1c68dd9dcf37b46545))
+
+### Testing
+
+- Add offline command-layer + dry-run coverage for form tab/section verbs
+  ([#475](https://github.com/Gharib89/crm/pull/475),
+  [`64a1ae4`](https://github.com/Gharib89/crm/commit/64a1ae46df9f9ccc72101b1c68dd9dcf37b46545))
+
+
 ## v1.13.0 (2026-06-21)
 
 ### Documentation
