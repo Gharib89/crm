@@ -152,12 +152,19 @@ def attribute_info_or_raise(
 ) -> dict[str, Any]:
     """Confirm ``column`` exists on ``entity`` and return its metadata, with a
     clean error if it does not. The shared existence check for the XML editors
-    (charts, views) that validate a referenced column before a write."""
+    (charts, views) that validate a referenced column before a write.
+
+    Only a 404 is translated to "does not exist"; an auth/server/transport
+    failure is re-raised unchanged so a real outage is not misreported as a
+    typo'd column.
+    """
     try:
         return attribute_info(backend, entity, column)
     except D365Error as exc:
-        raise D365Error(
-            f"attribute {column!r} does not exist on {entity!r}.") from exc
+        if exc.status == 404:
+            raise D365Error(
+                f"attribute {column!r} does not exist on {entity!r}.") from exc
+        raise
 
 
 def picklist_options(

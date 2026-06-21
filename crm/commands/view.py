@@ -171,6 +171,12 @@ def view_edit_columns(ctx: CLIContext, entity, view, query_type,
     Editing an out-of-box / managed view creates an unmanaged layer that a
     solution upgrade may revert.
     """
+    if reorder is not None and (add or remove or width):
+        raise click.UsageError(
+            "--reorder cannot be combined with --add / --remove / --width.")
+    if reorder is None and not (add or remove or width):
+        raise click.UsageError(
+            "nothing to do: pass --add, --remove, --width, or --reorder.")
     add_parsed = [_parse_column(c) for c in add]
     width_parsed = [_parse_width(w) for w in width]
     reorder_parsed = (
@@ -210,6 +216,9 @@ def view_set_order(ctx: CLIContext, entity, view, query_type,
     Editing an out-of-box / managed view creates an unmanaged layer that a
     solution upgrade may revert.
     """
+    if not (order or add_order or clear_order):
+        raise click.UsageError(
+            "nothing to do: pass --order, --add-order, or --clear-order.")
     order_parsed = [_parse_order(o) for o in order]
     add_order_parsed = [_parse_order(o) for o in add_order]
     solution, warning = _resolve_solution(ctx, solution, require_solution)

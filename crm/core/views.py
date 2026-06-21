@@ -457,11 +457,14 @@ def edit_view_columns(
     if not fetchxml:
         raise D365Error(f"view {view!r} has no fetchxml; cannot edit columns.")
 
-    pk = f"{entity}id"
     layout_root = parse_xml(layoutxml, label="layoutxml")
     fetch_root = parse_xml(fetchxml, label="fetchxml")
     lrow = _layout_row(layout_root)
     fent = _fetch_entity(fetch_root)
+    # The layout <row id="..."> attribute is the view's primary-key attribute;
+    # it is authoritative (a few system tables don't follow the <entity>id
+    # convention), so prefer it over guessing.
+    pk = lrow.get("id") or f"{entity}id"
     fetch_changed = False
 
     existing = _cell_names(lrow)

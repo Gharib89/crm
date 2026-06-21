@@ -590,6 +590,33 @@ class TestSetViewOrder:
                 backend, entity=_ENTITY, view="Active Tickets")
 
 
+class TestViewEditCommandUsage:
+    """Invalid flag combinations are usage errors (exit 2) at the command layer,
+    raised before any backend call."""
+
+    def _invoke(self, args):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        return CliRunner().invoke(cli, args)
+
+    def test_edit_columns_no_flags_is_usage_error(self):
+        result = self._invoke(["view", "edit-columns", _ENTITY, "View"])
+        assert result.exit_code == 2
+        assert "nothing to do" in result.output
+
+    def test_edit_columns_reorder_with_add_is_usage_error(self):
+        result = self._invoke([
+            "view", "edit-columns", _ENTITY, "View",
+            "--reorder", "a,b", "--add", "c"])
+        assert result.exit_code == 2
+        assert "cannot be combined" in result.output
+
+    def test_set_order_no_flags_is_usage_error(self):
+        result = self._invoke(["view", "set-order", _ENTITY, "View"])
+        assert result.exit_code == 2
+        assert "nothing to do" in result.output
+
+
 class TestViewCommand:
     def test_view_create_command_wires_core(self, monkeypatch):
         from click.testing import CliRunner
