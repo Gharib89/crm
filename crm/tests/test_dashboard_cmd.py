@@ -203,6 +203,15 @@ class TestDashboardAddIframe:
             "--json", "dashboard", "add-iframe", _DASH["formid"], "--no-publish"])
         assert result.exit_code != 0
 
+    def test_add_iframe_blank_url_is_usage_error(self, backend, monkeypatch):
+        # a whitespace-only --url is rejected in the command layer (exit 2),
+        # before a backend is built
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "dashboard", "add-iframe", _DASH["formid"],
+            "--url", "   ", "--no-publish"])
+        assert result.exit_code == 2, result.output
+
 
 class TestDashboardAddWebresource:
     def test_add_webresource_warns_not_form_enabled(self, backend, monkeypatch):
@@ -225,6 +234,13 @@ class TestDashboardAddWebresource:
         assert any("form-enabled" in w for w in env["meta"]["warnings"])
         # the transient warning is not leaked as a data field
         assert "warning" not in env["data"]
+
+    def test_add_webresource_blank_is_usage_error(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "dashboard", "add-webresource", _DASH["formid"],
+            "--webresource", "  ", "--no-publish"])
+        assert result.exit_code == 2, result.output
 
 
 class TestDashboardRemoveComponent:

@@ -155,6 +155,11 @@ def dashboard_add_iframe(
     force: bool, solution: str | None, require_solution: bool, publish: bool,
 ) -> None:
     """Add an IFRAME tile to dashboard DASHBOARD_ID's FormXml."""
+    # A blank-ish --url (Click's required=True still admits '' / '   ') is a usage
+    # error caught here (exit 2) before a backend is built, not a late core error.
+    url = (url or "").strip()
+    if not url:
+        raise click.UsageError("--url must be a non-empty URL.")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
@@ -181,6 +186,11 @@ def dashboard_add_webresource(
     force: bool, solution: str | None, require_solution: bool, publish: bool,
 ) -> None:
     """Add a web-resource tile to dashboard DASHBOARD_ID's FormXml."""
+    # As with --url: a blank-ish --webresource is a usage error here (exit 2),
+    # before a backend is built, not a late core error.
+    webresource = (webresource or "").strip()
+    if not webresource:
+        raise click.UsageError("--webresource must be a non-empty id or name.")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
