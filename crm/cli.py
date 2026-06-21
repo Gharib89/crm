@@ -404,6 +404,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "self-update": "crm.commands.self_update:self_update_cmd",
         "session": "crm.commands.session:session_group",
         "skill": "crm.commands.skill:skill_group",
+        "sitemap": "crm.commands.sitemap:sitemap_group",
         "sla": "crm.commands.sla:sla_group",
         "solution": "crm.commands.solution:solution_group",
         "theme": "crm.commands.theme:theme_group",
