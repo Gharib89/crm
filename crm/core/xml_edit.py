@@ -159,6 +159,60 @@ def node_present(root: "ET.Element", tag: str, **attrs: str) -> bool:
 # --- Shared direct-PATCH commit -------------------------------------------------
 
 
+def commit_xml_patches(
+    backend: D365Backend,
+    *,
+    entity_set: str,
+    record_id: str,
+    columns: "dict[str, str]",
+    result: "dict[str, Any]",
+    dry_run_flag: str,
+    publish: bool,
+    solution: "str | None" = None,
+    read_back: "Callable[[dict[str, str]], None] | None" = None,
+) -> "dict[str, Any]":
+    """PATCH one or more writable XML columns in a single request, then maybe publish.
+
+    The multi-column form of :func:`commit_xml_patch`, for an editor that must
+    keep two coupled columns consistent in one write — a chart edit that touches
+    both ``datadescription`` and ``presentationdescription`` (add/remove-series)
+    cannot split them across two PATCHes without risking a half-applied chart.
+    The caller has already read and mutated every column in ``columns`` and
+    pre-seeded ``result`` with the edit's metadata.
+
+    - Under ``backend.dry_run`` no write is issued — stamp ``result`` with
+      ``_dry_run`` and ``dry_run_flag`` and return it (zero HTTP).
+    - Otherwise PATCH ``columns`` onto ``entity_set(record_id)`` (under the
+      solution header when ``solution`` is set), then ``maybe_publish``, then —
+      if ``read_back`` is given — GET the columns back and hand the
+      server-returned ``{column: xml}`` map to ``read_back`` for a T3 verify.
+
+    The publish-before-read-back order is mandatory: a Web API GET returns the
+    *published* layer, so a read-back before publish false-negatives. A
+    ``read_back`` without ``publish`` is therefore a programming error and is
+    rejected up front rather than allowed to silently false-negative.
+    """
+    if read_back is not None and not publish:
+        raise ValueError(
+            "commit_xml_patches: read_back requires publish=True — a Web API GET "
+            "returns the published layer, so a read-back before publish "
+            "false-negatives the T3 verification.")
+    if backend.dry_run:
+        result["_dry_run"] = True
+        result[dry_run_flag] = True
+        return result
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    backend.patch(f"{entity_set}({record_id})",
+                  json_body=dict(columns), extra_headers=headers)
+    result["updated"] = True
+    maybe_publish(backend, result, publish)
+    if read_back is not None:
+        row = as_dict(backend.get(f"{entity_set}({record_id})",
+                                  params={"$select": ",".join(columns)}))
+        read_back({c: str(row.get(c) or "") for c in columns})
+    return result
+
+
 def commit_xml_patch(
     backend: D365Backend,
     *,
@@ -176,7 +230,8 @@ def commit_xml_patch(
 
     The shared commit for every direct-PATCH editor family (forms, dashboards,
     charts, sitemap, views): the caller has already read and mutated the column
-    and pre-seeded ``result`` with the edit's metadata.
+    and pre-seeded ``result`` with the edit's metadata. A thin single-column
+    adapter over :func:`commit_xml_patches`.
 
     - Under ``backend.dry_run`` no write is issued — stamp ``result`` with
       ``_dry_run`` and ``dry_run_flag`` and return it (zero HTTP).
@@ -190,22 +245,11 @@ def commit_xml_patch(
     ``read_back`` without ``publish`` is therefore a programming error and is
     rejected up front rather than allowed to silently false-negative.
     """
-    if read_back is not None and not publish:
-        raise ValueError(
-            "commit_xml_patch: read_back requires publish=True — a Web API GET "
-            "returns the published layer, so a read-back before publish "
-            "false-negatives the T3 verification.")
-    if backend.dry_run:
-        result["_dry_run"] = True
-        result[dry_run_flag] = True
-        return result
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    backend.patch(f"{entity_set}({record_id})",
-                  json_body={column: new_xml}, extra_headers=headers)
-    result["updated"] = True
-    maybe_publish(backend, result, publish)
+    rb: "Callable[[dict[str, str]], None] | None" = None
     if read_back is not None:
-        row = as_dict(backend.get(f"{entity_set}({record_id})",
-                                  params={"$select": column}))
-        read_back(str(row.get(column) or ""))
-    return result
+        _rb = read_back
+        rb = lambda cols: _rb(cols[column])  # noqa: E731
+    return commit_xml_patches(
+        backend, entity_set=entity_set, record_id=record_id,
+        columns={column: new_xml}, result=result, dry_run_flag=dry_run_flag,
+        publish=publish, solution=solution, read_back=rb)
