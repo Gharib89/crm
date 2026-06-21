@@ -377,6 +377,11 @@ def test_validate_rule_ids_accepts_known_platform_and_custom():
     ribbon.validate_rule_ids(["Mscrm.HideOnModern"], kind="display")
 
 
+def test_validate_rule_ids_rejects_bad_kind():
+    with pytest.raises(ValueError, match="kind must be"):
+        ribbon.validate_rule_ids(["custom.Rule"], kind="bogus")
+
+
 def test_validate_rule_ids_rejects_unknown_platform_id():
     with pytest.raises(ValueError, match="not a recognized platform rule"):
         ribbon.validate_rule_ids(["Mscrm.Typooo"], kind="enable")

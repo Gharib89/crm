@@ -382,7 +382,12 @@ def validate_rule_ids(rule_ids: "Sequence[str]", *, kind: str) -> None:
     they reference rules defined in the solution. Raises ValueError on an
     unrecognized platform id (which the server would otherwise silently ignore).
     """
-    allowed = PLATFORM_ENABLE_RULES if kind == "enable" else PLATFORM_DISPLAY_RULES
+    if kind == "enable":
+        allowed = PLATFORM_ENABLE_RULES
+    elif kind == "display":
+        allowed = PLATFORM_DISPLAY_RULES
+    else:
+        raise ValueError(f"kind must be 'enable' or 'display', not {kind!r}")
     for rid in rule_ids:
         if rid.startswith(_OOB_COMMAND_PREFIX) and rid not in allowed:
             raise ValueError(
