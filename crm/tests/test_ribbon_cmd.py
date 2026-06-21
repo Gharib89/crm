@@ -291,6 +291,7 @@ def test_ribbon_set_rules_applies(monkeypatch):
         root = ET.fromstring(_CUST_WITH_COMMAND)
         mutate(root)
         cdef = root.find(".//CommandDefinition[@Id='cwx_ticket.form.Validate.Command']")
+        assert cdef is not None
         captured["enable"] = [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")]
         return {"status": "succeeded"}
 

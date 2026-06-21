@@ -339,6 +339,7 @@ def test_set_command_rules_sets_display_refs_and_leaves_enable_untouched():
     ribbon.set_command_rules(
         diff, command_id=cmd, enable_rules=[], display_rules=["Mscrm.HideOnModern"])
     cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
+    assert cdef is not None
     assert [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")] == \
         ["custom.MyRule"]
     assert [e.get("Id") for e in cdef.findall("DisplayRules/DisplayRule")] == \
@@ -353,6 +354,7 @@ def test_set_command_rules_replaces_not_appends():
     ribbon.set_command_rules(diff, command_id=cmd,
                              enable_rules=["Mscrm.ShowOnQuickAction"], display_rules=[])
     cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
+    assert cdef is not None
     assert [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")] == \
         ["Mscrm.ShowOnQuickAction"]
 
@@ -418,6 +420,7 @@ def test_add_custom_rule_defines_and_references():
     assert custom.get("FunctionName") == "ns.canRun"
     # referenced on the command's EnableRules
     cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
+    assert cdef is not None
     assert any(e.get("Id") == rid for e in cdef.findall("EnableRules/EnableRule"))
 
 
