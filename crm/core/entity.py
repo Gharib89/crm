@@ -469,6 +469,7 @@ def create(
     payload: dict[str, Any],
     *,
     return_record: bool = True,
+    extra_headers: dict[str, str] | None = None,
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
@@ -479,10 +480,16 @@ def create(
     With return_record=True we add `Prefer: return=representation` to get the created
     record back in the response. Otherwise we extract the GUID from the
     `OData-EntityId` header and return `{ "_entity_id": "<guid>", "_entity_id_url": ... }`.
+
+    `extra_headers` are merged on top of the `Prefer` header — used by callers that
+    must ride a request header on the create (e.g. `MSCRM.SolutionUniqueName` to add
+    the new record to a solution as a component).
     """
     headers: dict[str, str] = {}
     if return_record:
         headers["Prefer"] = "return=representation"
+    if extra_headers:
+        headers.update(extra_headers)
 
     result = backend.post(
         entity_set,

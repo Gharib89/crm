@@ -114,6 +114,21 @@ A real run returns `{roleid, name, businessunitid}`. Pass `--dry-run` to
 preview the creation without writing — it returns a `{_dry_run, would_create}`
 preview instead (no role is created, so there is no `roleid`).
 
+### Add the role to a solution
+
+```bash
+crm --json security create-role "Agent Read-Only" --solution cwx_mysolution --yes
+```
+
+`--solution` sets `MSCRM.SolutionUniqueName` to place the new role in an
+unmanaged solution as a component. Use `--require-solution` to fail if no
+solution name resolves (from `--solution` or the profile default).
+
+> **Note — `--if-exists skip` does not add to `--solution`.** When
+> `--if-exists skip` returns an existing same-name role, that role is reused
+> as-is and is **not** added to `--solution`. Solution membership applies
+> only to a newly created role.
+
 ## Grant privileges to a security role
 
 Use `security set-role-privileges` to populate a role with privileges after

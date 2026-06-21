@@ -532,6 +532,40 @@ class TestCreateRole:
         assert result["would_create"]["body"]["name"] == "Agent Read-Only"
         assert all(h.method != "POST" for h in m.request_history)
 
+    def test_solution_sends_header(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})
+            m.post(backend.url_for("roles"), json={"roleid": _ROLE_ID, "name": "R"})
+            sec.create_role(backend, "R", business_unit=_BU_ID, solution="mysol")
+        post = m.request_history[-1]
+        assert post.method == "POST"
+        assert post.headers.get("MSCRM.SolutionUniqueName") == "mysol"
+
+    def test_no_solution_omits_header(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})
+            m.post(backend.url_for("roles"), json={"roleid": _ROLE_ID, "name": "R"})
+            sec.create_role(backend, "R", business_unit=_BU_ID)
+        assert "MSCRM.SolutionUniqueName" not in m.request_history[-1].headers
+
+    def test_dry_run_preview_includes_solution(self, dry_backend):
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for("roles"), json={"value": []})
+            result = sec.create_role(dry_backend, "R", business_unit=_BU_ID,
+                                     solution="mysol")
+        assert result["would_create"]["solution"] == "mysol"
+        assert all(h.method != "POST" for h in m.request_history)
+
+    def test_if_exists_skip_does_not_add_existing_to_solution(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": [{"roleid": _ROLE_ID}]})
+            result = sec.create_role(backend, "Dup", business_unit=_BU_ID,
+                                     if_exists="skip", solution="mysol")
+        assert result["existed"] is True
+        # The solution header only rides a create POST; skipping a create must
+        # not silently add the existing role to the solution.
+        assert all(h.method != "POST" for h in m.request_history)
+
 
 # ── set_role_privileges ──────────────────────────────────────────────────────
 

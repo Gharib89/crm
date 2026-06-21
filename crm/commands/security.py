@@ -10,7 +10,10 @@ from crm.commands._helpers import (
     _confirm_destructive,
     _admin_header_options,
     _admin_kwargs,
+    _emit_with_warning,
     _journal,
+    _resolve_solution,
+    _solution_option,
 )
 
 
@@ -68,23 +71,30 @@ def _csv(value: str | None) -> list[str]:
               default="error", show_default=True,
               help="On a same-name role in the same business unit: error, or "
                    "skip (reuse the existing role).")
+@_solution_option
 @_destructive_option
 @pass_ctx
-def create_role(ctx: CLIContext, name, business_unit, if_exists, yes):
+def create_role(ctx: CLIContext, name, business_unit, if_exists, solution,
+                require_solution, yes):
     """Create a security role (NAME is the role's display name).
 
     The role starts with no privileges; grant them with
-    `security set-role-privileges`. Use --dry-run to preview without writing.
+    `security set-role-privileges`. Pass --solution to add the new role to an
+    unmanaged solution as a component (only a newly created role is added; with
+    --if-exists skip an existing role is reused, not added). Use --dry-run to
+    preview without writing.
     """
     if not ctx.dry_run:
         _confirm_destructive(ctx, "role", name, yes,
                              message=f"Create security role {name!r}?")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
     with d365_errors(ctx):
         result = security_mod.create_role(
             ctx.backend(), name, business_unit=business_unit, if_exists=if_exists,
+            solution=solution,
         )
-    ctx.emit(True, data=result)
-    _journal(ctx, name, result)
+    _emit_with_warning(ctx, result, warning, meta=ctx.staged_meta())
+    _journal(ctx, name, result, solution=solution)
 
 
 @security_group.command("set-role-privileges")
