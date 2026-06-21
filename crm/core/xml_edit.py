@@ -185,8 +185,15 @@ def commit_xml_patch(
       server-returned XML to ``read_back`` for a T3 verify.
 
     The publish-before-read-back order is mandatory: a Web API GET returns the
-    *published* layer, so a read-back before publish false-negatives.
+    *published* layer, so a read-back before publish false-negatives. A
+    ``read_back`` without ``publish`` is therefore a programming error and is
+    rejected up front rather than allowed to silently false-negative.
     """
+    if read_back is not None and not publish:
+        raise ValueError(
+            "commit_xml_patch: read_back requires publish=True — a Web API GET "
+            "returns the published layer, so a read-back before publish "
+            "false-negatives the T3 verification.")
     if backend.dry_run:
         result["_dry_run"] = True
         result[dry_run_flag] = True
