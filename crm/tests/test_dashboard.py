@@ -656,7 +656,7 @@ class TestRemoveComponentFromFormxml:
             cells = [c for c in section.iter("cell") if c.find("control") is not None]
             if cells:
                 for cell in cells:
-                    assert int(cell.get("rowspan")) == len(section.findall("rows/row"))
+                    assert _rowspan(cell) == len(section.findall("rows/row"))
 
 
 class TestRemoveComponentFromDashboard:
