@@ -432,3 +432,160 @@ class TestListAccess:
         assert env["ok"] is True
         assert env["meta"]["count"] == 2
         assert env["data"][0]["principalType"] == "systemuser"
+
+
+# ── create-role ─────────────────────────────────────────────────────────────
+
+
+class TestCreateRole:
+    def test_with_yes_forwards_and_emits(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = []
+
+        def _fake(b, name, *, business_unit, if_exists):
+            calls.append((name, business_unit, if_exists))
+            return {"roleid": "role-9", "name": name, "businessunitid": "bu-1"}
+
+        monkeypatch.setattr("crm.commands.security.security_mod.create_role", _fake)
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "create-role", "Agent Read-Only",
+            "--business-unit", "bu-1", "--if-exists", "skip", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert calls == [("Agent Read-Only", "bu-1", "skip")]
+        env = json.loads(result.stdout)
+        assert env["ok"] is True
+        assert env["data"]["roleid"] == "role-9"
+
+    def test_without_yes_non_interactive_aborts(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.create_role",
+            lambda *a, **k: {"roleid": "x"},
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "create-role", "R",
+        ], input="")
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.stdout[result.stdout.rfind("{"):])
+        assert env["error"] == "aborted by user"
+
+    def test_dry_run_skips_confirm_and_marks_meta(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.create_role",
+            lambda *a, **k: {"_dry_run": True, "method": "POST"},
+        )
+        # no --yes, non-interactive: dry-run must NOT abort
+        result = CliRunner().invoke(cli, [
+            "--json", "--dry-run", "security", "create-role", "R",
+        ], input="")
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.stdout)
+        assert env["meta"]["dry_run"] is True
+
+
+# ── set-role-privileges ──────────────────────────────────────────────────────
+
+
+class TestSetRolePrivileges:
+    def test_forwards_parsed_selectors(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = {}
+
+        def _fake(b, role, *, access, entities, all_entities, privilege_names,
+                  depth, replace):
+            calls.update(dict(role=role, access=access, entities=entities,
+                              all_entities=all_entities, privilege_names=privilege_names,
+                              depth=depth, replace=replace))
+            return {"roleid": role, "mode": "add", "count": 2, "warnings": []}
+
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.set_role_privileges", _fake)
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "set-role-privileges", "role-1",
+            "--access", "read, write", "--entities", "account,contact",
+            "--depth", "global", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert calls["access"] == ["read", "write"]
+        assert calls["entities"] == ["account", "contact"]
+        assert calls["all_entities"] is False
+        assert calls["replace"] is False
+        assert calls["depth"] == "global"
+
+    def test_replace_flag_forwarded(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = {}
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.set_role_privileges",
+            lambda b, role, **kw: calls.update(kw) or {"roleid": role, "warnings": []},
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "set-role-privileges", "role-1",
+            "--access", "read", "--all-entities", "--depth", "global",
+            "--replace", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert calls["replace"] is True
+        assert calls["all_entities"] is True
+
+    def test_add_and_replace_mutually_exclusive(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "set-role-privileges", "role-1",
+            "--access", "read", "--all-entities", "--depth", "global",
+            "--add", "--replace", "--yes",
+        ])
+        assert result.exit_code == 2, result.output  # click.UsageError
+        assert "mutually exclusive" in result.output
+
+    def test_warnings_surface_in_meta(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.set_role_privileges",
+            lambda b, role, **kw: {
+                "roleid": role, "count": 1,
+                "warnings": ["prvCreateEntity: depth clamped Basic → Global"],
+            },
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "set-role-privileges", "role-1",
+            "--privilege", "prvCreateEntity", "--depth", "basic", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.stdout)
+        assert any("clamped" in w for w in env["meta"]["warnings"])
+        # warnings must not leak into data
+        assert "warnings" not in env["data"]
+
+    def test_without_yes_non_interactive_aborts(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.set_role_privileges",
+            lambda b, role, **kw: {"roleid": role, "warnings": []},
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "set-role-privileges", "role-1",
+            "--access", "read", "--all-entities", "--depth", "global",
+        ], input="")
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.stdout[result.stdout.rfind("{"):])
+        assert env["error"] == "aborted by user"
+
+    def test_d365_error_clean_envelope(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.set_role_privileges",
+            lambda b, role, **kw: (_ for _ in ()).throw(
+                D365Error("--access requires an entity scope")
+            ),
+        )
+        result = CliRunner().invoke(cli, [
+            "--json", "security", "set-role-privileges", "role-1",
+            "--access", "read", "--depth", "global", "--yes",
+        ])
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.stdout)
+        assert env["ok"] is False
+        assert "entity scope" in env["error"]

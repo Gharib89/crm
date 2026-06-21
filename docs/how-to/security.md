@@ -85,6 +85,123 @@ solely through team membership. Resolving the full inherited depth requires the
 per-privilege `RetrieveUserPrivilegeByPrivilegeId`/`-Name` messages, which this
 CLI does not implement.
 
+## Create a security role
+
+```bash
+crm --json security create-role "Agent Read-Only" --yes
+```
+
+`create-role` is confirmation-gated, so pass `--yes` in non-interactive /
+automation contexts (under `--json`, a missing `--yes` aborts on a non-TTY).
+Creates a new security role with the given display name. The role is created in
+the caller's business unit by default (resolved from `WhoAmI`). Pass
+`--business-unit GUID` to target a different business unit.
+
+The role starts with **no privileges**. Grant privileges immediately after with
+`security set-role-privileges`.
+
+```bash
+# Skip if a same-name role already exists in the same BU (returns the existing role id)
+crm --json security create-role "Agent Read-Only" --if-exists skip --yes
+```
+
+`--if-exists error` (default) raises an error if a role with the same name
+already exists in the same business unit. `--if-exists skip` returns the
+existing role instead — `{roleid, name, businessunitid, existed: true}` (note
+the extra `existed: true` field) — making the call idempotent.
+
+A real run returns `{roleid, name, businessunitid}`. Pass `--dry-run` to
+preview the creation without writing — it returns a `{_dry_run, would_create}`
+preview instead (no role is created, so there is no `roleid`).
+
+## Grant privileges to a security role
+
+Use `security set-role-privileges` to populate a role with privileges after
+creating it, or to update the privileges on any existing role.
+
+### Grant read access to all entities at org depth
+
+```bash
+crm security set-role-privileges <roleid> \
+    --access read --all-entities --depth organization --replace --yes
+```
+
+`--all-entities` applies `--access` across every entity in the org (resolved
+live from metadata). `--depth organization` is the broadest depth. `--replace`
+wipes any privileges already on the role and sets exactly the resolved set —
+useful when initialising a freshly created role.
+
+### Layer additional access on specific entities
+
+```bash
+crm security set-role-privileges <roleid> \
+    --access read,write,create --entities account,contact,incident \
+    --depth organization --add --yes
+```
+
+`--add` (the default) merges the resolved privileges into the role without
+removing any existing ones. Use it to layer access incrementally.
+
+### Grant explicit (non-entity) privileges
+
+```bash
+crm security set-role-privileges <roleid> \
+    --privilege prvCreateEntity,prvWriteEntity,prvCreateAttribute,prvPublishCustomization \
+    --depth global --add --yes
+```
+
+The `--privilege` selector is the escape hatch for privileges that are not
+entity-based (customization, UI-related, etc.). Privilege names are
+PascalCase strings like `prvCreateEntity`. `--depth` is still required and
+is automatically clamped to the highest level the privilege supports
+(e.g. customization privileges are Global-only; requesting a lower depth
+emits a `meta.warnings[]` entry and the privilege is granted at Global).
+
+### Preview without writing
+
+```bash
+crm --dry-run --json security set-role-privileges <roleid> \
+    --access read --all-entities --depth organization --replace --yes
+```
+
+`--dry-run` resolves the full privilege set and returns it in the JSON response
+(`data.privileges`) without issuing any writes. Reads (metadata lookups) still
+run for real.
+
+### Full worked example — agent read-only role
+
+```bash
+# 1. Create the role
+crm security create-role "Agent Read-Only"
+# 2. Grant read on everything at org depth (replace — fresh role, nothing to preserve)
+crm security set-role-privileges <roleid> \
+    --access read --all-entities --depth organization --replace --yes
+```
+
+### JSON contract for set-role-privileges
+
+```json
+{
+  "ok": true,
+  "data": {
+    "roleid": "<guid>",
+    "mode": "add",
+    "depth": "Global",
+    "privileges": [
+      {"name": "prvReadAccount", "privilegeid": "<guid>", "depth": "Global"}
+    ],
+    "count": 42
+  },
+  "meta": {
+    "warnings": ["Depth clamped to Global for prvPublishCustomization"]
+  }
+}
+```
+
+`meta.warnings[]` lists any depth-clamp advisories and skipped
+access×entity combos (e.g. `assign` on an org-owned entity that has no assign
+privilege). These are non-fatal — the remaining privileges are still granted.
+
 ## Assign a security role
 
 ```bash

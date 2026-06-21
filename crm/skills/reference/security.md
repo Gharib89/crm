@@ -14,6 +14,14 @@ crm --json security list-team-roles <team-guid>              # roles on a team
 
 crm --json security user-privileges <user-guid>             # effective privileges on a user
 
+# role authoring: create-role then set-role-privileges
+crm --json security create-role "My Role" --yes              # defaults to caller's BU
+crm --json security create-role "My Role" --if-exists skip --yes  # idempotent
+crm --json security set-role-privileges <role> --access read --all-entities --depth organization --replace --yes
+crm --json security set-role-privileges <role> --access read,write,create --entities account,contact --depth organization --add --yes
+crm --json security set-role-privileges <role> --privilege prvCreateEntity,prvPublishCustomization --depth global --add --yes
+crm --dry-run --json security set-role-privileges <role> --access read --all-entities --depth organization --replace --yes
+
 # assign-role requires exactly one of --to-user / --to-team, and --yes non-interactively
 crm --json security assign-role <role-guid> --to-user <user-guid> --yes
 crm --json security assign-role <role-guid> --to-team <team-guid> --yes
@@ -49,6 +57,66 @@ Role assignment is **cumulative and not cleanly reversible** — omitting `--yes
 non-interactive context aborts (exit 1). The command also carries the standard
 admin-header options (`--as-user`, `--as-user-object-id`, `--suppress-dup-detection`,
 `--bypass-plugins`).
+
+## Role authoring: create-role + set-role-privileges
+
+### Workflow
+
+1. `security create-role` — creates the role (no privileges). Returns `{roleid, name, businessunitid}`. The role belongs to the caller's business unit unless `--business-unit` is provided.
+2. `security set-role-privileges` — populates or updates the role's privileges.
+
+**Agent discovery pattern — read-only access to everything:**
+
+```bash
+crm security create-role "Agent Read-Only" --yes
+crm security set-role-privileges <roleid> --access read --all-entities --depth organization --replace --yes
+```
+
+**Layer write access onto specific entities without disturbing existing privileges:**
+
+```bash
+crm security set-role-privileges <roleid> --access read,write,create --entities account,contact,incident --depth organization --add --yes
+```
+
+**Customization privileges (escape hatch for non-entity privileges):**
+
+```bash
+crm security set-role-privileges <roleid> --privilege prvCreateEntity,prvWriteEntity,prvCreateAttribute,prvPublishCustomization --depth global --add --yes
+```
+
+For "let the agent customize", prefer assigning the OOB `System Customizer` role via `security assign-role` rather than hand-assembling customization privileges — it is simpler and more future-proof.
+
+### Gotchas
+
+**`--replace` is destructive.** It wipes every privilege not in the resolved set. Use `--add` when layering; reserve `--replace` for a full reset (e.g. freshly created roles).
+
+**Privilege counts are org-specific and resolved live.** Never hardcode how many privileges an `--all-entities` call will produce — the count varies by org.
+
+**Entity privilege names embed PascalCase schema names** (e.g. `prvReadAccount`, `prvWriteContact`). Resolution is automatic via metadata — you supply `--access` + `--entities`, the CLI resolves the privilege names for you.
+
+**Depth is clamped per privilege.** When a privilege only supports a subset of depths (e.g. customization privileges are Global-only), the CLI clamps silently and reports each clamp in `meta.warnings[]`. Check warnings when the granted count differs from what you expect.
+
+**Missing access×entity combos are skipped, not fatal.** Some entities are org-owned and have no `assign` or `share` privilege — those combos are silently omitted with a warning, and the rest of the batch still applies.
+
+### JSON contract for set-role-privileges
+
+```json
+{
+  "ok": true,
+  "data": {
+    "roleid": "<guid>",
+    "mode": "add",
+    "depth": "Global",
+    "privileges": [
+      {"name": "prvReadAccount", "privilegeid": "<guid>", "depth": "Global"}
+    ],
+    "count": 42
+  },
+  "meta": {
+    "warnings": ["Depth clamped to Global for prvPublishCustomization"]
+  }
+}
+```
 
 ## Record sharing (POA)
 

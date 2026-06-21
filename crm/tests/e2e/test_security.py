@@ -240,6 +240,101 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     )
 
 
+# ── create-role / set-role-privileges (role authoring) ──────────────────────
+
+
+def _role_privilege_ids(backend, role_id):
+    """Set of lower-case privilegeids currently granted to a role."""
+    resp = backend.get(
+        f"roles({role_id})/roleprivileges_association", params={"$select": "privilegeid"},
+    )
+    return {r.get("privilegeid", "").lower() for r in resp.get("value", [])}
+
+
+@covers("security create-role", "security set-role-privileges")
+def test_create_role_and_set_privileges_roundtrip(cli, backend, unique, request):
+    """Create a throwaway role, add then replace its privileges, verifying each
+    grant lands, and confirm --dry-run previews without writing. The role is
+    deleted in a finalizer regardless of outcome — fully reversible.
+
+    Asserts presence of the targeted privilege after each call (the server may
+    cascade dependent privileges, so absence-of-others is not asserted).
+    """
+    # Resolve the privilege ids we will grant (org-specific guids).
+    def _priv_id(name):
+        resp = backend.get(
+            "privileges", params={"$select": "privilegeid", "$filter": f"name eq '{name}'"},
+        )
+        rows = resp.get("value", [])
+        assert rows, f"privilege {name!r} not found on org"
+        return rows[0]["privilegeid"].lower()
+
+    read_id = _priv_id("prvReadAccount")
+    write_id = _priv_id("prvWriteAccount")
+
+    # ── CREATE via CLI (defaults BU to caller) ──────────────────────────────
+    role_name = f"e2e_role_{unique}"
+    created = cli(["--json", "security", "create-role", role_name, "--yes"])
+    assert created.returncode == 0, (
+        f"security create-role failed:\n{created.stderr}\nstdout: {created.stdout}"
+    )
+    role_id = json.loads(created.stdout)["data"]["roleid"]
+    assert role_id, "create-role did not return a roleid"
+
+    request.addfinalizer(lambda: _safe_delete(backend, f"roles({role_id})"))
+
+    # ── ADD read on account at global depth ─────────────────────────────────
+    added = cli([
+        "--json", "security", "set-role-privileges", role_id,
+        "--access", "read", "--entities", "account", "--depth", "global", "--add", "--yes",
+    ])
+    assert added.returncode == 0, (
+        f"set-role-privileges --add failed:\n{added.stderr}\nstdout: {added.stdout}"
+    )
+    add_env = json.loads(added.stdout)
+    assert add_env["ok"], add_env
+    assert add_env["data"]["mode"] == "add"
+    assert read_id in _role_privilege_ids(backend, role_id), (
+        "prvReadAccount not on role after --add"
+    )
+
+    # ── DRY-RUN preview must not write ──────────────────────────────────────
+    before = _role_privilege_ids(backend, role_id)
+    dry = cli([
+        "--json", "--dry-run", "security", "set-role-privileges", role_id,
+        "--access", "write", "--entities", "account", "--depth", "global", "--add",
+    ])
+    assert dry.returncode == 0, f"dry-run failed:\n{dry.stderr}\nstdout: {dry.stdout}"
+    dry_env = json.loads(dry.stdout)
+    assert dry_env["meta"].get("dry_run") is True, dry_env
+    assert _role_privilege_ids(backend, role_id) == before, (
+        "dry-run mutated the role's privileges"
+    )
+
+    # ── REPLACE with write on account ───────────────────────────────────────
+    replaced = cli([
+        "--json", "security", "set-role-privileges", role_id,
+        "--access", "write", "--entities", "account", "--depth", "global",
+        "--replace", "--yes",
+    ])
+    assert replaced.returncode == 0, (
+        f"set-role-privileges --replace failed:\n{replaced.stderr}\nstdout: {replaced.stdout}"
+    )
+    rep_env = json.loads(replaced.stdout)
+    assert rep_env["ok"], rep_env
+    assert rep_env["data"]["mode"] == "replace"
+    assert write_id in _role_privilege_ids(backend, role_id), (
+        "prvWriteAccount not on role after --replace"
+    )
+
+
+def _safe_delete(backend, path):
+    try:
+        backend.delete(path)
+    except Exception:
+        pass
+
+
 # ── grant / revoke / list-access (record sharing) ───────────────────────────
 
 
