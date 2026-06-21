@@ -697,6 +697,7 @@ class TestSetRolePrivileges:
                 depth="global",
             )
         assert result["count"] == 1
+        assert result["_dry_run"] is True
         assert result["would_apply"] == {"action": "add", "count": 1}
         assert "applied" not in result
         assert all(h.method != "POST" for h in m.request_history)

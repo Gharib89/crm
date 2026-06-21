@@ -107,7 +107,8 @@ crm --json security create-role "Agent Read-Only" --if-exists skip --yes
 
 `--if-exists error` (default) raises an error if a role with the same name
 already exists in the same business unit. `--if-exists skip` returns the
-existing role's id instead, making the call idempotent.
+existing role instead — `{roleid, name, businessunitid, existed: true}` (note
+the extra `existed: true` field) — making the call idempotent.
 
 A real run returns `{roleid, name, businessunitid}`. Pass `--dry-run` to
 preview the creation without writing — it returns a `{_dry_run, would_create}`

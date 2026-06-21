@@ -699,8 +699,10 @@ def set_role_privileges(
         "warnings": warnings,
     }
     if backend.dry_run:
-        # The resolved `privileges`/`count` above are the preview; add a stable
-        # `would_apply` marker rather than POSTing or echoing transport details.
+        # The resolved `privileges`/`count` above are the preview; add the
+        # conventional `_dry_run` marker (so emit treats it as a dry-run preview)
+        # plus a stable `would_apply` summary, rather than POSTing.
+        out["_dry_run"] = True
         out["would_apply"] = {"action": out["mode"], "count": len(privileges)}
         return out
     body = {
