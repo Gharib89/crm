@@ -106,8 +106,12 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
                         entity, url, dashboard, title, icon,
                         solution, require_solution, publish):
     """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard)."""
-    # Count truthy values, so an empty-string flag (--url '') is treated as
-    # missing and still yields a usage error (exit 2), not a core error (exit 1).
+    # Strip first, so a blank-ish flag (--url '' or --url '   ') is treated as
+    # missing and still yields a usage error (exit 2), not a confusing core error
+    # (exit 1) or a node bound to a whitespace value.
+    entity = (entity or "").strip() or None
+    url = (url or "").strip() or None
+    dashboard = (dashboard or "").strip() or None
     if sum(1 for v in (entity, url, dashboard) if v) != 1:
         raise click.UsageError(
             "Provide exactly one of --entity, --url or --dashboard.")

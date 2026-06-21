@@ -89,31 +89,33 @@ crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accounts --comment-out --pu
 (cascade warning surfaced in `meta.warnings`). The command proceeds — pass
 `--dry-run` first to preview exactly which subtree would be swept.
 
-## Batching multiple edits before publish
+## Publish-gated read-back — and why not to chain `--no-publish` edits
 
-Run the mutating commands with `--no-publish`, then publish once:
+> **Gotcha — `sitemapxml` reads/writes go through the published layer.** A Web
+> API GET for `sitemapxml` returns the *last published* snapshot, not a staged
+> edit (on on-prem v9.x especially). An edit written with `--no-publish` does not
+> appear in a re-fetch until `PublishAllXml` runs.
+
+This has a sharp consequence for **multiple edits to the same sitemap**: because
+each verb reads `sitemapxml` fresh before mutating, a second `--no-publish` edit
+re-reads the *published* layer (without the first edit) and PATCHes over it —
+**silently discarding the first unpublished edit.** So do **not** chain
+`--no-publish` edits against one sitemap.
+
+Instead, let each edit publish before the next reads — `--publish` is the default
+(it runs `PublishAllXml` and a T3 read-back inside the verb), so plain sequential
+commands are safe:
 
 ```bash
-crm --json sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations" --no-publish
+crm --json sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations"
 crm --json sitemap add-group <SITEMAP_ID> --area cwx_ops --id cwx_opsgrp \
-    --title "Ops Group" --no-publish
-crm --json sitemap add-subarea <SITEMAP_ID> \
-    --area cwx_ops --group cwx_opsgrp \
-    --id cwx_contacts --entity contact --no-publish
-crm solution publish-all
+    --title "Ops Group"
+crm --json sitemap add-subarea <SITEMAP_ID> --area cwx_ops --group cwx_opsgrp \
+    --id cwx_contacts --entity contact
 ```
 
-## Publish-gated read-back
-
-> **Gotcha — `query odata sitemaps` returns the published layer.** On on-prem
-> v9.x especially, a Web API GET for `sitemapxml` returns the *last published*
-> snapshot, not the staged edit. An edit written with `--no-publish` will not
-> appear in a re-fetch until `PublishAllXml` runs. Always publish before
-> verifying an edit.
-
-`--publish` is the default (pass `--no-publish` to opt out). It runs
-`PublishAllXml` and a T3 read-back assertion inside the verb itself, so a single
-edit needs no separate publish step.
+Reserve `--no-publish` for a **single** staged edit you publish yourself (e.g.
+`crm solution publish-all`) — not for batching several edits to the same sitemap.
 
 ## Solution scoping
 

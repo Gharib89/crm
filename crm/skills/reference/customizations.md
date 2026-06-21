@@ -123,16 +123,15 @@ crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --publi
 A Web API GET for `sitemapxml` returns the **published** layer, not the staged edit.
 An edit written with `--no-publish` will not appear in a re-fetch until
 `PublishAllXml` runs — on on-prem v9.x especially, a read-back before publish
-false-negatives. `--publish` runs `PublishAllXml` + a T3 read-back inside the verb
-itself. To batch multiple edits before one publish:
+false-negatives. `--publish` (the default) runs `PublishAllXml` + a T3 read-back
+inside the verb itself.
 
-```bash
-crm --json sitemap add-area   <id> --id cwx_ops --title "Operations" --no-publish
-crm --json sitemap add-group  <id> --area cwx_ops --id cwx_grp --title "Ops" --no-publish
-crm --json sitemap add-subarea <id> --area cwx_ops --group cwx_grp \
-    --id cwx_contacts --entity contact --no-publish
-crm solution publish-all    # publish once for all three edits
-```
+**Do NOT chain `--no-publish` edits to the same sitemap.** Each verb re-reads
+`sitemapxml` before mutating, so a second `--no-publish` edit reads the *published*
+layer (without the first edit) and PATCHes over it — silently discarding the first.
+For several edits, just run them sequentially with the default `--publish` (each
+publishes before the next reads); reserve `--no-publish` for a single staged edit
+you publish yourself.
 
 **JSON contract — same envelope as all customization verbs:**
 
