@@ -147,6 +147,19 @@ def attribute_info(backend: D365Backend, logical_name: str, attribute: str) -> d
     return as_dict(backend.get(path))
 
 
+def attribute_info_or_raise(
+    backend: D365Backend, entity: str, column: str
+) -> dict[str, Any]:
+    """Confirm ``column`` exists on ``entity`` and return its metadata, with a
+    clean error if it does not. The shared existence check for the XML editors
+    (charts, views) that validate a referenced column before a write."""
+    try:
+        return attribute_info(backend, entity, column)
+    except D365Error as exc:
+        raise D365Error(
+            f"attribute {column!r} does not exist on {entity!r}.") from exc
+
+
 def picklist_options(
     backend: D365Backend,
     logical_name: str,

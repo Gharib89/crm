@@ -29,7 +29,7 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Any, Callable
 
-from crm.core.metadata import attribute_info, maybe_publish
+from crm.core.metadata import attribute_info, attribute_info_or_raise, maybe_publish
 from crm.core.xml_edit import commit_xml_patches, parse_xml, serialize_xml
 from crm.utils.d365_backend import (
     D365Backend,
@@ -774,17 +774,6 @@ def set_chart_groupby(
     return _commit_chart_change(
         backend, chart_id, user=user, columns={"datadescription": new_data},
         action="set-groupby", publish=publish, solution=solution, read_back=_verify)
-
-
-def attribute_info_or_raise(
-    backend: D365Backend, entity: str, column: str
-) -> dict[str, Any]:
-    """Confirm ``column`` exists on ``entity`` and return its metadata, with a
-    clean error if it does not."""
-    try:
-        return attribute_info(backend, entity, column)
-    except D365Error as exc:
-        raise D365Error(f"attribute {column!r} does not exist on {entity!r}.") from exc
 
 
 # --- Pure XML mutation helpers (no backend; tested independently) ---------------

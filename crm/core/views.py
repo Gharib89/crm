@@ -15,7 +15,7 @@ from xml.sax.saxutils import quoteattr
 from crm.utils.d365_backend import (
     D365Backend, D365Error, as_dict, normalize_guid, odata_literal,
 )
-from crm.core.metadata import attribute_info, maybe_publish
+from crm.core.metadata import attribute_info_or_raise, maybe_publish
 from crm.core.xml_edit import commit_xml_patches, parse_xml, serialize_xml
 
 # savedquery.querytype optionset values (friendly name → code). See
@@ -391,15 +391,6 @@ def _last_attribute_index(entity: "ElementTree.Element") -> int:
     return last
 
 
-def _require_attribute(backend: D365Backend, entity: str, column: str) -> None:
-    """Confirm ``column`` exists on ``entity``, with a clean error if it does not."""
-    try:
-        attribute_info(backend, entity, column)
-    except D365Error as exc:
-        raise D365Error(
-            f"attribute {column!r} does not exist on {entity!r}.") from exc
-
-
 def _assert_mismatch_invariant(
     layout_row: "ElementTree.Element",
     fetch_entity: "ElementTree.Element",
@@ -479,7 +470,7 @@ def edit_view_columns(
             raise D365Error(f"column width must be positive: {name!r}={w}.")
         if name in existing:
             raise D365Error(f"column {name!r} is already on the view.")
-        _require_attribute(backend, entity, name)
+        attribute_info_or_raise(backend, entity, name)
         cell = ElementTree.SubElement(lrow, "cell")
         cell.set("name", name)
         cell.set("width", str(w))
@@ -537,6 +528,11 @@ def edit_view_columns(
 
     def _verify(cols: dict[str, str]) -> None:
         lr = _layout_row(parse_xml(cols["layoutxml"], label="layoutxml"))
+        # The read-back only returns the columns that were PATCHed. On a
+        # width-/reorder-only edit the fetch is untouched, so it is absent from
+        # the read-back and the local (unchanged) fetch entity is identical to
+        # the server's — checking the invariant against it is checking the
+        # server doc.
         fe = (_fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
               if cols.get("fetchxml") else fent)
         _assert_mismatch_invariant(lr, fe, pk=pk)
@@ -594,7 +590,7 @@ def set_view_order(
     new_orders += list(add_order)
 
     for attr, _desc in new_orders:
-        _require_attribute(backend, entity, attr)
+        attribute_info_or_raise(backend, entity, attr)
 
     for o in fent.findall("order"):
         fent.remove(o)
