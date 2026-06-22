@@ -98,6 +98,28 @@ def _ensure_sla_enabled(
     return "set"
 
 
+def _object_type_code(backend: D365Backend, entity: str) -> int:
+    """Resolve an entity's integer ``ObjectTypeCode`` from its metadata.
+
+    `sla.objecttypecode` is a Picklist (Edm.Int32), so the SLA's target entity
+    is written there as its numeric ObjectTypeCode — the Web API rejects the
+    bare logical name with 0x80048d19. Read separately from the IsSLAEnabled
+    check because this value is needed *before* the POST (to build the body),
+    while the enable-check runs *after* it (so a created SLA is recoverable if
+    the metadata flip later fails)."""
+    md = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{entity}')",
+        params={"$select": "LogicalName,ObjectTypeCode"},
+    ))
+    otc = md.get("ObjectTypeCode")
+    if not isinstance(otc, int):
+        raise D365Error(
+            f"Could not resolve ObjectTypeCode for entity {entity!r} "
+            f"(got {otc!r}); cannot create an SLA for it."
+        )
+    return otc
+
+
 def create_sla(
     backend: D365Backend,
     *,
@@ -115,9 +137,10 @@ def create_sla(
     """Create an SLA (`sla` record) for a target entity and ensure that entity
     is SLA-enabled.
 
-    `entity` is the target entity's logical name; it is written to the SLA's
-    ``objecttypecode`` (the platform accepts the logical name there) and is also
-    the entity whose ``IsSLAEnabled`` flag is verified/set. `applicable_from` is
+    `entity` is the target entity's logical name; its numeric ``ObjectTypeCode``
+    is written to the SLA's ``objecttypecode`` (a Picklist attribute — the Web
+    API rejects the bare logical-name string with 0x80048d19) and it is also the
+    entity whose ``IsSLAEnabled`` flag is verified/set. `applicable_from` is
     the SLA's date-anchor *field* (e.g. ``createdon``); per-KPI FetchXML
     conditions belong on SLA items (`add_kpi`), not on the SLA record — the
     `sla` entity has no condition attribute.
@@ -129,7 +152,10 @@ def create_sla(
         raise D365Error("name is required.")
     if not entity:
         raise D365Error("entity is required.")
-    body: dict[str, Any] = {"name": name, "objecttypecode": entity}
+    body: dict[str, Any] = {
+        "name": name,
+        "objecttypecode": _object_type_code(backend, entity),
+    }
     if applicable_from:
         body["applicablefrom"] = applicable_from
     if description is not None:

@@ -272,6 +272,7 @@ def _incident_metadata(sla_enabled):
     reflects `sla_enabled`."""
     return {
         "LogicalName": "incident",
+        "ObjectTypeCode": 112,
         "IsSLAEnabled": {
             "Value": sla_enabled,
             "CanBeChanged": True,
@@ -296,7 +297,9 @@ class TestCreateSla:
         assert result["sla_enabled"] == "already"
         body = post.last_request.json()
         assert body["name"] == "Gold SLA"
-        assert body["objecttypecode"] == "incident"
+        # objecttypecode is a Picklist (Edm.Int32) — incident's numeric
+        # ObjectTypeCode, not the logical name (the Web API rejects the string).
+        assert body["objecttypecode"] == 112
         assert body["applicablefrom"] == "createdon"
         # --solution is plumbed as the MSCRM.SolutionUniqueName write header.
         assert post.last_request.headers["MSCRM.SolutionUniqueName"] == "MySolution"
@@ -340,7 +343,7 @@ class TestCreateSla:
 
         assert result["_dry_run"] is True
         assert result["would_create"]["entity_set"] == "slas"
-        assert result["would_create"]["body"]["objecttypecode"] == "incident"
+        assert result["would_create"]["body"]["objecttypecode"] == 112
         assert result["sla_enabled"] == "would_set"
         assert _requests(m, "POST") == []
         assert _requests(m, "PUT") == []
@@ -355,18 +358,34 @@ class TestCreateSla:
     def test_enable_failure_after_post_reports_created_sla_id(self, backend):
         """If enabling IsSLAEnabled fails after the SLA POST landed, the error
         records the created slaid (stage/completed_steps) so the half-done SLA
-        is recoverable, not orphaned."""
+        is recoverable, not orphaned. The metadata reads (ObjectTypeCode and the
+        enable-check) succeed; the IsSLAEnabled *write* (PUT) fails — e.g. lacking
+        metadata-write privilege — which is the post-POST failure being guarded."""
         from crm.core.sla import create_sla
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("slas"), status_code=204,
                    headers=_created_header("slas", _NEW_SLA))
-            m.get(backend.url_for("EntityDefinitions(LogicalName='incident')"),
-                  status_code=403,
+            md_url = backend.url_for("EntityDefinitions(LogicalName='incident')")
+            m.get(md_url, json=_incident_metadata(False))
+            m.put(md_url, status_code=403,
                   json={"error": {"code": "0x80040220", "message": "no privilege"}})
             with pytest.raises(D365Error) as ei:
                 create_sla(backend, name="Gold", entity="incident")
         assert ei.value.stage == "enable_sla"
         assert ei.value.completed_steps == [f"created sla {_NEW_SLA}"]
+
+    def test_unresolvable_object_type_code_raises_before_post(self, backend):
+        """If the entity metadata carries no ObjectTypeCode, create fails before
+        POSTing — no orphan SLA is created."""
+        from crm.core.sla import create_sla
+        with requests_mock.Mocker() as m:
+            post = m.post(backend.url_for("slas"), status_code=204,
+                          headers=_created_header("slas", _NEW_SLA))
+            m.get(backend.url_for("EntityDefinitions(LogicalName='incident')"),
+                  json={"LogicalName": "incident"})
+            with pytest.raises(D365Error, match="ObjectTypeCode"):
+                create_sla(backend, name="Gold", entity="incident")
+        assert post.call_count == 0
 
 
 class TestAddKpi:
