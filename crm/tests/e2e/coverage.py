@@ -41,7 +41,6 @@ LOCAL_GROUPS = frozenset(
 E2E_SKIP: dict[str, str] = {
     "solution stage-and-upgrade": "needs a managed solution installed first; org-stateful",
     "solution apply-upgrade": "needs a holding solution staged from a prior managed-solution upgrade first; org-stateful (same constraint as stage-and-upgrade)",
-    "workflow run": "async side effects on live records; dispatch-only not asserted",
     # extract/pack wrap the legacy, Windows-only, Microsoft-deprecated
     # SolutionPackager.exe, which has no supported Linux runtime — so the .NET SDK
     # added for the plugin fixture does NOT unblock them. Cross-platform migration
