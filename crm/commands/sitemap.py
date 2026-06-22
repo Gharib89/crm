@@ -159,6 +159,93 @@ def sitemap_move_node(ctx: CLIContext, sitemap_id, node_id, before, after, index
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
+def _localized_pairs(node_id, lcids, values, *, value_flag):
+    """Validate CLI input for set-title / set-description, returning
+    ``(node_id, [(lcid, text), …])``.
+
+    Per the command-layer rule (`.github/copilot-instructions.md`: validate
+    untrusted input before `ctx.backend()`), every malformed-invocation case —
+    blank ``--id``, a mismatched ``--lcid`` / value count, a non-4-digit LCID, a
+    duplicate LCID, or blank text — is a Click usage error (exit 2), raised before
+    any backend is built. Whether an LCID is actually *installed* needs a live
+    call and stays in core (exit 1)."""
+    nid = (node_id or "").strip()
+    if not nid:
+        raise click.UsageError("--id must not be empty.")
+    if len(lcids) != len(values):
+        raise click.UsageError(
+            f"Provide one --{value_flag} per --lcid (got {len(lcids)} --lcid and "
+            f"{len(values)} --{value_flag}).")
+    seen: set[int] = set()
+    pairs = []
+    for lcid, text in zip(lcids, values):
+        if not 1000 <= lcid <= 9999:
+            raise click.UsageError(
+                f"--lcid {lcid} must be a 4-digit locale ID (e.g. 1033).")
+        if not (text or "").strip():
+            raise click.UsageError(
+                f"--{value_flag} for --lcid {lcid} must not be empty.")
+        if lcid in seen:
+            raise click.UsageError(
+                f"duplicate --lcid {lcid}: one --{value_flag} per language.")
+        seen.add(lcid)
+        pairs.append((lcid, text))
+    return nid, pairs
+
+
+@sitemap_group.command("set-title")
+@click.argument("sitemap_id")
+@click.option("--id", "node_id", required=True,
+              help="Id of the Area/Group/SubArea to title.")
+@click.option("--lcid", "lcids", type=int, multiple=True, required=True,
+              help="4-digit locale ID (repeatable; paired positionally with "
+                   "--title; must be an installed language).")
+@click.option("--title", "titles", multiple=True, required=True,
+              help="Localized title for the matching --lcid (repeatable).")
+@_solution_option
+@_publish_option
+@pass_ctx
+def sitemap_set_title(ctx: CLIContext, sitemap_id, node_id, lcids, titles,
+                      solution, require_solution, publish):
+    """Set localized title(s) on a node in the sitemap SITEMAP_ID."""
+    node_id, pairs = _localized_pairs(node_id, lcids, titles, value_flag="title")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = sitemap_mod.set_title(
+            ctx.backend(), sitemap_id, node_id=node_id, titles=pairs,
+            publish=publish, solution=solution)
+    _emit(ctx, info, warning)
+    _journal(ctx, sitemap_id, info, solution=solution)
+
+
+@sitemap_group.command("set-description")
+@click.argument("sitemap_id")
+@click.option("--id", "node_id", required=True,
+              help="Id of the Area/Group/SubArea to describe.")
+@click.option("--lcid", "lcids", type=int, multiple=True, required=True,
+              help="4-digit locale ID (repeatable; paired positionally with "
+                   "--description; must be an installed language).")
+@click.option("--description", "descriptions", multiple=True, required=True,
+              help="Localized description for the matching --lcid (repeatable).")
+@_solution_option
+@_publish_option
+@pass_ctx
+def sitemap_set_description(ctx: CLIContext, sitemap_id, node_id, lcids,
+                            descriptions, solution, require_solution, publish):
+    """Set localized description(s) on a node in the sitemap SITEMAP_ID."""
+    node_id, pairs = _localized_pairs(
+        node_id, lcids, descriptions, value_flag="description")
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = sitemap_mod.set_description(
+            ctx.backend(), sitemap_id, node_id=node_id, descriptions=pairs,
+            publish=publish, solution=solution)
+    _emit(ctx, info, warning)
+    _journal(ctx, sitemap_id, info, solution=solution)
+
+
 @sitemap_group.command("remove-node")
 @click.argument("sitemap_id")
 @click.option("--id", "node_id", required=True,
