@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.27.0 (2026-06-22)
+
+### Features
+
+- Sitemap set-title / set-description (localized titles/descriptions)
+  ([#492](https://github.com/Gharib89/crm/pull/492),
+  [`563dcce`](https://github.com/Gharib89/crm/commit/563dcce5a549f32b1eda62c9b161b097001bf476))
+
+
 ## v1.26.0 (2026-06-22)
 
 ### Bug Fixes
