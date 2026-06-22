@@ -57,12 +57,6 @@ E2E_SKIP: dict[str, str] = {
     "workflow clone": "clone upserts a new workflow definition via the Web API, which the platform rejects ('… created outside the Microsoft Dynamics 365 Web application'); this is a platform-level block on every org, not org-specific, so a different org does not unblock it",
     "workflow delete": "exercising delete needs a throwaway workflow created via Web API upsert, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific",
     "workflow import": "import upserts a workflow definition via the Web API, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific, so a different org does not unblock it",
-    # The server rejects creating a fieldpermission unless the target attribute is
-    # field-secured (IsSecured=true + published) first — verified live: error
-    # 0x8004f508 "… is NOT secured …". Securing a standard attribute is heavy,
-    # org-stateful metadata setup with teardown risk; the happy path is covered by
-    # the wire-level unit tests in crm/tests/test_fieldsec.py.
-    "fieldsec add-permission": "creating a fieldpermission requires a field-secured attribute (IsSecured=true + publish) first; org-stateful metadata setup, covered by wire-level unit tests",
     # Creating a usable SLA is heavy, org-stateful setup: `sla create` flips the
     # target entity's IsSLAEnabled metadata flag (a publish-requiring change with
     # no inverse CLI verb to restore it) and SLA records have no clean teardown,
