@@ -698,6 +698,9 @@ def execute_workflow(
     return {
         "workflow_id": workflow_id,
         "target_id": target_record_id,
-        "async_operation_id": result.get("Id"),
+        # Documented ExecuteWorkflowResponse is `{ "Id": <guid> }`, but a live
+        # Dataverse org returns the full asyncoperation entity instead, keyed
+        # `asyncoperationid` (lowercase). Read both shapes.
+        "async_operation_id": result.get("Id") or result.get("asyncoperationid"),
         "raw": result,
     }
