@@ -679,14 +679,18 @@ def _set_localized(
             container = ET.Element(container_tag)
             node.insert(_container_index(node, container_tag), container)
         for lcid, text in norm:
-            existing = next(
-                (c for c in container.findall(item_tag)
-                 if c.get("LCID") == str(lcid)), None)
-            if existing is None:
+            matches = [c for c in container.findall(item_tag)
+                       if c.get("LCID") == str(lcid)]
+            if not matches:
                 ET.SubElement(
                     container, item_tag, {"LCID": str(lcid), item_tag: text})
-            else:  # one element per LCID — update in place, never duplicate
-                existing.set(item_tag, text)
+            else:
+                # Enforce one element per LCID: update the first and drop any
+                # pre-existing same-LCID siblings (the XSD permits duplicates,
+                # but only one is ever shown — collapse them).
+                matches[0].set(item_tag, text)
+                for dup in matches[1:]:
+                    container.remove(dup)
 
         def verify(rb: ET.Element) -> None:
             rb_node, _ = _locate(rb, nid)

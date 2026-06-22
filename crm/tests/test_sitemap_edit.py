@@ -520,6 +520,23 @@ class TestSetTitle:
         # exactly one <Title> for 1033, with the new text (no shadow sibling)
         assert _titles(area) == [("1033", "Selling")]
 
+    def test_setting_an_lcid_collapses_preexisting_duplicates(self, backend):
+        # The XSD permits two <Title> with the same LCID; setting that LCID must
+        # leave exactly one (enforcing one-per-LCID), not just update the first.
+        seed = (
+            '<SiteMap><Area Id="D">'
+            '<Titles><Title LCID="1033" Title="One" />'
+            '<Title LCID="1033" Title="Two" /></Titles>'
+            '</Area></SiteMap>')
+        with requests_mock.Mocker() as m:
+            _with_langs(m, backend)
+            m.get(_url(backend), json={"sitemapxml": seed})
+            m.patch(_url(backend), status_code=204)
+            sm.set_title(backend, _SID, node_id="D", titles=[(1033, "Final")])
+            area = sm._find(_patched_root(m), "Area", "D")
+        assert area is not None
+        assert _titles(area) == [("1033", "Final")]
+
     def test_two_lcids_in_one_call_become_siblings(self, backend):
         with requests_mock.Mocker() as m:
             _with_langs(m, backend, 1033, 1031)
