@@ -389,7 +389,8 @@ def plugin_assembly(tmp_path_factory):
         )
     dll = out_dir / f"{asm_name}.dll"
     identity = out_dir / "assembly-identity.txt"
-    token = identity.read_text().strip().lower() if identity.is_file() else ""
+    token = (identity.read_text(encoding="utf-8").strip().lower()
+             if identity.is_file() else "")
     if not re.fullmatch(r"[0-9a-f]{16}", token):
         pytest.fail(
             f"could not read the assembly public key token from {identity} "
