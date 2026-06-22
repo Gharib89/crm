@@ -197,3 +197,4 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     assert persisted.get("attributelogicalname") == attr_logical, persisted
     assert persisted.get("canread") == PERM_ALLOWED, persisted
     assert persisted.get("canupdate") == PERM_ALLOWED, persisted
+    assert persisted.get("cancreate") == PERM_NOT_ALLOWED, persisted
