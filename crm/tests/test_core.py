@@ -1059,6 +1059,27 @@ class TestWorkflow:
         body = json.loads(m.request_history[0].body)
         assert body == {"EntityId": tid}
 
+    def test_execute_workflow_reads_entity_shape(self, backend):
+        # Live Dataverse returns the full asyncoperation entity (keyed
+        # `asyncoperationid`, lowercase), not the documented `{ "Id": ... }`.
+        from crm.core import workflow as wf_mod
+        wid = "aaaa1111-1111-1111-1111-111111111111"
+        tid = "bbbb2222-2222-2222-2222-222222222222"
+        op_id = "cccc3333-3333-3333-3333-333333333333"
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for(
+                    f"workflows({wid})/Microsoft.Dynamics.CRM.ExecuteWorkflow"
+                ),
+                json={
+                    "asyncoperationid": op_id,
+                    "operationtype": 10,
+                    "messagename": "ExecuteWorkflow",
+                },
+            )
+            info = wf_mod.execute_workflow(backend, wid, tid)
+        assert info["async_operation_id"] == op_id
+
     def test_execute_workflow_requires_both_ids(self, backend):
         from crm.core import workflow as wf_mod
         with pytest.raises(D365Error):
