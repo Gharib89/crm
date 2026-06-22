@@ -16,6 +16,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # .NET SDK for the plugin-assembly fixture (ADR 0012, #502): the plugin
+      # lifecycle e2e builds a signed no-op IPlugin from committed C# source via
+      # `dotnet build`. The fixture skips-with-instructions when dotnet is absent,
+      # so this step only enables the plugin test; the offline suite is unaffected.
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
       - run: pip install -e ".[dev]"
       # Runs against ONE target per dispatch (whichever the secrets point at).
       # NTLM needs D365_USERNAME/D365_PASSWORD; OAuth needs D365_AUTH=oauth +

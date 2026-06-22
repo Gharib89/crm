@@ -102,6 +102,38 @@ surfaces as an OAuth/auth error rather than a skip — an MSAL failure carries a
 401, not a transport failure. Cloud is the no-VPN target, so this is rare; the skip path
 is aimed at on-prem/VPN.)
 
+### Dedicated CS cloud target — provisioning checklist (ADR 0012)
+
+Several verbs need a **Customer-Service-provisioned, pollution-tolerant** Dataverse org
+the general `agent-cloud` org can't host (`sla create`/`add-kpi` need CS; `audit detail`
+needs org auditing + an audited row; `workflow run` needs a seeded on-demand workflow).
+The interim target is a **self-service Customer Service trial** reached through an
+**ephemeral `agent-cs-trial`** profile — a *duplicate* of `agent-cloud` with the URL
+re-pointed (same tenant → reuse the Entra app registration). It does **not** replace
+`agent-cloud`, and **CI is not pointed at it** (the trial expires ≤60 days; see the ADR
+0012 addendum). The CS-verb tests **skip-with-instructions** when it's absent, so they run
+only on a local `--profile agent-cs-trial` pass while the trial lives.
+
+One-time maintainer setup (each time a trial is stood up):
+
+1. **CS-provisioned Dataverse env.** A self-service CS trial (sign up at the Dynamics 365
+   Customer Service product page) clears the license/capacity wall at $0 and ships CS
+   preinstalled; it expires in 30 days (one self-service extension → 60).
+2. **S2S application user.** In PPAC → the trial env → Application users, add the
+   `agent-cloud` Entra app registration (same tenant) with **System Administrator**; only
+   the profile URL differs from `agent-cloud`. Without it, `whoami` returns *"the user is
+   not a member of the organization."*
+3. **Auditing on.** PPAC → Security → Compliance → Auditing → the env → **Turn on
+   auditing** → **Common entities across Dynamics 365 apps** (flips org `IsAuditEnabled`
+   and audits Account/etc. + columns in one toggle). Unblocks `audit detail`.
+4. **No-op on-demand workflow.** make.powerapps classic process on Account, **background**
+   (`mode=0`) **and** *As an on-demand process* (`ondemand=true`), activated, stepless. The
+   Web API cannot create a workflow definition, so this is web-app-only. `mode` is fixed at
+   creation — a real-time workflow can't be flipped to background, so recreate if wrong.
+   Unblocks `workflow run` dispatch.
+5. **Host guard.** Set `D365_E2E_ALLOW_HOST=<trial host>` for the local run (the trial's
+   `*.dynamics.com` host changes per provisioning; kept in local memory, not committed).
+
 **Run forms:**
 - Full sweep:   `pytest -m e2e`
 - Quick pass:   `pytest -m "e2e and not slow"`  (skips publish/import-heavy tests)
