@@ -165,15 +165,17 @@ No new markers — the four buckets reuse what exists:
 For a verb that works on both but returns different values, take the `target` fixture and
 branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
 runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a
-cloud run. Of the `E2E_SKIP` entries, **five are skipped for reasons no org choice can
-fix**: `solution extract`/`pack` wrap the legacy, Windows-only, Microsoft-deprecated
+cloud run. The **five** remaining `E2E_SKIP` entries are all skipped for reasons no org choice can
+fix: `solution extract`/`pack` wrap the legacy, Windows-only, Microsoft-deprecated
 `SolutionPackager.exe` (no Linux runtime; the cross-platform `pac solution` migration is
 tracked in #500), and `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
 block — Dataverse refuses to upsert a workflow definition "created outside the Microsoft
-Dynamics 365 Web application" on every org, so a different org does not unblock them. The
-remaining entries (`solution stage-and-upgrade`/`apply-upgrade`)
-are skipped **only until** the dedicated-org conversion slice in #502 lands their
-`@covers` tests — at which point `E2E_SKIP` shrinks to exactly those five. (`audit detail`
+Dynamics 365 Web application" on every org, so a different org does not unblock them.
+(`solution stage-and-upgrade`/`apply-upgrade` are now covered: one single-org managed-upgrade
+lifecycle test (#512) builds a managed v1+v2 of an empty throwaway solution via
+`export --managed`, drops the unmanaged author copy, imports the managed base, stages the v2
+holding solution, then promotes it separately via `apply-upgrade` — asserting the installed
+base version flips 1.0.0.0→2.0.0.0; teardown uninstalls and leaves the org clean. `audit detail`
 is now covered: its test generates an audit row inline (create + audited update) and
 skips-with-instructions where auditing is off, so it runs on a CS-target leg and skips on
 the general cloud org. `theme publish` is now covered too: its test captures the active

@@ -39,8 +39,6 @@ LOCAL_GROUPS = frozenset(
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a
 # reason to be written down. Fill as the gate enumerates the gap (Task 6+).
 E2E_SKIP: dict[str, str] = {
-    "solution stage-and-upgrade": "needs a managed solution installed first; org-stateful",
-    "solution apply-upgrade": "needs a holding solution staged from a prior managed-solution upgrade first; org-stateful (same constraint as stage-and-upgrade)",
     # extract/pack wrap the legacy, Windows-only, Microsoft-deprecated
     # SolutionPackager.exe, which has no supported Linux runtime — so the .NET SDK
     # added for the plugin fixture does NOT unblock them. Cross-platform migration
