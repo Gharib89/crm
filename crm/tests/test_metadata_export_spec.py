@@ -51,8 +51,15 @@ def _label(text: str) -> dict:
     return {"UserLocalizedLabel": {"Label": text, "LanguageCode": 1033}}
 
 
-def _shallow(logical: str, *, custom: bool = True) -> dict:
-    return {"LogicalName": logical, "SchemaName": logical, "IsCustomAttribute": custom}
+def _shallow(logical: str, *, custom: bool = True, valid_for_create: bool = True) -> dict:
+    # list_attributes always projects IsValidForCreate; mirror that here so the
+    # build_entity_spec creatability filter sees a faithful shallow row.
+    return {
+        "LogicalName": logical,
+        "SchemaName": logical,
+        "IsCustomAttribute": custom,
+        "IsValidForCreate": valid_for_create,
+    }
 
 
 _ENTITY = {

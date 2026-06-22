@@ -322,7 +322,16 @@ def build_entity_spec(
 
         is_primary = bool(primary_logical) and attr_logical == primary_logical
 
-        if not is_primary and not shallow_attr.get("IsCustomAttribute"):
+        # Skip non-primary attributes that are not independently creatable: both
+        # non-custom system columns and the server-auto-generated …Name/…YomiName
+        # companions of lookup/customer attributes (IsCustomAttribute=true but
+        # IsValidForCreate=false). Emitting a companion as a standalone column
+        # collides with the one the server auto-generates when apply re-creates
+        # the parent lookup ("attribute …Name already exists", #497).
+        if not is_primary and (
+            not shallow_attr.get("IsCustomAttribute")
+            or not shallow_attr.get("IsValidForCreate")
+        ):
             continue
 
         # The primary name attribute is represented by entity["primary_attr"],
