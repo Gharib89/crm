@@ -14,6 +14,7 @@ resolved from the `audits` table rather than from `audit history`.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -81,22 +82,32 @@ def test_audit_detail_decodes_attribute_change(backend, cli, unique, request):
     # Mutate an audited column to generate an Update audit row (operation 2).
     backend.patch(f"accounts({acct_id})", json_body={"telephone1": new_phone})
 
-    rows = backend.get(
-        "audits",
-        params={
-            "$select": "auditid",
-            "$filter": f"_objectid_value eq {acct_id} and operation eq 2",
-            "$orderby": "createdon desc",
-        },
-    )
-    audit_rows = rows.get("value", []) if isinstance(rows, dict) else []
-    if not audit_rows:
+    # Resolve the newest Update audit row's id from the `audits` table. Audit
+    # writes can lag the mutation by a moment, so poll briefly before concluding
+    # auditing is off — a single immediate read could otherwise false-skip on an
+    # org that *is* audited.
+    audit_id = None
+    for _ in range(6):
+        rows = backend.get(
+            "audits",
+            params={
+                "$select": "auditid",
+                "$filter": f"_objectid_value eq {acct_id} and operation eq 2",
+                "$orderby": "createdon desc",
+                "$top": "1",
+            },
+        )
+        audit_rows = rows.get("value", []) if isinstance(rows, dict) else []
+        if audit_rows:
+            audit_id = audit_rows[0]["auditid"]
+            break
+        time.sleep(2)
+    if audit_id is None:
         pytest.skip(
             "no audit row was generated — the target has auditing disabled. "
             "Enable org-level auditing (organization.isauditenabled=true) and turn "
             "on auditing for the account entity, then re-run (see ADR 0012 / #503)."
         )
-    audit_id = audit_rows[0]["auditid"]
 
     result = cli(["--json", "audit", "detail", audit_id])
     env = json.loads(result.stdout)
