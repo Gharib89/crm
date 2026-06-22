@@ -64,8 +64,15 @@ def _opt(value, lbl):
     return {"Value": value, "Label": _label(lbl)}
 
 
-def _shallow(logical, *, custom=True):
-    return {"LogicalName": logical, "SchemaName": logical, "IsCustomAttribute": custom}
+def _shallow(logical, *, custom=True, valid_for_create=True):
+    # list_attributes always projects IsValidForCreate; mirror that here so the
+    # build_entity_spec creatability filter sees a faithful shallow row.
+    return {
+        "LogicalName": logical,
+        "SchemaName": logical,
+        "IsCustomAttribute": custom,
+        "IsValidForCreate": valid_for_create,
+    }
 
 
 _ENTITY = {
@@ -634,6 +641,29 @@ class TestSystemAttributesExcluded:
         cols = spec["entities"][0]["attributes"]
         # ownerid is non-custom (never deep-read); new_owner is OwnerType (skipped).
         assert [c["schema_name"] for c in cols] == ["new_Code"]
+
+    def test_uncreatable_companion_attrs_excluded(self, backend):
+        # A lookup's server-auto-generated …Name/…YomiName companions carry
+        # IsCustomAttribute=true but IsValidForCreate=false (#497): they are not
+        # independently creatable, so the spec must skip them — otherwise the
+        # clone re-creates them standalone and re-creating the parent lookup
+        # collides ("attribute …Name already exists"). They are never deep-read
+        # (no _attr_url mock registered → requests_mock raises if one is fetched).
+        attrs = {"value": [
+            _shallow("new_name"),                              # primary
+            _shallow("new_accountid"),                         # creatable lookup
+            _shallow("new_accountidname", valid_for_create=False),      # companion
+            _shallow("new_accountidyominame", valid_for_create=False),  # companion
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_accountid"), json=_lookup_info())
+            spec = build_entity_spec(backend, "new_project")
+
+        cols = spec["entities"][0]["attributes"]
+        assert [c["schema_name"] for c in cols] == ["new_AccountId"]
 
 
 class TestOptInViewsAndRelationships:
