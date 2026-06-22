@@ -9,6 +9,28 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.27.5 (2026-06-22)
+
+### Bug Fixes
+
+- Sla create writes numeric ObjectTypeCode to objecttypecode
+  ([#524](https://github.com/Gharib89/crm/pull/524),
+  [`0605420`](https://github.com/Gharib89/crm/commit/06054207f9eeee9f6c3c44662a31bafd802ada9e))
+
+### Testing
+
+- **e2e**: Assert persisted cancreate is not allowed
+  ([#522](https://github.com/Gharib89/crm/pull/522),
+  [`bb6a42f`](https://github.com/Gharib89/crm/commit/bb6a42f0a5d973ad6f1c096f995cb65204770e34))
+
+- **e2e**: Cover fieldsec add-permission on a secured custom column
+  ([#522](https://github.com/Gharib89/crm/pull/522),
+  [`bb6a42f`](https://github.com/Gharib89/crm/commit/bb6a42f0a5d973ad6f1c096f995cb65204770e34))
+
+- **e2e**: Cover workflow run dispatch-only vs seeded on-demand workflow
+  ([`1cde24b`](https://github.com/Gharib89/crm/commit/1cde24b6a8406c965a86727681f8cf0a6450cf0b))
+
+
 ## v1.27.4 (2026-06-22)
 
 ### Bug Fixes
