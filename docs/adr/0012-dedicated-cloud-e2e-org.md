@@ -91,3 +91,47 @@ runtime — migration to the cross-platform `pac solution` is tracked in #500.
 - `TEST.md` documents the provisioning checklist and the new `requires_cloud`
   conversions; `coverage.py` shrinks to 5 `E2E_SKIP` entries (extract/pack +
   workflow clone/delete/import), each with a corrected reason.
+
+## Addendum (2026-06-22): trial reality — ephemeral target, no CI swap
+
+The "long-lived sandbox" this ADR assumed turned out **not to be licensable** on the
+available tenant: it carries only trial licenses (Trial-type environments only) and was
+at storage capacity, and a generic Trial environment **cannot install Customer Service**
+(a Dynamics 365 license is required, which wasn't available). Standing up the intended
+durable CS sandbox needs a paid or partner Dynamics 365 license — a procurement decision
+that wasn't taken now.
+
+Interim resolution, which **revises three points of the plan above**:
+
+- **A self-service Customer Service trial, not a long-lived sandbox.** A free
+  Customer-Service trial ships CS preinstalled and brings its own capacity (clearing both
+  walls at $0), but it is **ephemeral** — 30 days, extendable once to ~60, and auto-expires
+  after 14 days idle. So it is a *transient* CS target, not the permanent one this ADR
+  envisioned.
+- **Duplicate, not replace.** Because the target is ephemeral, `agent-cloud` is **not**
+  re-pointed at it (that would break the durable cloud target when the trial dies).
+  Instead a **separate `agent-cs-trial`** profile duplicates `agent-cloud` (same tenant →
+  same Entra app registration; only the URL differs). `agent-cloud` remains *the* cloud
+  e2e target. This is still **not a third pytest target** — `agent-cs-trial` is OAuth, so
+  it resolves to the existing `cloud` bucket with no new marker; it is simply the profile a
+  maintainer points at locally when exercising the CS-dependent verbs.
+- **CI stays on `agent-cloud`; the CI cloud secret is *not* swapped.** An org that expires
+  in ≤60 days cannot be a stable CI target. The CS-dependent conversions therefore
+  **skip-with-instructions** in CI (preconditions absent on `agent-cloud`) and are proven
+  **locally and opportunistically** against `agent-cs-trial` while the trial lives. The
+  guarantee weakens from "proven in CI" to "proven locally on demand" for those verbs —
+  the honest cost of not having a licensed durable org. The `.NET SDK` CI step still lands
+  (the plugin lifecycle needs no CS, so it can run against `agent-cloud`).
+
+Provisioning was completed and verified against the trial org: org auditing on with Account
+audited; a background, on-demand, activated **no-op on-demand workflow** seeded (dispatch
+confirmed — `ExecuteWorkflow` created an async operation); an existing cloud entity-CRUD
+e2e passing **3/3** green via the harness. The "what stays skipped" set is unchanged. One
+defect surfaced during the live dispatch — `crm workflow run` reports a null async-operation
+id because it reads `Id` while the platform returns the `asyncoperation` entity keyed
+`asyncoperationid` — filed as **#514** (out of scope here; the `workflow run` conversion in
+#502 depends on its fix).
+
+When a paid/partner Dynamics 365 license becomes available, the durable-sandbox plan in the
+body of this ADR can be revisited (re-point `agent-cloud` + the CI secret, drop the
+ephemeral-trial caveats).
