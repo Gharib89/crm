@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.27.1 (2026-06-22)
+
+### Bug Fixes
+
+- Sitemap add-subarea --pass-params + validate --dashboard exists
+  ([`a38f1c0`](https://github.com/Gharib89/crm/commit/a38f1c01312255bc09011f772432cf006d2a82b5))
+
+
 ## v1.27.0 (2026-06-22)
 
 ### Features
