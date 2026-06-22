@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.27.3 (2026-06-22)
+
+### Bug Fixes
+
+- Skip uncreatable lookup companion columns in clone-entity spec
+  ([#501](https://github.com/Gharib89/crm/pull/501),
+  [`c4fa0c2`](https://github.com/Gharib89/crm/commit/c4fa0c2a2d5b9108635a58f03c59ff78dd0ca968))
+
+
 ## v1.27.2 (2026-06-22)
 
 ### Bug Fixes
