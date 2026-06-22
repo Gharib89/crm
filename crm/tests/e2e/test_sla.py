@@ -161,14 +161,18 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique):
     from crm.utils.d365_backend import D365Error
 
     entity = "incident"
-    # Probe the target entity's metadata: its absence is the clean
+    # Probe the target entity's metadata: a 404 (entity absent) is the clean
     # "CS-not-provisioned" signal (no `incident`, hence no `slas` table to POST).
+    # Re-raise any other D365Error (auth/throttle/transport) so a real breakage
+    # surfaces instead of being masked as a skip.
     try:
         md = backend.get(
             f"EntityDefinitions(LogicalName='{entity}')",
             params={"$select": "LogicalName,IsSLAEnabled"},
         )
-    except D365Error:
+    except D365Error as exc:
+        if getattr(exc, "status", None) != 404:
+            raise
         pytest.skip(
             "Customer Service is not provisioned on this org (the `incident` "
             "entity is absent), so SLAs cannot be created. Run against a "
@@ -210,8 +214,13 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique):
          "--applicable-from", "createdon"],
         check=False,
     )
+    # Check the exit code before parsing so a non-JSON failure surfaces stderr
+    # rather than a JSONDecodeError (matches `sla activate` above).
+    assert created.returncode == 0, (
+        f"sla create failed:\n{created.stderr}\n{created.stdout}"
+    )
     env = json.loads(created.stdout)
-    assert env["ok"], f"sla create failed:\n{created.stderr}\n{created.stdout}"
+    assert env["ok"], f"sla create returned ok=False: {env}"
     data = env["data"]
     assert data["created"] is True, data
     sla_id = data["slaid"]
@@ -228,8 +237,11 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique):
          "--success-criteria", _KPI_SUCCESS],
         check=False,
     )
+    assert added.returncode == 0, (
+        f"sla add-kpi failed:\n{added.stderr}\n{added.stdout}"
+    )
     env = json.loads(added.stdout)
-    assert env["ok"], f"sla add-kpi failed:\n{added.stderr}\n{added.stdout}"
+    assert env["ok"], f"sla add-kpi returned ok=False: {env}"
     item = env["data"]
     assert item["created"] is True, item
     assert item["slaitemid"], f"no slaitemid returned: {item}"
