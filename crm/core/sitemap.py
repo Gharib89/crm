@@ -304,11 +304,24 @@ def _subarea_content(
         return "entity", "Entity", resolve_logical_name(backend, value)
     if flag == "url":
         return "url", "Url", value
+    return "dashboard", "DefaultDashboard", _resolve_dashboard(backend, value)
+
+
+# A dashboard is a ``systemform`` whose ``type`` option-set value is 0.
+_DASHBOARD_FORM_TYPE = 0
+
+
+def _resolve_dashboard(backend: D365Backend, value: str) -> str:
+    """Normalize a ``--dashboard`` GUID and confirm it is an existing dashboard.
+
+    Mirrors the ``--entity`` existence check: a syntactically valid but
+    non-existent ``DefaultDashboard`` GUID (or one pointing at a non-dashboard
+    ``systemform``) renders a broken SubArea tile at runtime, so it is rejected
+    up front with a single GET rather than written verbatim.
+    """
     guid = normalize_guid(value)
     if guid is None:
         raise D365Error(f"--dashboard must be a dashboard GUID: {value!r}")
-    # Confirm the GUID resolves to an existing dashboard, mirroring --entity's
-    # existence check (a dangling DefaultDashboard renders a broken tile).
     try:
         row = as_dict(backend.get(
             f"systemforms({guid})", params={"$select": "formid,type"}))
@@ -317,14 +330,14 @@ def _subarea_content(
         if category == "not_found":
             raise D365Error(
                 f"--dashboard {value!r}: no dashboard with id {guid} exists.",
-                code="DashboardNotFound")
+                code="DashboardNotFound") from exc
         raise
-    if row.get("type") != 0:
+    if row.get("type") != _DASHBOARD_FORM_TYPE:
         raise D365Error(
             f"--dashboard {value!r}: systemform {guid} is not a dashboard "
-            f"(form type {row.get('type')!r}, expected 0).",
+            f"(form type {row.get('type')!r}, expected {_DASHBOARD_FORM_TYPE}).",
             code="NotADashboard")
-    return "dashboard", "DefaultDashboard", guid
+    return guid
 
 
 def add_subarea(
