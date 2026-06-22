@@ -133,10 +133,15 @@ For a verb that works on both but returns different values, take the `target` fi
 branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
 runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a
 cloud run. A few verbs are
-`E2E_SKIP`'d (e.g. `solution extract`/`pack` need the SolutionPackager .NET tool;
-`plugin register-*`/`unregister-*` need a signed test assembly; `workflow clone`/`delete`/
-`import` are blocked by org policy on the test orgs). Tests that document a live product
-defect are marked `xfail(strict=False)` so they auto-flip to xpass when the command is fixed.
+`E2E_SKIP`'d for reasons that no org choice can fix: `solution extract`/`pack` wrap the
+legacy, Windows-only, Microsoft-deprecated `SolutionPackager.exe` (no Linux runtime; the
+cross-platform `pac solution` migration is tracked in #500), and `workflow clone`/`delete`/
+`import` hit a **platform-level** Web-API block — Dataverse refuses to upsert a workflow
+definition "created outside the Microsoft Dynamics 365 Web application" on every org, so a
+different org does not unblock them. (`plugin register-*`/`unregister-*` and the other
+org-stateful verbs remain skipped pending the dedicated-org conversion slice in #502.) Tests
+that document a live product defect are marked `xfail(strict=False)` so they auto-flip to
+xpass when the command is fixed.
 
 ### Live run record
 

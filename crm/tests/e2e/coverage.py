@@ -43,15 +43,21 @@ E2E_SKIP: dict[str, str] = {
     "solution stage-and-upgrade": "needs a managed solution installed first; org-stateful",
     "solution apply-upgrade": "needs a holding solution staged from a prior managed-solution upgrade first; org-stateful (same constraint as stage-and-upgrade)",
     "workflow run": "async side effects on live records; dispatch-only not asserted",
-    "solution extract": "requires the SolutionPackager .NET tool (Microsoft.CrmSdk.CoreTools); not available in the Linux CI environment",
-    "solution pack": "requires the SolutionPackager .NET tool (Microsoft.CrmSdk.CoreTools); not available in the Linux CI environment",
-    # Both test orgs reject Web API workflow upsert/create with org-level policy:
+    # extract/pack wrap the legacy, Windows-only, Microsoft-deprecated
+    # SolutionPackager.exe, which has no supported Linux runtime — so the .NET SDK
+    # added for the plugin fixture does NOT unblock them. Cross-platform migration
+    # to `pac solution` is tracked in #500; until then they stay skipped.
+    "solution extract": "wraps the legacy, Windows-only, Microsoft-deprecated SolutionPackager.exe (no supported Linux runtime); cross-platform migration to `pac solution` is tracked in #500",
+    "solution pack": "wraps the legacy, Windows-only, Microsoft-deprecated SolutionPackager.exe (no supported Linux runtime); cross-platform migration to `pac solution` is tracked in #500",
+    # Platform-level (NOT org-specific) Web API restriction: Dataverse rejects
+    # creating/upserting a workflow definition via the Web API with
     # "This workflow cannot be created, updated or published because it was created
-    # outside the Microsoft Dynamics 365 Web application." clone/delete/import all
-    # require creating or upserting a workflow record and cannot be exercised safely.
-    "workflow clone": "creating a workflow via the Web API is blocked by org policy on both test orgs; clone requires upsert of a new workflow definition",
-    "workflow delete": "creating a throwaway workflow to delete requires Web API upsert which is blocked by org policy on both test orgs",
-    "workflow import": "import (upsert) of a workflow definition is blocked by org policy on both test orgs",
+    # outside the Microsoft Dynamics 365 Web application." The platform enforces
+    # this on every org, so a different org does not unblock it. clone/delete/import
+    # all require upserting a workflow record and so cannot be exercised live.
+    "workflow clone": "clone upserts a new workflow definition via the Web API, which the platform rejects ('… created outside the Microsoft Dynamics 365 Web application'); this is a platform-level block on every org, not org-specific, so a different org does not unblock it",
+    "workflow delete": "exercising delete needs a throwaway workflow created via Web API upsert, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific",
+    "workflow import": "import upserts a workflow definition via the Web API, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific, so a different org does not unblock it",
     # plugin unregister-* require a registered assembly/step to delete; safe
     # setup (register-assembly + register-step) is itself in E2E_SKIP.
     "plugin unregister-assembly": "requires a registered plugin assembly to unregister; register-assembly is in E2E_SKIP (needs a prebuilt signed .dll)",
