@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The no-op plug-in built by the e2e `plugin_assembly` fixture (conftest.py).
+
+    Dataverse plug-in assemblies MUST target .NET Framework 4.6.2 and be
+    strong-name signed (MS Learn: "Build and package plug-in code"). The cloud
+    sandbox (isolation mode 2) is mandatory and validates the registered
+    `publickeytoken` against the uploaded content, so the assembly is signed with
+    NoOpPlugin.snk and the test passes the token the build emits (see below).
+
+    Microsoft.NETFramework.ReferenceAssemblies supplies the net462 targeting pack
+    so the .NET SDK can build this on the Linux CI runner without a Windows .NET
+    Framework install; Microsoft.CrmSdk.CoreAssemblies supplies Microsoft.Xrm.Sdk
+    (IPlugin) — those assemblies already exist in the sandbox runtime and are not
+    uploaded with the plug-in.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.0.0.0</Version>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>NoOpPlugin.snk</AssemblyOriginatorKeyFile>
+    <Deterministic>true</Deterministic>
+    <!-- The fixture builds with `-o <tmp>` so the .dll never lands in the repo;
+         the intermediate obj/ (and a manual build's bin/) are git-ignored — see
+         the sibling .gitignore. -->
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CrmSdk.CoreAssemblies" Version="9.0.2.60" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Emit the SIGNED assembly's strong-name public key token next to the .dll so
+    the fixture can pass the exact token to `crm plugin register-assembly`.
+    Reading it back from the built assembly keeps it correct-by-construction:
+    regenerating NoOpPlugin.snk (gen_snk.py) needs no edit here or in the test.
+  -->
+  <Target Name="EmitAssemblyIdentity" AfterTargets="Build">
+    <GetAssemblyIdentity AssemblyFiles="$(TargetPath)">
+      <Output TaskParameter="Assemblies" ItemName="_NoOpAsm" />
+    </GetAssemblyIdentity>
+    <WriteLinesToFile File="$(TargetDir)assembly-identity.txt"
+                      Lines="@(_NoOpAsm->'%(PublicKeyToken)')"
+                      Overwrite="true" />
+  </Target>
+
+</Project>
