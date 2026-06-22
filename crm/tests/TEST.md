@@ -144,6 +144,14 @@ defect are marked `xfail(strict=False)` so they auto-flip to xpass when the comm
 |------|--------|-------|--------|---------|---------|----------|
 | 2026-06-12 | on-prem (NTLM, v9.1) | `pytest -m e2e` (full) | 83 | 7 | 5 | 8m32s |
 | 2026-06-12 | cloud (OAuth, v9.2)  | `pytest -m e2e` (full) | 85 | 5 | 4 (+1 xpass) | 14m48s |
+| 2026-06-22 | on-prem (NTLM, v9.1) | `pytest -m e2e` (full) | 171 | 7 | 1 | 59m21s |
+| 2026-06-22 | cloud (OAuth, v9.2)  | `pytest -m e2e` (full) | 174 | 6 | 0 (+1 xpass) | 1h51m |
+
+The 2026-06-22 on-prem run surfaced **2 failures**, both on-prem-only product bugs (cloud
+passed them): `app create --if-exists skip` not swallowing the on-prem SQL-duplicate fault
+`0x80040216`/500 (#496, fixed by #499) and `clone-entity` re-creating uncreatable lookup
+`…Name`/`…YomiName` companion columns (#497, fixed by #501). Both fixes were verified live on
+on-prem (the tests pass against the merged code); they are no longer failing on `main`.
 
 Full coverage = the **union** of the two runs. Capability-gated tests skip on the
 non-matching target (e.g. `plugin register-image` is on-prem-only;
