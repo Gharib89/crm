@@ -515,6 +515,404 @@ class TestEditViewColumns:
         assert out["updated"] is True
 
 
+_FETCH_WITH_FILTER = (
+    '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+    '<attribute name="cwx_ticketid" />'
+    '<attribute name="cwx_name" />'
+    '<order attribute="cwx_name" descending="false" />'
+    '<filter type="and"><condition attribute="statecode" '
+    'operator="eq" value="0" /></filter></entity></fetch>'
+)
+# A fetch whose only filter/condition lives under a <link-entity> — the editor
+# must never touch it.
+_FETCH_LINKED = (
+    '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+    '<attribute name="cwx_ticketid" />'
+    '<link-entity name="account" from="accountid" to="cwx_account">'
+    '<filter type="and"><condition attribute="name" operator="eq" '
+    'value="Contoso" /></filter></link-entity></entity></fetch>'
+)
+
+
+class TestAddViewFilter:
+    def test_add_eq_condition_creates_filter(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            out = views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_status", "eq", ["1"])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert '<condition attribute="cwx_status" operator="eq" value="1"' in fetch
+        assert '<filter type="and">' in fetch
+        assert out["action"] == "add-filter"
+        assert out["conditions"] == [
+            {"attribute": "cwx_status", "operator": "eq", "values": ["1"]}]
+
+    def test_add_appends_to_existing_and_filter(self, backend):
+        """A new and-condition joins the existing and-filter, not a second one."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_priority", "eq", ["2"])])
+        fetch = _patch_body(m)["fetchxml"]
+        # existing condition preserved, new one in the same single filter
+        assert 'attribute="statecode"' in fetch
+        assert 'attribute="cwx_priority"' in fetch
+        assert fetch.count("<filter") == 1
+
+    def test_add_or_type_creates_separate_filter(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_priority", "eq", ["2"])], filter_type="or")
+        fetch = _patch_body(m)["fetchxml"]
+        assert '<filter type="and">' in fetch
+        assert '<filter type="or">' in fetch
+
+    def test_add_in_operator_emits_child_value_elements(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_status", "in", ["1", "2", "3"])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert '<condition attribute="cwx_status" operator="in">' in fetch
+        assert "<value>1</value><value>2</value><value>3</value>" in fetch
+
+    def test_add_null_operator_emits_no_value(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_closed", "null", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert '<condition attribute="cwx_closed" operator="null" />' in fetch
+
+    def test_add_between_requires_two_values(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            with pytest.raises(D365Error, match="exactly two values"):
+                views.add_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("cwx_amount", "between", ["5"])])
+
+    def test_add_null_rejects_value(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            with pytest.raises(D365Error, match="takes no value"):
+                views.add_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("cwx_closed", "null", ["1"])])
+
+    def test_add_cardinality_checked_before_metadata_lookup(self, backend):
+        """A cardinality error surfaces without a metadata GET (fail fast). No
+        /Attributes mock is registered, so a stray lookup would raise a different
+        error than the cardinality D365Error asserted here."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="exactly two values"):
+                views.add_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("cwx_amount", "between", ["5"])])
+        assert not any("/Attributes" in (r.url or "") for r in m.request_history)
+
+    def test_add_unknown_operator_errors(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            with pytest.raises(D365Error, match="unknown FetchXML operator"):
+                views.add_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("cwx_status", "equals", ["1"])])
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_add_validates_attribute_exists(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            m.get(re.compile(r"/Attributes\("), status_code=404)
+            with pytest.raises(D365Error, match="does not exist"):
+                views.add_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("bogus", "eq", ["1"])])
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_add_single_value_joins_spaces(self, backend):
+        """A single-value operator keeps a space-bearing value intact."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_name", "eq", ["Contoso", "Ltd"])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert 'value="Contoso Ltd"' in fetch
+
+    def test_add_filter_placed_before_link_entity(self, backend):
+        from crm.core import views
+        fetch_linked = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<link-entity name="account" from="accountid" to="cwx_account">'
+            '<attribute name="name" /></link-entity></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=fetch_linked))
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_status", "eq", ["1"])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert fetch.index("<filter") < fetch.index("<link-entity")
+
+    def test_add_empty_conditions_errors(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error, match="nothing to do"):
+            views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets", conditions=[])
+
+    def test_add_dry_run_issues_no_patch(self, dry_backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, dry_backend, _view_row())
+            _mock_attr_ok(m)
+            out = views.add_view_filter(
+                dry_backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_status", "eq", ["1"])])
+        assert out["would_update"] is True
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_add_publish_reads_back_and_verifies(self, backend):
+        from crm.core import views
+
+        def _echo_patched(request, context):
+            for r in m.request_history:
+                if r.method == "PATCH":
+                    return r.json()
+            raise AssertionError("read-back before any PATCH")
+
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row())
+            _mock_attr_ok(m)
+            _mock_patch(m, backend)
+            m.post(re.compile(r"PublishAllXml"), status_code=204)
+            m.get(backend.url_for(f"savedqueries({_VIEW_ID})"), json=_echo_patched)
+            out = views.add_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_status", "eq", ["1"])], publish=True)
+        assert out["published"] is True
+        assert out["updated"] is True
+
+
+class TestRemoveViewFilter:
+    def test_remove_drops_matching_condition(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_patch(m, backend)
+            out = views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("statecode", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert 'attribute="statecode"' not in fetch
+        assert out["action"] == "remove-filter"
+
+    def test_remove_prunes_emptied_filter(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("statecode", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert "<filter" not in fetch
+
+    def test_remove_preserves_sibling_condition(self, backend):
+        from crm.core import views
+        two_cond = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and">'
+            '<condition attribute="statecode" operator="eq" value="0" />'
+            '<condition attribute="cwx_priority" operator="eq" value="2" />'
+            '</filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=two_cond))
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("statecode", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert 'attribute="statecode"' not in fetch
+        assert 'attribute="cwx_priority"' in fetch
+        assert "<filter" in fetch  # filter kept — still has a sibling
+
+    def test_remove_no_match_errors(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            with pytest.raises(D365Error, match="no condition matches"):
+                views.remove_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("cwx_priority", "eq", [])])
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_remove_ambiguous_errors(self, backend):
+        from crm.core import views
+        dup = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and">'
+            '<condition attribute="cwx_priority" operator="eq" value="1" />'
+            '<condition attribute="cwx_priority" operator="eq" value="2" />'
+            '</filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=dup))
+            with pytest.raises(D365Error, match="disambiguate"):
+                views.remove_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("cwx_priority", "eq", [])])
+
+    def test_remove_value_disambiguates(self, backend):
+        from crm.core import views
+        dup = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and">'
+            '<condition attribute="cwx_priority" operator="eq" value="1" />'
+            '<condition attribute="cwx_priority" operator="eq" value="2" />'
+            '</filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=dup))
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_priority", "eq", ["1"])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert 'value="1"' not in fetch
+        assert 'value="2"' in fetch
+
+    def test_remove_never_touches_link_entity_filter(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_LINKED))
+            with pytest.raises(D365Error, match="no condition matches"):
+                views.remove_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("name", "eq", ["Contoso"])])
+        assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_remove_empty_conditions_errors(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error, match="nothing to do"):
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets", conditions=[])
+
+    def test_remove_two_conditions_from_same_filter(self, backend):
+        """Removing several conditions from one filter drops all and prunes the
+        now-empty filter exactly once (no double-remove crash)."""
+        from crm.core import views
+        two_cond = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and">'
+            '<condition attribute="statecode" operator="eq" value="0" />'
+            '<condition attribute="cwx_priority" operator="eq" value="2" />'
+            '</filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=two_cond))
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("statecode", "eq", []), ("cwx_priority", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert "statecode" not in fetch
+        assert "cwx_priority" not in fetch
+        assert "<filter" not in fetch  # emptied filter pruned once, no crash
+
+    def test_remove_cascades_prune_to_emptied_parent_filter(self, backend):
+        """Removing the last condition in a nested filter prunes the inner filter
+        AND its now-empty parent, matching the documented pruning behavior."""
+        from crm.core import views
+        nested = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and"><filter type="or">'
+            '<condition attribute="cwx_priority" operator="eq" value="1" />'
+            '</filter></filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=nested))
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_priority", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert "<filter" not in fetch  # both inner and emptied parent pruned
+
+    def test_remove_duplicate_spec_errors_cleanly(self, backend):
+        """The same condition listed twice yields a clean NotFound on the second
+        pass, not an ElementTree ValueError."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_patch(m, backend)
+            with pytest.raises(D365Error, match="no condition matches"):
+                views.remove_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("statecode", "eq", []), ("statecode", "eq", [])])
+
+    def test_remove_does_not_validate_attribute_existence(self, backend):
+        """A filter on a since-deleted column can still be removed (no metadata
+        existence check on remove)."""
+        from crm.core import views
+        deleted_attr = (
+            '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<filter type="and"><condition attribute="cwx_gone" '
+            'operator="eq" value="1" /></filter></entity></fetch>'
+        )
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=deleted_attr))
+            # no /Attributes mock — a metadata lookup would 500 (connection error)
+            _mock_patch(m, backend)
+            views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("cwx_gone", "eq", [])])
+        fetch = _patch_body(m)["fetchxml"]
+        assert "cwx_gone" not in fetch
+
+
 class TestSetViewOrder:
     def test_order_replaces_sort(self, backend):
         from crm.core import views
@@ -629,6 +1027,21 @@ class TestViewEditCommandUsage:
         result = self._invoke(["view", "set-order", _ENTITY, "View"])
         assert result.exit_code == 2
         assert "nothing to do" in result.output
+
+    def test_add_filter_no_condition_is_usage_error(self):
+        result = self._invoke(["view", "add-filter", _ENTITY, "View"])
+        assert result.exit_code == 2  # --condition is required
+
+    def test_remove_filter_no_condition_is_usage_error(self):
+        result = self._invoke(["view", "remove-filter", _ENTITY, "View"])
+        assert result.exit_code == 2  # --condition is required
+
+    def test_add_filter_malformed_condition_is_usage_error(self):
+        result = self._invoke(
+            ["view", "add-filter", _ENTITY, "View", "--condition", "loneword"])
+        assert result.exit_code == 2
+        combined = result.output + result.stderr
+        assert "operator" in combined
 
 
 class TestViewCommand:
@@ -746,6 +1159,39 @@ class TestViewCommand:
         assert result.exit_code == 2, result.output
         combined = result.output + result.stderr
         assert "asc" in combined and "desc" in combined
+
+    def test_view_add_filter_command_wires_core(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.views.add_view_filter",
+            lambda backend, **kw: captured.update(kw) or {"action": "add-filter"})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "add-filter", "cwx_ticket", "Active Tickets",
+            "--condition", "cwx_status eq 1", "--condition", "cwx_amount between 5 9",
+            "--type", "or", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["conditions"] == [
+            ("cwx_status", "eq", ["1"]), ("cwx_amount", "between", ["5", "9"])]
+        assert captured["filter_type"] == "or"
+
+    def test_view_remove_filter_command_wires_core(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.views.remove_view_filter",
+            lambda backend, **kw: captured.update(kw) or {"action": "remove-filter"})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "view", "remove-filter", "cwx_ticket", "Active Tickets",
+            "--condition", "statecode eq", "--no-publish",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["conditions"] == [("statecode", "eq", [])]
 
     def test_view_create_strips_column_whitespace(self, monkeypatch):
         from click.testing import CliRunner

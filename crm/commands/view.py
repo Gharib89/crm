@@ -193,6 +193,86 @@ def view_edit_columns(ctx: CLIContext, entity, view, query_type,
     _journal(ctx, view, info, solution=solution)
 
 
+def _parse_condition(raw: str) -> tuple[str, str, list[str]]:
+    """Parse '<attribute> <operator> [value ...]' into (attr, op, value tokens).
+
+    Whitespace-split: the first token is the attribute, the second the operator,
+    and the rest are value tokens (the core coerces them to the operator's value
+    cardinality — joining for single-value operators, keeping separate for
+    list/range operators).
+    """
+    parts = raw.split()
+    if len(parts) < 2:
+        raise click.BadParameter(
+            f"--condition must be '<attribute> <operator> [value ...]': {raw!r}")
+    return parts[0], parts[1], parts[2:]
+
+
+@view_group.command("add-filter")
+@click.argument("entity")
+@click.argument("view")
+@_query_type_option
+@click.option("--condition", "conditions", multiple=True, required=True,
+              help="Add a filter condition '<attribute> <operator> [value ...]' "
+                   "(repeatable). Operator must be a FetchXML condition operator; "
+                   "value count must match it ('null' none, 'between' two, 'in' a "
+                   "list).")
+@click.option("--type", "filter_type", type=click.Choice(["and", "or"]),
+              default="and", show_default=True,
+              help="Combine the condition(s) into an and/or filter.")
+@_solution_option
+@_publish_option
+@pass_ctx
+def view_add_filter(ctx: CLIContext, entity, view, query_type, conditions,
+                    filter_type, solution, require_solution, publish):
+    """Add FetchXML filter condition(s) to VIEW on ENTITY (by name or savedqueryid).
+
+    \b
+    Editing an out-of-box / managed view creates an unmanaged layer that a
+    solution upgrade may revert.
+    """
+    parsed = [_parse_condition(c) for c in conditions]
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = views_mod.add_view_filter(
+            ctx.backend(), entity=entity, view=view, query_type=query_type,
+            conditions=parsed, filter_type=filter_type,
+            solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, view, info, solution=solution)
+
+
+@view_group.command("remove-filter")
+@click.argument("entity")
+@click.argument("view")
+@_query_type_option
+@click.option("--condition", "conditions", multiple=True, required=True,
+              help="Remove a filter condition matching '<attribute> <operator> "
+                   "[value ...]' (repeatable). Add value(s) to disambiguate when "
+                   "several conditions share the same attribute and operator.")
+@_solution_option
+@_publish_option
+@pass_ctx
+def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions,
+                       solution, require_solution, publish):
+    """Remove FetchXML filter condition(s) from VIEW on ENTITY (by name or id).
+
+    \b
+    Editing an out-of-box / managed view creates an unmanaged layer that a
+    solution upgrade may revert.
+    """
+    parsed = [_parse_condition(c) for c in conditions]
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        info = views_mod.remove_view_filter(
+            ctx.backend(), entity=entity, view=view, query_type=query_type,
+            conditions=parsed, solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _journal(ctx, view, info, solution=solution)
+
+
 @view_group.command("set-order")
 @click.argument("entity")
 @click.argument("view")

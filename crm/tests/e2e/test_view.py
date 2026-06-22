@@ -219,6 +219,52 @@ def test_view_edit_columns_live(backend, cli, request, unique):
     assert 'name="lastname"' in rb["fetchxml"], rb["fetchxml"]
 
 
+def _conditions(fetchxml: str) -> list[tuple[str, str, str]]:
+    """[(attribute, operator, value)] for every <condition> in a view's fetchxml."""
+    root = ElementTree.fromstring(fetchxml)
+    return [(c.get("attribute") or "", c.get("operator") or "",
+             c.get("value") or "")
+            for c in root.iter("condition")]
+
+
+@covers("view add-filter", "view remove-filter")
+@pytest.mark.slow
+def test_view_add_and_remove_filter_live(backend, cli, request, unique):
+    """Add a filter condition, publish, verify it landed; then remove it."""
+    from crm.utils.d365_backend import as_dict
+
+    sqid = _create_view(cli, backend, request, unique, name_prefix="E2E Filter")
+
+    # Add a condition (--publish drives the T3 read-back).
+    result = cli([
+        "--json", "view", "add-filter", "contact", sqid,
+        "--condition", "lastname eq Contoso", "--publish",
+    ])
+    assert result.returncode == 0, (
+        f"view add-filter failed:\n{result.stderr}\nstdout: {result.stdout}")
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    assert env["data"]["updated"] is True, env
+
+    rb = as_dict(backend.get(
+        f"savedqueries({sqid})", params={"$select": "fetchxml"}))
+    assert ("lastname", "eq", "Contoso") in _conditions(rb["fetchxml"]), rb["fetchxml"]
+
+    # Remove it again and verify it is gone from the published layer.
+    result = cli([
+        "--json", "view", "remove-filter", "contact", sqid,
+        "--condition", "lastname eq", "--publish",
+    ])
+    assert result.returncode == 0, (
+        f"view remove-filter failed:\n{result.stderr}\nstdout: {result.stdout}")
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+
+    rb = as_dict(backend.get(
+        f"savedqueries({sqid})", params={"$select": "fetchxml"}))
+    assert ("lastname", "eq", "Contoso") not in _conditions(rb["fetchxml"]), rb["fetchxml"]
+
+
 @covers("view set-order")
 @pytest.mark.slow
 def test_view_set_order_live(backend, cli, request, unique):
