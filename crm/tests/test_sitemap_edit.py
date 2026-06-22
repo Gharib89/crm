@@ -174,6 +174,33 @@ class TestAddSubarea:
         assert sub is not None and sub.get("Url") == "https://example.com"
         # there is no SubArea WebResource attribute — a web resource is a Url
         assert sub.get("WebResource") is None
+        # without --pass-params the attribute is absent (unchanged output)
+        assert sub.get("PassParams") is None
+
+    def test_url_pass_params_emits_pass_params_attr(self, backend):
+        with requests_mock.Mocker() as m:
+            self._seeded(backend, m)
+            sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
+                           sub_id="cwx_link", url="https://example.com",
+                           pass_params=True)
+            sub = sm._find(_patched_root(m), "SubArea", "cwx_link")
+        assert sub is not None and sub.get("Url") == "https://example.com"
+        assert sub.get("PassParams") == "true"
+
+    @pytest.mark.parametrize("kwargs", [
+        {"entity": "account"},
+        {"dashboard": "12345678-1234-1234-1234-1234567890ab"},
+    ])
+    def test_pass_params_rejected_without_url(self, backend, monkeypatch, kwargs):
+        # rejected up front — neither --entity resolution nor the --dashboard
+        # existence GET fires, and nothing is written.
+        monkeypatch.setattr(sm, "resolve_logical_name", lambda _b, n: n.lower())
+        with requests_mock.Mocker() as m:
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            with pytest.raises(D365Error, match="pass-params"):
+                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
+                               sub_id="cwx_x", pass_params=True, **kwargs)
+            assert not any(r.method == "PATCH" for r in m.request_history)
 
     def test_entity_mode_validated_and_emits_entity_attr(self, backend, monkeypatch):
         monkeypatch.setattr(sm, "resolve_logical_name",
@@ -197,15 +224,45 @@ class TestAddSubarea:
                                sub_id="cwx_x", entity="bogus")
             assert not any(r.method == "PATCH" for r in m.request_history)
 
-    def test_dashboard_mode_emits_normalized_guid(self, backend):
-        guid = "{12345678-1234-1234-1234-1234567890ab}"
+    def _mock_form(self, m, backend, guid, *, status=200, form_type=0):
+        """Register the systemforms existence GET the dashboard branch issues."""
+        url = backend.url_for(f"systemforms({guid})")
+        if status == 200:
+            m.get(url, json={"formid": guid, "type": form_type})
+        else:
+            m.get(url, status_code=status,
+                  json={"error": {"code": "0x80060888", "message": "Does Not Exist"}})
+
+    def test_dashboard_mode_validated_and_emits_normalized_guid(self, backend):
+        norm = "12345678-1234-1234-1234-1234567890ab"
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
+            self._mock_form(m, backend, norm, form_type=0)  # a real dashboard
             sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
-                           sub_id="cwx_dash", dashboard=guid)
+                           sub_id="cwx_dash", dashboard="{" + norm + "}")
             sub = sm._find(_patched_root(m), "SubArea", "cwx_dash")
         assert sub is not None
-        assert sub.get("DefaultDashboard") == "12345678-1234-1234-1234-1234567890ab"
+        assert sub.get("DefaultDashboard") == norm
+
+    def test_dashboard_nonexistent_guid_is_rejected(self, backend):
+        norm = "11111111-1111-1111-1111-111111111111"
+        with requests_mock.Mocker() as m:
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            self._mock_form(m, backend, norm, status=404)
+            with pytest.raises(D365Error, match="no dashboard"):
+                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
+                               sub_id="cwx_dash", dashboard=norm)
+            assert not any(r.method == "PATCH" for r in m.request_history)
+
+    def test_dashboard_non_dashboard_systemform_is_rejected(self, backend):
+        norm = "22222222-2222-2222-2222-222222222222"
+        with requests_mock.Mocker() as m:
+            m.get(_url(backend), json={"sitemapxml": _SEED})
+            self._mock_form(m, backend, norm, form_type=2)  # a Main form, not a dashboard
+            with pytest.raises(D365Error, match="not a dashboard"):
+                sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
+                               sub_id="cwx_dash", dashboard=norm)
+            assert not any(r.method == "PATCH" for r in m.request_history)
 
     def test_bad_dashboard_guid_is_rejected(self, backend):
         with requests_mock.Mocker() as m:

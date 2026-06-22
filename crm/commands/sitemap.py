@@ -99,11 +99,14 @@ def sitemap_add_group(ctx: CLIContext, sitemap_id, area_id, group_id, title,
 @click.option("--title", default=None, help="SubArea display title.")
 @click.option("--icon", default=None,
               help="SubArea icon (a path or '$webresource:<name>').")
+@click.option("--pass-params", "pass_params", is_flag=True, default=False,
+              help="With --url: append context params (userid, orgname, "
+                   "orglcid, userlcid) to the URL (emits PassParams=\"true\").")
 @_solution_option
 @_publish_option
 @pass_ctx
 def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
-                        entity, url, dashboard, title, icon,
+                        entity, url, dashboard, title, icon, pass_params,
                         solution, require_solution, publish):
     """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard)."""
     # Strip first, so a blank-ish flag (--url '' or --url '   ') is treated as
@@ -115,13 +118,16 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
     if sum(1 for v in (entity, url, dashboard) if v) != 1:
         raise click.UsageError(
             "Provide exactly one of --entity, --url or --dashboard.")
+    if pass_params and not url:
+        raise click.UsageError("--pass-params is only valid with --url.")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_subarea(
             ctx.backend(), sitemap_id, area_id=area_id, group_id=group_id,
             sub_id=sub_id, entity=entity, url=url, dashboard=dashboard,
-            title=title, icon=icon, publish=publish, solution=solution)
+            title=title, icon=icon, pass_params=pass_params,
+            publish=publish, solution=solution)
     _emit(ctx, info, warning)
     _journal(ctx, sitemap_id, info, solution=solution)
 

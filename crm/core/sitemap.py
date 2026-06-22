@@ -41,7 +41,13 @@ from typing import Any, Callable
 from crm.core import xml_edit
 from crm.core.entity_names import resolve_logical_name
 from crm.core.ribbon import retrieve_provisioned_languages
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    classify_d365_error,
+    normalize_guid,
+)
 
 _SITEMAP_SET = "sitemaps"
 _SITEMAP_COLUMN = "sitemapxml"
@@ -280,7 +286,10 @@ def _subarea_content(
     the result echoes back; ``attribute`` is the SiteMap XML attribute it maps to
     (``Entity`` / ``Url`` / ``DefaultDashboard``). ``--entity`` is validated to
     exist (a dangling ``Entity=`` silently hides the node); ``--dashboard`` is
-    validated as a GUID. Raises if zero or more than one mode is supplied.
+    validated as a GUID *and* confirmed to resolve to an existing dashboard
+    (a ``systemform`` with ``type == 0``) — a dangling ``DefaultDashboard``
+    renders a broken tile at runtime. Raises if zero or more than one mode is
+    supplied.
     """
     chosen = [(flag, val) for flag, val in
               (("entity", entity), ("url", url), ("dashboard", dashboard))
@@ -298,6 +307,23 @@ def _subarea_content(
     guid = normalize_guid(value)
     if guid is None:
         raise D365Error(f"--dashboard must be a dashboard GUID: {value!r}")
+    # Confirm the GUID resolves to an existing dashboard, mirroring --entity's
+    # existence check (a dangling DefaultDashboard renders a broken tile).
+    try:
+        row = as_dict(backend.get(
+            f"systemforms({guid})", params={"$select": "formid,type"}))
+    except D365Error as exc:
+        category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+        if category == "not_found":
+            raise D365Error(
+                f"--dashboard {value!r}: no dashboard with id {guid} exists.",
+                code="DashboardNotFound")
+        raise
+    if row.get("type") != 0:
+        raise D365Error(
+            f"--dashboard {value!r}: systemform {guid} is not a dashboard "
+            f"(form type {row.get('type')!r}, expected 0).",
+            code="NotADashboard")
     return "dashboard", "DefaultDashboard", guid
 
 
@@ -313,13 +339,24 @@ def add_subarea(
     dashboard: str | None = None,
     title: str | None = None,
     icon: str | None = None,
+    pass_params: bool = False,
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
-    """Splice a new ``<SubArea>`` under a Group (exactly-one-of content mode)."""
+    """Splice a new ``<SubArea>`` under a Group (exactly-one-of content mode).
+
+    ``pass_params`` is only meaningful for a ``--url`` SubArea: it emits
+    ``PassParams="true"`` so Dynamics appends context parameters (``userid``,
+    ``orgname``, ``orglcid``, ``userlcid``) to the navigated URL. Combining it
+    with ``--entity`` / ``--dashboard`` is a usage error.
+    """
     sid = _validate_node_id(sub_id, kind="SubArea")
     aid = area_id.strip()
     gid = group_id.strip()
+    if pass_params and not url:
+        raise D365Error(
+            "--pass-params applies only to a --url SubArea "
+            "(not --entity or --dashboard).")
     cli_key, content_attr, content_val = _subarea_content(
         backend, entity=entity, url=url, dashboard=dashboard)
 
@@ -333,6 +370,8 @@ def add_subarea(
                 f"parent Group {gid!r} not found in Area {aid!r}.")
         _require_unique(root, sid)
         attrs = {"Id": sid, content_attr: content_val}
+        if pass_params:
+            attrs["PassParams"] = "true"
         if title:
             attrs["Title"] = title
         if icon:

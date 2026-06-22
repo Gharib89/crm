@@ -117,6 +117,15 @@ crm --json sitemap set-description <SITEMAP_ID> \
   are mutually exclusive. Passing more than one, or none, is a usage error.
 - **`--entity` is validated live.** A logical name that doesn't exist in the org is
   rejected before the PATCH — a dangling `Entity=` would silently hide the SubArea.
+- **`--dashboard` is validated live.** The GUID must resolve to an existing
+  `systemform` with `type == 0`. A well-formed but nonexistent GUID → "no dashboard
+  with id … exists"; a GUID that points to a non-dashboard systemform (e.g. an entity
+  form) → "not a dashboard". A dangling `DefaultDashboard` renders a broken tile at
+  runtime.
+- **`--pass-params` is only valid with `--url`.** Emits `PassParams="true"` on the
+  new `<SubArea>` so Dynamics appends context parameters (`userid`, `orgname`,
+  `orglcid`, `userlcid`) to the navigated URL. Combining it with `--entity` or
+  `--dashboard` is a usage error (exit 2).
 - **There is no SubArea `WebResource` attribute.** A web-resource-backed SubArea uses
   `--url` (pointing at the web resource URL path). The `$webresource:` prefix is
   the `--icon` directive only, not a content binding.
