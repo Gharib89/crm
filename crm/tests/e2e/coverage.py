@@ -56,14 +56,6 @@ E2E_SKIP: dict[str, str] = {
     "workflow clone": "clone upserts a new workflow definition via the Web API, which the platform rejects ('… created outside the Microsoft Dynamics 365 Web application'); this is a platform-level block on every org, not org-specific, so a different org does not unblock it",
     "workflow delete": "exercising delete needs a throwaway workflow created via Web API upsert, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific",
     "workflow import": "import upserts a workflow definition via the Web API, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific, so a different org does not unblock it",
-    # Creating a usable SLA is heavy, org-stateful setup: `sla create` flips the
-    # target entity's IsSLAEnabled metadata flag (a publish-requiring change with
-    # no inverse CLI verb to restore it) and SLA records have no clean teardown,
-    # and the cloud test org has no Customer Service / SLA configuration. The
-    # request shapes (objecttypecode, IsSLAEnabled flip, slaitem condition columns)
-    # are covered by the wire-level unit tests in crm/tests/test_sla.py.
-    "sla create": "flips target-entity IsSLAEnabled metadata (publish-requiring, no inverse verb) + creates an SLA with no clean teardown; org-stateful, covered by wire-level unit tests",
-    "sla add-kpi": "needs a created SLA + an SLA-enabled entity with valid per-KPI FetchXML conditions first (org-stateful, same constraints as `sla create`); covered by wire-level unit tests",
 }
 
 

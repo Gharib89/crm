@@ -171,8 +171,8 @@ fix**: `solution extract`/`pack` wrap the legacy, Windows-only, Microsoft-deprec
 tracked in #500), and `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
 block — Dataverse refuses to upsert a workflow definition "created outside the Microsoft
 Dynamics 365 Web application" on every org, so a different org does not unblock them. The
-remaining entries (`sla create`/`add-kpi` and the other org-stateful
-verbs) are skipped **only until** the dedicated-org conversion slice in #502 lands their
+remaining entries (`solution stage-and-upgrade`/`apply-upgrade`)
+are skipped **only until** the dedicated-org conversion slice in #502 lands their
 `@covers` tests — at which point `E2E_SKIP` shrinks to exactly those five. (`audit detail`
 is now covered: its test generates an audit row inline (create + audited update) and
 skips-with-instructions where auditing is off, so it runs on a CS-target leg and skips on
@@ -181,7 +181,12 @@ theme, publishes a throwaway, then re-publishes the captured original to restore
 `workflow run` is now covered too: a dispatch-only `requires_cloud` test resolves a seeded,
 activated, background on-demand workflow, dispatches it against a throwaway record, and asserts
 a non-null async operation id — skipping with instructions where no such workflow is seeded, so
-it runs on a CS-target leg and skips on the general cloud org.) The
+it runs on a CS-target leg and skips on the general cloud org. `sla create`/`add-kpi` are now
+covered by one CS-provisioned lifecycle test (#511): it ensures the target `incident` entity is
+SLA-enabled (publish-requiring), creates the SLA and attaches a KPI item with valid per-KPI
+FetchXML, then deletes the SLA and restores the flag — skipping with setup instructions when
+Customer Service is absent, so it runs on a `--profile agent-cs-trial` leg and skips on the
+general cloud org.) The
 plugin assembly lifecycle (`register-assembly`/`unregister-assembly`/`unregister-step`) is
 covered by one live test that builds a signed no-op IPlugin from committed C# source via
 `dotnet build` (#506), skipping with instructions when the .NET SDK is absent. Tests that document a live product defect are
