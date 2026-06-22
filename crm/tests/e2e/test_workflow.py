@@ -2,9 +2,12 @@
 """E2E tests for workflow commands.
 
 Covers: workflow list, workflow export, workflow migration-assess,
-        workflow activate, workflow deactivate.
+        workflow activate, workflow deactivate, workflow run.
 
-`workflow run` is already in E2E_SKIP (async side-effects on live records).
+`workflow run` is dispatch-only: it requires a pre-existing on-demand workflow
+(the Web API cannot create a workflow definition — a platform block), so the
+test resolves the no-op on-demand workflow seeded per ADR 0012 / #503 and
+asserts only that dispatch returns an async operation id (`requires_cloud`).
 `workflow clone`, `workflow delete`, and `workflow import` require creating or
 upserting a workflow record via the Web API, which both test orgs reject with
 an org-level policy error ("created outside the Microsoft Dynamics 365 Web
@@ -14,6 +17,7 @@ Safety contract
 ---------------
 Tests that mutate state (activate/deactivate) operate only on an existing
 draft custom workflow found at runtime. System workflows are never modified.
+`workflow run` dispatches against a throwaway record it creates and deletes.
 If no suitable workflow exists, the test is skipped via ``pytest.skip``.
 """
 from __future__ import annotations
@@ -22,6 +26,7 @@ import json
 
 import pytest
 
+from crm.tests.e2e.conftest import _safe_delete
 from crm.tests.e2e.coverage import covers
 
 
@@ -69,6 +74,46 @@ def _find_draft_custom_workflow_id(backend) -> str | None:
     if not value:
         return None
     return str(value[0]["workflowid"])
+
+
+# Primary entities we can safely create a throwaway record for, keyed by their
+# logical name: (entity-set name, minimal create-body factory). ExecuteWorkflow
+# takes only the target record's id and infers the entity from the workflow's
+# primaryentity, so the throwaway record must be of that entity.
+_DISPATCHABLE_ENTITIES = {
+    "account": ("accounts", lambda u: {"name": f"E2E-WFRun-{u}"}),
+    "contact": ("contacts", lambda u: {"firstname": "E2E", "lastname": f"WFRun-{u}"}),
+}
+
+
+def _find_dispatchable_ondemand_workflow(backend):
+    """Return ``(workflowid, primaryentity)`` of an activated, background,
+    on-demand, unmanaged classic workflow whose primary entity we can create a
+    throwaway record for (account/contact), or ``None`` if none is found.
+
+    ``category eq 0`` restricts to classic workflows (not actions/BPFs/business
+    rules); ``statecode eq 1`` means activated, so it is dispatchable.
+    """
+    rows = backend.get(
+        "workflows",
+        params={
+            "$select": "workflowid,name,primaryentity",
+            "$filter": (
+                "type eq 1"
+                " and category eq 0"
+                " and statecode eq 1"
+                " and ismanaged eq false"
+                " and mode eq 0"
+                " and ondemand eq true"
+            ),
+        },
+    )
+    value = rows.get("value", []) if isinstance(rows, dict) else []
+    for row in value:
+        primary_entity = row.get("primaryentity")
+        if primary_entity in _DISPATCHABLE_ENTITIES:
+            return str(row["workflowid"]), primary_entity
+    return None
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -181,3 +226,45 @@ def test_workflow_activate_deactivate(backend, cli, request):
     # Verify via direct GET
     row2 = backend.get(f"workflows({wf_id})", params={"$select": "statecode"})
     assert isinstance(row2, dict) and row2.get("statecode") == 0
+
+
+@pytest.mark.requires_cloud
+@covers("workflow run")
+def test_workflow_run_dispatches_ondemand(backend, cli, unique, request):
+    """Dispatch-only: run a seeded on-demand workflow against a throwaway record.
+
+    Resolves an activated, background, on-demand workflow on account/contact
+    (on the CS-trial that is the no-op workflow seeded per ADR 0012 / #503) and
+    dispatches it via ``ExecuteWorkflow`` against a throwaway record of the
+    workflow's primary entity. Asserts only that the dispatch succeeded (a
+    non-null async operation id) — no downstream record effect is checked.
+    Skips with instructions if no such workflow is seeded.
+    """
+    found = _find_dispatchable_ondemand_workflow(backend)
+    if found is None:
+        pytest.skip(
+            "No activated, background, on-demand workflow on a creatable primary "
+            "entity (account/contact) found on this org. Seed a no-op on-demand "
+            "workflow on account or contact via the web app (ADR 0012 / #503), "
+            "then re-run."
+        )
+    wf_id, primary_entity = found
+    entity_set, make_body = _DISPATCHABLE_ENTITIES[primary_entity]
+
+    rec = backend.post(
+        entity_set,
+        json_body=make_body(unique),
+        extra_headers={"Prefer": "return=representation"},
+    )
+    rec_id = str(rec[f"{primary_entity}id"])
+    request.addfinalizer(lambda: _safe_delete(backend, f"{entity_set}({rec_id})"))
+
+    result = cli(["--json", "workflow", "run", wf_id, "--target", rec_id])
+    assert result.returncode == 0, result.stderr
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    assert env["data"]["workflow_id"] == wf_id
+    assert env["data"]["target_id"] == rec_id
+    # Dispatch-only: the platform accepted the request and created an async
+    # operation. We do not assert any downstream record effect.
+    assert env["data"]["async_operation_id"] is not None, env

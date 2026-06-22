@@ -177,7 +177,11 @@ verbs) are skipped **only until** the dedicated-org conversion slice in #502 lan
 is now covered: its test generates an audit row inline (create + audited update) and
 skips-with-instructions where auditing is off, so it runs on a CS-target leg and skips on
 the general cloud org. `theme publish` is now covered too: its test captures the active
-theme, publishes a throwaway, then re-publishes the captured original to restore the org.) The
+theme, publishes a throwaway, then re-publishes the captured original to restore the org.
+`workflow run` is now covered too: a dispatch-only `requires_cloud` test resolves a seeded,
+activated, background on-demand workflow, dispatches it against a throwaway record, and asserts
+a non-null async operation id — skipping with instructions where no such workflow is seeded, so
+it runs on a CS-target leg and skips on the general cloud org.) The
 plugin assembly lifecycle (`register-assembly`/`unregister-assembly`/`unregister-step`) is
 covered by one live test that builds a signed no-op IPlugin from committed C# source via
 `dotnet build` (#506), skipping with instructions when the .NET SDK is absent. Tests that document a live product defect are
