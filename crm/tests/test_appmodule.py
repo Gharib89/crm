@@ -166,6 +166,49 @@ class TestCreateApp:
                 appmodule.create_app(backend, name="CRMWorx",
                                      unique_name="cwx_crmworx", if_exists="error")
 
+    def test_create_app_skip_swallows_onprem_sql_duplicate_fault(self, backend):
+        # On-prem v9.x surfaces the publish-before-read duplicate as a SQL
+        # uniqueness violation — code 0x80040216 at HTTP 500 — instead of the
+        # duplicate-detected code family cloud returns (issue #496, incomplete
+        # #322 fix). if_exists=skip must treat it as a skip and re-query the id.
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), [
+                {"json": {"value": []}},  # first filter: not yet visible
+                {"json": {"value": [{"appmoduleid": _APP_ID,
+                                     "uniquename": "cwx_crmworx"}]}},  # re-query hit
+            ])
+            m.post(backend.url_for("appmodules"), status_code=500, json={
+                "error": {"code": "0x80040216", "message": ""}})
+            out = appmodule.create_app(backend, name="CRMWorx",
+                                       unique_name="cwx_crmworx", if_exists="skip")
+        assert out == {"skipped": True, "exists": True,
+                       "uniquename": "cwx_crmworx", "appmoduleid": _APP_ID}
+
+    def test_create_app_skip_onprem_duplicate_id_best_effort_when_invisible(self, backend):
+        # The duplicating app may still be unpublished and thus invisible to the
+        # re-query — skip semantics still hold, id is best-effort None.
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": []})
+            m.post(backend.url_for("appmodules"), status_code=500, json={
+                "error": {"code": "0x80040216", "message": ""}})
+            out = appmodule.create_app(backend, name="CRMWorx",
+                                       unique_name="cwx_crmworx", if_exists="skip")
+        assert out == {"skipped": True, "exists": True,
+                       "uniquename": "cwx_crmworx", "appmoduleid": None}
+
+    def test_create_app_error_still_raises_on_onprem_sql_duplicate(self, backend):
+        # if_exists=error must still propagate the on-prem duplicate fault.
+        from crm.core import appmodule
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("appmodules"), json={"value": []})
+            m.post(backend.url_for("appmodules"), status_code=500, json={
+                "error": {"code": "0x80040216", "message": ""}})
+            with pytest.raises(D365Error):
+                appmodule.create_app(backend, name="CRMWorx",
+                                     unique_name="cwx_crmworx", if_exists="error")
+
 
 class TestAddComponents:
     def test_add_components_builds_typed_references(self, backend):

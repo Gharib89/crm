@@ -108,7 +108,10 @@ def test_app_lifecycle(backend, cli, request, unique):
     # A second create of the same unique-name with --if-exists skip must return a
     # skip, never a duplicate error — whether the prior app is already
     # query-visible (query-hit skip) or still in the publish-before-read window
-    # (the POST hits the server duplicate fault, swallowed as a skip; issue #322).
+    # (the POST hits the server duplicate fault, swallowed as a skip). The fault
+    # shape differs by target — cloud's duplicate-detected code family vs on-prem's
+    # SQL uniqueness violation 0x80040216 at HTTP 500 — and both are swallowed
+    # (issues #322, #496).
     r_skip = cli([
         "--json", "app", "create",
         "--name", app_name,

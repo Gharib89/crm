@@ -27,6 +27,27 @@ from crm.core.metadata import maybe_publish
 # Default app-icon web resource the platform ships (MS Learn, op-9-1).
 DEFAULT_APP_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
 
+# On-prem v9.x surfaces a duplicate uniquename in the publish-before-read window
+# as a SQL uniqueness violation — code 0x80040216 at HTTP 500 — rather than the
+# duplicate-detected code family cloud returns (which classify_d365_error maps).
+# Scoped to the create+skip path only (see _is_duplicate_create_fault): 0x80040216
+# is a generic SQL fault, so it must NOT be treated as a duplicate elsewhere.
+_ONPREM_SQL_DUPLICATE_CODE = "0x80040216"
+
+
+def _is_duplicate_create_fault(exc: D365Error) -> bool:
+    """True if *exc* is a duplicate-uniquename fault from the appmodule POST.
+
+    Covers both shapes seen live: the duplicate-detected code family cloud
+    returns (classified) and the on-prem SQL uniqueness violation
+    (0x80040216 at HTTP 500), which classifies as a generic server_error.
+    """
+    category, _ = classify_d365_error(exc.status, exc.code, str(exc))
+    if category == "duplicate_detected":
+        return True
+    haystack = f"{exc.code or ''} {exc}".lower()
+    return exc.status == 500 and _ONPREM_SQL_DUPLICATE_CODE in haystack
+
 # Friendly component kind -> (primary-key field, OData entity type) for
 # AddAppComponents. Tables (entity metadata) are intentionally absent: they are
 # not crmbaseentity records, so the action can't bind them — they surface via
@@ -89,11 +110,11 @@ def create_app(
         # Skip semantics must survive the publish-before-read window: a freshly
         # created appmodule isn't query-visible until published (see the read-back
         # note below), so a racing `--if-exists skip` can miss the $filter hit
-        # above and POST a duplicate. Treat the server's duplicate fault as the
-        # skip the empty query couldn't, re-querying for a best-effort id.
+        # above and POST a duplicate. Treat the server's duplicate fault — in
+        # either the cloud or on-prem shape (see _is_duplicate_create_fault) — as
+        # the skip the empty query couldn't, re-querying for a best-effort id.
         # `if_exists == "error"` still propagates — it genuinely collided.
-        category, _ = classify_d365_error(exc.status, exc.code, str(exc))
-        if if_exists == "skip" and category == "duplicate_detected":
+        if if_exists == "skip" and _is_duplicate_create_fault(exc):
             requery = backend.get_collection(
                 "appmodules",
                 params={"$filter": f"uniquename eq {odata_literal(unique_name)}",
