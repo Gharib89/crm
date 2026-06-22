@@ -657,17 +657,23 @@ def _set_localized(
     then upserts one ``item_tag`` element per LCID — updating an existing entry
     for that language in place so no duplicate is ever minted. ``ResourceId`` and
     every other attribute on the node are left untouched."""
+    # The command layer already validates this shape (exit 2); these guards also
+    # protect a direct library call and are the single point that normalizes the
+    # pairs the mutation writes.
     nid = node_id.strip()
     if not nid:
         raise D365Error(f"{action} --id must not be empty.")
     norm = _normalize_entries(entries, item_tag=item_tag)
-    _require_installed_lcids(backend, [lcid for lcid, _ in norm])
 
     def mutate(root: ET.Element) -> _Mutation:
         node, _tag = _locate(root, nid)
         if node is None:
             raise D365Error(
                 f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
+        # The live installed-language check runs only once the target node is
+        # known to exist, so a bad sitemap GUID / unknown node fails first
+        # without a wasted RetrieveProvisionedLanguages call.
+        _require_installed_lcids(backend, [lcid for lcid, _ in norm])
         container = node.find(container_tag)
         if container is None:
             container = ET.Element(container_tag)

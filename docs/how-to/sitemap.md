@@ -139,10 +139,12 @@ so the rejection is intentional — install the language pack first.
 
 **One Title per LCID — updates in place.** If a `<Title>` for that LCID already
 exists, it is updated rather than duplicated. The XSD permits duplicate LCIDs, but
-the CLI enforces uniqueness: passing the same `--lcid` twice in a single call is
-rejected (an in-command validation error — exit 1, the normal `ok:false`
-envelope), as is a non-4-digit `--lcid` or a blank `--title`. A *mismatched count*
-of `--lcid` and `--title` flags is a Click usage error (exit 2).
+the CLI enforces uniqueness: passing the same `--lcid` twice in a single call is a
+usage error (exit 2), as is a non-4-digit `--lcid`, a blank `--title`, a blank
+`--id`, or a mismatched count of `--lcid` and `--title` flags — all validated
+up front before any server call. (An LCID that is well-formed but **not an
+installed language** is caught by the live check and reported through the normal
+error envelope, exit 1.)
 
 **`ResourceId` is never touched.** The platform-owned localized-label pointer is
 left intact; only the inline `Title=` attribute of the `<Title>` element is written.
@@ -182,12 +184,11 @@ crm --json sitemap set-description <SITEMAP_ID> \
     --publish
 ```
 
-All the same rules apply as for `set-title`: `--lcid` is cross-checked against
-provisioned languages, one Description per LCID (updates in place; a duplicate
-`--lcid` in a single call is rejected as an in-command error, exit 1),
-`ResourceId` is untouched, and strict `<Titles>` → `<Descriptions>` → child-node
-ordering is respected. A mismatched `--lcid` / `--description` count is a usage
-error (exit 2).
+All the same rules apply as for `set-title`: malformed input (duplicate or
+non-4-digit `--lcid`, blank `--description`/`--id`, mismatched counts) is a usage
+error (exit 2) validated before any server call; a well-formed but un-provisioned
+`--lcid` is rejected by the live check (exit 1); `ResourceId` is untouched; and
+strict `<Titles>` → `<Descriptions>` → child-node ordering is respected.
 
 The JSON response echoes `action`, `node_id`, and `descriptions` as a list of
 `{lcid, description}` objects:
