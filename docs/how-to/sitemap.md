@@ -59,15 +59,26 @@ crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
     --id cwx_dashboard --url "/WebResources/cwx_dashboard.html" --publish
 
+# Link to a URL and have Dynamics append context params (userid, orgname, …)
+crm --json sitemap add-subarea <SITEMAP_ID> \
+    --area cwx_sales --group cwx_salesgrp \
+    --id cwx_report --url "https://reports.example.com/run" --pass-params --publish
+
 # Open a dashboard by GUID (sets DefaultDashboard)
 crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
     --id cwx_pipe --dashboard <dashboard-guid> --publish
 ```
 
-**`--entity` is validated live** — a logical name that does not exist in the org is
-rejected before the PATCH, because a dangling `Entity=` silently hides the SubArea
-in the UI.
+**`--entity` and `--dashboard` are validated live** — a logical name or dashboard
+GUID that does not exist in the org is rejected before the PATCH, because a dangling
+`Entity=` or `DefaultDashboard=` silently breaks the SubArea in the UI. A
+`--dashboard` GUID must resolve to an actual dashboard (a `systemform` of type
+*Dashboard*), not some other form.
+
+**`--pass-params`** sets `PassParams="true"` so Dynamics appends context parameters
+(`userid`, `orgname`, `orglcid`, `userlcid`) to the navigated URL. It applies only
+to `--url`; combining it with `--entity` or `--dashboard` is a usage error.
 
 **There is no SubArea `WebResource` attribute.** A web-resource-backed SubArea uses
 `--url` pointing at the web resource URL. The `$webresource:` prefix is the `--icon`

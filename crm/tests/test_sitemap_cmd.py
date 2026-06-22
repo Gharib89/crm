@@ -47,6 +47,19 @@ class TestExactlyOneContentMode:
         assert result.exit_code == 2, result.output
 
 
+class TestPassParams:
+    def test_pass_params_with_non_url_is_usage_error(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "sitemap", "add-subarea", _SID,
+            "--area", "SFA", "--group", "SFA_Grp", "--id", "x",
+            "--dashboard", "12345678-1234-1234-1234-1234567890ab",
+            "--pass-params"])
+        # --pass-params only applies to --url → CLI usage error (exit 2)
+        assert result.exit_code == 2, result.output
+        assert "pass-params" in result.output
+
+
 class TestSetTitlePairing:
     def test_mismatched_lcid_title_counts_is_usage_error(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)

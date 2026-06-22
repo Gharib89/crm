@@ -115,8 +115,10 @@ crm --json sitemap set-description <SITEMAP_ID> \
 
 - **Exactly one content binding per SubArea.** `--entity`, `--url`, and `--dashboard`
   are mutually exclusive. Passing more than one, or none, is a usage error.
-- **`--entity` is validated live.** A logical name that doesn't exist in the org is
-  rejected before the PATCH — a dangling `Entity=` would silently hide the SubArea.
+- **`--entity` and `--dashboard` are validated live.** A logical name or dashboard
+  GUID that doesn't exist (or a `--dashboard` GUID pointing at a non-dashboard
+  `systemform`) is rejected before the PATCH — a dangling `Entity=` /
+  `DefaultDashboard=` would silently break the SubArea.
 - **There is no SubArea `WebResource` attribute.** A web-resource-backed SubArea uses
   `--url` (pointing at the web resource URL path). The `$webresource:` prefix is
   the `--icon` directive only, not a content binding.

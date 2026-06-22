@@ -95,7 +95,11 @@ def sitemap_add_group(ctx: CLIContext, sitemap_id, area_id, group_id, title,
               help="Bind a table by logical name (validated to exist).")
 @click.option("--url", default=None,
               help="Link to a URL (incl. an HTML web resource).")
-@click.option("--dashboard", default=None, help="Open a dashboard by GUID.")
+@click.option("--dashboard", default=None, help="Open a dashboard by GUID "
+              "(validated to exist).")
+@click.option("--pass-params", is_flag=True, default=False,
+              help="Append context params (userid/orgname/...) to the navigated "
+                   "URL (only with --url).")
 @click.option("--title", default=None, help="SubArea display title.")
 @click.option("--icon", default=None,
               help="SubArea icon (a path or '$webresource:<name>').")
@@ -103,7 +107,7 @@ def sitemap_add_group(ctx: CLIContext, sitemap_id, area_id, group_id, title,
 @_publish_option
 @pass_ctx
 def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
-                        entity, url, dashboard, title, icon,
+                        entity, url, dashboard, pass_params, title, icon,
                         solution, require_solution, publish):
     """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard)."""
     # Strip first, so a blank-ish flag (--url '' or --url '   ') is treated as
@@ -115,13 +119,16 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
     if sum(1 for v in (entity, url, dashboard) if v) != 1:
         raise click.UsageError(
             "Provide exactly one of --entity, --url or --dashboard.")
+    if pass_params and not url:
+        raise click.UsageError("--pass-params only applies to --url.")
     solution, warning = _resolve_solution(ctx, solution, require_solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_subarea(
             ctx.backend(), sitemap_id, area_id=area_id, group_id=group_id,
             sub_id=sub_id, entity=entity, url=url, dashboard=dashboard,
-            title=title, icon=icon, publish=publish, solution=solution)
+            pass_params=pass_params, title=title, icon=icon, publish=publish,
+            solution=solution)
     _emit(ctx, info, warning)
     _journal(ctx, sitemap_id, info, solution=solution)
 
