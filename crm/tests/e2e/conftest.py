@@ -339,3 +339,66 @@ def ephemeral_solution(backend):
             f"e2e cleanup failed for solution {sol_name!r}: {exc}",
             stacklevel=2,
         )
+
+
+from collections import namedtuple
+from pathlib import Path
+
+# Identity of the no-op plug-in built from crm/tests/e2e/plugin_src. The type name
+# is the C# namespace.class (NoOpPlugin.cs); it is independent of the per-build
+# assembly name, so register-step can bind to it regardless of the unique build.
+PluginAssemblyBuild = namedtuple(
+    "PluginAssemblyBuild", ["dll", "public_key_token", "assembly_name", "type_name"]
+)
+_PLUGIN_SRC = Path(__file__).parent / "plugin_src"
+_PLUGIN_TYPE_NAME = "CrmCli.NoOpPlugin"
+
+
+@pytest.fixture(scope="session")
+def plugin_assembly(tmp_path_factory):
+    """Build the signed no-op IPlugin from crm/tests/e2e/plugin_src via
+    `dotnet build` and yield its identity for the assembly-lifecycle test.
+
+    Skips with instructions when the .NET SDK is absent (the suite's
+    skip-with-instructions convention), so a local `pytest -m e2e` without dotnet
+    stays runnable. A unique per-session assembly name keeps reruns on the shared
+    CI org collision-free. The strong-name public key token is read back from the
+    built assembly (emitted by the csproj), so it always matches the uploaded
+    content that the cloud sandbox validates.
+    """
+    if shutil.which("dotnet") is None:
+        pytest.skip(
+            "dotnet SDK not found — the plugin lifecycle e2e builds a signed "
+            "net462 IPlugin from crm/tests/e2e/plugin_src via `dotnet build`. "
+            "Install the .NET SDK (https://dotnet.microsoft.com/download) to run it."
+        )
+    asm_name = f"CrmCliNoOp{uuid.uuid4().hex[:8]}"
+    out_dir = tmp_path_factory.mktemp("plugin_build")
+    proc = subprocess.run(
+        ["dotnet", "build", str(_PLUGIN_SRC / "NoOpPlugin.csproj"),
+         "-c", "Release", f"-p:AssemblyName={asm_name}", "-o", str(out_dir)],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        # In CI (the authoritative run) the SDK + network are present, so a build
+        # failure is a genuine defect — fail loudly rather than masking it as a
+        # skip. (dotnet-absent already skipped above.)
+        pytest.fail(
+            "dotnet build of the e2e plug-in assembly failed (NuGet restore needs "
+            f"network access):\n{proc.stdout}\n{proc.stderr}"
+        )
+    dll = out_dir / f"{asm_name}.dll"
+    identity = out_dir / "assembly-identity.txt"
+    token = identity.read_text().strip().lower() if identity.is_file() else ""
+    if not re.fullmatch(r"[0-9a-f]{16}", token):
+        pytest.fail(
+            f"could not read the assembly public key token from {identity} "
+            f"(got {token!r}); the csproj EmitAssemblyIdentity target may not "
+            "have run."
+        )
+    yield PluginAssemblyBuild(
+        dll=str(dll),
+        public_key_token=token,
+        assembly_name=asm_name,
+        type_name=_PLUGIN_TYPE_NAME,
+    )

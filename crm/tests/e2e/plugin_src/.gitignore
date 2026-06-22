@@ -1,0 +1,5 @@
+# `dotnet build` writes intermediate (obj/) and, for a manual build without the
+# fixture's `-o <tmp>`, output (bin/) next to the .csproj. Never commit them —
+# the .dll is built on demand by the e2e fixture, not stored in the repo.
+bin/
+obj/

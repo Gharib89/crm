@@ -39,7 +39,6 @@ LOCAL_GROUPS = frozenset(
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a
 # reason to be written down. Fill as the gate enumerates the gap (Task 6+).
 E2E_SKIP: dict[str, str] = {
-    "plugin register-assembly": "needs a prebuilt signed test .dll; tracked in GH issue",
     "solution stage-and-upgrade": "needs a managed solution installed first; org-stateful",
     "solution apply-upgrade": "needs a holding solution staged from a prior managed-solution upgrade first; org-stateful (same constraint as stage-and-upgrade)",
     "workflow run": "async side effects on live records; dispatch-only not asserted",
@@ -58,10 +57,6 @@ E2E_SKIP: dict[str, str] = {
     "workflow clone": "clone upserts a new workflow definition via the Web API, which the platform rejects ('… created outside the Microsoft Dynamics 365 Web application'); this is a platform-level block on every org, not org-specific, so a different org does not unblock it",
     "workflow delete": "exercising delete needs a throwaway workflow created via Web API upsert, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific",
     "workflow import": "import upserts a workflow definition via the Web API, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific, so a different org does not unblock it",
-    # plugin unregister-* require a registered assembly/step to delete; safe
-    # setup (register-assembly + register-step) is itself in E2E_SKIP.
-    "plugin unregister-assembly": "requires a registered plugin assembly to unregister; register-assembly is in E2E_SKIP (needs a prebuilt signed .dll)",
-    "plugin unregister-step": "requires a registered plugin step to unregister; creating one needs a registered assembly (register-assembly is in E2E_SKIP)",
     "audit detail": "needs a pre-existing audit row to decode; the cloud test org has org-level auditing disabled (isauditenabled=false) and an empty audits table, and enabling org auditing + generating audited data is not safe/deterministic within e2e",
     # The server rejects creating a fieldpermission unless the target attribute is
     # field-secured (IsSecured=true + published) first — verified live: error
