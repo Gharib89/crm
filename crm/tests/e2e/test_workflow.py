@@ -86,7 +86,7 @@ _DISPATCHABLE_ENTITIES = {
 }
 
 
-def _find_dispatchable_ondemand_workflow(backend):
+def _find_dispatchable_ondemand_workflow(backend) -> tuple[str, str] | None:
     """Return ``(workflowid, primaryentity)`` of an activated, background,
     on-demand, unmanaged classic workflow whose primary entity we can create a
     throwaway record for (account/contact), or ``None`` if none is found.
