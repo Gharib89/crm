@@ -78,12 +78,14 @@ def test_theme_lifecycle(cli, backend, unique):
 
 
 def _active_theme_id(backend) -> str:
-    """The org's current theme — the one row with isdefaulttheme=true, per the
-    documented `themes?$filter=isdefaulttheme eq true` query. Asserts exactly one
-    so a publish that fails to flip the flag is caught rather than masked."""
+    """The org's current theme, via the documented
+    `themes?$filter=isdefaulttheme eq true` query. Asserts exactly one row so a
+    publish that fails to flip the flag (or leaves two active) is caught rather
+    than masked — hence no `$top`, which would hide a multi-active anomaly."""
     rows = backend.get_collection(
-        "themes", params={"$select": "themeid,isdefaulttheme"})
-    active = [r["themeid"] for r in rows if r.get("isdefaulttheme")]
+        "themes",
+        params={"$select": "themeid", "$filter": "isdefaulttheme eq true"})
+    active = [r["themeid"] for r in rows]
     assert len(active) == 1, f"expected exactly one active theme, got {active}"
     return active[0]
 
@@ -110,9 +112,12 @@ def test_theme_publish_sets_active_then_restores(cli, backend, unique):
     assert created.returncode == 0, (
         f"theme create failed:\n{created.stderr}\nstdout: {created.stdout}")
     theme_id = json.loads(created.stdout)["data"]["themeid"]
-    assert theme_id and theme_id != original_id, (theme_id, original_id)
 
     try:
+        # Inside the try so the create's record is always cleaned up, even if
+        # this guard assertion (or anything before publish) fails.
+        assert theme_id and theme_id != original_id, (theme_id, original_id)
+
         published = cli(["--json", "theme", "publish", theme_id])
         assert published.returncode == 0, (
             f"theme publish failed:\n{published.stderr}\nstdout: {published.stdout}")
