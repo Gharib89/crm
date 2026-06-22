@@ -171,9 +171,12 @@ fix**: `solution extract`/`pack` wrap the legacy, Windows-only, Microsoft-deprec
 tracked in #500), and `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
 block — Dataverse refuses to upsert a workflow definition "created outside the Microsoft
 Dynamics 365 Web application" on every org, so a different org does not unblock them. The
-remaining entries (`theme publish`, `sla create`/`add-kpi`, `audit detail`, and the other
-org-stateful verbs) are skipped **only until** the dedicated-org conversion slice in #502
-lands their `@covers` tests — at which point `E2E_SKIP` shrinks to exactly those five. The
+remaining entries (`theme publish`, `sla create`/`add-kpi`, and the other org-stateful
+verbs) are skipped **only until** the dedicated-org conversion slice in #502 lands their
+`@covers` tests — at which point `E2E_SKIP` shrinks to exactly those five. (`audit detail`
+is now covered: its test generates an audit row inline (create + audited update) and
+skips-with-instructions where auditing is off, so it runs on a CS-target leg and skips on
+the general cloud org.) The
 plugin assembly lifecycle (`register-assembly`/`unregister-assembly`/`unregister-step`) is
 covered by one live test that builds a signed no-op IPlugin from committed C# source via
 `dotnet build` (#506), skipping with instructions when the .NET SDK is absent. Tests that document a live product defect are

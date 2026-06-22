@@ -57,7 +57,6 @@ E2E_SKIP: dict[str, str] = {
     "workflow clone": "clone upserts a new workflow definition via the Web API, which the platform rejects ('… created outside the Microsoft Dynamics 365 Web application'); this is a platform-level block on every org, not org-specific, so a different org does not unblock it",
     "workflow delete": "exercising delete needs a throwaway workflow created via Web API upsert, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific",
     "workflow import": "import upserts a workflow definition via the Web API, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific, so a different org does not unblock it",
-    "audit detail": "needs a pre-existing audit row to decode; the cloud test org has org-level auditing disabled (isauditenabled=false) and an empty audits table, and enabling org auditing + generating audited data is not safe/deterministic within e2e",
     # The server rejects creating a fieldpermission unless the target attribute is
     # field-secured (IsSecured=true + published) first — verified live: error
     # 0x8004f508 "… is NOT secured …". Securing a standard attribute is heavy,
