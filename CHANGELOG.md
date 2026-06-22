@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.26.0 (2026-06-22)
+
+### Bug Fixes
+
+- **view**: Cascade-prune emptied parent filters on remove-filter
+  ([#493](https://github.com/Gharib89/crm/pull/493),
+  [`c9a1295`](https://github.com/Gharib89/crm/commit/c9a129551350b4fd27146eb1244950b101dc041d))
+
+- **view**: Harden remove-filter multi-condition path
+  ([#493](https://github.com/Gharib89/crm/pull/493),
+  [`c9a1295`](https://github.com/Gharib89/crm/commit/c9a129551350b4fd27146eb1244950b101dc041d))
+
+### Features
+
+- **view**: Add add-filter / remove-filter for FetchXML conditions
+  ([#493](https://github.com/Gharib89/crm/pull/493),
+  [`c9a1295`](https://github.com/Gharib89/crm/commit/c9a129551350b4fd27146eb1244950b101dc041d))
+
+
 ## v1.25.0 (2026-06-21)
 
 ### Documentation
