@@ -43,11 +43,8 @@ E2E_SKIP: dict[str, str] = {
     "solution stage-and-upgrade": "needs a managed solution installed first; org-stateful",
     "solution apply-upgrade": "needs a holding solution staged from a prior managed-solution upgrade first; org-stateful (same constraint as stage-and-upgrade)",
     "workflow run": "async side effects on live records; dispatch-only not asserted",
-    # async cancel modifies live job state; no safe always-present cancellable job exists
-    "async cancel": "cancelling arbitrary live asyncoperations is destructive; no safe read-only test target",
     "solution extract": "requires the SolutionPackager .NET tool (Microsoft.CrmSdk.CoreTools); not available in the Linux CI environment",
     "solution pack": "requires the SolutionPackager .NET tool (Microsoft.CrmSdk.CoreTools); not available in the Linux CI environment",
-    "solution job-cancel": "needs an in-flight async import job to cancel; not deterministically reproducible without races",
     # Both test orgs reject Web API workflow upsert/create with org-level policy:
     # "This workflow cannot be created, updated or published because it was created
     # outside the Microsoft Dynamics 365 Web application." clone/delete/import all

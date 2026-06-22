@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from crm.tests.e2e.coverage import covers
+
+# Reused from the production BulkDelete path so the seed goes through the exact
+# FetchXmlToQueryExpression conversion the CLI uses — the BulkDelete action's
+# QuerySet accepts only QueryExpression, not raw FetchXml.
+from crm.core.bulk_delete import _to_query_expression
 
 
 # ── query count ──────────────────────────────────────────────────────────────
@@ -189,6 +195,80 @@ def test_async_get_first_operation(cli):
     env2 = json.loads(r2.stdout)
     assert env2["ok"] is True
     assert env2["data"]["asyncoperationid"] == op_id
+
+
+# ── async cancel / solution job-cancel ──────────────────────────────────────────
+#
+# Both verbs call the same cancel_async_operation (PATCH any asyncoperation in
+# state {Ready, Suspended} to Completed/Cancelled); `solution job-cancel` is a
+# literal alias of `async cancel`, so both are exercised here against the same
+# seed. To cancel safely we seed a *future-dated, match-nothing* BulkDelete: a
+# self-owned async operation the service queues but never runs (its start date is
+# years out) and that would delete nothing even if it did (the filter matches no
+# rows). So it sits in a cancellable state, deletes nothing, and needs no
+# dedicated-org setup — cancelling it before its start time is deterministic on
+# any cloud/on-prem target.
+
+
+def _seed_future_bulkdelete(backend, unique):
+    """Submit a future-dated BulkDelete matching no rows; return its asyncoperationid."""
+    nomatch = f"E2ENoMatch{unique}"
+    fetch = (
+        '<fetch><entity name="contact"><attribute name="contactid"/>'
+        f'<filter><condition attribute="lastname" operator="eq" value="{nomatch}"/>'
+        "</filter></entity></fetch>"
+    )
+    query = _to_query_expression(backend, fetch)
+    # Start a decade out so the async service never picks the job up mid-test.
+    start = (datetime.now(timezone.utc) + timedelta(days=3650)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    resp = backend.post("BulkDelete", json_body={
+        "QuerySet": [query],
+        "JobName": f"E2E async-cancel probe {unique}",
+        "SendEmailNotification": False,
+        "ToRecipients": [],
+        "CCRecipients": [],
+        "RecurrencePattern": "",
+        "StartDateTime": start,
+    })
+    job_id = resp.get("JobId") if isinstance(resp, dict) else None
+    assert job_id, f"BulkDelete returned no JobId: {resp}"
+    return str(job_id)
+
+
+@covers("async cancel", "solution job-cancel")
+@pytest.mark.parametrize("verb", [["async", "cancel"], ["solution", "job-cancel"]])
+def test_cancel_future_bulkdelete(backend, cli, unique, verb):
+    """`async cancel` and its `solution job-cancel` alias cancel a seeded, never-run
+    BulkDelete; the op flips to Completed/Cancelled and deleted nothing."""
+    job_id = _seed_future_bulkdelete(backend, unique)
+    try:
+        # Pre-state: queued in a cancellable state (0=Ready / 1=Suspended), proving
+        # the job has not run, so nothing was deleted.
+        pre = backend.get(
+            f"asyncoperations({job_id})", params={"$select": "statecode,statuscode"}
+        )
+        assert pre.get("statecode") in (0, 1), f"seeded op not in a cancellable state: {pre}"
+
+        r = cli(["--json", *verb, job_id, "--yes"])
+        assert r.returncode == 0, (
+            f"{' '.join(verb)} failed:\n{r.stderr}\nstdout: {r.stdout}"
+        )
+        env = json.loads(r.stdout)
+        assert env["ok"], env
+        assert env["data"] == {"cancelled": True, "id": job_id}, env
+
+        # statecode=3 (Completed) + statuscode=32 (Cancelled) is the cancelled envelope.
+        post = backend.get(
+            f"asyncoperations({job_id})", params={"$select": "statecode,statuscode"}
+        )
+        assert post.get("statecode") == 3 and post.get("statuscode") == 32, (
+            f"operation did not move to cancelled: {post}"
+        )
+    finally:
+        try:
+            backend.delete(f"asyncoperations({job_id})")
+        except Exception:
+            pass
 
 
 # ── connection doctor ─────────────────────────────────────────────────────────
