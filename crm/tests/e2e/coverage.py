@@ -63,11 +63,6 @@ E2E_SKIP: dict[str, str] = {
     # org-stateful metadata setup with teardown risk; the happy path is covered by
     # the wire-level unit tests in crm/tests/test_fieldsec.py.
     "fieldsec add-permission": "creating a fieldpermission requires a field-secured attribute (IsSecured=true + publish) first; org-stateful metadata setup, covered by wire-level unit tests",
-    # PublishTheme promotes a theme to the active org-wide theme and the CLI ships
-    # no inverse verb to restore the prior one, so a live run would leave the shared
-    # test org on a throwaway theme. Happy path is covered by wire-level unit tests
-    # in crm/tests/test_themes.py (TestPublishTheme).
-    "theme publish": "publishing sets the active org-wide theme with no inverse CLI verb to restore the prior one (disruptive on a shared org); covered by wire-level unit tests",
     # Creating a usable SLA is heavy, org-stateful setup: `sla create` flips the
     # target entity's IsSLAEnabled metadata flag (a publish-requiring change with
     # no inverse CLI verb to restore it) and SLA records have no clean teardown,
