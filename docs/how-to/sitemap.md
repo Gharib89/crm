@@ -59,6 +59,11 @@ crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
     --id cwx_dashboard --url "/WebResources/cwx_dashboard.html" --publish
 
+# Link to a URL and append Dynamics context params (userid, orgname, orglcid, userlcid)
+crm --json sitemap add-subarea <SITEMAP_ID> \
+    --area cwx_sales --group cwx_salesgrp \
+    --id cwx_ext --url "https://portal.example.com/widget" --pass-params --publish
+
 # Open a dashboard by GUID (sets DefaultDashboard)
 crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
@@ -68,6 +73,17 @@ crm --json sitemap add-subarea <SITEMAP_ID> \
 **`--entity` is validated live** — a logical name that does not exist in the org is
 rejected before the PATCH, because a dangling `Entity=` silently hides the SubArea
 in the UI.
+
+**`--dashboard` is validated live** — the GUID must resolve to an existing
+`systemform` with `type == 0` (a dashboard). A well-formed GUID that doesn't exist
+raises "no dashboard with id … exists"; a GUID of a non-dashboard systemform (e.g.
+an entity form, `type != 0`) raises "not a dashboard". A dangling `DefaultDashboard`
+renders a broken tile at runtime.
+
+**`--pass-params` is only valid with `--url`.** It emits `PassParams="true"` on the
+new `<SubArea>`, which tells Dynamics to append context parameters (`userid`,
+`orgname`, `orglcid`, `userlcid`) to the navigated URL. Combining it with `--entity`
+or `--dashboard` is a usage error (exit 2).
 
 **There is no SubArea `WebResource` attribute.** A web-resource-backed SubArea uses
 `--url` pointing at the web resource URL. The `$webresource:` prefix is the `--icon`

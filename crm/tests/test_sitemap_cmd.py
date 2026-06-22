@@ -46,6 +46,16 @@ class TestExactlyOneContentMode:
             "12345678-1234-1234-1234-1234567890ab"])
         assert result.exit_code == 2, result.output
 
+    def test_pass_params_without_url_is_usage_error(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "sitemap", "add-subarea", _SID,
+            "--area", "SFA", "--group", "SFA_Grp", "--id", "x",
+            "--entity", "account", "--pass-params"])
+        # --pass-params is meaningful only for a --url SubArea
+        assert result.exit_code == 2, result.output
+        assert "pass-params" in result.output
+
 
 class TestSetTitlePairing:
     def test_mismatched_lcid_title_counts_is_usage_error(self, backend, monkeypatch):
