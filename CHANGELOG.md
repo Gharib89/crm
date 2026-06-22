@@ -9,6 +9,65 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.27.4 (2026-06-22)
+
+### Bug Fixes
+
+- Workflow run surfaces async_operation_id from asyncoperation entity
+  ([#521](https://github.com/Gharib89/crm/pull/521),
+  [`2383f1c`](https://github.com/Gharib89/crm/commit/2383f1c0fb1272c1090511c0dd887f8f54b30315))
+
+### Continuous Integration
+
+- **e2e**: Add .NET SDK step + document dedicated CS trial as cloud e2e target (ADR 0012)
+  ([#515](https://github.com/Gharib89/crm/pull/515),
+  [`26e4505`](https://github.com/Gharib89/crm/commit/26e4505c1b065e314952d08fbec9e81a56363abb))
+
+### Documentation
+
+- Clarify CS-trial profile wording + workflow provisioning step
+  ([#515](https://github.com/Gharib89/crm/pull/515),
+  [`26e4505`](https://github.com/Gharib89/crm/commit/26e4505c1b065e314952d08fbec9e81a56363abb))
+
+- Record 2026-06-22 e2e live run (on-prem + cloud) in TEST.md
+  ([`d08407f`](https://github.com/Gharib89/crm/commit/d08407ffbbfaa336e54703ee23f4cfa356be3039))
+
+- **adr**: Dedicated CS Dataverse sandbox as the cloud e2e target
+  ([`4b42fae`](https://github.com/Gharib89/crm/commit/4b42faecba5b9c9a445f05dcca84e12e9dd746ab))
+
+### Testing
+
+- **e2e**: Address review on theme publish test ([#520](https://github.com/Gharib89/crm/pull/520),
+  [`6433923`](https://github.com/Gharib89/crm/commit/6433923a32c8b755beb127cbc1241df3f228889e))
+
+- **e2e**: Assert seed filter matches zero rows before submit
+  ([#513](https://github.com/Gharib89/crm/pull/513),
+  [`791f30e`](https://github.com/Gharib89/crm/commit/791f30eb6c86902882a662cb62fab82bf94c3fb3))
+
+- **e2e**: Correct the 5 keep-skipped E2E_SKIP reasons + refresh TEST.md
+  ([#516](https://github.com/Gharib89/crm/pull/516),
+  [`e58728f`](https://github.com/Gharib89/crm/commit/e58728f842af655d9997704021152bbe5f9ee963))
+
+- **e2e**: Cover async cancel + solution job-cancel via future-dated BulkDelete
+  ([#513](https://github.com/Gharib89/crm/pull/513),
+  [`791f30e`](https://github.com/Gharib89/crm/commit/791f30eb6c86902882a662cb62fab82bf94c3fb3))
+
+- **e2e**: Cover audit detail by generating an audit row inline
+  ([#519](https://github.com/Gharib89/crm/pull/519),
+  [`e99ed3a`](https://github.com/Gharib89/crm/commit/e99ed3a034787fefaac76a217bbc1195eaa2d846))
+
+- **e2e**: Cover plugin assembly register/unregister lifecycle (build signed .dll from C# source)
+  ([`41b4349`](https://github.com/Gharib89/crm/commit/41b434958af7e4a0f2d4fe6ba0f8cbe8b4e4bb8b))
+
+- **e2e**: Cover theme publish (capture -> publish throwaway -> restore)
+  ([#520](https://github.com/Gharib89/crm/pull/520),
+  [`6433923`](https://github.com/Gharib89/crm/commit/6433923a32c8b755beb127cbc1241df3f228889e))
+
+- **e2e**: Poll audits table before skipping audit-detail test
+  ([#519](https://github.com/Gharib89/crm/pull/519),
+  [`e99ed3a`](https://github.com/Gharib89/crm/commit/e99ed3a034787fefaac76a217bbc1195eaa2d846))
+
+
 ## v1.27.3 (2026-06-22)
 
 ### Bug Fixes
