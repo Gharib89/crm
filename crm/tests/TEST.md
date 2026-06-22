@@ -126,11 +126,12 @@ One-time maintainer setup (each time a trial is stood up):
 3. **Auditing on.** PPAC → Security → Compliance → Auditing → the env → **Turn on
    auditing** → **Common entities across Dynamics 365 apps** (flips org `IsAuditEnabled`
    and audits Account/etc. + columns in one toggle). Unblocks `audit detail`.
-4. **No-op on-demand workflow.** make.powerapps classic process on Account, **background**
-   (`mode=0`) **and** *As an on-demand process* (`ondemand=true`), activated, stepless. The
-   Web API cannot create a workflow definition, so this is web-app-only. `mode` is fixed at
-   creation — a real-time workflow can't be flipped to background, so recreate if wrong.
-   Unblocks `workflow run` dispatch.
+4. **No-op on-demand workflow.** In **make.powerapps.com**, create a classic workflow
+   process on the **Account** table: **background** (`mode=0`) **and** *Available to Run →
+   As an on-demand process* (`ondemand=true`), activated, stepless. The Web API cannot
+   create a workflow definition, so this is web-app-only. `mode` is fixed at creation — a
+   real-time workflow can't be flipped to background, so recreate it if wrong. Unblocks
+   `workflow run` dispatch.
 5. **Host guard.** Set `D365_E2E_ALLOW_HOST=<trial host>` for the local run (the trial's
    `*.dynamics.com` host changes per provisioning; kept in local memory, not committed).
 
