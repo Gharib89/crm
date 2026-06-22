@@ -213,6 +213,13 @@ def test_async_get_first_operation(cli):
 def _seed_future_bulkdelete(backend, unique):
     """Submit a future-dated BulkDelete matching no rows; return its asyncoperationid."""
     nomatch = f"E2ENoMatch{unique}"
+    # Prove the filter matches zero rows up front, so even a (defensive) run would
+    # delete nothing — the deterministic half of the no-pollution guarantee.
+    existing = backend.get(
+        "contacts",
+        params={"$filter": f"lastname eq '{nomatch}'", "$select": "contactid", "$top": "1"},
+    )
+    assert (existing.get("value") or []) == [], f"seed filter unexpectedly matched rows: {existing}"
     fetch = (
         '<fetch><entity name="contact"><attribute name="contactid"/>'
         f'<filter><condition attribute="lastname" operator="eq" value="{nomatch}"/>'
