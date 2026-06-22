@@ -273,6 +273,7 @@ def _subarea_content(
     entity: str | None,
     url: str | None,
     dashboard: str | None,
+    pass_params: bool = False,
 ) -> tuple[str, str, str]:
     """Resolve the exactly-one-of content mode to ``(cli_key, attribute, value)``.
 
@@ -291,6 +292,12 @@ def _subarea_content(
             "add-subarea needs exactly one of --entity, --url or --dashboard "
             f"(got {len(chosen)}).")
     flag, value = chosen[0]
+    # Reject an incompatible --pass-params *before* any live resolution, so a
+    # non-url caller never pays for a wasted dashboard/entity lookup nor gets a
+    # misleading existence error in place of the real "--pass-params" one.
+    if pass_params and flag != "url":
+        raise D365Error(
+            f"--pass-params only applies to a --url SubArea, not --{flag}.")
     if flag == "entity":
         # Resolve raises D365Error (with a close-match suggestion) on a miss.
         return "entity", "Entity", resolve_logical_name(backend, value)
@@ -356,11 +363,8 @@ def add_subarea(
     aid = area_id.strip()
     gid = group_id.strip()
     cli_key, content_attr, content_val = _subarea_content(
-        backend, entity=entity, url=url, dashboard=dashboard)
-    if pass_params and cli_key != "url":
-        raise D365Error(
-            "--pass-params only applies to a --url SubArea, not "
-            f"--{cli_key}.")
+        backend, entity=entity, url=url, dashboard=dashboard,
+        pass_params=pass_params)
 
     def mutate(root: ET.Element) -> _Mutation:
         area = _find(root, "Area", aid)

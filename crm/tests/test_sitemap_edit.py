@@ -229,13 +229,13 @@ class TestAddSubarea:
     def test_pass_params_with_dashboard_is_rejected(self, backend):
         guid = "12345678-1234-1234-1234-1234567890ab"
         with requests_mock.Mocker() as m:
-            m.get(_url(backend), json={"sitemapxml": _SEED})
-            m.get(backend.url_for(f"systemforms({guid})"),
-                  json={"formid": guid, "type": 0})
+            # No mocks registered: --pass-params must be rejected *before* the
+            # live dashboard lookup (and before the sitemap load), so not a
+            # single request should fire.
             with pytest.raises(D365Error, match="--pass-params"):
                 sm.add_subarea(backend, _SID, area_id="SFA", group_id="SFA_Grp",
                                sub_id="cwx_x", dashboard=guid, pass_params=True)
-            assert not any(r.method == "PATCH" for r in m.request_history)
+            assert m.request_history == []
 
     def _dash_url(self, backend, guid: str) -> str:
         return backend.url_for(f"systemforms({guid})")
