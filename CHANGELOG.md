@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.27.2 (2026-06-22)
+
+### Bug Fixes
+
+- App create --if-exists skip swallows on-prem duplicate fault (0x80040216/500)
+  ([#499](https://github.com/Gharib89/crm/pull/499),
+  [`50b9b3a`](https://github.com/Gharib89/crm/commit/50b9b3a10dfa36d1ebbaaa191eb25e41653eb21f))
+
+
 ## v1.27.1 (2026-06-22)
 
 ### Bug Fixes
