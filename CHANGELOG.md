@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.29.0 (2026-06-23)
+
+### Documentation
+
+- Fix e2e worktree-CLI note — cwd beats PYTHONPATH, not the editable finder
+  ([`329ae1e`](https://github.com/Gharib89/crm/commit/329ae1ec9f11e021392944e39e4d2e38838ccaad))
+
+### Features
+
+- **plugin**: Add register-type verb; correct auto-created-plugintype docstrings
+  ([`e94956e`](https://github.com/Gharib89/crm/commit/e94956e9bba089bcc5eca69d60e6bf514b740679))
+
+### Testing
+
+- **e2e**: Provision pac in CI + live offline solution pack/extract roundtrip
+  ([#530](https://github.com/Gharib89/crm/pull/530),
+  [`2867320`](https://github.com/Gharib89/crm/commit/28673201d90d9555330c6590ba8a30e2e15347e0))
+
+
 ## v1.28.0 (2026-06-23)
 
 ### Documentation
