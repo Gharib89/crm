@@ -28,6 +28,7 @@ markers = [
     "e2e: live test requiring a reachable D365 server (opt-in via D365_E2E=1)",
     "requires_cloud: only runs against an OAuth/Dataverse target",
     "requires_onprem: only runs against an NTLM/on-prem target",
+    "offline: e2e that needs only a local binary (no D365 org/creds), so it runs in plain CI",
     "slow: long-running op (metadata publish, solution async import/export)",
 ]
 addopts = "-m 'not e2e'"

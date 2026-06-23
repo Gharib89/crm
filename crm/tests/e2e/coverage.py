@@ -39,13 +39,10 @@ LOCAL_GROUPS = frozenset(
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a
 # reason to be written down. Fill as the gate enumerates the gap (Task 6+).
 E2E_SKIP: dict[str, str] = {
-    # extract/pack now wrap the cross-platform `pac solution unpack`/`pack` (#500),
-    # so the Windows-only blocker is gone — but `pac` (Power Platform CLI) is not
-    # yet provisioned in the CI e2e environment, so there is no real binary to run
-    # against. Installing `pac` (a dotnet global tool) would unblock live coverage;
-    # tracked under #498.
-    "solution extract": "wraps cross-platform `pac solution unpack` (#500), but `pac` (Power Platform CLI) is not yet provisioned in CI; live coverage tracked under #498",
-    "solution pack": "wraps cross-platform `pac solution pack` (#500), but `pac` (Power Platform CLI) is not yet provisioned in CI; live coverage tracked under #498",
+    # `solution extract`/`pack` (the `pac solution unpack`/`pack` wrappers) are now
+    # covered live by the offline pac roundtrip in test_solution_packager_e2e.py
+    # (#529) — `pac` is provisioned in CI, so they are no longer skipped.
+    #
     # Platform-level (NOT org-specific) Web API restriction: Dataverse rejects
     # creating/upserting a workflow definition via the Web API with
     # "This workflow cannot be created, updated or published because it was created

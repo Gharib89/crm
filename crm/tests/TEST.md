@@ -151,7 +151,8 @@ walks the lazy Click command tree and fails unless every D365-touching verb has 
 **Test classification — which bucket does a test belong to?** The single criterion is:
 *does the verb's **observable** behavior (returned fields, error codes, defaults, feature
 existence) depend on the backend?* Transport differences (NTLM vs OAuth) do **not** count.
-No new markers — the four buckets reuse what exists:
+These four buckets reuse existing markers — none is bucket-specific (the one
+standalone marker is `offline`, below):
 
 | Bucket | Criterion | Mechanism |
 |--------|-----------|-----------|
@@ -160,18 +161,26 @@ No new markers — the four buckets reuse what exists:
 | **cloud-only** | Only works on Dataverse | `@pytest.mark.requires_cloud` |
 | **both / divergent** | Works on both but **asserts different values** per target | **no marker** — branch on the `target` fixture (`"cloud"`/`"onprem"`) and assert per-target; runs on both union legs |
 
+**`offline` marker** — orthogonal to the four buckets above (which all describe
+*live* tests). `@pytest.mark.offline` tags a test that needs **no** live org at all,
+only a local binary — e.g. `solution pack`/`extract` shelling out to `pac`. It is
+exempt from the live opt-in/reachability gate (it bypasses `live_profile` via the
+autouse `_enforce_capability` gate), so it runs in plain CI with `D365_E2E` unset (#529).
+
 **Capability gating & target divergence:** mark a test `@pytest.mark.requires_cloud` /
 `requires_onprem` when a verb only works on one target; the marker skips it on the other.
 For a verb that works on both but returns different values, take the `target` fixture and
 branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
 runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a
-cloud run. The **five** remaining `E2E_SKIP` entries are all skipped for reasons no org choice can
-fix: `solution extract`/`pack` now wrap the cross-platform `pac solution unpack`/`pack` (#500),
-but `pac` (Power Platform CLI) is not yet provisioned in CI, so there is no real binary to run
-against (live coverage tracked under #498), and `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
+cloud run. The **three** remaining `E2E_SKIP` entries are all skipped for reasons no org choice can
+fix: `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
 block — Dataverse refuses to upsert a workflow definition "created outside the Microsoft
 Dynamics 365 Web application" on every org, so a different org does not unblock them.
-(`solution stage-and-upgrade`/`apply-upgrade` are now covered: one single-org managed-upgrade
+(`solution extract`/`pack` are now covered live: an offline pac `pack → extract` roundtrip
+(#529) packs a committed minimal solution fixture and re-extracts it, asserting the envelope and
+that the solution's UniqueName survives the roundtrip — it needs only `pac` on PATH (provisioned
+in CI on every push, no D365 org/creds/VPN) and skips with an install hint when `pac` is absent.
+`solution stage-and-upgrade`/`apply-upgrade` are now covered: one single-org managed-upgrade
 lifecycle test (#512) builds a managed v1+v2 of an empty throwaway solution via
 `export --managed`, drops the unmanaged author copy, imports the managed base, stages the v2
 holding solution, then promotes it separately via `apply-upgrade` — asserting the installed

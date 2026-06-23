@@ -176,13 +176,18 @@ def _probe_or_skip(profile, secret) -> None:
             )
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def live_profile(tmp_path_factory):
     """Seed a throwaway profile under an isolated CRM_HOME and activate it. Creds
     come from either an existing named profile (D365_E2E_PROFILE) read from the
     developer's REAL home, or the flat D365_* env set; the CLI then resolves from
     the THROWAWAY profile only, never the real home. Hard-skips unless opted in,
-    and skips the whole session if the resolved target is unreachable (#273)."""
+    and skips the whole session if the resolved target is unreachable (#273).
+
+    Pulled for every *non-offline* test by the autouse `_enforce_capability`
+    gate (it used to be ``autouse`` itself). Routing it through the gate lets an
+    ``@pytest.mark.offline`` test — one that needs only a local binary, no org —
+    bypass the opt-in/reachability skip and run in plain CI (#529)."""
     if not _e2e_opted_in():
         pytest.skip(
             "e2e opt-in required: set D365_E2E=1 plus EITHER "
@@ -282,6 +287,15 @@ def target(live_profile):
 
 @pytest.fixture(autouse=True)
 def _enforce_capability(request):
+    # Offline tests (e.g. the pac pack/extract roundtrip, #529) need only a local
+    # binary — no D365 org. They bypass the live gate entirely so they run in
+    # plain CI with D365_E2E unset.
+    if request.node.get_closest_marker("offline"):
+        return
+    # Every other e2e test needs a live target: pull the (now non-autouse)
+    # live_profile here so its opt-in + reachability skip fires exactly as it did
+    # when live_profile was autouse — preserving behaviour for all existing tests.
+    request.getfixturevalue("live_profile")
     if not _e2e_opted_in():
         return
     target_val = request.getfixturevalue("target")
