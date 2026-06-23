@@ -138,7 +138,9 @@ class TestRegisterAssemblyCreate:
             m.post(backend.url_for("pluginassemblies"), status_code=204,
                    headers={"OData-EntityId": pa_url})
             plugin.register_assembly(backend, path=path)
-        # exactly one POST, to pluginassemblies — platform auto-creates types
+        # exactly one POST, to pluginassemblies — register_assembly never POSTs
+        # plugintype rows (a content-only upload does not create them; use
+        # register_type)
         posts = _posts(m)
         assert len(posts) == 1
         assert "plugintypes" not in posts[0].url
@@ -294,6 +296,106 @@ class TestListTypes:
             m.get(backend.url_for("pluginassemblies"), json={"value": []})
             with pytest.raises(D365Error, match="not found"):
                 plugin.list_types(backend, assembly="Nope")
+
+
+_PT_ID = "66666666-6666-6666-6666-666666666666"
+
+
+class TestRegisterType:
+    def test_resolves_assembly_then_posts_plugintype(self, backend):
+        from crm.core import plugin
+        pt_url = backend.url_for(f"plugintypes({_PT_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            m.post(backend.url_for("plugintypes"), status_code=204,
+                   headers={"OData-EntityId": pt_url})
+            out = plugin.register_type(
+                backend, assembly="Contoso.Plugins",
+                type_name="Contoso.Plugins.PreCreateAccount")
+        assert out["created"] is True
+        assert out["plugintypeid"] == _PT_ID
+        # assembly resolved by exact name
+        resolve = next(r for r in m.request_history
+                       if "pluginassemblies" in r.url)
+        assert resolve.qs["$filter"] == ["name eq 'contoso.plugins'"]
+        body = _posts(m)[0].json()
+        assert body["typename"] == "Contoso.Plugins.PreCreateAccount"
+        # friendlyname defaults to the type name
+        assert body["friendlyname"] == "Contoso.Plugins.PreCreateAccount"
+        # bound to the resolved assembly id (navprop = pluginassemblyid)
+        assert body["pluginassemblyid@odata.bind"] == (
+            f"/pluginassemblies({_PA_ID})")
+        # read-only / server-derived identity is never sent
+        assert "version" not in body
+        assert "culture" not in body
+        assert "publickeytoken" not in body
+
+    def test_friendly_name_override(self, backend):
+        from crm.core import plugin
+        pt_url = backend.url_for(f"plugintypes({_PT_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            m.post(backend.url_for("plugintypes"), status_code=204,
+                   headers={"OData-EntityId": pt_url})
+            out = plugin.register_type(
+                backend, assembly="Contoso.Plugins",
+                type_name="Contoso.Plugins.PreCreateAccount",
+                friendly_name="Pre-create account")
+        body = _posts(m)[0].json()
+        assert body["friendlyname"] == "Pre-create account"
+        assert out["friendlyname"] == "Pre-create account"
+
+    def test_solution_header_routed(self, backend):
+        from crm.core import plugin
+        pt_url = backend.url_for(f"plugintypes({_PT_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            m.post(backend.url_for("plugintypes"), status_code=204,
+                   headers={"OData-EntityId": pt_url})
+            out = plugin.register_type(
+                backend, assembly="Contoso.Plugins",
+                type_name="Contoso.Plugins.Foo", solution="Foo")
+        assert _posts(m)[0].headers["MSCRM.SolutionUniqueName"] == "Foo"
+        assert out["solution"] == "Foo"
+
+    def test_unknown_assembly_raises_clean_d365error(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"), json={"value": []})
+            with pytest.raises(D365Error, match="not found"):
+                plugin.register_type(
+                    backend, assembly="Nope", type_name="X.Y")
+        # raised before any POST
+        assert not _posts(m)
+
+    def test_unparseable_id_sets_lookup_error(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            m.post(backend.url_for("plugintypes"), status_code=204,
+                   headers={"OData-EntityId": "https://x/plugintypes(bogus)"})
+            out = plugin.register_type(
+                backend, assembly="Contoso.Plugins", type_name="X.Y")
+        assert out["created"] is True
+        assert out["plugintypeid"] is None
+        assert "plugintype_lookup_error" in out
+
+    def test_dry_run_force_reads_assembly_no_post(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            # assembly name->id resolution is a GET: runs live even under dry-run
+            m.get(dry.url_for("pluginassemblies"),
+                  json={"value": [{"pluginassemblyid": _PA_ID}]})
+            out = plugin.register_type(
+                dry, assembly="Contoso.Plugins", type_name="X.Y")
+        assert out["_dry_run"] is True
+        assert out["would_create"] is True
+        assert not _posts(m)
 
 
 _MSG_ID = "22222222-2222-2222-2222-222222222222"
@@ -1496,6 +1598,53 @@ class TestPluginCommands:
         env = json.loads(result.output)
         assert env["ok"] is True
         assert env["data"]["pluginassemblyid"] == _PA_ID
+
+    def test_register_type_command_wires_core(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_register_type(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "plugintypeid": _PT_ID,
+                    "typename": kw["type_name"]}
+
+        monkeypatch.setattr("crm.core.plugin.register_type", fake_register_type)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-type",
+            "--assembly", "Contoso.Plugins",
+            "--type", "Contoso.Plugins.PreCreateAccount",
+            "--friendly-name", "Pre-create account",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["assembly"] == "Contoso.Plugins"
+        assert captured["type_name"] == "Contoso.Plugins.PreCreateAccount"
+        assert captured["friendly_name"] == "Pre-create account"
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["plugintypeid"] == _PT_ID
+
+    def test_register_type_command_handles_d365_error(self, monkeypatch):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+
+        def boom(backend, **kw):
+            raise D365Error("Plug-in assembly not found: Nope",
+                            code="PluginAssemblyNotFound")
+
+        monkeypatch.setattr("crm.core.plugin.register_type", boom)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "plugin", "register-type",
+            "--assembly", "Nope", "--type", "X.Y",
+        ])
+        assert result.exit_code != 0
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "not found" in env["error"]
 
     def test_register_assembly_command_passes_options(self, monkeypatch):
         from click.testing import CliRunner

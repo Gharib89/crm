@@ -12,9 +12,10 @@ filename stem plus documented defaults, with per-call overrides — NOT by .NET
 reflection on the assembly. The four columns are SystemRequired on the API, so
 they are always included in the create body.
 
-Plug-in **type** rows are NOT posted here: the platform auto-creates plugintype
-rows via reflection on the uploaded Content. This module only uploads the
-assembly.
+Plug-in **type** rows are NOT created by register_assembly: a content-only Web
+API `POST pluginassemblies` does not reflect the assembly, so it leaves zero
+plugintype rows (only the Plug-in Registration Tool reflects an assembly
+client-side to create them). Register each type explicitly with register_type.
 
 Column values verified against MS Learn's pluginassembly entity reference
 (learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly):
@@ -200,11 +201,12 @@ def register_assembly(
 def list_types(
     backend: D365Backend, *, assembly: str | None = None,
 ) -> dict[str, Any]:
-    """List platform-generated plug-in types (the `plugintypes` entity set).
+    """List registered plug-in types (the `plugintypes` entity set).
 
-    Plug-in **type** rows are auto-created by the platform via reflection on an
-    uploaded assembly's Content (register_assembly never POSTs them); this is a
-    plain read of those rows.
+    A content-only Web API `POST pluginassemblies` does not create plugintype
+    rows, so for assemblies registered via this CLI the listing is empty until
+    each type is registered explicitly with register_type. This is a plain read
+    of those rows.
 
     When `assembly` (an assembly NAME) is given, it is resolved to a
     `pluginassemblyid` via `_resolve_id_by_name` (a not-found name raises
@@ -223,6 +225,69 @@ def list_types(
         params["$filter"] = f"_pluginassemblyid_value eq {pid}"
     rows = backend.get_collection("plugintypes", params=params)
     return {"value": rows}
+
+
+def register_type(
+    backend: D365Backend,
+    *,
+    assembly: str,
+    type_name: str,
+    friendly_name: str | None = None,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Register one plug-in type (`plugintypes`) under an existing assembly.
+
+    A content-only Web API `POST pluginassemblies` (what register_assembly does)
+    does NOT create plugintype rows — only the Plug-in Registration Tool reflects
+    an assembly client-side to create them. This verb creates a single plugintype
+    row explicitly from a caller-supplied fully qualified `type_name` (no .NET
+    reflection — the user names the type), bound to the assembly resolved by
+    `assembly` NAME. After it, list_types shows the row and
+    `register_step --plugin-type <type_name>` resolves it.
+
+    `friendly_name` defaults to `type_name` (friendlyname is SystemRequired on
+    the API). version/culture/publickeytoken are read-only — server-derived from
+    the bound assembly — and are never sent. The assembly name->id resolution is
+    a GET and runs live even under dry-run (mirrors register_assembly's
+    force-read); the POST is short-circuited to a {_dry_run, would_create}
+    preview.
+
+    Raises D365Error if the assembly NAME is unknown.
+
+    Column names verified against MS Learn's plugintype entity reference:
+    `typename` (fully qualified class name, SystemRequired), `friendlyname`
+    (display name, SystemRequired); the single-valued navigation property for the
+    owning assembly lookup is `pluginassemblyid`.
+    """
+    pid = _resolve_id_by_name(backend, assembly)
+    body: dict[str, Any] = {
+        "typename": type_name,
+        "friendlyname": friendly_name or type_name,
+        "pluginassemblyid@odata.bind": f"/pluginassemblies({pid})",
+    }
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.post(
+        "plugintypes", json_body=body, extra_headers=headers))
+    if result.get("_dry_run"):
+        result["would_create"] = True
+        return result
+
+    tid = result.get("_entity_id")
+    out: dict[str, Any] = {
+        "created": True,
+        "plugintypeid": tid,
+        "typename": type_name,
+        "friendlyname": friendly_name or type_name,
+        "assembly": assembly,
+        "pluginassemblyid": pid,
+        "solution": solution,
+    }
+    if not tid:
+        entity_id_url = result.get("_entity_id_url") or ""
+        out["plugintype_lookup_error"] = (
+            f"Could not parse plugintypeid from response: {entity_id_url!r}"
+        )
+    return out
 
 
 def register_step(

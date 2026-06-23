@@ -150,12 +150,13 @@ def test_plugin_list_types_returns_list(cli):
 
 @covers(
     "plugin register-assembly",
+    "plugin register-type",
     "plugin unregister-step",
     "plugin unregister-assembly",
 )
 def test_assembly_register_step_unregister_lifecycle(
         cli, plugin_assembly, backend, request):
-    """register-assembly -> register-step -> unregister-step -> unregister-assembly.
+    """register-assembly -> register-type -> register-step -> unregister-* lifecycle.
 
     The `plugin_assembly` fixture builds a signed no-op IPlugin from committed C#
     source; this drives the whole assembly lifecycle through the CLI and asserts
@@ -206,20 +207,27 @@ def test_assembly_register_step_unregister_lifecycle(
                 f"{result.stderr}", stacklevel=2)
     request.addfinalizer(_cleanup)
 
-    # Unlike the Plug-in Registration Tool (which reflects the assembly
-    # client-side and creates the plugintype rows for you), a raw Web API upload
-    # of the assembly content does NOT auto-register plug-in types, and
-    # `register-assembly` does no reflection — so the type must be created
-    # explicitly, the way a Web API registration must, before a step can bind to
-    # it. The platform cascade-deletes it when the assembly is unregistered, so it
-    # needs no separate teardown. This `backend` create is precondition seeding,
-    # not the assertion surface (the lifecycle verbs are asserted via the CLI).
-    backend.post("plugintypes", json_body={
-        "typename": asm.type_name,
-        "friendlyname": asm.type_name,
-        "name": asm.type_name,
-        "pluginassemblyid@odata.bind": f"/pluginassemblies({assembly_id})",
-    })
+    # 1b. Register the plug-in type via the CLI. Unlike the Plug-in Registration
+    # Tool (which reflects the assembly client-side and creates plugintype rows
+    # for you), a raw Web API upload of the assembly content does NOT auto-register
+    # plug-in types, and `register-assembly` does no reflection — so the type must
+    # be created explicitly before a step can bind to it. The platform
+    # cascade-deletes it when the assembly is unregistered, so it needs no separate
+    # teardown.
+    type_result = cli(
+        ["--json", "plugin", "register-type",
+         "--assembly", asm.assembly_name, "--type", asm.type_name],
+        check=False,
+    )
+    assert type_result.returncode == 0, (
+        f"register-type failed: {type_result.stderr}\n{type_result.stdout}")
+    type_data = _json.loads(type_result.stdout)
+    assert type_data["ok"] is True, f"register-type not ok: {type_data}"
+    assert type_data["data"]["created"] is True
+    assert type_data["data"]["plugintypeid"], f"no plugintypeid parsed: {type_data}"
+    # friendlyname defaults to the type name when --friendly-name is omitted.
+    assert type_data["data"]["friendlyname"] == asm.type_name
+
     # Confirm it is queryable before register-step resolves it by name (guards a
     # read-after-write lag, which would otherwise surface as register-step 404ing).
     type_filter = (f"typename eq '{asm.type_name}' "
