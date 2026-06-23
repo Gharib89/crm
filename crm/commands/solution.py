@@ -637,15 +637,19 @@ def solution_import_cmd(ctx: CLIContext, zip_path, publish, overwrite, skip_depe
 
 
 def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
-    """Emit a SolutionPackager envelope, failing the command (ADR 0001) when the
-    tool returned a non-zero exit code — the data (exit_code, stdout_tail) is kept
-    so the failure is diagnosable."""
+    """Emit a pac-solution envelope, failing the command (ADR 0001) when the tool
+    returned a non-zero exit code — the data (exit_code, stdout_tail) is kept so
+    the failure is diagnosable."""
     exit_code = info.get("exit_code")
     if exit_code:
         # Embed the tail in the error itself: human mode drops `data`, so a bare
         # "see stdout_tail" would point at output the user can't see (#107 review).
         tail = info.get("stdout_tail") or ""
-        msg = f"SolutionPackager {info.get('action')} failed (exit {exit_code})."
+        # The envelope `action` (Extract/Pack) is kept stable, but pac's real
+        # subcommand differs (unpack/pack) — name it so a user can re-run the
+        # failing command verbatim (Copilot #527).
+        subcommand = sp_mod.pac_subcommand(info.get("action"))
+        msg = f"pac solution {subcommand} failed (exit {exit_code})."
         if tail:
             msg += f"\n{tail}"
         ctx.emit(False, data=info, error=msg)
@@ -661,23 +665,26 @@ def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
 @click.option("--package-type", "package_type",
               type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
               default="Unmanaged",
-              help="SolutionPackager /packagetype (default Unmanaged).")
-@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
+              help="pac --packagetype (default Unmanaged).")
+@click.option("--pac-path", "pac_path", default=None,
               type=click.Path(dir_okay=False),
-              help="Path to SolutionPackager.exe (else CRM_SOLUTIONPACKAGER env, then PATH).")
+              help="Path to the pac executable (else CRM_PAC env, then PATH).")
+@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
+              type=click.Path(dir_okay=False), hidden=True,
+              help="Deprecated alias for --pac-path (point it at pac).")
 @click.option("--timeout", type=int, default=None,
-              help="SolutionPackager subprocess timeout in seconds.")
+              help="pac subprocess timeout in seconds.")
 @pass_ctx
 def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
-                         solutionpackager_path, timeout):
-    """Extract a solution zip into a folder tree (offline; SolutionPackager.exe).
+                         pac_path, solutionpackager_path, timeout):
+    """Extract a solution zip into a folder tree (offline; pac solution unpack).
 
     OFFLINE local-file transform — no connection or profile required.
     """
     with d365_errors(ctx):
         info = sp_mod.extract_solution(
             zipfile=zipfile, folder=folder, package_type=package_type,
-            solutionpackager_path=solutionpackager_path, timeout=timeout,
+            pac_path=pac_path or solutionpackager_path, timeout=timeout,
         )
     _emit_packager_result(ctx, info)
 
@@ -690,23 +697,26 @@ def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
 @click.option("--package-type", "package_type",
               type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
               default="Unmanaged",
-              help="SolutionPackager /packagetype (default Unmanaged).")
-@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
+              help="pac --packagetype (default Unmanaged).")
+@click.option("--pac-path", "pac_path", default=None,
               type=click.Path(dir_okay=False),
-              help="Path to SolutionPackager.exe (else CRM_SOLUTIONPACKAGER env, then PATH).")
+              help="Path to the pac executable (else CRM_PAC env, then PATH).")
+@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
+              type=click.Path(dir_okay=False), hidden=True,
+              help="Deprecated alias for --pac-path (point it at pac).")
 @click.option("--timeout", type=int, default=None,
-              help="SolutionPackager subprocess timeout in seconds.")
+              help="pac subprocess timeout in seconds.")
 @pass_ctx
 def solution_pack_cmd(ctx: CLIContext, zipfile, folder, package_type,
-                      solutionpackager_path, timeout):
-    """Pack a folder tree back into a solution zip (offline; SolutionPackager.exe).
+                      pac_path, solutionpackager_path, timeout):
+    """Pack a folder tree back into a solution zip (offline; pac solution pack).
 
     OFFLINE local-file transform — no connection or profile required.
     """
     with d365_errors(ctx):
         info = sp_mod.pack_solution(
             zipfile=zipfile, folder=folder, package_type=package_type,
-            solutionpackager_path=solutionpackager_path, timeout=timeout,
+            pac_path=pac_path or solutionpackager_path, timeout=timeout,
         )
     _emit_packager_result(ctx, info)
 

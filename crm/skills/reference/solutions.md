@@ -1,6 +1,6 @@
 # Solutions — lifecycle, packager, validate, drift
 
-Create, version, export/import solutions; bridge to SolutionPackager for source
+Create, version, export/import solutions; bridge to `pac solution` for source
 control; validate zips offline; detect component drift. Group: `solution`.
 Flags/choices: `crm solution --help`.
 
@@ -167,18 +167,20 @@ as a base64 blob inside the JSON body (manual decode + unpack); the
 **Translations → Export/Import translations** menu and XrmToolBox
 **Easy Translator** (community tool, on-prem + online).
 
-## Source control — SolutionPackager bridge
+## Source control — `pac solution` bridge
 
-Put a solution under source control with the offline SolutionPackager bridge (no
-connection/profile needed; resolves the exe via `--solutionpackager-path` →
-`CRM_SOLUTIONPACKAGER` → PATH, else errors naming the `Microsoft.CrmSdk.CoreTools`
-NuGet). **`git diff` on the extracted tree IS the solution diff:**
+Put a solution under source control with the offline `pac solution unpack`/`pack`
+bridge (no connection/profile needed; resolves the exe via `--pac-path` →
+`CRM_PAC` → PATH — the old `--solutionpackager-path`/`CRM_SOLUTIONPACKAGER` names
+still work as deprecated aliases — else errors pointing at the cross-platform
+Power Platform CLI install — `dotnet tool install --global Microsoft.PowerApps.CLI.Tool`).
+**`git diff` on the extracted tree IS the solution diff:**
 
 ```bash
 crm solution extract --zipfile /tmp/snap.zip --folder src/MyCustomSolution
 # ...commit + review git diff, then rebuild a zip from the tree
 crm solution pack --zipfile dist/built.zip --folder src/MyCustomSolution
-# a non-zero SolutionPackager exit fails the command;
+# a non-zero pac exit fails the command;
 # envelope: {action, exit_code, folder, zipfile, stdout_tail}
 ```
 

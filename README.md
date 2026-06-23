@@ -314,7 +314,7 @@ crm query fetchxml accounts --file ./reports/by_industry.xml
 crm solution export MyCustomSolution -o /tmp/snap.zip
 
 # Solution source control: unpack a zip to a diff-able tree and pack it back
-# (offline — no connection needed; needs SolutionPackager.exe from CoreTools)
+# (offline — no connection needed; needs the Power Platform CLI `pac` on PATH)
 crm solution extract --zipfile /tmp/snap.zip --folder ./src/MyCustomSolution
 crm solution pack    --zipfile /tmp/built.zip --folder ./src/MyCustomSolution
 
