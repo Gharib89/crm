@@ -59,11 +59,12 @@ def check(title: str, body: str, labels: List[str]) -> Tuple[int, str]:
         return 0, "bump-guard: no major bump implied, no bump label required."
     have = {label.strip().lower() for label in labels if label.strip()}
     if "major" in have:
-        return 0, "bump-guard: breaking title carries the 'major' label."
+        return 0, "bump-guard: breaking change carries the 'major' label."
     return 1, (
-        "bump-guard: this PR's title is a breaking change, which bumps the major "
-        "version. A major bump must be opted in by a maintainer: add the 'major' "
-        "label to confirm, or retitle it as a non-breaking change (feat:/fix:/...)."
+        "bump-guard: this PR is a breaking change (a '!' in the title or a "
+        "'BREAKING CHANGE:' footer in the body), which bumps the major version. "
+        "A major bump must be opted in by a maintainer: add the 'major' label to "
+        "confirm, or remove the breaking change (drop the '!' / the footer)."
     )
 
 
