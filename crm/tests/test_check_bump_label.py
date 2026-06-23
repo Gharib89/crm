@@ -1,7 +1,8 @@
 # pyright: basic
 """Unit tests for scripts/check_bump_label.py — the bump-guard gate that fails a
-PR whose Conventional-Commit title implies a minor/major bump unless the matching
-opt-in label (`minor` / `major`) is present. See ADR 0011 and issue #398."""
+PR whose Conventional-Commit title implies a *major* bump unless the maintainer-
+applied `major` label is present. `feat:` (minor) and patch-level titles flow
+without a label; only a major bump is gated. See ADR 0011 and issues #398, #500."""
 import importlib.util
 from pathlib import Path
 
@@ -28,8 +29,10 @@ def test_patch_types_need_no_label(title):
 
 
 @pytest.mark.parametrize("title", ["feat: thing", "feat(query): thing"])
-def test_feat_requires_minor(title):
-    assert cbl.required_label(title) == "minor"
+def test_feat_needs_no_label(title):
+    # feat: bumps minor, but the minor digit is no longer label-gated — only a
+    # major bump requires opt-in, so AFK agents' feat PRs are not stalled.
+    assert cbl.required_label(title) is None
 
 
 @pytest.mark.parametrize(
@@ -50,24 +53,25 @@ def test_invalid_title_raises():
 
 # --- check: title + body + labels -> (exit_code, message) -------------------
 
-def test_feat_without_minor_label_fails():
-    code, msg = cbl.check("feat: thing", "", [])
-    assert code == 1 and "minor" in msg
-
-
-def test_feat_with_minor_label_passes():
-    code, _ = cbl.check("feat: thing", "", ["minor"])
+def test_feat_passes_with_no_label():
+    code, _ = cbl.check("feat: thing", "", [])
     assert code == 0
 
 
 def test_feat_with_major_label_passes():
-    # major is a superset of minor — labelling a feat `major` is intentional.
+    # major is a superset — labelling a feat `major` is intentional and allowed.
     code, _ = cbl.check("feat: thing", "", ["major"])
     assert code == 0
 
 
-def test_breaking_with_only_minor_label_fails():
-    code, msg = cbl.check("feat!: thing", "", ["minor"])
+def test_breaking_without_major_label_fails():
+    code, msg = cbl.check("feat!: thing", "", [])
+    assert code == 1 and "major" in msg
+
+
+def test_breaking_with_non_major_label_fails():
+    # only the `major` label satisfies a breaking change; any other label does not.
+    code, msg = cbl.check("feat!: thing", "", ["enhancement"])
     assert code == 1 and "major" in msg
 
 
