@@ -6,9 +6,9 @@ Flags/choices: `crm <group> --help`.
 
 ## Plug-ins — `plugin` (assembly + step + image lifecycle)
 
-The full workflow is **upload assembly → verify the platform-generated types →
-register a step** against one of those types, then optionally attach entity
-images to the step:
+The full workflow is **upload assembly → register-type (one per IPlugin class;
+no reflection, you name them) → register a step** against one of those types,
+then optionally attach entity images to the step:
 
 ```bash
 # register-assembly: .dll bytes are base64'd into `content`. --solution sends
@@ -20,7 +20,13 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_con
 # are IGNORED under --update and produce a warning.
 crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update
 
-# list-types: platform-generated rows in plugintypes (one per IPlugin class).
+# register-type: create one plugintypes row per IPlugin class. The CLI does NOT
+# reflect the assembly — plugintype rows are never auto-created via the Web API.
+# --friendly-name defaults to the type name. --solution accepted.
+crm --json plugin register-type --assembly Contoso.Plugins \
+    --type Contoso.Plugins.AccountPostUpdate
+
+# list-types: shows explicitly registered rows; empty until register-type is run.
 crm --json plugin list-types --assembly Contoso.Plugins
 
 # register-webhook: creates a serviceendpoint (contract=8). The platform POSTs

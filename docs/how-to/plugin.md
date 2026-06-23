@@ -29,10 +29,37 @@ Identity flags (`--version`, `--culture`, `--public-key-token`, `--description`,
 `--isolation-mode`) are ignored under `--update` and produce a warning if passed.
 `--solution` is still honored.
 
+## Register a plug-in type
+
+A content-only `register-assembly` does **not** create `plugintypes` rows — that
+only happens when the Plug-in Registration Tool reflects the assembly client-side.
+Assemblies uploaded via the CLI have zero type rows until you register each one
+explicitly:
+
+```bash
+crm --json plugin register-type \
+    --assembly Contoso.Plugins \
+    --type Contoso.Plugins.PreCreateAccount
+```
+
+`--friendly-name` defaults to the type name. `version`/`culture`/`publickeytoken`
+are read-only (server-derived from the bound assembly) and are never sent in the
+request body. After this, `list-types` shows the row and `register-step
+--plugin-type <typename>` resolves it.
+
+Dry-run preview (no write): `crm --dry-run --json plugin register-type ...`
+returns `{_dry_run, would_create: true}`. The assembly name-to-id resolution GET
+runs live even under `--dry-run` (reads-execute rule).
+
+Unknown assembly name raises a `D365Error` (clean error, no server round-trip
+for the write).
+
+`--solution` / `--require-solution` land the type row in a target solution.
+
 ## List plug-in types
 
-After the platform processes a registered assembly it generates one `plugintypes`
-row per public class that implements `IPlugin`:
+For assemblies registered via the CLI, the listing is empty until each type is
+registered with `register-type` (no platform reflection):
 
 ```bash
 crm --json plugin list-types
@@ -134,8 +161,12 @@ Key points:
 # 1. Upload the assembly
 crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
 
-# 2. Confirm the platform generated plug-in types
-crm --json plugin list-types --assembly Contoso.Plugins
+# 2. Register each IPlugin class explicitly — the CLI does not reflect the
+#    assembly, so plugintype rows are NOT created automatically.
+crm --json plugin register-type \
+    --assembly Contoso.Plugins \
+    --type Contoso.Plugins.AccountPostUpdate \
+    --solution cwx_contoso
 
 # 3. Register a post-operation sync step on account Update
 crm --json plugin register-step \
@@ -246,6 +277,8 @@ skip confirmation. Accepts either the assembly name or its GUID.
 
 ```bash
 crm --dry-run --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
+crm --dry-run --json plugin register-type \
+    --assembly Contoso.Plugins --type Contoso.Plugins.AccountPostUpdate
 crm --dry-run --json plugin register-webhook \
     --name MyWebhook --url https://func.azurewebsites.net/api/d365hook \
     --auth webhookkey --auth-value 'abc123secret'
