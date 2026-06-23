@@ -8,6 +8,7 @@
 | `test_resilience.py` | Unit | 49            | None (HTTP mocked with `requests_mock`)    |
 | `e2e/` (per-group) | E2E  | ~95 (live, opt-in) | **Live D365** (on-prem NTLM and/or cloud OAuth), `D365_E2E=1` |
 | `test_e2e_coverage_gate.py` | Unit | 3        | None (offline — walks the lazy Click tree) |
+| `test_docs_command_examples.py` | Unit | ~850 (1 per doc example) + seam units | None (offline — `CliRunner` + `crm --json describe`) |
 | `test_cli_offline_smoke.py` | Unit | 3        | None (`CliRunner`, no live server)         |
 | `test_admin_headers.py` | Unit | 26       | None (HTTP mocked with `requests_mock`)    |
 | `test_batch.py`   | Unit | 13            | None (HTTP mocked with `requests_mock`)    |
@@ -147,6 +148,18 @@ walks the lazy Click command tree and fails unless every D365-touching verb has 
 `@covers("<group> <verb>")` test **or** an `E2E_SKIP` entry (with a reason) in
 `crm/tests/e2e/coverage.py`. Local/meta groups (`profile`, `session`, `skill`,
 `self-update`, `repl`, `scaffold`) are out of scope (`LOCAL_GROUPS`).
+
+**Doc-examples gate (offline, runs in normal CI):** `crm/tests/test_docs_command_examples.py`
+extracts every `crm …` example from the docs + README (fenced code blocks and inline
+`` `code spans` ``) and validates each against the real CLI tree from `crm --json
+describe` — failing when a command **path** doesn't resolve, a **global option** is
+placed after the command (and the leaf doesn't redefine it), or an **unknown flag**
+is used. It is fully offline (in-process `CliRunner`, no network). Prose/placeholder
+references are filtered structurally (a non-prefix word before `crm`, or a bare
+`crm <group>` with nothing trailing, is a reference, not an example); genuine
+hypotheticals and diagrams (`crm codegen`, `crm bpf`, the README architecture box)
+live in a small commented `ALLOWLIST` keyed by the normalized command string. The
+gate **fails closed**: a new unrecognized broken example is a failure, not a skip.
 
 **Test classification — which bucket does a test belong to?** The single criterion is:
 *does the verb's **observable** behavior (returned fields, error codes, defaults, feature
