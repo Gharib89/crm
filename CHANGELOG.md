@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.28.0 (2026-06-23)
+
+### Documentation
+
+- Fix non-working CLI examples in quickstart/index/agent
+  ([`41ba0ba`](https://github.com/Gharib89/crm/commit/41ba0ba2087645ea6be33ccbef6439e248e26941))
+
+### Features
+
+- **solution**: Migrate extract/pack to cross-platform `pac solution`
+  ([#527](https://github.com/Gharib89/crm/pull/527),
+  [`1c6c508`](https://github.com/Gharib89/crm/commit/1c6c508ceb133b004f7775e0f123035e0dba546f))
+
+
 ## v1.27.6 (2026-06-23)
 
 ### Bug Fixes
