@@ -55,12 +55,39 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
     _journal(ctx, path, info, solution=solution)
 
 
+@plugin_group.command("register-type")
+@click.option("--assembly", required=True,
+              help="Existing assembly NAME the plug-in type belongs to.")
+@click.option("--type", "type_name", required=True,
+              help="Fully qualified plug-in type name "
+                   "(e.g. Contoso.Plugins.PreCreateAccount).")
+@click.option("--friendly-name", "friendly_name", default=None,
+              help="Display name (friendlyname); defaults to the type name.")
+@_solution_option
+@pass_ctx
+def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name,
+                      solution, require_solution):
+    """Register a plug-in type (plugintypes) under an existing assembly.
+
+    A content-only register-assembly does not create plugintype rows, so name
+    each type here before register-step --plugin-type can resolve it.
+    """
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    with d365_errors(ctx):
+        info = plugin_mod.register_type(
+            ctx.backend(), assembly=assembly, type_name=type_name,
+            friendly_name=friendly_name, solution=solution)
+    _emit_with_warning(ctx, info, warning,
+                       meta=ctx.staged_meta())
+    _journal(ctx, type_name, info, solution=solution)
+
+
 @plugin_group.command("list-types")
 @click.option("--assembly", default=None,
               help="Filter to plug-in types of this assembly (by name).")
 @pass_ctx
 def list_types_cmd(ctx: CLIContext, assembly):
-    """List platform-generated plug-in types (optionally for one assembly)."""
+    """List registered plug-in types (optionally for one assembly)."""
     with d365_errors(ctx):
         result = plugin_mod.list_types(ctx.backend(), assembly=assembly)
     items = result["value"]
