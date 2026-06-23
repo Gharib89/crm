@@ -1,8 +1,8 @@
-"""Unit tests for crm.core.solutionpackager — offline SolutionPackager.exe bridge.
+"""Unit tests for crm.core.solutionpackager — offline `pac solution` bridge.
 
 These are OFFLINE local-file transforms: no backend, no connection, no profile.
-The external SolutionPackager process is the only collaborator, so the tests
-fake `subprocess.run` (the process boundary) and assert argv passthrough,
+The external `pac` (Power Platform CLI) process is the only collaborator, so the
+tests fake `subprocess.run` (the process boundary) and assert argv passthrough,
 exit-code propagation, the emitted envelope, timeout handling, and exe
 resolution. Faking at the process boundary keeps the tests cross-platform
 (CI runs pytest on both Linux and Windows).
@@ -46,22 +46,24 @@ def fake_run(monkeypatch):
 
 @pytest.fixture
 def exe(tmp_path):
-    """A path that looks like a real SolutionPackager binary."""
-    p = tmp_path / "SolutionPackager.exe"
+    """A path that looks like a real `pac` binary."""
+    p = tmp_path / "pac"
     p.touch()
     return str(p)
 
 
 def test_extract_builds_argv_and_returns_envelope(fake_run, exe):
     info = sp.extract_solution(
-        zipfile="sol.zip", folder="src/sol", solutionpackager_path=exe,
+        zipfile="sol.zip", folder="src/sol", pac_path=exe,
     )
     argv = fake_run[-1][0]
     assert argv[0] == exe
-    assert "/action:Extract" in argv
-    assert "/zipfile:sol.zip" in argv
-    assert "/folder:src/sol" in argv
-    assert "/packagetype:Unmanaged" in argv
+    assert argv[1] == "solution"
+    assert argv[2] == "unpack"          # Extract maps to `pac solution unpack`
+    # pac uses GNU-style space-separated flags, not /flag:value.
+    assert argv[argv.index("--zipfile") + 1] == "sol.zip"
+    assert argv[argv.index("--folder") + 1] == "src/sol"
+    assert argv[argv.index("--packagetype") + 1] == "Unmanaged"
     assert info["action"] == "Extract"
     assert info["exit_code"] == 0
     assert info["folder"] == "src/sol"
@@ -70,12 +72,13 @@ def test_extract_builds_argv_and_returns_envelope(fake_run, exe):
 
 def test_pack_builds_reverse_argv(fake_run, exe):
     info = sp.pack_solution(
-        zipfile="out.zip", folder="src/sol", solutionpackager_path=exe,
+        zipfile="out.zip", folder="src/sol", pac_path=exe,
     )
     argv = fake_run[-1][0]
-    assert "/action:Pack" in argv
-    assert "/zipfile:out.zip" in argv
-    assert "/folder:src/sol" in argv
+    assert argv[1] == "solution"
+    assert argv[2] == "pack"            # Pack maps to `pac solution pack`
+    assert argv[argv.index("--zipfile") + 1] == "out.zip"
+    assert argv[argv.index("--folder") + 1] == "src/sol"
     assert info["action"] == "Pack"
     assert info["zipfile"] == "out.zip"
 
@@ -87,7 +90,7 @@ def test_exit_code_propagated_and_stdout_tailed(monkeypatch, exe):
         return _FakeCompleted(argv, returncode=7, stdout=body)
 
     monkeypatch.setattr(sp.subprocess, "run", _run)
-    info = sp.extract_solution(zipfile="s.zip", folder="f", solutionpackager_path=exe)
+    info = sp.extract_solution(zipfile="s.zip", folder="f", pac_path=exe)
 
     assert info["exit_code"] == 7
     tail_lines = info["stdout_tail"].splitlines()
@@ -103,43 +106,64 @@ def test_timeout_raises_d365error(monkeypatch, exe):
     monkeypatch.setattr(sp.subprocess, "run", _run)
     with pytest.raises(D365Error, match="timed out"):
         sp.pack_solution(
-            zipfile="s.zip", folder="f", solutionpackager_path=exe, timeout=5,
+            zipfile="s.zip", folder="f", pac_path=exe, timeout=5,
         )
 
 
-# ── exe resolution: flag → CRM_SOLUTIONPACKAGER env → which → NuGet error ──────
+# ── exe resolution: flag → CRM_PAC env → which → pac-install error ─────────────
 
 
 def test_resolves_exe_from_env_when_no_flag(fake_run, monkeypatch, exe):
-    monkeypatch.setenv("CRM_SOLUTIONPACKAGER", exe)
+    monkeypatch.setenv("CRM_PAC", exe)
     sp.extract_solution(zipfile="s.zip", folder="f")
     assert fake_run[-1][0][0] == exe
 
 
 def test_resolves_exe_from_which_when_no_flag_or_env(fake_run, monkeypatch, exe):
-    monkeypatch.delenv("CRM_SOLUTIONPACKAGER", raising=False)
+    monkeypatch.delenv("CRM_PAC", raising=False)
     monkeypatch.setattr(
-        sp.shutil, "which", lambda name: exe if "SolutionPackager" in name else None,
+        sp.shutil, "which", lambda name: exe if name == "pac" else None,
     )
     sp.extract_solution(zipfile="s.zip", folder="f")
     assert fake_run[-1][0][0] == exe
 
 
 def test_flag_takes_precedence_over_env(fake_run, monkeypatch, tmp_path):
-    env_exe = tmp_path / "env.exe"
+    env_exe = tmp_path / "env-pac"
     env_exe.touch()
-    flag_exe = tmp_path / "flag.exe"
+    flag_exe = tmp_path / "flag-pac"
     flag_exe.touch()
-    monkeypatch.setenv("CRM_SOLUTIONPACKAGER", str(env_exe))
-    sp.pack_solution(zipfile="s.zip", folder="f", solutionpackager_path=str(flag_exe))
+    monkeypatch.setenv("CRM_PAC", str(env_exe))
+    sp.pack_solution(zipfile="s.zip", folder="f", pac_path=str(flag_exe))
     assert fake_run[-1][0][0] == str(flag_exe)
 
 
-def test_absent_binary_raises_actionable_nuget_error(monkeypatch):
+def test_absent_binary_raises_actionable_pac_error(monkeypatch):
+    monkeypatch.delenv("CRM_PAC", raising=False)
     monkeypatch.delenv("CRM_SOLUTIONPACKAGER", raising=False)
     monkeypatch.setattr(sp.shutil, "which", lambda name: None)
-    with pytest.raises(D365Error, match="Microsoft.CrmSdk.CoreTools"):
+    with pytest.raises(D365Error, match="Power Platform CLI"):
         sp.extract_solution(zipfile="s.zip", folder="f")
+
+
+def test_deprecated_crm_solutionpackager_env_still_resolves(fake_run, monkeypatch, exe):
+    # Back-compat (#500): the old CRM_SOLUTIONPACKAGER name keeps working, now
+    # pointing at pac, so existing automation does not hard-break on migration.
+    monkeypatch.delenv("CRM_PAC", raising=False)
+    monkeypatch.setenv("CRM_SOLUTIONPACKAGER", exe)
+    sp.extract_solution(zipfile="s.zip", folder="f")
+    assert fake_run[-1][0][0] == exe
+
+
+def test_crm_pac_takes_precedence_over_deprecated_env(fake_run, monkeypatch, tmp_path):
+    new_exe = tmp_path / "new-pac"
+    new_exe.touch()
+    old_exe = tmp_path / "old-pac"
+    old_exe.touch()
+    monkeypatch.setenv("CRM_PAC", str(new_exe))
+    monkeypatch.setenv("CRM_SOLUTIONPACKAGER", str(old_exe))
+    sp.extract_solution(zipfile="s.zip", folder="f")
+    assert fake_run[-1][0][0] == str(new_exe)
 
 
 # ── package type: Unmanaged | Managed | Both (case-insensitive) ───────────────
@@ -151,9 +175,10 @@ def test_absent_binary_raises_actionable_nuget_error(monkeypatch):
 )
 def test_package_type_normalized_and_passed(fake_run, exe, given, expected):
     sp.extract_solution(
-        zipfile="s.zip", folder="f", package_type=given, solutionpackager_path=exe,
+        zipfile="s.zip", folder="f", package_type=given, pac_path=exe,
     )
-    assert f"/packagetype:{expected}" in fake_run[-1][0]
+    argv = fake_run[-1][0]
+    assert argv[argv.index("--packagetype") + 1] == expected
 
 
 def test_invalid_package_type_rejected_before_shelling_out(monkeypatch, exe):
@@ -163,7 +188,7 @@ def test_invalid_package_type_rejected_before_shelling_out(monkeypatch, exe):
     monkeypatch.setattr(sp.subprocess, "run", _boom)
     with pytest.raises(D365Error, match="package.?type|Unmanaged"):
         sp.pack_solution(
-            zipfile="s.zip", folder="f", package_type="Bogus", solutionpackager_path=exe,
+            zipfile="s.zip", folder="f", package_type="Bogus", pac_path=exe,
         )
 
 
@@ -178,7 +203,7 @@ def test_timeout_must_be_positive(monkeypatch, exe, bad):
     monkeypatch.setattr(sp.subprocess, "run", _boom)
     with pytest.raises(D365Error, match="timeout must be a positive"):
         sp.extract_solution(
-            zipfile="s.zip", folder="f", solutionpackager_path=exe, timeout=bad,
+            zipfile="s.zip", folder="f", pac_path=exe, timeout=bad,
         )
 
 
@@ -187,17 +212,17 @@ def test_oserror_from_subprocess_becomes_d365error(monkeypatch, exe):
         raise OSError(8, "Exec format error")  # e.g. path exists but isn't the binary
 
     monkeypatch.setattr(sp.subprocess, "run", _run)
-    with pytest.raises(D365Error, match="Could not run SolutionPackager"):
-        sp.pack_solution(zipfile="s.zip", folder="f", solutionpackager_path=exe)
+    with pytest.raises(D365Error, match="Could not run pac"):
+        sp.pack_solution(zipfile="s.zip", folder="f", pac_path=exe)
 
 
 def test_resolves_exe_expanding_env_vars_and_user(fake_run, monkeypatch, tmp_path):
-    real = tmp_path / "SolutionPackager.exe"
+    real = tmp_path / "pac"
     real.touch()
-    monkeypatch.setenv("CRM_SP_DIR", str(tmp_path))
+    monkeypatch.setenv("CRM_PAC_DIR", str(tmp_path))
     sp.extract_solution(
         zipfile="s.zip", folder="f",
-        solutionpackager_path="$CRM_SP_DIR/SolutionPackager.exe",
+        pac_path="$CRM_PAC_DIR/pac",
     )
     # Path compare: on Windows the literal "/" and the env value's "\" are
     # equivalent separators, so a raw string compare would spuriously differ.
@@ -240,7 +265,7 @@ class TestPackagerCommands:
             "--json", "solution", "extract",
             "--zipfile", real_zip, "--folder", "src/sol",
             "--package-type", "Both",
-            "--solutionpackager-path", real_zip,
+            "--pac-path", real_zip,
             "--timeout", "30",
         ])
         assert result.exit_code == 0, result.output
@@ -250,8 +275,25 @@ class TestPackagerCommands:
         assert captured["zipfile"] == real_zip
         assert captured["folder"] == "src/sol"
         assert captured["package_type"] == "Both"
-        assert captured["solutionpackager_path"] == real_zip
+        assert captured["pac_path"] == real_zip
         assert captured["timeout"] == 30
+
+    def test_extract_deprecated_pac_path_alias_still_wires(self, monkeypatch, real_zip):
+        # The hidden --solutionpackager-path alias keeps working (#500 back-compat),
+        # feeding the core's pac_path so old command lines do not hard-break.
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.solutionpackager.extract_solution",
+            lambda **kw: captured.update(kw) or {"action": "Extract", "exit_code": 0},
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "extract",
+            "--zipfile", real_zip, "--folder", "src/sol",
+            "--solutionpackager-path", real_zip,
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["pac_path"] == real_zip
 
     def test_extract_package_type_is_case_insensitive(self, monkeypatch, real_zip):
         captured = {}
@@ -264,7 +306,7 @@ class TestPackagerCommands:
             "--json", "solution", "extract",
             "--zipfile", real_zip, "--folder", "src/sol",
             "--package-type", "both",   # lower case must be accepted
-            "--solutionpackager-path", real_zip,
+            "--pac-path", real_zip,
         ])
         assert result.exit_code == 0, result.output
         assert captured["package_type"] == "Both"   # normalised to canonical casing
@@ -312,9 +354,9 @@ class TestPackagerCommands:
         ])
         assert result.exit_code == 2, result.output   # Click usage error
 
-    def test_command_propagates_nonzero_solutionpackager_exit(self, monkeypatch, real_folder):
-        # A SolutionPackager failure must surface as a CLI failure (ADR 0001),
-        # while still showing the exit code + stdout_tail for diagnosis.
+    def test_command_propagates_nonzero_pac_exit(self, monkeypatch, real_folder):
+        # A pac failure must surface as a CLI failure (ADR 0001), while still
+        # showing the exit code + stdout_tail for diagnosis.
         monkeypatch.setattr(
             "crm.core.solutionpackager.pack_solution",
             lambda **kw: {"action": "Pack", "exit_code": 2,
@@ -344,10 +386,26 @@ class TestPackagerCommands:
         assert result.exit_code == 1, result.output
         assert "ERR boom detail" in result.output
 
+    def test_failure_message_names_real_pac_subcommand(self, monkeypatch, real_zip):
+        # The error text must name the runnable pac subcommand (`unpack`), not the
+        # stable envelope action (`Extract`), so a user can re-run it (Copilot #527).
+        monkeypatch.setattr(
+            "crm.core.solutionpackager.extract_solution",
+            lambda **kw: {"action": "Extract", "exit_code": 3,
+                          "folder": "f", "zipfile": "z", "stdout_tail": "nope"},
+        )
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
+        result = CliRunner().invoke(cli, [
+            "solution", "extract", "--zipfile", real_zip, "--folder", "src/sol",
+        ])
+        assert result.exit_code == 1, result.output
+        assert "pac solution unpack failed" in result.output
+        assert "pac solution Extract" not in result.output
+
     def test_extract_command_absent_binary_exits_1(self, monkeypatch, real_zip):
         def _raise(**kw):
-            raise D365Error("SolutionPackager executable not found on PATH. "
-                            "Install it from the Microsoft.CrmSdk.CoreTools NuGet package.")
+            raise D365Error("pac executable not found on PATH. Install the "
+                            "Power Platform CLI (pac).")
 
         monkeypatch.setattr("crm.core.solutionpackager.extract_solution", _raise)
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
@@ -358,4 +416,4 @@ class TestPackagerCommands:
         assert result.exit_code == 1, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
-        assert "Microsoft.CrmSdk.CoreTools" in envelope["error"]
+        assert "Power Platform CLI" in envelope["error"]

@@ -6,5 +6,7 @@ rather than shipping a `crm codegen` verb. Wrapping `CrmSvcUtil.exe` would creat
 verb that is Windows / .NET-Framework-only (this CLI also ships Linux binaries) and
 would force a credential handoff that either leaks the secret onto a subprocess
 command line or degrades to interactive login — adding nothing over a documented
-command. This mirrors the reach limits of the SolutionPackager bridge (same
-`Microsoft.CrmSdk.CoreTools` NuGet) without its payoff. See issue #194.
+command. The SolutionPackager bridge this once paralleled has since migrated to
+the cross-platform `pac solution` verbs (#500); `CrmSvcUtil.exe`, by contrast,
+has no cross-platform equivalent for on-prem codegen, so a `crm codegen` verb
+would still be Windows-only without payoff. See issue #194.

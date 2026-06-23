@@ -166,9 +166,9 @@ For a verb that works on both but returns different values, take the `target` fi
 branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
 runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a
 cloud run. The **five** remaining `E2E_SKIP` entries are all skipped for reasons no org choice can
-fix: `solution extract`/`pack` wrap the legacy, Windows-only, Microsoft-deprecated
-`SolutionPackager.exe` (no Linux runtime; the cross-platform `pac solution` migration is
-tracked in #500), and `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
+fix: `solution extract`/`pack` now wrap the cross-platform `pac solution unpack`/`pack` (#500),
+but `pac` (Power Platform CLI) is not yet provisioned in CI, so there is no real binary to run
+against (live coverage tracked under #498), and `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
 block — Dataverse refuses to upsert a workflow definition "created outside the Microsoft
 Dynamics 365 Web application" on every org, so a different org does not unblock them.
 (`solution stage-and-upgrade`/`apply-upgrade` are now covered: one single-org managed-upgrade
