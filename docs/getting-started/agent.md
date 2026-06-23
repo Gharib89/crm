@@ -14,7 +14,7 @@ and reads the structured output — no copy-pasting GUIDs.
 ```text
 You:  List the top 5 accounts by name from my D365 org.
 
-Agent:  Running: crm query account --top 5 --select name --orderby name --json
+Agent:  Running: crm --json query odata accounts --top 5 --select name --orderby name
         Here are the 5 accounts:
           1. Adventure Works
           2. Coho Vineyard
@@ -24,7 +24,7 @@ Agent:  Running: crm query account --top 5 --select name --orderby name --json
 
 You:  Create a new account called "Tailspin Toys".
 
-Agent:  Running: crm entity create account --data '{"name":"Tailspin Toys"}' --json
+Agent:  Running: crm --json entity create accounts --data '{"name":"Tailspin Toys"}'
         Created account Tailspin Toys (id 8a1c…).
 ```
 

@@ -43,7 +43,7 @@ profile. See [Add a profile](add-profile.md) for the non-interactive form.
 
 ```bash
 crm connection whoami
-crm query account --top 5
+crm query odata accounts --top 5
 ```
 
 If `whoami` prints your user and organization, you're connected.

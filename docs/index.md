@@ -80,7 +80,7 @@ hide:
 
 ```bash
 crm profile add                  # (1)!
-crm connection whoami --json      # (2)!
+crm --json connection whoami      # (2)!
 ```
 
 1. One-time interactive wizard: enter your server URL, the CLI infers NTLM vs
