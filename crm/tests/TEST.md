@@ -165,13 +165,15 @@ No new markers — the four buckets reuse what exists:
 For a verb that works on both but returns different values, take the `target` fixture and
 branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
 runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a
-cloud run. The **five** remaining `E2E_SKIP` entries are all skipped for reasons no org choice can
-fix: `solution extract`/`pack` now wrap the cross-platform `pac solution unpack`/`pack` (#500),
-but `pac` (Power Platform CLI) is not yet provisioned in CI, so there is no real binary to run
-against (live coverage tracked under #498), and `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
+cloud run. The **three** remaining `E2E_SKIP` entries are all skipped for reasons no org choice can
+fix: `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
 block — Dataverse refuses to upsert a workflow definition "created outside the Microsoft
 Dynamics 365 Web application" on every org, so a different org does not unblock them.
-(`solution stage-and-upgrade`/`apply-upgrade` are now covered: one single-org managed-upgrade
+(`solution extract`/`pack` are now covered live: an offline pac `pack → extract` roundtrip
+(#529) packs a committed minimal solution fixture and re-extracts it, asserting the envelope and
+that the solution's UniqueName survives the roundtrip — it needs only `pac` on PATH (provisioned
+in CI on every push, no D365 org/creds/VPN) and skips with an install hint when `pac` is absent.
+`solution stage-and-upgrade`/`apply-upgrade` are now covered: one single-org managed-upgrade
 lifecycle test (#512) builds a managed v1+v2 of an empty throwaway solution via
 `export --managed`, drops the unmanaged author copy, imports the managed base, stages the v2
 holding solution, then promotes it separately via `apply-upgrade` — asserting the installed
