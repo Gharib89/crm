@@ -60,14 +60,16 @@ Two ways to give the opt-in suite (`D365_E2E=1`) a live target; pick one:
 
 **Both targets** = run the suite once per profile (`D365_E2E_PROFILE=<cloud>` then `=<onprem>`); coverage is the union. There is no single-process "both". **On-prem needs VPN** — if the selected target is unreachable the session **skips** with a "VPN down?" message (any HTTP response, incl 401/403, counts as reachable). Then: `pytest -m e2e`.
 
-**Running WORKTREE code through the e2e `cli` fixture.** The fixture resolves `shutil.which("crm")` → the installed **PyInstaller binary** (`~/.local/bin/crm`), which **ignores `PYTHONPATH`** (it bundles its own code), so an e2e run silently exercises the OLD installed code, not your worktree fix. The venv console-script `.venv/bin/crm` is *also* on PATH and *does* honor `PYTHONPATH`, so stripping only `~/.local/bin` isn't enough. Strip **both** crm dirs so `which` returns nothing and the fixture falls back to `[sys.executable, "-m", "crm"]` (absolute venv python + `PYTHONPATH=$WT` = guaranteed worktree code):
+**Running WORKTREE code through the e2e `cli` fixture.** The fixture resolves `shutil.which("crm")` → the installed **PyInstaller binary** (`~/.local/bin/crm`), which **ignores `PYTHONPATH`** (it bundles its own code), so an e2e run silently exercises the OLD installed code, not your worktree fix. The venv console-script `.venv/bin/crm` is *also* on PATH and *does* honor `PYTHONPATH`, so stripping only `~/.local/bin` isn't enough. Strip **both** crm dirs so `which` returns nothing and the fixture falls back to `[sys.executable, "-m", "crm"]` (absolute venv python + `PYTHONPATH=$WT` = worktree code **only when cwd is `$WT`**, see the cwd caveat below):
 
 ```bash
 NEWPATH=$(echo "$PATH"|tr ':' '\n'|grep -vE '/\.local/bin|/crm/\.venv/bin'|paste -sd:)
-D365_E2E=1 D365_E2E_PROFILE=<p> PATH=$NEWPATH PYTHONPATH=$WT <main-venv>/bin/python -m pytest -m e2e <node>
+cd $WT && D365_E2E=1 D365_E2E_PROFILE=<p> PATH=$NEWPATH PYTHONPATH=$WT <main-venv>/bin/python -m pytest -m e2e <node>
 ```
 
-Tripwire: an e2e that *should* pass with your fix fails **identically to pre-fix** → you're running the frozen binary, not your code.
+**cwd beats `PYTHONPATH` — `PYTHONPATH=$WT` is NOT sufficient on its own.** `python -m crm` (the fixture fallback, spawned as a subprocess) and any `-m`/`-c` invocation put cwd as `''` at `sys.path[0]`, *ahead* of `PYTHONPATH` (`sys.path[1]`). So if the process cwd is the main checkout (which holds a `crm/` package — and the agent shell's default cwd is the main checkout), `import crm` resolves to MAIN and the worktree fix silently never runs. Run from `$WT` (the `cd $WT` above), or front-load it explicitly (`sys.path.insert(0, $WT)`); the editable-install meta-path finder is *appended* (last in `sys.meta_path`), so it is **not** the cause — cwd is. `pytest` collecting test modules is immune (rootdir insertion), but the `cli`-fixture subprocess it spawns is not.
+
+Tripwire: an e2e that *should* pass with your fix fails **identically to pre-fix** → you're running the frozen binary, OR `import crm` resolved to the main checkout because cwd ≠ `$WT`.
 
 **Cloud target needs a host-guard override.** The suite refuses destructive runs against a `*.dynamics.com` host (prod-host guard); pass `D365_E2E_ALLOW_HOST=<exact host>` to opt the designated cloud test org in.
 
