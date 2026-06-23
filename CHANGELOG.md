@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.27.6 (2026-06-23)
+
+### Bug Fixes
+
+- Bump-guard messages reflect title-or-body breaking change
+  ([#526](https://github.com/Gharib89/crm/pull/526),
+  [`fc3ec66`](https://github.com/Gharib89/crm/commit/fc3ec66b444647eda9baf0ff0604bcb41389737c))
+
+- Stop bump-guard stalling agent feat PRs; only major is label-gated
+  ([#526](https://github.com/Gharib89/crm/pull/526),
+  [`fc3ec66`](https://github.com/Gharib89/crm/commit/fc3ec66b444647eda9baf0ff0604bcb41389737c))
+
+### Testing
+
+- **e2e**: Cover solution stage-and-upgrade + apply-upgrade (single-org managed recipe)
+  ([#525](https://github.com/Gharib89/crm/pull/525),
+  [`8cc88db`](https://github.com/Gharib89/crm/commit/8cc88dbaf588f541534bb898d5d2caabf7f07b02))
+
+
 ## v1.27.5 (2026-06-22)
 
 ### Bug Fixes
