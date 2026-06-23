@@ -99,6 +99,9 @@ _SEG_SPLIT = re.compile(r"&&|\|\||[|;]")  # shell pipeline/sequence separators
 _INLINE = re.compile(r"`([^`]*\bcrm\b[^`]*)`")  # inline `code spans` mentioning crm
 # A token is a placeholder, not a real CLI token, if it carries metavar syntax.
 _PLACEHOLDER = re.compile(r"[<>{}]|\.\.\.")
+# Click adds these to every command; describe doesn't enumerate them, so they are
+# valid on any leaf (including commands hidden from describe).
+_UNIVERSAL_FLAGS = frozenset({"--help", "-h"})
 # Tokens allowed *before* `crm` in a runnable invocation: a shell prompt, `sudo`,
 # a `VAR=val` assignment, or a narration label ending in `:` (`Agent:  Running:`).
 # Anything else preceding `crm` means it is prose ("…via crm profile edit"), not a
@@ -282,19 +285,26 @@ def audit_example(model: CliModel, example: Example) -> list[str]:
     if not body:
         return []  # only globals, e.g. `crm --version` / `crm --help`
 
-    # A command hidden from `describe` (e.g. `crm repl`) is valid.
-    if body[0] in model.hidden_commands:
-        return []
-
     problems: list[str] = []
-    parts, status, bad = _resolve(model, body)
 
-    # Own flags of the resolved leaf and of every group on its path. A global
-    # placed after the command is fine if the command redefines a same-named opt.
-    own: set[str] = set()
-    for n in range(1, len(parts) + 1):
-        sub = " ".join(parts[:n])
-        own |= set(model.own_flags.get(sub, frozenset()))
+    # A command hidden from `describe` (e.g. `crm repl`) is treated as a leaf with
+    # no enumerated params: it has no subcommands, so global-option placement and
+    # unknown flags (limited to globals + the universal --help) are still
+    # validated — only its own param list is opaque to us. Driven off describe's
+    # real exclusion set, not a hardcoded name.
+    if body[0] in model.hidden_commands:
+        parts: list[str] = [body[0]]
+        status, bad = "ok-leaf", None
+        own: set[str] = set()
+        is_leaf = True
+    else:
+        parts, status, bad = _resolve(model, body)
+        # Own flags of the resolved leaf and of every group on its path. A global
+        # placed after the command is fine if the command redefines a same name.
+        own = set()
+        for n in range(1, len(parts) + 1):
+            own |= set(model.own_flags.get(" ".join(parts[:n]), frozenset()))
+        is_leaf = " ".join(parts) in model.leaves
 
     # Misplaced-global check: a global flag appearing after the first command
     # token, not redefined by the resolved command.
@@ -328,10 +338,11 @@ def audit_example(model: CliModel, example: Example) -> list[str]:
     if status == "bare":
         return problems
 
-    # Unknown-flag check on the resolved leaf.
-    path = " ".join(parts)
-    if path in model.leaves:
-        valid = set(model.own_flags.get(path, frozenset())) | model.global_flags
+    # Unknown-flag check on the resolved leaf (or a hidden command, whose valid
+    # set is just globals + the universal --help, having no enumerated params).
+    if is_leaf:
+        path = " ".join(parts)
+        valid = own | model.global_flags | _UNIVERSAL_FLAGS
         for tok in body[len(parts) :]:
             if not tok.startswith("-") or tok == "--":
                 continue
@@ -432,6 +443,7 @@ def test_known_bugs_are_caught(command: str) -> None:
     [
         "crm",  # bare invocation launches the REPL
         "crm repl",  # hidden command, absent from describe
+        "crm repl --help",  # universal flag on a hidden command
         "crm --json profile add",  # leading value-less global flag
         "crm --profile p connection whoami",  # leading value-taking global
         "crm profile add --password PLACEHOLDER",  # own flag shadows a global
@@ -452,6 +464,18 @@ def test_valid_invocations_pass(command: str) -> None:
 )
 def test_prose_mentions_are_not_extracted(segment: str) -> None:
     assert _crm_tokens(segment) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "crm repl --json",  # misplaced global on a hidden command
+        "crm repl --typo",  # unknown flag on a hidden command
+    ],
+)
+def test_hidden_commands_still_validated(command: str) -> None:
+    """Commands hidden from describe are validated as flagless leaves, not skipped."""
+    assert _audit(command), f"hidden command escaped validation: {command}"
 
 
 def test_narration_prefix_is_extracted() -> None:
