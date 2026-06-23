@@ -1,10 +1,12 @@
 name: bump-guard
 
-# Reserve the minor/major version digits for intentional bumps. python-semantic-
-# release reads the squash-merge subject (the PR title) to choose the bump:
-# feat: -> minor, !/BREAKING CHANGE -> major, everything else -> patch. This gate
-# fails any PR whose title implies a non-patch bump unless the maintainer has
-# applied the matching opt-in label (`minor` / `major`). See ADR 0011, issue #398.
+# Reserve the *major* version digit for intentional maintainer bumps. python-
+# semantic-release reads the squash-merge subject (the PR title) to choose the
+# bump: feat: -> minor, !/BREAKING CHANGE -> major, everything else -> patch.
+# This gate fails any PR whose title implies a major bump unless the maintainer
+# has applied the `major` label, so a major bump is never an agent's auto-bump.
+# feat: -> minor and patch-level titles flow without a label. See ADR 0011,
+# issues #398/#500.
 #
 # NOT path-filtered, so it reports on every PR and can be made a required status
 # check. New workflows do not run on the PR that introduces them (GitHub uses the

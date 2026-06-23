@@ -47,19 +47,30 @@ self-update; an already-installed 4.x binary merely considers itself newest
 
 ## The permanent bump policy
 
-To stop the minor digit from inflating again, non-patch bumps become opt-in:
+A **major** bump must be a deliberate maintainer action, never an agent's
+auto-bump — so only the major digit is label-gated:
 
 - The default bump is **patch** (`fix:`/`perf:`/`docs:`/`chore:`/…).
-- A `feat:` PR requires the maintainer-applied **`minor`** label.
-- A breaking PR (`!` or `BREAKING CHANGE`) requires the **`major`** label.
+- A `feat:` PR bumps **minor** with **no label required**.
+- A breaking PR (`!` or `BREAKING CHANGE`) requires the maintainer-applied
+  **`major`** label.
 
 A `bump-guard` workflow (`.github/workflows/bump-guard.yml`) validates the PR
-title on every PR and fails it when the implied bump exceeds patch without the
-matching label. The check logic lives in `scripts/check_bump_label.py` (a testable
-seam, unit-tested in `crm/tests/test_check_bump_label.py`). To make the squash
-subject the guard validated be exactly what reaches PSR, the repo's
+title on every PR and fails it when the title implies a **major** bump without
+the `major` label. The check logic lives in `scripts/check_bump_label.py` (a
+testable seam, unit-tested in `crm/tests/test_check_bump_label.py`). To make the
+squash subject the guard validated be exactly what reaches PSR, the repo's
 `squash_merge_commit_title` is set to `PR_TITLE`. Standard semver semantics are
 kept in PSR — the gate lives at PR time, not in a `commit_parser` remap.
+
+> **Update (#500):** the original policy also gated `feat:` behind a **`minor`**
+> label. That gate was removed — it stalled AFK/cloud agents (their `feat:` PRs
+> failed CI until a human applied `minor`) while adding no real protection:
+> `feat:` → minor is already correct semver, and guarding against minor-digit
+> inflation is a commit-type-discipline matter (use `feat:` only for real
+> capability — see CLAUDE.md "Bump discipline"), not a labelling one. Only the
+> **`major`** gate — the bump that genuinely needs maintainer intent — is kept,
+> and the now-inert `minor` label is retired.
 
 ## Considered options
 
@@ -84,8 +95,8 @@ kept in PSR — the gate lives at PR time, not in a `commit_parser` remap.
   flip) is irreversible, depends on `RELEASE_PAT` + Cloudflare/R2 credentials, and
   is a one-shot launch event — it is executed by a maintainer under supervision,
   not delegated.
-- After the reset every merged PR bumps from `1.x`: a `fix:` → `1.0.1`, a labelled
-  `feat:` → `1.1.0`.
+- After the reset every merged PR bumps from `1.x`: a `fix:` → `1.0.1`, a `feat:`
+  → `1.1.0` (no label needed), a `major`-labelled breaking change → `2.0.0`.
 - The changelog gains a permanent `## Pre-1.0 development history` section; new
   releases stack above it.
 - `bump-guard` is **not** path-filtered, so it can become a required status check

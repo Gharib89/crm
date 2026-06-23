@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Bump-guard: fail a PR whose Conventional-Commit title implies a version bump
-larger than patch unless the matching opt-in label is present.
+"""Bump-guard: fail a PR whose Conventional-Commit title implies a *major* version
+bump unless the maintainer-applied ``major`` label is present.
 
 Release tooling (python-semantic-release) reads the squash-merge subject — the PR
 title — to pick the bump: ``feat:`` -> minor, ``!``/``BREAKING CHANGE`` -> major,
-everything else -> patch. To keep the minor digit reserved for real features
-(see ADR 0011, issue #398), this gate requires an explicit maintainer-applied
-label to opt into a non-patch bump:
+everything else -> patch. A major bump must be a deliberate maintainer action,
+never an agent's auto-bump (see ADR 0011, issues #398/#500), so this gate requires
+an explicit ``major`` label to opt into it:
 
-  * ``feat:`` title      -> requires the ``minor`` label (``major`` also accepted)
   * breaking title/body  -> requires the ``major`` label
+  * ``feat:`` title       -> minor bump, no label required
+  * everything else       -> patch, no label required
 
-Patch-level titles (fix/perf/docs/chore/refactor/test/build/ci/style/revert)
-need no label. A title that is not a valid Conventional Commit fails outright.
+The minor digit is no longer label-gated: ``feat:`` -> minor flows freely so AFK
+agents' feat PRs are not stalled waiting on a label. A title that is not a valid
+Conventional Commit fails outright.
 
 Inputs come from the environment (set by the workflow):
   PR_TITLE   - the pull request title
@@ -31,17 +33,15 @@ _BREAKING_RE = re.compile(r"^BREAKING[ -]CHANGE:", re.MULTILINE)
 
 
 def required_label(title: str, body: str = "") -> Optional[str]:
-    """The label this PR must carry: ``"minor"`` for a feat, ``"major"`` for a
-    breaking change, or ``None`` when it is patch-level. Raises ``ValueError``
-    if the title is not a valid Conventional Commit."""
+    """The label this PR must carry: ``"major"`` for a breaking change, or
+    ``None`` otherwise (``feat:`` minor and patch-level bumps are not gated).
+    Raises ``ValueError`` if the title is not a valid Conventional Commit."""
     m = _TITLE_RE.match(title.strip())
     if not m:
         raise ValueError(f"title {title!r} is not a valid Conventional Commit")
-    type_, bang = m.group(1), m.group(3)
+    bang = m.group(3)
     if bang or _BREAKING_RE.search(body or ""):
         return "major"
-    if type_ == "feat":
-        return "minor"
     return None
 
 
@@ -55,18 +55,15 @@ def check(title: str, body: str, labels: List[str]) -> Tuple[int, str]:
             "(e.g. 'fix: ...', 'feat: ...') because the squash subject drives "
             "the release version bump."
         )
-    have = {label.strip().lower() for label in labels if label.strip()}
     if needed is None:
-        return 0, "bump-guard: patch-level title, no bump label required."
-    if needed == "minor" and ("minor" in have or "major" in have):
-        return 0, "bump-guard: feat title carries the 'minor' label."
-    if needed == "major" and "major" in have:
+        return 0, "bump-guard: no major bump implied, no bump label required."
+    have = {label.strip().lower() for label in labels if label.strip()}
+    if "major" in have:
         return 0, "bump-guard: breaking title carries the 'major' label."
-    kind = "breaking change" if needed == "major" else "feat"
     return 1, (
-        f"bump-guard: this PR's title is a {kind}, which bumps the {needed} "
-        f"version. Add the '{needed}' label to confirm the {needed} bump is "
-        "intended, or retitle it as a patch-level change (fix:/perf:/...)."
+        "bump-guard: this PR's title is a breaking change, which bumps the major "
+        "version. A major bump must be opted in by a maintainer: add the 'major' "
+        "label to confirm, or retitle it as a non-breaking change (feat:/fix:/...)."
     )
 
 
