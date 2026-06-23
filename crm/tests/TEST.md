@@ -151,7 +151,8 @@ walks the lazy Click command tree and fails unless every D365-touching verb has 
 **Test classification — which bucket does a test belong to?** The single criterion is:
 *does the verb's **observable** behavior (returned fields, error codes, defaults, feature
 existence) depend on the backend?* Transport differences (NTLM vs OAuth) do **not** count.
-No new markers — the four buckets reuse what exists:
+These four buckets reuse existing markers — none is bucket-specific (the one
+standalone marker is `offline`, below):
 
 | Bucket | Criterion | Mechanism |
 |--------|-----------|-----------|
@@ -159,6 +160,12 @@ No new markers — the four buckets reuse what exists:
 | **on-prem-only** | Only works/behaves on NTLM/on-prem | `@pytest.mark.requires_onprem` |
 | **cloud-only** | Only works on Dataverse | `@pytest.mark.requires_cloud` |
 | **both / divergent** | Works on both but **asserts different values** per target | **no marker** — branch on the `target` fixture (`"cloud"`/`"onprem"`) and assert per-target; runs on both union legs |
+
+**`offline` marker** — orthogonal to the four buckets above (which all describe
+*live* tests). `@pytest.mark.offline` tags a test that needs **no** live org at all,
+only a local binary — e.g. `solution pack`/`extract` shelling out to `pac`. It is
+exempt from the live opt-in/reachability gate (it bypasses `live_profile` via the
+autouse `_enforce_capability` gate), so it runs in plain CI with `D365_E2E` unset (#529).
 
 **Capability gating & target divergence:** mark a test `@pytest.mark.requires_cloud` /
 `requires_onprem` when a verb only works on one target; the marker skips it on the other.

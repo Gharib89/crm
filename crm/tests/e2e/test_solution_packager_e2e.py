@@ -35,12 +35,15 @@ _PAC_HINT = (
 
 
 def _skip_without_pac() -> None:
-    """Skip with an install hint unless a `pac` binary is resolvable the same way
-    the command does: CRM_PAC / CRM_SOLUTIONPACKAGER env (a file) → PATH."""
-    candidate = os.environ.get("CRM_PAC") or os.environ.get("CRM_SOLUTIONPACKAGER")
-    if candidate:
-        if not Path(os.path.expanduser(os.path.expandvars(candidate))).is_file():
-            pytest.skip(_PAC_HINT)
+    """Skip with an install hint only when `pac` is *genuinely absent* — no
+    CRM_PAC/CRM_SOLUTIONPACKAGER override and nothing on PATH.
+
+    A set-but-broken override is a misconfiguration, not an absence: skipping it
+    would mask a real error and go green while `crm solution pack/extract` would
+    fail for the same environment. So when an override is set we do NOT skip — the
+    test runs and the CLI surfaces the same D365Error that
+    crm.core.solutionpackager._resolve_pac raises for a non-file override."""
+    if os.environ.get("CRM_PAC") or os.environ.get("CRM_SOLUTIONPACKAGER"):
         return
     if shutil.which("pac") is None:
         pytest.skip(_PAC_HINT)
