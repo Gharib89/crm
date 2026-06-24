@@ -16,7 +16,13 @@ import re
 from typing import Any, cast
 
 from crm.core.workflow import STATE_ACTIVATED, set_workflow_state
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    solution_headers,
+)
 
 
 # `ErrorMap Details: {Step1: ErrA, ErrB; Step2: ErrC}` — the platform's
@@ -53,10 +59,6 @@ SLAS_SET = "slas"
 SLA_ITEMS_SET = "slaitems"
 _SLA_ID = "slaid"
 _SLA_ITEM_ID = "slaitemid"
-
-
-def _solution_headers(solution: str | None) -> dict[str, str] | None:
-    return {"MSCRM.SolutionUniqueName": solution} if solution else None
 
 
 def _sla_enabled_value(raw: Any) -> bool:
@@ -175,7 +177,7 @@ def create_sla(
     }
     result = as_dict(backend.post(
         SLAS_SET, json_body=body,
-        extra_headers=_solution_headers(solution), **admin,
+        extra_headers=solution_headers(solution), **admin,
     ))
     if result.get("_dry_run"):
         return {
@@ -257,7 +259,7 @@ def add_kpi(
     }
     result = as_dict(backend.post(
         SLA_ITEMS_SET, json_body=body,
-        extra_headers=_solution_headers(solution), **admin,
+        extra_headers=solution_headers(solution), **admin,
     ))
     if result.get("_dry_run"):
         return {

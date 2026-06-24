@@ -657,23 +657,37 @@ def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
     ctx.emit(True, data=info)
 
 
+def _pac_options(f):
+    """Shared pac packaging options for `solution extract` / `solution pack`.
+
+    Applied in reverse so the resolved --help order matches the source order
+    here (--package-type, --pac-path, --solutionpackager-path, --timeout).
+    """
+    options = [
+        click.option("--package-type", "package_type",
+                     type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
+                     default="Unmanaged",
+                     help="pac --packagetype (default Unmanaged)."),
+        click.option("--pac-path", "pac_path", default=None,
+                     type=click.Path(dir_okay=False),
+                     help="Path to the pac executable (else CRM_PAC env, then PATH)."),
+        click.option("--solutionpackager-path", "solutionpackager_path", default=None,
+                     type=click.Path(dir_okay=False), hidden=True,
+                     help="Deprecated alias for --pac-path (point it at pac)."),
+        click.option("--timeout", type=int, default=None,
+                     help="pac subprocess timeout in seconds."),
+    ]
+    for opt in reversed(options):
+        f = opt(f)
+    return f
+
+
 @solution_group.command("extract")
 @click.option("--zipfile", required=True, type=click.Path(exists=True, dir_okay=False),
               help="Exported solution zip to unpack.")
 @click.option("--folder", required=True, type=click.Path(file_okay=False),
               help="Destination folder for the source-controllable tree.")
-@click.option("--package-type", "package_type",
-              type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
-              default="Unmanaged",
-              help="pac --packagetype (default Unmanaged).")
-@click.option("--pac-path", "pac_path", default=None,
-              type=click.Path(dir_okay=False),
-              help="Path to the pac executable (else CRM_PAC env, then PATH).")
-@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
-              type=click.Path(dir_okay=False), hidden=True,
-              help="Deprecated alias for --pac-path (point it at pac).")
-@click.option("--timeout", type=int, default=None,
-              help="pac subprocess timeout in seconds.")
+@_pac_options
 @pass_ctx
 def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
                          pac_path, solutionpackager_path, timeout):
@@ -694,18 +708,7 @@ def solution_extract_cmd(ctx: CLIContext, zipfile, folder, package_type,
               help="Destination solution zip to build.")
 @click.option("--folder", required=True, type=click.Path(exists=True, file_okay=False),
               help="Source folder tree to pack.")
-@click.option("--package-type", "package_type",
-              type=click.Choice(["Unmanaged", "Managed", "Both"], case_sensitive=False),
-              default="Unmanaged",
-              help="pac --packagetype (default Unmanaged).")
-@click.option("--pac-path", "pac_path", default=None,
-              type=click.Path(dir_okay=False),
-              help="Path to the pac executable (else CRM_PAC env, then PATH).")
-@click.option("--solutionpackager-path", "solutionpackager_path", default=None,
-              type=click.Path(dir_okay=False), hidden=True,
-              help="Deprecated alias for --pac-path (point it at pac).")
-@click.option("--timeout", type=int, default=None,
-              help="pac subprocess timeout in seconds.")
+@_pac_options
 @pass_ctx
 def solution_pack_cmd(ctx: CLIContext, zipfile, folder, package_type,
                       pac_path, solutionpackager_path, timeout):
