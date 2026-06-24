@@ -11,7 +11,7 @@
 
 1. **"Workflow" is six different things.** The `workflow` table holds six `category` values: classic workflows (0), dialogs (1), business rules (2), custom process actions (3), business process flows (4), modern/cloud flows (5), desktop flows (6). Each has a *different* create/update story. Treating them as one feature is the first mistake.
 
-2. **Hand-authored XAML create is blocked on BOTH targets** — not just cloud. We verified live: a raw `POST workflows` carrying foreign/hand-written XAML is rejected with `0x80045040 NonCrmUIWorkflowsNotSupported` ("created outside the Microsoft Dynamics 365 Web application") on **both** on-prem v9.1 and Dataverse online. The MS docs' "on-prem supports XAML-code create" refers to the SOAP SDK with genuine designer XAML, not arbitrary hand-authored XAML over the Web API.
+2. **Hand-authored XAML create is blocked on BOTH targets** — not just cloud. We verified live: a raw `POST workflows` carrying foreign/hand-written XAML is rejected with `0x80045040 NonCrmUIWorkflowsNotSupported` ("created outside the Microsoft Dynamics 365 Web application") on **both** on-prem v9.1 and Dataverse online. The MS docs' "on-prem supports XAML-code create" refers to the SOAP SDK with genuine designer XAML, not arbitrary hand-authored XAML over the Web API. *(Nuance, deep-research 2026-06-24: on-prem is a **privilege+config gate**, not an absolute block — the deployment administrator can create non-UI XAML when the org permits it, error `0x80045041 NotEnoughPrivilegesForXamlWorkflows` otherwise; cloud has no such escape hatch. See §3.)*
 
 3. **Create from *real designer XAML* works on BOTH targets.** Also verified live: `crm workflow clone` (which copies an existing workflow's real XAML via upsert) successfully created a new draft classic workflow on **both** on-prem **and** cloud. The `0x80045040` wall is **XAML-provenance-sensitive, not target-sensitive**: the platform accepts XAML it recognizes as designer-produced and rejects XAML it doesn't — on both targets.
 
@@ -38,6 +38,7 @@
 | 4 | Business process flow (BPF) | `clientdata` (JSON) | Definition: designer-only. Instances: full CRUD | on-prem + cloud |
 | 5 | Modern / cloud flow (Power Automate) | `clientdata` (Logic Apps JSON) | **Yes — fully supported** | **cloud only** |
 | 6 | Desktop flow | binary modules | No (list + trigger only) | cloud only |
+| 7 | AI flow | `clientdata` (opaque) | No (designer-only) | cloud only |
 
 `type` column: `1` = Definition (editable draft), `2` = Activation (platform-generated read-only running copy), `3` = Template. `statecode`: `0` = Draft/Off, `1` = Activated/On, `2` = Suspended.
 
@@ -48,8 +49,9 @@
 Authoritative quote ([workflow-operations]):
 > "In Dataverse, workflows must be created and updated using the Workflow designer. With Dynamics 365 Customer Engagement on-premises you can create Workflows using the XAML definitions with code. **This is not supported with Dataverse.**"
 
-Enforced by two error codes ([web-service-error-codes]):
+Enforced by three error codes ([web-service-error-codes]):
 - `0x80045040 NonCrmUIWorkflowsNotSupported` — cat 0/2/3 records the platform deems "created outside the Web application."
+- `0x80045041 NotEnoughPrivilegesForXamlWorkflows` — **on-prem only:** non-UI XAML create/update *is* allowed but is restricted to the **deployment administrator** with the org configured to permit it. So on-prem is a *privilege+config gate*, not an absolute block; cloud has no such escape hatch. *(deep-research 2026-06-24, primary-source [web-service-error-codes].)*
 - `0x80045044 NonCrmUIInteractiveWorkflowNotSupported` — cat 1 dialogs.
 
 **Per-operation support (from the docs):**
@@ -68,6 +70,8 @@ Enforced by two error codes ([web-service-error-codes]):
 | BPF *instance* CRUD (auto-generated entity) | Supported | Supported |
 
 **Schema vs. platform-block nuance:** the `workflow.xaml` column is `IsValidForCreate=true` at the OData metadata layer, so a POST is *structurally* accepted and routed — the rejection happens in the Create/Update **business-logic** handler (hence a named business error, not an OData 400). This is why "the schema says writable" and "the platform rejects it" are both true.
+
+**Provenance is unforgeable at the schema layer.** The `iscrmuiworkflow` column ("Indicates whether the process was created using the Microsoft Dynamics 365 Web application") is **read-only** — `IsValidForCreate=false` *and* `IsValidForUpdate=false`. A client cannot set or spoof it on POST/PATCH, so hand-authored XAML can never claim Web-app provenance, while clone/import reuse of designer XAML carries it intrinsically. This is the schema-level mechanism behind the `0x80045040` wall. *(deep-research 2026-06-24, confirmed 3-0 against [workflow-entity].)*
 
 ---
 
@@ -94,6 +98,8 @@ There are exactly three mechanisms that actually work. None of them is "write XA
 
 ### Path A — Classic workflow create-from-template / clone (cat 0, 2; both targets)
 Start from genuine designer XAML — an existing workflow, an exported definition, or a template (`type=3`) — and create a new draft via upsert, optionally retargeting the primary entity. **This is proven live on both targets and already implemented** as `crm workflow clone` / `import` (`crm/core/workflow.py:134`, `:239`; `retarget_xaml` at `:68`). Gap: no first-class `create`/`create-from-template` verb, and no `update` (deactivate→edit→reactivate) verb.
+
+> **On editing the XAML itself:** the only real library for parsing/modifying WF XAML is .NET's `System.Activities.XamlIntegration.ActivityXamlServices` (`Load`→`DynamicActivity`; `CreateBuilderReader`→`ActivityBuilder` to inspect+modify; `CreateBuilderWriter`+`XamlServices.Save` to re-emit designer-compatible XAML). It is **.NET-only — no Python binding** — so this Python CLI must keep treating classic XAML as opaque: retarget via narrow string surgery (`retarget_xaml`) or transport designer-built changes via solution (Path C), never author logic by hand. *(deep-research 2026-06-24, confirmed 3-0 against [wf-xaml-serialization].)*
 
 ### Path B — Cloud flow create/update from a `clientdata` spec (cat 5; cloud only) — *the real "agent authors automation" path*
 `POST workflows` with `category=5, type=1, name, primaryentity="none", clientdata=<string-encoded JSON>`. `clientdata` = `{ properties: { connectionReferences, definition } }` where `definition` is the Logic Apps Workflow Definition Language (triggers + actions). Created as `statecode=0` (Off); enable is a separate PATCH. **This is genuinely code-authorable** — an agent can compose the JSON definition. Net-new in the repo. Hard part is connection-reference binding (§7). On-prem has no cat-5 runtime, so this is cloud-only.
@@ -148,7 +154,7 @@ Tagged `[both]` / `[cloud]` / `[on-prem]`. Most map directly onto patterns alrea
 2. **[both]** Refuse to mutate a `type=2` activation record — auto-resolve to the `type=1` parent (reuse `_resolve_parent_workflow_id`, `0x80045003` handling at `workflow.py:413-422`); clean-error if no live parent.
 3. **[both]** Reject in-place edits to an *activated* Definition — require deactivate → edit → reactivate; surface that path, don't leak the server error.
 4. **[both]** Validate-before-backend: required fields (`category/name/type/primaryentity`, +`clientdata` for cloud), GUID normalize, force `type=Definition` on create. (No `validate_workflow` helper exists today — net-new.)
-5. **[cloud]** Parse `clientdata` as well-formed JSON locally before POST/PATCH (fail as `D365Error`, not a server 400).
+5. **[cloud]** Parse `clientdata` as well-formed JSON locally before POST/PATCH, **and validate the `definition` against the Logic Apps Workflow Definition Language JSON schema** (`…/2016-06-01/workflowdefinition.json#`) — fail as `D365Error`, not a server 400. *(deep-research 2026-06-24: no first-class WDL "builder SDK" exists — `clientdata` authoring is raw JSON + schema validation; plan `jsonschema`, not a builder library.)*
 6. **[cloud]** Before enabling, verify every `connectionReference` is bound to a usable connection — never flip `statecode=1` with unresolved/forbidden connections (guards `ConnectionAuthorizationFailed` / Suspended).
 7. **[cloud]** `primaryentity="none"` for automated/instant/scheduled flows; for classic, verify `primaryentity` exists on the **target** org.
 8. **[both]** Validate `triggeronupdateattributelist` against real attributes of `primaryentity` (server only checks at activation).
@@ -168,7 +174,7 @@ Tagged `[both]` / `[cloud]` / `[on-prem]`. Most map directly onto patterns alrea
 **Build, in priority order:**
 
 - **Tier 1 — `crm workflow create` (from template/clone) + `crm workflow update` (cat 0/2, both targets).** Thin extension of existing `clone`: `--from-template <id>` / `--from-file <exported.json>`, retarget entity, create as draft, explicit `--activate`. `update` = deactivate→patch→reactivate with the type-2 guard. Reuses proven machinery; works on both targets. Highest value-to-effort.
-- **Tier 2 — `crm flow create` / `crm flow update` (cat 5, cloud).** Accept a `clientdata` JSON (or a higher-level trigger+actions spec we compile to it). This is where an agent genuinely *authors* automation. Requires the connection-reference binding workflow (§7.6) — the main new complexity. Cloud-only; refuse on-prem with a clear message.
+- **Tier 2 — `crm flow create` / `crm flow update` (cat 5, cloud).** Accept a `clientdata` JSON (or a higher-level trigger+actions spec we compile to it). This is where an agent genuinely *authors* automation. Requires the connection-reference binding workflow (§7.6) — the main new complexity. Cloud-only; refuse on-prem with a clear message. **No builder SDK to lean on** — the `definition` is plain Logic Apps WDL JSON, so the build is dict-assembly + `jsonschema` validation against the WDL schema (§7.5), not wrapping a library.
 - **Tier 3 — `crm custom-api create` (both targets).** If the underlying intent is "a callable custom operation/message," Custom API is the clean, fully-supported, XAML-free path. Separate `customapi` table; no workflow designer.
 - **Cross-cutting — solution round-trip helper.** A `crm workflow edit-via-solution` convenience that wraps export→extract→(edit)→pack→import→publish for portable classic-process changes.
 
@@ -180,7 +186,7 @@ Every tier ships behind the §7 guardrails, target-aware routing, dry-run previe
 
 1. **Re-validate the `E2E_SKIP` for `workflow clone`/`import`/create** (coverage.py) — cloud accepted the clone; the skip premise is false. Likely un-skip and add live coverage. *(File an issue.)*
 2. **Isolate POST-vs-upsert with real XAML** — does a bare `POST workflows` with genuine designer XAML succeed on cloud, or only the upsert/clone channel? One probe. Immaterial to the recommended design (we reuse clone/import machinery either way) but tidies the model.
-3. **Connection-reference binding for code-created cloud flows** — design the exact flow for binding/sharing connections so a created flow can be enabled headlessly (service-principal scenario).
+3. **Connection-reference binding for code-created cloud flows** — **resolved (deep-research 2026-06-24, primary-source):** the headless mechanism is a **deployment settings file** (JSON) supplied at solution import (`pac solution create-settings --solution-zip <zip> --settings-file <json>`), which binds each connection reference by `LogicalName` → target `ConnectionId` + `ConnectorId` (`/providers/Microsoft.PowerApps/apis/shared_<connector>`), removing the interactive post-import prompt. Gates to enforce (already in §7.6): the activating principal must own or be shared **every** bound connection or activation fails `ConnectionAuthorizationFailed`; and after import a flow returns to On **only if** it was On at export **and** all its connection references are bound — otherwise it stays Off.
 4. **System-workflow clone 500 (`0x80040216`)** — confirm it's the internal-GUID-collision class and whether `retarget_xaml` should regenerate embedded GUIDs.
 
 ---
@@ -189,8 +195,8 @@ Every tier ships behind the §7 guardrails, target-aware routing, dry-run previe
 
 - Work with cloud flows using code — https://learn.microsoft.com/power-automate/manage-flows-with-code
 - Sample: Workflow operations (the "not supported with Dataverse" note) — https://learn.microsoft.com/power-apps/developer/data-platform/org-service/samples/workflow-operations
-- Process (Workflow) table reference — https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/workflow
-- Web service error codes (`0x80045040`/`0x80045044`) — https://learn.microsoft.com/power-apps/developer/data-platform/reference/web-service-error-codes
+- Process (Workflow) table reference `[workflow-entity]` — https://learn.microsoft.com/power-apps/developer/data-platform/reference/entities/workflow
+- Web service error codes (`0x80045040`/`0x80045041`/`0x80045044`) — https://learn.microsoft.com/power-apps/developer/data-platform/reference/web-service-error-codes
 - Create real-time workflows (on-prem XAML-code create) — https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/create-real-time-workflows?view=op-9-1
 - Process categories (on-prem XAML support) — https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/process-categories?view=op-9-1
 - Create your own messages / Custom API — https://learn.microsoft.com/power-apps/developer/data-platform/custom-actions ; https://learn.microsoft.com/power-apps/developer/data-platform/custom-api
@@ -199,6 +205,9 @@ Every tier ships behind the §7 guardrails, target-aware routing, dry-run previe
 - ImportSolution action / `PublishWorkflows` — https://learn.microsoft.com/power-apps/developer/data-platform/webapi/reference/importsolution
 - Connection references — https://learn.microsoft.com/power-apps/maker/data-platform/create-connection-reference
 - Logic Apps Workflow Definition Language — https://learn.microsoft.com/azure/logic-apps/logic-apps-workflow-definition-language
+- Logic Apps WDL schema (`workflowdefinition.json#`) — https://learn.microsoft.com/azure/logic-apps/workflow-definition-language-schema
+- WF XAML serialization (`ActivityXamlServices`) `[wf-xaml-serialization]` — https://learn.microsoft.com/dotnet/framework/windows-workflow-foundation/serializing-workflows-and-activities-to-and-from-xaml
+- Import a solution containing flows (post-import flow state) — https://learn.microsoft.com/power-automate/import-flow-solution
 - pac solution reference — https://learn.microsoft.com/power-platform/developer/cli/reference/solution
 - Power Automate FAQ (cloud-only) — https://learn.microsoft.com/power-automate/frequently-asked-questions
 
