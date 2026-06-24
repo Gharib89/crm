@@ -160,6 +160,21 @@ definition is activated. Read-only from the caller's perspective: it cannot be
 deleted, deactivated, or edited directly — operations resolve to its definition.
 _Avoid_: activation copy, activation row.
 
+**Provenance wall**:
+The platform's refusal to create, update, or publish a classic process
+(workflow/business-rule/action — categories 0/2/3) whose `xaml` it does not
+recognise as Web-application–authored. Backed by the read-only `iscrmuiworkflow`
+flag and surfaced as `0x80045040` ("created outside the Microsoft Dynamics 365
+Web application"). It is **provenance-sensitive, not target-sensitive**: a clone
+or solution-import of *unmodified* designer xaml carries provenance and passes;
+*hand-edited* xaml is rejected — verified on both orgs, via direct PATCH and via
+solution import alike. On-prem has a deployment-administrator privilege escape
+(`0x80045041 NotEnoughPrivilegesForXamlWorkflows`) when the org is configured to
+permit non-UI XAML; cloud (Dataverse) has none, so hand-edited step authoring is
+on-prem-only.
+_Avoid_: "cloud block" (it is not cloud-only), "create wall" (it also blocks
+update and publish).
+
 ### Customization XML
 
 **Targeted structural editor**:
