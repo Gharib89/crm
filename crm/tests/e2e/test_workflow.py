@@ -2,22 +2,28 @@
 """E2E tests for workflow commands.
 
 Covers: workflow list, workflow export, workflow migration-assess,
-        workflow activate, workflow deactivate, workflow run.
+        workflow activate, workflow deactivate, workflow run,
+        workflow clone, workflow import, workflow delete.
 
-`workflow run` is dispatch-only: it requires a pre-existing on-demand workflow
-(the Web API cannot create a workflow definition — a platform block), so the
-test resolves the no-op on-demand workflow seeded per ADR 0012 / #503 and
+`workflow run` is dispatch-only: it requires a pre-existing on-demand workflow,
+so the test resolves the no-op on-demand workflow seeded per ADR 0012 / #503 and
 asserts only that dispatch returns an async operation id (`requires_cloud`).
-`workflow clone`, `workflow delete`, and `workflow import` require creating or
-upserting a workflow record via the Web API, which both test orgs reject with
-an org-level policy error ("created outside the Microsoft Dynamics 365 Web
-application"). These verbs are in E2E_SKIP with that reason.
+
+`workflow clone` / `import` / `delete` upsert a workflow definition via the Web
+API. This was long assumed blocked by a platform policy ("created outside the
+Microsoft Dynamics 365 Web application", 0x80045040), but #534 showed that wall
+is XAML-provenance-sensitive, not target-sensitive: it rejects only foreign
+hand-authored XAML and accepts genuine designer XAML, on both targets. clone and
+import reuse a real workflow's designer XAML, so the upsert is accepted — these
+tests clone a *custom* classic workflow (never a system one), create the clone as
+a *draft* (never activated), GET-confirm it persisted, then delete it.
 
 Safety contract
 ---------------
 Tests that mutate state (activate/deactivate) operate only on an existing
 draft custom workflow found at runtime. System workflows are never modified.
-`workflow run` dispatches against a throwaway record it creates and deletes.
+Tests that create (clone/import) only ever create *draft* clones of a *custom*
+classic workflow and delete them (finalizer-guarded), leaving the org clean.
 If no suitable workflow exists, the test is skipped via ``pytest.skip``.
 """
 from __future__ import annotations
@@ -114,6 +120,43 @@ def _find_dispatchable_ondemand_workflow(backend) -> tuple[str, str] | None:
         if primary_entity in _DISPATCHABLE_ENTITIES:
             return str(row["workflowid"]), primary_entity
     return None
+
+
+def _find_custom_classic_workflow(backend) -> tuple[str, str] | None:
+    """Return ``(workflowid, primaryentity)`` of a custom (unmanaged) classic
+    workflow definition that clone/import can reuse, or ``None`` if none exists.
+
+    ``type eq 1`` = definition, ``category eq 0`` = classic workflow (clone's
+    Tier-1 path — not action/BPF/business-rule), ``ismanaged eq false`` = custom.
+    Cloning reuses this workflow's genuine designer XAML and never touches a
+    *system* workflow — cloning a system workflow 500s with 0x80040216, out of
+    scope per #534.
+    """
+    rows = backend.get(
+        "workflows",
+        params={
+            "$select": "workflowid,name,primaryentity",
+            "$filter": (
+                "type eq 1"
+                " and category eq 0"
+                " and ismanaged eq false"
+            ),
+            "$top": "1",
+        },
+    )
+    value = rows.get("value", []) if isinstance(rows, dict) else []
+    for row in value:
+        primary_entity = row.get("primaryentity")
+        if primary_entity:
+            return str(row["workflowid"]), primary_entity
+    return None
+
+
+_CLONE_SKIP_MSG = (
+    "No custom (unmanaged) classic workflow (type=1, category=0) found on this "
+    "org to clone. Seed a simple classic on-demand workflow on account or contact "
+    "via the web app (e.g. the no-op workflow per ADR 0012 / #503), then re-run."
+)
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -268,3 +311,108 @@ def test_workflow_run_dispatches_ondemand(backend, cli, unique, request):
     # Dispatch-only: the platform accepted the request and created an async
     # operation. We do not assert any downstream record effect.
     assert env["data"]["async_operation_id"] is not None, env
+
+
+@covers("workflow clone", "workflow delete")
+def test_workflow_clone_then_delete(backend, cli, unique, request):
+    """Clone a custom classic workflow as a draft, GET-confirm it persisted, then
+    delete it and GET-confirm it is gone.
+
+    Disproves the old E2E_SKIP premise that the Web API rejects the
+    workflow-definition upsert (#534): clone reuses the source's genuine designer
+    XAML (retargeted to a fresh id), so the platform accepts the upsert on both
+    targets. The clone is created onto the source's own primary entity and never
+    activated, so the draft can never fire; a finalizer deletes it even if an
+    assertion fails mid-test, leaving the org clean.
+    """
+    found = _find_custom_classic_workflow(backend)
+    if found is None:
+        pytest.skip(_CLONE_SKIP_MSG)
+    src_id, primary_entity = found
+
+    new_name = f"E2E-Clone-{unique}"
+    result = cli([
+        "--json", "workflow", "clone", src_id,
+        "--to-entity", primary_entity, "--no-activate", "--name", new_name,
+    ])
+    assert result.returncode == 0, result.stderr
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    new_id = str(env["data"]["workflow_id"])
+    assert env["data"]["activated"] is False, env
+    # Clean up the clone even if a later assertion fails.
+    request.addfinalizer(lambda: _safe_delete(backend, f"workflows({new_id})"))
+
+    # GET-confirm the clone persisted as a draft.
+    row = backend.get(
+        f"workflows({new_id})", params={"$select": "workflowid,statecode,name"}
+    )
+    assert isinstance(row, dict), row
+    assert row.get("statecode") == 0, row  # draft
+    assert row.get("name") == new_name, row
+
+    # Delete it.
+    deleted = cli(["--json", "workflow", "delete", new_id, "--yes"])
+    assert deleted.returncode == 0, deleted.stderr
+    del_env = json.loads(deleted.stdout)
+    assert del_env["ok"], del_env
+    assert del_env["data"]["deleted"] is True, del_env
+
+    # GET-confirm it is gone (filtered collection → empty, no 404 to handle).
+    gone = backend.get(
+        "workflows",
+        params={"$select": "workflowid", "$filter": f"workflowid eq {new_id}"},
+    )
+    gone_rows = gone.get("value", []) if isinstance(gone, dict) else []
+    assert gone_rows == [], f"workflow still present after delete: {gone}"
+
+
+@covers("workflow import")
+def test_workflow_import_recreates_draft(backend, cli, unique, tmp_path, request):
+    """Import (upsert) a workflow definition from an exported file, creating a
+    draft, then delete it — proving the platform accepts the import upsert (#534).
+
+    Builds a self-consistent, importable definition by cloning a custom classic
+    workflow (reusing genuine designer XAML), exporting it, and deleting the clone
+    so the subsequent import is a genuine create (import upserts by the file's
+    workflowid; absent → create). No XAML is authored by hand.
+    """
+    found = _find_custom_classic_workflow(backend)
+    if found is None:
+        pytest.skip(_CLONE_SKIP_MSG)
+    src_id, primary_entity = found
+
+    # 1. Clone → a self-consistent draft definition we can export.
+    clone = cli([
+        "--json", "workflow", "clone", src_id,
+        "--to-entity", primary_entity, "--no-activate",
+        "--name", f"E2E-Import-{unique}",
+    ])
+    assert clone.returncode == 0, clone.stderr
+    clone_env = json.loads(clone.stdout)
+    assert clone_env["ok"], clone_env
+    wf_id = str(clone_env["data"]["workflow_id"])
+    request.addfinalizer(lambda: _safe_delete(backend, f"workflows({wf_id})"))
+
+    # 2. Export it to a file.
+    export_file = str(tmp_path / "wf_import.json")
+    exported = cli(["--json", "workflow", "export", wf_id, "--output", export_file])
+    assert exported.returncode == 0, exported.stderr
+
+    # 3. Delete the clone so the import recreates it (genuine create).
+    pre_del = cli(["--json", "workflow", "delete", wf_id, "--yes"])
+    assert pre_del.returncode == 0, pre_del.stderr
+
+    # 4. Import the file → upsert recreates the definition.
+    imported = cli(["--json", "workflow", "import", "--file", export_file])
+    assert imported.returncode == 0, imported.stderr
+    imp_env = json.loads(imported.stdout)
+    assert imp_env["ok"], imp_env
+    assert str(imp_env["data"]["workflow_id"]) == wf_id, imp_env
+
+    # 5. GET-confirm the import recreated the draft (import default --no-activate).
+    row = backend.get(
+        f"workflows({wf_id})", params={"$select": "workflowid,statecode"}
+    )
+    assert isinstance(row, dict), row
+    assert row.get("statecode") == 0, row  # draft

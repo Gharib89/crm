@@ -185,10 +185,7 @@ autouse `_enforce_capability` gate), so it runs in plain CI with `D365_E2E` unse
 For a verb that works on both but returns different values, take the `target` fixture and
 branch the assertion (e.g. `expected = "v9.2" if target == "cloud" else "v9.1"`) — it then
 runs meaningfully on each union leg. Full coverage = the **union** of an on-prem run and a
-cloud run. The **three** remaining `E2E_SKIP` entries are all skipped for reasons no org choice can
-fix: `workflow clone`/`delete`/`import` hit a **platform-level** Web-API
-block — Dataverse refuses to upsert a workflow definition "created outside the Microsoft
-Dynamics 365 Web application" on every org, so a different org does not unblock them.
+cloud run. `E2E_SKIP` is now **empty** — every D365-touching verb has live coverage.
 (`solution extract`/`pack` are now covered live: an offline pac `pack → extract` roundtrip
 (#529) packs a committed minimal solution fixture and re-extracts it, asserting the envelope and
 that the solution's UniqueName survives the roundtrip — it needs only `pac` on PATH (provisioned

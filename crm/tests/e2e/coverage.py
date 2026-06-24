@@ -37,22 +37,17 @@ LOCAL_GROUPS = frozenset(
 )
 
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a
-# reason to be written down. Fill as the gate enumerates the gap (Task 6+).
-E2E_SKIP: dict[str, str] = {
-    # `solution extract`/`pack` (the `pac solution unpack`/`pack` wrappers) are now
-    # covered live by the offline pac roundtrip in test_solution_packager_e2e.py
-    # (#529) — `pac` is provisioned in CI, so they are no longer skipped.
-    #
-    # Platform-level (NOT org-specific) Web API restriction: Dataverse rejects
-    # creating/upserting a workflow definition via the Web API with
-    # "This workflow cannot be created, updated or published because it was created
-    # outside the Microsoft Dynamics 365 Web application." The platform enforces
-    # this on every org, so a different org does not unblock it. clone/delete/import
-    # all require upserting a workflow record and so cannot be exercised live.
-    "workflow clone": "clone upserts a new workflow definition via the Web API, which the platform rejects ('… created outside the Microsoft Dynamics 365 Web application'); this is a platform-level block on every org, not org-specific, so a different org does not unblock it",
-    "workflow delete": "exercising delete needs a throwaway workflow created via Web API upsert, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific",
-    "workflow import": "import upserts a workflow definition via the Web API, which the platform blocks on every org ('… created outside the Microsoft Dynamics 365 Web application') — a platform-level restriction, not org-specific, so a different org does not unblock it",
-}
+# reason to be written down here whenever a verb is added to this map.
+#
+# Empty today: every D365-touching verb has live coverage. `workflow clone` /
+# `import` / `delete` used to live here on the premise that the platform rejects
+# upserting a workflow definition via the Web API ("… created outside the Microsoft
+# Dynamics 365 Web application", 0x80045040). #534 disproved that: the wall is
+# XAML-provenance-sensitive, not target-sensitive — the platform rejects only
+# foreign hand-authored XAML and accepts genuine designer XAML, on both targets.
+# clone/import reuse a real workflow's designer XAML, so the upsert is accepted;
+# they now have live coverage in test_workflow.py.
+E2E_SKIP: dict[str, str] = {}
 
 
 # ── Walker ─────────────────────────────────────────────────────────────────
