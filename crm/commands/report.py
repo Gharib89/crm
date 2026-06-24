@@ -16,6 +16,7 @@ from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
+    _read_file,
     _resolve_solution,
     _solution_option,
     d365_errors,
@@ -31,17 +32,6 @@ def report_group() -> None:
     `create --org` makes a report organization-wide (otherwise it is personal).
     `set-category` files a report under sales/service/marketing/administrative.
     """
-
-
-def _read_file(path: str) -> str:
-    # click.Path(exists=True, readable=True) validates at parse time, but a
-    # permission edge or a delete-after-check race can still fail the open —
-    # surface it as a clean usage error (mirrors crm.commands.dashboard._read_file).
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return fh.read()
-    except OSError as exc:
-        raise click.UsageError(f"cannot read {path}: {exc}") from exc
 
 
 @report_group.command("list")

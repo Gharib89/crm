@@ -9,6 +9,7 @@ from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
     _publish_option,
+    _read_file as _read_required,
     _resolve_publish,
     _resolve_solution,
     _solution_option,
@@ -69,16 +70,8 @@ def chart_delete(ctx: CLIContext, chart_id: str, user_owned: bool) -> None:
 
 
 def _read_file(path: str | None) -> str | None:
-    if path is None:
-        return None
-    # click.Path(exists=True, readable=True) validates at parse time, but a
-    # permission edge or a delete-after-check race can still fail the open —
-    # surface it as a clean usage error (mirrors _helpers.parsing._load_payload).
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return fh.read()
-    except OSError as exc:
-        raise click.UsageError(f"cannot read {path}: {exc}") from exc
+    """str|None front for the shared file reader (chart's XML args are optional)."""
+    return None if path is None else _read_required(path)
 
 
 @chart_group.command("create")

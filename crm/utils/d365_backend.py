@@ -1587,6 +1587,13 @@ def as_dict(result: dict[str, Any] | str | None) -> dict[str, Any]:
     return result if isinstance(result, dict) else {}
 
 
+def solution_headers(solution: str | None) -> dict[str, str] | None:
+    """Build the ``MSCRM.SolutionUniqueName`` request header for a solution-aware
+    write, or ``None`` when no solution is given (so ``extra_headers`` stays
+    unset). Shared by the solution-aware core modules."""
+    return {"MSCRM.SolutionUniqueName": solution} if solution else None
+
+
 def odata_literal(value: Any) -> str:
     """Render *value* as an OData v4 ``$filter`` literal.
 

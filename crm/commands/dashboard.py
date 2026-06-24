@@ -9,6 +9,7 @@ from crm.commands._helpers import (
     _emit_with_warning,
     _journal,
     _publish_option,
+    _read_file,
     _resolve_publish,
     _resolve_solution,
     _solution_option,
@@ -247,17 +248,6 @@ def dashboard_remove_component(
             solution=solution, publish=publish)
     _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, dashboard_id, info, solution=solution)
-
-
-def _read_file(path: str) -> str:
-    # click.Path(exists=True, readable=True) validates at parse time, but a
-    # permission edge or a delete-after-check race can still fail the open —
-    # surface it as a clean usage error (mirrors crm.commands.chart._read_file).
-    try:
-        with open(path, encoding="utf-8") as fh:
-            return fh.read()
-    except OSError as exc:
-        raise click.UsageError(f"cannot read {path}: {exc}") from exc
 
 
 @dashboard_group.command("create")

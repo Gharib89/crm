@@ -61,6 +61,7 @@ from .admin import (
 )
 from .parsing import (
     _load_payload,
+    _read_file,
     _parse_expect,
     _parse_value_labels,
     _check_expectations,
@@ -100,7 +101,7 @@ __all__ = [
     # admin headers
     "_admin_header_options", "_admin_kwargs",
     # input parsing / expectations
-    "_load_payload", "_parse_expect", "_parse_value_labels",
+    "_load_payload", "_read_file", "_parse_expect", "_parse_value_labels",
     "_check_expectations", "_odata_literal", "encode_function_params",
     "_resolve_async_state", "_CASCADE", "_MENU", "_REQUIRED",
     # profile inference

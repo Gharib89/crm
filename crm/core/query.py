@@ -201,6 +201,21 @@ def fetchxml_query(
 # ── Count ───────────────────────────────────────────────────────────────
 
 
+def _prefer_header(include_annotations: bool, page_size: int | None) -> dict[str, str]:
+    """Build the ``Prefer`` header dict for the predefined-query reads, or ``{}``.
+
+    Carries ``odata.include-annotations="*"`` and/or ``odata.maxpagesize=N`` when
+    requested; an empty dict (no header) otherwise, so callers keep passing
+    ``extra_headers=headers or None`` unchanged.
+    """
+    parts: list[str] = []
+    if include_annotations:
+        parts.append('odata.include-annotations="*"')
+    if page_size is not None:
+        parts.append(f"odata.maxpagesize={page_size}")
+    return {"Prefer": ",".join(parts)} if parts else {}
+
+
 def saved_query(
     backend: D365Backend,
     entity_set: str,
@@ -214,14 +229,7 @@ def saved_query(
     Equivalent to: GET /<set>?savedQuery=<guid>
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/retrieve-and-execute-predefined-queries
     """
-    headers: dict[str, str] = {}
-    if include_annotations or page_size is not None:
-        prefer_parts: list[str] = []
-        if include_annotations:
-            prefer_parts.append('odata.include-annotations="*"')
-        if page_size is not None:
-            prefer_parts.append(f"odata.maxpagesize={page_size}")
-        headers["Prefer"] = ",".join(prefer_parts)
+    headers = _prefer_header(include_annotations, page_size)
     return as_dict(backend.get(
         entity_set,
         params={"savedQuery": savedquery_id},
@@ -241,14 +249,7 @@ def user_query(
 
     Equivalent to: GET /<set>?userQuery=<guid>
     """
-    headers: dict[str, str] = {}
-    if include_annotations or page_size is not None:
-        prefer_parts: list[str] = []
-        if include_annotations:
-            prefer_parts.append('odata.include-annotations="*"')
-        if page_size is not None:
-            prefer_parts.append(f"odata.maxpagesize={page_size}")
-        headers["Prefer"] = ",".join(prefer_parts)
+    headers = _prefer_header(include_annotations, page_size)
     return as_dict(backend.get(
         entity_set,
         params={"userQuery": userquery_id},

@@ -36,6 +36,17 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
     return parsed
 
 
+def _read_file(path: str) -> str:
+    # click.Path(exists=True, readable=True) validates at parse time, but a
+    # permission edge or a delete-after-check race can still fail the open —
+    # surface it as a clean usage error.
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except OSError as exc:
+        raise click.UsageError(f"cannot read {path}: {exc}") from exc
+
+
 def _parse_expect(pairs: tuple[str, ...]) -> list[tuple[str, str]]:
     """Parse repeatable --expect ATTR=VALUE flags into (attr, value) pairs.
 

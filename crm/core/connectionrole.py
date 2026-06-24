@@ -18,7 +18,13 @@ from __future__ import annotations
 from typing import Any
 
 from crm.core import entity as entity_mod
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    solution_headers,
+)
 
 # ── Constants ──────────────────────────────────────────────────────────────
 
@@ -66,10 +72,6 @@ def resolve_role_id(backend: D365Backend, role: str) -> str:
     return rid
 
 
-def _solution_headers(solution: str | None) -> dict[str, str] | None:
-    return {"MSCRM.SolutionUniqueName": solution} if solution else None
-
-
 # ── Writes ─────────────────────────────────────────────────────────────────
 
 
@@ -97,7 +99,7 @@ def create_role(
     if description is not None:
         body["description"] = description
     result = as_dict(backend.post(
-        ROLES_SET, json_body=body, extra_headers=_solution_headers(solution),
+        ROLES_SET, json_body=body, extra_headers=solution_headers(solution),
     ))
     if result.get("_dry_run"):
         result["would_create"] = True
@@ -141,7 +143,7 @@ def scope(
         f"{_ROLE_ID}@odata.bind": f"/{ROLES_SET}({role_id})",
     }
     result = as_dict(backend.post(
-        OBJECTTYPECODES_SET, json_body=body, extra_headers=_solution_headers(solution),
+        OBJECTTYPECODES_SET, json_body=body, extra_headers=solution_headers(solution),
     ))
     if result.get("_dry_run"):
         result["would_create"] = True
