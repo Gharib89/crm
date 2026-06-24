@@ -26,7 +26,7 @@ from crm.cli import CLIContext
 from crm.utils.d365_backend import D365Error
 
 
-def _envelope(ctx: CLIContext, run):
+def _envelope(run):
     """Invoke `run` inside a click command and return the parsed emit envelope.
 
     `_handle_d365_error`/`d365_errors` emit `ok=False` and raise `Exit(1)`, so the
@@ -44,7 +44,7 @@ def _envelope(ctx: CLIContext, run):
 
 
 @pytest.mark.parametrize("key", ["status", "code", "category", "retryable"])
-def test_extra_meta_reserved_key_raises_valueerror(backend, key):
+def test_extra_meta_reserved_key_raises_valueerror(key):
     """extra_meta naming a pure-error key raises ValueError before emit — the
     enrich callback can never overwrite the reserved error envelope."""
     from crm.commands._helpers import _handle_d365_error
@@ -60,7 +60,7 @@ def test_extra_meta_reserved_key_raises_valueerror(backend, key):
 # ── enrich(exc) via the d365_errors seam ────────────────────────────────────
 
 
-def test_enrich_lands_hint_and_extra_meta_additively(backend):
+def test_enrich_lands_hint_and_extra_meta_additively():
     """enrich returning (hint, extra_meta) adds both atop the pure error
     envelope, which stays intact."""
     from crm.commands._helpers import d365_errors
@@ -72,7 +72,7 @@ def test_enrich_lands_hint_and_extra_meta_additively(backend):
         with d365_errors(ctx, enrich=lambda exc: ("derived hint", {"did_you_mean": "account"})):
             raise D365Error("not found", status=404, code="0x1")
 
-    env = _envelope(ctx, run)
+    env = _envelope(run)
     assert env["ok"] is False
     # Pure error reserved + intact.
     assert env["meta"]["status"] == 404
@@ -85,7 +85,7 @@ def test_enrich_lands_hint_and_extra_meta_additively(backend):
     assert "derived hint" in env["error"]
 
 
-def test_enrich_hint_wins_over_static_hint(backend):
+def test_enrich_hint_wins_over_static_hint():
     """A non-None derived hint takes precedence over the static hint=."""
     from crm.commands._helpers import d365_errors
 
@@ -97,11 +97,11 @@ def test_enrich_hint_wins_over_static_hint(backend):
                          enrich=lambda exc: ("derived wins", None)):
             raise D365Error("boom", status=400, code="0x1")
 
-    env = _envelope(ctx, run)
+    env = _envelope(run)
     assert env["meta"]["hint"] == "derived wins"
 
 
-def test_enrich_none_hint_falls_back_to_static(backend):
+def test_enrich_none_hint_falls_back_to_static():
     """When enrich returns hint=None, the static hint= is used (entity-create
     shape: derived meta, no derived hint)."""
     from crm.commands._helpers import d365_errors
@@ -114,12 +114,12 @@ def test_enrich_none_hint_falls_back_to_static(backend):
                          enrich=lambda exc: (None, {"did_you_mean": "x"})):
             raise D365Error("boom", status=400, code="0x1")
 
-    env = _envelope(ctx, run)
+    env = _envelope(run)
     assert env["meta"]["hint"] == "static hint"
     assert env["meta"]["did_you_mean"] == "x"
 
 
-def test_enrich_none_none_is_clean_noop(backend):
+def test_enrich_none_none_is_clean_noop():
     """enrich returning (None, None) adds nothing — only the pure error
     envelope, identical to a bare `with d365_errors(ctx):`."""
     from crm.commands._helpers import d365_errors
@@ -131,12 +131,12 @@ def test_enrich_none_none_is_clean_noop(backend):
         with d365_errors(ctx, enrich=lambda exc: (None, None)):
             raise D365Error("boom", status=500, code="0xfff")
 
-    env = _envelope(ctx, run)
+    env = _envelope(run)
     assert env["error"] == "boom"
     assert set(env["meta"]) == {"status", "code", "category", "retryable"}
 
 
-def test_no_enrich_matches_bare_seam(backend):
+def test_no_enrich_matches_bare_seam():
     """Omitting enrich is the legacy path — pure error envelope, no extras."""
     from crm.commands._helpers import d365_errors
 
@@ -147,7 +147,7 @@ def test_no_enrich_matches_bare_seam(backend):
         with d365_errors(ctx):
             raise D365Error("plain", status=403, code="0x2")
 
-    env = _envelope(ctx, run)
+    env = _envelope(run)
     assert env["error"] == "plain"
     assert env["meta"]["status"] == 403
     assert set(env["meta"]) == {"status", "code", "category", "retryable"}
