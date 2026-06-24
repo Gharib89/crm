@@ -447,8 +447,14 @@ one call. Write verbs new in 0.5.0:
 
 `crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
 columns, option sets, relationships, views) from one declarative spec, in
-dependency order, publishing once at the end — idempotent on re-apply, with
-`--dry-run` plan preview and `--stage-only` support. See
+dependency order, publishing once at the end. It is **convergent**: a component
+that already exists is reconciled against the spec — left untouched when it
+matches (`skipped`), PATCHed in place when an allowed field drifts (`updated`),
+or refused with no write when the divergence would require a destructive
+drop-and-recreate (`replace_blocked`, `ok=false`, exit 1). The full envelope is
+`{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, failed}, meta:{staged}}`.
+`--dry-run` previews what would be created (existing components still report as
+`skipped` in dry-run; would-update preview is a future slice). See
 [how-to/apply](docs/how-to/apply.md).
 
 `crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` is the quick

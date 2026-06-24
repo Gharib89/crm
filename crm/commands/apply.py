@@ -29,10 +29,13 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
     """Apply a declarative desired-state spec.
 
     The spec declares a publisher, solution, and entities (with attributes,
-    option sets, relationships, and views). Each resource is created with
-    if_exists=skip in dependency order and PublishAllXml runs once at the end,
-    so re-applying an unchanged spec is a no-op. Emits
-    {ok, data:{applied, skipped, planned, failed}, meta:{staged}}.
+    option sets, relationships, and views), driven in dependency order with
+    PublishAllXml once at the end. apply is convergent: a component that already
+    exists is reconciled against the spec — left untouched when it matches,
+    PATCHed in place when an allowed field drifts, or refused (no write) when the
+    divergence would need a destructive drop-and-recreate (see ADR 0014). Emits
+    {ok, data:{applied, updated, skipped, replace_blocked, pruned, planned,
+    failed}, meta:{staged}}; a replace-blocked component makes ok=false (exit 1).
     """
     import yaml
 

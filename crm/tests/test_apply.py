@@ -1288,3 +1288,18 @@ def test_apply_command_human_mode_shows_replace_blocked_reason(backend, monkeypa
         result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])  # no --json
     assert result.exit_code == 1
     assert "ownership change" in result.output
+
+
+def test_apply_updates_attribute_description_on_drift(backend):
+    # Description drift alone (display unchanged) → updated.
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "description": "New description"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Code", description="Old description")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["attribute"]
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
