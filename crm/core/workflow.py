@@ -520,7 +520,9 @@ def update_workflow(
             "_dry_run": True,
             "would_update": changes,
             "workflow_id": target_id,
-            "name": current.get("name"),
+            # The resulting name (post-rename if --name was given), matching the
+            # live result's `name`; the current state is still visible via statecode.
+            "name": result_name,
             "statecode": current.get("statecode"),
             "resolved_from_activation_id": resolved_from,
         }

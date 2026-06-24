@@ -130,6 +130,9 @@ class TestUpdateWorkflow:
         assert out["_dry_run"] is True
         assert out["would_update"] == {"name": "New", "ondemand": True}
         assert out["workflow_id"] == _WF_ID
+        # name reflects the resulting (post-rename) name, consistent with the
+        # live result — not the current "Old" name.
+        assert out["name"] == "New"
 
     def test_non_lock_server_error_preserved_verbatim(self, backend):
         """A non-0x80045002 failure propagates with status/code/body intact and
