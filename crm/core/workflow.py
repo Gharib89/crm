@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import json as _json
 import re
+import xml.etree.ElementTree as _ET
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Iterable, cast
 from uuid import uuid4
 
 from crm.core import entity as entity_ops
@@ -87,6 +88,190 @@ def retarget_xaml(
     out = xaml.replace(src_class, dst_class)
     out = re.sub(rf"\b{re.escape(src_entity)}\b", dst_entity, out)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Pure XAML reference-validator (no backend, no I/O)
+# ---------------------------------------------------------------------------
+
+# Namespace URI for out-of-box workflow activities (conventional prefix: mxswa).
+_MXSWA_NS = "clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow"
+
+# Expanded Clark-notation namespace as ElementTree exposes it after parsing.
+# ElementTree drops the assembly/version fragment at the first semicolon, so the
+# full xmlns value becomes just the clr-namespace part up to the semicolon.
+# We match the full xmlns string as stored in the attribute because ElementTree
+# gives us the full string from the namespace declaration; but the Clark-notation
+# key it uses when parsing elements uses the full value up to ';' if any.
+# In practice the mxswa xmlns value used in real exports is the full string
+# below — ElementTree stores namespaces from xmlns attrs verbatim.
+_MXSWA_NS_FULL = (
+    "clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;"
+    "assembly=Microsoft.Xrm.Sdk.Workflow, Version=9.0.0.0, Culture=neutral,"
+    " PublicKeyToken=31bf3856ad364e35"
+)
+
+# Allowlist of known mxswa activity local names (grounded in Microsoft Learn /
+# Microsoft.Xrm.Sdk.Workflow.Activities namespace documentation).
+_MXSWA_ACTIVITY_ALLOWLIST: frozenset[str] = frozenset({
+    "Workflow",
+    "ActivityReference",
+    "SetEntityProperty",
+    "GetEntityProperty",
+    "CreateEntity",
+    "UpdateEntity",
+    "AssignEntity",
+    "DeleteEntity",
+    "SetState",
+    "SetStateDynamicEntity",
+    "SendEmail",
+    "Postpone",
+})
+
+# Required arguments per activity (grounded in [RequiredArgument] properties
+# documented on Microsoft Learn for the Microsoft.Xrm.Sdk.Workflow.Activities
+# types). Only activities with at least one [RequiredArgument] are listed.
+# Entity-name validation (EntityName attribute) is out of scope for this helper
+# because it only receives the attribute set, not the entity catalogue.
+_MXSWA_REQUIRED_ARGS: dict[str, frozenset[str]] = {
+    "SetEntityProperty": frozenset({"Entity", "EntityName", "Attribute", "Value"}),
+    "CreateEntity": frozenset({"Entity", "EntityName"}),
+}
+
+# Regex to pre-scan namespace prefix declarations (xmlns:foo="…") in raw text.
+_XMLNS_DECL_RE = re.compile(r'xmlns:(\w+)\s*=')
+# Regex to find used prefixes on element/attribute names (foo:bar patterns).
+_PREFIX_USE_RE = re.compile(r'</?(\w+):\w+|(\w+):\w+\s*=')
+
+
+def validate_workflow_xaml(
+    xaml: str, attribute_set: Iterable[str]
+) -> list[str]:
+    """Reference-validate a workflow XAML definition offline. Returns advisory
+    warnings (never raises on a reference problem; promotion to hard failure is
+    the caller's job).
+
+    Checks performed (in order):
+    1. Well-formed XML — parse failure (non-prefix) → 'malformed XAML: …'.
+    2. Namespace prefixes declared — undeclared prefix → 'undeclared namespace
+       prefix: …'. These two produce distinct warning strings.
+    3. Activity allowlist — mxswa element not in _MXSWA_ACTIVITY_ALLOWLIST →
+       'unknown activity: …'.
+    4. Referenced attribute exists — Attribute="<name>" not in attribute_set →
+       'attribute not found on entity: …'.
+       (Entity-name validation is out of scope; only attribute logical names are
+       checked because the caller only supplies the attribute set, not the entity
+       catalogue.)
+    5. Required args present — per-activity required arguments absent from both
+       XML attributes and child elements → '<Activity> missing required
+       argument: …'.
+    """
+    warnings: list[str] = []
+    valid_attrs: frozenset[str] = frozenset(attribute_set)
+
+    # ------------------------------------------------------------------
+    # Check 1 + 2: parse the XAML.
+    # ElementTree raises xml.etree.ElementTree.ParseError (subclass of
+    # SyntaxError) for both malformed XML and unbound namespace prefixes.
+    # We distinguish them by the error message text.
+    # ------------------------------------------------------------------
+    try:
+        root = _ET.fromstring(xaml)
+    except _ET.ParseError as exc:
+        msg = str(exc)
+        if "unbound prefix" in msg:
+            # Check 2: identify the offending prefix by scanning the raw text.
+            declared = set(_XMLNS_DECL_RE.findall(xaml))
+            used: set[str] = set()
+            for m in _PREFIX_USE_RE.finditer(xaml):
+                used.add(m.group(1) or m.group(2))
+            used.discard("")
+            used.discard(None)  # type: ignore[arg-type]
+            undeclared = used - declared
+            if undeclared:
+                prefix = sorted(undeclared)[0]
+                warnings.append(f"undeclared namespace prefix: '{prefix}'")
+            else:
+                warnings.append(f"undeclared namespace prefix: (unknown) — {msg}")
+        else:
+            # Check 1: generic malformed XML.
+            warnings.append(f"malformed XAML: {msg}")
+        return warnings
+
+    # ------------------------------------------------------------------
+    # Checks 3–5: traverse parsed elements.
+    # ElementTree Clark-notation: {namespace_uri}local_name.
+    # We need to find the exact namespace URI that ElementTree resolved for
+    # the mxswa prefix. Scan the xmlns attributes on the root to find it.
+    # ------------------------------------------------------------------
+    mxswa_uri: str | None = None
+    for _, attr_val in root.attrib.items():
+        # xmlns declarations appear as plain 'xmlns:prefix' keys in the
+        # raw source but ElementTree exposes them differently depending on
+        # the Python version — we look for the mxswa value pattern.
+        if "Microsoft.Xrm.Sdk.Workflow.Activities" in attr_val:
+            mxswa_uri = attr_val
+            break
+
+    if mxswa_uri is None:
+        # Try to find it in any element's namespace map via iteration.
+        for elem in root.iter():
+            tag = elem.tag
+            if "Microsoft.Xrm.Sdk.Workflow.Activities" in tag:
+                # tag is {uri}local — extract uri.
+                mxswa_uri = tag[1:tag.index("}")]
+                break
+
+    for elem in root.iter():
+        tag = elem.tag
+        # Clark notation: {uri}local
+        if tag.startswith("{") and "}" in tag:
+            close = tag.index("}")
+            ns_uri = tag[1:close]
+            local = tag[close + 1:]
+        else:
+            ns_uri = ""
+            local = tag
+
+        is_mxswa = mxswa_uri is not None and ns_uri == mxswa_uri
+
+        if is_mxswa:
+            # Check 3: allowlist.
+            if local not in _MXSWA_ACTIVITY_ALLOWLIST:
+                warnings.append(f"unknown activity: '{local}'")
+
+            # Check 4: Attribute= field name must exist in attribute_set.
+            attr_val_field = elem.get("Attribute")
+            if attr_val_field is not None and attr_val_field not in valid_attrs:
+                warnings.append(f"attribute not found on entity: '{attr_val_field}'")
+
+            # Check 5: required arguments.
+            required = _MXSWA_REQUIRED_ARGS.get(local)
+            if required:
+                # An arg is "present" if it appears as an XML attribute on the
+                # element OR as a child element named '<Local>.<Arg>'.
+                child_names: set[str] = set()
+                for child in elem:
+                    child_tag = child.tag
+                    child_local = (
+                        child_tag[child_tag.index("}") + 1:]
+                        if "}" in child_tag
+                        else child_tag
+                    )
+                    # Convention: child element for arg "Value" is named
+                    # "SetEntityProperty.Value" — strip the activity prefix.
+                    if "." in child_local:
+                        child_names.add(child_local.split(".", 1)[1])
+                    else:
+                        child_names.add(child_local)
+                xml_attrs = set(elem.attrib.keys())
+                for req_arg in sorted(required):
+                    if req_arg not in xml_attrs and req_arg not in child_names:
+                        warnings.append(
+                            f"{local} missing required argument: '{req_arg}'"
+                        )
+
+    return warnings
 
 
 _WORKFLOW_SELECT = (
