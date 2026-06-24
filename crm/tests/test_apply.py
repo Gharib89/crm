@@ -1303,3 +1303,32 @@ def test_apply_updates_attribute_description_on_drift(backend):
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["attribute"]
     assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+
+
+def test_apply_rejects_non_int_max_length(backend):
+    # A quoted/non-int max_length must fail validation up front, not crash the
+    # numeric grow comparison during reconciliation (Copilot round 2).
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "max_length": "200"}
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "Project",
+                          "attributes": [attr]}]}
+    with pytest.raises(D365Error, match="max_length must be an integer"):
+        apply_mod.apply_spec(backend, spec)
+
+
+def test_apply_command_human_mode_shows_failed_reason(backend, monkeypatch, tmp_path):
+    # ok=False from a hard failure also surfaces the reason in human output.
+    import yaml
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "Project",
+                          "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}]}
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(yaml.safe_dump(spec), encoding="utf-8")
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+              status_code=404)
+        m.post(backend.url_for("EntityDefinitions"), status_code=500,
+               json={"error": {"message": "boom"}})
+        result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])
+    assert result.exit_code == 1
+    assert "failed" in result.output

@@ -154,6 +154,12 @@ def validate_spec(spec: Any) -> None:
                 _require_list(attr, "options", f"attribute {name!r}")
                 for opt in cast("list[Any]", attr["options"] or []):
                     _validate_option(opt, f"attribute {name!r}")
+            # max_length is compared numerically during reconciliation (grow check);
+            # a quoted/non-int value from the spec must fail here, not blow up later.
+            if attr.get("max_length") is not None and not isinstance(attr["max_length"], int):
+                raise D365Error(
+                    f"attribute {name!r}: max_length must be an integer "
+                    "(unquoted in YAML).")
         for rel in _as_list(ent.get("relationships")):
             _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
                            "lookup_schema", "lookup_display"), "relationship")
@@ -373,7 +379,15 @@ def apply_spec(
     stage_only: bool = False,
     include_referenced_optionsets: bool = True,
 ) -> dict[str, Any]:
-    """Apply a desired-state spec; return {ok, applied, skipped, planned, failed, staged}."""
+    """Apply a desired-state spec convergently.
+
+    Returns {ok, applied, updated, skipped, replace_blocked, pruned, planned,
+    failed, staged}. Existing components are reconciled against the spec —
+    `skipped` (matches), `updated` (in-place update of drifted fields), or
+    `replace_blocked` (destructive divergence: reported, no write). `ok` is false
+    when anything failed or was replace-blocked; `pruned` is reserved (empty) for
+    the pruning slice. See ADR 0014.
+    """
     validate_spec(spec)
 
     applied: list[Entry] = []
