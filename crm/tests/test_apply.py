@@ -1332,3 +1332,13 @@ def test_apply_command_human_mode_shows_failed_reason(backend, monkeypatch, tmp_
         result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])
     assert result.exit_code == 1
     assert "failed" in result.output
+
+
+def test_apply_rejects_invalid_ownership(backend):
+    # A typo'd ownership must fail validation up front, not be misreported as a
+    # destructive (replace-blocked) ownership change during reconciliation (round 3).
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "ownership": "UserOwnd"}
+    spec = {"entities": [ent]}
+    with pytest.raises(D365Error, match="ownership"):
+        apply_mod.apply_spec(backend, spec)

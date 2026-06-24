@@ -137,6 +137,10 @@ def validate_spec(spec: Any) -> None:
     for ent in _as_list(sp.get("entities")):
         _require(ent, ("schema_name", "display_name"), "entity")
         elabel = f"entity {ent['schema_name']!r}"
+        # Validate ownership up front so a typo fails cleanly here rather than being
+        # misclassified as a destructive ownership change during reconciliation.
+        if ent.get("ownership") is not None:
+            mc.validate_ownership(ent["ownership"], subject=f"{elabel} ownership")
         for sub in ("attributes", "relationships", "views"):
             _require_list(ent, sub, elabel)
         for attr in _as_list(ent.get("attributes")):
