@@ -100,6 +100,21 @@ def _metadata_set_hint(entity_set: str) -> str | None:
     return None
 
 
+def _dupe_key_enrich(ctx: CLIContext, entity_set: str, payload):
+    """`enrich(exc)` for entity create/update: on an alternate-key duplicate
+    error, attach the alternate-key schema to `meta`. Self-gates on json mode so
+    the extra metadata GETs are skipped for human output (the when-to-pay
+    invariant), exactly as the hand-written `except` did."""
+    def _enrich(exc):
+        extra_meta = (
+            entity_mod.enrich_dupe_key(ctx.backend(), entity_set, payload,
+                                       code=entity_mod.ALT_KEY_ERROR_CODE)
+            if entity_mod.is_alternate_key_error(exc) and ctx.json_mode else None
+        )
+        return None, extra_meta
+    return _enrich
+
+
 @click.group("entity")
 def entity_group():
     """Record CRUD against entity sets (accounts, contacts, ...)."""
@@ -265,20 +280,13 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
         if result_warnings is None:
             return
         validate_warnings = result_warnings
-    try:
+    with d365_errors(ctx, warnings=validate_warnings or None,
+                     enrich=_dupe_key_enrich(ctx, entity_set, payload)):
         result = entity_mod.create(
             ctx.backend(), entity_set, payload,
             return_record=return_record,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        extra_meta = (
-            entity_mod.enrich_dupe_key(ctx.backend(), entity_set, payload,
-                                       code=entity_mod.ALT_KEY_ERROR_CODE)
-            if entity_mod.is_alternate_key_error(exc) and ctx.json_mode else None
-        )
-        _handle_d365_error(ctx, exc, extra_meta=extra_meta, warnings=validate_warnings or None)
-        return
     display = result
     if return_record and isinstance(result, dict):
         # Surface the normalized id alongside the full returned record (ADR 0008).
@@ -414,7 +422,8 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
     payload = _load_payload(data_json, data_file)
     if validate and _validate_or_emit(ctx, entity_set, payload) is None:
         return
-    try:
+    with d365_errors(ctx, hint=_metadata_set_hint(entity_set),
+                     enrich=_dupe_key_enrich(ctx, entity_set, payload)):
         result = entity_mod.update(
             ctx.backend(), entity_set, record_id, payload,
             prevent_create=not allow_create,
@@ -422,14 +431,6 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
             if_match=if_match,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        extra_meta = (
-            entity_mod.enrich_dupe_key(ctx.backend(), entity_set, payload,
-                                       code=entity_mod.ALT_KEY_ERROR_CODE)
-            if entity_mod.is_alternate_key_error(exc) and ctx.json_mode else None
-        )
-        _handle_d365_error(ctx, exc, hint=_metadata_set_hint(entity_set), extra_meta=extra_meta)
-        return
     # Normal path: `result` carries `_entity_id` from the OData-EntityId header.
     # Fallback (empty 204, no header) uses the same normalized id keys, not a bare
     # `id`, so every write verb agrees on the id shape (ADR 0008 / #303).
@@ -513,24 +514,24 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
                   as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """DELETE a record."""
     _confirm_destructive(ctx, "record", f"{entity_set}({record_id})", yes)
-    try:
-        result = entity_mod.delete(
-            ctx.backend(), entity_set, record_id,
-            if_match=if_match,
-            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
-        )
-    except D365Error as exc:
+
+    def _enrich(exc):
         # 0x80045004 is the workflow-specific 'cannot delete a workflow
         # activation' rejection. Gate the lazy workflow import on this exact
         # code so unrelated deletes (incl. common 404s) never pay the import
         # cost or the resolver's extra GET. The literal mirrors
         # workflow.ACTIVATION_DELETE_ERROR_CODE (a fixed D365 server code).
-        hint = None
         if exc.code == "0x80045004":
             from crm.core import workflow as workflow_mod
-            hint = workflow_mod.activation_delete_hint(ctx.backend(), record_id, exc)
-        _handle_d365_error(ctx, exc, hint=hint)
-        return
+            return workflow_mod.activation_delete_hint(ctx.backend(), record_id, exc), None
+        return None, None
+
+    with d365_errors(ctx, enrich=_enrich):
+        result = entity_mod.delete(
+            ctx.backend(), entity_set, record_id,
+            if_match=if_match,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
+        )
     ctx.emit(True, data=result)
     _journal(ctx, entity_set, result)
 

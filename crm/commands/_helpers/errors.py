@@ -2,10 +2,15 @@
 # pyright: basic
 from __future__ import annotations
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from crm.cli import CLIContext
     from crm.utils.d365_backend import D365Error
+
+
+# The pure-error envelope keys, always built from the raw D365Error first. An
+# enrich(exc) callback's extra_meta is additive only — it may not name these.
+_RESERVED_META_KEYS = frozenset({"status", "code", "category", "retryable"})
 
 
 def _handle_d365_error(
@@ -44,30 +49,54 @@ def _handle_d365_error(
     if hint and ctx.json_mode:
         meta["hint"] = hint
     if extra_meta:
+        # The pure error ({status, code, category, retryable}) is reserved: an
+        # enrich(exc) callback is strictly additive and can never overwrite it.
+        # Naming a reserved key is a programming error (mirrors
+        # xml_edit.commit_xml_patches' read_back-without-publish guard).
+        collision = _RESERVED_META_KEYS & extra_meta.keys()
+        if collision:
+            raise ValueError(
+                f"extra_meta may not overwrite reserved error keys: "
+                f"{sorted(collision)}"
+            )
         meta.update(extra_meta)
     message = f"{exc}\nHint: {hint}" if hint else str(exc)
     ctx.emit(False, error=message, meta=meta, warnings=warnings)
 
 
 @contextmanager
-def d365_errors(ctx: "CLIContext", *, hint: str | None = None,
-                warnings: list[str] | None = None):
+def d365_errors(
+    ctx: "CLIContext", *, hint: str | None = None,
+    warnings: list[str] | None = None,
+    enrich: Callable[[D365Error], tuple[str | None, dict | None]] | None = None,
+):
     """Translate a `D365Error` from a single fallible core call into the standard
     failure envelope — the boilerplate that wrapped ~130 verbs by hand (#264).
 
     Wrap exactly one core call; a verb with two sequential core calls gets two
     `with` blocks. On `D365Error` it routes through `_handle_d365_error`, which
     emits `ok=False` and raises `Exit(1)` — so control never falls through the
-    block on error and the call site needs no `except ...: return`. Carries only
-    a STATIC `hint`/`warnings` (known before the call); a site that derives the
-    hint or `extra_meta` FROM the caught exception (entity dup-key enrichment,
-    workflow/entity activation hints) keeps its hand-written `try/except`.
+    block on error and the call site needs no `except ...: return`.
+
+    `hint`/`warnings` are STATIC (known before the call). `enrich(exc)` derives a
+    hint and/or extra `meta` FROM the caught exception — returning `(hint, meta)`,
+    either of which may be `None`. It is **strictly additive**: the pure error
+    envelope is always built first and `meta` may not name a reserved key (see
+    `_handle_d365_error`). The seam calls `enrich` unconditionally and is
+    mode-agnostic — expensive enrichment (extra GETs) self-gates on
+    `ctx.json_mode` inside the callback, exactly as the hand-written sites did.
+    A derived hint (when non-None) wins over the static `hint=`.
     """
     from crm.utils.d365_backend import D365Error
     try:
         yield
     except D365Error as exc:
-        _handle_d365_error(ctx, exc, hint=hint, warnings=warnings)
+        e_hint, e_meta = enrich(exc) if enrich else (None, None)
+        _handle_d365_error(
+            ctx, exc,
+            hint=e_hint if e_hint is not None else hint,
+            extra_meta=e_meta, warnings=warnings,
+        )
 
 
 def _auth_error_hint(status: int | None, profile_name: str) -> str:
