@@ -23,7 +23,8 @@ from crm.utils.d365_backend import D365Error
 # We never bundle or auto-download pac; point the user at the install path.
 _PAC_HINT = (
     "Install the Power Platform CLI (pac) — e.g. `dotnet tool install --global "
-    "Microsoft.PowerApps.CLI.Tool` — then pass --pac-path or set CRM_PAC."
+    "Microsoft.PowerApps.CLI.Tool` (requires .NET SDK) — then pass --pac-path "
+    "or set CRM_PAC."
 )
 
 # pac is chatty (one line per component); keep only the tail so the emitted
