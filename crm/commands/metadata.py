@@ -298,24 +298,25 @@ def metadata_describe(ctx: CLIContext, logical_name):
     status attributes carry inline `{value, label}` options, and a picklist bound
     to a global option set also carries its `global_optionset_id` GUID. Read-only.
     """
-    try:
+    def _enrich(exc):
+        # On a 404, suggest the closest logical name (a passed entity-set name is
+        # the common miss). Derived together so the hint and the did_you_mean meta
+        # always co-occur, exactly as the hand-written except did.
+        if exc.status != 404:
+            return None, None
+        suggestion = meta_mod.suggest_logical_name(ctx.backend(), logical_name)
+        if not suggestion:
+            return None, None
+        hint_text = (
+            f"`metadata describe` takes the logical name (singular), not the "
+            f"entity-set name. Did you mean `{suggestion['logical_name']}`?"
+            if suggestion["reason"] == "exact-set"
+            else f"Did you mean `{suggestion['logical_name']}`?"
+        )
+        return hint_text, {"did_you_mean": suggestion["logical_name"]}
+
+    with d365_errors(ctx, enrich=_enrich):
         brief = meta_mod.describe_entity(ctx.backend(), logical_name)
-    except D365Error as exc:
-        extra: dict | None = None
-        hint_text: str | None = None
-        if exc.status == 404:
-            suggestion = meta_mod.suggest_logical_name(ctx.backend(), logical_name)
-            if suggestion:
-                hint_text = (
-                    f"`metadata describe` takes the logical name (singular), not the "
-                    f"entity-set name. Did you mean `{suggestion['logical_name']}`?"
-                    if suggestion["reason"] == "exact-set"
-                    else f"Did you mean `{suggestion['logical_name']}`?"
-                )
-                extra = {"did_you_mean": suggestion["logical_name"]}
-        _handle_d365_error(ctx, exc, extra_meta=extra,
-                           hint=hint_text if extra else None)
-        return
     ctx.emit(True, data=brief, meta={
         "writable_attributes": len(brief["writable_attributes"]),
     })

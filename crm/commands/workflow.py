@@ -3,12 +3,10 @@
 from __future__ import annotations
 import click
 from crm.core import workflow as workflow_mod
-from crm.utils.d365_backend import D365Error
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _destructive_option,
     _confirm_destructive,
-    _handle_d365_error,
     _admin_header_options,
     _admin_kwargs,
     _journal,
@@ -115,6 +113,18 @@ def workflow_migration_assess(ctx: CLIContext, primary_entity):
     ctx.emit(True, data=items, meta=meta)
 
 
+def _activation_enrich(ctx: CLIContext, workflow_id):
+    """`enrich(exc)` for activate/deactivate: derive the activation-record hint
+    only for the code the state PATCH raises. Gating on the code keeps
+    `ctx.backend()` (cached after a successful PATCH) off the path where the
+    original error came from building the backend."""
+    def _enrich(exc):
+        hint = (workflow_mod.activation_record_hint(ctx.backend(), workflow_id, exc)
+                if exc.code == workflow_mod.ACTIVATION_PATCH_ERROR_CODE else None)
+        return hint, None
+    return _enrich
+
+
 @workflow_group.command("activate")
 @click.argument("workflow_id")
 @_admin_header_options
@@ -125,19 +135,11 @@ def workflow_activate(ctx: CLIContext, workflow_id, as_user, as_user_object_id, 
     An activation-record GUID (type=2) is resolved to its parent definition
     automatically and the state change is applied to the parent.
     """
-    try:
+    with d365_errors(ctx, enrich=_activation_enrich(ctx, workflow_id)):
         info = workflow_mod.set_workflow_state(
             ctx.backend(), workflow_id, activate=True,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        # Resolve the activation-record hint only for the code the PATCH raises;
-        # gating on the code keeps ctx.backend() (cached after a successful PATCH)
-        # off the path where the original error came from building the backend.
-        hint = (workflow_mod.activation_record_hint(ctx.backend(), workflow_id, exc)
-                if exc.code == workflow_mod.ACTIVATION_PATCH_ERROR_CODE else None)
-        _handle_d365_error(ctx, exc, hint=hint)
-        return
     ctx.emit(True, data=info, meta=_redirect_note_meta(info))
     _journal(ctx, workflow_id, info)
 
@@ -158,19 +160,11 @@ def workflow_deactivate(ctx: CLIContext, workflow_id, yes, as_user, as_user_obje
     _confirm_destructive(
         ctx, "workflow", workflow_id, yes,
         message=f"This will deactivate workflow {workflow_id!r} (statecode=0). Continue?")
-    try:
+    with d365_errors(ctx, enrich=_activation_enrich(ctx, workflow_id)):
         info = workflow_mod.set_workflow_state(
             ctx.backend(), workflow_id, activate=False,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    except D365Error as exc:
-        # Resolve the activation-record hint only for the code the PATCH raises;
-        # gating on the code keeps ctx.backend() (cached after a successful PATCH)
-        # off the path where the original error came from building the backend.
-        hint = (workflow_mod.activation_record_hint(ctx.backend(), workflow_id, exc)
-                if exc.code == workflow_mod.ACTIVATION_PATCH_ERROR_CODE else None)
-        _handle_d365_error(ctx, exc, hint=hint)
-        return
     ctx.emit(True, data=info, meta=_redirect_note_meta(info))
     _journal(ctx, workflow_id, info)
 
