@@ -50,49 +50,80 @@ def _mock_solution_create(m, backend, *, exists=False):
 
 
 def _mock_entity_create(m, backend, *, schema="contoso_Project", logical="contoso_project",
-                        exists=False, otc: "int | None" = 10112):
+                        exists=False, otc: "int | None" = 10112,
+                        display_name="Project", display_collection_name="Projects",
+                        ownership="UserOwned"):
     """Mock entity LogicalName GET + 204 create + readback.
 
-    The LogicalName GET serves a sequence: first call is the create-time existence
-    probe, a later call is the views phase resolving ObjectTypeCode. `otc=None`
+    For exists=False the LogicalName GET serves a sequence: the create-time
+    existence probe (404), then the views phase resolving ObjectTypeCode. For
+    exists=True a single full live definition serves every read — the existence
+    probe, the reconcile diff (entity_info), update_entity's merge read, and the
+    views OTC resolve — so a re-applied unchanged spec is a no-op. `otc=None`
     simulates an entity whose OTC is not yet readable (e.g. pre-publish greenfield).
     """
     ent_url = backend.url_for(f"EntityDefinitions({_ENT_ID})")
     record = {"LogicalName": logical, "SchemaName": schema, "EntitySetName": logical + "s"}
-    probe = {"json": record} if exists else {"status_code": 404}
-    otc_resp = {"json": {"ObjectTypeCode": otc} if otc is not None else {}}
-    m.get(backend.url_for(f"EntityDefinitions(LogicalName='{logical}')"), [probe, otc_resp])
+    name_url = backend.url_for(f"EntityDefinitions(LogicalName='{logical}')")
+    if exists:
+        live = {**record, "MetadataId": _ENT_ID, "OwnershipType": ownership,
+                "DisplayName": _label(display_name),
+                "DisplayCollectionName": _label(display_collection_name)}
+        if otc is not None:
+            live["ObjectTypeCode"] = otc
+        m.get(name_url, json=live)
+    else:
+        otc_resp = {"json": {"ObjectTypeCode": otc} if otc is not None else {}}
+        m.get(name_url, [{"status_code": 404}, otc_resp])
     m.post(backend.url_for("EntityDefinitions"), status_code=204,
            headers={"OData-EntityId": ent_url})
     m.get(ent_url, json=record)
 
 
-def _mock_optionset_create(m, backend, *, name="contoso_priority", exists=False):
+def _mock_optionset_create(m, backend, *, name="contoso_priority", exists=False,
+                           options=((100000000, "Low"), (100000001, "High"))):
     """Mock global option set Name-keyed GET + 204 create + readback.
 
-    The Name GET serves a sequence: first call is the create-time existence probe,
-    later calls are `_resolve_global_optionset_id` from a picklist attribute that
-    references this option set. Both return the MetadataId except a 404 on a
-    greenfield existence probe.
+    For exists=False the Name GET serves a sequence: the create-time existence
+    probe (404) then `_resolve_global_optionset_id` from a referencing picklist.
+    For exists=True a single full live definition (carrying live `Options`) serves
+    every read — the existence probe, the reconcile diff (get_optionset), the
+    picklist resolve, and the solution-component MetadataId read — so a spec whose
+    options already exist reconciles to a no-op. `options` are the live (value, label)s.
     """
     os_url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
     name_url = backend.url_for(f"GlobalOptionSetDefinitions(Name='{name}')")
-    resolved = {"json": {"Name": name, "MetadataId": _OS_ID}}
-    probe = resolved if exists else {"status_code": 404}
-    m.get(name_url, [probe, resolved])
+    full = {"Name": name, "MetadataId": _OS_ID, "IsCustomOptionSet": True,
+            "Options": [{"Value": v, "Label": _label(lbl)} for v, lbl in options]}
+    if exists:
+        m.get(name_url, json=full)
+    else:
+        m.get(name_url, [{"status_code": 404}, {"json": full}])
     m.post(backend.url_for("GlobalOptionSetDefinitions"), status_code=204,
            headers={"OData-EntityId": os_url})
-    m.get(os_url, json={"Name": name, "MetadataId": _OS_ID, "IsCustomOptionSet": True})
+    m.get(os_url, json=full)
 
 
 def _mock_attribute_create(m, backend, *, entity="contoso_project", logical, schema,
-                           attr_type="String", exists=False):
-    """Mock a non-lookup attribute existence GET + 204 create + readback."""
+                           attr_type="String", exists=False,
+                           display_name=None, max_length=100):
+    """Mock a non-lookup attribute existence GET + 204 create + readback.
+
+    For exists=True the un-cast probe URL carries @odata.type + DisplayName (so the
+    reconcile diff sees a column matching the spec → no-op), and string/memo kinds
+    also expose a typed cast GET carrying MaxLength. `display_name` defaults to the
+    schema's prefix-stripped tail (e.g. contoso_Code → "Code"), matching the spec."""
     attr_url = backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes({_ATTR_ID})")
     probe = backend.url_for(
         f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical}')")
     if exists:
-        m.get(probe, json={"LogicalName": logical, "SchemaName": schema, "AttributeType": attr_type})
+        cast = f"Microsoft.Dynamics.CRM.{attr_type}AttributeMetadata"
+        base = {"LogicalName": logical, "SchemaName": schema, "AttributeType": attr_type,
+                "@odata.type": "#" + cast, "MetadataId": _ATTR_ID,
+                "DisplayName": _label(display_name or schema.split("_", 1)[-1])}
+        m.get(probe, json=base)
+        if attr_type in ("String", "Memo"):
+            m.get(probe + "/" + cast, json={**base, "MaxLength": max_length})
     else:
         m.get(probe, status_code=404)
     m.post(backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes"),
@@ -889,17 +920,15 @@ class TestApplyIncludeReferencedOptionsets:
                   json={"value": [{"solutionid": self._SOL_GUID,
                                    "uniquename": "contoso_test",
                                    "ismanaged": False}]})
-            # GlobalOptionSetDefinitions(Name='contoso_tagset'): two calls.
-            # First: target_exists probe inside create_optionset
-            # Second: get_optionset call (plain GET)
-            # requests_mock matches base URL; use a response list to serve both.
+            # GlobalOptionSetDefinitions(Name='contoso_tagset'): a single full live
+            # definition serves the create-time probe, the reconcile diff, and the
+            # component-phase MetadataId read. Its live Options already contain the
+            # spec's option, so reconcile is a no-op skip and this test stays focused
+            # on the solution-component membership add.
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
-                [
-                    {"json": {"MetadataId": self._OS_META_ID, "Name": "contoso_tagset"}},
-                    {"json": {"MetadataId": self._OS_META_ID, "Name": "contoso_tagset",
-                              "Options": []}},
-                ],
+                json={"MetadataId": self._OS_META_ID, "Name": "contoso_tagset",
+                      "Options": [{"Value": 1, "Label": _label("Alpha")}]},
             )
             add = m.post(backend.url_for("AddSolutionComponent"), json={})
             m.post(backend.url_for("PublishAllXml"), status_code=204)
@@ -923,10 +952,12 @@ class TestApplyIncludeReferencedOptionsets:
                                    "uniquename": "contoso_test"}]})
             m.post(backend.url_for("solutions"), status_code=204,
                    headers={"OData-EntityId": backend.url_for(f"solutions({self._SOL_GUID})")})
-            # Optionset exists: create_optionset will skip it.
+            # Optionset exists with the spec's option already present: create_optionset
+            # skips it and reconcile is a no-op (no InsertOptionValue).
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
-                json={"MetadataId": self._OS_META_ID, "Name": "contoso_tagset"},
+                json={"MetadataId": self._OS_META_ID, "Name": "contoso_tagset",
+                      "Options": [{"Value": 1, "Label": _label("Alpha")}]},
             )
             # No AddSolutionComponent mock — if it fires, NoMockAddress fails the test.
             res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=False)
@@ -948,3 +979,312 @@ class TestApplyIncludeReferencedOptionsets:
             res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=True)
 
         assert any(e["kind"] == "solution-component" for e in res["planned"])
+
+
+# ── Convergent reconciliation: existing components are diffed, not blindly skipped ──
+#
+# These drive the apply_spec() seam (per project memory: assert returned buckets,
+# not internal differ calls). A builder reports {skipped, exists} for a live
+# component; apply_spec then reads it, diffs vs the spec, and routes it to
+# updated / skipped / replace_blocked.
+
+
+def _label(text):
+    return {
+        "UserLocalizedLabel": {"Label": text, "LanguageCode": 1033},
+        "LocalizedLabels": [{"Label": text, "LanguageCode": 1033}],
+    }
+
+
+def _mock_entity_live(m, backend, *, logical="contoso_project", schema="contoso_Project",
+                      display_name="Project", display_collection_name="Projects",
+                      description=None, ownership="UserOwned"):
+    """Mock an EXISTING entity. One GET matcher serves the full live definition for
+    every read (target_exists probe, entity_info, update_entity's merge read);
+    PUT 204 for the write."""
+    url = backend.url_for(f"EntityDefinitions(LogicalName='{logical}')")
+    live = {
+        "MetadataId": _ENT_ID, "LogicalName": logical, "SchemaName": schema,
+        "EntitySetName": logical + "s", "OwnershipType": ownership,
+        "DisplayName": _label(display_name),
+        "DisplayCollectionName": _label(display_collection_name),
+    }
+    if description is not None:
+        live["Description"] = _label(description)
+    m.get(url, json=live)
+    m.put(url, status_code=204)
+
+
+def test_apply_updates_entity_display_name_on_drift(backend):
+    # Live entity displays "Old Project"; spec wants "Project" → PATCH → updated.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Old Project")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["entity"]
+    assert res["applied"] == []
+    assert res["skipped"] == []
+    puts = [r for r in m.request_history if r.method == "PUT"]
+    assert len(puts) == 1
+
+
+def test_apply_blocks_entity_ownership_change(backend):
+    # Spec asks for OrganizationOwned; live entity is UserOwned. Ownership is
+    # immutable post-create → replace_blocked: reported, NO write, ok=false.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "ownership": "OrganizationOwned",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, ownership="UserOwned")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["entity"]
+    assert "reason" in res["replace_blocked"][0]
+    assert res["updated"] == []
+    assert res["applied"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+    assert len(_publish_hits(m, backend)) == 0
+
+
+def test_apply_entity_unchanged_is_skipped(backend):
+    # Live entity already matches the spec → no-op skipped (idempotent re-run).
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "display_collection_name": "Projects",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project", display_collection_name="Projects")
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["entity"]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_command_replace_blocked_exits_nonzero(backend, monkeypatch, tmp_path):
+    # The verb surfaces replace_blocked / updated / pruned buckets and exits 1
+    # when a component is replace-blocked.
+    import yaml
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "ownership": "OrganizationOwned",
+        "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}]}
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(yaml.safe_dump(spec))
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, ownership="UserOwned")
+        result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec_file)])
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert [e["kind"] for e in payload["data"]["replace_blocked"]] == ["entity"]
+    assert "updated" in payload["data"] and "pruned" in payload["data"]
+
+
+def _mock_attribute_live(m, backend, *, entity="contoso_project", logical, schema,
+                         cast="Microsoft.Dynamics.CRM.StringAttributeMetadata",
+                         display_name="Code", description=None,
+                         required="None", max_length=None):
+    """Mock an EXISTING attribute. The un-cast base GET (target_exists probe,
+    attribute_info, update_attribute's type-discovery read) carries @odata.type +
+    base props; the typed cast GET carries MaxLength and serves update_attribute's
+    merge read. PUT 204 to the cast path."""
+    base_url = backend.url_for(
+        f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{logical}')")
+    base = {
+        "MetadataId": _ATTR_ID, "LogicalName": logical, "SchemaName": schema,
+        "@odata.type": "#" + cast,
+        "DisplayName": _label(display_name),
+        "RequiredLevel": {"Value": required},
+    }
+    if description is not None:
+        base["Description"] = _label(description)
+    m.get(base_url, json=base)
+    cast_url = base_url + "/" + cast
+    typed = dict(base)
+    if max_length is not None:
+        typed["MaxLength"] = max_length
+    m.get(cast_url, json=typed)
+    m.put(cast_url, status_code=204)
+
+
+def _attr_spec(attr):
+    """A minimal spec: one existing entity (no-op) carrying one attribute."""
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "attributes": [attr],
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    return {"entities": [ent]}
+
+
+def test_apply_updates_attribute_required_level_on_drift(backend):
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "required": "ApplicationRequired"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Code", required="None")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["attribute"]
+    assert _kinds(res["skipped"]) == ["entity"]
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+
+
+def test_apply_grows_string_max_length(backend):
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "max_length": 200}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Code", max_length=100)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["attribute"]
+
+
+def test_apply_does_not_shrink_string_max_length(backend):
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "max_length": 50}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Code", max_length=100)
+        res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is True
+    assert "attribute" in _kinds(res["skipped"])
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_blocks_attribute_datatype_change(backend):
+    # Spec declares a string column; live column is an integer → replace_blocked.
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             cast="Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["attribute"]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+    assert len(_publish_hits(m, backend)) == 0
+
+
+def _mock_optionset_live(m, backend, *, name="contoso_priority", options):
+    """Mock an EXISTING global option set. One GET serves the target_exists probe
+    and get_optionset (full def with live Options); InsertOptionValue 204 for adds.
+    `options` is a list of (value, label) currently live."""
+    url = backend.url_for(f"GlobalOptionSetDefinitions(Name='{name}')")
+    live = {"Name": name, "MetadataId": _OS_ID,
+            "Options": [{"Value": v, "Label": _label(lbl)} for v, lbl in options]}
+    m.get(url, json=live)
+    m.post(backend.url_for("InsertOptionValue"), json={})
+
+
+def test_apply_adds_new_options_to_existing_optionset(backend):
+    os_spec = {"name": "contoso_priority", "display_name": "Priority",
+               "options": [{"value": 100000000, "label": "Low"},
+                           {"value": 100000001, "label": "High"},
+                           {"value": 100000002, "label": "Critical"}]}
+    spec = {"optionsets": [os_spec]}
+    with requests_mock.Mocker() as m:
+        _mock_optionset_live(m, backend, options=[(100000000, "Low"), (100000001, "High")])
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["optionset"]
+    inserts = [r for r in m.request_history if r.url.endswith("InsertOptionValue")]
+    assert len(inserts) == 1  # only the new "Critical" option, not the two existing
+
+
+def test_apply_optionset_unchanged_is_skipped(backend):
+    os_spec = {"name": "contoso_priority", "display_name": "Priority",
+               "options": [{"value": 100000000, "label": "Low"}]}
+    spec = {"optionsets": [os_spec]}
+    with requests_mock.Mocker() as m:
+        _mock_optionset_live(m, backend, options=[(100000000, "Low")])
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["optionset"]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.url.endswith("InsertOptionValue")] == []
+
+
+def test_apply_partial_replace_block_leaves_rest_applied(backend):
+    # Entity display drifts (updatable); its attribute is retyped (replace-blocked).
+    # The entity update lands; the attribute is reported, not written; ok=false.
+    # No whole-run rollback — the entity PATCH is not undone.
+    ent = {"schema_name": "contoso_Project", "display_name": "Renamed Project",
+           "attributes": [{"kind": "string", "schema_name": "contoso_Code",
+                           "display_name": "Code"}],
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")  # drift → update
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             cast="Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["updated"]) == ["entity"]
+    assert _kinds(res["replace_blocked"]) == ["attribute"]
+    # Entity PATCH happened (one PUT to the entity definition).
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+    # A failed run is not published.
+    assert len(_publish_hits(m, backend)) == 0
+
+
+def test_apply_stage_only_defers_publish_on_update(backend):
+    ent = {"schema_name": "contoso_Project", "display_name": "Renamed",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        res = apply_mod.apply_spec(backend, spec, stage_only=True)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["entity"]
+    assert res["staged"] is True
+    assert len(_publish_hits(m, backend)) == 0
+
+
+def test_apply_command_human_mode_renders_updated_bucket(backend, monkeypatch, tmp_path):
+    # ok=True human output renders the data dict — the new `updated` bucket shows.
+    import yaml
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "Renamed",
+                          "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}]}
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(yaml.safe_dump(spec))
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])  # no --json
+    assert result.exit_code == 0, result.output
+    assert "updated" in result.output
+
+
+def test_apply_command_human_mode_shows_replace_blocked_reason(backend, monkeypatch, tmp_path):
+    # ok=False human output prints the refusal reason (not a bare "Operation failed").
+    import yaml
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "Project",
+                          "ownership": "OrganizationOwned",
+                          "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}]}
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(yaml.safe_dump(spec))
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, ownership="UserOwned")
+        result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])  # no --json
+    assert result.exit_code == 1
+    assert "ownership change" in result.output

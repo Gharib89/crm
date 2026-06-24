@@ -52,7 +52,17 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
             ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only,
             include_referenced_optionsets=include_referenced_optionsets)
 
-    data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
-    ctx.emit(res["ok"], data=data, meta={"staged": res["staged"]})
+    data = {k: res[k] for k in (
+        "applied", "updated", "skipped", "replace_blocked", "pruned", "planned", "failed")}
+    # On ok=False the human path prints only `error` (not the data buckets), so
+    # summarize the replace-blocked components there — otherwise a human running
+    # `crm apply` would see "Operation failed" with no reason. JSON carries the
+    # full buckets regardless.
+    error = None
+    if res["replace_blocked"]:
+        error = "refused (no write) — " + "; ".join(
+            f"{e['kind']} {e['name']}: {e.get('reason', 'destructive divergence')}"
+            for e in res["replace_blocked"])
+    ctx.emit(res["ok"], data=data, error=error, meta={"staged": res["staged"]})
     if res["ok"]:
         _journal(ctx, spec_file, data)
