@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.30.0 (2026-06-24)
+
+### Documentation
+
+- Add ADR 0013 + Provenance wall term for on-prem workflow xaml editing
+  ([`73189b5`](https://github.com/Gharib89/crm/commit/73189b58ce944a16d876dba827fafda0efd4dc41))
+
+- Add workflow create/update feasibility spec
+  ([`bb63a73`](https://github.com/Gharib89/crm/commit/bb63a7351c66b6663d2997acba4ea5cee1352e9c))
+
+- Enrich workflow feasibility spec with deep-research findings
+  ([`0153878`](https://github.com/Gharib89/crm/commit/01538781f0c631963c33cb648185c7aa55598398))
+
+- **context**: Add Failure enrichment term to the CLI contract
+  ([`218a5fd`](https://github.com/Gharib89/crm/commit/218a5fd21c09b524c96604e1f86096f1a988a798))
+
+### Features
+
+- Add `workflow update` for editing workflow metadata on both targets
+  ([#542](https://github.com/Gharib89/crm/pull/542),
+  [`ca9f371`](https://github.com/Gharib89/crm/commit/ca9f37146613bea9dc3f92976575689d035abd48))
+
+### Refactoring
+
+- Deepen d365_errors with an additive enrich(exc) callback
+  ([#533](https://github.com/Gharib89/crm/pull/533),
+  [`6d575b3`](https://github.com/Gharib89/crm/commit/6d575b35d1f137628490d82457e83c36d9d6414e))
+
+### Testing
+
+- Add live e2e coverage for workflow clone/import/delete
+  ([#534](https://github.com/Gharib89/crm/pull/534),
+  [`39c16e9`](https://github.com/Gharib89/crm/commit/39c16e960682311a1e78fb7a70088ddfba7c6bf7))
+
+- Add offline gate validating doc CLI examples against describe
+  ([#532](https://github.com/Gharib89/crm/pull/532),
+  [`b87f2d7`](https://github.com/Gharib89/crm/commit/b87f2d7d981335843c848abf1c5122cf96eb7dfd))
+
+
 ## v1.29.0 (2026-06-23)
 
 ### Documentation
