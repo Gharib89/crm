@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.30.1 (2026-06-24)
+
+### Bug Fixes
+
+- Note .NET SDK prereq in pac install hint
+  ([`1de97dd`](https://github.com/Gharib89/crm/commit/1de97dd91be498054112417b3276e620af272486))
+
+### Refactoring
+
+- De-duplicate four byte-identical helpers (#543) ([#546](https://github.com/Gharib89/crm/pull/546),
+  [`4f1a1a3`](https://github.com/Gharib89/crm/commit/4f1a1a34cc089eb637cbdb1dcd5042cf043d55c8))
+
+- Remove dead TypedDicts, REPL skin cruft, metadata leftovers
+  ([#545](https://github.com/Gharib89/crm/pull/545),
+  [`f88f0be`](https://github.com/Gharib89/crm/commit/f88f0be2b1179c2941ccc1c69a75f0997fd8167f))
+
+
 ## v1.30.0 (2026-06-24)
 
 ### Documentation
