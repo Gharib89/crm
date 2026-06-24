@@ -7,7 +7,8 @@ setup(
     long_description=open("README.md", encoding="utf-8").read() if __import__("os").path.exists("README.md") else "",
     long_description_content_type="text/markdown",
     author="Ahmed Gharib",
-    license="MIT",
+    license="PolyForm-Noncommercial-1.0.0",
+    license_files=["LICENSE"],
     python_requires=">=3.9",
     packages=find_packages(),
     package_data={
@@ -55,7 +56,7 @@ setup(
     },
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
+        "License :: Other/Proprietary License",
         "Operating System :: OS Independent",
         "Environment :: Console",
     ],

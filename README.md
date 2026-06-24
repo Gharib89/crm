@@ -495,3 +495,15 @@ See `D365.md` in the project root for the full SOP.
   cloud uses OAuth 2.0 client-credentials (secret) against the public cloud only.
 - Plugin / workflow source code deployment — use solution import for that.
 - Audit log / report execution — out of scope; can be added as an extension.
+
+## License
+
+Copyright 2026 Ahmed Gharib, Principal Advanced Analytics Engineer at ITWorx
+(ahmed.gharib@itworx.com).
+
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) — free to use,
+modify, and share for **noncommercial purposes** (personal, research, education,
+charity, government). This applies to the source **and** the released binaries.
+
+**Commercial use by any organization requires a separate written license from the
+copyright holder.** Contact ahmed.gharib@itworx.com to arrange one.
