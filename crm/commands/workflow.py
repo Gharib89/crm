@@ -47,6 +47,46 @@ class _WorkflowCategoryType(click.ParamType):
         )
 
 
+_SCOPE_NAMES = {
+    "user": 1,
+    "businessunit": 2,
+    "parentchildbusinessunits": 3,
+    "organization": 4,
+}
+
+_SCOPE_NAMES_LIST = ", ".join(_SCOPE_NAMES)
+
+
+class _WorkflowScopeType(click.ParamType):
+    name = "scope"
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, int):
+            resolved = value
+        else:
+            lower = str(value).strip().lower()
+            if lower in _SCOPE_NAMES:
+                resolved = _SCOPE_NAMES[lower]
+            else:
+                try:
+                    resolved = int(lower)
+                except (ValueError, TypeError):
+                    self.fail(
+                        f"{value!r} is not a valid scope. Use an integer (1–4) "
+                        f"or one of: {_SCOPE_NAMES_LIST}.",
+                        param,
+                        ctx,
+                    )
+        if resolved not in set(_SCOPE_NAMES.values()):
+            self.fail(
+                f"{value!r} is out of range — scope must be 1–4 "
+                f"(or one of: {_SCOPE_NAMES_LIST}).",
+                param,
+                ctx,
+            )
+        return resolved
+
+
 @click.group("workflow")
 def workflow_group():
     """List, activate, and trigger D365 workflows."""
@@ -206,6 +246,54 @@ def workflow_delete(ctx: CLIContext, workflow_id, yes,
     with d365_errors(ctx):
         info = workflow_mod.delete_workflow(
             ctx.backend(), workflow_id, resolved=target, **admin)
+    ctx.emit(True, data=info, meta=_redirect_note_meta(info))
+    _journal(ctx, workflow_id, info)
+
+
+@workflow_group.command("update")
+@click.argument("workflow_id")
+@click.option("--name", default=None, help="New display name.")
+@click.option("--scope", type=_WorkflowScopeType(), default=None,
+              help="Execution scope. Integer (1–4) or a name: "
+                   f"{_SCOPE_NAMES_LIST}.")
+@click.option("--on-demand/--no-on-demand", "on_demand", default=None,
+              help="Toggle whether the workflow can be run on demand.")
+@click.option("--on-create/--no-on-create", "trigger_on_create", default=None,
+              help="Toggle the trigger-on-create flag.")
+@click.option("--on-delete/--no-on-delete", "trigger_on_delete", default=None,
+              help="Toggle the trigger-on-delete flag.")
+@click.option("--on-update-attributes", "trigger_on_update_attributes", default=None,
+              help="Comma-separated attribute logical names that trigger the "
+                   "workflow on update. Pass an empty string to clear it "
+                   "(disables the on-update trigger).")
+@_admin_header_options
+@pass_ctx
+def workflow_update(ctx: CLIContext, workflow_id, name, scope, on_demand,
+                    trigger_on_create, trigger_on_delete, trigger_on_update_attributes,
+                    as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
+    """Edit a workflow definition's metadata (name, scope, triggers, on-demand).
+
+    Works on both targets — metadata edits are not provenance-gated. A published
+    (activated) definition is edited via an automatic deactivate -> edit ->
+    reactivate cycle; a draft is edited in place. An activation-record GUID
+    (type=2) resolves to its parent definition first. Only the fields you pass
+    are changed.
+    """
+    if all(v is None for v in (name, scope, on_demand, trigger_on_create,
+                               trigger_on_delete, trigger_on_update_attributes)):
+        raise click.UsageError(
+            "Pass at least one field to update: --name, --scope, "
+            "--on-demand/--no-on-demand, --on-create/--no-on-create, "
+            "--on-delete/--no-on-delete, or --on-update-attributes.")
+    with d365_errors(ctx):
+        info = workflow_mod.update_workflow(
+            ctx.backend(), workflow_id,
+            name=name, scope=scope, on_demand=on_demand,
+            trigger_on_create=trigger_on_create,
+            trigger_on_delete=trigger_on_delete,
+            trigger_on_update_attributes=trigger_on_update_attributes,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
+        )
     ctx.emit(True, data=info, meta=_redirect_note_meta(info))
     _journal(ctx, workflow_id, info)
 

@@ -434,6 +434,142 @@ def set_workflow_state(
 ACTIVATION_PATCH_ERROR_CODE = "0x80045003"
 # Server error code returned when a DELETE targets a type=2 activation row.
 ACTIVATION_DELETE_ERROR_CODE = "0x80045004"
+# Server error code returned when an edit targets a published (activated, type=1)
+# workflow definition. Editing it requires deactivate -> edit -> reactivate; a
+# draft (statecode=0) is patched in place. Verified live on agent-on-prem v9.1.
+PUBLISHED_DEFINITION_LOCK_CODE = "0x80045002"
+
+
+def update_workflow(
+    backend: D365Backend,
+    workflow_id: str,
+    *,
+    name: str | None = None,
+    scope: int | None = None,
+    on_demand: bool | None = None,
+    trigger_on_create: bool | None = None,
+    trigger_on_delete: bool | None = None,
+    trigger_on_update_attributes: str | None = None,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
+) -> dict[str, Any]:
+    """Edit a workflow definition's metadata (name, scope, triggers, on-demand).
+
+    Metadata edits are not provenance-gated, so this works on both targets
+    (on-prem and Dataverse cloud). Only the fields passed as non-None are
+    written — False / "" are real values (e.g. clear the on-update attribute
+    list with ``trigger_on_update_attributes=""``); None means leave alone.
+
+    A type=2 activation-record id resolves to its type=1 parent definition
+    (via `_resolve_parent_workflow_id`) before any edit. The edit is attempted
+    directly first; only a published (activated) definition — which the server
+    rejects with `0x80045002` — is driven through deactivate -> edit ->
+    reactivate, so a draft is never forced through an unnecessary state change.
+
+    The cycle is not atomic and is never reported as a full success when it was
+    not: if the metadata PATCH fails after deactivation the definition is left a
+    draft, and if reactivation fails the (already-applied) edit is reported with
+    the workflow left deactivated. Both raise a `D365Error` that preserves the
+    server `status`/`code`/`response_body`. Dry-run runs the live existence GET
+    and returns a preview (`{_dry_run, would_update, ...}`) without writing.
+    """
+    if not workflow_id:
+        raise D365Error("workflow_id is required.")
+    # Map each editable field to its `workflow` attribute logical name; keep only
+    # the ones passed (None means leave alone — False / "" are real values, e.g.
+    # clearing the on-update attribute list). "On update" is expressed entirely
+    # by `triggeronupdateattributelist`; there is no `triggeronupdate` column.
+    candidates: dict[str, Any] = {
+        "name": name,
+        "scope": scope,
+        "ondemand": on_demand,
+        "triggeroncreate": trigger_on_create,
+        "triggerondelete": trigger_on_delete,
+        "triggeronupdateattributelist": trigger_on_update_attributes,
+    }
+    changes = {field: value for field, value in candidates.items() if value is not None}
+    if not changes:
+        raise D365Error("No metadata fields to update were given.")
+
+    admin: dict[str, Any] = {
+        "caller_id": caller_id, "caller_object_id": caller_object_id,
+        "suppress_duplicate_detection": suppress_duplicate_detection,
+        "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
+    }
+
+    # Resolve a type=2 activation-record id to its type=1 parent before any edit.
+    parent = _resolve_parent_workflow_id(
+        backend, workflow_id,
+        caller_id=caller_id, caller_object_id=caller_object_id)
+    target_id = parent or workflow_id
+    resolved_from = workflow_id if parent else None
+
+    # Existence + state check. Runs live even under dry-run (reads-execute rule),
+    # so a missing id raises here before any write and the preview is real.
+    current = as_dict(backend.get(
+        f"workflows({target_id})",
+        params={"$select": "name,statecode"},
+        caller_id=caller_id, caller_object_id=caller_object_id,
+    ))
+    result_name = changes.get("name", current.get("name"))
+
+    if backend.dry_run:
+        return {
+            "_dry_run": True,
+            "would_update": changes,
+            "workflow_id": target_id,
+            # The resulting name (post-rename if --name was given), matching the
+            # live result's `name`; the current state is still visible via statecode.
+            "name": result_name,
+            "statecode": current.get("statecode"),
+            "resolved_from_activation_id": resolved_from,
+        }
+
+    def _patch_metadata() -> None:
+        backend.patch(f"workflows({target_id})", json_body=changes, etag="*", **admin)
+
+    def _result(deactivated: bool) -> dict[str, Any]:
+        return {
+            "workflow_id": target_id,
+            "name": result_name,
+            "updated": changes,
+            "deactivated": deactivated,
+            "resolved_from_activation_id": resolved_from,
+        }
+
+    # Prefer a direct edit (no state change). Only a published definition is
+    # rejected with the lock code; any other error propagates verbatim.
+    try:
+        _patch_metadata()
+    except D365Error as exc:
+        if exc.code != PUBLISHED_DEFINITION_LOCK_CODE:
+            raise
+    else:
+        return _result(deactivated=False)
+
+    # Published definition: deactivate, edit, reactivate.
+    set_workflow_state(backend, target_id, activate=False,
+                       auto_resolve_parent=False, **admin)
+    try:
+        _patch_metadata()
+    except D365Error as exc:
+        raise D365Error(
+            f"Workflow {target_id} was deactivated but the metadata update "
+            f"failed; it remains a draft (no rollback). {exc}",
+            status=exc.status, code=exc.code, response_body=exc.response_body,
+        ) from exc
+    try:
+        set_workflow_state(backend, target_id, activate=True,
+                           auto_resolve_parent=False, **admin)
+    except D365Error as exc:
+        raise D365Error(
+            f"Workflow {target_id} metadata was updated but reactivation "
+            f"failed; it remains deactivated (draft, no rollback). {exc}",
+            status=exc.status, code=exc.code, response_body=exc.response_body,
+        ) from exc
+    return _result(deactivated=True)
 
 
 def _resolve_parent_workflow_id(

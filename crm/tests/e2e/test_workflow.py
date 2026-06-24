@@ -3,7 +3,7 @@
 
 Covers: workflow list, workflow export, workflow migration-assess,
         workflow activate, workflow deactivate, workflow run,
-        workflow clone, workflow import, workflow delete.
+        workflow clone, workflow import, workflow delete, workflow update.
 
 `workflow run` is dispatch-only: it requires a pre-existing on-demand workflow,
 so the test resolves the no-op on-demand workflow seeded per ADR 0012 / #503 and
@@ -365,6 +365,64 @@ def test_workflow_clone_then_delete(backend, cli, unique, request):
     )
     gone_rows = gone.get("value", []) if isinstance(gone, dict) else []
     assert gone_rows == [], f"workflow still present after delete: {gone}"
+
+
+@covers("workflow update")
+def test_workflow_update_metadata(backend, cli, unique, request):
+    """Edit a workflow definition's metadata in place on both targets.
+
+    Clones a custom classic workflow as a draft (proven path, #534), edits its
+    name, scope, both trigger flags, the on-update attribute list, and the
+    on-demand flag via `workflow update`, then GET-confirms each change landed
+    with no state change (``deactivated`` False, ``statecode`` stays 0). A
+    finalizer deletes the clone, leaving the org clean.
+
+    The clone is never activated — deliberately, like ``test_workflow_clone_then
+    _delete``: activating a throwaway clone would leave undeletable type=2
+    activation residue (on-prem v9.1 keeps the activation copy after deactivate,
+    and an orphaned type=2 row has no Web API delete path, 0x80045004). The
+    activated deactivate -> edit -> reactivate cycle is covered offline
+    (test_workflow_update.py) and by the live activate/deactivate primitives
+    (test_workflow_activate_deactivate); the 0x80045002 published-edit lock that
+    triggers the cycle was confirmed live against agent-on-prem.
+    """
+    found = _find_custom_classic_workflow(backend)
+    if found is None:
+        pytest.skip(_CLONE_SKIP_MSG)
+    src_id, primary_entity = found
+
+    clone = cli([
+        "--json", "workflow", "clone", src_id,
+        "--to-entity", primary_entity, "--no-activate",
+        "--name", f"E2E-Update-{unique}",
+    ])
+    assert clone.returncode == 0, clone.stderr
+    new_id = str(json.loads(clone.stdout)["data"]["workflow_id"])
+    request.addfinalizer(lambda: _safe_delete(backend, f"workflows({new_id})"))
+
+    name_a = f"E2E-Update-A-{unique}"
+    edit = cli([
+        "--json", "workflow", "update", new_id,
+        "--name", name_a, "--scope", "organization",
+        "--no-on-create", "--no-on-delete",
+        "--on-update-attributes", "statecode", "--on-demand",
+    ])
+    assert edit.returncode == 0, edit.stderr
+    env = json.loads(edit.stdout)
+    assert env["ok"], env
+    assert env["data"]["deactivated"] is False, "a draft edits in place, no cycle"
+
+    row = backend.get(f"workflows({new_id})", params={"$select": (
+        "name,scope,ondemand,triggeroncreate,triggerondelete,"
+        "triggeronupdateattributelist,statecode"
+    )})
+    assert row["name"] == name_a, row
+    assert row["scope"] == 4, row  # organization
+    assert row["ondemand"] is True, row
+    assert row["triggeroncreate"] is False, row
+    assert row["triggerondelete"] is False, row
+    assert row["triggeronupdateattributelist"] == "statecode", row
+    assert row["statecode"] == 0, row  # never left draft
 
 
 @covers("workflow import")
