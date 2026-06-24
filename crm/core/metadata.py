@@ -831,11 +831,6 @@ def list_entity_definitions(backend: D365Backend) -> list[dict[str, str]]:
     return items
 
 
-def list_entity_names(backend: D365Backend) -> list[str]:
-    """Return entity logical names (backward-compat wrapper)."""
-    return [d["logical"] for d in list_entity_definitions(backend)]
-
-
 def list_entity_keys(backend: D365Backend, logical_name: str) -> list[dict[str, Any]]:
     """Return the alternate keys defined on `logical_name`.
 
