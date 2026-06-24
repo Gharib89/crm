@@ -169,7 +169,7 @@ _CANNED_FUNCTIONS = [
 class TestListActionsHumanTable:
     def test_columns_show_bound_and_return_type(self, monkeypatch):
         monkeypatch.setattr(
-            "crm.commands.metadata.list_actions", lambda backend: _CANNED_ACTIONS)
+            "crm.core.metadata.list_actions", lambda backend: _CANNED_ACTIONS)
         monkeypatch.setattr(CLIContext, "backend", lambda self: object())
         result = CliRunner().invoke(cli, ["metadata", "list-actions"])
         assert result.exit_code == 0, result.output
@@ -181,7 +181,7 @@ class TestListActionsHumanTable:
 class TestListFunctionsHumanTable:
     def test_columns_show_bound_composable_and_return_type(self, monkeypatch):
         monkeypatch.setattr(
-            "crm.commands.metadata.list_functions", lambda backend: _CANNED_FUNCTIONS)
+            "crm.core.metadata.list_functions", lambda backend: _CANNED_FUNCTIONS)
         monkeypatch.setattr(CLIContext, "backend", lambda self: object())
         result = CliRunner().invoke(cli, ["metadata", "list-functions"])
         assert result.exit_code == 0, result.output

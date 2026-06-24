@@ -22,28 +22,17 @@ from pathlib import Path
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
-_ITALIC = "\033[3m"
 _UNDERLINE = "\033[4m"
 
 # Brand colors
 _CYAN = "\033[38;5;80m"       # crm brand cyan
-_CYAN_BG = "\033[48;5;80m"
 _WHITE = "\033[97m"
 _GRAY = "\033[38;5;245m"
 _DARK_GRAY = "\033[38;5;240m"
 _LIGHT_GRAY = "\033[38;5;250m"
 
-# Software accent colors — each software gets a unique accent
-_ACCENT_COLORS = {
-    "gimp":        "\033[38;5;214m",   # warm orange
-    "blender":     "\033[38;5;208m",   # deep orange
-    "inkscape":    "\033[38;5;39m",    # bright blue
-    "audacity":    "\033[38;5;33m",    # navy blue
-    "libreoffice": "\033[38;5;40m",    # green
-    "obs_studio":  "\033[38;5;55m",    # purple
-    "kdenlive":    "\033[38;5;69m",    # slate blue
-    "shotcut":     "\033[38;5;35m",    # teal green
-}
+# Accent color — the CLI always runs as the single "d365" skin, which keyed
+# no software-specific accent, so the accent is always the default sky blue.
 _DEFAULT_ACCENT = "\033[38;5;75m"      # default sky blue
 
 # Status colors
@@ -69,11 +58,6 @@ _TL = "╭"
 _TR = "╮"
 _BL = "╰"
 _BR = "╯"
-_T_DOWN = "┬"
-_T_UP = "┴"
-_T_RIGHT = "├"
-_T_LEFT = "┤"
-_CROSS = "┼"
 
 
 def _strip_ansi(text: str) -> str:
@@ -122,8 +106,7 @@ class ReplSkin:
         self.software = software.lower().replace("-", "_")
         self.display_name = software.replace("_", " ").title()
         self.version = version
-        software_aliases = {"iterm2_ctl": "iterm2"}
-        self.skill_slug = software_aliases.get(self.software, self.software).replace("_", "-")
+        self.skill_slug = self.software.replace("_", "-")
         self.skill_id = "crm"
         self.skill_install_cmd = (
             f"npx skills add {_SKILL_SOURCE_REPO} --skill {self.skill_id} -g -y"
@@ -149,7 +132,7 @@ class ReplSkin:
             elif package_skill.is_file():
                 skill_path = str(package_skill)
         self.skill_path = skill_path
-        self.accent = _ACCENT_COLORS.get(self.software, _DEFAULT_ACCENT)
+        self.accent = _DEFAULT_ACCENT
 
         # History file
         if history_file is None:
@@ -283,7 +266,6 @@ class ReplSkin:
         Returns:
             list of (style, text) tuples for prompt_toolkit.
         """
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
         tokens = []
 
         tokens.append(("class:icon", "◆ "))
@@ -311,7 +293,7 @@ class ReplSkin:
         except ImportError:
             return None
 
-        accent_hex = _ANSI_256_TO_HEX.get(self.accent, "#5fafff")
+        accent_hex = "#5fafff"
 
         return Style.from_dict({
             "icon": "#5fdfdf bold",     # cyan brand color
@@ -381,39 +363,6 @@ class ReplSkin:
         lbl = self._c(_GRAY, f"  {label}:")
         val = self._c(_WHITE, f" {value}")
         print(f"{lbl}{val}")
-
-    def status_block(self, items: dict[str, str], title: str = ""):
-        """Print a block of status key-value pairs.
-
-        Args:
-            items: Dict of label -> value pairs.
-            title: Optional title for the block.
-        """
-        if title:
-            self.section(title)
-
-        max_key = max(len(k) for k in items) if items else 0
-        for label, value in items.items():
-            lbl = self._c(_GRAY, f"  {label:<{max_key}}")
-            val = self._c(_WHITE, f"  {value}")
-            print(f"{lbl}{val}")
-
-    def progress(self, current: int, total: int, label: str = ""):
-        """Print a simple progress indicator.
-
-        Args:
-            current: Current step number.
-            total: Total number of steps.
-            label: Optional label for the progress.
-        """
-        pct = int(current / total * 100) if total > 0 else 0
-        bar_width = 20
-        filled = int(bar_width * current / total) if total > 0 else 0
-        bar = "█" * filled + "░" * (bar_width - filled)
-        text = f"  {self._c(_CYAN, bar)} {self._c(_GRAY, f'{pct:3d}%')}"
-        if label:
-            text += f" {self._c(_LIGHT_GRAY, label)}"
-        print(text)
 
     # ── Table display ─────────────────────────────────────────────────
 
@@ -537,41 +486,3 @@ class ReplSkin:
         else:
             raw_prompt = self.prompt(project_name, modified, context)
             return input(raw_prompt).strip()
-
-    # ── Toolbar builder ───────────────────────────────────────────────
-
-    def bottom_toolbar(self, items: dict[str, str]):
-        """Create a bottom toolbar callback for prompt_toolkit.
-
-        Args:
-            items: Dict of label -> value pairs to show in toolbar.
-
-        Returns:
-            A callable that returns FormattedText for the toolbar.
-        """
-        def toolbar():
-            from prompt_toolkit.formatted_text import FormattedText
-            parts = []
-            for i, (k, v) in enumerate(items.items()):
-                if i > 0:
-                    parts.append(("class:bottom-toolbar.text", "  │  "))
-                parts.append(("class:bottom-toolbar.text", f" {k}: "))
-                parts.append(("class:bottom-toolbar", v))
-            return FormattedText(parts)
-        return toolbar
-
-
-# ── ANSI 256-color to hex mapping (for prompt_toolkit styles) ─────────
-
-_ANSI_256_TO_HEX = {
-    "\033[38;5;33m":  "#0087ff",  # audacity navy blue
-    "\033[38;5;35m":  "#00af5f",  # shotcut teal
-    "\033[38;5;39m":  "#00afff",  # inkscape bright blue
-    "\033[38;5;40m":  "#00d700",  # libreoffice green
-    "\033[38;5;55m":  "#5f00af",  # obs purple
-    "\033[38;5;69m":  "#5f87ff",  # kdenlive slate blue
-    "\033[38;5;75m":  "#5fafff",  # default sky blue
-    "\033[38;5;80m":  "#5fd7d7",  # brand cyan
-    "\033[38;5;208m": "#ff8700",  # blender deep orange
-    "\033[38;5;214m": "#ffaf00",  # gimp warm orange
-}

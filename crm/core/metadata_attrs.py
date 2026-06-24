@@ -20,7 +20,6 @@ from crm.core import metadata_cache
 from crm.core import metadata_constraints as mc
 from crm.core import references as ref_mod
 
-_NUMERIC_KINDS = {"integer", "bigint", "decimal", "double", "money"}  # pyright: ignore[reportUnusedVariable]
 # string/memo MaxLength defaults — the single source of truth for the pair
 # (scaffold imports it) so all three create paths default consistently when
 # max_length is omitted: scaffold shorthand, apply spec, add-attribute (#321).

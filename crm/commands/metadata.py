@@ -1352,15 +1352,12 @@ def metadata_create_mapping(ctx: CLIContext, relationship, source_attr, target_a
     _journal(ctx, relationship, info, solution=solution)
 
 
-from crm.core.metadata import list_actions, list_functions  # noqa: E402
-
-
 @metadata_group.command("list-actions")
 @pass_ctx
 def metadata_list_actions(ctx: CLIContext):
     """List OData actions advertised by the service ($metadata)."""
     with d365_errors(ctx):
-        items = list_actions(ctx.backend())
+        items = meta_mod.list_actions(ctx.backend())
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
@@ -1379,7 +1376,7 @@ def metadata_list_actions(ctx: CLIContext):
 def metadata_list_functions(ctx: CLIContext):
     """List OData functions advertised by the service ($metadata)."""
     with d365_errors(ctx):
-        items = list_functions(ctx.backend())
+        items = meta_mod.list_functions(ctx.backend())
     if ctx.json_mode:
         ctx.emit(True, data=items, meta={"count": len(items)})
         return
