@@ -28,6 +28,18 @@ client-side validation rejection, or a user-declined confirmation. Surfaces as
 `emit(ok=false)` and exit code `1`.
 _Avoid_: runtime error, command error, generic failure.
 
+**Failure enrichment**:
+Optional, additive detail a verb layers onto an operational failure — a fix-it
+`hint` (appended to the error text; mirrored to `meta.hint` under `--json`)
+and/or extra `meta` keys derived from the caught `D365Error`. The canonical
+envelope is *reserved*: `meta`'s `{status, code, category, retryable}` and the
+raw error text always come from the `D365Error` itself and can never be
+overwritten — the `d365_errors` seam raises if an enrichment names a reserved
+key. Enrichment that costs extra reads self-gates on `--json` at the caller (the
+*when-to-pay* gate), so the human render skips it. The alternate-key hint is one
+instance.
+_Avoid_: error detail, error context (name the specific enrichment).
+
 **Alternate-key hint**:
 A best-effort enrichment attached to an operational failure when a write hits
 the alternate-key uniqueness code `0x80060892`: the entity's alternate keys,
@@ -173,6 +185,8 @@ customization XML through a known grammar.
 ## Relationships
 
 - Every **operational failure** is an **emit envelope** with `ok=false` and exits `1`.
+- A **failure enrichment** only *adds* to an **operational failure** — it never
+  alters the reserved `{status, code, category, retryable}` or the raw error text.
 - A **usage error** is rejected by Click and exits `2`. Without `--json` it prints
   raw Click text; under `--json` the root group renders it as an `{ok: false, error}`
   envelope on stdout (still exit `2`, never `1`) — it does not flow through `emit`.
