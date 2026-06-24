@@ -449,7 +449,7 @@ one call. Write verbs new in 0.5.0:
 columns, option sets, relationships, views) from one declarative spec, in
 dependency order, publishing once at the end. It is **convergent**: a component
 that already exists is reconciled against the spec — left untouched when it
-matches (`skipped`), PATCHed in place when an allowed field drifts (`updated`),
+matches (`skipped`), updated in place when an allowed field drifts (`updated`),
 or refused with no write when the divergence would require a destructive
 drop-and-recreate (`replace_blocked`, `ok=false`, exit 1). The full envelope is
 `{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, failed}, meta:{staged}}`.

@@ -7,7 +7,8 @@ live definition, diff it against the desired entry, and classify into one of thr
 outcomes.
 
 - **equal** → no-op (counts as `skipped`; an unchanged re-apply is idempotent),
-- **updatable** → PATCH only the divergent fields the platform allows in place, and
+- **updatable** → update only the divergent fields the platform allows, in place
+  (a retrieve-merge-write PUT or option-set action — the Web API has no metadata PATCH), and
 - **immutable / destructive divergence** → **replace-blocked**: reported, **no write
   for that component**, the run ends `ok=false` (exit code `1`).
 
@@ -41,7 +42,7 @@ trade-off — exactly what an ADR is for.
 
 - **Per-component, no whole-run rollback.** A `replace_blocked` component is a *soft*
   outcome: it does not abort the run, so the components around it still reconcile
-  (an updatable entity in the same spec is still PATCHed). Metadata writes are not
+  (an updatable entity in the same spec is still updated in place). Metadata writes are not
   transactional, so the already-applied work stays applied and is reported per
   component — consistent with the pre-existing create-path behavior where the first
   hard error aborts the *remaining dependency-ordered* steps but never rolls back

@@ -1016,7 +1016,7 @@ def _mock_entity_live(m, backend, *, logical="contoso_project", schema="contoso_
 
 
 def test_apply_updates_entity_display_name_on_drift(backend):
-    # Live entity displays "Old Project"; spec wants "Project" → PATCH → updated.
+    # Live entity displays "Old Project"; spec wants "Project" → update → updated.
     ent = {"schema_name": "contoso_Project", "display_name": "Project",
            "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
     spec = {"entities": [ent]}
@@ -1076,7 +1076,7 @@ def test_apply_command_replace_blocked_exits_nonzero(backend, monkeypatch, tmp_p
         "ownership": "OrganizationOwned",
         "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}]}
     spec_file = tmp_path / "spec.yaml"
-    spec_file.write_text(yaml.safe_dump(spec))
+    spec_file.write_text(yaml.safe_dump(spec), encoding="utf-8")
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     with requests_mock.Mocker() as m:
         _mock_entity_live(m, backend, ownership="UserOwned")
@@ -1224,7 +1224,7 @@ def test_apply_optionset_unchanged_is_skipped(backend):
 def test_apply_partial_replace_block_leaves_rest_applied(backend):
     # Entity display drifts (updatable); its attribute is retyped (replace-blocked).
     # The entity update lands; the attribute is reported, not written; ok=false.
-    # No whole-run rollback — the entity PATCH is not undone.
+    # No whole-run rollback — the entity update is not undone.
     ent = {"schema_name": "contoso_Project", "display_name": "Renamed Project",
            "attributes": [{"kind": "string", "schema_name": "contoso_Code",
                            "display_name": "Code"}],
@@ -1239,7 +1239,7 @@ def test_apply_partial_replace_block_leaves_rest_applied(backend):
     assert res["ok"] is False
     assert _kinds(res["updated"]) == ["entity"]
     assert _kinds(res["replace_blocked"]) == ["attribute"]
-    # Entity PATCH happened (one PUT to the entity definition).
+    # Entity update happened (one PUT to the entity definition).
     assert len([r for r in m.request_history if r.method == "PUT"]) == 1
     # A failed run is not published.
     assert len(_publish_hits(m, backend)) == 0
@@ -1264,7 +1264,7 @@ def test_apply_command_human_mode_renders_updated_bucket(backend, monkeypatch, t
     spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "Renamed",
                           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}]}
     spec_file = tmp_path / "spec.yaml"
-    spec_file.write_text(yaml.safe_dump(spec))
+    spec_file.write_text(yaml.safe_dump(spec), encoding="utf-8")
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     with requests_mock.Mocker() as m:
         _mock_entity_live(m, backend, display_name="Project")
@@ -1281,7 +1281,7 @@ def test_apply_command_human_mode_shows_replace_blocked_reason(backend, monkeypa
                           "ownership": "OrganizationOwned",
                           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}]}
     spec_file = tmp_path / "spec.yaml"
-    spec_file.write_text(yaml.safe_dump(spec))
+    spec_file.write_text(yaml.safe_dump(spec), encoding="utf-8")
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     with requests_mock.Mocker() as m:
         _mock_entity_live(m, backend, ownership="UserOwned")

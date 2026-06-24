@@ -214,8 +214,9 @@ def _call(entry: Entry, fn: Callable[[], dict[str, Any]], failed: list[Entry]) -
 # When a create-builder reports a component already exists (if_exists='skip'),
 # apply does not blindly skip it: it reads the live definition, diffs it against
 # the desired spec, and routes the component to one of three buckets — `skipped`
-# (already matches; idempotent no-op), `updated` (in-place PATCH of the divergent
-# fields the platform allows), or `replace_blocked` (an immutable/destructive
+# (already matches; idempotent no-op), `updated` (in-place update of the divergent
+# fields the platform allows — a retrieve-merge-write PUT or option-set action, not
+# HTTP PATCH), or `replace_blocked` (an immutable/destructive
 # divergence that would need a drop-and-recreate — reported, NO write). A reconcile
 # returns `(bucket, entry)`; a D365Error during the read/update is a hard failure
 # that aborts the run (same contract as `_call`). See ADR 0014.

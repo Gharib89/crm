@@ -32,7 +32,7 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
     option sets, relationships, and views), driven in dependency order with
     PublishAllXml once at the end. apply is convergent: a component that already
     exists is reconciled against the spec — left untouched when it matches,
-    PATCHed in place when an allowed field drifts, or refused (no write) when the
+    updated in place when an allowed field drifts, or refused (no write) when the
     divergence would need a destructive drop-and-recreate (see ADR 0014). Emits
     {ok, data:{applied, updated, skipped, replace_blocked, pruned, planned,
     failed}, meta:{staged}}; a replace-blocked component makes ok=false (exit 1).

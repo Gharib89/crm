@@ -4,8 +4,8 @@ Stand up tables, columns, option sets, and views — declaratively or imperative
 Commands: top-level `apply`, `scaffold table`, `view create`, the `metadata create-*`
 and `update-*` verbs, and the publish flow. Flags/choices: `crm describe apply`,
 `crm <group> --help`. **To change existing schema:** re-apply the spec (`apply`
-reconciles matching components — equal → skip, updatable drift → PATCH, destructive
-divergence → refuse) or use the imperative `metadata update-attribute` /
+reconciles matching components — equal → skip, updatable drift → update in place,
+destructive divergence → refuse) or use the imperative `metadata update-attribute` /
 `update-entity` / `update-optionset` / `update-relationship` verbs.
 
 ## Declarative apply — `apply -f spec.yaml`
@@ -18,7 +18,7 @@ option sets → attributes → relationships → views) and **publishes once at 
 the spec, not blindly skipped. Three outcomes per component:
 
 - **equal** → `skipped` (idempotent re-apply, no write).
-- **updatable divergence** → PATCHed in place → counted in `updated`. Updatable:
+- **updatable divergence** → updated in place → counted in `updated`. Updatable:
   entity display name / display-collection name / description; attribute display
   name, description, required level, and string `max_length` growth; adding
   declared options to a global option set.

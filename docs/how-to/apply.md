@@ -10,8 +10,9 @@ relationships → views) and runs `PublishAllXml` **once** at the end.
 the spec rather than blindly skipped. Three outcomes per component:
 
 - **equal** — spec matches live definition → `skipped` (idempotent re-apply).
-- **updatable divergence** — an in-place-editable field drifted → PATCHed,
-  counted as `updated`. Updatable fields: entity display name / display-collection
+- **updatable divergence** — an in-place-editable field drifted → updated in place
+  (a retrieve-merge-write PUT or option-set action, not HTTP PATCH), counted as
+  `updated`. Updatable fields: entity display name / display-collection
   name / description; attribute display name, description, required level, and
   string `max_length` growth (shrinking is out of scope); adding declared options
   to a global option set.

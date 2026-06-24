@@ -72,7 +72,7 @@ def test_apply_reconciles_existing_attribute(cli, backend, ephemeral_entity, tmp
     in place, an unchanged re-apply is a no-op, and a data-type change is
     REPLACE-BLOCKED (reported, no write, ok=false, exit 1).
 
-    All three behaviors are target-agnostic — display/max-length PATCH and the
+    All three behaviors are target-agnostic — display/max-length updates and the
     refuse-on-retype guard work on both on-prem and cloud — so this runs on either
     live target. The attribute is cleaned up in a finalizer.
     """
