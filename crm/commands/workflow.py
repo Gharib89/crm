@@ -62,19 +62,29 @@ class _WorkflowScopeType(click.ParamType):
 
     def convert(self, value, param, ctx):
         if isinstance(value, int):
-            return value
-        lower = str(value).strip().lower()
-        if lower in _SCOPE_NAMES:
-            return _SCOPE_NAMES[lower]
-        try:
-            return int(lower)
-        except (ValueError, TypeError):
+            resolved = value
+        else:
+            lower = str(value).strip().lower()
+            if lower in _SCOPE_NAMES:
+                resolved = _SCOPE_NAMES[lower]
+            else:
+                try:
+                    resolved = int(lower)
+                except (ValueError, TypeError):
+                    self.fail(
+                        f"{value!r} is not a valid scope. Use an integer (1–4) "
+                        f"or one of: {_SCOPE_NAMES_LIST}.",
+                        param,
+                        ctx,
+                    )
+        if resolved not in set(_SCOPE_NAMES.values()):
             self.fail(
-                f"{value!r} is not a valid scope. Use an integer (1–4) or one "
-                f"of: {_SCOPE_NAMES_LIST}.",
+                f"{value!r} is out of range — scope must be 1–4 "
+                f"(or one of: {_SCOPE_NAMES_LIST}).",
                 param,
                 ctx,
             )
+        return resolved
 
 
 @click.group("workflow")

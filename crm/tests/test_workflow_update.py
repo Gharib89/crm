@@ -226,3 +226,13 @@ class TestUpdateCommand:
             "--profile", "t", "workflow", "update", _WF_ID, "--scope", "2"])
         assert result.exit_code == 0, result.output
         assert called["scope"] == 2
+
+    def test_command_rejects_out_of_range_scope(self, monkeypatch, tmp_path):
+        """--scope help says 1–4; an out-of-range integer is rejected at parse
+        time (exit 2), not deferred to a server error."""
+        from crm.cli import cli
+        self._seed_profile(monkeypatch, tmp_path)
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "workflow", "update", _WF_ID, "--scope", "99"])
+        assert result.exit_code == 2, result.output
+        assert "scope must be 1" in result.output.lower() or "out of range" in result.output.lower()
