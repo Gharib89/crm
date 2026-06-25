@@ -1,5 +1,11 @@
 # Skill Trial Plan — June 2026
 
+> **Formalized (2026-06-25, #571):** all eight trials below are now machine-runnable
+> task specs under `evals/skill/tasks/` (TRIAL-3 → `customizations-view-edit`,
+> TRIAL-7 → `records-validate-write`; the other six keep the `trial-` prefix). Run the
+> whole set with `python -m evals.skill.set_runner`. This document remains the design
+> record of the original manual trials.
+
 **Date:** 2026-06-10
 **CLI under trial:** `crm` v2.4.0 (release binary, SHA256-verified install; `~/.local/bin/crm`)
 **Skill under trial:** the bundled skill shipped inside the v2.4.0 binary, installed via `crm skill install --target claude --force` to `~/.claude/skills/crm/` — verified byte-identical to the repo tree at the assessed commit (`diff -rq` → `SKILL-IN-SYNC`).

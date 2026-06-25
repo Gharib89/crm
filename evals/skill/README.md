@@ -6,9 +6,11 @@ a task through an agent that has **only the installed skill + the `crm` binary +
 deterministic end-state predicate. Isolation is the validity keystone: if it leaks,
 the eval measures the repo, not the skill.
 
-This is the **tracer** (issue #570): the end-to-end skeleton on a single task. The
-broader workflow-per-domain task set (#571), the optional Claude `--analyze` pass
-(#572), and the both-targets baseline trend (#573) build on it.
+The end-to-end skeleton landed as the **tracer** (issue #570) on a single task;
+issue #571 broadened it into a **workflow-per-domain task set** (the `tasks/*.md`
+specs below) plus a **set runner** that runs the whole set against one target and
+reports an absolute pass-rate. Still to build on it: the optional Claude `--analyze`
+pass (#572) and the both-targets baseline trend (#573).
 
 This tree is **not shipped in the wheel** (excluded in `setup.py`) and is **not
 collected by the default `pytest` suite** (`testpaths = crm/tests`), so it never
@@ -23,8 +25,52 @@ blocks CI. Run it on demand.
 - `isolation.py` — provisions and **verifies** the isolated agent context.
 - `target.py` — live-target selection, reusing the e2e `D365_E2E_PROFILE` mechanism
   and the `D365_E2E_ALLOW_HOST` prod-host guard.
-- `runner.py` — orchestrates isolate → verify → seed → agent → score → cleanup.
-- `test_runner_smoke.py` — offline smoke tests (parse tasks + dry-run, no agent).
+- `runner.py` — orchestrates one task: isolate → verify → seed → agent → score → cleanup.
+- `set_runner.py` — runs the **whole set** against one target: target-gates each task
+  (skips off-target ones), scores the rest, reports per-task verdicts + pass-rate.
+- `test_runner_smoke.py` / `test_set_runner.py` — offline smoke tests (parse tasks,
+  dry-run isolation, and set-level gating/aggregation via a stub — no agent, no org).
+
+## Task set & domain coverage
+
+The set samples **executability** — does a skill-only agent carry each multi-command
+workflow to its declared end state? — across the skill's reference domains. (Skill
+*discoverability* is Machine A's job, #569, not re-proven here.) Each `tasks/*.md`
+is a multi-command workflow with a deterministic end-state predicate and cleanup.
+
+| reference domain | task(s) | target |
+|---|---|---|
+| records | `records-create-verify`, `records-validate-write`, `trial-bulk-load` | cloud, cloud, onprem |
+| metadata | `trial-global-optionset` | onprem |
+| customizations | `customizations-view-edit`, `trial-customization-workflow`, `trial-webresource-iterate` | cloud, onprem, onprem |
+| solutions | `trial-customization-workflow` (export), `trial-import-diagnosis` | onprem |
+| automation | `trial-process-state` | onprem |
+| security | `security-role-create` | cloud |
+| dup | `dup-rule-create` | cloud |
+| connectionrole | `connectionrole-create` | cloud |
+| fieldsec | `fieldsec-profile-create` | cloud |
+| feedback | `feedback-note-create` | cloud |
+| authoring | `authoring-chart-create` | cloud |
+
+The eight trials from `docs/research/2026-06-skill-trial-plan.md` are all formalized
+here (TRIAL-3 → `customizations-view-edit`, TRIAL-7 → `records-validate-write`; the
+other six keep the `trial-` prefix). On-prem trials are pinned `onprem` because they
+exercise a v9.1 quirk or seeded on-prem state, so a cloud run **skips** them (the
+on-prem leg is #573's union); the cloud tasks are the sample that runs on the
+cloud-ship routine's `agent-cloud` target.
+
+**Domains intentionally not sampled** (no contrived task is added just to tick a box):
+`setup` is local profile/connection management with no org-side end state;
+`troubleshooting` is diagnostic with no clean programmatic predicate — its qualitative
+scoring is the `--analyze` pass (#572), and `trial-import-diagnosis` already touches
+it; `customization-lifecycle` (publish/managed lifecycle) is exercised by the export
+and publish steps inside the customization trials; `workflow-xaml` is automation-
+adjacent and on-prem-heavy, sampled indirectly by `trial-process-state`.
+
+Two on-prem metadata trials (`trial-customization-workflow`, `trial-global-optionset`)
+create a custom table / global option set. The record-delete cleanup model cannot drop
+a *definition* (that needs `metadata delete-entity` / `delete-optionset`), so those
+leave definition residue the on-prem execution leg (#573) is responsible for clearing.
 
 ## Smoke test (offline, no agent, no org)
 
@@ -56,3 +102,25 @@ CRM_EVAL_AGENT_CMD='claude -p' \
 The runner prints a JSON result (`passed`, `reason`, `isolation_checks`, the captured
 `transcript`) and exits non-zero only on a scored failure. Cleanup runs
 unconditionally, so the org is left clean whether the task passed or failed.
+
+## Run the whole set against one target
+
+The set runner runs every `tasks/*.md` spec against the configured target, skips the
+tasks gated for the *other* target, scores the rest, and prints a per-task table plus
+the absolute pass-rate (`passed / (passed + failed)`; skips and errors excluded). It
+exits non-zero if any task failed its predicate or hit a harness error.
+
+```bash
+# Offline: parse + prove isolation for every task (no agent, no live org).
+python -m evals.skill.set_runner --dry-run
+
+# Live, against one target (cloud here; on-prem tasks are reported as skipped).
+D365_E2E_PROFILE=agent-cloud \
+D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com \
+CRM_EVAL_AGENT_CMD='claude -p' \
+    python -m evals.skill.set_runner          # add --json for the machine-readable result
+```
+
+The target is inferred from the profile's auth scheme (OAuth → cloud, NTLM → on-prem),
+exactly as for the single-task runner. Run it once per profile to get the both-targets
+union (#573 wires that into a periodic baseline trend).
