@@ -125,10 +125,12 @@ unconditionally, so the org is left clean whether the task passed or failed.
 `CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions'` drives headless Claude
 Code as the agent. `--dangerously-skip-permissions` lets the headless agent execute its
 tools (`Bash` to invoke `crm`, plus `Read`/`Skill` to load the skill) without an
-interactive approval — otherwise every `crm` call is gated and the task false-fails. It's
-safe here because the sandbox is the only blast radius (fresh `HOME`, work dir outside the
-repo, throwaway `CRM_HOME`); the analyzer command below stays bare `claude -p` (it reads
-stdin and emits text, no tools). The sandbox
+interactive approval — otherwise every `crm` call is gated and the task false-fails. The
+flag bypasses **all** approval, so the agent runs commands with your normal filesystem
+access: the harness withholds the routes to the repo/memory (`isolation.py`) but does
+**not** hard-sandbox the filesystem (containers/namespaces are out of tracer scope), so
+run it only against a throwaway target you're willing to let an agent drive. The analyzer
+command below stays bare `claude -p` (it reads stdin and emits text, no tools). The sandbox
 hands the agent a fresh `HOME`, so it can't see your real Claude Code login — the
 harness therefore copies **only** your credentials file
 (`~/.claude/.credentials.json`, or under `$CLAUDE_CONFIG_DIR` if you set it) into the

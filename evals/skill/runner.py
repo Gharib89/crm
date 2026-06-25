@@ -71,8 +71,9 @@ def _resolve_agent_cmd(agent_cmd: str | None) -> list[str]:
         raise RunError(
             "no agent command configured: pass --agent-cmd or set CRM_EVAL_AGENT_CMD "
             "(recommended: 'claude -p --dangerously-skip-permissions' for headless Claude "
-            "Code — the flag lets the agent execute tools without an interactive approval, "
-            "which the isolated sandbox makes safe). The agent reads the task prompt on stdin."
+            "Code — the flag lets the agent execute tools without an interactive approval; "
+            "it bypasses all approval, so run it only against a throwaway target). The agent "
+            "reads the task prompt on stdin."
         )
     return shlex.split(raw)
 
