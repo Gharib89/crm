@@ -43,6 +43,15 @@ def test_model_with_agent_cmd_is_rejected():
         build_agent_cmd("my-agent", "opus")
 
 
+def test_update_baseline_rejected_for_single_target(tmp_path, monkeypatch):
+    # The baseline trend is a both-targets concept; --update-baseline with a single
+    # target is rejected rather than silently doing nothing (issue #585 anti-footgun).
+    monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
+    with pytest.raises(FrontDoorError, match="both"):
+        run(target="cloud", update_baseline=True, out_dir=tmp_path,
+            run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+
+
 # --- target → runner routing (AC1) ---------------------------------------------------
 
 def test_target_both_routes_to_both_runner(tmp_path, monkeypatch):

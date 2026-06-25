@@ -100,6 +100,10 @@ def run(
     testable offline without an agent, a live org, or a real profile store.
     """
     resolved_cmd = build_agent_cmd(agent_cmd, model)  # fail fast before any I/O
+    if update_baseline and target != "both":
+        # The baseline trend is one row per target across a both-targets run; a single
+        # target has no trend to append. Reject rather than silently ignore the flag.
+        raise FrontDoorError("--update-baseline applies only to --target both")
 
     # Derive the cloud allow-host so the prod-host guard passes for the standing cloud
     # org without a hand-pasted env var. Only when cloud is in play and not preset.
@@ -161,21 +165,19 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--out", default=None, metavar="DIR",
                        help="directory for result.json + run.log (default: current dir)")
     set_runner.add_progress_flags(run_p)
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv)  # subparser is required → args.cmd is always "run"
 
-    if args.cmd == "run":
-        live = set_runner.want_progress(
-            quiet=args.quiet, progress=args.progress, isatty=sys.stderr.isatty()
+    live = set_runner.want_progress(
+        quiet=args.quiet, progress=args.progress, isatty=sys.stderr.isatty()
+    )
+    try:
+        return run(
+            target=args.target, model=args.model, agent_cmd=args.agent_cmd,
+            repeat=args.repeat, update_baseline=args.update_baseline,
+            out_dir=args.out, live=live,
         )
-        try:
-            return run(
-                target=args.target, model=args.model, agent_cmd=args.agent_cmd,
-                repeat=args.repeat, update_baseline=args.update_baseline,
-                out_dir=args.out, live=live,
-            )
-        except FrontDoorError as exc:
-            parser.error(str(exc))
-    return 2  # unreachable: subparser is required
+    except FrontDoorError as exc:
+        parser.error(str(exc))  # prints usage + message, exits 2
 
 
 if __name__ == "__main__":
