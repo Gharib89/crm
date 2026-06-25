@@ -29,6 +29,7 @@ If no suitable workflow exists, the test is skipped via ``pytest.skip``.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -423,6 +424,75 @@ def test_workflow_update_metadata(backend, cli, unique, request):
     assert row["triggerondelete"] is False, row
     assert row["triggeronupdateattributelist"] == "statecode", row
     assert row["statecode"] == 0, row  # never left draft
+
+
+@pytest.mark.requires_onprem
+@covers("workflow update")
+def test_workflow_update_xaml_onprem(backend, cli, unique, tmp_path, request):
+    """On-prem: replace a draft clone's step XAML wholesale via --xaml-file.
+
+    The XAML logic path is on-premises only and provenance-gated. We clone a
+    custom classic workflow (genuine designer XAML = valid provenance), capture
+    that XAML, and `workflow update --xaml-file` it back wholesale — the live
+    reference-validation runs against the entity's attribute set and the PATCH
+    is accepted. GET-confirms the xaml persisted; a finalizer deletes the clone.
+
+    The clone is never activated — deliberately, matching
+    ``test_workflow_update_metadata``: on-prem v9.1 keeps an undeletable type=2
+    activation copy after deactivate (0x80045004), so a throwaway activate ->
+    reactivate would orphan residue. The full deactivate -> PATCH -> reactivate
+    and rollback lifecycle is covered offline (test_workflow_update.py).
+    """
+    found = _find_custom_classic_workflow(backend)
+    if found is None:
+        pytest.skip(_CLONE_SKIP_MSG)
+    src_id, primary_entity = found
+
+    clone = cli([
+        "--json", "workflow", "clone", src_id,
+        "--to-entity", primary_entity, "--no-activate",
+        "--name", f"E2E-XamlUpd-{unique}",
+    ])
+    assert clone.returncode == 0, clone.stderr
+    new_id = str(json.loads(clone.stdout)["data"]["workflow_id"])
+    request.addfinalizer(lambda: _safe_delete(backend, f"workflows({new_id})"))
+
+    # Capture the clone's genuine designer XAML and re-apply it wholesale.
+    row = backend.get(f"workflows({new_id})", params={"$select": "xaml"})
+    xaml = row.get("xaml") if isinstance(row, dict) else None
+    assert xaml, f"clone has no xaml to replace: {row}"
+    xaml_file = str(tmp_path / "wf.xaml")
+    Path(xaml_file).write_text(xaml, encoding="utf-8")
+
+    edit = cli(["--json", "workflow", "update", new_id, "--xaml-file", xaml_file])
+    assert edit.returncode == 0, edit.stderr
+    env = json.loads(edit.stdout)
+    assert env["ok"], env
+    assert env["data"]["updated"] == {"xaml": True}, env
+    assert env["data"]["reactivated"] is False, "draft stays draft, no reactivate"
+
+    # GET-confirm the xaml persisted and the workflow is still a draft.
+    after = backend.get(f"workflows({new_id})", params={"$select": "xaml,statecode"})
+    assert isinstance(after, dict) and after.get("xaml"), after
+    assert after.get("statecode") == 0, after
+
+
+@pytest.mark.requires_cloud
+@covers("workflow update")
+def test_workflow_update_xaml_cloud_refuses(cli, tmp_path):
+    """Cloud: the XAML logic path refuses up front with the provenance wall and
+    performs no write — the cloud gate fires on auth_scheme before any read, so a
+    placeholder id is never dereferenced."""
+    xaml_file = str(tmp_path / "wf.xaml")
+    Path(xaml_file).write_text("<Activity />", encoding="utf-8")
+    placeholder = "11111111-1111-1111-1111-111111111111"
+    result = cli(["--json", "workflow", "update", placeholder, "--xaml-file", xaml_file],
+                 check=False)
+    assert result.returncode != 0, result.stdout
+    env = json.loads(result.stdout)
+    assert env["ok"] is False, env
+    msg = env["error"].lower()
+    assert "on-prem" in msg or "provenance" in msg, env
 
 
 @covers("workflow import")
