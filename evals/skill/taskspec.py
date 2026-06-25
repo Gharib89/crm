@@ -171,7 +171,8 @@ def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
     - ``row``: at least one row carries every ``field: value`` pair (string compare,
       so an absent key never matches);
     - ``row_suffix``: at least one row whose every ``field`` *ends with* the given
-      string (string compare). Publisher-prefix-agnostic — a global option set named
+      string (string compare; an absent key never matches, even an empty suffix).
+      Publisher-prefix-agnostic — a global option set named
       ``ag_maintenancepriority`` matches suffix ``maintenancepriority`` whatever the
       org's default publisher prefix is, so a correctly-created artifact isn't a false
       fail just because the prefix differs from the stock ``new_``.
@@ -196,8 +197,12 @@ def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
 
     if "row_suffix" in expect:
         want_suffix: dict[str, Any] = expect["row_suffix"]
+        # Require the key to be present (so an absent field never matches, even against
+        # an empty suffix) and skip non-mapping rows so a stray scalar can't crash the
+        # matcher — the endswith semantics are otherwise the suffix analogue of ``row``.
         if not any(
-            all(str(row.get(k)).endswith(str(v)) for k, v in want_suffix.items())
+            isinstance(row, dict)
+            and all(k in row and str(row[k]).endswith(str(v)) for k, v in want_suffix.items())
             for row in data
         ):
             return False, f"row_suffix: no row matched {want_suffix!r}"

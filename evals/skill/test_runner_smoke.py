@@ -101,6 +101,21 @@ def test_evaluate_expect_row_suffix_requires_all_fields_on_one_row():
     assert not evaluate_expect(data, {"row_suffix": {"Name": "priority", "State": "Unmanaged"}})[0]
 
 
+def test_evaluate_expect_row_suffix_absent_key_never_matches():
+    # An absent key must never match — including the empty-suffix edge case, where a
+    # naive `str(row.get(k)).endswith("")` would spuriously pass on a missing field.
+    assert not evaluate_expect([{"Other": "x"}], {"row_suffix": {"Name": ""}})[0]
+    assert not evaluate_expect([{"Other": "x"}], {"row_suffix": {"Name": "priority"}})[0]
+
+
+def test_evaluate_expect_row_suffix_ignores_non_mapping_rows():
+    # A non-dict row in the payload must be skipped, not crash the matcher; a later
+    # well-formed row can still satisfy it.
+    data = ["not a dict", {"Name": "ag_maintenancepriority"}]
+    assert evaluate_expect(data, {"row_suffix": {"Name": "maintenancepriority"}})[0]
+    assert not evaluate_expect(["not a dict"], {"row_suffix": {"Name": "x"}})[0]
+
+
 def test_parse_rejects_bad_row_suffix_shape(tmp_path):
     bad = tmp_path / "bad.md"
     bad.write_text(
