@@ -105,38 +105,49 @@ def run(
         # target has no trend to append. Reject rather than silently ignore the flag.
         raise FrontDoorError("--update-baseline applies only to --target both")
 
-    # Derive the cloud allow-host so the prod-host guard passes for the standing cloud
-    # org without a hand-pasted env var. Only when cloud is in play and not preset.
-    if target in ("cloud", "both") and not os.environ.get("D365_E2E_ALLOW_HOST"):
-        os.environ["D365_E2E_ALLOW_HOST"] = host_fn(PROFILE_BY_TARGET["cloud"])
-
     out = Path(out_dir) if out_dir is not None else Path.cwd()
     out.mkdir(parents=True, exist_ok=True)
     result_path = out / "result.json"
     log_path = out / "run.log"
 
-    with open(log_path, "w", encoding="utf-8") as logf:
-        # run.log always captures progress; the live terminal copy is gated separately.
-        tee = _Tee(logf, sys.stderr if live else None)
-        reporter = set_runner.StderrProgress(stream=tee)
-        if target == "both":
-            res = run_both_fn(both_runner.DEFAULT_PROFILES, repeat=repeat,
-                              agent_cmd=resolved_cmd, progress=reporter)
-            if update_baseline:
-                both_runner.append_baseline(
-                    both_runner.BASELINE, res.baseline_rows(today=_date.today().isoformat())
+    # Save/restore the env knobs we set so an in-process caller's environment is left
+    # untouched, matching both_runner.run_both's discipline (a leaked D365_E2E_PROFILE
+    # would mis-point a later call).
+    saved = {k: os.environ.get(k) for k in (target_mod.E2E_PROFILE_ENV, "D365_E2E_ALLOW_HOST")}
+    try:
+        # Derive the cloud allow-host so the prod-host guard passes for the standing cloud
+        # org without a hand-pasted env var. Only when cloud is in play and not preset.
+        if target in ("cloud", "both") and not os.environ.get("D365_E2E_ALLOW_HOST"):
+            os.environ["D365_E2E_ALLOW_HOST"] = host_fn(PROFILE_BY_TARGET["cloud"])
+
+        with open(log_path, "w", encoding="utf-8") as logf:
+            # run.log always captures progress; the live terminal copy is gated separately.
+            tee = _Tee(logf, sys.stderr if live else None)
+            reporter = set_runner.StderrProgress(stream=tee)
+            if target == "both":
+                res = run_both_fn(both_runner.DEFAULT_PROFILES, repeat=repeat,
+                                  agent_cmd=resolved_cmd, progress=reporter)
+                if update_baseline:
+                    both_runner.append_baseline(
+                        both_runner.BASELINE, res.baseline_rows(today=_date.today().isoformat())
+                    )
+                payload = res.to_dict()
+                exit_code = res.exit_code()
+            else:
+                # set_runner's per-task seeding reads D365_E2E_PROFILE; point it at the profile.
+                os.environ[target_mod.E2E_PROFILE_ENV] = PROFILE_BY_TARGET[target]
+                res = run_set_fn(active_target=target, repeat=repeat,
+                                 agent_cmd=resolved_cmd, progress=reporter)
+                payload = res.to_dict()
+                exit_code = (
+                    1 if any(o.status in (set_runner.FAIL, set_runner.ERROR) for o in res.outcomes) else 0
                 )
-            payload = res.to_dict()
-            exit_code = res.exit_code()
-        else:
-            # set_runner's per-task seeding reads D365_E2E_PROFILE; point it at the profile.
-            os.environ[target_mod.E2E_PROFILE_ENV] = PROFILE_BY_TARGET[target]
-            res = run_set_fn(active_target=target, repeat=repeat,
-                             agent_cmd=resolved_cmd, progress=reporter)
-            payload = res.to_dict()
-            exit_code = (
-                1 if any(o.status in (set_runner.FAIL, set_runner.ERROR) for o in res.outcomes) else 0
-            )
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
     result_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"result: {result_path.resolve()}")

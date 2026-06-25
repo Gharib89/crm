@@ -295,8 +295,12 @@ def run_set(
 
     def report(outcome: TaskOutcome, done: int) -> None:
         if progress is not None:
+            # A scored task is displayed and tallied under the active leg (an "either"
+            # task scored on cloud belongs to the cloud tally, not an "either" bucket);
+            # a skipped/errored task keeps its own gate target, which its reason explains.
+            shown = resolved if outcome.status in (PASS, FAIL) else outcome.target
             progress(ProgressEvent(
-                done=done, total=total, task_id=outcome.task_id, target=outcome.target,
+                done=done, total=total, task_id=outcome.task_id, target=shown or outcome.target,
                 status=outcome.status, reason=outcome.reason, runnable=runnable,
             ))
 
@@ -351,7 +355,7 @@ def run_set(
                 last_reason = result.reason
                 if progress is not None and repeat > 1:
                     progress(ProgressEvent(
-                        done=done, total=total, task_id=spec.id, target=spec.target,
+                        done=done, total=total, task_id=spec.id, target=resolved or spec.target,
                         trial=trial + 1, trials=repeat, runnable=runnable,
                     ))
             status = PASS if passes == repeat else FAIL

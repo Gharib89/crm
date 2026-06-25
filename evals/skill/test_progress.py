@@ -99,6 +99,54 @@ def test_stderr_progress_leg_header():
     assert "── onprem (agent-on-prem) ──  SKIPPED — unreachable (VPN down)" in out
 
 
+def _write_either_task(dir_path):
+    (dir_path / "either-task.md").write_text(
+        "---\n"
+        "id: either-task\n"
+        "domain: records\n"
+        "target: either\n"
+        "end_state:\n"
+        "  query: [query, odata, accounts, --select, name]\n"
+        "  expect:\n"
+        "    count: 1\n"
+        "cleanup: []\n"
+        "---\n\nDo a thing on whichever target is active.\n",
+        encoding="utf-8",
+    )
+
+
+def test_either_task_is_displayed_and_tallied_under_active_leg(tmp_path):
+    # An "either" task scored on the cloud leg must show and tally under (cloud), not
+    # the literal gate value "either" (Copilot round-1 finding): the per-target tally
+    # would otherwise split into a stray "either" bucket.
+    _write_either_task(tmp_path)
+    events: list[ProgressEvent] = []
+    run_set(tmp_path, active_target="cloud", run_one=_stub({"either-task": True}),
+            repeat=2, progress=events.append)
+    resolved = [e for e in events if e.status is not None]
+    assert [e.target for e in resolved] == ["cloud"]  # not "either"
+    trial_ticks = [e for e in events if e.status is None]
+    assert trial_ticks and all(e.target == "cloud" for e in trial_ticks)  # ticks too
+
+
+def test_skip_line_keeps_its_gate_target(tmp_path):
+    # A task skipped for being off-target keeps its own gate target in the line, since
+    # its reason is about that mismatch — only scored tasks fold into the active leg.
+    _write_either_task(tmp_path)
+    (tmp_path / "onprem-only.md").write_text(
+        "---\nid: onprem-only\ndomain: metadata\ntarget: onprem\n"
+        "end_state:\n  query: [query, odata, accounts, --select, name]\n  expect:\n    count: 1\n"
+        "cleanup: []\n---\n\nOn-prem only.\n",
+        encoding="utf-8",
+    )
+    events: list[ProgressEvent] = []
+    run_set(tmp_path, active_target="cloud", run_one=_stub({"either-task": True}),
+            progress=events.append)
+    by_id = {e.task_id: e for e in events if e.status is not None}
+    assert by_id["onprem-only"].status == "skip"
+    assert by_id["onprem-only"].target == "onprem"  # gate target, not the active leg
+
+
 def test_want_progress_gating():
     from evals.skill.set_runner import want_progress
 

@@ -101,15 +101,38 @@ def test_single_target_routes_to_set_runner(target, profile, tmp_path, monkeypat
 
 def test_cloud_allow_host_derived_from_profile(tmp_path, monkeypatch):
     monkeypatch.delenv("D365_E2E_ALLOW_HOST", raising=False)
-    monkeypatch.setattr(frontdoor.os, "environ", dict(__import__("os").environ))
+    seen = {}
 
     def fake_host(profile_name):
         assert profile_name == "agent-cloud"
         return "org.crm.dynamics.com"
 
+    def fake_set(*, active_target, repeat, agent_cmd, progress):
+        seen["allow_host"] = __import__("os").environ.get("D365_E2E_ALLOW_HOST")
+        return _set_result()
+
     run(target="cloud", out_dir=tmp_path, host_fn=fake_host,
-        run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
-    assert frontdoor.os.environ["D365_E2E_ALLOW_HOST"] == "org.crm.dynamics.com"
+        run_set_fn=fake_set, run_both_fn=lambda *a, **k: None)
+    # derived host is visible to the runner during the run...
+    assert seen["allow_host"] == "org.crm.dynamics.com"
+    # ...and restored (here: cleared) afterwards so an in-process caller isn't leaked into.
+    assert __import__("os").environ.get("D365_E2E_ALLOW_HOST") is None
+
+
+def test_single_target_restores_profile_env(tmp_path, monkeypatch):
+    # run() points D365_E2E_PROFILE at the profile during the run, then restores the
+    # caller's prior value (Copilot round-1 finding: no env leak to in-process callers).
+    monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
+    monkeypatch.setenv("D365_E2E_PROFILE", "sentinel")
+    seen = {}
+
+    def fake_set(*, active_target, repeat, agent_cmd, progress):
+        seen["during"] = __import__("os").environ.get("D365_E2E_PROFILE")
+        return _set_result()
+
+    run(target="cloud", out_dir=tmp_path, run_set_fn=fake_set, run_both_fn=lambda *a, **k: None)
+    assert seen["during"] == "agent-cloud"  # pointed at the profile during the run
+    assert __import__("os").environ["D365_E2E_PROFILE"] == "sentinel"  # restored after
 
 
 def test_existing_allow_host_is_not_overwritten(tmp_path, monkeypatch):
