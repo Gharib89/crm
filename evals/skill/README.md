@@ -10,7 +10,9 @@ The end-to-end skeleton landed as the **tracer** (issue #570) on a single task;
 issue #571 broadened it into a **workflow-per-domain task set** (the `tasks/*.md`
 specs below) plus a **set runner** that runs the whole set against one target and
 reports an absolute pass-rate; issue #572 added the optional Claude **`--analyze`
-pass** (see below). Still to build on it: the both-targets baseline trend (#573).
+pass** (see below); issue #573 added the **both-targets runner** that unions
+`agent-cloud` + `agent-on-prem` coverage, skips an unreachable target, and appends a
+periodic **baseline trend** (see below).
 
 This tree is **not shipped in the wheel** (excluded in `setup.py`) and is **not
 collected by the default `pytest` suite** (`testpaths = crm/tests`), so it never
@@ -25,14 +27,22 @@ blocks CI. Run it on demand.
 - `taskspec.py` — task parsing and the pure end-state predicate (`evaluate_expect`).
 - `isolation.py` — provisions and **verifies** the isolated agent context.
 - `target.py` — live-target selection, reusing the e2e `D365_E2E_PROFILE` mechanism
-  and the `D365_E2E_ALLOW_HOST` prod-host guard.
+  and the `D365_E2E_ALLOW_HOST` prod-host guard; plus `probe_reachable`, the
+  short-timeout reachability check that lets the both-targets runner skip a downed VPN.
 - `runner.py` — orchestrates one task: isolate → verify → seed → agent → score → cleanup.
 - `set_runner.py` — runs the **whole set** against one target: target-gates each task
   (skips off-target ones), scores the rest, reports per-task verdicts + pass-rate.
+  `--repeat N` runs each scored task N times to smooth variance (the pass-rate becomes a
+  fraction over all trials).
+- `both_runner.py` — runs the set against **both** targets, unions the coverage, skips an
+  unreachable one, and (`--update-baseline`) appends a dated per-target row to `baseline.md`.
+- `baseline.md` — the tracked effectiveness **trend**: one dated per-target pass-rate row
+  per periodic run, read by a human for drift (ADR 0015). Never a CI gate.
 - `analyze.py` — the optional Claude analysis pass (`build_analysis_prompt` +
   `run_analysis`), a seam unit-testable offline without invoking Claude.
-- `test_runner_smoke.py` / `test_set_runner.py` — offline smoke tests (parse tasks,
-  dry-run isolation, and set-level gating/aggregation via a stub — no agent, no org).
+- `test_runner_smoke.py` / `test_set_runner.py` / `test_target.py` / `test_both_runner.py`
+  — offline smoke tests (parse tasks, dry-run isolation, set-level gating/aggregation,
+  reachability classification, and both-targets orchestration via stubs — no agent, no org).
 
 ## Task set & domain coverage
 
@@ -144,8 +154,34 @@ CRM_EVAL_AGENT_CMD='claude -p' \
 ```
 
 The target is inferred from the profile's auth scheme (OAuth → cloud, NTLM → on-prem),
-exactly as for the single-task runner. Run it once per profile to get the both-targets
-union (#573 wires that into a periodic baseline trend).
+exactly as for the single-task runner. To run **both** targets in one go, see below.
+
+## Run both targets + the baseline trend (`both_runner`, #573)
+
+The both-targets runner loops the two standing profiles (`agent-cloud`, then
+`agent-on-prem`), runs the set against each **reachable** one, and reports coverage as the
+**union**. A target whose host does not answer (on-prem with the VPN down) is **skipped
+with a message**, never failed — so a cloud-only run still succeeds and lands its rows.
+`--repeat N` runs each task N times per target to smooth run-to-run variance.
+
+```bash
+# Both targets, 3 trials per task, append the dated rows to baseline.md:
+D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com \
+CRM_EVAL_AGENT_CMD='claude -p' \
+    python -m evals.skill.both_runner --repeat 3 --update-baseline   # --json for the raw result
+```
+
+Each profile is pointed at via `D365_E2E_PROFILE` internally (saved/restored, so your env
+is untouched); creds are read read-only from your real `CRM_HOME` and re-seeded per leg, as
+the single-target runner does. The exit code is non-zero only if a **reachable** target
+scored a failure/error — an unreachable target is a skip, not a failure.
+
+**`baseline.md` is the effectiveness trend.** `--update-baseline` appends one dated
+per-target row (pass-rate as a percentage **and** the raw `passing/total` trial fraction; a
+skipped target lands a `—` row whose `notes` say why). A human reads the trend for drift;
+**nothing here gates CI** and no threshold blocks anything (ADR 0015). The periodic cadence
+that fires this is wired as a scheduled routine — see
+[`docs/agents/skill-eval-routine.md`](../../docs/agents/skill-eval-routine.md).
 
 ## Optional Claude analysis pass (`--analyze`, #572)
 
