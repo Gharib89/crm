@@ -230,6 +230,36 @@ via the Web API — `deactivate` returns `0x80045002` (`Cannot update a publishe
 workflow definition`); deactivate it from the classic UI instead. `deactivate`
 works normally for classic workflows (category `0`).
 
+### Updating a workflow — metadata and XAML paths
+
+`workflow update <id>` has two distinct paths driven by whether `--xaml-file` is present:
+
+- **Metadata path** (no `--xaml-file`) — rename, change scope/triggers. Works on both
+  targets. Active workflows are auto-cycled (deactivate → edit → reactivate).
+- **XAML logic path** (`--xaml-file`) — whole-definition replace of the step XAML. **On-prem
+  only**. On Dataverse (cloud) the command refuses before any write with the provenance-wall
+  error (`0x80045040` / `0x80045041`) — there is no flag to override this; compose/edit XAML
+  on-prem or via the D365 UI, not through the CLI on cloud.
+
+The two paths are mutually exclusive — combining `--xaml-file` with any metadata flag is a
+usage error.
+
+XAML-path gotchas (not in `--help`):
+
+- **Whole replace, not a splice.** `--xaml-file` replaces the entire step-definition blob.
+  To target a single step, export first (`workflow export`), edit the XAML, then write back.
+- **Reference-validation runs live before writing.** The XAML is checked against the entity's
+  attribute set. Warnings land on `meta.warnings`; `--strict` turns any warning into a failure
+  and skips the write.
+- **Reactivation rollback.** The server's reactivate step is the only compile authority; if
+  it rejects the new XAML (any reactivation failure), the prior XAML is restored by default
+  (`--rollback`). Pass `--no-rollback` to leave the rejected XAML in place for inspection; the
+  workflow stays a draft.
+- **Provenance wall** (`0x80045040`/`0x80045041`). Even on-prem, the platform rejects XAML it
+  did not author; the CLI surfaces these as a clean error rather than a raw server fault.
+- **type=2 auto-resolved.** An activation-record GUID is resolved to the parent definition
+  on both paths.
+
 ### Migration readiness — `workflow migration-assess`
 
 Plans (does not perform) a move of classic category-0 workflows to Power

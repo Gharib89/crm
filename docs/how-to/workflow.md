@@ -107,6 +107,41 @@ Under `--dry-run` the resolution GETs still run live, and the preview reports wh
 {"ok": true, "data": {"_dry_run": true, "would_delete": "<definition-guid>", "would_deactivate": true, ...}}
 ```
 
+## Update a workflow definition
+
+### Update metadata (name, scope, triggers)
+
+```bash
+crm --json workflow update <workflow-guid> --name "New display name"
+crm --json workflow update <workflow-guid> --scope organization --on-demand
+crm --json workflow update <workflow-guid> --on-update-attributes name,telephone1
+```
+
+Only the fields you pass are changed. Works on both on-premises and cloud targets. When the workflow is active, the command automatically deactivates it, applies the change, then reactivates it. Pass only the flags you need — the metadata path and the XAML path (`--xaml-file`) are mutually exclusive.
+
+### Replace workflow step logic with a new XAML file (on-premises only)
+
+```bash
+crm --json workflow update <workflow-guid> --xaml-file ./updated-logic.xaml
+```
+
+Replaces the workflow's entire step definition. **On-premises only** — on Dataverse (cloud) the command refuses before making any write, citing the provenance wall. The XAML is validated against the entity's live attribute set before writing; warnings surface on `meta.warnings`.
+
+Options that apply only with `--xaml-file`:
+
+- `--strict` — promote any reference-validation warning to a hard failure; the write is skipped if any warning fires.
+- `--rollback` / `--no-rollback` — on reactivation failure, restore the prior XAML (default: `--rollback`). Use `--no-rollback` to leave the rejected XAML in place for inspection before deciding whether to fix or revert manually.
+
+```bash
+# Hard-fail on any validation warning
+crm --json workflow update <workflow-guid> --xaml-file ./updated-logic.xaml --strict
+
+# Inspect the rejected XAML if reactivation fails instead of rolling back
+crm --json workflow update <workflow-guid> --xaml-file ./updated-logic.xaml --no-rollback
+```
+
+If you pass an activation-record GUID (type=2), both paths resolve the parent definition first. The `--xaml-file` path does whole-definition replace — it is not a fragment or step splice. To compose new XAML, author it in the D365 designer first, then export and edit the XAML out-of-band before feeding it back here.
+
 ## Trigger an on-demand workflow against a record
 
 ```bash
