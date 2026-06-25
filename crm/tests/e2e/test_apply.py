@@ -312,7 +312,12 @@ def test_apply_plugin_assembly_type_step_lifecycle(
                 "message": message,
                 "entity": "account",
                 "plugin_type": asm.type_name,
+                "stage": "postoperation",
                 "rank": rank,
+                # A post-image is valid on a Create step in PostOperation, so the
+                # image declare/register/skip path is covered live too.
+                "images": [{"alias": "PostImage", "image_type": "post",
+                            "attributes": "name"}],
             }],
         }]}
         path = tmp_path / "plugin_spec.json"
@@ -341,6 +346,7 @@ def test_apply_plugin_assembly_type_step_lifecycle(
     assert ("plugin-assembly", asm.assembly_name) in applied, created["data"]
     assert ("plugin-type", asm.type_name) in applied, created["data"]
     assert ("plugin-step", step_name) in applied, created["data"]
+    assert ("plugin-image", "PostImage") in applied, created["data"]
 
     # 2. NO-OP: re-applying the unchanged spec converges to skips, no update.
     noop = json.loads(cli(["--json", "apply", "-f", _spec(rank=1, message="Create")]).stdout)
