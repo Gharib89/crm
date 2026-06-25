@@ -17,6 +17,7 @@ group need no new citation. The catalogue is obtained by reusing the e2e
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from pathlib import Path
 
 from crm.tests.e2e.coverage import walk_commands
@@ -93,8 +94,12 @@ def _parse_span(
     return group, pair
 
 
+@lru_cache(maxsize=1)
 def catalogue() -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
     """Reduce ``walk_commands`` into the sets the gate reconciles against.
+
+    Cached: the in-process CLI tree is static, and ``parse_citations`` /
+    the gate call this repeatedly — one lazy-loader walk suffices per run.
 
     Returns ``(top_level, groups, leaves)``:
 
