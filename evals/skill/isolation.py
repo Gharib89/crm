@@ -74,8 +74,8 @@ def _real_claude_config_dir() -> Path:
     the sandbox repoints ``HOME``."""
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     if override:
-        return Path(override)
-    return Path(os.environ.get("HOME", "")) / ".claude"
+        return Path(override).expanduser()
+    return Path.home() / ".claude"
 
 
 def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
