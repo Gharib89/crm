@@ -9,6 +9,44 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.36.0 (2026-06-25)
+
+### Bug Fixes
+
+- Address review — NCName-safe prefix scan; drop dead mxswa URI loop
+  ([#557](https://github.com/Gharib89/crm/pull/557),
+  [`83a1991`](https://github.com/Gharib89/crm/commit/83a19914cd3f6e21f05da8c651629b22b66314ec))
+
+- Address review — skip mxswa property-elements; drop dead constants; tidy prefix scan
+  ([#557](https://github.com/Gharib89/crm/pull/557),
+  [`83a1991`](https://github.com/Gharib89/crm/commit/83a19914cd3f6e21f05da8c651629b22b66314ec))
+
+- Report the real undeclared XAML namespace prefix, not 'xmlns'
+  ([#557](https://github.com/Gharib89/crm/pull/557),
+  [`83a1991`](https://github.com/Gharib89/crm/commit/83a19914cd3f6e21f05da8c651629b22b66314ec))
+
+### Documentation
+
+- Cross-link CONTEXT.md terms to their ADRs and code seams
+  ([#563](https://github.com/Gharib89/crm/pull/563),
+  [`f709768`](https://github.com/Gharib89/crm/commit/f7097687c41098f7a8eeee3e3d8c1d8398af6d0e))
+
+### Features
+
+- Add validate_workflow_xaml pure reference-validator
+  ([#557](https://github.com/Gharib89/crm/pull/557),
+  [`83a1991`](https://github.com/Gharib89/crm/commit/83a19914cd3f6e21f05da8c651629b22b66314ec))
+
+- Validate_workflow_xaml - pure XAML reference-validator
+  ([#557](https://github.com/Gharib89/crm/pull/557),
+  [`83a1991`](https://github.com/Gharib89/crm/commit/83a19914cd3f6e21f05da8c651629b22b66314ec))
+
+### Testing
+
+- Add validate_workflow_xaml fixtures (red) ([#557](https://github.com/Gharib89/crm/pull/557),
+  [`83a1991`](https://github.com/Gharib89/crm/commit/83a19914cd3f6e21f05da8c651629b22b66314ec))
+
+
 ## v1.35.0 (2026-06-25)
 
 ### Features
