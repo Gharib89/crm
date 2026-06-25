@@ -170,6 +170,10 @@ def validate_workflow_xaml(
                 prefix = m.group(1) or m.group(2)
                 if prefix:
                     used.add(prefix)
+            # `xmlns:foo="…"` declarations match _PREFIX_USE_RE's `name:name=`
+            # branch, leaking the literal "xmlns" into `used`; drop it so it is
+            # never mistaken for the offending prefix below.
+            used.discard("xmlns")
             undeclared = used - declared
             if undeclared:
                 prefix = sorted(undeclared)[0]

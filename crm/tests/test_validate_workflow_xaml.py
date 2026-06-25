@@ -88,6 +88,16 @@ _MISSING_NAMESPACE = (
     '</Activity>'
 )
 
+# Undeclared prefix whose name sorts lexically AFTER "xmlns" (regression guard:
+# the raw-text prefix scan must not mistake the literal "xmlns" for the culprit).
+_UNDECLARED_PREFIX_SORTS_AFTER_XMLNS = (
+    '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
+    ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
+    ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
+    '  <zzz:Workflow />\n'  # zzz declaration deliberately absent
+    '</Activity>'
+)
+
 # Unknown activity name not in the allowlist.
 _UNKNOWN_ACTIVITY = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
@@ -208,6 +218,20 @@ class TestValidateWorkflowXaml:
         warnings = validate_workflow_xaml(_MALFORMED, _ATTRIBUTE_SET)
         assert len(warnings) == 1
         assert warnings[0].startswith("malformed XAML:")
+
+    def test_missing_namespace_names_prefix_sorting_after_xmlns(self):
+        """The reported prefix is the real culprit, even when it sorts after 'xmlns'.
+
+        Regression: the raw-text scan used to leak the literal 'xmlns' into the
+        candidate set, so any undeclared prefix sorting after it (e.g. 'zzz') was
+        misreported as 'xmlns'.
+        """
+        warnings = validate_workflow_xaml(
+            _UNDECLARED_PREFIX_SORTS_AFTER_XMLNS, _ATTRIBUTE_SET
+        )
+        assert len(warnings) == 1
+        assert "zzz" in warnings[0]
+        assert "'xmlns'" not in warnings[0]
 
     def test_missing_namespace_emits_undeclared_prefix_warning(self):
         """An mxswa: element with no xmlns:mxswa → 'undeclared namespace prefix: …'."""
