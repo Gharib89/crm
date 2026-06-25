@@ -32,11 +32,12 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
     """Apply a declarative desired-state spec.
 
     The spec declares a publisher, solution, entities (with attributes, option
-    sets, relationships, and views), web resources, and security roles, driven in
-    dependency order with PublishAllXml once at the end (web resources are
-    published with everything else; security roles are not publishable). A web
-    resource's `file` path is resolved relative to the spec file. apply is
-    convergent: a component that already
+    sets, relationships, and views), web resources, security roles, and plug-ins
+    (assembly + types + steps + images), driven in dependency order with
+    PublishAllXml once at the end (web resources are published with everything
+    else; security roles and plug-in registration are not publishable). A web
+    resource's or plug-in assembly's `file` path is resolved relative to the spec
+    file. apply is convergent: a component that already
     exists is reconciled against the spec — left untouched when it matches,
     updated in place when an allowed field drifts, or refused (no write) when the
     divergence would need a destructive drop-and-recreate (see ADR 0014). Emits

@@ -961,3 +961,139 @@ def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
         raise D365Error(
             f"Plug-in assembly not found: {name}", code="PluginAssemblyNotFound")
     return pid
+
+
+# ── Convergent apply support (#552) ──────────────────────────────────────────
+#
+# `apply` declares a plug-in (assembly + types + steps + images) in a spec and
+# drives the register_* verbs above to converge an org to it. These read helpers
+# let apply decide create-vs-reconcile and diff a live component against the
+# spec, and `update_step` PATCHes a step's runtime config in place. All reads
+# force a real GET even under dry-run (the reads-execute rule), so a dry-run
+# previews accurate drift.
+
+# Read-only views of the stage/mode option-set maps so apply's plug-in reconcile
+# can compare a live step's stored ints against a desired stage/mode NAME without
+# duplicating the mapping (single source of truth: _STAGE / _MODE).
+STAGE_VALUES: dict[str, int] = dict(_STAGE)
+MODE_VALUES: dict[str, int] = dict(_MODE)
+
+
+def find_assembly(backend: D365Backend, name: str) -> dict[str, Any] | None:
+    """Find a plug-in assembly by exact name; return its row or None.
+
+    Selects the base64 `content` so apply can diff a live assembly against a
+    rebuilt DLL. Returns the first match (assembly names are unique per org).
+    """
+    rows = backend.get_collection(
+        "pluginassemblies",
+        params={"$filter": f"name eq {odata_literal(name)}",
+                "$select": "pluginassemblyid,name,content"},
+        max_pages=1)
+    return rows[0] if rows else None
+
+
+def find_step(backend: D365Backend, name: str) -> dict[str, Any] | None:
+    """Find an sdkmessageprocessingstep by exact name; return its row or None.
+
+    Selects the in-place-updatable config columns (stage / mode / rank /
+    filteringattributes / configuration) and expands the binding identity —
+    message name, plug-in typename, and the entity filter's
+    primaryobjecttypecode — so apply can diff a step in a single GET (the
+    expand set MS Learn uses to inspect a registered step). Raises D365Error
+    when the name matches more than one step: step names are not unique, so a
+    declared step must use a unique name to be reconciled unambiguously.
+    """
+    rows = backend.get_collection(
+        "sdkmessageprocessingsteps",
+        params={
+            "$filter": f"name eq {odata_literal(name)}",
+            "$select": ("sdkmessageprocessingstepid,stage,mode,rank,"
+                        "filteringattributes,configuration"),
+            "$expand": ("sdkmessageid($select=name),"
+                        "plugintypeid($select=typename),"
+                        "sdkmessagefilterid($select=primaryobjecttypecode)"),
+        },
+        max_pages=1)
+    if not rows:
+        return None
+    if len(rows) > 1:
+        raise D365Error(
+            f"Multiple plug-in steps match name {name!r}; step names are not "
+            "unique — declare a unique name per step so apply can reconcile it.",
+            code="AmbiguousStepName")
+    return rows[0]
+
+
+def find_step_image(
+    backend: D365Backend, step_id: str, alias: str,
+) -> dict[str, Any] | None:
+    """Find a step's entity image by alias; return its row or None.
+
+    An image's identity within a step is its `entityalias`, so apply probes by
+    (step, alias) to decide whether to register a declared image.
+    """
+    rows = backend.get_collection(
+        "sdkmessageprocessingstepimages",
+        params={
+            "$filter": (f"_sdkmessageprocessingstepid_value eq {step_id} "
+                        f"and entityalias eq {odata_literal(alias)}"),
+            "$select": ("sdkmessageprocessingstepimageid,entityalias,"
+                        "imagetype,attributes"),
+        },
+        max_pages=1)
+    return rows[0] if rows else None
+
+
+def update_step(
+    backend: D365Backend,
+    *,
+    step_id: str,
+    stage: str | None = None,
+    mode: str | None = None,
+    rank: int | None = None,
+    filtering_attributes: str | None = None,
+    configuration: str | None = None,
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """PATCH a step's runtime config in place (no delete-and-recreate).
+
+    Only the provided fields are sent. `stage`/`mode` are mapped to their
+    option-set ints (_STAGE / _MODE); an unknown value raises D365Error. Carries
+    `MSCRM.SolutionUniqueName` when `solution` is given (mirrors the other write
+    verbs). Dry-run safe — the PATCH short-circuits to a preview. Returns
+    {updated, fields}.
+
+    apply classifies a message / entity / plug-in-type change as
+    replace-blocked (the platform fixes the binding at creation); this verb
+    handles only the updatable runtime config — MS Learn explicitly recommends
+    updating an existing step rather than deleting and recreating it.
+    """
+    body: dict[str, Any] = {}
+    if stage is not None:
+        if stage not in _STAGE:
+            raise D365Error(
+                f"Unknown stage {stage!r}; choose from {sorted(_STAGE)}.")
+        body["stage"] = _STAGE[stage]
+    if mode is not None:
+        if mode not in _MODE:
+            raise D365Error(
+                f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
+        body["mode"] = _MODE[mode]
+    if rank is not None:
+        body["rank"] = rank
+    if filtering_attributes is not None:
+        body["filteringattributes"] = filtering_attributes
+    if configuration is not None:
+        body["configuration"] = configuration
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    result = as_dict(backend.patch(
+        f"sdkmessageprocessingsteps({step_id})", json_body=body,
+        extra_headers=headers))
+    if result.get("_dry_run"):
+        return result
+    return {
+        "updated": True,
+        "sdkmessageprocessingstepid": step_id,
+        "fields": sorted(body),
+    }
