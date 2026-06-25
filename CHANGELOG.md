@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.39.0 (2026-06-25)
+
+### Features
+
+- **webresource**: Push <dir> bulk-upserts a directory tree, publishes once
+  ([#566](https://github.com/Gharib89/crm/pull/566),
+  [`a7d05fb`](https://github.com/Gharib89/crm/commit/a7d05fb2203af635bd58adc1c1c4279d414e4f53))
+
+
 ## v1.38.0 (2026-06-25)
 
 ### Bug Fixes
