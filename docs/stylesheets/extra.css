@@ -1,19 +1,18 @@
-/* ITWorx brand palette for Material for MkDocs.
+/* Brand palette for Material for MkDocs.
  *
- * Colors sampled from itworx.com: a royal indigo-blue identity with a
- * red logo accent.
- *   royal blue (hero) ....... #353A9C
- *   deep indigo (wordmark) .. #181D81
- *   indigo (buttons) ........ #171D8F
- *   logo red ................ #C83428
+ * Indigo identity with the CRM logo's purple accent.
+ *   royal blue (header light) .. #353A9C
+ *   indigo (primary) ........... #1B1F8F
+ *   deep indigo ................ #12156B
+ *   CRM purple (accent) ........ #9528F8
  */
 
 :root {
   --itworx-indigo:        #1B1F8F;  /* primary: header / sidebar */
   --itworx-indigo-royal:  #353A9C;  /* lighter royal blue (hero)  */
   --itworx-indigo-dark:   #12156B;
-  --itworx-red:           #C83428;  /* accent: logo pop, hover    */
-  --itworx-red-light:     #E0594D;
+  --crm-purple:           #9528F8;  /* accent: hover / active     */
+  --crm-purple-light:     #A855F8;
 }
 
 /* ---- Light scheme ------------------------------------------------------ */
@@ -26,12 +25,12 @@
 }
 
 [data-md-color-accent="custom"] {
-  --md-accent-fg-color:              var(--itworx-red);
-  --md-accent-fg-color--transparent: rgba(200, 52, 40, 0.1);
+  --md-accent-fg-color:              var(--crm-purple);
+  --md-accent-fg-color--transparent: rgba(149, 40, 248, 0.1);
 }
 
 /* Royal indigo for body links in the light scheme (more readable than the
- * red accent, which is reserved for hover/active states). */
+ * purple accent, which is reserved for hover/active states). */
 [data-md-color-scheme="default"] {
   --md-typeset-a-color: var(--itworx-indigo-royal);
 }
@@ -47,7 +46,13 @@
 }
 
 [data-md-color-scheme="slate"][data-md-color-accent="custom"] {
-  --md-accent-fg-color: var(--itworx-red-light);
+  --md-accent-fg-color: var(--crm-purple-light);
+}
+
+/* Secondary (outline) buttons take a light foreground in dark mode — the
+ * primary fg is a very dark indigo that would be unreadable on slate. */
+[data-md-color-scheme="slate"] .md-button:not(.md-button--primary) {
+  color: #ffffff;
 }
 
 /* ---- Home page hero ---------------------------------------------------- */
@@ -55,30 +60,11 @@
   text-align: center;
   padding: 2.5rem 1rem 1.5rem;
 }
-.crm-hero-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.85rem;
-  margin-bottom: 0.5rem;
-}
-.crm-hero-mark {
-  width: 64px;
-  height: 64px;
-  flex-shrink: 0;
-}
-.crm-hero h1 {
-  margin: 0;
-  font-weight: 800;
-  font-size: 4rem;
-  line-height: 1;
-  letter-spacing: -1px;
-  color: var(--itworx-indigo);
-}
-.crm-hero-dot {
-  color: var(--itworx-red);
-}
-[data-md-color-scheme="slate"] .crm-hero h1 {
-  color: #c9cbff;
+.crm-hero-logo {
+  display: block;
+  width: min(360px, 82vw);
+  height: auto;
+  margin: 0.5rem auto 0.7rem;
 }
 .crm-hero h3 {
   margin: 0.4rem auto 1.4rem;
@@ -88,4 +74,18 @@
 }
 .crm-hero .md-button {
   margin: 0.3rem 0.4rem;
+}
+
+/* Visually-hidden hero heading — provides the page title + a11y name while the
+ * logo image is the visual title. */
+.crm-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
