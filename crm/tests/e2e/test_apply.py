@@ -282,19 +282,23 @@ def test_apply_security_role_create_and_reconcile(cli, backend, tmp_path, unique
 
 
 @pytest.mark.slow
+@pytest.mark.requires_onprem
 @covers("apply")
 def test_apply_plugin_assembly_type_step_lifecycle(
         cli, plugin_assembly, backend, tmp_path, request):
-    """apply provisions a plug-in from a spec — assembly + type + step in one run —
-    then converges: an unchanged re-apply is a no-op, a step-config drift updates in
-    place, and a step binding change (the message) is replace-blocked (no write,
-    exit 1). On-prem is the plug-in extensibility priority (#552), but the same
-    register_* calls work on both targets (like the assembly-lifecycle test), so
-    this stays target-agnostic — CI (cloud, with the .NET SDK) exercises it. The
-    `plugin_assembly` fixture builds a signed no-op IPlugin so registration is
-    proven without ever firing it (and skips with instructions when dotnet is
-    absent). The assembly is unregistered in a finalizer (cascading its type,
-    step, and images).
+    """apply provisions a plug-in from a spec — assembly + type + step + image in
+    one run — then converges: an unchanged re-apply is a no-op, a step-config drift
+    updates in place, and a step binding change (the message) is replace-blocked (no
+    write, exit 1). On-prem is the plug-in extensibility target (#552), and is
+    pinned here deliberately: on-prem metadata writes are synchronous, so the
+    single-apply assembly→type→step→image sequence resolves each just-created row
+    immediately. Dataverse (cloud) has a metadata read-after-write lag (the
+    assembly-lifecycle test polls up to 20s for a new plug-in type to become
+    queryable), which a single-shot apply cannot poll around — so the weekly cloud
+    e2e run gates this out rather than flaking. The `plugin_assembly` fixture builds
+    a signed no-op IPlugin so registration is proven without ever firing it (and
+    skips with instructions when dotnet is absent). The assembly is unregistered in
+    a finalizer (cascading its type, step, and images).
     """
     asm = plugin_assembly
     step_name = f"{asm.assembly_name} apply step"

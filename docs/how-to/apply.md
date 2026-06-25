@@ -191,6 +191,14 @@ Plug-in components are not publishable, so a plugins-only apply does not issue
 components as `planned`; drift reports `updated` (with field-level `diff`) or
 `replace_blocked`.
 
+> On-prem metadata writes are synchronous, so a single apply registers a new
+> assembly, its types, and its steps in one pass. On Dataverse (cloud) a
+> newly-registered plug-in type can take a few seconds to become queryable, so a
+> single apply that both registers a new type **and** a step binding to it may
+> report the step as `failed` (the type is not yet resolvable); re-apply once it
+> has propagated and the step lands (the already-created assembly and type are
+> skipped). On-prem is the plug-in extensibility target.
+
 ## Stand up a table in one shot
 
 ```bash
