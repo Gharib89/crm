@@ -1,7 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="crm">
-  <rect width="64" height="64" rx="12" fill="#1B1F8F"/>
-  <!-- ITWorx-style red aperture mark -->
-  <circle cx="32" cy="30" r="16" fill="#C83428"/>
-  <path d="M32 30 L32 14 A16 16 0 0 0 18.1 38 Z" fill="#ffffff" opacity="0.92"/>
-  <circle cx="32" cy="30" r="4.2" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-label="CRM">
+  <title>CRM</title>
+  <defs>
+    <linearGradient id="gf" gradientUnits="userSpaceOnUse" x1="20" y1="104" x2="96" y2="24">
+      <stop offset="0" stop-color="#00CEE0"/>
+      <stop offset="0.5" stop-color="#2E6BF6"/>
+      <stop offset="1" stop-color="#9528F8"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="26" fill="#0C1020"/>
+  <path d="M88 36.6 A40 40 0 1 0 88 91.4" stroke="url(#gf)" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="96" cy="64" r="12" fill="#9528F8"/>
 </svg>

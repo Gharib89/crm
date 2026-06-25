@@ -8,7 +8,7 @@ copyright: Made by Ahmed Gharib
 
 theme:
   name: material
-  logo: assets/logo.svg
+  logo: assets/logo-dark.svg
   favicon: assets/favicon.svg
   icon:
     repo: fontawesome/brands/github

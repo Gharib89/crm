@@ -14,6 +14,7 @@
   --itworx-indigo-dark:   #12156B;
   --itworx-red:           #C83428;  /* accent: logo pop, hover    */
   --itworx-red-light:     #E0594D;
+  --crm-purple:           #9528F8;  /* CRM logo accent (cursor/dot) */
 }
 
 /* ---- Light scheme ------------------------------------------------------ */
@@ -75,7 +76,7 @@
   color: var(--itworx-indigo);
 }
 .crm-hero-dot {
-  color: var(--itworx-red);
+  color: var(--crm-purple);
 }
 [data-md-color-scheme="slate"] .crm-hero h1 {
   color: #c9cbff;

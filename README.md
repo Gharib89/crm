@@ -1,4 +1,9 @@
-# crm
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img alt="CRM — Dynamics 365 CE CLI" src="docs/assets/logo.svg" width="300">
+  </picture>
+</p>
 
 Stateful CRM CLI for **Microsoft Dynamics 365 Customer Engagement** — on-premises
 v9.x (NTLM) or Dataverse online (OAuth). Wraps the real Dataverse Web API (OData

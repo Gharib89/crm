@@ -9,7 +9,7 @@
   </defs>
   <!-- gradient C -->
   <path d="M98.1 44.79 A42 42 0 1 0 98.1 107.21" stroke="url(#g)" stroke-width="24" stroke-linecap="round"/>
-  <g stroke="#0010A0" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+  <g stroke="#F4F6FF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
     <!-- R -->
     <path d="M150 118 L150 34"/>
     <path d="M150 34 A38 25 0 0 1 150 84"/>
@@ -18,5 +18,5 @@
     <path d="M220 118 L220 34 L268 80 L316 34 L316 118"/>
   </g>
   <!-- purple terminal cursor -->
-  <path d="M350 118 L390 118" stroke="#9528F8" stroke-width="24" stroke-linecap="round"/>
+  <path d="M350 118 L390 118" stroke="#A855F8" stroke-width="24" stroke-linecap="round"/>
 </svg>
