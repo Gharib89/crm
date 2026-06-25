@@ -32,7 +32,17 @@ from pathlib import Path
 from typing import Any
 
 from evals.skill import target as target_mod
-from evals.skill.set_runner import ERROR, FAIL, PASS, SetResult, run_set
+from evals.skill.set_runner import (
+    ERROR,
+    FAIL,
+    PASS,
+    SetResult,
+    StderrProgress,
+    add_progress_flags,
+    run_set,
+    runnable_count,
+    want_progress,
+)
 from evals.skill.target import TargetError
 
 #: The two standing project targets; cloud first (always reachable, no VPN), on-prem
@@ -144,6 +154,8 @@ def run_both(
     run_set_fn: Callable[..., SetResult] = run_set,
     probe_fn: Callable[[str], bool] = target_mod.probe_reachable,
     target_fn: Callable[[], str] = target_mod.active_target,
+    progress: StderrProgress | None = None,
+    runnable_fn: Callable[[str], int] | None = None,
 ) -> BothResult:
     """Run the set against each reachable profile in ``profiles``; union the coverage.
 
@@ -152,11 +164,18 @@ def run_both(
     whose host is unreachable becomes a *skipped* :class:`TargetRun` with a reason — one
     target's absence never aborts the other. ``run_set_fn``/``probe_fn``/``target_fn`` are
     injectable so the orchestration is testable offline without an agent or a live org.
+
+    ``progress`` (#585), when given, prints a per-leg header (target, profile,
+    reachable/skip, runnable count) before each leg and is forwarded into ``run_set_fn``
+    so the per-task lines stream under their leg. ``runnable_fn`` resolves the header's
+    runnable count for a target (injectable for offline tests; defaults to the real
+    :func:`set_runner.runnable_count`).
     """
     # Validate here too, not only inside run_set: when every target is skipped/unreachable
     # run_set_fn never runs, so a bad repeat would otherwise pass silently.
     if repeat < 1:
         raise ValueError(f"repeat must be >= 1, got {repeat}")
+    count_runnable = runnable_fn or (lambda tgt: runnable_count(active_target=tgt))
     entries: list[TargetRun] = []
     saved = os.environ.get(target_mod.E2E_PROFILE_ENV)
     try:
@@ -166,13 +185,21 @@ def run_both(
                 tgt = target_fn()
             except TargetError as exc:
                 entries.append(TargetRun(name, None, None, f"profile error: {exc}"))
+                if progress is not None:
+                    progress.leg(target="?", profile=name, reachable=False,
+                                 reason=f"profile error: {exc}")
                 continue
             if not probe_fn(name):
-                entries.append(
-                    TargetRun(name, tgt, None, "unreachable (VPN down / host not responding?)")
-                )
+                reason = "unreachable (VPN down / host not responding?)"
+                entries.append(TargetRun(name, tgt, None, reason))
+                if progress is not None:
+                    progress.leg(target=tgt, profile=name, reachable=False, reason=reason)
                 continue
-            result = run_set_fn(repeat=repeat, agent_cmd=agent_cmd, active_target=tgt)
+            if progress is not None:
+                progress.leg(target=tgt, profile=name, reachable=True,
+                             runnable=count_runnable(tgt))
+            result = run_set_fn(repeat=repeat, agent_cmd=agent_cmd, active_target=tgt,
+                                progress=progress)
             entries.append(TargetRun(name, tgt, result, None))
     finally:
         if saved is None:
@@ -209,12 +236,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--update-baseline", action="store_true",
                         help=f"append a dated per-target row to {BASELINE.name}")
     parser.add_argument("--baseline", default=str(BASELINE), help="baseline file to append to")
+    add_progress_flags(parser)
     parser.add_argument("--json", action="store_true", dest="as_json",
                         help="emit the machine-readable result instead of the summary")
     args = parser.parse_args(argv)
 
+    progress = (
+        StderrProgress()
+        if want_progress(quiet=args.quiet, progress=args.progress, isatty=sys.stderr.isatty())
+        else None
+    )
     profiles = [p.strip() for p in args.profiles.split(",") if p.strip()]
-    res = run_both(profiles, repeat=args.repeat, agent_cmd=args.agent_cmd)
+    res = run_both(profiles, repeat=args.repeat, agent_cmd=args.agent_cmd, progress=progress)
 
     if args.update_baseline:
         append_baseline(args.baseline, res.baseline_rows(today=_date.today().isoformat()))

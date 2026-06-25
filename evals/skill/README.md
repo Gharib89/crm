@@ -30,12 +30,17 @@ blocks CI. Run it on demand.
   and the `D365_E2E_ALLOW_HOST` prod-host guard; plus `probe_reachable`, the
   short-timeout reachability check that lets the both-targets runner skip a downed VPN.
 - `runner.py` — orchestrates one task: isolate → verify → seed → agent → score → cleanup.
+- `__main__.py` — the `python -m evals.skill run` **front door** (#585): a thin wrapper
+  that routes `--target` to the set/both runner, defaults the agent command past the
+  permission-gate footgun, derives the cloud allow-host, and writes `result.json` +
+  `run.log` automatically. See "Easiest invocation" below.
 - `set_runner.py` — runs the **whole set** against one target: target-gates each task
   (skips off-target ones), scores the rest, reports per-task verdicts + pass-rate.
   `--repeat N` runs each scored task N times to smooth variance (the pass-rate becomes a
-  fraction over all trials).
+  fraction over all trials). Emits **live progress to stderr** as each task resolves (#585).
 - `both_runner.py` — runs the set against **both** targets, unions the coverage, skips an
   unreachable one, and (`--update-baseline`) appends a dated per-target row to `baseline.md`.
+  Prints a per-leg header and inherits the set runner's live progress (#585).
 - `baseline.md` — the tracked effectiveness **trend**: one dated per-target pass-rate row
   per periodic run, read by a human for drift (ADR 0015). Never a CI gate.
 - `analyze.py` — the optional Claude analysis pass (`build_analysis_prompt` +
@@ -88,6 +93,42 @@ global option set. The cleanup model deletes *records* by a filter, but a metada
 expressed as a static cleanup step. Those two tasks therefore leave definition residue
 that a maintainer clears out of band; widening the cleanup model to cover agent-named
 metadata is deliberately left out of this slice.
+
+## Easiest invocation — `python -m evals.skill run` (#585)
+
+The front door wraps the runners below with sane defaults so a run is hard to misuse —
+no hand-set agent command, allow-host, target env var, or `> result.json 2> run.log`:
+
+```bash
+python -m evals.skill run --target onprem --model sonnet   # one target
+python -m evals.skill run --target both                    # both (the default)
+python -m evals.skill run --target cloud --repeat 3
+```
+
+- **`--target cloud|onprem|both`** picks the standing profile(s) (`agent-cloud` /
+  `agent-on-prem`) and the underlying runner; `both` is the default.
+- The agent command defaults to **`claude -p --dangerously-skip-permissions --model sonnet`**
+  — the permission-gate footgun is gone, and `sonnet` is the baseline (the harness measures
+  the skill, not the model). `--model <m>` swaps the model; `--agent-cmd <cmd>` overrides the
+  whole command (and `--model` is then rejected, not silently appended).
+- The cloud **allow-host is derived** from the resolved `agent-cloud` profile, so no
+  `D365_E2E_ALLOW_HOST` paste is needed for the standing cloud target (an already-set value
+  is respected).
+- **`result.json` + `run.log` are written automatically** (to the current dir, or `--out <dir>`)
+  and their paths are printed at the end.
+
+It **composes** the existing `set_runner` / `both_runner` entry points (below), which keep
+working unchanged for finer control.
+
+## Live progress (#585)
+
+The set and both runners emit human-readable progress to **stderr** as each task resolves —
+a `[done/total] STATUS id (target)` line, a rolling per-target `pass / fail (of N runnable)`
+tally, a `trial k/N` tick per trial under `--repeat`, and (both runner) a per-leg header.
+Progress is **stderr-only**, so the stdout `--json` / `> result.json` document is byte-for-byte
+unchanged. It defaults **on at a terminal, off under redirect / non-TTY**; `--quiet` forces it
+off and `--progress` forces it on (e.g. to capture it into a redirected `run.log`). Both
+runners accept the flags; the front door always captures progress into `run.log` regardless.
 
 ## Smoke test (offline, no agent, no org)
 

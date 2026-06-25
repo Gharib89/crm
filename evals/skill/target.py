@@ -31,6 +31,11 @@ class TargetError(RuntimeError):
     """Raised when no live target is configured or the prod-host guard trips."""
 
 
+def host_of(url: str) -> str:
+    """The lower-cased host of a service URL (no scheme, no path)."""
+    return url.split("//", 1)[-1].split("/", 1)[0].lower()
+
+
 def assert_not_production(url: str) -> None:
     """Refuse a prod/live host unless ``D365_E2E_ALLOW_HOST`` names it exactly.
 
@@ -65,6 +70,22 @@ def resolve_profile_name() -> str:
 def _scheme_target(auth_scheme: str) -> str:
     """Map a profile's auth scheme to the eval target it represents."""
     return "cloud" if auth_scheme == "oauth" else "onprem"
+
+
+def resolve_host(profile_name: str) -> str:
+    """The host of a saved profile's service URL, resolved read-only.
+
+    The ``run`` front door (#585) uses this to auto-derive ``D365_E2E_ALLOW_HOST`` for
+    the standing cloud org, so the prod-host guard passes without a hand-pasted host.
+    """
+    from crm.core.connection import resolve_credentials
+    from crm.utils.d365_backend import D365Error
+
+    try:
+        resolved = resolve_credentials(profile_name)
+    except D365Error as exc:
+        raise TargetError(f"cannot resolve profile {profile_name!r}: {exc}") from exc
+    return host_of(resolved.profile.url)
 
 
 def active_target() -> str:
