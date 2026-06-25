@@ -127,6 +127,11 @@ def probe_reachable(name: str | None = None) -> bool:
     except D365Error as exc:
         raise TargetError(f"{_E2E_PROFILE_ENV}={profile_name!r}: {exc}") from exc
 
+    # Honor the prod-host guard before touching the network, exactly as the e2e conftest
+    # guards before its probe: a stray probe must not hit a *.dynamics.com prod org (even
+    # read-only / for the OAuth token) unless D365_E2E_ALLOW_HOST opts that host in.
+    assert_not_production(resolved.profile.url)
+
     # retry_max=0 → a single shot, so a downed host skips fast instead of paying the
     # full retry/backoff budget; set via the public profile field, as the e2e conftest does.
     probe = D365Backend(dataclasses.replace(resolved.profile, retry_max=0), resolved.password, dry_run=False)

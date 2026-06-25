@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from evals.skill import both_runner
 from evals.skill.both_runner import TargetRun, append_baseline, run_both
 from evals.skill.set_runner import FAIL, PASS, SetResult, TaskOutcome
@@ -87,6 +89,15 @@ def test_active_profile_env_is_restored():
         del os.environ["D365_E2E_PROFILE"]
 
 
+def test_run_both_rejects_bad_repeat():
+    # repeat is validated at run_both entry, not only inside run_set — so a bad value
+    # fails deterministically even when every target is skipped and run_set never runs.
+    run_set_fn, probe_fn, target_fn = _fakes({"agent-cloud": False}, {"agent-cloud": "cloud"})
+    with pytest.raises(ValueError, match="repeat must be >= 1"):
+        run_both(["agent-cloud"], repeat=0,
+                 run_set_fn=run_set_fn, probe_fn=probe_fn, target_fn=target_fn)
+
+
 def test_baseline_rows_one_per_target_with_fraction_and_skip_note():
     run_set_fn, probe_fn, target_fn = _fakes(
         {"agent-cloud": True, "agent-on-prem": False},
@@ -110,15 +121,16 @@ def test_append_baseline_adds_rows_after_table(tmp_path):
     path = tmp_path / "baseline.md"
     path.write_text(
         "# Baseline\n\n| date | target | profile | pass-rate | scored | repeat | notes |\n"
-        "|------|--------|---------|-----------|--------|--------|-------|\n"
+        "|------|--------|---------|-----------|--------|--------|-------|\n",
+        encoding="utf-8",
     )
     rows = [
         {"date": "2026-06-25", "target": "cloud", "profile": "agent-cloud",
          "pass_rate": "90%", "scored": "9/10", "repeat": 3, "notes": ""},
     ]
     append_baseline(path, rows)
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     assert text.rstrip().endswith("| 2026-06-25 | cloud | agent-cloud | 90% | 9/10 | 3 |  |")
     # appending again keeps the table contiguous (no blank line splitting it)
     append_baseline(path, rows)
-    assert text.count("\n\n") == path.read_text().count("\n\n")  # no new blank-line breaks
+    assert text.count("\n\n") == path.read_text(encoding="utf-8").count("\n\n")  # no new blank-line breaks

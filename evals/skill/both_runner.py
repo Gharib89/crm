@@ -152,6 +152,10 @@ def run_both(
     target's absence never aborts the other. ``run_set_fn``/``probe_fn``/``target_fn`` are
     injectable so the orchestration is testable offline without an agent or a live org.
     """
+    # Validate here too, not only inside run_set: when every target is skipped/unreachable
+    # run_set_fn never runs, so a bad repeat would otherwise pass silently.
+    if repeat < 1:
+        raise ValueError(f"repeat must be >= 1, got {repeat}")
     entries: list[TargetRun] = []
     saved = os.environ.get(target_mod.E2E_PROFILE_ENV)
     try:
@@ -185,9 +189,11 @@ def append_baseline(path: str | Path, rows: list[dict[str, Any]]) -> None:
     """
     path = Path(path)
     line_strs = ["| " + " | ".join(str(r[c]) for c in _COLS) + " |" for r in rows]
-    existing = path.read_text()
+    existing = path.read_text(encoding="utf-8")
     sep = "" if existing.endswith("\n") else "\n"
-    path.write_text(existing + sep + "\n".join(line_strs) + "\n")
+    # encoding pinned: baseline.md carries non-ASCII (em-dash skip rows), so a cp1252
+    # default on Windows would corrupt the trend.
+    path.write_text(existing + sep + "\n".join(line_strs) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
