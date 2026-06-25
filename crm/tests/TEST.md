@@ -210,7 +210,12 @@ Customer Service is absent, so it runs on a `--profile agent-cs-trial` leg and s
 general cloud org.) The
 plugin assembly lifecycle (`register-assembly`/`unregister-assembly`/`unregister-step`) is
 covered by one live test that builds a signed no-op IPlugin from committed C# source via
-`dotnet build` (#506), skipping with instructions when the .NET SDK is absent. Tests that document a live product defect are
+`dotnet build` (#506), skipping with instructions when the .NET SDK is absent. The convergent
+`apply` plug-in kind (assembly + types + steps + images, #552) is covered by one
+`@requires_onprem` lifecycle test that reuses that built assembly — on-prem metadata writes are
+synchronous, so a single apply registers the whole plug-in in one pass; on cloud a new
+plug-in type's read-after-write lag would flake a single-shot apply, so the weekly cloud e2e
+gates it out. Tests that document a live product defect are
 marked `xfail(strict=False)` so they auto-flip to xpass when the command is fixed.
 
 ### Live run record
