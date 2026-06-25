@@ -777,9 +777,13 @@ def replace_role_privileges(
 ) -> dict[str, Any]:
     """Replace a role's entire privilege set with ``privileges`` (ReplacePrivilegesRole).
 
-    Privileges not in the list are removed from the role. Suppressed under dry-run
-    (``backend.post`` is a no-op), so apply's reconcile can compute drift read-only.
+    Privileges not in the list are removed from the role. Under dry-run no write is
+    issued and a ``{_dry_run, would_replace}`` preview is returned (the reads-execute
+    contract), so apply's reconcile can compute drift read-only.
     """
+    if backend.dry_run:
+        return {"_dry_run": True,
+                "would_replace": {"roleid": role_id, "count": len(privileges)}}
     _post_role_privileges(backend, role_id, privileges, replace=True)
     return {"applied": True, "roleid": role_id, "count": len(privileges)}
 

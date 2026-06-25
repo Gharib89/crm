@@ -184,6 +184,12 @@ def validate_spec(spec: Any) -> None:
             _validate_option(opt, f"optionset {os_spec['name']!r}")
     for wr in _as_list(sp.get("webresources")):
         _require(wr, ("name", "file"), "web resource")
+        # name/file/display_name reach os.path.join + the Web API as strings; a
+        # non-string (e.g. an unquoted YAML number) must fail here with a clean
+        # D365Error, not blow up later inside os.path.join.
+        for key in ("name", "file", "display_name"):
+            if wr.get(key) is not None and not isinstance(wr[key], str):
+                raise D365Error(f"web resource {wr.get('name')!r}: {key} must be a string.")
         if wr.get("webresourcetype") is not None and not isinstance(wr["webresourcetype"], int):
             raise D365Error(
                 f"web resource {wr['name']!r}: webresourcetype must be an integer.")
@@ -193,6 +199,11 @@ def validate_spec(spec: Any) -> None:
         _require_list(role, "privileges", rlabel)
         for row in _as_list(role.get("privileges")):
             _require(row, ("depth",), f"{rlabel} privilege")
+            # The selector fields are passed straight to set-role-privileges, which
+            # expects lists; validate the shape up front for a clear error.
+            for key in ("access", "entities", "privilege_names"):
+                if key in row and not isinstance(row[key], list):
+                    raise D365Error(f"{rlabel}: privilege {key!r} must be a list.")
             if not (row.get("access") or row.get("privilege_names")):
                 raise D365Error(
                     f"{rlabel}: each privilege row needs 'access' (with 'entities' or "
@@ -837,9 +848,11 @@ def apply_spec(
                            failed, routes)
 
         # Phase: security roles. Create (if_exists=skip) then reconcile privileges
-        # to EXACTLY the declared set. A fresh role's declared set is applied; an
-        # existing role is reconciled (replace removes unlisted privileges). Roles
-        # are not publishable, so they never trigger the end-of-run publish.
+        # to the declared set. A fresh role gets the declared set applied; an
+        # existing role is reconciled by _reconcile_security_role (convergent subset
+        # satisfaction — a replace drops removable extras but the platform keeps an
+        # immovable baseline). Roles are not publishable, so they never trigger the
+        # end-of-run publish.
         for role_spec in _as_list(spec.get("security_roles")):
             entry = {"kind": "security-role", "name": role_spec["name"]}
             result = _call(entry, lambda role_spec=role_spec: sec_mod.create_role(
