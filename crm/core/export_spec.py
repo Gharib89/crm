@@ -39,6 +39,9 @@ from crm.utils.d365_backend import D365Backend, D365Error
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 _LENGTH_KINDS = frozenset({"string", "memo"})
 _PRECISION_KINDS = frozenset({"decimal", "double", "money"})
+# SourceType ints apply can re-create (add_attribute --type): 1=calculated, 2=rollup.
+# 0/None (simple) and 3/4 (formula/prompt, which apply cannot create) map to None.
+_SOURCE_TYPES = {1: "calculated", 2: "rollup"}
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -72,6 +75,18 @@ def _required_level(attr: dict[str, Any]) -> str | None:
     """Extract `RequiredLevel.Value` (e.g. 'None' / 'ApplicationRequired')."""
     val = _as_dict(attr.get("RequiredLevel")).get("Value")
     return val if isinstance(val, str) and val else None
+
+
+def _source_type_name(attr: dict[str, Any]) -> str | None:
+    """Map a live `SourceType` int to apply's `source_type` value, or None.
+
+    `SourceType` lives on the base AttributeMetadata, so it rides on the un-cast
+    attribute read. Only 1 (calculated) / 2 (rollup) — the specialized columns
+    `add_attribute` can re-create — map to a value; 0/None (simple) and 3/4
+    (formula/prompt, which apply cannot create) return None and export as simple.
+    """
+    raw = attr.get("SourceType")
+    return _SOURCE_TYPES.get(raw) if isinstance(raw, int) else None
 
 
 def _format_name(attr: dict[str, Any]) -> str | None:
@@ -248,6 +263,21 @@ def _project_attribute(
         ):
             return None  # _project_options already appended the reason
 
+    # Calculated/rollup column: capture source_type + the live FormulaDefinition
+    # (both ride on the un-cast read) so apply can re-create it (#554). A formula
+    # we cannot read leaves the column exported as simple rather than dropped.
+    source_type = _source_type_name(info)
+    if source_type is not None:
+        formula = info.get("FormulaDefinition")
+        if isinstance(formula, str) and formula:
+            out["source_type"] = source_type
+            out["formula_definition"] = formula
+        else:
+            warnings.append(
+                f"dropped {source_type} formula for column {attr_logical!r}: no "
+                "readable FormulaDefinition; exported as a simple column"
+            )
+
     return out
 
 
@@ -328,9 +358,14 @@ def build_entity_spec(
         # IsValidForCreate=false). Emitting a companion as a standalone column
         # collides with the one the server auto-generates when apply re-creates
         # the parent lookup ("attribute …Name already exists", #497).
+        #
+        # Calculated/rollup columns are read-only, so IsValidForCreate is false
+        # too — but apply CAN re-create them (add_attribute --type), so a custom
+        # specialized column (SourceType 1/2) is admitted despite the flag (#554).
+        is_specialized = shallow_attr.get("SourceType") in (1, 2)
         if not is_primary and (
             not shallow_attr.get("IsCustomAttribute")
-            or not shallow_attr.get("IsValidForCreate")
+            or (not shallow_attr.get("IsValidForCreate") and not is_specialized)
         ):
             continue
 

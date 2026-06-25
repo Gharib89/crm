@@ -37,6 +37,9 @@ REQUIRED_LEVELS: frozenset[str] = frozenset(
     {"None", "Recommended", "ApplicationRequired"}
 )
 OWNERSHIP_TYPES: frozenset[str] = frozenset({"UserOwned", "OrganizationOwned"})
+# Column source kinds add_attribute / apply accept (calculated & rollup carry a
+# FormulaDefinition; simple is the default). Mirrors the `--type` CLI choices.
+SOURCE_TYPES: frozenset[str] = frozenset({"simple", "calculated", "rollup"})
 # String formats add_attribute can create. Public: export_spec filters live
 # FormatName values to this creatable set (a Json / RichText format is dropped).
 STRING_FORMATS: frozenset[str] = frozenset(

@@ -128,7 +128,8 @@ def list_attributes(backend: D365Backend, logical_name: str) -> list[dict[str, A
     result = as_dict(backend.get(
         path,
         params={"$select": "LogicalName,SchemaName,AttributeType,IsCustomAttribute,"
-                "IsValidForCreate,IsValidForUpdate,IsValidForRead,RequiredLevel,MetadataId"},
+                "IsValidForCreate,IsValidForUpdate,IsValidForRead,RequiredLevel,"
+                "SourceType,MetadataId"},
     ))
     rows: list[dict[str, Any]] = result.get("value", [])
     for row in rows:
