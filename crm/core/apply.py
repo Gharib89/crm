@@ -56,7 +56,7 @@ def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
     """Forced-real GET of an entity's ObjectTypeCode; None if not yet assigned/readable.
 
     A brand-new custom table's OTC is often unreadable until the apply's final
-    publish, so the caller reports its views as planned-create and a second apply
+    publish, so the caller reports its views as `planned` and a second apply
     lands them. Only a 404 (entity not yet created) maps to None — any other error
     (401/403/5xx) is re-raised so real failures are not silently masked.
     """
@@ -210,6 +210,18 @@ def _classify(
     return "applied"
 
 
+def _present(result: dict[str, Any]) -> bool:
+    """True when a create-builder reports the component already exists.
+
+    A real apply short-circuits the POST and returns `skipped`; a dry-run leaves
+    the POST suppressed and reports the forced-real existence probe via
+    `would_skip`. Either way the component is live, so apply reconciles it against
+    the spec rather than creating it — the same reconcile path runs in both modes
+    (its writes are no-ops under dry-run per the reads-execute rule), which is what
+    turns `--dry-run` into a full drift report (#550)."""
+    return bool(result.get("skipped") or result.get("would_skip"))
+
+
 def _call(entry: Entry, fn: Callable[[], dict[str, Any]], failed: list[Entry]) -> dict[str, Any]:
     """Run a core call; on D365Error record a failed entry and signal abort."""
     try:
@@ -246,6 +258,18 @@ def _drift(desired: Any, live_label: Any) -> bool:
     current = (meta_mod.label_text(cast("dict[str, Any]", live_label))
                if isinstance(live_label, dict) else "")
     return str(desired) != current
+
+
+def _with_diff(entry: Entry, update_result: dict[str, Any]) -> Entry:
+    """Attach the field-level drift to an `updated` entry when one is available.
+
+    The metadata update cores compute a before/after `diff` on their dry-run
+    branch (the PUT/action body is suppressed); a real apply returns no diff. So
+    under --dry-run the `updated` bucket carries what each component WOULD change,
+    turning a list of names into an actual drift report; a real apply's entry is
+    left unchanged."""
+    diff = update_result.get("diff")
+    return {**entry, "diff": diff} if diff else entry
 
 
 def _reconcile(
@@ -291,8 +315,8 @@ def _reconcile_entity(
         changes["description"] = ent["description"]
     if not changes:
         return "skipped", entry
-    meta_update_mod.update_entity(backend, logical, solution=solution, **changes)
-    return "updated", entry
+    out = meta_update_mod.update_entity(backend, logical, solution=solution, **changes)
+    return "updated", _with_diff(entry, out)
 
 
 def _reconcile_attribute(
@@ -347,9 +371,9 @@ def _reconcile_attribute(
             changes["max_length"] = desired_max
     if not changes:
         return "skipped", entry
-    meta_update_mod.update_attribute(backend, entity_logical, attr_logical,
-                                     solution=solution, **changes)
-    return "updated", entry
+    out = meta_update_mod.update_attribute(backend, entity_logical, attr_logical,
+                                           solution=solution, **changes)
+    return "updated", _with_diff(entry, out)
 
 
 def _reconcile_optionset(
@@ -371,8 +395,8 @@ def _reconcile_optionset(
     ]
     if not inserts:
         return "skipped", entry
-    os_mod.update_optionset(backend, os_spec["name"], insert=inserts, solution=solution)
-    return "updated", entry
+    out = os_mod.update_optionset(backend, os_spec["name"], insert=inserts, solution=solution)
+    return "updated", _with_diff(entry, out)
 
 
 def apply_spec(
@@ -391,6 +415,13 @@ def apply_spec(
     `replace_blocked` (destructive divergence: reported, no write). `ok` is false
     when anything failed or was replace-blocked; `pruned` is reserved (empty) for
     the pruning slice. See ADR 0014.
+
+    Under `backend.dry_run` the same reconcile runs read-only — the reads-execute
+    rule suppresses every write while live GETs still fire — so the result is a
+    full drift report classifying each declared component into the four buckets:
+    `planned` (would create), `updated` (would update, each entry carrying a field
+    `diff`), `replace_blocked` (unconvergeable divergence), and `pruned`. Nothing
+    is written or staged (#550).
     """
     validate_spec(spec)
 
@@ -473,7 +504,7 @@ def apply_spec(
             ), failed)
             logical_name: str = result.get("logical_name") or ent["schema_name"].lower()
             entity_logicals[ent["schema_name"]] = logical_name
-            if not backend.dry_run and result.get("skipped"):
+            if _present(result):
                 _reconcile(entry, lambda ent=ent, logical_name=logical_name:
                            _reconcile_entity(backend, ent, logical_name, solution_name, entry),
                            failed, routes)
@@ -496,7 +527,7 @@ def apply_spec(
                 solution=solution_name,
                 if_exists="skip",
             ), failed)
-            if not backend.dry_run and result.get("skipped"):
+            if _present(result):
                 # Pre-existing: reconcile (insert missing options). Left out of
                 # os_created so the solution-component phase still ensures membership.
                 _reconcile(entry, lambda os_spec=os_spec, entry=entry:
@@ -583,7 +614,7 @@ def apply_spec(
                         solution=solution_name,
                         if_exists="skip",
                     ), failed)
-                if not backend.dry_run and result.get("skipped"):
+                if _present(result):
                     _reconcile(entry, lambda attr=attr, logical=logical, entry=entry:
                                _reconcile_attribute(backend, attr, logical, solution_name, entry),
                                failed, routes)
@@ -648,8 +679,10 @@ def apply_spec(
     # Publish ONCE at the end. The per-resource cores were all called with their
     # default publish=False, so nothing published mid-run. Skip when staging, on a
     # dry run, on any failure (hard error or replace-blocked divergence), or when
-    # nothing was actually written (created or updated).
-    wrote = bool(applied or updated)
+    # nothing was actually written (created or updated). Under --dry-run `applied`
+    # is always empty and `updated` is a would-update preview (writes suppressed),
+    # so nothing was written — `wrote` is false and the run never stages.
+    wrote = bool(applied or updated) and not backend.dry_run
     published = (wrote and not stage_only and not failed
                  and not replace_blocked and not backend.dry_run)
     if published:

@@ -1342,3 +1342,150 @@ def test_apply_rejects_invalid_ownership(backend):
     spec = {"entities": [ent]}
     with pytest.raises(D365Error, match="ownership"):
         apply_mod.apply_spec(backend, spec)
+
+
+# ── Slice: dry-run drift report (#550) ──────────────────────────────────────
+# Under --dry-run, apply reads the live org and classifies every declared
+# component into the four drift buckets — create (`planned`) / update
+# (`updated`) / replace-blocked (`replace_blocked`) / prune-candidate (`pruned`,
+# reserved) — WITHOUT issuing a single write (reads-execute rule).
+
+
+def _writes(m):
+    """Every non-GET request that reached the wire (should be empty under dry-run)."""
+    return [r for r in m.request_history if r.method != "GET"]
+
+
+def test_apply_dry_run_reports_entity_update_as_drift(dry_backend):
+    # Live entity displays "Old Project"; spec wants "Project". A dry-run must
+    # report it in the `updated` drift bucket (not `skipped`) and write nothing.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Old Project")
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["entity"]
+    assert res["skipped"] == []
+    assert res["applied"] == []
+    assert res["staged"] is False  # nothing was written, so nothing is staged
+    assert _writes(m) == []  # reads-execute: GETs only, zero writes
+    # The updated entry carries the field-level diff that powers the report.
+    assert "DisplayName" in res["updated"][0]["diff"]
+
+
+def test_apply_dry_run_reports_replace_blocked(dry_backend):
+    # An immutable ownership divergence is a replace-blocked drift even in a
+    # dry-run: reported (ok=false), still no write.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "ownership": "OrganizationOwned",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, ownership="UserOwned")
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["entity"]
+    assert "reason" in res["replace_blocked"][0]
+    assert res["updated"] == []
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_reports_attribute_update_as_drift(dry_backend):
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "required": "ApplicationRequired"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        _mock_attribute_live(m, dry_backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Code", required="None")
+        res = apply_mod.apply_spec(dry_backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["attribute"]
+    assert _kinds(res["skipped"]) == ["entity"]  # parent entity matches → skipped
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_reports_attribute_datatype_change_as_replace_blocked(dry_backend):
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        _mock_attribute_live(m, dry_backend, logical="contoso_code", schema="contoso_Code",
+                             cast="Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
+        res = apply_mod.apply_spec(dry_backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["attribute"]
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_unchanged_is_skipped_not_updated(dry_backend):
+    # A live component that already matches the spec is a no-op (skipped), never
+    # mis-reported as drift, even though the dry-run now runs the reconcile diff.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "display_collection_name": "Projects",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project",
+                          display_collection_name="Projects")
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["entity"]
+    assert res["updated"] == []
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_reports_optionset_new_options_as_drift(dry_backend):
+    os_spec = {"name": "contoso_priority", "display_name": "Priority",
+               "options": [{"value": 100000000, "label": "Low"},
+                           {"value": 100000001, "label": "High"},
+                           {"value": 100000002, "label": "Critical"}]}
+    spec = {"optionsets": [os_spec]}
+    with requests_mock.Mocker() as m:
+        _mock_optionset_live(m, dry_backend,
+                             options=[(100000000, "Low"), (100000001, "High")])
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["optionset"]
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_command_renders_all_drift_buckets(dry_backend, monkeypatch, tmp_path):
+    # The verb's JSON `data` carries the four drift buckets so an agent can branch
+    # on them, and meta.dry_run flags the preview.
+    import yaml
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(yaml.safe_dump({"entities": [ent]}), encoding="utf-8")
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Old Project")
+        result = CliRunner().invoke(cli, ["--json", "--dry-run", "apply", "-f", str(spec_file)])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    data = payload["data"]
+    for bucket in ("planned", "updated", "replace_blocked", "pruned"):
+        assert bucket in data
+    assert [e["kind"] for e in data["updated"]] == ["entity"]
+    assert payload["meta"]["dry_run"] is True
+    assert payload["meta"]["staged"] is False
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_human_mode_renders_drift_buckets(dry_backend, monkeypatch, tmp_path):
+    # AC#3: the same drift buckets render in human (non-JSON) mode, not only JSON.
+    import yaml
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(yaml.safe_dump({"entities": [ent]}), encoding="utf-8")
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Old Project")
+        result = CliRunner().invoke(cli, ["--dry-run", "apply", "-f", str(spec_file)])
+    assert result.exit_code == 0
+    # The `updated` drift bucket is rendered as a labelled line in human output.
+    assert "updated" in result.output
+    assert _writes(m) == []

@@ -1,8 +1,9 @@
 """Declarative desired-state apply command (`crm apply -f spec.yaml`).
 
 Reads a YAML or JSON spec and orchestrates the metadata cores in dependency
-order via crm.core.apply. Honors the global --dry-run (planned-create preview)
-and --stage-only (create without publishing) flags.
+order via crm.core.apply. Honors the global --dry-run (full drift report:
+planned/updated/replace_blocked/pruned, no writes) and --stage-only (create
+without publishing) flags.
 """
 # pyright: basic
 from __future__ import annotations
@@ -36,6 +37,11 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
     divergence would need a destructive drop-and-recreate (see ADR 0014). Emits
     {ok, data:{applied, updated, skipped, replace_blocked, pruned, planned,
     failed}, meta:{staged}}; a replace-blocked component makes ok=false (exit 1).
+
+    With the global --dry-run flag the same reconcile runs read-only and the
+    result is a full drift report — `planned` (would create), `updated` (would
+    update), `replace_blocked`, and `pruned` (reserved) — assembled from live
+    reads with no write issued (#550).
     """
     import yaml
 

@@ -130,3 +130,63 @@ def test_apply_reconciles_existing_attribute(cli, backend, ephemeral_entity, tmp
     # The live column is untouched — still a string, not retyped.
     live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
     assert "String" in str(live.get("AttributeType")), f"column was retyped: {live}"
+
+
+@pytest.mark.slow
+@covers("apply")
+def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entity,
+                                                    tmp_path, request):
+    """--dry-run reads the live org and reports drift WITHOUT writing (#550).
+
+    Seed a column, then dry-run a spec that drifts it: the column must land in the
+    `updated` drift bucket, meta.dry_run is set, and the live column is left
+    byte-for-byte unchanged — proving the reads-execute rule (GETs run, writes
+    suppressed). Target-agnostic; runs on either live target. Column cleaned up in
+    a finalizer.
+    """
+    from crm.core import metadata as meta_mod
+
+    suffix = ephemeral_entity[-8:]
+    attr_schema = f"new_applydry_{suffix}"
+    attr_logical = attr_schema.lower()
+
+    def _cleanup():
+        try:
+            backend.delete(
+                f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+                f"/Attributes(LogicalName='{attr_logical}')"
+            )
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    def _spec_path(attr):
+        spec = {"entities": [{"schema_name": ephemeral_entity,
+                              "display_name": f"E2E {suffix}", "attributes": [attr]}]}
+        path = tmp_path / "dry_spec.json"
+        path.write_text(json.dumps(spec), encoding="utf-8")
+        return str(path)
+
+    base_attr = {"kind": "string", "schema_name": attr_schema,
+                 "display_name": "Dry Test", "max_length": 50}
+
+    # Seed the column for real (applied first run, skipped on re-run — both fine).
+    seed = json.loads(cli(["--json", "apply", "-f", _spec_path(base_attr)]).stdout)
+    assert seed["ok"] is True, f"seed apply failed: {seed}"
+
+    # Dry-run a drifted spec: grow max-length + rename → reported as `updated`
+    # drift, but NO write is issued.
+    drifted = {**base_attr, "display_name": "Dry Test Renamed", "max_length": 120}
+    preview = json.loads(
+        cli(["--json", "--dry-run", "apply", "-f", _spec_path(drifted)]).stdout)
+    assert preview["ok"] is True, f"dry-run apply failed: {preview}"
+    assert preview["meta"]["dry_run"] is True, f"dry_run flag missing: {preview}"
+    assert preview["meta"]["staged"] is False, f"dry-run should not stage: {preview}"
+    assert any(e.get("name") == attr_schema for e in preview["data"]["updated"]), (
+        f"drifted column not in updated bucket: {preview['data']}")
+
+    # The live column is unchanged — the dry-run wrote nothing.
+    live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
+    assert meta_mod.label_text(live.get("DisplayName") or {}) == "Dry Test", (
+        f"dry-run mutated the display name: {live.get('DisplayName')}")
