@@ -215,7 +215,11 @@ covered by one live test that builds a signed no-op IPlugin from committed C# so
 `@requires_onprem` lifecycle test that reuses that built assembly — on-prem metadata writes are
 synchronous, so a single apply registers the whole plug-in in one pass; on cloud a new
 plug-in type's read-after-write lag would flake a single-shot apply, so the weekly cloud e2e
-gates it out. Tests that document a live product defect are
+gates it out. `workflow update --xaml-file` (on-prem XAML step-editing, #540) adds a
+target-divergent pair: a `@requires_onprem` test replaces a draft clone's genuine designer XAML
+wholesale (never activating it, to avoid undeletable type=2 activation residue), and a
+`@requires_cloud` test asserts the provenance-wall refusal before any write. Tests that document
+a live product defect are
 marked `xfail(strict=False)` so they auto-flip to xpass when the command is fixed.
 
 ### Live run record
