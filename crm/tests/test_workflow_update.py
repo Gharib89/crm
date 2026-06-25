@@ -323,12 +323,17 @@ class TestUpdateWorkflowXaml:
         assert out["workflow_id"] == _PARENT_ID
         assert out["resolved_from_activation_id"] == _CHILD_ID
 
-    def test_provenance_fault_maps_to_clean_error(self, backend):
-        """An on-prem 0x80045040 fault on the PATCH surfaces as a clean D365Error
-        preserving status/code/response_body (not a leaked raw fault)."""
+    @pytest.mark.parametrize("code,expected_phrase", [
+        ("0x80045040", "provenance"),
+        ("0x80045041", "non-ui"),
+    ])
+    def test_provenance_fault_maps_to_clean_error(self, backend, code, expected_phrase):
+        """Both on-prem provenance gates surface on the PATCH as a clean D365Error
+        preserving status/code/response_body with an explanation (not a leaked raw
+        fault)."""
         from crm.core import workflow
         url = backend.url_for(f"workflows({_WF_ID})")
-        fault = {"error": {"code": "0x80045040", "message": "raw provenance fault"}}
+        fault = {"error": {"code": code, "message": "raw provenance fault"}}
         with requests_mock.Mocker() as m:
             m.get(url, json={"name": "WF", "statecode": 0, "primaryentity": "account",
                              "xaml": _XAML_PRIOR})
@@ -336,10 +341,10 @@ class TestUpdateWorkflowXaml:
             m.patch(url, status_code=400, json=fault)
             with pytest.raises(D365Error) as ei:
                 workflow.update_workflow(backend, _WF_ID, xaml=_XAML_NEW)
-        assert ei.value.code == "0x80045040"
+        assert ei.value.code == code
         assert ei.value.status == 400
         assert ei.value.response_body == fault
-        assert "provenance" in str(ei.value).lower()
+        assert expected_phrase in str(ei.value).lower()
 
     def test_dry_run_writes_nothing_but_runs_live_validation(self):
         """Dry-run runs the live existence GET and the live attribute lookup, but

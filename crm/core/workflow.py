@@ -902,13 +902,15 @@ def _replace_workflow_xaml(
         backend.patch(f"workflows({target_id})", json_body={"xaml": blob},
                       etag="*", **admin)
 
-    def _result(reactivated: bool, rolled_back: bool = False) -> dict[str, Any]:
+    def _result(reactivated: bool) -> dict[str, Any]:
+        # Only returned on success (draft patch, or a clean reactivation). A
+        # rollback is never a success — it raises with both errors — so there is
+        # no rolled_back dimension to report here.
         return {
             "workflow_id": target_id,
             "name": current.get("name"),
             "updated": {"xaml": True},
             "reactivated": reactivated,
-            "rolled_back": rolled_back,
             "resolved_from_activation_id": resolved_from,
             "warnings": warnings,
         }
@@ -942,8 +944,18 @@ def _replace_workflow_xaml(
                       f"failed; it remains deactivated with the rejected XAML in "
                       f"place (--no-rollback)."),
             ) from exc
+        if not prior_xaml:
+            # An active workflow always has compiled XAML, so this is defensive:
+            # never PATCH an empty blob as a "restore" — that would be a real
+            # state change dressed as a rollback. Report truthfully instead.
+            raise _map_xaml_fault(
+                exc, target_id,
+                note=(f"Workflow {target_id}'s XAML was replaced but reactivation "
+                      f"failed, and no prior XAML was captured to roll back to; "
+                      f"it remains deactivated with the rejected XAML in place."),
+            ) from exc
         try:
-            _patch_xaml(prior_xaml or "")
+            _patch_xaml(prior_xaml)
             set_workflow_state(backend, target_id, activate=True,
                                auto_resolve_parent=False, **admin)
         except D365Error as rb_exc:
