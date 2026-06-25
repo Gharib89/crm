@@ -106,17 +106,6 @@ def _redirect_note_meta(info: dict) -> dict | None:
     )}
 
 
-def _update_meta(info: dict) -> dict | None:
-    """Meta for `workflow update`: the activation-record redirect note (if any)
-    plus XAML reference-validation warnings on `meta.warnings`. Travels via meta
-    so warnings render in human mode too. None when there's nothing to say."""
-    meta = _redirect_note_meta(info) or {}
-    warnings = info.get("warnings")
-    if warnings:
-        meta["warnings"] = warnings
-    return meta or None
-
-
 @workflow_group.command("list")
 @click.option("--category", type=_WorkflowCategoryType(),
               help="Filter by category. Accepts an integer (0–5) or a friendly name: "
@@ -319,7 +308,12 @@ def workflow_update(ctx: CLIContext, workflow_id, name, scope, on_demand,
             raise click.UsageError(
                 "--xaml-file replaces the workflow's step logic wholesale and "
                 "cannot be combined with the metadata flags; run them separately.")
-        xaml = Path(xaml_file).read_text(encoding="utf-8")
+        try:
+            xaml = Path(xaml_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise click.UsageError(f"cannot read --xaml-file: {exc}") from exc
+        except UnicodeDecodeError as exc:
+            raise click.UsageError(f"--xaml-file is not valid UTF-8: {exc}") from exc
     elif all(v is None for v in metadata_flags):
         raise click.UsageError(
             "Pass at least one field to update: --name, --scope, "
@@ -335,7 +329,12 @@ def workflow_update(ctx: CLIContext, workflow_id, name, scope, on_demand,
             xaml=xaml, strict=strict, rollback=rollback,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    ctx.emit(True, data=info, meta=_update_meta(info))
+    # Route the XAML path's reference-validation warnings through emit's
+    # structured `warnings=` channel (#64) — it appends to meta.warnings in JSON
+    # mode and prints cleanly in human mode. Pop them out of `data` so they are
+    # not also echoed there. The metadata path has no warnings (pop → None).
+    warnings = info.pop("warnings", None)
+    ctx.emit(True, data=info, meta=_redirect_note_meta(info), warnings=warnings or None)
     _journal(ctx, workflow_id, info)
 
 

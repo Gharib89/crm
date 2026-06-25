@@ -8,6 +8,8 @@ internal call order or private structure.
 # pyright: basic
 from __future__ import annotations
 
+import json
+
 import pytest
 import requests_mock
 from click.testing import CliRunner
@@ -455,6 +457,40 @@ class TestUpdateCommand:
         assert called["strict"] is True
         assert called["rollback"] is False
         assert called["name"] is None  # metadata fields left alone
+
+    def test_command_xaml_warnings_surface_on_meta(self, monkeypatch, tmp_path):
+        """XAML-path reference-validation warnings reach meta.warnings (via emit's
+        structured channel) in --json, and are not duplicated into data."""
+        from crm.commands import workflow as wf_cmd
+        from crm.cli import cli
+        self._seed_profile(monkeypatch, tmp_path)
+        xaml_path = tmp_path / "wf.xaml"
+        xaml_path.write_text("<Activity />", encoding="utf-8")
+        warn = "attribute not found on entity: 'badattr'"
+        monkeypatch.setattr(wf_cmd.workflow_mod, "update_workflow",
+            lambda backend, workflow_id, **kw: {
+                "workflow_id": workflow_id, "name": "WF", "updated": {"xaml": True},
+                "reactivated": False, "resolved_from_activation_id": None,
+                "warnings": [warn]})
+        result = CliRunner().invoke(cli, [
+            "--json", "--profile", "t", "workflow", "update", _WF_ID,
+            "--xaml-file", str(xaml_path)])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["meta"]["warnings"] == [warn], env
+        assert "warnings" not in env["data"], "warnings must not be duplicated into data"
+
+    def test_command_xaml_file_unreadable_is_usage_error(self, monkeypatch, tmp_path):
+        """A non-UTF-8 --xaml-file is a clean usage error (exit 2), not a raw
+        traceback that breaks the --json envelope."""
+        from crm.cli import cli
+        self._seed_profile(monkeypatch, tmp_path)
+        bad = tmp_path / "wf.xaml"
+        bad.write_bytes(b"\xff\xfe\x00bad")  # invalid UTF-8
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "workflow", "update", _WF_ID, "--xaml-file", str(bad)])
+        assert result.exit_code == 2, result.output
+        assert "utf-8" in result.output.lower()
 
     def test_command_xaml_file_excludes_metadata_flags(self, monkeypatch, tmp_path):
         """--xaml-file combined with a metadata flag is a usage error (exit 2)."""
