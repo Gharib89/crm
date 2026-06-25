@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import os
+from pathlib import Path
 from typing import Any
 
 from crm.utils.d365_backend import (
@@ -153,6 +154,120 @@ def update_webresource(
     }
     maybe_publish(backend, out, publish)
     return out
+
+
+def _walk_files(directory: str) -> list[tuple[str, Path]]:
+    """Return `(posix-relpath, path)` for every file under `directory`, sorted.
+
+    `path` is the file as walked (rooted under `directory`, so absolute only when
+    `directory` is). Sorted for a deterministic walk order; the relative path uses
+    `/` separators so the derived web resource name is stable across platforms.
+    Raises D365Error if `directory` is missing or not a directory — without that
+    guard a bad path would yield an empty walk and look like a successful no-op.
+    """
+    base = Path(directory)
+    if not base.is_dir():
+        raise D365Error(f"push directory not found or not a directory: {directory}")
+    out = [
+        (p.relative_to(base).as_posix(), p)
+        for p in base.rglob("*")
+        if p.is_file()
+    ]
+    out.sort()
+    return out
+
+
+def push_webresources(
+    backend: D365Backend,
+    directory: str,
+    *,
+    prefix: str,
+    solution: str | None = None,
+    publish: bool = True,
+) -> dict[str, Any]:
+    """Walk `directory` and upsert each file as a web resource, publishing once.
+
+    Each file maps to web resource name ``<prefix>_<relpath>`` where ``relpath``
+    is the file's path relative to ``directory`` with ``/`` separators; the type
+    is inferred from the extension. The file's bytes are base64-compared against
+    the live ``content``: a missing resource is created, a changed one updated, a
+    byte-identical one skipped (no PATCH). A per-file error is collected and the
+    walk continues — one bad file never aborts the run (unlike ``apply_spec``).
+    Once the whole walk completes, publishes once via ``PublishAllXml`` when any
+    content changed; the successful writes publish even if other files failed.
+
+    Returns ``{pushed, updated, skipped, published, failed, files}`` on a real
+    run — ``pushed``/``updated``/``skipped`` counts, ``published`` a bool,
+    ``failed`` a list of ``{file, name, error}``, ``files`` the full per-file
+    detail. Under dry-run the live GETs still run (reads-execute rule) but every
+    write is short-circuited, returning ``{_dry_run, would_create, would_update,
+    skipped, published, failed, files}`` previewing the create/update sets.
+    """
+    from crm.core.solution import publish_all, validate_customization_prefix
+
+    validate_customization_prefix(prefix)
+
+    files: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    changed = 0  # creates + content updates (drives the single end-of-run publish)
+
+    for relpath, abspath in _walk_files(directory):
+        name = f"{prefix}_{relpath}"
+        entry: dict[str, Any] = {"file": relpath, "name": name}
+        try:
+            wtype = resolve_webresourcetype(relpath)
+            content = abspath.read_bytes()
+            live = find_webresource(backend, name)
+            if live is not None and live.get("content") == base64.b64encode(
+                    content).decode("ascii"):
+                entry["action"] = "skipped"
+            elif backend.dry_run:
+                entry["action"] = "would_create" if live is None else "would_update"
+            elif live is None:
+                res = create_webresource(
+                    backend, name=name, content=content, webresourcetype=wtype,
+                    solution=solution, publish=False)
+                entry["action"] = "created"
+                entry["webresourceid"] = res.get("webresourceid")
+                changed += 1
+            else:
+                update_webresource(
+                    backend, name, content=content, solution=solution, publish=False)
+                entry["action"] = "updated"
+                changed += 1
+        except (D365Error, OSError) as exc:
+            # A per-file error (server fault, unknown extension, or an unreadable
+            # file) is collected and the walk continues — never aborts the run.
+            entry["action"] = "failed"
+            entry["error"] = str(exc)
+            failed.append({"file": relpath, "name": name, "error": str(exc)})
+        files.append(entry)
+
+    published = bool(changed) and publish and not backend.dry_run
+    if published:
+        publish_all(backend)
+
+    def _count(action: str) -> int:
+        return sum(1 for f in files if f["action"] == action)
+
+    if backend.dry_run:
+        return {
+            "_dry_run": True,
+            "would_create": [f["name"] for f in files if f["action"] == "would_create"],
+            "would_update": [f["name"] for f in files if f["action"] == "would_update"],
+            "skipped": _count("skipped"),
+            "published": False,
+            "failed": failed,
+            "files": files,
+        }
+    return {
+        "pushed": _count("created"),
+        "updated": _count("updated"),
+        "skipped": _count("skipped"),
+        "published": published,
+        "failed": failed,
+        "files": files,
+    }
 
 
 def get_webresource(backend: D365Backend, name: str) -> dict[str, Any]:

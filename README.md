@@ -406,7 +406,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
 | `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / missing-components (pre-import dependency check against the target org) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / apply-upgrade (separate promote) / uninstall |
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch`; `--mode upsert`/`--mode delete` resolve records by GUID (`--id-column`) or alternate key (`--key`); `data delete` submits a **server-side BulkDelete async job** for records matching a FetchXML query |
-| `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); set as app icons |
+| `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); `push <DIR> --prefix <p>` bulk-upserts a directory tree (name = `<prefix>_<relpath>`, type inferred from extension, skips byte-identical, publishes once); set as app icons |
 | `view`       | System views (savedquery): `list` / `create`; `edit-columns` to add, remove, resize, or reorder grid columns in place (keeps layoutxml + fetchxml coupled); `set-order` to replace, append, or clear the sort order; `add-filter` / `remove-filter` to edit FetchXML filter conditions in place — all without manual XML editing |
 | `form`       | Entity main forms (systemform): list, clone to another table, export formxml; add-field / remove-field / set-field / set-field-props to edit form layouts; add / remove / rename / move tab & section to edit the form's tab/section structure; add-library / add-handler / remove-handler / list-handlers to wire and inspect JS event handlers — all without manual FormXml editing |
 | `chart`      | System & user charts (savedqueryvisualization / userqueryvisualization): list / get / create / delete; author from datadescription + presentationdescription XML or a web-resource visualization; edit in-place with `update` (replace XML columns, name, description, or series chart type), `set-fetch` (swap the inner `<fetch>` while keeping categories), `add-series` / `remove-series` (add or remove an aggregate series), and `set-groupby` (change the grouping column) — all headlessly (no chart designer) |
@@ -426,6 +426,18 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `session`    | Local session state, command history, and audit journal    |
 | `completion` | Print or install shell completion (bash/zsh/fish/powershell); install caches the script + prints the rc line to source |
 | `self-update` | Upgrade a frozen (install-script) binary in place and re-sync installed agent skills + shell completion; `--check` reports current vs latest |
+
+For a continuous redeploy loop during front-end development, pipe `entr` (or `watchexec`) into `webresource push`:
+
+```bash
+# re-push whenever any JS file changes (find is portable; bash ** globstar is off by default)
+find webresources -type f -name '*.js' | entr crm webresource push webresources --prefix cwx
+
+# watchexec equivalent
+watchexec -e js,css,html -- crm webresource push webresources --prefix cwx
+```
+
+See [how-to/webresource](docs/how-to/webresource.md) for the full `push` semantics (naming convention, upsert logic, dry-run).
 
 The `metadata` group covers both browsing and write verbs. `metadata describe
 <entity>` returns a one-shot, read-only write-readiness brief — entity set, primary

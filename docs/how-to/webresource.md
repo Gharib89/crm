@@ -54,6 +54,103 @@ crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresourc
 ```
 `app create --icon-webresource <name|guid>` uses that web resource as the app icon. A GUID is used directly; a name is resolved to its id. Omit the flag to keep the platform default icon.
 
+## Bulk push a directory — `push`
+
+`push` walks a local directory and upserts every file as a web resource in one run:
+
+```bash
+crm --json webresource push ./webresources --prefix cwx
+crm --json webresource push ./webresources --prefix cwx --solution cwx_crmworx
+```
+
+### Naming convention
+
+Each file's web resource name is derived deterministically:
+
+```
+<prefix>_<relpath>
+```
+
+where `<relpath>` is the file's path relative to the `DIRECTORY` argument, with `/` separators regardless of OS. A file at `webresources/scripts/ribbon.js` pushed with `--prefix cwx` becomes `cwx_scripts/ribbon.js`. The prefix must be 2–8 alphanumeric characters, start with a letter, and not start with `mscrm` (reserved); an invalid prefix is rejected as a usage error before any call.
+
+### Upsert + skip + publish-once
+
+For each file the command:
+
+1. Fetches the existing web resource by name (a live GET — always runs, even under `--dry-run`).
+2. **Creates** it when it doesn't exist.
+3. **Updates** it (PATCH of `content`) when the base64 content has changed.
+4. **Skips** it (no write) when the stored content is byte-identical — cheap no-op.
+
+A single `PublishAllXml` is issued at the end **only when at least one file was created or updated**. If every file was skipped, no publish occurs.
+
+### Partial-failure behavior
+
+A failing file does not abort the run. Errors are collected in `failed` and reported at the end. The files that succeeded are still published. **Exit code is 1 if any file failed, 0 if all succeeded.**
+
+### Dry-run preview
+
+The global `--dry-run` flag runs all the live GETs but issues no writes:
+
+```bash
+crm --json --dry-run webresource push ./webresources --prefix cwx
+```
+
+Output shows `would_create` (names that would be created), `would_update` (names whose content changed), and `skipped` (byte-identical), so you can audit the changeset before committing.
+
+### JSON envelope
+
+Real run:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "pushed": 3,
+    "updated": 1,
+    "skipped": 2,
+    "published": true,
+    "failed": [],
+    "files": [
+      {"name": "cwx_scripts/ribbon.js", "action": "created"},
+      {"name": "cwx_scripts/form.js",   "action": "updated"},
+      {"name": "cwx_styles/main.css",   "action": "skipped"}
+    ]
+  }
+}
+```
+
+Dry-run:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "_dry_run": true,
+    "would_create": ["cwx_scripts/ribbon.js"],
+    "would_update": ["cwx_scripts/form.js"],
+    "skipped": 2,
+    "published": false,
+    "failed": [],
+    "files": [...]
+  }
+}
+```
+
+### Continuous redeploy loop
+
+`push` has no `--watch` flag. Wire it to `entr` or `watchexec` for a live-reload loop during front-end development:
+
+```bash
+# re-push whenever any JS/CSS/HTML file changes
+# (find is portable; bash ** globstar is off by default, so `ls **/*` can silently match nothing)
+find webresources -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' \) | \
+  entr crm webresource push webresources --prefix cwx
+
+# watchexec equivalent (no glob expansion needed)
+watchexec -e js,css,html -- crm webresource push webresources --prefix cwx
+```
+
 ## Delete a web resource
 
 ```bash
