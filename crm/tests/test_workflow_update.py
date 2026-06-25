@@ -492,6 +492,18 @@ class TestUpdateCommand:
         assert result.exit_code == 2, result.output
         assert "utf-8" in result.output.lower()
 
+    @pytest.mark.parametrize("extra", [["--strict"], ["--no-rollback"]])
+    def test_command_xaml_only_flags_rejected_without_xaml_file(
+            self, monkeypatch, tmp_path, extra):
+        """--strict / --no-rollback only steer the XAML path; passing them without
+        --xaml-file is a usage error, not a silent no-op."""
+        from crm.cli import cli
+        self._seed_profile(monkeypatch, tmp_path)
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "workflow", "update", _WF_ID, "--name", "X", *extra])
+        assert result.exit_code == 2, result.output
+        assert "only apply with --xaml-file" in result.output.lower()
+
     def test_command_xaml_file_excludes_metadata_flags(self, monkeypatch, tmp_path):
         """--xaml-file combined with a metadata flag is a usage error (exit 2)."""
         from crm.cli import cli

@@ -314,11 +314,18 @@ def workflow_update(ctx: CLIContext, workflow_id, name, scope, on_demand,
             raise click.UsageError(f"cannot read --xaml-file: {exc}") from exc
         except UnicodeDecodeError as exc:
             raise click.UsageError(f"--xaml-file is not valid UTF-8: {exc}") from exc
-    elif all(v is None for v in metadata_flags):
-        raise click.UsageError(
-            "Pass at least one field to update: --name, --scope, "
-            "--on-demand/--no-on-demand, --on-create/--no-on-create, "
-            "--on-delete/--no-on-delete, --on-update-attributes, or --xaml-file.")
+    else:
+        # --strict / --no-rollback only steer the XAML path; reject them on the
+        # metadata path rather than silently ignoring them. (`rollback` defaults
+        # True, so `not rollback` means --no-rollback was passed explicitly.)
+        if strict or not rollback:
+            raise click.UsageError(
+                "--strict and --rollback/--no-rollback only apply with --xaml-file.")
+        if all(v is None for v in metadata_flags):
+            raise click.UsageError(
+                "Pass at least one field to update: --name, --scope, "
+                "--on-demand/--no-on-demand, --on-create/--no-on-create, "
+                "--on-delete/--no-on-delete, --on-update-attributes, or --xaml-file.")
     with d365_errors(ctx):
         info = workflow_mod.update_workflow(
             ctx.backend(), workflow_id,
