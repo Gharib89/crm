@@ -9,6 +9,40 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.39.1 (2026-06-25)
+
+### Bug Fixes
+
+- Allowlist ADR 0015 prose shorthand in doc-example gate
+  ([#575](https://github.com/Gharib89/crm/pull/575),
+  [`399f914`](https://github.com/Gharib89/crm/commit/399f9145c8909185ffa459c21132811fa18c05a6))
+
+### Documentation
+
+- **adr**: Record skill-evaluation design (static gate + behavioral eval)
+  ([`53d1484`](https://github.com/Gharib89/crm/commit/53d14840ffcf1c255598eea580156a117a4aadb2))
+
+- **skill**: Add workflow-xaml composition reference
+  ([#567](https://github.com/Gharib89/crm/pull/567),
+  [`57cc4d2`](https://github.com/Gharib89/crm/commit/57cc4d2fdc0369aaf38d14814e4801c443aa48bc))
+
+### Performance Improvements
+
+- Cache catalogue() so the skill-coverage gate walks the CLI once
+  ([#575](https://github.com/Gharib89/crm/pull/575),
+  [`399f914`](https://github.com/Gharib89/crm/commit/399f9145c8909185ffa459c21132811fa18c05a6))
+
+### Testing
+
+- Add offline skill-coverage gate reconciling skill tree vs CLI catalogue
+  ([#575](https://github.com/Gharib89/crm/pull/575),
+  [`399f914`](https://github.com/Gharib89/crm/commit/399f9145c8909185ffa459c21132811fa18c05a6))
+
+- Assert top-level names strictly superset groups in coverage gate
+  ([#575](https://github.com/Gharib89/crm/pull/575),
+  [`399f914`](https://github.com/Gharib89/crm/commit/399f9145c8909185ffa459c21132811fa18c05a6))
+
+
 ## v1.39.0 (2026-06-25)
 
 ### Features
