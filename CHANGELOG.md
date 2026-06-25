@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.31.0 (2026-06-25)
+
+### Chores
+
+- Relicense under PolyForm Noncommercial 1.0.0
+  ([`5963212`](https://github.com/Gharib89/crm/commit/5963212a36528ad79600eb87a72ed3bebe82ba6f))
+
+### Documentation
+
+- **adr**: Record 0004 reconsideration — codegen stays external
+  ([`e2c17f8`](https://github.com/Gharib89/crm/commit/e2c17f8ce6862e4650f212b0adc934e25f2399f2))
+
+### Features
+
+- **apply**: Convergent desired-state reconciliation for entity/attribute/optionset
+  ([#556](https://github.com/Gharib89/crm/pull/556),
+  [`0f74931`](https://github.com/Gharib89/crm/commit/0f749319b2118da845a08079beb84d99fb60ec7c))
+
+
 ## v1.30.1 (2026-06-24)
 
 ### Bug Fixes
