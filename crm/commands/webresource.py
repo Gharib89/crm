@@ -86,6 +86,67 @@ def webresource_delete(ctx: CLIContext, name, yes, check_dependencies):
     _journal(ctx, name, info)
 
 
+def _validate_prefix(_ctx, _param, value):
+    """Validate --prefix at parse time so a bad value fails as a usage error
+    (exit 2) before the backend is resolved (which can launch the profile
+    wizard in human mode). The core re-checks for non-CLI callers."""
+    from crm.core.solution import validate_customization_prefix
+    from crm.utils.d365_backend import D365Error
+    try:
+        validate_customization_prefix(value)
+    except D365Error as exc:
+        raise click.BadParameter(str(exc))
+    return value
+
+
+@webresource_group.command("push")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False))
+@click.option("--prefix", required=True, callback=_validate_prefix,
+              help="Publisher customization prefix (2-8 alphanumerics, starts "
+                   "with a letter, not 'mscrm'); each file maps to web resource "
+                   "name '<prefix>_<relpath>' (path relative to DIRECTORY, '/' "
+                   "separators, type inferred from extension).")
+@_solution_option
+@_publish_option
+@pass_ctx
+def webresource_push(ctx: CLIContext, directory, prefix, solution,
+                     require_solution, publish):
+    """Walk DIRECTORY and upsert every file as a web resource, publishing once.
+
+    The filesystem is the source of truth: a missing resource is created, a
+    changed one updated, a byte-identical one skipped, and all changes are
+    published once at the end (PublishAllXml) — nothing publishes mid-run. A
+    per-file failure is reported without aborting the rest. Honors the global
+    --dry-run flag (lists the would-create / would-update sets, writes nothing)
+    and --stage-only / --no-publish (write the resources, defer the publish).
+    For a continuous redeploy loop, pair with a file watcher, e.g.
+    `find webresources -name '*.js' | entr crm webresource push webresources --prefix cwx`.
+    """
+    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    publish = _resolve_publish(ctx, publish)
+    with d365_errors(ctx):
+        res = wr_mod.push_webresources(
+            ctx.backend(), directory, prefix=prefix, solution=solution,
+            publish=publish)
+    ok = not res["failed"]
+    error = None
+    if res["failed"]:
+        error = f"{len(res['failed'])} file(s) failed — " + "; ".join(
+            f"{e['name']}: {e['error']}" for e in res["failed"])
+    warnings = [warning] if warning else None
+    meta = ctx.staged_meta()
+    if ctx.json_mode:
+        ctx.emit(ok, data=res, error=error, meta=meta, warnings=warnings)
+        return
+    # Human mode renders the counts; full per-file detail is --json-only. On a
+    # failure the human path prints only `error`, so it carries the per-file list.
+    keys = (("would_create", "would_update", "skipped", "published")
+            if res.get("_dry_run")
+            else ("pushed", "updated", "skipped", "published"))
+    ctx.emit(ok, data={k: res[k] for k in keys}, error=error, meta=meta,
+             warnings=warnings)
+
+
 @webresource_group.command("get")
 @click.argument("name")
 @pass_ctx

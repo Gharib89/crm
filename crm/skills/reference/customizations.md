@@ -218,6 +218,48 @@ Both `create` and `update` honor `--solution` (`MSCRM.SolutionUniqueName`) and p
 after the write (`--no-publish` / global `--stage-only` suppress it; see
 `reference/authoring.md`).
 
+### Bulk push — `webresource push <DIRECTORY> --prefix <p>`
+
+Upserts every file in a directory tree in one run.
+
+**Naming convention:** each file maps to `<prefix>_<relpath>` where `<relpath>` is the
+file's path relative to `DIRECTORY` using `/` separators. `webresources/scripts/ribbon.js`
+with `--prefix cwx` → `cwx_scripts/ribbon.js`. Type is inferred from the file extension.
+
+**Upsert semantics:**
+- Creates a missing resource, updates one whose content changed, skips byte-identical ones
+  (no write, no publish for that file).
+- A single `PublishAllXml` fires at the end only when at least one file was created or
+  updated.
+- Per-file failures do not abort the run — the rest push and publish. Exit 1 if any file
+  failed, 0 otherwise.
+
+**Dry-run** (global `--dry-run`) runs the live GETs, issues no writes, returns
+`would_create` / `would_update` name lists plus a `skipped` count.
+
+**JSON contract:**
+
+Real run `data`:
+```json
+{"pushed": 3, "updated": 1, "skipped": 2, "published": true,
+ "failed": [], "files": [{"name": "cwx_scripts/ribbon.js", "action": "created"}, ...]}
+```
+
+Dry-run `data`:
+```json
+{"_dry_run": true, "would_create": ["cwx_scripts/ribbon.js"],
+ "would_update": ["cwx_scripts/form.js"], "skipped": 2, "published": false, "failed": [], "files": [...]}
+```
+
+**Continuous redeploy** — there is no `--watch` flag; use `entr` or `watchexec`:
+
+```bash
+# find (not `ls **/*` — bash globstar is off by default and would match nothing)
+find webresources -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' \) | \
+  entr crm webresource push webresources --prefix cwx
+watchexec -e js,css,html -- crm webresource push webresources --prefix cwx
+```
+
 ## Ribbon — `ribbon` (entity command-bar buttons)
 
 The ribbon is stored as `RibbonDiffXml` and has **no first-class Web API write path**:

@@ -173,3 +173,84 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request):
         f"newly created web resource {name!r} not found in list results "
         f"(found {len(items)} items)"
     )
+
+
+# ── push (directory upsert) ──────────────────────────────────────────────────
+
+
+@covers("webresource push")
+@pytest.mark.slow
+def test_webresource_push_directory(cli, tmp_path, unique, request):
+    """Walk a directory and upsert each file: create on first push, skip when
+    byte-identical, update when changed, and preview under --dry-run.
+
+    Names are derived by convention: ``<prefix>_<relpath>``. The unique id is
+    folded into the relative path so the resource names are unique per run. A
+    finalizer best-effort deletes every name so the org is left clean.
+    """
+    prefix = "e2e"
+    root = tmp_path / "wr"
+    rel_js = f"{unique}/app.js"
+    rel_css = f"{unique}/styles/site.css"
+    rel_new = f"{unique}/added.js"
+    name_js = f"{prefix}_{rel_js}"
+    name_css = f"{prefix}_{rel_css}"
+    name_new = f"{prefix}_{rel_new}"
+
+    (root / unique / "styles").mkdir(parents=True)
+    (root / rel_js).write_bytes(b"// e2e push v1")
+    (root / rel_css).write_bytes(b"body{color:red}")
+
+    def _cleanup():
+        for n in (name_js, name_css, name_new):
+            try:
+                cli(["--json", "webresource", "delete", n, "--yes"], check=False)
+            except Exception:
+                pass
+    request.addfinalizer(_cleanup)
+
+    # ── FIRST PUSH: both files created, published once ──────────────────────────
+    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix])
+    assert result.returncode == 0, (
+        f"first push failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    env = json.loads(result.stdout)
+    assert env["ok"], env
+    data = env["data"]
+    assert data["pushed"] == 2, f"expected 2 created: {data}"
+    assert data["updated"] == 0 and data["skipped"] == 0, data
+    assert data["published"] is True, data
+    # both resources now resolvable
+    for n in (name_js, name_css):
+        got = cli(["--json", "webresource", "get", n])
+        assert got.returncode == 0 and json.loads(got.stdout)["ok"], got.stdout
+
+    # ── RE-PUSH IDENTICAL: both skipped, no writes ──────────────────────────────
+    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix])
+    assert result.returncode == 0, result.stderr
+    data = json.loads(result.stdout)["data"]
+    assert data["skipped"] == 2, f"expected 2 skipped: {data}"
+    assert data["pushed"] == 0 and data["updated"] == 0, data
+    assert data["published"] is False, data
+
+    # ── CHANGE ONE FILE: one updated, one skipped ───────────────────────────────
+    (root / rel_js).write_bytes(b"// e2e push v2 changed")
+    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix])
+    assert result.returncode == 0, result.stderr
+    data = json.loads(result.stdout)["data"]
+    assert data["updated"] == 1, f"expected 1 updated: {data}"
+    assert data["skipped"] == 1, data
+    assert data["published"] is True, data
+
+    # ── DRY-RUN A NEW FILE: previewed, not written ──────────────────────────────
+    (root / rel_new).write_bytes(b"// added, dry-run only")
+    result = cli(["--json", "--dry-run", "webresource", "push", str(root),
+                  "--prefix", prefix])
+    assert result.returncode == 0, result.stderr
+    env = json.loads(result.stdout)
+    data = env["data"]
+    assert name_new in data["would_create"], f"new file not previewed: {data}"
+    assert env["meta"]["dry_run"] is True, env
+    # the dry-run must not have created it
+    got = cli(["--json", "webresource", "get", name_new], check=False)
+    assert got.returncode != 0, f"dry-run wrote {name_new}: {got.stdout}"

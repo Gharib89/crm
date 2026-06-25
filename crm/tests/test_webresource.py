@@ -26,6 +26,31 @@ def _patches(m):
     return [r for r in m.request_history if r.method == "PATCH"]
 
 
+def _wr_get_cb(existing):
+    """requests_mock GET callback for webresourceset.
+
+    `existing` maps a web resource name to its live row (incl. base64 `content`);
+    a name not present resolves to an empty collection (resource missing).
+    Parses `$filter` from the raw URL so the looked-up name keeps its case.
+    """
+    import re
+    from urllib.parse import urlparse, parse_qs
+
+    def cb(request, context):
+        flt = parse_qs(urlparse(request.url).query).get("$filter", [""])[0]
+        m = re.search(r"name eq '([^']+)'", flt)
+        name = m.group(1) if m else None
+        context.status_code = 200
+        row = existing.get(name)
+        return {"value": [row] if row else []}
+
+    return cb
+
+
+def _b64(raw: bytes) -> str:
+    return base64.b64encode(raw).decode("ascii")
+
+
 class TestResolveWebresourcetype:
     @pytest.mark.parametrize(
         "fname,expected",
@@ -664,3 +689,275 @@ class TestWebresourceCommands:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, ["webresource", "list"])
         assert result.exit_code == 0, result.output
+
+
+class TestPushWebresources:
+    def test_creates_missing_and_publishes_once(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "scripts").mkdir()
+        (tmp_path / "scripts" / "app.js").write_bytes(b"console.log(1)")
+        wr_url = backend.url_for(f"webresourceset({_WR_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb({}))
+            m.post(backend.url_for("webresourceset"), status_code=204,
+                   headers={"OData-EntityId": wr_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = webresource.push_webresources(
+                backend, str(tmp_path), prefix="cwx")
+        assert out["pushed"] == 1
+        assert out["updated"] == 0
+        assert out["skipped"] == 0
+        assert out["published"] is True
+        assert out["failed"] == []
+        # name by convention: <prefix>_<relpath>, forward slashes
+        body = _posts(m)[0].json()
+        assert body["name"] == "cwx_scripts/app.js"
+        assert body["webresourcetype"] == 3  # .js
+        # published exactly once, at the end
+        assert sum("PublishAllXml" in r.url for r in _posts(m)) == 1
+
+    def test_updates_changed_content_patches_once(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "app.js").write_bytes(b"NEW BODY")
+        existing = {"cwx_app.js": {
+            "webresourceid": _WR_ID, "name": "cwx_app.js",
+            "content": _b64(b"OLD BODY")}}
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb(existing))
+            m.patch(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
+        assert out["pushed"] == 0
+        assert out["updated"] == 1
+        assert out["skipped"] == 0
+        assert out["published"] is True
+        assert len(_patches(m)) == 1
+        assert _b64(b"NEW BODY") == _patches(m)[0].json()["content"]
+        assert sum("PublishAllXml" in r.url for r in _posts(m)) == 1
+
+    def test_skips_byte_identical_no_patch_no_publish(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "app.js").write_bytes(b"SAME")
+        existing = {"cwx_app.js": {
+            "webresourceid": _WR_ID, "name": "cwx_app.js", "content": _b64(b"SAME")}}
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb(existing))
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
+        assert out["skipped"] == 1
+        assert out["pushed"] == 0 and out["updated"] == 0
+        assert out["published"] is False
+        assert _patches(m) == []
+        assert not any("PublishAllXml" in r.url for r in _posts(m))
+
+    def test_mixed_create_update_skip_counts(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "new.js").write_bytes(b"new")
+        (tmp_path / "changed.css").write_bytes(b"changed-new")
+        (tmp_path / "same.html").write_bytes(b"<p>same</p>")
+        existing = {
+            "cwx_changed.css": {"webresourceid": _WR_ID, "name": "cwx_changed.css",
+                              "content": _b64(b"changed-old")},
+            "cwx_same.html": {"webresourceid": _WR_ID, "name": "cwx_same.html",
+                            "content": _b64(b"<p>same</p>")},
+        }
+        wr_url = backend.url_for(f"webresourceset({_WR_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb(existing))
+            m.post(backend.url_for("webresourceset"), status_code=204,
+                   headers={"OData-EntityId": wr_url})
+            m.patch(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
+        assert out["pushed"] == 1
+        assert out["updated"] == 1
+        assert out["skipped"] == 1
+        assert out["published"] is True
+        assert sum("PublishAllXml" in r.url for r in _posts(m)) == 1
+
+    def test_dry_run_lists_would_sets_and_writes_nothing(self, dry_backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "new.js").write_bytes(b"new")
+        (tmp_path / "changed.css").write_bytes(b"changed-new")
+        (tmp_path / "same.html").write_bytes(b"<p>same</p>")
+        existing = {
+            "cwx_changed.css": {"webresourceid": _WR_ID, "name": "cwx_changed.css",
+                              "content": _b64(b"changed-old")},
+            "cwx_same.html": {"webresourceid": _WR_ID, "name": "cwx_same.html",
+                            "content": _b64(b"<p>same</p>")},
+        }
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for("webresourceset"), json=_wr_get_cb(existing))
+            out = webresource.push_webresources(dry_backend, str(tmp_path), prefix="cwx")
+        assert out["_dry_run"] is True
+        assert out["would_create"] == ["cwx_new.js"]
+        assert out["would_update"] == ["cwx_changed.css"]
+        assert out["skipped"] == 1
+        assert out["published"] is False
+        # reads-execute: GETs ran, no writes
+        assert _posts(m) == [] and _patches(m) == []
+
+    def test_partial_failure_reported_rest_still_push(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "good.js").write_bytes(b"ok")
+        (tmp_path / "bad.unknownext").write_bytes(b"x")
+        wr_url = backend.url_for(f"webresourceset({_WR_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb({}))
+            m.post(backend.url_for("webresourceset"), status_code=204,
+                   headers={"OData-EntityId": wr_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
+        assert out["pushed"] == 1  # good.js still pushed
+        assert len(out["failed"]) == 1
+        assert out["failed"][0]["file"] == "bad.unknownext"
+        assert out["published"] is True  # the one success still publishes
+
+    def test_publishes_even_when_one_file_fails(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "good.js").write_bytes(b"ok")
+        (tmp_path / "bad.zzz").write_bytes(b"x")
+        wr_url = backend.url_for(f"webresourceset({_WR_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb({}))
+            m.post(backend.url_for("webresourceset"), status_code=204,
+                   headers={"OData-EntityId": wr_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
+        assert sum("PublishAllXml" in r.url for r in _posts(m)) == 1
+
+    def test_invalid_prefix_raises_before_any_http(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "app.js").write_bytes(b"x")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb({}))
+            with pytest.raises(D365Error, match="customizationprefix"):
+                webresource.push_webresources(backend, str(tmp_path), prefix="bad prefix")
+        assert m.request_history == []
+
+    def test_missing_directory_raises(self, backend, tmp_path):
+        from crm.core import webresource
+        missing = tmp_path / "does-not-exist"
+        with pytest.raises(D365Error, match="not found or not a directory"):
+            webresource.push_webresources(backend, str(missing), prefix="cwx")
+
+    def test_empty_directory_is_noop(self, backend, tmp_path):
+        from crm.core import webresource
+        out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
+        assert out == {"pushed": 0, "updated": 0, "skipped": 0,
+                       "published": False, "failed": [], "files": []}
+
+    def test_no_publish_creates_but_skips_publish(self, backend, tmp_path):
+        from crm.core import webresource
+        (tmp_path / "app.js").write_bytes(b"x")
+        wr_url = backend.url_for(f"webresourceset({_WR_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb({}))
+            m.post(backend.url_for("webresourceset"), status_code=204,
+                   headers={"OData-EntityId": wr_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = webresource.push_webresources(
+                backend, str(tmp_path), prefix="cwx", publish=False)
+        assert out["pushed"] == 1
+        assert out["published"] is False
+        assert not any("PublishAllXml" in r.url for r in _posts(m))
+
+    def test_unreadable_file_reported_rest_still_push(self, backend, tmp_path):
+        from pathlib import Path
+        from crm.core import webresource
+        (tmp_path / "good.js").write_bytes(b"ok")
+        (tmp_path / "locked.js").write_bytes(b"x")
+        real_read = Path.read_bytes
+
+        def fake_read(self):
+            if self.name == "locked.js":
+                raise OSError("permission denied")
+            return real_read(self)
+
+        wr_url = backend.url_for(f"webresourceset({_WR_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("webresourceset"), json=_wr_get_cb({}))
+            m.post(backend.url_for("webresourceset"), status_code=204,
+                   headers={"OData-EntityId": wr_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            import pytest as _pytest
+            with _pytest.MonkeyPatch.context() as mp:
+                mp.setattr(Path, "read_bytes", fake_read)
+                out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
+        assert out["pushed"] == 1  # good.js still pushed despite locked.js
+        assert len(out["failed"]) == 1
+        assert out["failed"][0]["file"] == "locked.js"
+        assert "permission denied" in out["failed"][0]["error"]
+
+
+class TestPushCommand:
+    def test_push_command_wires_core_json(self, monkeypatch, tmp_path):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        (tmp_path / "a.js").write_bytes(b"x")
+        res = {"pushed": 1, "updated": 0, "skipped": 0, "published": True,
+               "failed": [], "files": [{"file": "a.js", "name": "cwx_a.js",
+                                        "action": "created"}]}
+        monkeypatch.setattr("crm.core.webresource.push_webresources",
+                            lambda backend, directory, **kw: res)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "push", str(tmp_path), "--prefix", "cwx"])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert env["data"]["pushed"] == 1
+        assert env["data"]["files"][0]["name"] == "cwx_a.js"
+
+    def test_push_command_exit_1_on_failure(self, monkeypatch, tmp_path):
+        import json
+        from click.testing import CliRunner
+        from crm.cli import cli
+        (tmp_path / "a.js").write_bytes(b"x")
+        res = {"pushed": 0, "updated": 0, "skipped": 0, "published": False,
+               "failed": [{"file": "a.js", "name": "cwx_a.js", "error": "boom"}],
+               "files": [{"file": "a.js", "name": "cwx_a.js",
+                          "action": "failed", "error": "boom"}]}
+        monkeypatch.setattr("crm.core.webresource.push_webresources",
+                            lambda backend, directory, **kw: res)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "push", str(tmp_path), "--prefix", "cwx"])
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "boom" in env["error"]
+
+
+    def test_push_command_threads_no_publish(self, monkeypatch, tmp_path):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        (tmp_path / "a.js").write_bytes(b"x")
+        captured = {}
+
+        def fake(backend, directory, **kw):
+            captured.update(kw)
+            return {"pushed": 0, "updated": 0, "skipped": 0, "published": False,
+                    "failed": [], "files": []}
+
+        monkeypatch.setattr("crm.core.webresource.push_webresources", fake)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "push", str(tmp_path),
+            "--prefix", "cwx", "--no-publish"])
+        assert result.exit_code == 0, result.output
+        assert captured["publish"] is False
+
+    def test_push_command_invalid_prefix_is_usage_error(self, monkeypatch, tmp_path):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        (tmp_path / "a.js").write_bytes(b"x")
+        # backend must never be touched — the bad prefix fails at parse time.
+        def _boom(self):
+            raise AssertionError("backend resolved before prefix validation")
+        monkeypatch.setattr("crm.cli.CLIContext.backend", _boom)
+        result = CliRunner().invoke(cli, [
+            "--json", "webresource", "push", str(tmp_path), "--prefix", "bad prefix"])
+        assert result.exit_code == 2, result.output  # Click usage error
+        assert "customizationprefix" in result.output
