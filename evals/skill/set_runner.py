@@ -29,8 +29,9 @@ import argparse
 import dataclasses
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from evals.skill import target as target_mod
 from evals.skill.runner import RunError, RunResult, run_task
@@ -70,7 +71,7 @@ def should_skip(spec_target: str, active_target: str) -> bool:
     return spec_target != "either" and spec_target != active_target
 
 
-def pass_rate(outcomes: list[TaskOutcome]) -> Optional[float]:
+def pass_rate(outcomes: list[TaskOutcome]) -> float | None:
     """Absolute pass-rate = passed / (passed + failed) over *scored* tasks.
 
     Skipped, dry, and errored tasks are not scored, so they are excluded from both
@@ -88,7 +89,7 @@ class SetResult:
     """Outcome of a whole-set run."""
 
     outcomes: list[TaskOutcome]
-    active_target: Optional[str]
+    active_target: str | None
     dry_run: bool
 
     @property
@@ -98,7 +99,7 @@ class SetResult:
             c[o.status] = c.get(o.status, 0) + 1
         return c
 
-    def pass_rate(self) -> Optional[float]:
+    def pass_rate(self) -> float | None:
         return pass_rate(self.outcomes)
 
     def to_dict(self) -> dict[str, Any]:

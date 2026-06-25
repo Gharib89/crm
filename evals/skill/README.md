@@ -43,7 +43,7 @@ is a multi-command workflow with a deterministic end-state predicate and cleanup
 | records | `records-create-verify`, `records-validate-write`, `trial-bulk-load` | cloud, cloud, onprem |
 | metadata | `trial-global-optionset` | onprem |
 | customizations | `customizations-view-edit`, `trial-customization-workflow`, `trial-webresource-iterate` | cloud, onprem, onprem |
-| solutions | `trial-customization-workflow` (export), `trial-import-diagnosis` | onprem |
+| solutions | `trial-customization-workflow` (export), `trial-import-diagnosis` | onprem, onprem |
 | automation | `trial-process-state` | onprem |
 | security | `security-role-create` | cloud |
 | dup | `dup-rule-create` | cloud |
@@ -67,10 +67,14 @@ it; `customization-lifecycle` (publish/managed lifecycle) is exercised by the ex
 and publish steps inside the customization trials; `workflow-xaml` is automation-
 adjacent and on-prem-heavy, sampled indirectly by `trial-process-state`.
 
-Two on-prem metadata trials (`trial-customization-workflow`, `trial-global-optionset`)
-create a custom table / global option set. The record-delete cleanup model cannot drop
-a *definition* (that needs `metadata delete-entity` / `delete-optionset`), so those
-leave definition residue the on-prem execution leg (#573) is responsible for clearing.
+**Known cleanup limitation.** Two on-prem metadata trials
+(`trial-customization-workflow`, `trial-global-optionset`) create a custom table /
+global option set. The cleanup model deletes *records* by a filter, but a metadata
+*definition* must be removed by its logical name via `metadata delete-entity` /
+`delete-optionset` — and that name is chosen by the agent at run time, so it cannot be
+expressed as a static cleanup step. Those two tasks therefore leave definition residue
+that a maintainer clears out of band; widening the cleanup model to cover agent-named
+metadata is deliberately left out of this slice.
 
 ## Smoke test (offline, no agent, no org)
 

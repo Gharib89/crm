@@ -6,9 +6,10 @@ domain: customizations
 target: onprem
 # Predicate asserts the new view exists (a view requires the table + columns to
 # exist first, so it proves the workflow reached the end). NOTE: the record-delete
-# cleanup model cannot drop the custom *table definition* (`cwx_equipmentloan`) or
-# the unmanaged solution's components — that needs `metadata delete-entity`, outside
-# this model. The on-prem execution leg (#573) handles definition teardown.
+# cleanup model cannot drop the custom *table definition* — that needs
+# `metadata delete-entity <logical-name>`, and the logical name is agent-chosen at run
+# time, so it can't be a static cleanup step. The definition residue is cleared out of
+# band (see the "Known cleanup limitation" note in README.md).
 end_state:
   query:
     - query
