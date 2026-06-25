@@ -15,8 +15,8 @@ outcomes.
 The result of `apply_spec()` and the verb's emit envelope grow three buckets —
 `updated`, `replace_blocked`, `pruned` — alongside the existing
 `applied`/`skipped`/`planned`/`failed`/`staged`. They render in human mode and in
-`--json` `data`. `pruned` stays empty until the pruning slice (see "Opt-in
-pruning" below); `replace_blocked` is populated now.
+`--json` `data`. `replace_blocked` was populated first; `pruned` is populated by
+the opt-in `--prune` flag (see "Opt-in pruning" below).
 
 ## Why record this
 
@@ -48,11 +48,14 @@ trade-off — exactly what an ADR is for.
   hard error aborts the *remaining dependency-ordered* steps but never rolls back
   what already landed.
 
-- **Opt-in pruning (forward reference).** Convergence raises the question of
-  components that exist in the org but are *absent* from the spec. Deleting them to
-  match desired state is destructive, so pruning will be **opt-in** in a later slice
-  of #547 (a `--prune` flag), never the default. The `pruned` bucket is reserved
-  now so the envelope shape is stable when that slice lands.
+- **Opt-in pruning (#553).** Convergence raises the question of components that
+  exist in the org but are *absent* from the spec. Deleting them to match desired
+  state is destructive, so pruning is **opt-in** (`--prune` flag), never the
+  default. It is solution-bounded (scoped to the target solution's members) and
+  limited to six eligible kinds (entity, attribute, view, security-role,
+  webresource, plugin-step). Data-bearing kinds (entity, attribute) require an
+  additional `--allow-data-loss` flag; schema-only kinds are deleted on confirmation.
+  The `pruned` bucket is populated under `--prune`; without it, it is always empty.
 
 ## Scope and limitations (this slice)
 

@@ -436,6 +436,9 @@ def test_apply_dry_run_greenfield_reports_dependents_planned(dry_backend):
     with requests_mock.Mocker() as m:
         # Only forced-real existence GETs fire under dry-run; everything is absent.
         m.get(backend.url_for("publishers"), json={"value": []})
+        # Greenfield: the solution does not exist yet, so prune detection finds
+        # nothing to enumerate (its existence probe returns empty).
+        m.get(backend.url_for("solutions"), json={"value": []})
         m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
               status_code=404)
         m.get(backend.url_for("GlobalOptionSetDefinitions(Name='contoso_priority')"),
@@ -657,6 +660,8 @@ def test_apply_dry_run_solution_without_publisher_skips_when_exists(dry_backend)
     with requests_mock.Mocker() as m:
         m.get(dry_backend.url_for("solutions"),
               json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]})
+        # The solution exists, so dry-run prune detection lists its components.
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution"]
@@ -751,6 +756,7 @@ def test_e2e_dry_run_greenfield_plans_dependents(dry_backend, monkeypatch, tmp_p
     spec_path = _write_spec(tmp_path)
     with requests_mock.Mocker() as m:
         m.get(dry_backend.url_for("publishers"), json={"value": []})
+        m.get(dry_backend.url_for("solutions"), json={"value": []})  # greenfield: no prune
         m.get(dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
               status_code=404)
         m.get(dry_backend.url_for("GlobalOptionSetDefinitions(Name='contoso_priority')"),
@@ -1989,3 +1995,214 @@ def test_apply_rejects_plugin_step_missing_message(backend, tmp_path):
                                      steps=[{"name": "S", "plugin_type": _TYPE_NAME}])]}
     with pytest.raises(D365Error, match="missing required field 'message'"):
         apply_mod.apply_spec(backend, spec)
+
+
+# ── Prune (#553): solution-bounded, gated removal of org-extras ──────────────
+#
+# Prune-candidates are members of the TARGET SOLUTION not declared in the spec,
+# limited to the six prune-eligible kinds. Detection runs only under --prune or
+# --dry-run. Default deletes nothing; --prune + confirmation deletes schema-only
+# extras; data-bearing (entity/attribute) need --allow-data-loss too.
+
+# Reuse the existing role / web-resource ids defined earlier in this file
+# (_ROLE_ID, _WR_ID) — do NOT redefine them, or the module-level rebind silently
+# breaks the role/web-resource tests above. A fresh id is needed only for the
+# saved-query (view) case.
+_SQ_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+
+
+def _mock_solution_prune(m, backend, components):
+    """Mock the solution existence GET + its component list for prune detection.
+
+    `components` is a list of (componenttype:int, objectid:str) tuples; they
+    become the solution's members that detection diffs against the spec.
+    """
+    m.get(backend.url_for("solutions"),
+          json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]})
+    m.get(backend.url_for("solutioncomponents"),
+          json={"value": [{"componenttype": ct, "objectid": oid,
+                           "rootcomponentbehavior": 0} for ct, oid in components]})
+
+
+def test_apply_dry_run_reports_solution_role_extra_as_prune_candidate(dry_backend):
+    # A role lives in the target solution; the spec declares no roles → prune-
+    # candidate. Dry-run surfaces it (deleted=False) and writes nothing.
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, dry_backend, [(20, _ROLE_ID)])
+        m.get(dry_backend.url_for(f"roles({_ROLE_ID})"), json={"name": "Extra Role"})
+        res = apply_mod.apply_spec(dry_backend, spec)
+    assert res["ok"] is True
+    assert res["pruned"] == [
+        {"kind": "security-role", "name": "Extra Role", "deleted": False}]
+    assert _writes(m) == []
+
+
+def test_apply_prune_deletes_schema_only_extra(backend):
+    # A web resource in the target solution, absent from the spec, is deleted
+    # under --prune — schema-only kinds need no extra force.
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(61, _WR_ID)])
+        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
+              json={"name": "contoso_/orphan.js"})
+        del_mock = m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, prune=True)
+    assert res["ok"] is True
+    assert res["pruned"] == [
+        {"kind": "webresource", "name": "contoso_/orphan.js", "deleted": True}]
+    assert del_mock.called
+
+
+def test_apply_prune_refuses_data_bearing_without_force(backend):
+    # An entity is data-bearing: --prune alone reports it but never deletes it.
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(1, _ENT_ID)])
+        m.get(backend.url_for(f"EntityDefinitions({_ENT_ID})"),
+              json={"LogicalName": "contoso_orphan"})
+        res = apply_mod.apply_spec(backend, spec, prune=True)
+    assert res["ok"] is True
+    assert res["pruned"] == [{
+        "kind": "entity", "name": "contoso_orphan", "deleted": False,
+        "reason": "data-bearing; pass --allow-data-loss to delete"}]
+    assert _writes(m) == []  # nothing deleted
+
+
+def test_apply_prune_deletes_data_bearing_with_allow_data_loss(backend):
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(1, _ENT_ID)])
+        m.get(backend.url_for(f"EntityDefinitions({_ENT_ID})"),
+              json={"LogicalName": "contoso_orphan"})
+        # delete_entity's pre-flight reads the live definition by logical name.
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_orphan')"),
+              json={"IsCustomEntity": True, "IsManaged": False, "MetadataId": _ENT_ID})
+        del_mock = m.delete(
+            backend.url_for("EntityDefinitions(LogicalName='contoso_orphan')"),
+            status_code=204)
+        res = apply_mod.apply_spec(backend, spec, prune=True, allow_data_loss=True)
+    assert res["ok"] is True
+    assert res["pruned"] == [
+        {"kind": "entity", "name": "contoso_orphan", "deleted": True}]
+    assert del_mock.called
+
+
+def test_prune_candidates_attribute_scoped_to_declared_entity(backend):
+    # Attribute prune is per declared entity: only custom attributes that are
+    # solution members AND absent from the entity's declared `attributes:` list.
+    spec = {"solution": {"unique_name": "ContosoCore"},
+            "entities": [{"schema_name": "contoso_Project",
+                          "attributes": [{"schema_name": "contoso_Keep"}]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(2, _ATTR_ID)])
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')/Attributes"),
+              json={"value": [
+                  {"LogicalName": "contoso_keep", "IsCustomAttribute": True,
+                   "MetadataId": "00000000-0000-0000-0000-000000000001"},
+                  {"LogicalName": "contoso_orphan", "IsCustomAttribute": True,
+                   "MetadataId": _ATTR_ID},
+                  # a non-custom column that happens to be a solution member is ignored
+                  {"LogicalName": "createdon", "IsCustomAttribute": False,
+                   "MetadataId": _ATTR_ID},
+              ]})
+        cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
+    assert cands == [{"kind": "attribute", "name": "contoso_orphan",
+                      "ref": "contoso_orphan", "entity": "contoso_project"}]
+
+
+def test_prune_candidates_view_scoped_to_declared_entity(backend):
+    spec = {"solution": {"unique_name": "ContosoCore"},
+            "entities": [{"schema_name": "contoso_Project",
+                          "views": [{"name": "Active Projects"}]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(26, _SQ_ID)])
+        m.get(backend.url_for("savedqueries"),
+              json={"value": [
+                  {"name": "Active Projects", "querytype": 0, "isdefault": False,
+                   "savedqueryid": "00000000-0000-0000-0000-0000000000aa"},
+                  {"name": "Orphan View", "querytype": 0, "isdefault": False,
+                   "savedqueryid": _SQ_ID},
+              ]})
+        cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
+    assert cands == [{"kind": "view", "name": "Orphan View",
+                      "ref": _SQ_ID, "entity": None}]
+
+
+def test_prune_candidates_ignores_undeclared_collection(backend):
+    # The entity declares no `views:` key → the spec is NOT authoritative over its
+    # views, so a solution-member view is never a prune-candidate.
+    spec = {"solution": {"unique_name": "ContosoCore"},
+            "entities": [{"schema_name": "contoso_Project"}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(26, _SQ_ID)])
+        sq = m.get(backend.url_for("savedqueries"), json={"value": []})
+        cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
+    assert cands == []
+    assert not sq.called  # the views collection is never even read
+
+
+def test_prune_candidates_matches_declared_name_case_insensitively(backend):
+    # The org stores the web resource lower-cased; the spec declares it with mixed
+    # case. The Web API's `name eq` is case-insensitive, so apply already treats
+    # them as the same component — prune must NOT report the declared one as an
+    # extra and delete it.
+    spec = {"solution": {"unique_name": "ContosoCore"},
+            "webresources": [{"name": "Contoso_/Orphan.js", "file": "x.js"}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(61, _WR_ID)])
+        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
+              json={"name": "contoso_/orphan.js"})  # org's stored (lower) casing
+        cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
+    assert cands == []  # declared (case-insensitively) → not a prune-candidate
+
+
+def test_apply_prune_requires_solution(backend):
+    spec = {"entities": [{"schema_name": "contoso_X", "display_name": "X"}]}
+    with pytest.raises(D365Error, match="--prune requires a target solution"):
+        apply_mod.apply_spec(backend, spec, prune=True)
+
+
+def test_apply_without_prune_or_dry_run_skips_detection(backend):
+    # A plain apply (no --prune, no --dry-run) never reads solution components.
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("solutions"),
+              json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]})
+        sc = m.get(backend.url_for("solutioncomponents"), json={"value": []})
+        res = apply_mod.apply_spec(backend, spec)
+    assert res["pruned"] == []
+    assert not sc.called
+
+
+def test_apply_cmd_prune_json_without_yes_aborts(backend, monkeypatch, tmp_path):
+    # Under --json (no TTY) --prune without --yes must abort before any write.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    spec_path = tmp_path / "s.yaml"
+    spec_path.write_text("solution:\n  unique_name: ContosoCore\n")
+    with requests_mock.Mocker() as m:
+        result = CliRunner().invoke(
+            cli, ["--json", "apply", "-f", str(spec_path), "--prune"])
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert "--yes" in env["error"]
+    assert _writes(m) == []  # refused before touching the backend
+
+
+def test_apply_cmd_prune_yes_deletes_schema_only(backend, monkeypatch, tmp_path):
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    spec_path = tmp_path / "s.yaml"
+    spec_path.write_text("solution:\n  unique_name: ContosoCore\n")
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(61, _WR_ID)])
+        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
+              json={"name": "contoso_/orphan.js"})
+        del_mock = m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+        result = CliRunner().invoke(
+            cli, ["--json", "apply", "-f", str(spec_path), "--prune", "--yes"])
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert {"kind": "webresource", "name": "contoso_/orphan.js", "deleted": True} \
+        in env["data"]["pruned"]
+    assert del_mock.called

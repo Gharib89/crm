@@ -807,6 +807,119 @@ def _apply_plugin(
             _classify(result, img_entry, applied, skipped, planned)
 
 
+# ── Prune (#553): solution-bounded detection + gated deletion ────────────────
+#
+# A prune-candidate is a component that is a MEMBER OF THE TARGET SOLUTION but is
+# not declared in the spec — limited to the six prune-eligible kinds below.
+# Solution membership bounds the blast radius: prune can never reach a component
+# outside the solution apply manages. Every other component type a solution can
+# hold (option sets, relationships, plug-in types/assemblies, forms) is out of
+# scope. Detection runs only under --prune or --dry-run (see apply_spec).
+
+# Top-level kinds resolved straight from a solution objectid:
+# componenttype -> (record-path template keyed by objectid, name column, kind).
+_PRUNE_TOPLEVEL: dict[int, tuple[str, str, str]] = {
+    1:  ("EntityDefinitions({id})",         "LogicalName", "entity"),
+    20: ("roles({id})",                     "name",        "security-role"),
+    61: ("webresourceset({id})",            "name",        "webresource"),
+    92: ("sdkmessageprocessingsteps({id})", "name",        "plugin-step"),
+}
+# Entity-scoped kinds — diffed per declared entity, not globally, because their
+# names are unique only within an owning entity.
+_PRUNE_ATTRIBUTE_TYPE = 2
+_PRUNE_VIEW_TYPE = 26
+# Deleting these destroys row data, so they need an extra --allow-data-loss force.
+_DATA_BEARING_PRUNE = {"entity", "attribute"}
+
+
+def _prune_candidates(
+    backend: D365Backend, spec: dict[str, Any], solution_name: str,
+) -> list[dict[str, Any]]:
+    """Solution members absent from the spec (the six prune-eligible kinds).
+
+    Returns internal candidate dicts ``{kind, name, ref, entity}`` where ``ref``
+    is the id/logical name the per-kind deleter needs and ``entity`` is the owning
+    entity's logical name (attributes only). Read-only: every call is a GET, so it
+    runs unchanged under --dry-run.
+    """
+    by_type: dict[int, set[str]] = {}
+    for comp in sol_mod.solution_components(backend, solution_name):
+        ct, oid = comp.get("componenttype"), comp.get("objectid")
+        if isinstance(ct, int) and isinstance(oid, str):
+            by_type.setdefault(ct, set()).add(oid.lower())
+
+    out: list[dict[str, Any]] = []
+
+    # Top-level kinds: resolve each in-solution objectid to its name; keep the
+    # ones the spec does not declare. Names are matched case-INSENSITIVELY: the
+    # Web API's `name eq` is case-insensitive, so the create/reconcile phase would
+    # already have matched a differently-cased declared component — prune must use
+    # the same loose match or it would treat a *declared* component as an extra and
+    # delete it.
+    declared_top: dict[str, set[str]] = {
+        "entity": {e["schema_name"].lower() for e in _as_list(spec.get("entities"))},
+        "security-role": {r["name"].lower() for r in _as_list(spec.get("security_roles"))},
+        "webresource": {w["name"].lower() for w in _as_list(spec.get("webresources"))},
+        "plugin-step": {s["name"].lower() for p in _as_list(spec.get("plugins"))
+                        for s in _as_list(p.get("steps"))},
+    }
+    for ct, (path_tmpl, name_col, kind) in _PRUNE_TOPLEVEL.items():
+        for oid in sorted(by_type.get(ct, set())):
+            row = as_dict(backend.get(path_tmpl.format(id=oid),
+                                      params={"$select": name_col}))
+            name = row.get(name_col)
+            if isinstance(name, str) and name and name.lower() not in declared_top[kind]:
+                # The id-keyed deleters (role/webresource/step) take the objectid;
+                # delete_entity takes the logical name, which IS this name.
+                ref = name if kind == "entity" else oid
+                out.append({"kind": kind, "name": name, "ref": ref, "entity": None})
+
+    # Entity-scoped kinds: only entities the spec declares, and only collections
+    # it declares (presence of the key = the spec is authoritative over it, so an
+    # entity with no `attributes:`/`views:` key never has its children pruned).
+    attr_ids = by_type.get(_PRUNE_ATTRIBUTE_TYPE, set())
+    view_ids = by_type.get(_PRUNE_VIEW_TYPE, set())
+    for ent in _as_list(spec.get("entities")):
+        logical = ent["schema_name"].lower()
+        if attr_ids and isinstance(ent.get("attributes"), list):
+            declared = {a["schema_name"].lower() for a in _as_list(ent.get("attributes"))}
+            for attr in meta_mod.list_attributes(backend, logical):
+                mid = str(attr.get("MetadataId") or "").lower()
+                lname = attr.get("LogicalName")
+                if (attr.get("IsCustomAttribute") and mid in attr_ids
+                        and isinstance(lname, str) and lname.lower() not in declared):
+                    out.append({"kind": "attribute", "name": lname,
+                                "ref": lname, "entity": logical})
+        if view_ids and isinstance(ent.get("views"), list):
+            declared = {v["name"].lower() for v in _as_list(ent.get("views"))}
+            for view in views_mod.read_entity_views(backend, logical):
+                vid = str(view.get("savedqueryid") or "").lower()
+                vname = view.get("name")
+                if (vid in view_ids and isinstance(vname, str)
+                        and vname and vname.lower() not in declared):
+                    out.append({"kind": "view", "name": vname, "ref": vid, "entity": None})
+    return out
+
+
+def _prune_delete(backend: D365Backend, cand: dict[str, Any]) -> None:
+    """Delete one prune candidate through the per-kind core deleter."""
+    kind = cand["kind"]
+    if kind == "entity":
+        meta_mod.delete_entity(backend, cand["ref"])
+    elif kind == "attribute":
+        attrs_mod.delete_attribute(backend, cand["entity"], cand["ref"])
+    elif kind == "webresource":
+        wr_mod.delete_webresource(backend, cand["ref"])
+    elif kind == "plugin-step":
+        plugin_mod.unregister_step(backend, cand["ref"])
+    elif kind == "view":
+        backend.delete(f"savedqueries({cand['ref']})")
+    elif kind == "security-role":
+        backend.delete(f"roles({cand['ref']})")
+    else:  # pragma: no cover - kind comes from the closed _PRUNE_* tables
+        raise D365Error(f"prune: unsupported kind {kind!r}")
+
+
 def apply_spec(
     backend: D365Backend,
     spec: dict[str, Any],
@@ -815,6 +928,8 @@ def apply_spec(
     stage_only: bool = False,
     include_referenced_optionsets: bool = True,
     base_dir: str | None = None,
+    prune: bool = False,
+    allow_data_loss: bool = False,
 ) -> dict[str, Any]:
     """Apply a desired-state spec convergently.
 
@@ -822,8 +937,18 @@ def apply_spec(
     failed, staged}. Existing components are reconciled against the spec —
     `skipped` (matches), `updated` (in-place update of drifted fields), or
     `replace_blocked` (destructive divergence: reported, no write). `ok` is false
-    when anything failed or was replace-blocked; `pruned` is reserved (empty) for
-    the pruning slice. See ADR 0014.
+    when anything failed or was replace-blocked. See ADR 0014.
+
+    Pruning (#553) is opt-in and solution-bounded. A component that is a member of
+    the target solution but is not declared in the spec is a *prune-candidate*
+    (one of six kinds: entity, attribute, view, security-role, webresource,
+    plugin-step). Detection runs only under `prune` or `backend.dry_run`; a plain
+    apply reads no solution components and leaves `pruned` empty. Each `pruned`
+    entry is `{kind, name, deleted}` (+ `reason` when refused, + `would_prune`
+    under dry-run). With `prune=True` (real run) schema-only extras are deleted;
+    data-bearing extras (entity/attribute) are refused unless `allow_data_loss` is
+    also set. `prune` requires a target solution. A delete that errors lands in
+    `failed` (so `ok` goes false); a reported candidate or refusal does not.
 
     Under `backend.dry_run` the same reconcile runs read-only — the reads-execute
     rule suppresses every write while live GETs still fire — so the result is a
@@ -853,6 +978,10 @@ def apply_spec(
 
     sol = spec.get("solution")
     solution_name = solution or (sol["unique_name"] if sol else None)
+    if prune and not solution_name:
+        raise D365Error(
+            "--prune requires a target solution (a spec 'solution:' block or "
+            "--solution); prune is scoped to that solution's components.")
     pub = spec.get("publisher")
     pub_id: str | None = None
     entity_logicals: dict[str, str] = {}
@@ -1155,6 +1284,39 @@ def apply_spec(
     except _Aborted:
         pass
 
+    # Phase: prune (#553). Solution-bounded, opt-in, gated. Detection (read-only)
+    # runs under --prune or --dry-run; a plain apply skips it entirely. It needs
+    # the target solution to already exist — a greenfield run (the solution is
+    # created this pass, or, under dry-run, not at all) has no members to prune.
+    # Deletes are suppressed when the convergence itself failed — a partial-failure
+    # run must not also start deleting org-extras.
+    pruned: list[Entry] = []
+    if (solution_name and (prune or backend.dry_run)
+            and _solution_exists(backend, solution_name)):
+        suppressed = bool(failed or replace_blocked)
+        for cand in _prune_candidates(backend, spec, solution_name):
+            kind, name = cand["kind"], cand["name"]
+            data_bearing = kind in _DATA_BEARING_PRUNE
+            would_delete = prune and (not data_bearing or allow_data_loss)
+            if backend.dry_run:
+                entry: Entry = {"kind": kind, "name": name, "deleted": False}
+                if would_delete:
+                    entry["would_prune"] = True
+                elif prune and data_bearing:
+                    entry["reason"] = "data-bearing; pass --allow-data-loss to delete"
+                pruned.append(entry)
+            elif prune and data_bearing and not allow_data_loss:
+                pruned.append({"kind": kind, "name": name, "deleted": False,
+                               "reason": "data-bearing; pass --allow-data-loss to delete"})
+            elif would_delete and not suppressed:
+                try:
+                    _prune_delete(backend, cand)
+                    pruned.append({"kind": kind, "name": name, "deleted": True})
+                except D365Error as exc:
+                    failed.append({"kind": kind, "name": name, "error": str(exc)})
+            else:
+                pruned.append({"kind": kind, "name": name, "deleted": False})
+
     # Publish ONCE at the end. The per-resource cores were all called with their
     # default publish=False, so nothing published mid-run. Skip when staging, on a
     # dry run, on any failure (hard error or replace-blocked divergence), or when
@@ -1177,7 +1339,7 @@ def apply_spec(
         "updated": updated,
         "skipped": skipped,
         "replace_blocked": replace_blocked,
-        "pruned": [],  # populated by the pruning slice (#547); empty here.
+        "pruned": pruned,
         "planned": planned,
         "failed": failed,
         "staged": wrote and not published,

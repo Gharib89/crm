@@ -14,6 +14,8 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import d365_errors, _journal
+from crm.commands._helpers.confirm import _confirm_destructive, _destructive_option
+from crm.commands._tty import _stdin_is_tty
 from crm.core import apply as apply_mod
 
 
@@ -27,8 +29,17 @@ from crm.core import apply as apply_mod
               "include_referenced_optionsets", default=True, show_default=True,
               help="Add a picklist's referenced global option set to the target "
                    "solution (covers pre-existing globals the create step skips).")
+@click.option("--prune", is_flag=True,
+              help="Delete components in the target solution that the spec no longer "
+                   "declares (schema-only kinds). Requires a target solution and a "
+                   "confirmation; preview with --dry-run first.")
+@click.option("--allow-data-loss", is_flag=True,
+              help="With --prune, also delete data-bearing extras (entities, "
+                   "attributes) — this destroys their row data.")
+@_destructive_option
 @pass_ctx
-def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionsets):
+def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionsets,
+              prune, allow_data_loss, yes):
     """Apply a declarative desired-state spec.
 
     The spec declares a publisher, solution, entities (with attributes, option
@@ -62,11 +73,30 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
                  "(publisher / solution / entities / optionsets).")
         return
 
+    # Gate destructive pruning behind a confirmation (real runs only — --dry-run
+    # is a read-only preview that deletes nothing). Under --json / a non-TTY there
+    # is no interactive prompt, so an explicit --yes is required; on a TTY, prompt.
+    if prune and not ctx.dry_run:
+        if not yes and (ctx.json_mode or not _stdin_is_tty()):
+            ctx.emit(False, error="--prune permanently deletes org components and "
+                     "needs confirmation: pass --yes (no interactive prompt under "
+                     "--json or a non-TTY).")
+        scope = (" (including data-bearing entities/attributes — destroys row data)"
+                 if allow_data_loss else
+                 "; data-bearing entities/attributes are skipped unless "
+                 "--allow-data-loss is also passed")
+        _confirm_destructive(
+            ctx, "org components", "not declared in the spec", yes,
+            message=("--prune permanently DELETES components in the target solution "
+                     "that the spec no longer declares" + scope
+                     + ". This cannot be undone. Continue?"))
+
     with d365_errors(ctx):
         res = apply_mod.apply_spec(
             ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only,
             include_referenced_optionsets=include_referenced_optionsets,
-            base_dir=os.path.dirname(os.path.abspath(spec_file)))
+            base_dir=os.path.dirname(os.path.abspath(spec_file)),
+            prune=prune, allow_data_loss=allow_data_loss)
 
     data = {k: res[k] for k in (
         "applied", "updated", "skipped", "replace_blocked", "pruned", "planned", "failed")}

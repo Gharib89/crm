@@ -45,11 +45,13 @@ crm --stage-only --json apply -f project.yaml # converge without publishing
 
 Emits `{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, failed}, meta:{staged}}`;
 each entry is `{kind, name}`. `failed` and `replace_blocked` entries also carry
-`error` / `reason`. `pruned` is reserved (always empty today — opt-in pruning is a
-future slice). **Metadata writes are non-transactional: a hard failure aborts the
-remaining steps and leaves staged-but-unpublished residue.** A new table's views may
-report `planned` until the first publish assigns its ObjectTypeCode — **re-apply to
-land them.**
+`error` / `reason`. `pruned` entries carry `{kind, name, deleted}` (+ `reason`
+when a data-bearing component is refused, + `would_prune: true` under `--dry-run`).
+Without `--prune`, `pruned` is always empty.
+**Metadata writes are non-transactional: a hard failure aborts the remaining steps
+and leaves staged-but-unpublished residue.** A new table's views may report
+`planned` until the first publish assigns its ObjectTypeCode — **re-apply to land
+them.**
 
 ```yaml
 publisher: {unique_name: contosopub, prefix: contoso, option_value_prefix: 10000}
@@ -113,6 +115,56 @@ rebind a step: unregister it manually (`crm plugin unregister-step`) then re-app
 
 **Plug-in components are not publishable** — a plugins-only apply never issues
 `PublishAllXml`.
+
+## Pruning org-extras — `--prune`
+
+`--prune` opts in to solution-bounded deletion of components that are **members of
+the target solution but absent from the spec**. A plain `apply` never reads
+solution members; pruning is strictly opt-in.
+
+**Six eligible kinds:** `entity`, `attribute`, `view`, `security-role`,
+`webresource`, `plugin-step`. All other solution component types are out of scope.
+
+**Gating — what `--help` cannot convey:**
+
+- **Schema-only kinds** (`view`, `security-role`, `webresource`, `plugin-step`) —
+  deleted after confirmation.
+- **Data-bearing kinds** (`entity`, `attribute`) — refused unless `--allow-data-loss`
+  is also passed; they appear in `pruned` with `deleted: false` and a `reason` field.
+- **`--json` / no-TTY** — interactive prompt is unavailable; `--yes` is required or
+  the run errors before doing anything.
+- **Requires a target solution** — spec `solution:` block or `--solution`. Without
+  one, `--prune` errors immediately.
+- **Suppressed on partial failure** — if the convergence phase produces any `failed`
+  or `replace_blocked` entries, pruning is skipped entirely. Fix the spec, re-apply,
+  then prune.
+- **Never publishes** — pruning runs after the end-of-run publish; no extra publish
+  is triggered.
+
+**Always dry-run before a real prune:**
+
+```bash
+crm --dry-run --json apply -f project.yaml --prune
+```
+
+Candidates appear in `data.pruned` with `deleted: false`; those that *would* be
+deleted carry `would_prune: true`. No write is issued.
+
+**JSON contract for `pruned` entries:**
+
+```json
+{"kind": "webresource", "name": "contoso_/scripts/old.js", "deleted": true}
+{"kind": "view",        "name": "Old Projects",            "deleted": false, "would_prune": true}
+{"kind": "attribute",   "name": "contoso_legacycode",      "deleted": false,
+ "reason": "data-bearing; pass --allow-data-loss to delete"}
+```
+
+**Non-interactive (CI / agent) pattern:**
+
+```bash
+crm --json apply -f project.yaml --prune --yes --solution ContosoCore
+# Add --allow-data-loss only when entity/attribute deletion is intentional
+```
 
 ## Scaffold a table — `scaffold table`
 
