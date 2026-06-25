@@ -19,6 +19,8 @@ from typing import Any, cast
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
 from crm.core.metadata_attrs import ATTRIBUTE_KINDS
+from crm.core import metadata_constraints as mc
+from crm.core import metadata_update as meta_update_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
 from crm.core import solution as sol_mod
@@ -135,6 +137,10 @@ def validate_spec(spec: Any) -> None:
     for ent in _as_list(sp.get("entities")):
         _require(ent, ("schema_name", "display_name"), "entity")
         elabel = f"entity {ent['schema_name']!r}"
+        # Validate ownership up front so a typo fails cleanly here rather than being
+        # misclassified as a destructive ownership change during reconciliation.
+        if ent.get("ownership") is not None:
+            mc.validate_ownership(ent["ownership"], subject=f"{elabel} ownership")
         for sub in ("attributes", "relationships", "views"):
             _require_list(ent, sub, elabel)
         for attr in _as_list(ent.get("attributes")):
@@ -152,6 +158,12 @@ def validate_spec(spec: Any) -> None:
                 _require_list(attr, "options", f"attribute {name!r}")
                 for opt in cast("list[Any]", attr["options"] or []):
                     _validate_option(opt, f"attribute {name!r}")
+            # max_length is compared numerically during reconciliation (grow check);
+            # a quoted/non-int value from the spec must fail here, not blow up later.
+            if attr.get("max_length") is not None and not isinstance(attr["max_length"], int):
+                raise D365Error(
+                    f"attribute {name!r}: max_length must be an integer "
+                    "(unquoted in YAML).")
         for rel in _as_list(ent.get("relationships")):
             _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
                            "lookup_schema", "lookup_display"), "relationship")
@@ -207,6 +219,162 @@ def _call(entry: Entry, fn: Callable[[], dict[str, Any]], failed: list[Entry]) -
         raise _Aborted from exc
 
 
+# ── Convergent reconciliation ────────────────────────────────────────────────
+#
+# When a create-builder reports a component already exists (if_exists='skip'),
+# apply does not blindly skip it: it reads the live definition, diffs it against
+# the desired spec, and routes the component to one of three buckets — `skipped`
+# (already matches; idempotent no-op), `updated` (in-place update of the divergent
+# fields the platform allows — a retrieve-merge-write PUT or option-set action, not
+# HTTP PATCH), or `replace_blocked` (an immutable/destructive
+# divergence that would need a drop-and-recreate — reported, NO write). A reconcile
+# returns `(bucket, entry)`; a D365Error during the read/update is a hard failure
+# that aborts the run (same contract as `_call`). See ADR 0014.
+
+_Verdict = tuple[str, Entry]
+
+
+def _drift(desired: Any, live_label: Any) -> bool:
+    """True when `desired` is set and differs from the live Label's text.
+
+    A spec that omits a label field (desired is None) never reports drift — apply
+    only reconciles fields the spec explicitly declares, so an unspecified field is
+    left as-is rather than blanked.
+    """
+    if desired is None:
+        return False
+    current = (meta_mod.label_text(cast("dict[str, Any]", live_label))
+               if isinstance(live_label, dict) else "")
+    return str(desired) != current
+
+
+def _reconcile(
+    entry: Entry,
+    thunk: Callable[[], _Verdict],
+    failed: list[Entry],
+    routes: dict[str, list[Entry]],
+) -> None:
+    """Run a reconcile thunk and route its verdict; D365Error → failed + abort."""
+    try:
+        bucket, payload = thunk()
+    except D365Error as exc:
+        failed.append({**entry, "error": str(exc)})
+        raise _Aborted from exc
+    routes[bucket].append(payload)
+
+
+def _reconcile_entity(
+    backend: D365Backend, ent: dict[str, Any], logical: str,
+    solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing entity against the spec; update, skip, or block.
+
+    Replace-blocked: an explicit ownership change (Dataverse rejects OwnershipType
+    edits post-create — a drop-and-recreate is destructive, so apply refuses and
+    writes nothing). Updatable: display name, display-collection name, description.
+    """
+    live = meta_mod.entity_info(backend, logical)
+    desired_ownership = ent.get("ownership")
+    live_ownership = live.get("OwnershipType")
+    if desired_ownership and live_ownership and desired_ownership != live_ownership:
+        return "replace_blocked", {
+            **entry,
+            "reason": f"ownership change {live_ownership!r} -> {desired_ownership!r} "
+                      "requires a destructive drop-and-recreate; refusing (no write).",
+        }
+    changes: dict[str, Any] = {}
+    if _drift(ent.get("display_name"), live.get("DisplayName")):
+        changes["display_name"] = ent["display_name"]
+    if _drift(ent.get("display_collection_name"), live.get("DisplayCollectionName")):
+        changes["display_collection_name"] = ent["display_collection_name"]
+    if _drift(ent.get("description"), live.get("Description")):
+        changes["description"] = ent["description"]
+    if not changes:
+        return "skipped", entry
+    meta_update_mod.update_entity(backend, logical, solution=solution, **changes)
+    return "updated", entry
+
+
+def _reconcile_attribute(
+    backend: D365Backend, attr: dict[str, Any], entity_logical: str,
+    solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing attribute against the spec; update, skip, or block.
+
+    Replace-blocked: a data-type change (Dataverse cannot retype a column in place;
+    a drop-and-recreate is destructive, so apply refuses and writes nothing).
+    Updatable: display name, description, required level, and string max-length
+    GROWTH. Lookup/customer kinds are relationship-backed and not reconciled here.
+    """
+    kind = attr["kind"]
+    info = mc.KINDS.get(kind)
+    # lookup/customer are relationship-backed (apply's create path delegates them to
+    # the relationship builder); reconciling them belongs with the relationship slice.
+    if info is None or kind in ("lookup", "customer"):
+        return "skipped", entry
+    attr_logical = attr["schema_name"].lower()
+    # The un-cast attribute projection carries @odata.type and base properties
+    # (DisplayName/Description/RequiredLevel) but NOT type-specific ones (MaxLength).
+    base = meta_mod.attribute_info(backend, entity_logical, attr_logical)
+    live_type = base.get("@odata.type")
+    live_cast = live_type.lstrip("#") if isinstance(live_type, str) else ""
+    if live_cast and live_cast != info.cast:
+        return "replace_blocked", {
+            **entry,
+            "reason": f"data-type change {live_cast!r} -> {info.cast!r} requires a "
+                      "destructive drop-and-recreate; refusing (no write).",
+        }
+    changes: dict[str, Any] = {}
+    if _drift(attr.get("display_name"), base.get("DisplayName")):
+        changes["display_name"] = attr["display_name"]
+    if _drift(attr.get("description"), base.get("Description")):
+        changes["description"] = attr["description"]
+    desired_required = attr.get("required")
+    if desired_required is not None:
+        live_required = cast("dict[str, Any]", base.get("RequiredLevel") or {}).get("Value")
+        if desired_required != live_required:
+            changes["required"] = desired_required
+    desired_max = attr.get("max_length")
+    if desired_max is not None and kind in ("string", "memo"):
+        # MaxLength lives only on the typed cast projection — a second GET.
+        typed = as_dict(backend.get(
+            f"EntityDefinitions(LogicalName='{entity_logical}')"
+            f"/Attributes(LogicalName='{attr_logical}')/{info.cast}"))
+        live_max = typed.get("MaxLength")
+        # ponytail: GROW only. Shrinking max-length truncates data and is out of
+        # scope for this slice; a desired length <= the live length is left as-is.
+        if isinstance(live_max, int) and desired_max > live_max:
+            changes["max_length"] = desired_max
+    if not changes:
+        return "skipped", entry
+    meta_update_mod.update_attribute(backend, entity_logical, attr_logical,
+                                     solution=solution, **changes)
+    return "updated", entry
+
+
+def _reconcile_optionset(
+    backend: D365Backend, os_spec: dict[str, Any], solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing global option set; insert spec-declared options it lacks.
+
+    Only options with an explicit value are reconciled — an auto-valued option
+    (value omitted) cannot be matched against the live set, so re-applying it would
+    insert a duplicate on every run; those are left to the create path. There is no
+    destructive divergence for option sets, so this never blocks.
+    """
+    live = os_mod.get_optionset(backend, os_spec["name"])
+    live_options = cast("list[dict[str, Any]]", live.get("Options") or [])
+    live_values = {o.get("Value") for o in live_options if isinstance(o.get("Value"), int)}
+    inserts: list[tuple[int | None, str]] = [
+        (o["value"], o["label"]) for o in _as_list(os_spec.get("options"))
+        if isinstance(o.get("value"), int) and o["value"] not in live_values
+    ]
+    if not inserts:
+        return "skipped", entry
+    os_mod.update_optionset(backend, os_spec["name"], insert=inserts, solution=solution)
+    return "updated", entry
+
+
 def apply_spec(
     backend: D365Backend,
     spec: dict[str, Any],
@@ -215,13 +383,27 @@ def apply_spec(
     stage_only: bool = False,
     include_referenced_optionsets: bool = True,
 ) -> dict[str, Any]:
-    """Apply a desired-state spec; return {ok, applied, skipped, planned, failed, staged}."""
+    """Apply a desired-state spec convergently.
+
+    Returns {ok, applied, updated, skipped, replace_blocked, pruned, planned,
+    failed, staged}. Existing components are reconciled against the spec —
+    `skipped` (matches), `updated` (in-place update of drifted fields), or
+    `replace_blocked` (destructive divergence: reported, no write). `ok` is false
+    when anything failed or was replace-blocked; `pruned` is reserved (empty) for
+    the pruning slice. See ADR 0014.
+    """
     validate_spec(spec)
 
     applied: list[Entry] = []
+    updated: list[Entry] = []
     skipped: list[Entry] = []
+    replace_blocked: list[Entry] = []
     planned: list[Entry] = []
     failed: list[Entry] = []
+    # Reconcile verdicts ("updated"/"skipped"/"replace_blocked") route here.
+    routes: dict[str, list[Entry]] = {
+        "updated": updated, "skipped": skipped, "replace_blocked": replace_blocked,
+    }
     # Names of resources this run would create but that do not exist yet (dry-run
     # greenfield). Dependents of a planned resource are reported planned without
     # calling their core, which would otherwise network-resolve the missing
@@ -291,7 +473,11 @@ def apply_spec(
             ), failed)
             logical_name: str = result.get("logical_name") or ent["schema_name"].lower()
             entity_logicals[ent["schema_name"]] = logical_name
-            if _classify(result, entry, applied, skipped, planned) == "planned":
+            if not backend.dry_run and result.get("skipped"):
+                _reconcile(entry, lambda ent=ent, logical_name=logical_name:
+                           _reconcile_entity(backend, ent, logical_name, solution_name, entry),
+                           failed, routes)
+            elif _classify(result, entry, applied, skipped, planned) == "planned":
                 planned_names.add(logical_name)
 
         # Phase: global option sets (before the attributes that reference them).
@@ -310,6 +496,13 @@ def apply_spec(
                 solution=solution_name,
                 if_exists="skip",
             ), failed)
+            if not backend.dry_run and result.get("skipped"):
+                # Pre-existing: reconcile (insert missing options). Left out of
+                # os_created so the solution-component phase still ensures membership.
+                _reconcile(entry, lambda os_spec=os_spec, entry=entry:
+                           _reconcile_optionset(backend, os_spec, solution_name, entry),
+                           failed, routes)
+                continue
             bucket = _classify(result, entry, applied, skipped, planned)
             if bucket == "planned":
                 planned_names.add(os_spec["name"])
@@ -390,7 +583,12 @@ def apply_spec(
                         solution=solution_name,
                         if_exists="skip",
                     ), failed)
-                _classify(result, entry, applied, skipped, planned)
+                if not backend.dry_run and result.get("skipped"):
+                    _reconcile(entry, lambda attr=attr, logical=logical, entry=entry:
+                               _reconcile_attribute(backend, attr, logical, solution_name, entry),
+                               failed, routes)
+                else:
+                    _classify(result, entry, applied, skipped, planned)
 
         # Phase: explicit relationships (both entities exist by now).
         for ent in _as_list(spec.get("entities")):
@@ -449,16 +647,22 @@ def apply_spec(
 
     # Publish ONCE at the end. The per-resource cores were all called with their
     # default publish=False, so nothing published mid-run. Skip when staging, on a
-    # dry run, on partial failure, or when nothing was actually applied.
-    published = bool(applied) and not stage_only and not failed and not backend.dry_run
+    # dry run, on any failure (hard error or replace-blocked divergence), or when
+    # nothing was actually written (created or updated).
+    wrote = bool(applied or updated)
+    published = (wrote and not stage_only and not failed
+                 and not replace_blocked and not backend.dry_run)
     if published:
         sol_mod.publish_all(backend)
 
     return {
-        "ok": not failed,
+        "ok": not failed and not replace_blocked,
         "applied": applied,
+        "updated": updated,
         "skipped": skipped,
+        "replace_blocked": replace_blocked,
+        "pruned": [],  # populated by the pruning slice (#547); empty here.
         "planned": planned,
         "failed": failed,
-        "staged": bool(applied) and not published,
+        "staged": wrote and not published,
     }

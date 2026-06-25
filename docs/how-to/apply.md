@@ -4,8 +4,25 @@
 entity, columns, option sets, relationships, and views — from a single
 declarative spec. It orchestrates the existing metadata commands in dependency
 order (publisher → solution → entities → option sets → attributes →
-relationships → views), creating each with `if_exists=skip` and running
-`PublishAllXml` **once** at the end. Re-applying an unchanged spec is a no-op.
+relationships → views) and runs `PublishAllXml` **once** at the end.
+
+`apply` is **convergent**: a component that already exists is reconciled against
+the spec rather than blindly skipped. Three outcomes per component:
+
+- **equal** — spec matches live definition → `skipped` (idempotent re-apply).
+- **updatable divergence** — an in-place-editable field drifted → updated in place
+  (a retrieve-merge-write PUT or option-set action, not HTTP PATCH), counted as
+  `updated`. Updatable fields: entity display name / display-collection
+  name / description; attribute display name, description, required level, and
+  string `max_length` growth (shrinking is out of scope); adding declared options
+  to a global option set.
+- **immutable/destructive divergence** — the change cannot be made without
+  dropping the component (entity ownership change, attribute data-type change)
+  → `replace_blocked`: reported, **no write for that component**, run ends
+  `ok=false` (exit 1).
+
+Reconciliation runs on a **real apply only**. Under `--dry-run`, an existing
+component is still reported as `skipped` (would-update preview is a future slice).
 
 See the [CLI reference](../reference/cli.md) for the flags.
 
@@ -66,9 +83,12 @@ View `columns` are entity
 crm --json apply -f project.yaml
 ```
 
-Output is `{ok, data:{applied, skipped, planned, failed}, meta:{staged}}`. Each
-entry is `{kind, name}`; a `failed` entry also carries `error`. A second run
-reports everything under `skipped`.
+Output is `{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, failed}, meta:{staged}}`.
+Each entry is `{kind, name}`; `failed` and `replace_blocked` entries also carry
+`error` / `reason`. A re-apply of an unchanged spec reports all matching
+components under `skipped`. A re-apply of a changed spec reports in-place edits
+under `updated`; immutable divergences under `replace_blocked` (and exits 1).
+`pruned` is reserved for a future opt-in pruning slice and is always empty today.
 
 ## Preview a greenfield spec
 

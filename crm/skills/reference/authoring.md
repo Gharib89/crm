@@ -3,28 +3,46 @@
 Stand up tables, columns, option sets, and views — declaratively or imperatively.
 Commands: top-level `apply`, `scaffold table`, `view create`, the `metadata create-*`
 and `update-*` verbs, and the publish flow. Flags/choices: `crm describe apply`,
-`crm <group> --help`. **To change existing schema:** re-apply the spec (idempotent —
-unchanged resources skip) or use the imperative `metadata update-attribute` /
+`crm <group> --help`. **To change existing schema:** re-apply the spec (`apply`
+reconciles matching components — equal → skip, updatable drift → update in place,
+destructive divergence → refuse) or use the imperative `metadata update-attribute` /
 `update-entity` / `update-optionset` / `update-relationship` verbs.
 
 ## Declarative apply — `apply -f spec.yaml`
 
 Stand up a whole table from one YAML/JSON spec instead of many imperative commands.
 `apply` runs the metadata cores in dependency order (publisher → solution → entities →
-option sets → attributes → relationships → views), each with `if_exists=skip`, and
-**publishes once at the end** — re-applying an unchanged spec is a no-op.
+option sets → attributes → relationships → views) and **publishes once at the end**.
+
+`apply` is **convergent** — a component that already exists is reconciled against
+the spec, not blindly skipped. Three outcomes per component:
+
+- **equal** → `skipped` (idempotent re-apply, no write).
+- **updatable divergence** → updated in place → counted in `updated`. Updatable:
+  entity display name / display-collection name / description; attribute display
+  name, description, required level, and string `max_length` growth; adding
+  declared options to a global option set.
+- **immutable/destructive divergence** → `replace_blocked`: reported, **no write**,
+  run exits `ok=false` / exit 1. Blocked cases: entity ownership change, attribute
+  data-type change. A `replace_blocked` component does not abort siblings — the rest
+  of the spec still reconciles.
+
+Reconciliation runs on a **real apply only**. Under `--dry-run`, existing
+components still report as `skipped` (would-update preview is a future slice).
 
 ```bash
-crm --json apply -f project.yaml              # create/skip, publish once
+crm --json apply -f project.yaml              # converge, publish once
 crm --dry-run --json apply -f project.yaml    # plan: dependents reported "planned"
-crm --stage-only --json apply -f project.yaml # create without publishing
+crm --stage-only --json apply -f project.yaml # converge without publishing
 ```
 
-Emits `{ok, data:{applied, skipped, planned, failed}, meta:{staged}}`; each entry is
-`{kind, name}` (a failed entry adds `error`). **Metadata POSTs are non-transactional,
-so a failure aborts-and-reports and leaves staged-but-unpublished residue.** A new
-table's views may report `planned` until the first publish assigns its ObjectTypeCode
-— **re-apply to land them.**
+Emits `{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, failed}, meta:{staged}}`;
+each entry is `{kind, name}`. `failed` and `replace_blocked` entries also carry
+`error` / `reason`. `pruned` is reserved (always empty today — opt-in pruning is a
+future slice). **Metadata writes are non-transactional: a hard failure aborts the
+remaining steps and leaves staged-but-unpublished residue.** A new table's views may
+report `planned` until the first publish assigns its ObjectTypeCode — **re-apply to
+land them.**
 
 ```yaml
 publisher: {unique_name: contosopub, prefix: contoso, option_value_prefix: 10000}
@@ -64,7 +82,7 @@ crm --dry-run --json scaffold table "Project" --column "Name:string"   # plan on
 crm --stage-only --json scaffold table "Project" --column "Name:string" # no publish
 ```
 
-Emits the same `{applied, skipped, planned, failed}` envelope as `apply`.
+Emits the same `{applied, updated, skipped, replace_blocked, pruned, planned, failed}` envelope as `apply`.
 
 **Column shorthand:** `DISPLAY:KIND[:key=value,...]`.
 
