@@ -113,8 +113,8 @@ def probe_reachable(name: str | None = None) -> bool:
     single no-retry request. A connection-level failure (host unreachable — VPN down)
     returns ``False`` so the caller can skip that target with a clear message (#573);
     any HTTP response, including auth errors, returns ``True``. Raises
-    :class:`TargetError` only when the profile itself cannot be resolved (a config
-    problem, not a reachability one).
+    :class:`TargetError` when the profile cannot be resolved or the prod-host guard
+    trips (config / opt-in problems) — never for unreachability, which returns ``False``.
     """
     import dataclasses
 

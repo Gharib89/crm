@@ -172,8 +172,8 @@ CRM_EVAL_AGENT_CMD='claude -p' \
 ```
 
 Each profile is pointed at via `D365_E2E_PROFILE` internally (saved/restored, so your env
-is untouched); creds are read read-only from your real `CRM_HOME` and re-seeded per leg, as
-the single-target runner does. The exit code is non-zero only if a **reachable** target
+is untouched); creds are read from your real `CRM_HOME` (read-only) and re-seeded per leg,
+as the single-target runner does. The exit code is non-zero only if a **reachable** target
 scored a failure/error — an unreachable target is a skip, not a failure.
 
 **`baseline.md` is the effectiveness trend.** `--update-baseline` appends one dated
