@@ -53,10 +53,31 @@ _PRINCIPAL_TYPES: dict[str, tuple[str, str]] = {
 # Bound actions on mscrm.role for privilege authoring.
 _ADD_PRIVILEGES_ACTION = "Microsoft.Dynamics.CRM.AddPrivilegesRole"
 _REPLACE_PRIVILEGES_ACTION = "Microsoft.Dynamics.CRM.ReplacePrivilegesRole"
+# RetrieveRolePrivilegesRole is an UNBOUND function taking RoleId (verified live on
+# on-prem v9.1 + cloud) — the bound `roles(id)/Microsoft.Dynamics.CRM....()` form
+# 404s ("Resource not found for the segment"). On-prem returns RolePrivilege entries
+# WITHOUT PrivilegeName (only Depth + PrivilegeId), so do not rely on the name.
+_RETRIEVE_ROLE_PRIVS_FN = "RetrieveRolePrivilegesRole"
 
 # Privilege depth levels, lowest → highest. The list index is the rank used when
 # clamping a requested depth to the levels a privilege actually supports.
 _DEPTH_ORDER: tuple[str, ...] = ("Basic", "Local", "Deep", "Global")
+
+# PrivilegeDepth enum by integer value (RetrieveRolePrivilegesRole may serialize
+# Depth as the enum member name OR its 0-4 ordinal). RecordFilter (4) has no
+# authoring counterpart; it round-trips as a name and simply never matches a
+# declared Basic/Local/Deep/Global depth, so a record-filtered live privilege
+# reads as drift.
+_DEPTH_BY_INT: tuple[str, ...] = ("Basic", "Local", "Deep", "Global", "RecordFilter")
+
+
+def _depth_name(value: Any) -> str:
+    """Normalize a PrivilegeDepth (enum member name or 0-4 ordinal) to its name."""
+    if isinstance(value, bool):  # bool is an int subclass — guard before the int check
+        return str(value)
+    if isinstance(value, int) and 0 <= value < len(_DEPTH_BY_INT):
+        return _DEPTH_BY_INT[value]
+    return str(value)
 
 # Friendly/alias depth name (lower-case) → canonical Web API Depth enum member.
 _DEPTH_ALIASES: dict[str, str] = {
@@ -614,28 +635,24 @@ def _named_privileges(backend: D365Backend, names: list[str]) -> list[dict[str, 
     return rows
 
 
-def set_role_privileges(
+def resolve_role_privileges(
     backend: D365Backend,
-    role: str,
     *,
     access: list[str] | None = None,
     entities: list[str] | None = None,
     all_entities: bool = False,
     privilege_names: list[str] | None = None,
     depth: str,
-    replace: bool = False,
-) -> dict[str, Any]:
-    """Add or replace a role's privileges from typed selectors.
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Resolve typed selectors to a privilege set, independent of any role.
 
     Selectors (≥1 required): ``access`` (+ ``entities`` or ``all_entities``)
     and/or explicit ``privilege_names``. ``depth`` is required (friendly name or
-    alias) and is clamped per privilege to the levels it supports. ``replace``
-    swaps the role's privileges for exactly the resolved set; otherwise the set
-    is merged (added).
-
-    Returns ``{roleid, mode, depth, privileges, count, warnings}``. A requested
-    access×entity combo with no matching privilege is skipped with a warning; an
-    empty resolved set is an error (never sends an empty replace).
+    alias) and is clamped per privilege to the levels it supports. Returns
+    ``(privileges, warnings)`` where each privilege is ``{name, privilegeid,
+    depth}`` (sorted by name). A requested access×entity combo with no matching
+    privilege is skipped with a warning; an empty resolved set is an error. Only
+    GETs are issued (privilege metadata), so this runs unchanged under dry-run.
     """
     access = access or []
     entities = entities or []
@@ -658,7 +675,6 @@ def set_role_privileges(
         )
 
     requested_depth = _normalize_depth(depth)
-    role_id = _resolve_role_id(backend, role)
 
     warnings: list[str] = []
     resolved: dict[str, dict[str, Any]] = {}
@@ -699,12 +715,109 @@ def set_role_privileges(
     privileges = sorted(resolved.values(), key=lambda p: str(p["name"]))
     if not privileges:
         raise D365Error("no privileges resolved for the given selectors; nothing to apply")
+    return privileges, warnings
 
+
+def merge_privilege_sets(sets: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Union resolved privilege sets, keeping the highest depth per privilege id.
+
+    Privilege ids are normalized so a merged set compares cleanly against a live
+    role's privileges (see :func:`get_role_privileges`). Used by apply to fold a
+    role's multi-row privilege matrix into the single set ReplacePrivilegesRole needs.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    for privs in sets:
+        for p in privs:
+            pid = normalize_guid(str(p["privilegeid"])) or str(p["privilegeid"])
+            prev = merged.get(pid)
+            if prev is None or _DEPTH_ORDER.index(p["depth"]) > _DEPTH_ORDER.index(prev["depth"]):
+                merged[pid] = {**p, "privilegeid": pid}
+    return sorted(merged.values(), key=lambda p: str(p["name"]))
+
+
+def _post_role_privileges(
+    backend: D365Backend, role_id: str, privileges: list[dict[str, Any]], *, replace: bool,
+) -> None:
+    """POST AddPrivilegesRole / ReplacePrivilegesRole for a resolved privilege list."""
     action = _REPLACE_PRIVILEGES_ACTION if replace else _ADD_PRIVILEGES_ACTION
+    body = {
+        "Privileges": [
+            {"PrivilegeId": p["privilegeid"], "Depth": p["depth"]} for p in privileges
+        ]
+    }
+    path = f"{entity_mod.build_record_path(_ROLES_SET, role_id)}/{action}"
+    backend.post(path, json_body=body)
+
+
+def get_role_privileges(backend: D365Backend, role_id: str) -> list[dict[str, Any]]:
+    """Return a role's current privileges as ``[{name, privilegeid, depth}]``.
+
+    Wraps the RetrieveRolePrivilegesRole function; ``Depth`` is normalized to its
+    canonical name and ids are normalized so the result compares directly against
+    a resolved desired set. Always a live read (apply's role reconcile uses it).
+    """
+    rid = normalize_guid(role_id) or role_id
+    result = as_dict(backend.get(f"{_RETRIEVE_ROLE_PRIVS_FN}(RoleId={rid})"))
+    rows = cast("list[dict[str, Any]]", result.get("RolePrivileges") or [])
+    out: list[dict[str, Any]] = []
+    for rp in rows:
+        raw_id = str(rp.get("PrivilegeId", ""))
+        # PrivilegeName is absent on-prem; fall back to the id so a drift report
+        # still has a stable label. The reconcile compares by id+depth, not name.
+        out.append({
+            "name": str(rp.get("PrivilegeName") or raw_id),
+            "privilegeid": normalize_guid(raw_id) or raw_id,
+            "depth": _depth_name(rp.get("Depth")),
+        })
+    return out
+
+
+def replace_role_privileges(
+    backend: D365Backend, role_id: str, privileges: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Replace a role's entire privilege set with ``privileges`` (ReplacePrivilegesRole).
+
+    Privileges not in the list are removed from the role. Suppressed under dry-run
+    (``backend.post`` is a no-op), so apply's reconcile can compute drift read-only.
+    """
+    _post_role_privileges(backend, role_id, privileges, replace=True)
+    return {"applied": True, "roleid": role_id, "count": len(privileges)}
+
+
+def set_role_privileges(
+    backend: D365Backend,
+    role: str,
+    *,
+    access: list[str] | None = None,
+    entities: list[str] | None = None,
+    all_entities: bool = False,
+    privilege_names: list[str] | None = None,
+    depth: str,
+    replace: bool = False,
+) -> dict[str, Any]:
+    """Add or replace a role's privileges from typed selectors.
+
+    Selectors (≥1 required): ``access`` (+ ``entities`` or ``all_entities``)
+    and/or explicit ``privilege_names``. ``depth`` is required (friendly name or
+    alias) and is clamped per privilege to the levels it supports. ``replace``
+    swaps the role's privileges for exactly the resolved set; otherwise the set
+    is merged (added).
+
+    Returns ``{roleid, mode, depth, privileges, count, warnings}``. A requested
+    access×entity combo with no matching privilege is skipped with a warning; an
+    empty resolved set is an error (never sends an empty replace).
+    """
+    # Resolve the role first so a bad/ambiguous role name fails before the privilege
+    # metadata reads (a GUID resolves with no I/O, so pure-validation errors still
+    # raise before any HTTP).
+    role_id = _resolve_role_id(backend, role)
+    privileges, warnings = resolve_role_privileges(
+        backend, access=access, entities=entities, all_entities=all_entities,
+        privilege_names=privilege_names, depth=depth)
     out: dict[str, Any] = {
         "roleid": role_id,
         "mode": "replace" if replace else "add",
-        "depth": requested_depth,
+        "depth": _normalize_depth(depth),
         "privileges": privileges,
         "count": len(privileges),
         "warnings": warnings,
@@ -716,12 +829,6 @@ def set_role_privileges(
         out["_dry_run"] = True
         out["would_apply"] = {"action": out["mode"], "count": len(privileges)}
         return out
-    body = {
-        "Privileges": [
-            {"PrivilegeId": p["privilegeid"], "Depth": p["depth"]} for p in privileges
-        ]
-    }
-    path = f"{entity_mod.build_record_path(_ROLES_SET, role_id)}/{action}"
-    backend.post(path, json_body=body)
+    _post_role_privileges(backend, role_id, privileges, replace=replace)
     out["applied"] = True
     return out

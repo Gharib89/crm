@@ -8,6 +8,8 @@ without publishing) flags.
 # pyright: basic
 from __future__ import annotations
 
+import os
+
 import click
 
 from crm.cli import CLIContext, pass_ctx
@@ -29,9 +31,12 @@ from crm.core import apply as apply_mod
 def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionsets):
     """Apply a declarative desired-state spec.
 
-    The spec declares a publisher, solution, and entities (with attributes,
-    option sets, relationships, and views), driven in dependency order with
-    PublishAllXml once at the end. apply is convergent: a component that already
+    The spec declares a publisher, solution, entities (with attributes, option
+    sets, relationships, and views), web resources, and security roles, driven in
+    dependency order with PublishAllXml once at the end (web resources are
+    published with everything else; security roles are not publishable). A web
+    resource's `file` path is resolved relative to the spec file. apply is
+    convergent: a component that already
     exists is reconciled against the spec — left untouched when it matches,
     updated in place when an allowed field drifts, or refused (no write) when the
     divergence would need a destructive drop-and-recreate (see ADR 0014). Emits
@@ -59,7 +64,8 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
     with d365_errors(ctx):
         res = apply_mod.apply_spec(
             ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only,
-            include_referenced_optionsets=include_referenced_optionsets)
+            include_referenced_optionsets=include_referenced_optionsets,
+            base_dir=os.path.dirname(os.path.abspath(spec_file)))
 
     data = {k: res[k] for k in (
         "applied", "updated", "skipped", "replace_blocked", "pruned", "planned", "failed")}

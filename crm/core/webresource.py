@@ -169,6 +169,24 @@ def get_webresource(backend: D365Backend, name: str) -> dict[str, Any]:
     return rows[0]
 
 
+def find_webresource(backend: D365Backend, name: str) -> dict[str, Any] | None:
+    """Resolve a web resource by name for apply's drift check, or None if absent.
+
+    Unlike :func:`get_webresource` this returns ``None`` (not a raise) when the
+    name is unknown and the ``$select`` carries the base64 ``content`` so apply can
+    diff the live body against the spec's file. A forced-real read (``get_collection``
+    runs even under dry-run), so a dry-run still reports create-vs-update correctly.
+    """
+    rows = backend.get_collection(
+        "webresourceset",
+        params={
+            "$filter": f"name eq {odata_literal(name)}",
+            "$select": "webresourceid,name,displayname,webresourcetype,content",
+        },
+    )
+    return rows[0] if rows else None
+
+
 def list_webresources(
     backend: D365Backend,
     *,

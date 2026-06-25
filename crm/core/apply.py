@@ -13,6 +13,8 @@ steps and is reported; whatever was already created stays staged-but-unpublished
 
 from __future__ import annotations
 
+import base64
+import os
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -23,8 +25,10 @@ from crm.core import metadata_constraints as mc
 from crm.core import metadata_update as meta_update_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
+from crm.core import security as sec_mod
 from crm.core import solution as sol_mod
 from crm.core import views as views_mod
+from crm.core import webresource as wr_mod
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
 Entry = dict[str, Any]
@@ -128,11 +132,11 @@ def validate_spec(spec: Any) -> None:
                             "(10000-99999), not a quoted string.")
     if sp.get("solution") is not None:
         _require(sp["solution"], ("unique_name",), "solution")
-    for key in ("entities", "optionsets"):
+    for key in ("entities", "optionsets", "webresources", "security_roles"):
         if key in sp and not isinstance(sp[key], list):
             raise D365Error(f"{key} must be a list.")
-    if not (sp.get("publisher") or sp.get("solution")
-            or sp.get("entities") or sp.get("optionsets")):
+    if not (sp.get("publisher") or sp.get("solution") or sp.get("entities")
+            or sp.get("optionsets") or sp.get("webresources") or sp.get("security_roles")):
         raise D365Error("spec is empty: nothing to apply.")
     for ent in _as_list(sp.get("entities")):
         _require(ent, ("schema_name", "display_name"), "entity")
@@ -178,6 +182,21 @@ def validate_spec(spec: Any) -> None:
         _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
         for opt in cast("list[Any]", os_spec.get("options") or []):
             _validate_option(opt, f"optionset {os_spec['name']!r}")
+    for wr in _as_list(sp.get("webresources")):
+        _require(wr, ("name", "file"), "web resource")
+        if wr.get("webresourcetype") is not None and not isinstance(wr["webresourcetype"], int):
+            raise D365Error(
+                f"web resource {wr['name']!r}: webresourcetype must be an integer.")
+    for role in _as_list(sp.get("security_roles")):
+        _require(role, ("name",), "security role")
+        rlabel = f"security role {role['name']!r}"
+        _require_list(role, "privileges", rlabel)
+        for row in _as_list(role.get("privileges")):
+            _require(row, ("depth",), f"{rlabel} privilege")
+            if not (row.get("access") or row.get("privilege_names")):
+                raise D365Error(
+                    f"{rlabel}: each privilege row needs 'access' (with 'entities' or "
+                    "'all_entities') or 'privilege_names'.")
 
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
@@ -399,6 +418,117 @@ def _reconcile_optionset(
     return "updated", _with_diff(entry, out)
 
 
+def _read_webresource_file(base_dir: str | None, file: str) -> bytes:
+    """Read a web resource's content bytes from `file`, resolved against base_dir.
+
+    An absolute `file` is used as-is; a relative one is joined to base_dir (the
+    spec file's directory) so content can live next to the spec. OSError is mapped
+    to a D365Error so apply records a clean failure entry rather than crashing.
+    """
+    path = os.path.join(base_dir or "", file)
+    try:
+        with open(path, "rb") as fh:
+            return fh.read()
+    except OSError as exc:
+        raise D365Error(f"cannot read web resource file {path!r}: {exc}") from exc
+
+
+def _reconcile_webresource(
+    backend: D365Backend, wr: dict[str, Any], content: bytes, live: dict[str, Any],
+    solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing web resource against the spec; update content/display or skip.
+
+    The spec's file bytes are base64-compared against the live `content` column;
+    a declared `display_name` is compared too. There is no destructive divergence
+    for a web resource, so this never blocks. The update defers publishing
+    (publish=False) — apply publishes once at the end.
+    """
+    desired_b64 = base64.b64encode(content).decode("ascii")
+    changes: dict[str, Any] = {}
+    if live.get("content") != desired_b64:
+        changes["content"] = content
+    desired_display = wr.get("display_name")
+    if desired_display is not None and desired_display != live.get("displayname"):
+        changes["display_name"] = desired_display
+    if not changes:
+        return "skipped", entry
+    wr_mod.update_webresource(
+        backend, wr["name"], content=changes.get("content"),
+        display_name=changes.get("display_name"), solution=solution, publish=False)
+    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
+
+
+def _desired_role_privileges(
+    backend: D365Backend, role_spec: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Resolve a role's privilege matrix to the union of its rows (highest depth wins).
+
+    Each row is a `set-role-privileges` selector group (access+entities/all_entities
+    and/or privilege_names, at one depth); the rows are resolved independently and
+    merged so the role can mix depths/scopes. Returns (privileges, warnings).
+    """
+    sets: list[list[dict[str, Any]]] = []
+    warnings: list[str] = []
+    for row in _as_list(role_spec.get("privileges")):
+        privs, warns = sec_mod.resolve_role_privileges(
+            backend,
+            access=row.get("access"),
+            entities=row.get("entities"),
+            all_entities=bool(row.get("all_entities")),
+            privilege_names=row.get("privilege_names"),
+            depth=row["depth"],
+        )
+        sets.append(privs)
+        warnings.extend(warns)
+    return sec_mod.merge_privilege_sets(sets), warnings
+
+
+def _privilege_diff(
+    live: list[dict[str, Any]], desired: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    """Field-level drift between a role's live and desired privilege sets."""
+    lmap = {p["privilegeid"]: p for p in live}
+    dmap = {p["privilegeid"]: p for p in desired}
+    added = [d["name"] for pid, d in dmap.items() if pid not in lmap]
+    removed = [lp["name"] for pid, lp in lmap.items() if pid not in dmap]
+    changed = [f"{d['name']}: {lmap[pid]['depth']} -> {d['depth']}"
+               for pid, d in dmap.items() if pid in lmap and lmap[pid]["depth"] != d["depth"]]
+    return {"added": sorted(added), "removed": sorted(removed), "changed": sorted(changed)}
+
+
+def _reconcile_security_role(
+    backend: D365Backend, role_spec: dict[str, Any], role_id: str, entry: Entry,
+) -> _Verdict:
+    """Reconcile an existing role's privileges to the declared set.
+
+    The role's live privileges (RetrieveRolePrivilegesRole) are compared to the
+    declared matrix by (privilege id -> depth). When every declared privilege is
+    already present at its declared depth it is a no-op; otherwise
+    ReplacePrivilegesRole sets the role to the declared set — authoritative within
+    the declared role, so unlisted *removable* privileges are dropped (distinct
+    from `--prune`, which is about whole components). There is no destructive
+    divergence, so this never blocks; the replace write is suppressed under dry-run
+    (reads-execute rule), so the same path yields a drift report.
+
+    Convergence note: Dataverse auto-grants every role a small set of immovable
+    baseline privileges (e.g. SharePoint document management) that
+    ReplacePrivilegesRole cannot remove (verified live). A strict set-equality check
+    would therefore never converge — it would re-report the role as drifted every
+    run. So the skip test is "are all declared privileges present at the declared
+    depth?" (a satisfied lower bound), not "is the live set exactly the declared
+    set?". A re-applied unchanged spec is a true no-op.
+    """
+    desired, _ = _desired_role_privileges(backend, role_spec)
+    live = sec_mod.get_role_privileges(backend, role_id)
+    live_map = {p["privilegeid"]: p["depth"] for p in live}
+    if all(live_map.get(p["privilegeid"]) == p["depth"] for p in desired):
+        return "skipped", entry
+    diff = _privilege_diff(live, desired)
+    sec_mod.replace_role_privileges(backend, role_id, desired)
+    return "updated", {**entry, "diff": diff}
+
+
 def apply_spec(
     backend: D365Backend,
     spec: dict[str, Any],
@@ -406,6 +536,7 @@ def apply_spec(
     solution: str | None = None,
     stage_only: bool = False,
     include_referenced_optionsets: bool = True,
+    base_dir: str | None = None,
 ) -> dict[str, Any]:
     """Apply a desired-state spec convergently.
 
@@ -673,6 +804,64 @@ def apply_spec(
                         if_exists="skip",
                     ), failed)
                 _classify(result, entry, applied, skipped, planned)
+
+        # Phase: web resources. No if_exists on the core, so probe existence
+        # directly (forced-real, dry-run safe); created/updated with publish
+        # deferred — the end-of-run PublishAllXml publishes them once.
+        for wr in _as_list(spec.get("webresources")):
+            name: str = wr["name"]
+            entry = {"kind": "webresource", "name": name}
+            content = _call(entry, lambda wr=wr: _read_webresource_file(base_dir, wr["file"]),
+                            failed)
+            live_wr = wr_mod.find_webresource(backend, name)
+            if live_wr is None:
+                result = _call(entry, lambda wr=wr, name=name, content=content:
+                               wr_mod.create_webresource(
+                                   backend,
+                                   name=name,
+                                   content=content,
+                                   webresourcetype=wr_mod.resolve_webresourcetype(
+                                       wr["file"], wr.get("webresourcetype")),
+                                   display_name=wr.get("display_name"),
+                                   solution=solution_name,
+                                   publish=False,
+                               ), failed)
+                _classify(result, entry, applied, skipped, planned)
+            else:
+                _reconcile(entry, lambda wr=wr, content=content, live_wr=live_wr, entry=entry:
+                           _reconcile_webresource(backend, wr, content, live_wr,
+                                                  solution_name, entry),
+                           failed, routes)
+
+        # Phase: security roles. Create (if_exists=skip) then reconcile privileges
+        # to EXACTLY the declared set. A fresh role's declared set is applied; an
+        # existing role is reconciled (replace removes unlisted privileges). Roles
+        # are not publishable, so they never trigger the end-of-run publish.
+        for role_spec in _as_list(spec.get("security_roles")):
+            entry = {"kind": "security-role", "name": role_spec["name"]}
+            result = _call(entry, lambda role_spec=role_spec: sec_mod.create_role(
+                backend,
+                role_spec["name"],
+                business_unit=role_spec.get("business_unit"),
+                if_exists="skip",
+                solution=solution_name,
+            ), failed)
+            if result.get("_dry_run"):
+                planned.append(entry)  # greenfield: role + privileges would be created
+                continue
+            role_id: str = result["roleid"]
+            if result.get("existed"):
+                _reconcile(entry, lambda role_spec=role_spec, role_id=role_id, entry=entry:
+                           _reconcile_security_role(backend, role_spec, role_id, entry),
+                           failed, routes)
+            else:
+                # Freshly created: set the declared set (replace drops the auto-granted
+                # baseline privileges so the role ends as exactly the declared matrix).
+                desired = _call(entry, lambda role_spec=role_spec:
+                                _desired_role_privileges(backend, role_spec)[0], failed)
+                _call(entry, lambda role_id=role_id, desired=desired:
+                      sec_mod.replace_role_privileges(backend, role_id, desired), failed)
+                applied.append(entry)
     except _Aborted:
         pass
 
@@ -682,7 +871,10 @@ def apply_spec(
     # nothing was actually written (created or updated). Under --dry-run `applied`
     # is always empty and `updated` is a would-update preview (writes suppressed),
     # so nothing was written — `wrote` is false and the run never stages.
-    wrote = bool(applied or updated) and not backend.dry_run
+    # Security roles are not publishable customizations; a role-only change writes
+    # but needs no PublishAllXml. Gate publish/staged on the publishable writes only.
+    publishable = [e for e in applied + updated if e.get("kind") != "security-role"]
+    wrote = bool(publishable) and not backend.dry_run
     published = (wrote and not stage_only and not failed
                  and not replace_blocked and not backend.dry_run)
     if published:
