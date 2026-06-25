@@ -121,10 +121,13 @@ _MXSWA_REQUIRED_ARGS: dict[str, frozenset[str]] = {
     "CreateEntity": frozenset({"Entity", "EntityName"}),
 }
 
+# NCName prefix: beyond \w, XML namespace prefixes may legally contain '.' and
+# '-' (e.g. "my-ns"), so match those too or a hyphenated prefix slips through.
+_NCNAME = r'[\w.\-]+'
 # Regex to pre-scan namespace prefix declarations (xmlns:foo="…") in raw text.
-_XMLNS_DECL_RE = re.compile(r'xmlns:(\w+)\s*=')
+_XMLNS_DECL_RE = re.compile(rf'xmlns:({_NCNAME})\s*=')
 # Regex to find used prefixes on element/attribute names (foo:bar patterns).
-_PREFIX_USE_RE = re.compile(r'</?(\w+):\w+|(\w+):\w+\s*=')
+_PREFIX_USE_RE = re.compile(rf'</?({_NCNAME}):\w+|({_NCNAME}):\w+\s*=')
 
 
 def validate_workflow_xaml(
@@ -187,28 +190,12 @@ def validate_workflow_xaml(
 
     # ------------------------------------------------------------------
     # Checks 3–5: traverse parsed elements.
-    # ElementTree Clark-notation: {namespace_uri}local_name.
-    # We need to find the exact namespace URI that ElementTree resolved for
-    # the mxswa prefix. Scan the xmlns attributes on the root to find it.
+    # ElementTree exposes tags in Clark notation: {namespace_uri}local_name.
+    # The mxswa namespace URI is the only one containing the fully-qualified
+    # Activities namespace, so a substring test on each element's URI is enough
+    # to recognise an mxswa activity — no separate URI-resolution pass needed
+    # (ElementTree does not expose xmlns declarations as attributes anyway).
     # ------------------------------------------------------------------
-    mxswa_uri: str | None = None
-    for _, attr_val in root.attrib.items():
-        # xmlns declarations appear as plain 'xmlns:prefix' keys in the
-        # raw source but ElementTree exposes them differently depending on
-        # the Python version — we look for the mxswa value pattern.
-        if "Microsoft.Xrm.Sdk.Workflow.Activities" in attr_val:
-            mxswa_uri = attr_val
-            break
-
-    if mxswa_uri is None:
-        # Try to find it in any element's namespace map via iteration.
-        for elem in root.iter():
-            tag = elem.tag
-            if "Microsoft.Xrm.Sdk.Workflow.Activities" in tag:
-                # tag is {uri}local — extract uri.
-                mxswa_uri = tag[1:tag.index("}")]
-                break
-
     for elem in root.iter():
         tag = elem.tag
         # Clark notation: {uri}local
@@ -220,7 +207,7 @@ def validate_workflow_xaml(
             ns_uri = ""
             local = tag
 
-        is_mxswa = mxswa_uri is not None and ns_uri == mxswa_uri
+        is_mxswa = "Microsoft.Xrm.Sdk.Workflow.Activities" in ns_uri
 
         if is_mxswa:
             # Property-element children (e.g. SetEntityProperty.Value) have a

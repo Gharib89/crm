@@ -98,6 +98,16 @@ _UNDECLARED_PREFIX_SORTS_AFTER_XMLNS = (
     '</Activity>'
 )
 
+# Undeclared prefix containing an NCName-legal hyphen (regression guard: the
+# raw-text scan must still name it, not fall back to the generic "(unknown)").
+_UNDECLARED_HYPHENATED_PREFIX = (
+    '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
+    ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
+    ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
+    '  <my-ns:Workflow />\n'  # my-ns declaration deliberately absent
+    '</Activity>'
+)
+
 # Unknown activity name not in the allowlist.
 _UNKNOWN_ACTIVITY = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
@@ -232,6 +242,15 @@ class TestValidateWorkflowXaml:
         assert len(warnings) == 1
         assert "zzz" in warnings[0]
         assert "'xmlns'" not in warnings[0]
+
+    def test_undeclared_hyphenated_prefix_is_named(self):
+        """An undeclared prefix with an NCName hyphen is named, not '(unknown)'."""
+        warnings = validate_workflow_xaml(
+            _UNDECLARED_HYPHENATED_PREFIX, _ATTRIBUTE_SET
+        )
+        assert len(warnings) == 1
+        assert "my-ns" in warnings[0]
+        assert "(unknown)" not in warnings[0]
 
     def test_missing_namespace_emits_undeclared_prefix_warning(self):
         """An mxswa: element with no xmlns:mxswa → 'undeclared namespace prefix: …'."""
