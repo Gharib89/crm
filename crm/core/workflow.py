@@ -94,23 +94,6 @@ def retarget_xaml(
 # Pure XAML reference-validator (no backend, no I/O)
 # ---------------------------------------------------------------------------
 
-# Namespace URI for out-of-box workflow activities (conventional prefix: mxswa).
-_MXSWA_NS = "clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow"
-
-# Expanded Clark-notation namespace as ElementTree exposes it after parsing.
-# ElementTree drops the assembly/version fragment at the first semicolon, so the
-# full xmlns value becomes just the clr-namespace part up to the semicolon.
-# We match the full xmlns string as stored in the attribute because ElementTree
-# gives us the full string from the namespace declaration; but the Clark-notation
-# key it uses when parsing elements uses the full value up to ';' if any.
-# In practice the mxswa xmlns value used in real exports is the full string
-# below — ElementTree stores namespaces from xmlns attrs verbatim.
-_MXSWA_NS_FULL = (
-    "clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;"
-    "assembly=Microsoft.Xrm.Sdk.Workflow, Version=9.0.0.0, Culture=neutral,"
-    " PublicKeyToken=31bf3856ad364e35"
-)
-
 # Allowlist of known mxswa activity local names (grounded in Microsoft Learn /
 # Microsoft.Xrm.Sdk.Workflow.Activities namespace documentation).
 _MXSWA_ACTIVITY_ALLOWLIST: frozenset[str] = frozenset({
@@ -184,9 +167,9 @@ def validate_workflow_xaml(
             declared = set(_XMLNS_DECL_RE.findall(xaml))
             used: set[str] = set()
             for m in _PREFIX_USE_RE.finditer(xaml):
-                used.add(m.group(1) or m.group(2))
-            used.discard("")
-            used.discard(None)  # type: ignore[arg-type]
+                prefix = m.group(1) or m.group(2)
+                if prefix:
+                    used.add(prefix)
             undeclared = used - declared
             if undeclared:
                 prefix = sorted(undeclared)[0]
@@ -236,6 +219,13 @@ def validate_workflow_xaml(
         is_mxswa = mxswa_uri is not None and ns_uri == mxswa_uri
 
         if is_mxswa:
+            # Property-element children (e.g. SetEntityProperty.Value) have a
+            # dot in their local name. They are not activities — skip checks 3,
+            # 4, and 5 for them. Check 5 on the parent activity already handles
+            # them as child_names entries (stripping the "Activity." prefix).
+            if "." in local:
+                continue
+
             # Check 3: allowlist.
             if local not in _MXSWA_ACTIVITY_ALLOWLIST:
                 warnings.append(f"unknown activity: '{local}'")

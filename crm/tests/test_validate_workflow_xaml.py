@@ -2,8 +2,6 @@
 # pyright: basic
 from __future__ import annotations
 
-import pytest
-
 from crm.core.workflow import validate_workflow_xaml
 
 # ---------------------------------------------------------------------------
@@ -135,6 +133,36 @@ _BAD_ATTRIBUTE = (
     '</Activity>'
 )
 
+# SetEntityProperty with Value supplied as a property-element child
+# (<mxswa:SetEntityProperty.Value>…</mxswa:SetEntityProperty.Value>) instead of
+# an XML attribute.  The other required args (Entity, EntityName, Attribute) are
+# XML attributes; Attribute references a name that IS in _ATTRIBUTE_SET.
+_PROPERTY_ELEMENT_VALUE = (
+    '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
+    ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
+    ' xmlns:mva="clr-namespace:Microsoft.VisualBasic.Activities;assembly=System.Activities,'
+    ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
+    ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
+    ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
+    ' xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;assembly=Microsoft.Xrm.Sdk.Workflow,'
+    ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
+    ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
+    ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
+    ' xmlns:srs="clr-namespace:System.Runtime.Serialization;assembly=System.Runtime.Serialization,'
+    ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
+    ' xmlns:this="clr-namespace:"'
+    ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
+    '  <mxswa:Workflow>\n'
+    '    <mxswa:SetEntityProperty Entity="someref" EntityName="cwx_ticket"'
+    ' Attribute="cwx_name">\n'
+    '      <mxswa:SetEntityProperty.Value>\n'
+    '        <mxs:Entity />\n'
+    '      </mxswa:SetEntityProperty.Value>\n'
+    '    </mxswa:SetEntityProperty>\n'
+    '  </mxswa:Workflow>\n'
+    '</Activity>'
+)
+
 # SetEntityProperty missing its required "Entity" argument.
 _MISSING_ARG = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
@@ -232,3 +260,15 @@ class TestValidateWorkflowXaml:
         warnings = validate_workflow_xaml("", _ATTRIBUTE_SET)
         assert len(warnings) == 1
         assert "malformed XAML" in warnings[0]
+
+    def test_property_element_child_not_flagged_as_unknown_activity(self):
+        """SetEntityProperty with Value as a property-element child must produce no warnings.
+
+        Real XAML serializes some arguments as <mxswa:SetEntityProperty.Value>…
+        child elements instead of XML attributes.  The dot in the local name
+        marks these as property-elements — they must not be treated as unknown
+        activities (check 3) and the required 'Value' arg is satisfied by the
+        child element (check 5).
+        """
+        warnings = validate_workflow_xaml(_PROPERTY_ELEMENT_VALUE, _ATTRIBUTE_SET)
+        assert warnings == []
