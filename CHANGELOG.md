@@ -9,6 +9,33 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.37.0 (2026-06-25)
+
+### Bug Fixes
+
+- **apply**: Reject null source_type and present formula on simple columns up front
+  ([#564](https://github.com/Gharib89/crm/pull/564),
+  [`ab1f22d`](https://github.com/Gharib89/crm/commit/ab1f22dbcecd4e1fcc7bf126498f6cfdeaab520b))
+
+### Documentation
+
+- **export-spec**: Document calculated/rollup source_type + formula_definition
+  ([#564](https://github.com/Gharib89/crm/pull/564),
+  [`ab1f22d`](https://github.com/Gharib89/crm/commit/ab1f22dbcecd4e1fcc7bf126498f6cfdeaab520b))
+
+### Features
+
+- **export-spec**: Capture calculated/rollup FormulaDefinition for round-trip
+  ([#564](https://github.com/Gharib89/crm/pull/564),
+  [`ab1f22d`](https://github.com/Gharib89/crm/commit/ab1f22dbcecd4e1fcc7bf126498f6cfdeaab520b))
+
+### Testing
+
+- **apply**: Reject formula on simple column + chained export→apply round-trip
+  ([#564](https://github.com/Gharib89/crm/pull/564),
+  [`ab1f22d`](https://github.com/Gharib89/crm/commit/ab1f22dbcecd4e1fcc7bf126498f6cfdeaab520b))
+
+
 ## v1.36.0 (2026-06-25)
 
 ### Bug Fixes
