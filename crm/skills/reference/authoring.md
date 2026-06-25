@@ -99,6 +99,11 @@ plugins:
 In a spec attribute block, `string` and `memo` `max_length` is optional — omit it and
 the create defaults to 100 / 2000 (matching the `scaffold` / column-shorthand path). An
 explicit `max_length` is honored verbatim; `max_length` on any other kind is rejected.
+`source_type` (`simple` / `calculated` / `rollup`) with `formula_definition` (XAML
+string) creates a rollup or calculated column — mirrors `metadata add-attribute --type`.
+`source_type: calculated` / `rollup` requires `formula_definition` and is rejected on
+`lookup`/`customer` kinds. Omitting `source_type` creates a plain column. Formula
+drift is **not** reconciled — the reconcile pass ignores `formula_definition`.
 
 **Security role convergence gotcha — baseline privileges and removal-only no-op.**
 Dataverse auto-grants every role immovable baseline privileges (e.g. SharePoint

@@ -122,6 +122,13 @@ plugins:
 needs `optionset_name` (a global set, usually declared under `optionsets`) **or**
 inline `options`; a `lookup` needs `target_entity`. `max_length` is optional for
 `string`/`memo` (defaults to 100 / 2000 when omitted) and rejected on any other kind.
+`source_type` (`simple` / `calculated` / `rollup`) and `formula_definition` (XAML
+string) layer a rollup or calculated column on top of a supported kind — mirroring
+`metadata add-attribute --type`. `source_type: calculated` or `rollup` requires
+`formula_definition` and is rejected on `lookup`/`customer` kinds. Omitting
+`source_type` (or `source_type: simple`) creates a plain column. The reconcile
+pass does **not** compare `formula_definition` — drift in the formula is not
+detected or updated.
 View `columns` are entity
 **logical** names; use `name:width` (or `{name, width}`) to set a column width
 (default 100). Malformed input is rejected up front, before any HTTP call.

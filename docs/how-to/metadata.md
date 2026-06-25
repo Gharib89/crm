@@ -549,6 +549,11 @@ crm apply -f project.yaml
   `MaxLength`, `FormatName`, `Precision`, `RequiredLevel`, and option-set options.
   Picklists/multiselects bound to a global option set emit `optionset_name`; the
   referenced global option set is captured as a top-level `optionsets` entry.
+  Calculated and rollup columns (custom columns with `SourceType` 1/2) are also
+  captured: the exported spec includes `source_type` (`"calculated"` or `"rollup"`)
+  and `formula_definition` (the live FormulaDefinition XAML), so `apply` can
+  re-create them in another environment. If the FormulaDefinition cannot be read,
+  the column is exported as a plain simple column and a warning is emitted.
   System attributes (Owner, State, Status, Uniqueidentifier, …) are skipped.
 - Relationships (with `--with-relationships`): custom 1:N relationships.
 - Views (with `--with-views`): public saved queries with parseable column layouts.
@@ -557,8 +562,9 @@ crm apply -f project.yaml
 
 **Fidelity note:** these attribute properties round-trip through `apply` —
 `max_length`, `required`, option-set options, lookup `target_entity`, `precision`
-(decimal/double/money), and string `format_name` (`Email` / `Phone` / `Url` /
-`TextArea` / etc.). Caveats:
+(decimal/double/money), string `format_name` (`Email` / `Phone` / `Url` /
+`TextArea` / etc.), and calculated/rollup `source_type` + `formula_definition`.
+Caveats:
 
 - A string column whose live format is `Json` or `RichText` (formats `apply` cannot
   create) is re-created as plain `Text`.

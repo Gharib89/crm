@@ -126,7 +126,9 @@ desired-state spec (see `reference/authoring.md`). With `-o FILE` it writes bare
 directly consumable by `apply`; without `-o` the spec is wrapped in the JSON envelope.
 
 It captures: entity definition, primary-name attribute, all custom apply-creatable
-columns, referenced global option sets, and (with flags) relationships and views.
+columns (including calculated and rollup columns with their `source_type` and
+`formula_definition` XAML), referenced global option sets, and (with flags)
+relationships and views.
 Publisher/solution are **not** emitted — supply them via `--solution` on `apply`, or
 edit the YAML. **Fidelity caveats** (these silently lose information on round-trip):
 
@@ -137,6 +139,9 @@ edit the YAML. **Fidelity caveats** (these silently lose information on round-tr
   re-created as a single-target lookup.
 - Relationship `cascade` / `associated_menu` are captured but re-created with default
   cascade/menu.
+- A calculated/rollup column whose `FormulaDefinition` cannot be read is exported as
+  a plain simple column (a warning is emitted in `meta.warnings`). The reconcile
+  pass does **not** compare formulas — formula drift is not detected or updated.
 
 `apply` ignores unknown keys, so the spec always stays apply-consumable.
 
