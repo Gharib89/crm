@@ -101,20 +101,30 @@ def _run_agent(prompt: str, agent_cmd: list[str], iso: isolation.Isolation) -> s
 
 
 def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str) -> None:
-    """Delete every record each cleanup step matches. Idempotent; best-effort."""
+    """Delete every record each cleanup step matches. Idempotent and best-effort:
+    a per-step or per-record failure is logged and skipped so one failure can't
+    strand the rest of the teardown (the org must be left as clean as possible)."""
     for step in spec.cleanup:
-        rows = _crm_json(
-            ["--profile", profile, "query", "odata", step.entity,
-             "--filter", step.filter, "--select", step.id_field],
-            env, crm_bin,
-        ) or []
+        try:
+            rows = _crm_json(
+                ["--profile", profile, "query", "odata", step.entity,
+                 "--filter", step.filter, "--select", step.id_field],
+                env, crm_bin,
+            ) or []
+        except RunError as exc:
+            print(f"[cleanup] listing {step.entity} failed, skipping: {exc}", file=sys.stderr)
+            continue
         for row in rows:
             rec_id = row.get(step.id_field)
-            if rec_id:
+            if not rec_id:
+                continue
+            try:
                 _crm_json(
                     ["--profile", profile, "entity", "delete", step.entity, rec_id, "--yes"],
                     env, crm_bin,
                 )
+            except RunError as exc:
+                print(f"[cleanup] deleting {step.entity} {rec_id} failed: {exc}", file=sys.stderr)
 
 
 def run_task(

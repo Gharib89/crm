@@ -71,6 +71,8 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     path = Path(path)
     front, body = _split_frontmatter(path.read_text(encoding="utf-8"))
     meta = yaml.safe_load(front) or {}
+    if not isinstance(meta, dict):
+        raise ValueError(f"{path}: frontmatter must be a YAML mapping, got {type(meta).__name__}")
 
     def require(key: str) -> Any:
         if key not in meta:
@@ -82,6 +84,8 @@ def parse_task_file(path: str | Path) -> TaskSpec:
         raise ValueError(f"{path}: target {target!r} not one of {TARGETS}")
 
     end_state = require("end_state")
+    if not isinstance(end_state, dict):
+        raise ValueError(f"{path}: end_state must be a mapping")
     query = end_state.get("query")
     if not isinstance(query, list) or not all(isinstance(a, str) for a in query):
         raise ValueError(f"{path}: end_state.query must be a list of strings")
@@ -89,10 +93,18 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     if not isinstance(expect, dict) or not expect:
         raise ValueError(f"{path}: end_state.expect must be a non-empty mapping")
 
-    cleanup = [
-        CleanupStep(entity=s["entity"], id_field=s["id_field"], filter=s["filter"])
-        for s in (require("cleanup") or [])
-    ]
+    raw_cleanup = require("cleanup") or []
+    if not isinstance(raw_cleanup, list):
+        raise ValueError(f"{path}: cleanup must be a list of steps")
+    cleanup: list[CleanupStep] = []
+    for step in raw_cleanup:
+        if not isinstance(step, dict) or not {"entity", "id_field", "filter"} <= step.keys():
+            raise ValueError(
+                f"{path}: each cleanup step needs entity/id_field/filter, got {step!r}"
+            )
+        cleanup.append(
+            CleanupStep(entity=step["entity"], id_field=step["id_field"], filter=step["filter"])
+        )
 
     if not body:
         raise ValueError(f"{path}: empty prompt body")

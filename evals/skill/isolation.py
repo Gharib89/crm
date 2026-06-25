@@ -74,6 +74,17 @@ def provision_isolation(crm_bin: str | None = None) -> Isolation:
         d.mkdir(parents=True)
 
     skill_dir = home / ".claude" / "skills" / "crm"
+
+    # Scrub the environment of anything that could lead back to the repo: fresh HOME
+    # and CRM_HOME, no PYTHONPATH (which could put the repo's `crm/` package on the
+    # import path), no inherited CLAUDE.md pointers. Built *before* the install so the
+    # skill-install subprocess's own writes (skill_registry.record_install →
+    # installed-skills.json) land in the throwaway CRM_HOME, never the caller's real
+    # state — otherwise the harness would pollute the maintainer's profile/config.
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "CLAUDE_PROJECT_DIR")}
+    env["HOME"] = str(home)
+    env["CRM_HOME"] = str(crm_home)
+
     # Install the skill the way a user does — from whatever `crm` is on PATH, so the
     # eval exercises the skill *as shipped* in that binary, not the repo's working
     # tree. --dest pins the location; --force makes it idempotent across re-runs.
@@ -81,19 +92,13 @@ def provision_isolation(crm_bin: str | None = None) -> Isolation:
         [crm_bin, "skill", "install", "--dest", str(skill_dir), "--force"],
         capture_output=True,
         text=True,
+        env=env,
     )
     if result.returncode != 0:
         shutil.rmtree(sandbox, ignore_errors=True)
         raise IsolationError(
             f"`crm skill install` failed (exit {result.returncode}): {result.stderr.strip()}"
         )
-
-    # Scrub the environment of anything that could lead back to the repo: fresh HOME
-    # and CRM_HOME, no PYTHONPATH (which could put the repo's `crm/` package on the
-    # import path), no inherited CLAUDE.md pointers.
-    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "CLAUDE_PROJECT_DIR")}
-    env["HOME"] = str(home)
-    env["CRM_HOME"] = str(crm_home)
 
     return Isolation(
         sandbox=sandbox, home=home, work=work, crm_home=crm_home, skill_dir=skill_dir, env=env

@@ -71,6 +71,25 @@ def test_evaluate_expect_row_no_match():
     assert not ok and "row" in reason
 
 
+def test_parse_rejects_non_mapping_frontmatter(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text("---\n- just\n- a\n- list\n---\nprompt\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="YAML mapping"):
+        parse_task_file(bad)
+
+
+def test_parse_rejects_malformed_cleanup(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\n"
+        "end_state:\n  query: [query, odata, contacts]\n  expect: {count: 0}\n"
+        "cleanup:\n  - entity: contacts\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="cleanup step"):
+        parse_task_file(bad)
+
+
 def test_evaluate_expect_non_list_data():
     ok, reason = evaluate_expect({"not": "a list"}, {"count": 1})
     assert not ok and "list" in reason
@@ -95,7 +114,7 @@ def test_verify_isolation_detects_repo_leak():
     iso = isolation.provision_isolation()
     try:
         # Simulate a leak: a CLAUDE.md reachable from the agent's working dir.
-        (iso.work / "CLAUDE.md").write_text("leaked project memory")
+        (iso.work / "CLAUDE.md").write_text("leaked project memory", encoding="utf-8")
         with pytest.raises(isolation.IsolationError, match="repo markers"):
             isolation.verify_isolation(iso)
     finally:
