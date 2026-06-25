@@ -9,6 +9,47 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.38.0 (2026-06-25)
+
+### Bug Fixes
+
+- Reject --strict/--no-rollback without --xaml-file
+  ([#565](https://github.com/Gharib89/crm/pull/565),
+  [`ccd0406`](https://github.com/Gharib89/crm/commit/ccd04063f177ee5e1f8329aa2fe5d7ecef966a18))
+
+- Route workflow XAML warnings via emit channel, guard file read
+  ([#565](https://github.com/Gharib89/crm/pull/565),
+  [`ccd0406`](https://github.com/Gharib89/crm/commit/ccd04063f177ee5e1f8329aa2fe5d7ecef966a18))
+
+### Documentation
+
+- Workflow update --xaml-file logic path (README, how-to, skill)
+  ([#565](https://github.com/Gharib89/crm/pull/565),
+  [`ccd0406`](https://github.com/Gharib89/crm/commit/ccd04063f177ee5e1f8329aa2fe5d7ecef966a18))
+
+- **test**: Note workflow update --xaml-file target-divergent e2e pair
+  ([#565](https://github.com/Gharib89/crm/pull/565),
+  [`ccd0406`](https://github.com/Gharib89/crm/commit/ccd04063f177ee5e1f8329aa2fe5d7ecef966a18))
+
+### Features
+
+- Workflow update --xaml-file on-prem XAML step-editing
+  ([#565](https://github.com/Gharib89/crm/pull/565),
+  [`ccd0406`](https://github.com/Gharib89/crm/commit/ccd04063f177ee5e1f8329aa2fe5d7ecef966a18))
+
+### Refactoring
+
+- Tighten workflow XAML rollback + provenance tests
+  ([#565](https://github.com/Gharib89/crm/pull/565),
+  [`ccd0406`](https://github.com/Gharib89/crm/commit/ccd04063f177ee5e1f8329aa2fe5d7ecef966a18))
+
+### Testing
+
+- **e2e**: Workflow update --xaml-file onprem-accept + cloud-refuse
+  ([#565](https://github.com/Gharib89/crm/pull/565),
+  [`ccd0406`](https://github.com/Gharib89/crm/commit/ccd04063f177ee5e1f8329aa2fe5d7ecef966a18))
+
+
 ## v1.37.0 (2026-06-25)
 
 ### Bug Fixes
