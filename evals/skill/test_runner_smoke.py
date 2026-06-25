@@ -181,6 +181,8 @@ def test_verify_isolation_rejects_claude_config_dir_leak(monkeypatch, tmp_path):
     # Regression guard for the rejected "point CLAUDE_CONFIG_DIR at the real ~/.claude"
     # approach: that env relocates *everything* (creds AND CLAUDE.md AND memory), so an
     # agent env carrying it would inherit global memory. verify_isolation must catch it.
+    # Point provisioning at an empty config dir so it doesn't read the real creds;
+    # the guard under test is exercised below by injecting a leak into the agent env.
     cfg = tmp_path / "empty-claude"
     cfg.mkdir()
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
