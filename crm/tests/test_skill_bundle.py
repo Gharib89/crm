@@ -12,7 +12,8 @@ REFERENCE_DIR = SKILLS_DIR / "reference"
 EXPECTED_REFERENCES = {
     "setup.md", "customization-lifecycle.md",
     "records.md", "metadata.md", "authoring.md", "solutions.md",
-    "customizations.md", "automation.md", "security.md", "fieldsec.md",
+    "customizations.md", "automation.md", "workflow-xaml.md",
+    "security.md", "fieldsec.md",
     "dup.md", "connectionrole.md", "troubleshooting.md", "feedback.md",
 }
 

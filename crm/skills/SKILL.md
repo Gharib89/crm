@@ -150,6 +150,7 @@ For per-domain detail:
 | solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift, label translation export/import | `reference/solutions.md` |
 | customizations: model-driven apps, sitemap live-edit (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description), web resources, ribbon, forms, charts, dashboards, themes, reports | `reference/customizations.md` |
 | automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA lifecycle (create / add-kpi / activate) | `reference/automation.md` |
+| composing classic-workflow **step XAML** to hand `workflow update --xaml-file` (on-prem logic path): the provenance wall, the direct-PATCH routine, the snippet library | `reference/workflow-xaml.md` |
 | security: roles & assignment | `reference/security.md` |
 | field (column) security: profiles, column permissions, assign to users/teams | `reference/fieldsec.md` |
 | duplicate-detection rules: create/condition/publish/unpublish, check a candidate record | `reference/dup.md` |
