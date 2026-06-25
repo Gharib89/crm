@@ -76,6 +76,43 @@ def test_evaluate_expect_row_no_match():
     assert not ok and "row" in reason
 
 
+def test_evaluate_expect_row_suffix_rejects_unrelated_row():
+    # The new suffix matcher must not pass an unrelated row — guards against the
+    # "unknown matcher silently passes" trap (an empty expect returns True).
+    data = [{"Name": "ag_somethingelse"}]
+    ok, reason = evaluate_expect(data, {"row_suffix": {"Name": "maintenancepriority"}})
+    assert not ok and "row_suffix" in reason
+
+
+def test_evaluate_expect_row_suffix_matches_any_publisher_prefix():
+    # A correctly-created option set passes regardless of the org's publisher prefix
+    # (`ag_`, `new_`, …) — the fix for the hardcoded-`new_` false fail.
+    assert evaluate_expect([{"Name": "ag_maintenancepriority"}],
+                           {"row_suffix": {"Name": "maintenancepriority"}})[0]
+    assert evaluate_expect([{"Name": "new_maintenancepriority"}],
+                           {"row_suffix": {"Name": "maintenancepriority"}})[0]
+
+
+def test_evaluate_expect_row_suffix_requires_all_fields_on_one_row():
+    # Like `row`, every field must match on a single row (string compare); an absent
+    # key never matches.
+    data = [{"Name": "ag_maintenancepriority", "State": "Managed"}]
+    assert evaluate_expect(data, {"row_suffix": {"Name": "priority", "State": "Managed"}})[0]
+    assert not evaluate_expect(data, {"row_suffix": {"Name": "priority", "State": "Unmanaged"}})[0]
+
+
+def test_parse_rejects_bad_row_suffix_shape(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\n"
+        "end_state:\n  query: [metadata, list-optionsets]\n  expect: {row_suffix: notamap}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="row_suffix must be a mapping"):
+        parse_task_file(bad)
+
+
 def test_parse_rejects_non_mapping_frontmatter(tmp_path):
     bad = tmp_path / "bad.md"
     bad.write_text("---\n- just\n- a\n- list\n---\nprompt\n", encoding="utf-8")
@@ -273,6 +310,18 @@ def test_diagnostic_task_shape():
     assert spec.expect == {}
     assert spec.query  # still fetches org state to feed the analyzer
     assert "data quality" in spec.prompt.lower()
+
+
+def test_trial_import_diagnosis_is_diagnostic():
+    # Its only real signal is the qualitative --analyze diagnosis; the programmatic
+    # predicate false-failed on any org never seeded with the `agtrial8` fixtures, so
+    # the task is diagnostic (no `expect`) and the set runner SKIPs it rather than
+    # scoring it. It still carries an end_state.query so the analyzer gets org state.
+    spec = parse_task_file(TASKS_DIR / "trial-import-diagnosis.md")
+    assert spec.is_diagnostic
+    assert spec.expect == {}
+    assert spec.query  # org state still fetched for the --analyze pass
+    assert spec.prompt.strip()
 
 
 def test_parse_allows_omitted_end_state(tmp_path):

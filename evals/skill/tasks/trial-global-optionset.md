@@ -1,13 +1,14 @@
 ---
 id: trial-global-optionset
 domain: metadata
-# TRIAL-2 (SCN-003): create then evolve a global choice (option set). On-prem v9.1;
-# the logical name uses the stock default publisher prefix (`new_`); adjust if the
-# target org's default publisher differs.
+# TRIAL-2 (SCN-003): create then evolve a global choice (option set). On-prem v9.1.
+# The logical name carries the org's default publisher prefix, which varies per org
+# (`new_` on a stock org, `ag_` in solution `agtrial2`), so the predicate matches by
+# logical-name *suffix* (`row_suffix`) instead of an exact name — publisher-agnostic.
 target: onprem
 # `metadata list-optionsets` returns the global option-set definitions as a list;
-# the predicate asserts the created set is present by its logical name (existence
-# only). The final option order/labels the prompt asks the agent to "prove" are
+# the predicate asserts the created set is present by its logical-name suffix
+# (existence only). The final option order/labels the prompt asks the agent to "prove" are
 # metadata the list verb does not expand, so that step is the agent's demonstrated
 # work, not machine-scored (#572's analyze pass). NOTE: a global option set is not a
 # deletable record, so the record-delete cleanup model leaves it; teardown needs
@@ -17,8 +18,8 @@ end_state:
     - metadata
     - list-optionsets
   expect:
-    row:
-      Name: new_maintenancepriority
+    row_suffix:
+      Name: maintenancepriority
 cleanup: []
 ---
 
