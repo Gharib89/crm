@@ -14,6 +14,11 @@ End-to-end for a single task:
 invoking an agent or touching a live org. That is the path the offline smoke test
 (and CI, which never runs an agent) exercises.
 
+``--analyze`` (off by default, #572) adds an analysis pass after scoring: it routes
+``{task, transcript, final org state, programmatic verdict}`` to Claude for a
+qualitative read of *why* a task passed/stumbled. It is also the only way to score
+a **diagnostic** task — one whose spec declares no end-state predicate.
+
 On-demand invocation:
 
     D365_E2E_PROFILE=agent-cloud D365_E2E_ALLOW_HOST=<host> \\
@@ -33,7 +38,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from evals.skill import isolation, target
+from evals.skill import analyze, isolation, target
 from evals.skill.taskspec import TaskSpec, evaluate_expect, parse_task_file
 
 
@@ -51,6 +56,10 @@ class RunResult:
     passed: bool | None = None
     reason: str = ""
     transcript: str = ""
+    #: Claude's qualitative read, when the ``--analyze`` pass ran (else None). For a
+    #: diagnostic task it carries the only score; for a predicate task it explains
+    #: *why* the deterministic verdict came out as it did.
+    analysis: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -137,9 +146,22 @@ def run_task(
     dry_run: bool = False,
     agent_cmd: str | None = None,
     crm_bin: str | None = None,
+    analyze_pass: bool = False,
+    analyze_cmd: str | None = None,
 ) -> RunResult:
-    """Run one task end-to-end (or up to isolation, when ``dry_run``)."""
+    """Run one task end-to-end (or up to isolation, when ``dry_run``).
+
+    ``analyze_pass`` enables the optional Claude analysis pass (#572): after scoring
+    it routes ``{task, transcript, org state, verdict}`` to the analyzer. It is the
+    *only* score for a diagnostic task (no ``expect``), so such a task without the
+    pass is refused up front rather than running an agent it cannot score.
+    """
     spec = parse_task_file(task_file)
+    if not dry_run and spec.is_diagnostic and not analyze_pass:
+        raise RunError(
+            f"task {spec.id!r} is diagnostic (no end-state predicate); pass --analyze "
+            f"to score it via the Claude analysis pass"
+        )
     resolved_bin = crm_bin or shutil.which("crm")
     if not resolved_bin:
         raise RunError("crm binary not on PATH")
@@ -151,17 +173,46 @@ def run_task(
             return RunResult(task_id=spec.id, dry_run=True, isolation_checks=checks)
 
         agent = _resolve_agent_cmd(agent_cmd)
+        resolved_analyze = analyze.resolve_analyze_cmd(analyze_cmd) if analyze_pass else None
         profile = target.seed_target(iso.crm_home, spec.target)
         transcript = _run_agent(spec.prompt, agent, iso)
         work = str(iso.work)
         try:
-            data = _crm_json(["--profile", profile, *spec.query], iso.env, resolved_bin, work)
-            passed, reason = evaluate_expect(data, spec.expect)
+            # Fetch the final org state (the scoring payload, and what the analyzer
+            # reads). A diagnostic task may still declare a query for state alone.
+            data = (
+                _crm_json(["--profile", profile, *spec.query], iso.env, resolved_bin, work)
+                if spec.query
+                else None
+            )
+            if spec.expect:
+                passed, reason = evaluate_expect(data, spec.expect)
+            else:
+                passed, reason = None, "diagnostic task: no programmatic predicate, scored by --analyze"
+            analysis: str | None = None
+            if resolved_analyze is not None:
+                prompt = analyze.build_analysis_prompt(
+                    task_prompt=spec.prompt,
+                    transcript=transcript,
+                    org_state=data,
+                    verdict={"passed": passed, "reason": reason},
+                )
+                analysis = analyze.run_analysis(prompt, resolved_analyze)
+                if spec.is_diagnostic:
+                    # The analysis pass is this task's only score: turn the analyzer's
+                    # PASS/FAIL verdict into the programmatic result. No parseable
+                    # verdict leaves passed=None (unscored) — surfaced by the exit code.
+                    passed = analyze.parse_verdict(analysis)
+                    reason = (
+                        f"diagnostic scored by --analyze: {'PASS' if passed else 'FAIL'}"
+                        if passed is not None
+                        else "diagnostic: analyzer returned no PASS/FAIL verdict"
+                    )
         finally:
             _cleanup_org(spec, iso.env, profile, resolved_bin, work)
         return RunResult(
             task_id=spec.id, dry_run=False, isolation_checks=checks,
-            passed=passed, reason=reason, transcript=transcript,
+            passed=passed, reason=reason, transcript=transcript, analysis=analysis,
         )
     finally:
         iso.cleanup()
@@ -174,12 +225,23 @@ def main(argv: list[str] | None = None) -> int:
                         help="parse + prove isolation only; no agent, no live org")
     parser.add_argument("--agent-cmd", default=None,
                         help="agent command (default: $CRM_EVAL_AGENT_CMD)")
+    parser.add_argument("--analyze", action="store_true",
+                        help="route task+transcript+org-state+verdict to Claude for a "
+                             "qualitative read (off by default); required to score a "
+                             "diagnostic task that has no end-state predicate")
+    parser.add_argument("--analyze-cmd", default=None,
+                        help="analyzer command (default: $CRM_EVAL_ANALYZE_CMD, else 'claude -p')")
     args = parser.parse_args(argv)
 
-    result = run_task(args.task_file, dry_run=args.dry_run, agent_cmd=args.agent_cmd)
+    result = run_task(
+        args.task_file, dry_run=args.dry_run, agent_cmd=args.agent_cmd,
+        analyze_pass=args.analyze, analyze_cmd=args.analyze_cmd,
+    )
     print(json.dumps(result.to_dict(), indent=2))
-    # Exit non-zero only on a real scored failure; a dry run is informational.
-    return 1 if result.passed is False else 0
+    # Exit non-zero on a scored failure. A diagnostic task scored via --analyze that
+    # the analyzer failed or returned no verdict for (passed is None) is also a
+    # non-success; only a dry run (unscored by design) is always exit 0.
+    return 0 if result.dry_run or result.passed else 1
 
 
 if __name__ == "__main__":
