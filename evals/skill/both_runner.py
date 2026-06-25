@@ -15,7 +15,8 @@ periodic scheduled run accumulates a trend a human reads for effectiveness drift
 
 On-demand / periodic invocation:
 
-    D365_E2E_ALLOW_HOST=<cloud-host> CRM_EVAL_AGENT_CMD='claude -p' \\
+    D365_E2E_ALLOW_HOST=<cloud-host> \\
+        CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \\
         python -m evals.skill.both_runner --repeat 3 --update-baseline
 """
 from __future__ import annotations

@@ -112,7 +112,7 @@ fed on **stdin**. For a cloud (`*.dynamics.com`) org, opt in the exact host with
 ```bash
 D365_E2E_PROFILE=agent-cloud \
 D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com \
-CRM_EVAL_AGENT_CMD='claude -p' \
+CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \
     python -m evals.skill.runner evals/skill/tasks/records-create-verify.md
 ```
 
@@ -122,7 +122,13 @@ unconditionally, so the org is left clean whether the task passed or failed.
 
 ### Agent authentication
 
-`CRM_EVAL_AGENT_CMD='claude -p'` drives headless Claude Code as the agent. The sandbox
+`CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions'` drives headless Claude
+Code as the agent. `--dangerously-skip-permissions` lets the headless agent execute its
+tools (`Bash` to invoke `crm`, plus `Read`/`Skill` to load the skill) without an
+interactive approval — otherwise every `crm` call is gated and the task false-fails. It's
+safe here because the sandbox is the only blast radius (fresh `HOME`, work dir outside the
+repo, throwaway `CRM_HOME`); the analyzer command below stays bare `claude -p` (it reads
+stdin and emits text, no tools). The sandbox
 hands the agent a fresh `HOME`, so it can't see your real Claude Code login — the
 harness therefore copies **only** your credentials file
 (`~/.claude/.credentials.json`, or under `$CLAUDE_CONFIG_DIR` if you set it) into the
@@ -149,7 +155,7 @@ python -m evals.skill.set_runner --dry-run
 # Live, against one target (cloud here; on-prem tasks are reported as skipped).
 D365_E2E_PROFILE=agent-cloud \
 D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com \
-CRM_EVAL_AGENT_CMD='claude -p' \
+CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \
     python -m evals.skill.set_runner          # add --json for the machine-readable result
 ```
 
@@ -167,7 +173,7 @@ with a message**, never failed — so a cloud-only run still succeeds and lands 
 ```bash
 # Both targets, 3 trials per task, append the dated rows to baseline.md:
 D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com \
-CRM_EVAL_AGENT_CMD='claude -p' \
+CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \
     python -m evals.skill.both_runner --repeat 3 --update-baseline   # --json for the raw result
 ```
 
@@ -195,7 +201,7 @@ agent under test), reading the composed prompt on **stdin**:
 ```bash
 D365_E2E_PROFILE=agent-cloud \
 D365_E2E_ALLOW_HOST=<your-org>.crm.dynamics.com \
-CRM_EVAL_AGENT_CMD='claude -p' \
+CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \
     python -m evals.skill.runner evals/skill/tasks/records-create-verify.md --analyze
 ```
 
