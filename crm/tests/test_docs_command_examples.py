@@ -363,6 +363,9 @@ def audit_example(model: CliModel, example: Example) -> list[str]:
 ALLOWLIST: dict[str, str] = {
     # ADR 0004 documents a *rejected* `crm codegen` verb (use external tools).
     "codegen": "ADR 0004: rejected command, documented as not built",
+    # ADR 0015 prose: `query/get` is shorthand for "crm query / crm ... get",
+    # not a runnable command — an end-state-assertion illustration, not an example.
+    "--json query/get": "ADR 0015: prose shorthand for query/get, not a runnable command",
     # Hypothetical future verb gated on issue #37 (BPF via Web API on on-prem).
     "bpf": "guides/crmworx-walkthrough: hypothetical future command (#37)",
     # README architecture diagram, not an invocation.
