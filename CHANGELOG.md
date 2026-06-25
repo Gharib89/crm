@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.35.0 (2026-06-25)
+
+### Features
+
+- **apply**: Opt-in --prune to delete solution components absent from the spec
+  ([#553](https://github.com/Gharib89/crm/pull/553),
+  [`5c8670b`](https://github.com/Gharib89/crm/commit/5c8670bfdf397101d4f1279b1eb4178a7ad08509))
+
+
 ## v1.34.0 (2026-06-25)
 
 ### Documentation
