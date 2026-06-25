@@ -31,6 +31,7 @@ import dataclasses
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -90,8 +91,11 @@ def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
     included — back onto the real dir, re-exposing global memory. It is scrubbed in
     :func:`provision_isolation` and asserted absent by :func:`verify_isolation`.
 
-    No-op when the maintainer has no credentials file (e.g. an API-key-only setup) —
-    the agent then falls back to ``ANTHROPIC_API_KEY`` exactly as before. Returns the
+    Best-effort and a no-op on failure: when the maintainer has no credentials file
+    (e.g. an API-key-only setup) *or* the copy can't complete (unreadable creds,
+    unwritable sandbox ``HOME``), the agent simply falls back to ``ANTHROPIC_API_KEY``
+    exactly as before. It must never raise — provisioning runs this before the caller
+    can clean up, so a raise here would abort the run and leak the sandbox. Returns the
     copied path, or ``None``.
 
     ponytail: a copy, not a symlink — a mid-run OAuth token refresh writes only to the
@@ -101,11 +105,15 @@ def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
     src = _real_claude_config_dir() / ".credentials.json"
     if not src.is_file():
         return None
-    dest_dir = sandbox_home / ".claude"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / ".credentials.json"
-    shutil.copy2(src, dest)
-    return dest
+    try:
+        dest_dir = sandbox_home / ".claude"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / ".credentials.json"
+        shutil.copy2(src, dest)
+        return dest
+    except OSError as exc:
+        print(f"[isolation] could not pass through Claude credentials: {exc}", file=sys.stderr)
+        return None
 
 
 def provision_isolation(crm_bin: str | None = None) -> Isolation:

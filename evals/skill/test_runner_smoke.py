@@ -162,6 +162,29 @@ def test_credentials_passthrough_copies_into_sandbox(monkeypatch, tmp_path):
         iso.cleanup()
 
 
+def test_credentials_passthrough_survives_copy_failure(monkeypatch, tmp_path):
+    # A failed credential copy (unreadable creds / unwritable HOME) must NOT abort
+    # provisioning or leak the sandbox — passthrough is best-effort; the agent falls
+    # back to ANTHROPIC_API_KEY. Simulate the failure by making the copy raise OSError.
+    cfg = tmp_path / "real-claude"
+    cfg.mkdir()
+    (cfg / ".credentials.json").write_text('{"fake": "token"}', encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+
+    def boom(*_a, **_k):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("shutil.copy2", boom)
+
+    iso = isolation.provision_isolation()  # must not raise
+    try:
+        assert not (iso.home / ".claude" / ".credentials.json").exists()
+        isolation.verify_isolation(iso)  # provisioning is still valid
+    finally:
+        iso.cleanup()
+    assert not iso.sandbox.exists()
+
+
 def test_credentials_passthrough_noop_without_source(monkeypatch, tmp_path):
     # API-key-only setups have no credentials file: passthrough is a clean no-op and
     # isolation is unaffected.
