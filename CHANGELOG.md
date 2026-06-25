@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.34.0 (2026-06-25)
+
+### Documentation
+
+- Rebrand docs site and README to the gradient CRM logo
+  ([#560](https://github.com/Gharib89/crm/pull/560),
+  [`cf6cb75`](https://github.com/Gharib89/crm/commit/cf6cb757c0113a5b70e2433fbfe9eb549067caf8))
+
+### Features
+
+- **apply**: Declare plug-ins (assembly/types/steps/images) in the spec
+  ([#561](https://github.com/Gharib89/crm/pull/561),
+  [`743d7de`](https://github.com/Gharib89/crm/commit/743d7de4ebd878d6b76f541f675e4ca511d2cee7))
+
+
 ## v1.33.0 (2026-06-25)
 
 ### Bug Fixes
