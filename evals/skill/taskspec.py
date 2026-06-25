@@ -42,12 +42,24 @@ class TaskSpec:
     domain: str
     target: str
     prompt: str
-    #: argv passed after ``crm --json`` to fetch the scoring payload (a list verb,
-    #: so the result's ``data`` is a bare array of rows).
+    #: argv passed after ``crm --json`` to fetch the scoring/state payload (a list
+    #: verb, so the result's ``data`` is a bare array of rows). Empty when the task
+    #: declares no ``end_state`` at all.
     query: list[str]
     #: declared expectations over that ``data`` array (``count`` and/or ``row``).
+    #: Empty for a **diagnostic** task — one with no clean programmatic predicate,
+    #: scored instead by the optional ``--analyze`` pass (issue #572).
     expect: dict[str, Any]
     cleanup: list[CleanupStep]
+
+    @property
+    def is_diagnostic(self) -> bool:
+        """True when the task has no programmatic predicate (no ``expect``).
+
+        A diagnostic task can only be scored by the ``--analyze`` pass; the runner
+        refuses to run one without it.
+        """
+        return not self.expect
 
 
 def _split_frontmatter(text: str) -> tuple[str, str]:
@@ -91,19 +103,27 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     if target not in TARGETS:
         raise ValueError(f"{path}: target {target!r} not one of {TARGETS}")
 
-    end_state = require("end_state")
-    if not isinstance(end_state, dict):
-        raise ValueError(f"{path}: end_state must be a mapping")
-    query = end_state.get("query")
-    if not isinstance(query, list) or not all(isinstance(a, str) for a in query):
-        raise ValueError(f"{path}: end_state.query must be a list of strings")
-    expect = end_state.get("expect")
-    if not isinstance(expect, dict) or not expect:
-        raise ValueError(f"{path}: end_state.expect must be a non-empty mapping")
-    if "count" in expect and not isinstance(expect["count"], int):
-        raise ValueError(f"{path}: end_state.expect.count must be an integer")
-    if "row" in expect and not isinstance(expect["row"], dict):
-        raise ValueError(f"{path}: end_state.expect.row must be a mapping")
+    # ``end_state`` is optional: a diagnostic task (#572) omits the programmatic
+    # predicate and is scored by the ``--analyze`` pass instead. When present, a
+    # ``query`` is required (it fetches the org state — used for scoring and/or fed
+    # to the analyzer); ``expect`` is optional, and its absence marks the task
+    # diagnostic (org state still flows to the analyzer, just nothing is asserted).
+    query: list[str] = []
+    expect: dict[str, Any] = {}
+    end_state = meta.get("end_state")
+    if end_state is not None:
+        if not isinstance(end_state, dict):
+            raise ValueError(f"{path}: end_state must be a mapping")
+        query = end_state.get("query")
+        if not isinstance(query, list) or not all(isinstance(a, str) for a in query):
+            raise ValueError(f"{path}: end_state.query must be a list of strings")
+        expect = end_state.get("expect") or {}
+        if not isinstance(expect, dict):
+            raise ValueError(f"{path}: end_state.expect must be a mapping")
+        if "count" in expect and not isinstance(expect["count"], int):
+            raise ValueError(f"{path}: end_state.expect.count must be an integer")
+        if "row" in expect and not isinstance(expect["row"], dict):
+            raise ValueError(f"{path}: end_state.expect.row must be a mapping")
 
     raw_cleanup = require("cleanup") or []
     if not isinstance(raw_cleanup, list):
