@@ -90,6 +90,20 @@ def test_parse_rejects_malformed_cleanup(tmp_path):
         parse_task_file(bad)
 
 
+def test_prompt_preserves_indentation(tmp_path):
+    # The body is fed verbatim: surrounding delimiter newlines are dropped but any
+    # authored leading indentation in the prompt is preserved.
+    f = tmp_path / "indent.md"
+    f.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\n"
+        "end_state:\n  query: [query, odata, contacts]\n  expect: {count: 0}\n"
+        "cleanup: []\n---\n\n    indented line\nplain line\n",
+        encoding="utf-8",
+    )
+    spec = parse_task_file(f)
+    assert spec.prompt == "    indented line\nplain line"
+
+
 def test_parse_rejects_bad_expect_shape(tmp_path):
     bad = tmp_path / "bad.md"
     bad.write_text(

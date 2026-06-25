@@ -63,7 +63,10 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
     parts = text.split("---", 2)
     if len(parts) < 3:
         raise ValueError("task file frontmatter is not closed with a second '---'")
-    return parts[1], parts[2].strip()
+    # strip("\n") drops only the delimiter-introduced newlines (the blank line after
+    # the closing '---' and the trailing newline); spaces/indentation in the authored
+    # prompt are preserved, so the body stays verbatim.
+    return parts[1], parts[2].strip("\n")
 
 
 def parse_task_file(path: str | Path) -> TaskSpec:
@@ -115,7 +118,7 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             CleanupStep(entity=step["entity"], id_field=step["id_field"], filter=step["filter"])
         )
 
-    if not body:
+    if not body.strip():
         raise ValueError(f"{path}: empty prompt body")
 
     return TaskSpec(
