@@ -1732,3 +1732,260 @@ def test_apply_command_webresource_file_relative_to_spec(backend, monkeypatch, t
     payload = json.loads(result.output)
     assert payload["ok"] is True
     assert [e["kind"] for e in payload["data"]["applied"]] == ["webresource"]
+
+
+# ── Plug-in kind (#552) ──────────────────────────────────────────────────────
+
+_ASM_ID = "f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1"
+_TYPE_ID = "f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2"
+_STEP_ID = "f3f3f3f3-f3f3-f3f3-f3f3-f3f3f3f3f3f3"
+_IMG_ID = "f4f4f4f4-f4f4-f4f4-f4f4-f4f4f4f4f4f4"
+_MSG_ID = "f5f5f5f5-f5f5-f5f5-f5f5-f5f5f5f5f5f5"
+_ASM_NAME = "Contoso.Plugins"
+_TYPE_NAME = "Contoso.Plugins.AccountHandler"
+_DLL_BYTES = b"MZ\x00\x01fake-assembly"
+
+
+def _dll(tmp_path, *, body=_DLL_BYTES):
+    """Write a fake assembly DLL under tmp_path and return its path."""
+    p = tmp_path / "Contoso.Plugins.dll"
+    p.write_bytes(body)
+    return str(p)
+
+
+def _plugin_spec(tmp_path, *, body=_DLL_BYTES, **extra):
+    """A plug-in spec entry backed by a real DLL file under tmp_path."""
+    return {"assembly": _ASM_NAME, "file": _dll(tmp_path, body=body), **extra}
+
+
+def _mock_assembly_absent(m, backend):
+    """No assembly by that name; POST create → 204 + id."""
+    m.get(backend.url_for("pluginassemblies"), json={"value": []})
+    m.post(backend.url_for("pluginassemblies"), status_code=204,
+           headers={"OData-EntityId": backend.url_for(f"pluginassemblies({_ASM_ID})")})
+
+
+def _mock_assembly_live(m, backend, *, content=_DLL_BYTES):
+    """A pre-existing assembly. The one GET serves find_assembly AND the
+    update/resolve id-lookup, carrying the live base64 `content`; PATCH 204."""
+    row = {"pluginassemblyid": _ASM_ID, "name": _ASM_NAME,
+           "content": base64.b64encode(content).decode("ascii")}
+    m.get(backend.url_for("pluginassemblies"), json={"value": [row]})
+    m.patch(backend.url_for(f"pluginassemblies({_ASM_ID})"), status_code=204)
+
+
+def _mock_types(m, backend, typenames=()):
+    """plugintypes listing (apply's list_types) + resolve + POST create."""
+    rows = [{"plugintypeid": _TYPE_ID, "typename": tn} for tn in typenames]
+    m.get(backend.url_for("plugintypes"), json={"value": rows})
+    m.post(backend.url_for("plugintypes"), status_code=204,
+           headers={"OData-EntityId": backend.url_for(f"plugintypes({_TYPE_ID})")})
+
+
+def _mock_sdkmessage(m, backend, *, name="Create"):
+    m.get(backend.url_for("sdkmessages"),
+          json={"value": [{"sdkmessageid": _MSG_ID, "name": name}]})
+
+
+def _step_row(*, message="Update", typename=_TYPE_NAME, entity="account",
+              stage=40, mode=0, rank=1, filtering=None, configuration=None):
+    """A live step row as find_step reads it (binding $expand inlined), also
+    carrying the flat columns register_image's step-read needs."""
+    return {
+        "sdkmessageprocessingstepid": _STEP_ID, "stage": stage, "mode": mode,
+        "rank": rank, "filteringattributes": filtering, "configuration": configuration,
+        "sdkmessageid": {"name": message}, "plugintypeid": {"typename": typename},
+        "sdkmessagefilterid": {"primaryobjecttypecode": entity} if entity else None,
+        "_sdkmessageid_value": _MSG_ID,
+    }
+
+
+def _mock_step_absent(m, backend):
+    m.get(backend.url_for("sdkmessageprocessingsteps"), json={"value": []})
+    m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
+           headers={"OData-EntityId":
+                    backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")})
+
+
+def _mock_step_live(m, backend, row):
+    m.get(backend.url_for("sdkmessageprocessingsteps"), json={"value": [row]})
+    m.patch(backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"), status_code=204)
+
+
+def _mock_image_absent(m, backend):
+    m.get(backend.url_for("sdkmessageprocessingstepimages"), json={"value": []})
+    m.post(backend.url_for("sdkmessageprocessingstepimages"), status_code=204,
+           headers={"OData-EntityId":
+                    backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")})
+
+
+def _step_spec(**extra):
+    return {"name": "Contoso Account Handler", "message": "Create",
+            "plugin_type": _TYPE_NAME, **extra}
+
+
+def test_apply_creates_plugin_assembly(backend, tmp_path):
+    spec = {"plugins": [_plugin_spec(tmp_path)]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_absent(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["plugin-assembly"]
+    assert res["applied"][0]["name"] == _ASM_NAME
+    # Plug-in components are not publishable → no PublishAllXml (no mock → would fail).
+    assert _publish_hits(m, backend) == []
+    assert res["staged"] is False
+
+
+def test_apply_updates_plugin_assembly_content_on_rebuild(backend, tmp_path):
+    # The spec's DLL bytes differ from the live `content` → PATCH the content.
+    spec = {"plugins": [_plugin_spec(tmp_path, body=b"MZ\x00\x01rebuilt")]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend, content=b"MZ\x00\x01old-build")
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["plugin-assembly"]
+    patches = [r for r in m.request_history if r.method == "PATCH"]
+    assert len(patches) == 1 and "content" in json.loads(patches[0].body)
+
+
+def test_apply_plugin_assembly_unchanged_is_skipped(backend, tmp_path):
+    spec = {"plugins": [_plugin_spec(tmp_path, body=_DLL_BYTES)]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend, content=_DLL_BYTES)  # identical
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["plugin-assembly"]
+    assert [r for r in m.request_history if r.method != "GET"] == []
+
+
+def test_apply_registers_new_plugin_type(backend, tmp_path):
+    # Pre-existing assembly (unchanged) + a newly declared type → register it.
+    spec = {"plugins": [_plugin_spec(tmp_path, types=[{"type_name": _TYPE_NAME}])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_types(m, backend, typenames=[])  # none registered yet
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["plugin-assembly"]
+    assert _kinds(res["applied"]) == ["plugin-type"]
+    assert any(r.method == "POST" and "plugintypes" in r.url for r in m.request_history)
+
+
+def test_apply_skips_existing_plugin_type(backend, tmp_path):
+    spec = {"plugins": [_plugin_spec(tmp_path, types=[{"type_name": _TYPE_NAME}])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_types(m, backend, typenames=[_TYPE_NAME])  # already registered
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["plugin-assembly", "plugin-type"]
+    assert [r for r in m.request_history if r.method == "POST"] == []
+
+
+def test_apply_registers_new_plugin_step(backend, tmp_path):
+    # Pre-existing assembly + a new message-level step → register it.
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[_step_spec()])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_absent(m, backend)
+        _mock_sdkmessage(m, backend, name="Create")
+        m.get(backend.url_for("plugintypes"),
+              json={"value": [{"plugintypeid": _TYPE_ID, "typename": _TYPE_NAME}]})
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["plugin-step"]
+    assert any(r.method == "POST" and "sdkmessageprocessingsteps" in r.url
+               for r in m.request_history)
+
+
+def test_apply_updates_plugin_step_config_on_drift(backend, tmp_path):
+    # Live step matches the binding but has rank=1; spec says rank=5 → PATCH config.
+    step = _step_spec(name="S", message="Update", entity="account", rank=5)
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend,
+                        _step_row(message="Update", entity="account", rank=1))
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["plugin-step"]
+    assert res["updated"][0]["diff"]["fields"] == ["rank"]
+    patches = [r for r in m.request_history if r.method == "PATCH"]
+    assert len(patches) == 1 and json.loads(patches[0].body)["rank"] == 5
+
+
+def test_apply_plugin_step_message_change_is_replace_blocked(backend, tmp_path):
+    # Live step is bound to Create; spec changes the message to Update → the
+    # binding change needs a delete-and-recreate → replace_blocked (no write).
+    step = _step_spec(name="S", message="Update", entity="account")
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend, _step_row(message="Create", entity="account"))
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["plugin-step"]
+    assert "delete-and-recreate" in res["replace_blocked"][0]["reason"]
+    assert [r for r in m.request_history if r.method != "GET"] == []  # no write
+
+
+def test_apply_plugin_step_unchanged_is_skipped(backend, tmp_path):
+    step = _step_spec(name="S", message="Update", entity="account", rank=1)
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend,
+                        _step_row(message="Update", entity="account", rank=1))
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["plugin-assembly", "plugin-step"]
+    assert [r for r in m.request_history if r.method != "GET"] == []
+
+
+def test_apply_registers_plugin_step_image(backend, tmp_path):
+    # Existing assembly + existing (matching) step + a newly declared image.
+    step = _step_spec(name="S", message="Update", entity="account", rank=1,
+                      images=[{"alias": "PreImage", "image_type": "pre",
+                               "attributes": "name"}])
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend,
+                        _step_row(message="Update", entity="account", rank=1))
+        _mock_sdkmessage(m, backend, name="Update")  # _resolve_sdkmessage_name (by id)
+        _mock_image_absent(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["plugin-assembly", "plugin-step"]
+    assert _kinds(res["applied"]) == ["plugin-image"]
+    assert any(r.method == "POST" and "sdkmessageprocessingstepimages" in r.url
+               for r in m.request_history)
+
+
+def test_apply_dry_run_plugin_greenfield_is_planned(dry_backend, tmp_path):
+    # Greenfield under dry-run: assembly absent, so its whole subtree is planned
+    # and no write is issued.
+    spec = {"plugins": [_plugin_spec(
+        tmp_path, types=[{"type_name": _TYPE_NAME}],
+        steps=[_step_spec(images=[{"alias": "PreImage", "image_type": "pre"}])])]}
+    with requests_mock.Mocker() as m:
+        m.get(dry_backend.url_for("pluginassemblies"), json={"value": []})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["planned"]) == [
+        "plugin-assembly", "plugin-type", "plugin-step", "plugin-image"]
+    assert _writes(m) == []
+
+
+def test_apply_rejects_plugin_missing_file(backend):
+    spec = {"plugins": [{"assembly": _ASM_NAME}]}
+    with pytest.raises(D365Error, match="missing required field 'file'"):
+        apply_mod.apply_spec(backend, spec)
+
+
+def test_apply_rejects_plugin_step_missing_message(backend, tmp_path):
+    spec = {"plugins": [_plugin_spec(tmp_path,
+                                     steps=[{"name": "S", "plugin_type": _TYPE_NAME}])]}
+    with pytest.raises(D365Error, match="missing required field 'message'"):
+        apply_mod.apply_spec(backend, spec)

@@ -1,10 +1,11 @@
 # Schema authoring — apply, scaffold, views, stage-then-publish
 
-Stand up tables, columns, option sets, views, web resources, and security roles —
-declaratively or imperatively. Commands: top-level `apply`, `scaffold table`,
-`view create`, the `metadata create-*` and `update-*` verbs, and the publish flow.
-Flags/choices: `crm describe apply`, `crm <group> --help`. **To change existing schema:**
-re-apply the spec (`apply` reconciles matching components — equal → skip, updatable drift
+Stand up tables, columns, option sets, views, web resources, security roles, and
+plug-in assemblies / types / steps / images — declaratively or imperatively.
+Commands: top-level `apply`, `scaffold table`, `view create`, the `metadata
+create-*` and `update-*` verbs, and the publish flow. Flags/choices: `crm
+describe apply`, `crm <group> --help`. **To change existing schema:** re-apply
+the spec (`apply` reconciles matching components — equal → skip, updatable drift
 → update in place, destructive divergence → refuse) or use the imperative
 `metadata update-attribute` / `update-entity` / `update-optionset` /
 `update-relationship` verbs.
@@ -12,10 +13,11 @@ re-apply the spec (`apply` reconciles matching components — equal → skip, up
 ## Declarative apply — `apply -f spec.yaml`
 
 Stand up a whole table from one YAML/JSON spec instead of many imperative commands.
-`apply` runs the metadata cores in dependency order (publisher → solution → entities →
-option sets → attributes → relationships → views → web resources → security roles)
-and **publishes once at the end** — only when a publishable component changed
-(security roles are not publishable, so a role-only apply does not publish).
+`apply` runs the metadata and plug-in cores in dependency order (publisher → solution →
+entities → option sets → attributes → relationships → views → web resources → security
+roles → plug-ins) and **publishes once at the end** — only when a publishable component
+changed (security roles and plug-in components are not publishable, so an apply that
+touches only those does not publish).
 
 `apply` is **convergent** — a component that already exists is reconciled against
 the spec, not blindly skipped. Three outcomes per component:
@@ -74,6 +76,21 @@ security_roles:
     privileges:
       - {access: [read, write, create], entities: [contoso_project], depth: deep}
       - {privilege_names: [prvReadSystemForm], depth: global}
+plugins:
+  - assembly: Contoso.Plugins           # optional; defaults to DLL file stem
+    file: bin/Contoso.Plugins.dll       # path relative to the spec file
+    isolation_mode: sandbox             # optional (none|sandbox)
+    types:
+      - type_name: Contoso.Plugins.AccountHandler   # fully-qualified class; the convergent key
+    steps:
+      - name: Contoso Account Handler   # unique stable key
+        message: Create
+        plugin_type: Contoso.Plugins.AccountHandler
+        entity: account                 # optional; omit for message-level
+        stage: postoperation            # optional (prevalidation|preoperation|postoperation)
+        images:
+          - alias: PreImage
+            image_type: pre             # pre|post|both
 ```
 
 In a spec attribute block, `string` and `memo` `max_length` is optional — omit it and
@@ -87,6 +104,15 @@ as invisible and will not block on them. A privilege *dropped* from the spec is 
 removed if another declared privilege also drifts in the same run (triggering a fresh
 replace). A removal-only change where all remaining declared privileges are already
 satisfied is a convergent no-op; use `crm security set-role-privileges` to force it.
+
+**Plug-in step binding is immutable — `replace_blocked` on message/entity/type change.**
+The platform fixes a step's `message`, `entity`, and `plugin_type` at creation; there
+is no PATCH path to change them. If a declared step's binding drifts from the live
+record, apply classifies it `replace_blocked` (reported, no write, exits 1). To
+rebind a step: unregister it manually (`crm plugin unregister-step`) then re-apply.
+
+**Plug-in components are not publishable** — a plugins-only apply never issues
+`PublishAllXml`.
 
 ## Scaffold a table — `scaffold table`
 

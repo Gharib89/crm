@@ -402,7 +402,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `entity`     | Record CRUD (get/create/update/upsert/delete); `upsert` accepts `--key ATTR[,ATTR...]` to match by alternate key instead of a primary GUID (key values read from `--data`, key attrs stripped from the body), plus `--if-none-match` for a create-only upsert (412 if the record exists); `clone` (single-record clone, lookups rebound to the same parents, `--override`/`--unset`; `--with-children` also clones the custom 1:N child rows, repointing them to the new parent — continue-and-report on failure, `--skip-child-entity` prunes); `children` (per-1:N related-record counts via chunked `$batch`, not one query per relationship) |
 | `query`      | OData v4 and FetchXML queries; `query odata --apply` runs server-side `$apply` aggregation / group-by / distinct |
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
-| `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`) |
+| `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`); declares publishers, solutions, entities, option sets, web resources, security roles, and plug-in assemblies / types / steps / images |
 | `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
 | `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / missing-components (pre-import dependency check against the target org) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / apply-upgrade (separate promote) / uninstall |
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch`; `--mode upsert`/`--mode delete` resolve records by GUID (`--id-column`) or alternate key (`--key`); `data delete` submits a **server-side BulkDelete async job** for records matching a FetchXML query |
@@ -451,11 +451,12 @@ one call. Write verbs new in 0.5.0:
 - `metadata changes [--since <stamp>] [--entity <logical> ...] [--attributes]` — retrieve new/changed metadata since a version stamp (`RetrieveMetadataChanges`); save the returned `server_version_stamp` and pass it as `--since` next run to get only the delta. Omit `--since` for a baseline snapshot. Omit `--entity` to query every table (expensive on a baseline — scope with `--entity` when possible)
 
 `crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
-columns, option sets, relationships, views, web resources, security roles) from
-one declarative spec, in dependency order, publishing once at the end (when a
-publishable component changed — security roles are not published). It is
-**convergent**: a component that already exists is reconciled against the spec —
-left untouched when it matches (`skipped`), updated in place when an allowed
+columns, option sets, relationships, views, web resources, security roles, and
+plug-in assemblies with their types, steps, and images) from one declarative
+spec, in dependency order, publishing once at the end (when a publishable
+component changed — security roles and plug-in components are not published). It
+is **convergent**: a component that already exists is reconciled against the spec
+— left untouched when it matches (`skipped`), updated in place when an allowed
 field drifts (`updated`), or refused with no write when the divergence would
 require a destructive drop-and-recreate (`replace_blocked`, `ok=false`, exit 1).
 The full envelope is

@@ -24,6 +24,7 @@ from crm.core.metadata_attrs import ATTRIBUTE_KINDS
 from crm.core import metadata_constraints as mc
 from crm.core import metadata_update as meta_update_mod
 from crm.core import optionsets as os_mod
+from crm.core import plugin as plugin_mod
 from crm.core import relationships as rel_mod
 from crm.core import security as sec_mod
 from crm.core import solution as sol_mod
@@ -132,11 +133,12 @@ def validate_spec(spec: Any) -> None:
                             "(10000-99999), not a quoted string.")
     if sp.get("solution") is not None:
         _require(sp["solution"], ("unique_name",), "solution")
-    for key in ("entities", "optionsets", "webresources", "security_roles"):
+    for key in ("entities", "optionsets", "webresources", "security_roles", "plugins"):
         if key in sp and not isinstance(sp[key], list):
             raise D365Error(f"{key} must be a list.")
     if not (sp.get("publisher") or sp.get("solution") or sp.get("entities")
-            or sp.get("optionsets") or sp.get("webresources") or sp.get("security_roles")):
+            or sp.get("optionsets") or sp.get("webresources")
+            or sp.get("security_roles") or sp.get("plugins")):
         raise D365Error("spec is empty: nothing to apply.")
     for ent in _as_list(sp.get("entities")):
         _require(ent, ("schema_name", "display_name"), "entity")
@@ -227,6 +229,37 @@ def validate_spec(spec: Any) -> None:
                 raise D365Error(
                     f"{rlabel}: each privilege row needs 'access' (with 'entities' or "
                     "'all_entities') or 'privilege_names'.")
+    for plugin in _as_list(sp.get("plugins")):
+        _require(plugin, ("file",), "plug-in")
+        if not isinstance(plugin["file"], str):
+            raise D365Error("plug-in: file must be a string.")
+        if plugin.get("assembly") is not None and not isinstance(plugin["assembly"], str):
+            raise D365Error("plug-in: assembly must be a string.")
+        plabel = f"plug-in {plugin.get('assembly') or plugin['file']!r}"
+        for sub in ("types", "steps"):
+            _require_list(plugin, sub, plabel)
+        for typ in _as_list(plugin.get("types")):
+            _require(typ, ("type_name",), f"{plabel} type")
+            if not isinstance(typ["type_name"], str):
+                raise D365Error(f"{plabel}: type type_name must be a string.")
+        for step in _as_list(plugin.get("steps")):
+            _require(step, ("name", "message", "plugin_type"), f"{plabel} step")
+            # Every string-typed step field reaches the Web API as a string; an
+            # unquoted YAML scalar must fail here, not blow up mid-apply.
+            for key in ("name", "message", "plugin_type", "entity", "stage", "mode",
+                        "filtering_attributes", "configuration"):
+                if step.get(key) is not None and not isinstance(step[key], str):
+                    raise D365Error(f"{plabel}: step {key!r} must be a string.")
+            if step.get("rank") is not None and not isinstance(step["rank"], int):
+                raise D365Error(f"{plabel}: step rank must be an integer (unquoted in YAML).")
+            slabel = f"{plabel} step {step['name']!r}"
+            _require_list(step, "images", slabel)
+            for img in _as_list(step.get("images")):
+                _require(img, ("alias", "image_type"), f"{slabel} image")
+                for key in ("alias", "image_type", "attributes", "name",
+                            "message_property_name"):
+                    if img.get(key) is not None and not isinstance(img[key], str):
+                        raise D365Error(f"{slabel}: image {key!r} must be a string.")
 
 
 def _solution_exists(backend: D365Backend, name: str) -> bool:
@@ -451,19 +484,20 @@ def _reconcile_optionset(
     return "updated", _with_diff(entry, out)
 
 
-def _read_webresource_file(base_dir: str | None, file: str) -> bytes:
-    """Read a web resource's content bytes from `file`, resolved against base_dir.
+def _read_file_bytes(base_dir: str | None, file: str) -> bytes:
+    """Read a file's bytes from `file`, resolved against base_dir.
 
     An absolute `file` is used as-is; a relative one is joined to base_dir (the
     spec file's directory) so content can live next to the spec. OSError is mapped
     to a D365Error so apply records a clean failure entry rather than crashing.
+    Used for a web resource's content and a plug-in assembly's DLL.
     """
     path = os.path.join(base_dir or "", file)
     try:
         with open(path, "rb") as fh:
             return fh.read()
     except OSError as exc:
-        raise D365Error(f"cannot read web resource file {path!r}: {exc}") from exc
+        raise D365Error(f"cannot read file {path!r}: {exc}") from exc
 
 
 def _reconcile_webresource(
@@ -565,6 +599,212 @@ def _reconcile_security_role(
     diff = _privilege_diff(live, desired)
     sec_mod.replace_role_privileges(backend, role_id, desired)
     return "updated", {**entry, "diff": diff}
+
+
+# Kinds whose create/update needs no PublishAllXml: security roles are not
+# publishable customizations, and plug-in registration (assembly/type/step/image)
+# activates immediately — they are not published-XML customizations. Gating the
+# end-of-run publish on the publishable writes only keeps a plugin-only apply from
+# issuing a pointless PublishAllXml.
+_NON_PUBLISHABLE = {"security-role", "plugin-assembly", "plugin-type",
+                    "plugin-step", "plugin-image"}
+
+
+def _expanded(row: dict[str, Any], nav: str, field: str) -> Any:
+    """Read `field` from an $expand'd single-valued navigation property, or None.
+
+    A message-level step has no entity filter, so `sdkmessagefilterid` expands to
+    null; this returns None there rather than raising.
+    """
+    obj = row.get(nav)
+    return cast("dict[str, Any]", obj).get(field) if isinstance(obj, dict) else None
+
+
+def _reconcile_plugin_assembly(
+    backend: D365Backend, name: str, content: bytes, asm_path: str,
+    live: dict[str, Any], solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing plug-in assembly against the rebuilt DLL; update or skip.
+
+    The spec file's bytes are base64-compared against the live `content` column;
+    on drift the assembly content is PATCHed in place (register_assembly's update
+    path). There is no destructive divergence for an assembly, so this never
+    blocks. The update is suppressed under dry-run (reads-execute rule).
+    """
+    desired_b64 = base64.b64encode(content).decode("ascii")
+    if live.get("content") == desired_b64:
+        return "skipped", entry
+    plugin_mod.register_assembly(
+        backend, path=asm_path, name=name, update=True, solution=solution)
+    return "updated", {**entry, "diff": {"fields": ["content"]}}
+
+
+def _reconcile_plugin_step(
+    backend: D365Backend, step: dict[str, Any], live: dict[str, Any],
+    solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing plug-in step against the spec; update, skip, or block.
+
+    Replace-blocked: a binding change — the SDK message, the primary entity, or
+    the plug-in type the step handles. The platform fixes those at creation, so
+    changing one needs a destructive delete-and-recreate; apply refuses (no
+    write) so the operator makes it deliberately. Updatable in place: the runtime
+    config (stage, mode, rank, filtering attributes, unsecure configuration) —
+    only the fields the spec explicitly declares are reconciled, so an omitted
+    field is left as-is. MS Learn recommends updating a step over delete-recreate.
+    """
+    if (step["message"] != _expanded(live, "sdkmessageid", "name")
+            or step.get("entity") != _expanded(live, "sdkmessagefilterid",
+                                                "primaryobjecttypecode")
+            or step["plugin_type"] != _expanded(live, "plugintypeid", "typename")):
+        return "replace_blocked", {
+            **entry,
+            "reason": "step binding change (message / entity / plug-in type) "
+                      "requires a destructive delete-and-recreate; refusing (no write).",
+        }
+    changes: dict[str, Any] = {}
+    if "stage" in step and plugin_mod.STAGE_VALUES.get(step["stage"]) != live.get("stage"):
+        changes["stage"] = step["stage"]
+    if "mode" in step and plugin_mod.MODE_VALUES.get(step["mode"]) != live.get("mode"):
+        changes["mode"] = step["mode"]
+    if "rank" in step and step["rank"] != live.get("rank"):
+        changes["rank"] = step["rank"]
+    # filteringattributes is only meaningful on Update (register_step ignores it
+    # otherwise), so only reconcile it there — else a declared filter on a
+    # non-Update step would re-update on every run.
+    if ("filtering_attributes" in step and step["message"].lower() == "update"
+            and step["filtering_attributes"] != live.get("filteringattributes")):
+        changes["filtering_attributes"] = step["filtering_attributes"]
+    if "configuration" in step and step["configuration"] != live.get("configuration"):
+        changes["configuration"] = step["configuration"]
+    if not changes:
+        return "skipped", entry
+    plugin_mod.update_step(
+        backend, step_id=str(live["sdkmessageprocessingstepid"]),
+        solution=solution, **changes)
+    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
+
+
+def _apply_plugin(
+    backend: D365Backend, plugin: dict[str, Any], *,
+    solution: str | None, base_dir: str | None,
+    applied: list[Entry], skipped: list[Entry], planned: list[Entry],
+    failed: list[Entry], routes: dict[str, list[Entry]],
+) -> None:
+    """Apply one declared plug-in: assembly, then its types, steps, and images.
+
+    Reuses the plugin core (register_assembly with content PATCH on update,
+    register_type / register_step / register_image) and diffs each component
+    convergently. A fresh content-only assembly carries zero plug-in types, so
+    when this run just created the assembly every declared type is registered
+    without a per-type existence probe; a pre-existing assembly is listed once to
+    skip the types it already has. Under dry-run a greenfield assembly does not
+    resolve, so its whole subtree is reported `planned` without calling a core
+    that would network-resolve the missing assembly and raise. D365Error in any
+    core call aborts the whole apply (the _Aborted contract).
+    """
+    name: str = plugin.get("assembly") or os.path.splitext(
+        os.path.basename(plugin["file"]))[0]
+    asm_path = os.path.join(base_dir or "", plugin["file"])
+    asm_entry: Entry = {"kind": "plugin-assembly", "name": name}
+
+    live_asm = _call(asm_entry, lambda: plugin_mod.find_assembly(backend, name), failed)
+    assembly_planned = False
+    assembly_created = False
+    if live_asm is None:
+        result = _call(asm_entry, lambda: plugin_mod.register_assembly(
+            backend, path=asm_path, name=name,
+            isolation_mode=plugin.get("isolation_mode", "sandbox"),
+            version=plugin.get("version"), culture=plugin.get("culture"),
+            public_key_token=plugin.get("public_key_token"),
+            description=plugin.get("description"),
+            solution=solution, update=False), failed)
+        bucket = _classify(result, asm_entry, applied, skipped, planned)
+        assembly_planned = bucket == "planned"
+        assembly_created = bucket == "applied"
+    else:
+        content = _call(asm_entry, lambda: _read_file_bytes(base_dir, plugin["file"]),
+                        failed)
+        _reconcile(asm_entry, lambda: _reconcile_plugin_assembly(
+            backend, name, content, asm_path, live_asm, solution, asm_entry),
+            failed, routes)
+
+    # Types. A just-created assembly has none, so register each declared type
+    # directly; a pre-existing one is listed once to skip what it already has.
+    live_typenames: set[str] | None = None
+    for typ in _as_list(plugin.get("types")):
+        t_entry: Entry = {"kind": "plugin-type", "name": typ["type_name"]}
+        if assembly_planned:
+            planned.append(t_entry)
+            continue
+        if not assembly_created:
+            if live_typenames is None:
+                listing = _call(
+                    t_entry, lambda: plugin_mod.list_types(backend, assembly=name), failed)
+                live_typenames = {str(r.get("typename"))
+                                  for r in listing.get("value", [])}
+            if typ["type_name"] in live_typenames:
+                skipped.append(t_entry)
+                continue
+        result = _call(t_entry, lambda typ=typ: plugin_mod.register_type(
+            backend, assembly=name, type_name=typ["type_name"],
+            friendly_name=typ.get("friendly_name"), solution=solution), failed)
+        _classify(result, t_entry, applied, skipped, planned)
+
+    # Steps (with their images). Each step is keyed by its (unique) name.
+    for step in _as_list(plugin.get("steps")):
+        s_entry: Entry = {"kind": "plugin-step", "name": step["name"]}
+        if assembly_planned:
+            planned.append(s_entry)
+            for img in _as_list(step.get("images")):
+                planned.append({"kind": "plugin-image", "name": img["alias"]})
+            continue
+        live_step = _call(
+            s_entry, lambda step=step: plugin_mod.find_step(backend, step["name"]), failed)
+        step_id: str | None = None
+        step_blocked = False
+        if live_step is None:
+            result = _call(s_entry, lambda step=step: plugin_mod.register_step(
+                backend, message=step["message"], plugin_type=step["plugin_type"],
+                entity=step.get("entity"), stage=step.get("stage", "postoperation"),
+                mode=step.get("mode", "sync"), rank=step.get("rank", 1),
+                filtering_attributes=step.get("filtering_attributes"),
+                name=step["name"], configuration=step.get("configuration"),
+                assembly=name, solution=solution), failed)
+            _classify(result, s_entry, applied, skipped, planned)
+            step_id = result.get("sdkmessageprocessingstepid")  # None under dry-run
+        else:
+            try:
+                verdict, payload = _reconcile_plugin_step(
+                    backend, step, live_step, solution, s_entry)
+            except D365Error as exc:
+                failed.append({**s_entry, "error": str(exc)})
+                raise _Aborted from exc
+            routes[verdict].append(payload)
+            step_id = str(live_step["sdkmessageprocessingstepid"])
+            step_blocked = verdict == "replace_blocked"
+
+        for img in _as_list(step.get("images")):
+            img_entry: Entry = {"kind": "plugin-image", "name": img["alias"]}
+            if step_blocked:
+                continue  # blocked step: leave its image subtree until it is recreated
+            if step_id is None:
+                planned.append(img_entry)  # dry-run: step would be created → image too
+                continue
+            existing_img = _call(
+                img_entry, lambda img=img, step_id=step_id:
+                plugin_mod.find_step_image(backend, step_id, img["alias"]), failed)
+            if existing_img is not None:
+                skipped.append(img_entry)
+                continue
+            result = _call(img_entry, lambda img=img, step_id=step_id:
+                           plugin_mod.register_image(
+                               backend, step=step_id, image_type=img["image_type"],
+                               alias=img["alias"], attributes=img.get("attributes"),
+                               name=img.get("name"),
+                               message_property_name=img.get("message_property_name"),
+                               solution=solution), failed)
+            _classify(result, img_entry, applied, skipped, planned)
 
 
 def apply_spec(
@@ -849,7 +1089,7 @@ def apply_spec(
         for wr in _as_list(spec.get("webresources")):
             name: str = wr["name"]
             entry = {"kind": "webresource", "name": name}
-            content = _call(entry, lambda wr=wr: _read_webresource_file(base_dir, wr["file"]),
+            content = _call(entry, lambda wr=wr: _read_file_bytes(base_dir, wr["file"]),
                             failed)
             live_wr = wr_mod.find_webresource(backend, name)
             if live_wr is None:
@@ -903,6 +1143,15 @@ def apply_spec(
                 _call(entry, lambda role_id=role_id, desired=desired:
                       sec_mod.replace_role_privileges(backend, role_id, desired), failed)
                 applied.append(entry)
+
+        # Phase: plug-ins (assembly + types + steps + images). On-prem
+        # extensibility is provisioned from the spec (#552); reuses the plugin
+        # core — apply orchestrates and diffs, it does not reimplement
+        # registration. Plug-in components are not publishable (see below).
+        for plugin in _as_list(spec.get("plugins")):
+            _apply_plugin(backend, plugin, solution=solution_name, base_dir=base_dir,
+                          applied=applied, skipped=skipped, planned=planned,
+                          failed=failed, routes=routes)
     except _Aborted:
         pass
 
@@ -912,9 +1161,10 @@ def apply_spec(
     # nothing was actually written (created or updated). Under --dry-run `applied`
     # is always empty and `updated` is a would-update preview (writes suppressed),
     # so nothing was written — `wrote` is false and the run never stages.
-    # Security roles are not publishable customizations; a role-only change writes
-    # but needs no PublishAllXml. Gate publish/staged on the publishable writes only.
-    publishable = [e for e in applied + updated if e.get("kind") != "security-role"]
+    # Security roles and plug-in components are not publishable customizations; a
+    # change to them writes but needs no PublishAllXml. Gate publish/staged on the
+    # publishable writes only.
+    publishable = [e for e in applied + updated if e.get("kind") not in _NON_PUBLISHABLE]
     wrote = bool(publishable) and not backend.dry_run
     published = (wrote and not stage_only and not failed
                  and not replace_blocked and not backend.dry_run)

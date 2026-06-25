@@ -1,13 +1,15 @@
 # How-to: apply
 
 `crm apply -f spec.yaml` stands up a whole custom table — publisher, solution,
-entity, columns, option sets, relationships, views, web resources, and security
-roles — from a single declarative spec. It orchestrates the existing metadata
+entity, columns, option sets, relationships, views, web resources, security
+roles, and plug-in assemblies with their types, steps, and images — from a
+single declarative spec. It orchestrates the existing metadata and plug-in
 commands in dependency order (publisher → solution → entities → option sets →
-attributes → relationships → views → web resources → security roles) and runs
-`PublishAllXml` **once** at the end — but only when a publishable component was
-created or updated. Security roles are not publishable customizations, so a
-role-only apply does not publish.
+attributes → relationships → views → web resources → security roles → plug-ins)
+and runs `PublishAllXml` **once** at the end — but only when a publishable
+component was created or updated. Security roles and plug-in components are not
+publishable customizations, so an apply that touches only those does not
+publish.
 
 `apply` is **convergent**: a component that already exists is reconciled against
 the spec rather than blindly skipped. Three outcomes per component:
@@ -88,6 +90,30 @@ security_roles:
         depth: basic
       - privilege_names: [prvReadSystemForm]
         depth: global
+plugins:
+  - assembly: Contoso.Plugins           # optional; defaults to the DLL's file stem
+    file: bin/Contoso.Plugins.dll       # required; resolved relative to the spec file
+    isolation_mode: sandbox             # optional (none|sandbox), default sandbox
+    version: 1.0.0.0                    # optional override, default 1.0.0.0
+    # culture / public_key_token / description are optional overrides
+    types:
+      - type_name: Contoso.Plugins.AccountHandler   # required; fully-qualified class (the key)
+        friendly_name: Account Handler              # optional
+    steps:
+      - name: Contoso Account Handler   # required; unique, stable convergent key
+        message: Create                 # required; SDK message (e.g. Create, Update)
+        plugin_type: Contoso.Plugins.AccountHandler   # required; a registered type (declare it under types to register it)
+        entity: account                 # optional; entity scope (omit = message-level)
+        stage: postoperation            # optional (prevalidation|preoperation|postoperation), default postoperation
+        mode: sync                      # optional (sync|async), default sync
+        rank: 1                         # optional, default 1
+        filtering_attributes: name,...  # optional; only meaningful on Update
+        configuration: "..."            # optional unsecure config
+        images:
+          - alias: PreImage             # required; the key within the step
+            image_type: pre             # required (pre|post|both)
+            attributes: name,...        # optional; comma-separated logical names
+            message_property_name: Target   # optional override
 ```
 
 `attributes[].kind` is any kind `metadata add-attribute` accepts (`string`,
@@ -133,6 +159,45 @@ privilege also drifts in the same run (triggering a fresh replace). A
 satisfied — is a convergent no-op. To force a remove-only reconciliation, make a
 no-op edit to another privilege in the role (e.g. increment and reset a depth),
 or use `crm security set-role-privileges` directly.
+
+## Plug-ins: assembly, types, steps, and images
+
+`plugins[]` declares one or more plug-in assemblies. Each entry identifies a
+built DLL (`file`, resolved relative to the spec file) and optionally names the
+assembly, its isolation mode, and its version override. Under it you declare the
+`types[]` (the `IPlugin` classes) and `steps[]` (SDK message processing steps)
+that should exist.
+
+Convergent reconcile per component:
+
+- **Assembly** — created when absent; the DLL content is PATCH-updated when a
+  rebuilt binary differs from the live assembly; skipped when content is
+  identical. The assembly name (or file stem if `assembly:` is omitted) is the
+  convergent key.
+- **Type** — registered when the declared `type_name` is not already present;
+  skipped when it is. `type_name` is immutable once registered.
+- **Step** (keyed by the unique `name`) — created when absent; runtime config
+  fields (`stage`, `mode`, `rank`, `filtering_attributes`, `configuration`) are
+  updated in place when they drift. Only spec-declared fields are reconciled.
+  A **binding change** — a different `message`, `entity`, or `plugin_type` on an
+  existing step — is classified `replace_blocked`: reported, no write, run exits
+  1. The platform fixes bindings at creation; updating them requires a
+  delete-and-recreate that `apply` does not perform automatically.
+- **Image** (keyed by step + `alias`) — registered when absent; skipped when
+  already present.
+
+Plug-in components are not publishable, so a plugins-only apply does not issue
+`PublishAllXml`. `--dry-run` is fully supported: a greenfield spec reports
+components as `planned`; drift reports `updated` (with field-level `diff`) or
+`replace_blocked`.
+
+> On-prem metadata writes are synchronous, so a single apply registers a new
+> assembly, its types, and its steps in one pass. On Dataverse (cloud) a
+> newly-registered plug-in type can take a few seconds to become queryable, so a
+> single apply that both registers a new type **and** a step binding to it may
+> report the step as `failed` (the type is not yet resolvable); re-apply once it
+> has propagated and the step lands (the already-created assembly and type are
+> skipped). On-prem is the plug-in extensibility target.
 
 ## Stand up a table in one shot
 

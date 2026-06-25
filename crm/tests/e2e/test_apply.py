@@ -279,3 +279,96 @@ def test_apply_security_role_create_and_reconcile(cli, backend, tmp_path, unique
     assert any(e.get("name") == role_name for e in noop["data"]["skipped"]), (
         f"unchanged role not skipped: {noop['data']}")
     assert noop["data"]["updated"] == [], f"expected no update: {noop['data']}"
+
+
+@pytest.mark.slow
+@pytest.mark.requires_onprem
+@covers("apply")
+def test_apply_plugin_assembly_type_step_lifecycle(
+        cli, plugin_assembly, backend, tmp_path, request):
+    """apply provisions a plug-in from a spec — assembly + type + step + image in
+    one run — then converges: an unchanged re-apply is a no-op, a step-config drift
+    updates in place, and a step binding change (the message) is replace-blocked (no
+    write, exit 1). On-prem is the plug-in extensibility target (#552), and is
+    pinned here deliberately: on-prem metadata writes are synchronous, so the
+    single-apply assembly→type→step→image sequence resolves each just-created row
+    immediately. Dataverse (cloud) has a metadata read-after-write lag (the
+    assembly-lifecycle test polls up to 20s for a new plug-in type to become
+    queryable), which a single-shot apply cannot poll around — so the weekly cloud
+    e2e run gates this out rather than flaking. The `plugin_assembly` fixture builds
+    a signed no-op IPlugin so registration is proven without ever firing it (and
+    skips with instructions when dotnet is absent). The assembly is unregistered in
+    a finalizer (cascading its type, step, and images).
+    """
+    asm = plugin_assembly
+    step_name = f"{asm.assembly_name} apply step"
+
+    def _spec(*, rank, message):
+        spec = {"plugins": [{
+            "assembly": asm.assembly_name,
+            "file": asm.dll,
+            "public_key_token": asm.public_key_token,
+            "version": "1.0.0.0",
+            "isolation_mode": "sandbox",
+            "types": [{"type_name": asm.type_name}],
+            "steps": [{
+                "name": step_name,
+                "message": message,
+                "entity": "account",
+                "plugin_type": asm.type_name,
+                "stage": "postoperation",
+                "rank": rank,
+                # A post-image is valid on a Create step in PostOperation, so the
+                # image declare/register/skip path is covered live too.
+                "images": [{"alias": "PostImage", "image_type": "post",
+                            "attributes": "name"}],
+            }],
+        }]}
+        path = tmp_path / "plugin_spec.json"
+        path.write_text(json.dumps(spec), encoding="utf-8")
+        return str(path)
+
+    def _cleanup():
+        # Unregister the assembly by name (cascades its type, step, images). Runs
+        # even if a mid-test apply left only the assembly registered.
+        try:
+            rows = backend.get_collection(
+                "pluginassemblies",
+                params={"$filter": f"name eq '{asm.assembly_name}'",
+                        "$select": "pluginassemblyid"})
+            for r in rows:
+                cli(["--json", "plugin", "unregister-assembly",
+                     r["pluginassemblyid"], "--yes"], check=False)
+        except Exception:
+            pass
+    request.addfinalizer(_cleanup)
+
+    # 1. CREATE: assembly + type + step provisioned in a single apply.
+    created = json.loads(cli(["--json", "apply", "-f", _spec(rank=1, message="Create")]).stdout)
+    assert created["ok"] is True, f"create apply failed: {created}"
+    applied = {(e["kind"], e["name"]) for e in created["data"]["applied"]}
+    assert ("plugin-assembly", asm.assembly_name) in applied, created["data"]
+    assert ("plugin-type", asm.type_name) in applied, created["data"]
+    assert ("plugin-step", step_name) in applied, created["data"]
+    assert ("plugin-image", "PostImage") in applied, created["data"]
+
+    # 2. NO-OP: re-applying the unchanged spec converges to skips, no update.
+    noop = json.loads(cli(["--json", "apply", "-f", _spec(rank=1, message="Create")]).stdout)
+    assert noop["ok"] is True, f"no-op apply failed: {noop}"
+    assert noop["data"]["updated"] == [], f"expected no update: {noop['data']}"
+    assert ("plugin-step", step_name) in {
+        (e["kind"], e["name"]) for e in noop["data"]["skipped"]}, noop["data"]
+
+    # 3. UPDATE: drift the step's rank → in-place config update.
+    upd = json.loads(cli(["--json", "apply", "-f", _spec(rank=7, message="Create")]).stdout)
+    assert upd["ok"] is True, f"update apply failed: {upd}"
+    assert any(e["kind"] == "plugin-step" and e["name"] == step_name
+               for e in upd["data"]["updated"]), f"step not updated: {upd['data']}"
+
+    # 4. REPLACE-BLOCKED: changing the step's message is a binding change needing a
+    # destructive delete-and-recreate → reported, no write for it, exit 1.
+    blocked = json.loads(
+        cli(["--json", "apply", "-f", _spec(rank=7, message="Update")], check=False).stdout)
+    assert blocked["ok"] is False, f"expected replace-blocked: {blocked}"
+    assert any(e["kind"] == "plugin-step" and e["name"] == step_name
+               for e in blocked["data"]["replace_blocked"]), blocked["data"]
