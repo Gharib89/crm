@@ -132,15 +132,16 @@ solution members; pruning is strictly opt-in.
   deleted after confirmation.
 - **Data-bearing kinds** (`entity`, `attribute`) — refused unless `--allow-data-loss`
   is also passed; they appear in `pruned` with `deleted: false` and a `reason` field.
-- **`--json` / no-TTY** — interactive prompt is unavailable; `--yes` is required or
-  the run errors before doing anything.
+- **`--json` / no-TTY** — for a **real** prune the interactive prompt is
+  unavailable, so `--yes` is required or the run errors before doing anything. A
+  `--dry-run` preview deletes nothing, so it needs no `--yes`.
 - **Requires a target solution** — spec `solution:` block or `--solution`. Without
-  one, `--prune` errors immediately.
+  one, `--prune` is rejected as a usage error.
 - **Suppressed on partial failure** — if the convergence phase produces any `failed`
   or `replace_blocked` entries, pruning is skipped entirely. Fix the spec, re-apply,
   then prune.
-- **Never publishes** — pruning runs after the end-of-run publish; no extra publish
-  is triggered.
+- **Never publishes** — a prune deletion triggers no publish (the end-of-run
+  publish gate covers only created/updated components).
 
 **Always dry-run before a real prune:**
 

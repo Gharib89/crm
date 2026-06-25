@@ -2218,6 +2218,18 @@ def test_apply_cmd_allow_data_loss_requires_prune(backend, monkeypatch, tmp_path
     assert "--allow-data-loss only applies with --prune" in result.output
 
 
+def test_apply_cmd_prune_requires_solution_usage_error(backend, monkeypatch, tmp_path):
+    # --prune with no target solution is a CLI usage error (exit 2), rejected at the
+    # command layer before any backend call.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    spec_path = tmp_path / "s.yaml"
+    spec_path.write_text("entities:\n  - schema_name: contoso_X\n    display_name: X\n")
+    result = CliRunner().invoke(
+        cli, ["--json", "apply", "-f", str(spec_path), "--prune", "--yes"])
+    assert result.exit_code == 2, result.output  # click.UsageError
+    assert "--prune requires a target solution" in result.output
+
+
 def test_apply_dry_run_prune_suppresses_would_prune_on_replace_blocked(dry_backend):
     # When a reconcile is replace-blocked, a real --prune run suppresses deletes;
     # the dry-run preview must mirror that — the candidate carries no would_prune.

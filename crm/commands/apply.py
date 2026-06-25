@@ -78,6 +78,18 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
                  "(publisher / solution / entities / optionsets).")
         return
 
+    # --prune is solution-scoped, so a target solution is part of the flag
+    # contract: reject up front as a usage error (exit 2), before prompting or
+    # building a backend. (apply_spec re-checks for programmatic callers.)
+    if prune:
+        sol_block = spec.get("solution")
+        target_solution = solution or (
+            sol_block.get("unique_name") if isinstance(sol_block, dict) else None)
+        if not target_solution:
+            raise click.UsageError(
+                "--prune requires a target solution (a spec 'solution:' block or "
+                "--solution).")
+
     # Gate destructive pruning behind a confirmation (real runs only — --dry-run
     # is a read-only preview that deletes nothing). Under --json / a non-TTY there
     # is no interactive prompt, so an explicit --yes is required; on a TTY, prompt.

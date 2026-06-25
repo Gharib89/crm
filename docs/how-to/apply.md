@@ -265,7 +265,8 @@ relationships, plug-in assemblies/types, forms) is out of scope.
 - Data-bearing extras (`entity`, `attribute`) destroy row data and are refused
   unless `--allow-data-loss` is also passed. Without it they appear in `pruned`
   with `deleted: false` and `reason: "data-bearing; pass --allow-data-loss to delete"`.
-- Under `--json` or a non-TTY, `--prune` requires `--yes` (no interactive prompt).
+- Under `--json` or a non-TTY, a **real** `--prune` requires `--yes` (no interactive
+  prompt); a `--dry-run` preview deletes nothing and needs no confirmation.
 - `--prune` requires a target solution (`solution:` block in the spec or
   `--solution`).
 - Pruning is suppressed when the convergence phase itself has failures or
