@@ -74,8 +74,9 @@ def provision_isolation(crm_bin: str | None = None) -> Isolation:
         d.mkdir(parents=True)
 
     skill_dir = home / ".claude" / "skills" / "crm"
-    # Install the skill the way a user does: copy the bundled tree into the fresh
-    # HOME. --dest pins the location; --force makes it idempotent across re-runs.
+    # Install the skill the way a user does — from whatever `crm` is on PATH, so the
+    # eval exercises the skill *as shipped* in that binary, not the repo's working
+    # tree. --dest pins the location; --force makes it idempotent across re-runs.
     result = subprocess.run(
         [crm_bin, "skill", "install", "--dest", str(skill_dir), "--force"],
         capture_output=True,

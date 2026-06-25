@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -56,8 +57,6 @@ class RunResult:
 
 
 def _resolve_agent_cmd(agent_cmd: str | None) -> list[str]:
-    import os
-
     raw = agent_cmd or os.environ.get("CRM_EVAL_AGENT_CMD", "").strip()
     if not raw:
         raise RunError(
@@ -83,7 +82,12 @@ def _crm_json(args: list[str], env: dict[str, str], crm_bin: str) -> Any:
 
 
 def _run_agent(prompt: str, agent_cmd: list[str], iso: isolation.Isolation) -> str:
-    """Feed the verbatim prompt to the agent in the isolated context; return transcript."""
+    """Feed the verbatim prompt to the agent in the isolated context; return transcript.
+
+    The agent's exit code is recorded in the transcript header (the deterministic
+    end-state predicate, not the exit code, is the pass/fail gate) so a crashed or
+    misconfigured agent is diagnosable rather than scored as a silent failure.
+    """
     proc = subprocess.run(
         agent_cmd,
         input=prompt,
@@ -92,7 +96,8 @@ def _run_agent(prompt: str, agent_cmd: list[str], iso: isolation.Isolation) -> s
         cwd=str(iso.work),
         env=iso.env,
     )
-    return proc.stdout + (f"\n[stderr]\n{proc.stderr}" if proc.stderr else "")
+    header = f"[agent exit {proc.returncode}]\n"
+    return header + proc.stdout + (f"\n[stderr]\n{proc.stderr}" if proc.stderr else "")
 
 
 def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str) -> None:
@@ -132,7 +137,7 @@ def run_task(
             return RunResult(task_id=spec.id, dry_run=True, isolation_checks=checks)
 
         agent = _resolve_agent_cmd(agent_cmd)
-        profile = target.seed_target(iso.crm_home)
+        profile = target.seed_target(iso.crm_home, spec.target)
         transcript = _run_agent(spec.prompt, agent, iso)
         try:
             data = _crm_json(["--profile", profile, *spec.query], iso.env, resolved_bin)

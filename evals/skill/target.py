@@ -13,6 +13,11 @@ import os
 import re
 from pathlib import Path
 
+# The prod-host guard below is a small, deliberate copy of the e2e conftest's
+# `_assert_not_production` rather than an import: that helper is a private symbol in a
+# pytest conftest (test-only collection machinery), and this is a runtime harness —
+# importing across that boundary would couple the harness to the test tree. ADR 0015
+# calls for the guard to be "honored identically"; the duplication is ~10 lines.
 _E2E_PROFILE_ENV = "D365_E2E_PROFILE"
 _ALLOW_HOST_ENV = "D365_E2E_ALLOW_HOST"
 _PROD_HOST_MARKERS = ("prod", "live")
@@ -54,13 +59,20 @@ def resolve_profile_name() -> str:
     return name
 
 
-def seed_target(crm_home: Path) -> str:
+def _scheme_target(auth_scheme: str) -> str:
+    """Map a profile's auth scheme to the eval target it represents."""
+    return "cloud" if auth_scheme == "oauth" else "onprem"
+
+
+def seed_target(crm_home: Path, required_target: str = "either") -> str:
     """Seed the configured target's creds into ``crm_home`` and activate it.
 
-    Reads the named profile + secret from the real ``CRM_HOME`` (read-only), applies
-    the prod-host guard, then writes the profile/secret into the throwaway
-    ``crm_home`` under its original name and marks it active — so the agent's verbatim
-    ``--profile <name>`` resolves against the isolated home. Returns the profile name.
+    Reads the named profile + secret from the real ``CRM_HOME`` (read-only), enforces
+    the task's ``required_target`` gate (a cloud-only task must not run against an
+    on-prem profile, and vice versa), applies the prod-host guard, then writes the
+    profile/secret into the throwaway ``crm_home`` under its original name and marks
+    it active — so the agent's verbatim ``--profile <name>`` resolves against the
+    isolated home. Returns the profile name.
     """
     from crm.core import session as session_mod
     from crm.core.connection import resolve_credentials
@@ -72,8 +84,19 @@ def seed_target(crm_home: Path) -> str:
     except D365Error as exc:
         raise TargetError(f"{_E2E_PROFILE_ENV}={name!r}: {exc}") from exc
 
+    actual = _scheme_target(resolved.profile.auth_scheme)
+    if required_target != "either" and required_target != actual:
+        raise TargetError(
+            f"task requires a {required_target!r} target but profile {name!r} is "
+            f"{actual!r} ({resolved.profile.auth_scheme}) — point {_E2E_PROFILE_ENV} "
+            f"at a {required_target} profile"
+        )
+
     assert_not_production(resolved.profile.url)
 
+    # save_profile/save_session read CRM_HOME from the process env, so the throwaway
+    # home must be active in os.environ for the duration of the writes (restored
+    # below). Mirrors the e2e conftest seeding; single-process by design.
     saved = os.environ.get("CRM_HOME")
     os.environ["CRM_HOME"] = str(crm_home)
     try:

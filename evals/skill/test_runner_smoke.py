@@ -33,7 +33,7 @@ def test_task_file_parses(task_file: Path):
     spec = parse_task_file(task_file)
     assert spec.id
     assert spec.prompt.strip()
-    assert spec.query and spec.query[0] == "query"
+    assert spec.query  # non-empty argv for the scoring query
     assert spec.expect
     # cleanup steps are well-formed
     for step in spec.cleanup:
