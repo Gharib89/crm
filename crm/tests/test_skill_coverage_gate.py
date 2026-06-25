@@ -36,6 +36,9 @@ def test_catalogue_drives_the_lazy_loader():
     assert len(_LEAVES) > 100
     assert "metadata add-attribute" in _LEAVES
     assert {"entity", "metadata", "query"} <= _GROUPS
+    # Top-level names are a strict superset of groups: bare leaf commands
+    # (`crm describe`, …) exist and are out of the completeness gate's scope.
+    assert _GROUPS < _TOP_LEVEL
 
 
 # ── Parser false-positive cases (pin the anchoring rules) ────────────────────
