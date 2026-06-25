@@ -64,15 +64,18 @@ def _opt(value, lbl):
     return {"Value": value, "Label": _label(lbl)}
 
 
-def _shallow(logical, *, custom=True, valid_for_create=True):
-    # list_attributes always projects IsValidForCreate; mirror that here so the
-    # build_entity_spec creatability filter sees a faithful shallow row.
-    return {
+def _shallow(logical, *, custom=True, valid_for_create=True, source_type=None):
+    # list_attributes always projects IsValidForCreate + SourceType; mirror that
+    # here so the build_entity_spec creatability filter sees a faithful shallow row.
+    row = {
         "LogicalName": logical,
         "SchemaName": logical,
         "IsCustomAttribute": custom,
         "IsValidForCreate": valid_for_create,
     }
+    if source_type is not None:
+        row["SourceType"] = source_type
+    return row
 
 
 _ENTITY = {
@@ -969,6 +972,94 @@ class TestExportSpecWarnings:
         assert len(warnings) == 1
         assert "new_stage" in warnings[0]
 
+    def test_calculated_column_exported_with_formula(self, backend):
+        # A calculated column (SourceType=1) round-trips: source_type + the live
+        # FormulaDefinition are captured so apply can re-create it (#554).
+        info = {
+            "SchemaName": "new_Total",
+            "DisplayName": _label("Total"),
+            "AttributeTypeName": {"Value": "DecimalType"},
+            "RequiredLevel": {"Value": "None"},
+            "Precision": 2,
+            "SourceType": 1,
+            "FormulaDefinition": "<Formula>calc</Formula>",
+        }
+        # Calc/rollup columns are read-only → IsValidForCreate is False; SourceType
+        # rides on the shallow row so the filter can still admit them.
+        attrs = {"value": [_shallow("new_name"),
+                           _shallow("new_total", valid_for_create=False, source_type=1)]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_total"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["kind"] == "decimal"
+        assert col["source_type"] == "calculated"
+        assert col["formula_definition"] == "<Formula>calc</Formula>"
+        apply.validate_spec(spec)  # the round-trip must hold
+
+    def test_rollup_column_exported_with_formula(self, backend):
+        # A rollup column reads back as SourceType=2.
+        info = {
+            "SchemaName": "new_Count",
+            "DisplayName": _label("Count"),
+            "AttributeTypeName": {"Value": "IntegerType"},
+            "RequiredLevel": {"Value": "None"},
+            "SourceType": 2,
+            "FormulaDefinition": "<Rollup/>",
+        }
+        attrs = {"value": [_shallow("new_name"),
+                           _shallow("new_count", valid_for_create=False, source_type=2)]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_count"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["source_type"] == "rollup"
+        assert col["formula_definition"] == "<Rollup/>"
+        apply.validate_spec(spec)
+
+    def test_simple_column_omits_source_type_even_when_keys_present(self, backend):
+        # A live simple column carries SourceType=0 and a null FormulaDefinition on
+        # the bare read; neither must leak into the spec.
+        info = {**_string_info(), "SourceType": 0, "FormulaDefinition": None}
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+
+        col = spec["entities"][0]["attributes"][0]
+        assert "source_type" not in col
+        assert "formula_definition" not in col
+
+    def test_calculated_without_readable_formula_warns_and_exports_simple(self, backend):
+        # SourceType says calculated but the formula is unreadable (empty): the
+        # column still round-trips as simple, and the drop is recorded.
+        info = {**_string_info(), "SourceType": 1, "FormulaDefinition": ""}
+        attrs = {"value": [_shallow("new_name"),
+                           _shallow("new_code", valid_for_create=False, source_type=1)]}
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=info)
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        col = spec["entities"][0]["attributes"][0]
+        assert "source_type" not in col
+        assert any("FormulaDefinition" in w for w in warnings)
+        apply.validate_spec(spec)
+
     def test_empty_options_warns(self, backend):
         attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
         warnings: list[str] = []
@@ -986,3 +1077,39 @@ class TestExportSpecWarnings:
         assert "attributes" not in spec["entities"][0]
         assert len(warnings) == 1
         assert "new_stage" in warnings[0]
+
+
+class TestCalcRoundTrip:
+    def test_export_then_apply_dry_run_reports_zero_drift(self, backend, dry_backend):
+        # AC#3 literal round-trip: build_entity_spec of an entity carrying a calc
+        # column, then apply --dry-run of that EXACT export against the same live
+        # state, reports zero drift — the calc column reconciles to skipped (#554).
+        calc_info = {
+            "SchemaName": "new_Total",
+            "DisplayName": _label("Total"),
+            "AttributeTypeName": {"Value": "DecimalType"},
+            "@odata.type": "#Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+            "RequiredLevel": {"Value": "None"},
+            "Precision": 2,
+            "SourceType": 1,
+            "FormulaDefinition": "<Formula>calc</Formula>",
+        }
+        attrs = {"value": [_shallow("new_name"),
+                           _shallow("new_total", valid_for_create=False, source_type=1)]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_total"), json=calc_info)
+            spec = build_entity_spec(backend, "new_project")
+            res = apply.apply_spec(dry_backend, spec, stage_only=True)
+
+        calc = next(a for a in spec["entities"][0]["attributes"]
+                    if a["schema_name"] == "new_Total")
+        assert calc["source_type"] == "calculated"
+        assert calc["formula_definition"] == "<Formula>calc</Formula>"
+        # Zero drift: nothing updated or replace-blocked; the calc column is skipped.
+        assert [e["name"] for e in res["updated"]] == []
+        assert [e["name"] for e in res["replace_blocked"]] == []
+        assert "new_Total" in [e["name"] for e in res["skipped"]]
+        assert res["ok"] is True

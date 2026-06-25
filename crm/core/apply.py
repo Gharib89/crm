@@ -170,6 +170,34 @@ def validate_spec(spec: Any) -> None:
                 raise D365Error(
                     f"attribute {name!r}: max_length must be an integer "
                     "(unquoted in YAML).")
+            # source_type / formula_definition (calculated & rollup columns, #554):
+            # mirror add_attribute's contract — a non-simple source needs a formula
+            # and is invalid for the relationship-backed kinds; a formula is invalid
+            # on a simple column. Gate on key PRESENCE, not truthiness, so an
+            # explicit null source_type or an empty formula fails HERE rather than
+            # slipping through to a mid-apply add_attribute raise.
+            source_type = attr.get("source_type")
+            if "source_type" in attr and source_type not in mc.SOURCE_TYPES:
+                raise D365Error(
+                    f"attribute {name!r}: source_type must be one of "
+                    f"{sorted(mc.SOURCE_TYPES)}.")
+            formula = attr.get("formula_definition")
+            if formula is not None and not isinstance(formula, str):
+                raise D365Error(
+                    f"attribute {name!r}: formula_definition must be a string.")
+            if source_type in ("calculated", "rollup"):
+                if kind in ("lookup", "customer"):
+                    raise D365Error(
+                        f"attribute {name!r}: source_type {source_type!r} is not "
+                        f"valid for kind {kind!r}.")
+                if not formula:
+                    raise D365Error(
+                        f"attribute {name!r}: source_type {source_type!r} requires "
+                        "formula_definition.")
+            elif "formula_definition" in attr:
+                raise D365Error(
+                    f"attribute {name!r}: formula_definition is only valid with "
+                    "source_type 'calculated' or 'rollup'.")
         for rel in _as_list(ent.get("relationships")):
             _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
                            "lookup_schema", "lookup_display"), "relationship")
@@ -1149,6 +1177,8 @@ def apply_spec(
                         optionset_name=attr.get("optionset_name"),
                         options=opts,
                         target_entity=attr.get("target_entity"),
+                        source_type=attr.get("source_type", "simple"),
+                        formula_definition=attr.get("formula_definition"),
                         solution=solution_name,
                         if_exists="skip",
                     ), failed)

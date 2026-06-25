@@ -308,6 +308,48 @@ def test_apply_creates_global_optionset(backend):
 # ── Slice: attributes (string, picklist->optionset, lookup->relationship) ───
 
 
+def test_apply_forwards_source_type_and_formula_on_create(backend):
+    # A calculated column in the spec must reach add_attribute as SourceType=1 +
+    # FormulaDefinition so a fresh apply re-creates the formula (#554).
+    calc = {"kind": "decimal", "schema_name": "contoso_Total", "display_name": "Total",
+            "precision": 2, "source_type": "calculated",
+            "formula_definition": "<Formula>x</Formula>"}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "attributes": [calc]}]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_total", schema="contoso_Total",
+                               attr_type="Decimal")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    attr_post = backend.url_for("EntityDefinitions(LogicalName='contoso_project')/Attributes")
+    body = next(json.loads(r.text) for r in m.request_history
+                if r.method == "POST" and r.url == attr_post)
+    assert body["SourceType"] == 1
+    assert body["FormulaDefinition"] == "<Formula>x</Formula>"
+    assert res["ok"] is True
+
+
+def test_apply_reapply_calculated_reports_no_drift(backend):
+    # AC#3 round-trip: re-applying an exported calc column that already exists
+    # converges to skipped — source_type/formula_definition ride through the spec
+    # but are not reconciled, so an unchanged export reports zero drift (#554).
+    calc = {"kind": "decimal", "schema_name": "contoso_Total", "display_name": "Total",
+            "precision": 2, "source_type": "calculated",
+            "formula_definition": "<Formula>x</Formula>"}
+    spec = {"entities": [{**_ENTITY, "attributes": [calc]}]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True)
+        _mock_attribute_create(m, backend, logical="contoso_total", schema="contoso_Total",
+                               attr_type="Decimal", exists=True)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert "contoso_Total" in [e["name"] for e in res["skipped"]]
+    assert res["ok"] is True
+
+
 def test_apply_creates_attributes_of_each_kind(backend):
     entity = {**_ENTITY, "attributes": _ATTRS}
     spec = {
@@ -549,6 +591,84 @@ def test_apply_rejects_lookup_without_target_entity(backend):
     }]}
     with requests_mock.Mocker() as m:
         with pytest.raises(D365Error, match="target_entity"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_calculated_without_formula(backend):
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "source_type": "calculated"}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="formula_definition"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_unknown_source_type(backend):
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "source_type": "wizardry",
+                        "formula_definition": "<x/>"}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="source_type"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_calculated_on_lookup_kind(backend):
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "lookup", "schema_name": "contoso_Owner",
+                        "display_name": "Owner", "target_entity": "systemuser",
+                        "source_type": "rollup", "formula_definition": "<x/>"}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="not valid for kind"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_formula_on_simple_column(backend):
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "formula_definition": "<x/>"}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="only valid with source_type"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_empty_formula_on_simple_column(backend):
+    # formula_definition present (even empty) on a non-calc/rollup column is a
+    # malformed spec — must fail up front, not mid-apply.
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "formula_definition": ""}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="only valid with source_type"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_explicit_null_source_type(backend):
+    # An explicit `source_type: null` must fail here — apply_spec's .get(..,'simple')
+    # default only fills an ABSENT key, so a present null would reach add_attribute.
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "source_type": None}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="source_type must be one of"):
             apply_mod.apply_spec(backend, spec, stage_only=False)
         assert m.request_history == []
 
