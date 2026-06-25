@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.33.0 (2026-06-25)
+
+### Bug Fixes
+
+- **apply**: Fail-fast spec validation + accurate publish/convergence docs (review round 2)
+  ([#559](https://github.com/Gharib89/crm/pull/559),
+  [`8025d9e`](https://github.com/Gharib89/crm/commit/8025d9eeaee4eefe20e67c8e82a92aeffa6dbad9))
+
+- **apply**: Harden spec validation and dry-run contract (review round 1)
+  ([#559](https://github.com/Gharib89/crm/pull/559),
+  [`8025d9e`](https://github.com/Gharib89/crm/commit/8025d9eeaee4eefe20e67c8e82a92aeffa6dbad9))
+
+### Documentation
+
+- **apply**: Document web resource & security role kinds; review fixes
+  ([#559](https://github.com/Gharib89/crm/pull/559),
+  [`8025d9e`](https://github.com/Gharib89/crm/commit/8025d9eeaee4eefe20e67c8e82a92aeffa6dbad9))
+
+### Features
+
+- **apply**: Declare web resources and security roles in the spec
+  ([#559](https://github.com/Gharib89/crm/pull/559),
+  [`8025d9e`](https://github.com/Gharib89/crm/commit/8025d9eeaee4eefe20e67c8e82a92aeffa6dbad9))
+
+
 ## v1.32.0 (2026-06-25)
 
 ### Features
