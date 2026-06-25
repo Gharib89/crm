@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.32.0 (2026-06-25)
+
+### Features
+
+- **apply**: --dry-run emits a full drift report
+  ([`b1fe805`](https://github.com/Gharib89/crm/commit/b1fe805abdcf3746b56bc8c70f86ca4f6373c5c4))
+
+
 ## v1.31.0 (2026-06-25)
 
 ### Chores
