@@ -135,7 +135,9 @@ def parse_task_file(path: str | Path) -> TaskSpec:
 def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
     """Score a query's ``data`` payload against a declared ``expect`` mapping.
 
-    Tracer-scope matchers (extended by #571 as the task set grows):
+    The task set (#571) reuses these two matchers unchanged — ``count`` covers
+    exact-cardinality end states (including the 50-row bulk load) and ``row`` covers
+    named-artifact end states — so no new matcher was needed:
 
     - ``count``: the ``data`` array has exactly this many rows;
     - ``row``: at least one row carries every ``field: value`` pair (string compare,

@@ -64,6 +64,26 @@ def _scheme_target(auth_scheme: str) -> str:
     return "cloud" if auth_scheme == "oauth" else "onprem"
 
 
+def active_target() -> str:
+    """The eval target (``cloud``/``onprem``) the configured profile represents.
+
+    Resolves ``D365_E2E_PROFILE`` and reads its auth scheme **without** seeding or
+    mutating anything — the set runner uses this to decide which tasks the active
+    target can run (a ``cloud``-gated task is skipped on an on-prem target and vice
+    versa) before paying for isolation. Raises :class:`TargetError` when no target is
+    configured or the named profile cannot be resolved.
+    """
+    from crm.core.connection import resolve_credentials
+    from crm.utils.d365_backend import D365Error
+
+    name = resolve_profile_name()
+    try:
+        resolved = resolve_credentials(name)
+    except D365Error as exc:
+        raise TargetError(f"{_E2E_PROFILE_ENV}={name!r}: {exc}") from exc
+    return _scheme_target(resolved.profile.auth_scheme)
+
+
 def seed_target(crm_home: Path, required_target: str = "either") -> str:
     """Seed the configured target's creds into ``crm_home`` and activate it.
 
