@@ -51,7 +51,12 @@ class TaskSpec:
 
 
 def _split_frontmatter(text: str) -> tuple[str, str]:
-    """Return ``(frontmatter_yaml, body)`` for a ``---``-delimited markdown file."""
+    """Return ``(frontmatter_yaml, body)`` for a ``---``-delimited markdown file.
+
+    The body has only the whitespace introduced by the frontmatter delimiter
+    stripped (the blank line after the closing ``---`` and trailing newline); the
+    authored prompt content between is preserved.
+    """
     if not text.startswith("---"):
         raise ValueError("task file must open with a '---' YAML frontmatter block")
     # Split into: '', frontmatter, body — on the first two '---' fences.
@@ -92,6 +97,10 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     expect = end_state.get("expect")
     if not isinstance(expect, dict) or not expect:
         raise ValueError(f"{path}: end_state.expect must be a non-empty mapping")
+    if "count" in expect and not isinstance(expect["count"], int):
+        raise ValueError(f"{path}: end_state.expect.count must be an integer")
+    if "row" in expect and not isinstance(expect["row"], dict):
+        raise ValueError(f"{path}: end_state.expect.row must be a mapping")
 
     raw_cleanup = require("cleanup") or []
     if not isinstance(raw_cleanup, list):

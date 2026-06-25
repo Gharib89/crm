@@ -90,6 +90,18 @@ def test_parse_rejects_malformed_cleanup(tmp_path):
         parse_task_file(bad)
 
 
+def test_parse_rejects_bad_expect_shape(tmp_path):
+    bad = tmp_path / "bad.md"
+    bad.write_text(
+        "---\nid: x\ndomain: d\ntarget: either\n"
+        "end_state:\n  query: [query, odata, contacts]\n  expect: {count: \"1\"}\n"
+        "cleanup: []\n---\nprompt\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="count must be an integer"):
+        parse_task_file(bad)
+
+
 def test_evaluate_expect_non_list_data():
     ok, reason = evaluate_expect({"not": "a list"}, {"count": 1})
     assert not ok and "list" in reason

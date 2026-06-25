@@ -1,8 +1,12 @@
 """Agent isolation — the validity keystone of the behavioral eval (ADR 0015).
 
-The eval measures the *skill*, so the agent must see only what a real user has: the
-installed skill, the ``crm`` binary, and ``gh`` — no repo, no ``CLAUDE.md``, no
-memory. If isolation leaks, the run silently measures the repo and over-reports.
+The eval measures the *skill*, so the agent is given only what a real user has: the
+installed skill, the ``crm`` binary, and ``gh`` — and **no path to the repo**: no
+repo-relative working dir, no ``CLAUDE.md`` on the memory-discovery path, no repo on
+the import path, no inherited memory. (The checkout still exists on the host disk;
+this harness withholds the routes to it rather than sandboxing the filesystem — see
+the scope note below.) If isolation leaks, the run silently measures the repo and
+over-reports.
 
 Isolation here is *by construction*, then *verified*:
 
@@ -93,6 +97,7 @@ def provision_isolation(crm_bin: str | None = None) -> Isolation:
         capture_output=True,
         text=True,
         env=env,
+        cwd=str(work),  # run from the sandbox, not the caller's (repo) cwd
     )
     if result.returncode != 0:
         shutil.rmtree(sandbox, ignore_errors=True)

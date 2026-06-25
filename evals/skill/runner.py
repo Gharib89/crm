@@ -67,10 +67,14 @@ def _resolve_agent_cmd(agent_cmd: str | None) -> list[str]:
     return shlex.split(raw)
 
 
-def _crm_json(args: list[str], env: dict[str, str], crm_bin: str) -> Any:
-    """Run ``crm --json <args>`` in the isolated env and return the ``data`` payload."""
+def _crm_json(args: list[str], env: dict[str, str], crm_bin: str, cwd: str) -> Any:
+    """Run ``crm --json <args>`` in the isolated env+cwd and return the ``data`` payload.
+
+    ``cwd`` is the sandbox working dir so the CLI never runs from the repo root and
+    can't pick up repo-relative effects — matching the isolation intent.
+    """
     proc = subprocess.run(
-        [crm_bin, "--json", *args], capture_output=True, text=True, env=env
+        [crm_bin, "--json", *args], capture_output=True, text=True, env=env, cwd=cwd
     )
     if proc.returncode != 0:
         raise RunError(f"crm {' '.join(args)} failed (exit {proc.returncode}): {proc.stderr.strip()}")
@@ -100,7 +104,7 @@ def _run_agent(prompt: str, agent_cmd: list[str], iso: isolation.Isolation) -> s
     return header + proc.stdout + (f"\n[stderr]\n{proc.stderr}" if proc.stderr else "")
 
 
-def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str) -> None:
+def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str, cwd: str) -> None:
     """Delete every record each cleanup step matches. Idempotent and best-effort:
     a per-step or per-record failure is logged and skipped so one failure can't
     strand the rest of the teardown (the org must be left as clean as possible)."""
@@ -109,7 +113,7 @@ def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str
             rows = _crm_json(
                 ["--profile", profile, "query", "odata", step.entity,
                  "--filter", step.filter, "--select", step.id_field],
-                env, crm_bin,
+                env, crm_bin, cwd,
             ) or []
         except RunError as exc:
             print(f"[cleanup] listing {step.entity} failed, skipping: {exc}", file=sys.stderr)
@@ -121,7 +125,7 @@ def _cleanup_org(spec: TaskSpec, env: dict[str, str], profile: str, crm_bin: str
             try:
                 _crm_json(
                     ["--profile", profile, "entity", "delete", step.entity, rec_id, "--yes"],
-                    env, crm_bin,
+                    env, crm_bin, cwd,
                 )
             except RunError as exc:
                 print(f"[cleanup] deleting {step.entity} {rec_id} failed: {exc}", file=sys.stderr)
@@ -149,11 +153,12 @@ def run_task(
         agent = _resolve_agent_cmd(agent_cmd)
         profile = target.seed_target(iso.crm_home, spec.target)
         transcript = _run_agent(spec.prompt, agent, iso)
+        work = str(iso.work)
         try:
-            data = _crm_json(["--profile", profile, *spec.query], iso.env, resolved_bin)
+            data = _crm_json(["--profile", profile, *spec.query], iso.env, resolved_bin, work)
             passed, reason = evaluate_expect(data, spec.expect)
         finally:
-            _cleanup_org(spec, iso.env, profile, resolved_bin)
+            _cleanup_org(spec, iso.env, profile, resolved_bin, work)
         return RunResult(
             task_id=spec.id, dry_run=False, isolation_checks=checks,
             passed=passed, reason=reason, transcript=transcript,
