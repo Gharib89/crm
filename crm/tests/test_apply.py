@@ -2054,6 +2054,23 @@ def test_apply_prune_deletes_schema_only_extra(backend):
     assert del_mock.called
 
 
+def test_apply_prune_deletes_plugin_step_extra(backend):
+    # Plug-in step (solution componenttype 92) prune: resolved via
+    # sdkmessageprocessingsteps and deleted with unregister_step (schema-only).
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(92, _STEP_ID)])
+        m.get(backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"),
+              json={"name": "Orphan Step"})
+        del_mock = m.delete(
+            backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, prune=True)
+    assert res["ok"] is True
+    assert res["pruned"] == [
+        {"kind": "plugin-step", "name": "Orphan Step", "deleted": True}]
+    assert del_mock.called
+
+
 def test_apply_prune_refuses_data_bearing_without_force(backend):
     # An entity is data-bearing: --prune alone reports it but never deletes it.
     spec = {"solution": {"unique_name": "ContosoCore"}}
