@@ -19,7 +19,7 @@ so it is the offline smoke path for the whole set.
 On-demand invocation:
 
     D365_E2E_PROFILE=agent-cloud D365_E2E_ALLOW_HOST=<host> \\
-        CRM_EVAL_AGENT_CMD='claude -p' \\
+        CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \\
         python -m evals.skill.set_runner            # full live run
     python -m evals.skill.set_runner --dry-run      # offline: parse + isolation only
 """

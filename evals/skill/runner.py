@@ -22,7 +22,7 @@ a **diagnostic** task — one whose spec declares no end-state predicate.
 On-demand invocation:
 
     D365_E2E_PROFILE=agent-cloud D365_E2E_ALLOW_HOST=<host> \\
-        CRM_EVAL_AGENT_CMD='claude -p' \\
+        CRM_EVAL_AGENT_CMD='claude -p --dangerously-skip-permissions' \\
         python -m evals.skill.runner evals/skill/tasks/records-create-verify.md
 """
 from __future__ import annotations
@@ -70,8 +70,10 @@ def _resolve_agent_cmd(agent_cmd: str | None) -> list[str]:
     if not raw:
         raise RunError(
             "no agent command configured: pass --agent-cmd or set CRM_EVAL_AGENT_CMD "
-            "(recommended: 'claude -p' for headless Claude Code). The agent reads the "
-            "task prompt on stdin."
+            "(recommended: 'claude -p --dangerously-skip-permissions' for headless Claude "
+            "Code — the flag lets the agent execute tools without an interactive approval; "
+            "it bypasses all approval, so run it only against a throwaway target). The agent "
+            "reads the task prompt on stdin."
         )
     return shlex.split(raw)
 
