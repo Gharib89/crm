@@ -48,9 +48,10 @@ def _specs():
 
 
 def test_set_has_target_count():
-    # AC1: ~12–15 task specs.
+    # AC1 allows ~12–15 specs; pin to the actual 15 so an accidental task removal
+    # fails CI instead of silently passing the lower end of the band.
     files = discover_tasks(TASKS_DIR)
-    assert 12 <= len(files) <= 15, f"expected 12–15 task specs, found {len(files)}"
+    assert len(files) == 15, f"expected 15 task specs, found {len(files)}"
 
 
 def test_eight_trials_formalized():

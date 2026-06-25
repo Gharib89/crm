@@ -8,10 +8,10 @@ domain: solutions
 target: onprem
 # This task is primarily DIAGNOSTIC: its real signal is the *quality* of the failure
 # diagnosis, scored qualitatively by the optional Claude `--analyze` pass (#572). The
-# programmatic predicate only guards the deterministic invariant — the failed import
-# left the org's solution inventory intact (the broken zip did not land a new
-# solution; `agtrial8` is untouched). No record cleanup (the local zip is removed
-# out of band).
+# programmatic predicate only asserts the source solution `agtrial8` is still present
+# — it does NOT prove the import was attempted, nor detect a side-effect solution, so
+# it can pass without the diagnosis work; that work is what #572 scores. No record
+# cleanup (the local zip is removed out of band).
 end_state:
   query:
     - query

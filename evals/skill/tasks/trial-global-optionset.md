@@ -5,9 +5,10 @@ domain: metadata
 # the logical name uses the org's default publisher prefix (`new_`).
 target: onprem
 # `metadata list-optionsets` returns the global option-set definitions as a list;
-# the predicate asserts the created set is present by its logical name. The final
-# option order/labels the agent must achieve are metadata the list verb does not
-# expand — existence proves the create path. NOTE: a global option set is not a
+# the predicate asserts the created set is present by its logical name (existence
+# only). The final option order/labels the prompt asks the agent to "prove" are
+# metadata the list verb does not expand, so that step is the agent's demonstrated
+# work, not machine-scored (#572's analyze pass). NOTE: a global option set is not a
 # deletable record, so the record-delete cleanup model leaves it; teardown needs
 # `metadata delete-optionset` (see the "Known cleanup limitation" note in README.md).
 end_state:

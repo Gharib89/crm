@@ -5,8 +5,9 @@ domain: customizations
 # names use the org's default publisher prefix (`new_`), present in every D365 org.
 target: onprem
 # webresourceset rows are deletable records, so cleanup is the record-delete model.
-# Predicate asserts the resource exists by name; the v1→v2 content swap the agent
-# must prove is byte content the list query does not expand.
+# Predicate scores existence by name only; the v1→v2 content swap the prompt asks
+# the agent to prove is byte content the list query can't expand, so that is the
+# agent's demonstrated step, assessed qualitatively (#572's analyze pass).
 end_state:
   query:
     - query

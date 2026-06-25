@@ -7,8 +7,10 @@ domain: automation
 # exists in the org (seeded in the trial environment).
 target: onprem
 # Predicate asserts the business rule ends in the Activated state (statecode 1) —
-# i.e. the deactivate→activate round-trip restored it. No cleanup: the trial leaves
-# org state as it found it.
+# the restored end state. It does NOT prove the deactivate→activate round-trip ran
+# (a rule already active would also pass); the round-trip + inventory are the agent's
+# demonstrated steps, assessed qualitatively by #572's analyze pass. No cleanup: the
+# trial leaves org state as it found it.
 end_state:
   query:
     - query

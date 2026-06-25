@@ -5,7 +5,9 @@ domain: customizations
 # On-prem v9.1; custom schema uses the org's default publisher prefix (`new_`).
 target: onprem
 # Predicate asserts the new view exists (a view requires the table + columns to
-# exist first, so it proves the workflow reached the end). NOTE: the record-delete
+# exist first, so it proves schema creation). The later export-to-zip and the
+# in-zip verification the prompt asks for are the agent's demonstrated steps, not
+# machine-scored (#572's analyze pass). NOTE: the record-delete
 # cleanup model cannot drop the custom *table definition* — that needs
 # `metadata delete-entity <logical-name>`, and the logical name is agent-chosen at run
 # time, so it can't be a static cleanup step. The definition residue is cleared out of
