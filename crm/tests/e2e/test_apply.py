@@ -190,3 +190,92 @@ def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entit
     live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
     assert meta_mod.label_text(live.get("DisplayName") or {}) == "Dry Test", (
         f"dry-run mutated the display name: {live.get('DisplayName')}")
+
+
+@pytest.mark.slow
+@covers("apply")
+def test_apply_webresource_create_noop_update(cli, backend, tmp_path, unique, request):
+    """apply creates a web resource from a file, no-ops an unchanged re-apply, and
+    updates its content when the file changes (convergent). Target-agnostic — web
+    resource CRUD + PublishAllXml work on both targets. Cleaned up in a finalizer.
+    """
+    name = f"new_e2e_apply_{unique}.js"
+    js = tmp_path / "app.js"
+    js.write_bytes(b"// e2e apply v1\n")
+    spec = {"webresources": [{"name": name, "file": str(js),
+                              "display_name": f"E2E apply WR {unique}"}]}
+    spec_path = tmp_path / "wr_spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+    def _cleanup():
+        try:
+            rows = backend.get_collection("webresourceset", params={
+                "$filter": f"name eq '{name}'", "$select": "webresourceid"})
+            if rows:
+                backend.delete(f"webresourceset({rows[0]['webresourceid']})")
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    # CREATE
+    created = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert created["ok"] is True, f"create apply failed: {created}"
+    assert any(e.get("kind") == "webresource" and e.get("name") == name
+               for e in created["data"]["applied"]), f"WR not applied: {created['data']}"
+
+    # NO-OP: identical content re-applies to a skip (convergent idempotence).
+    noop = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert noop["ok"] is True, f"no-op apply failed: {noop}"
+    assert any(e.get("name") == name for e in noop["data"]["skipped"]), (
+        f"unchanged WR not skipped: {noop['data']}")
+    assert noop["data"]["updated"] == [], f"expected no update: {noop['data']}"
+
+    # CONTENT DRIFT → update.
+    js.write_bytes(b"// e2e apply v2 CHANGED\n")
+    upd = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert upd["ok"] is True, f"update apply failed: {upd}"
+    assert any(e.get("kind") == "webresource" and e.get("name") == name
+               for e in upd["data"]["updated"]), f"WR not updated on drift: {upd['data']}"
+
+
+@pytest.mark.slow
+@covers("apply")
+def test_apply_security_role_create_and_reconcile(cli, backend, tmp_path, unique, request):
+    """apply creates a security role and applies the declared privileges, then an
+    unchanged re-apply is a convergent no-op. (The role also keeps Dataverse's
+    immovable baseline privileges, so this asserts the declared set is satisfied,
+    not strict equality.) Target-agnostic — role create + ReplacePrivilegesRole work
+    on both targets (on-prem is the issue's priority). Role deleted in a finalizer.
+    """
+    role_name = f"E2E Apply Role {unique}"
+    spec = {"security_roles": [{
+        "name": role_name,
+        "privileges": [{"privilege_names": ["prvReadAccount"], "depth": "global"}],
+    }]}
+    spec_path = tmp_path / "role_spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+    def _cleanup():
+        try:
+            rows = backend.get_collection("roles", params={
+                "$filter": f"name eq '{role_name}'", "$select": "roleid"})
+            for r in rows:
+                backend.delete(f"roles({r['roleid']})")
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    # CREATE role + set declared privileges.
+    created = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert created["ok"] is True, f"create apply failed: {created}"
+    assert any(e.get("kind") == "security-role" and e.get("name") == role_name
+               for e in created["data"]["applied"]), f"role not applied: {created['data']}"
+
+    # NO-OP: privileges already exactly the declared set → convergent skip.
+    noop = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert noop["ok"] is True, f"no-op apply failed: {noop}"
+    assert any(e.get("name") == role_name for e in noop["data"]["skipped"]), (
+        f"unchanged role not skipped: {noop['data']}")
+    assert noop["data"]["updated"] == [], f"expected no update: {noop['data']}"

@@ -9,6 +9,7 @@ returns a result the thin command maps onto the {ok, data, meta} envelope.
 # pyright: basic
 from __future__ import annotations
 
+import base64
 import json
 
 import pytest
@@ -1489,3 +1490,245 @@ def test_apply_dry_run_human_mode_renders_drift_buckets(dry_backend, monkeypatch
     # The `updated` drift bucket is rendered as a labelled line in human output.
     assert "updated" in result.output
     assert _writes(m) == []
+
+
+# ── Web resource kind (#551) ────────────────────────────────────────────────
+
+_WR_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+def _mock_webresource_absent(m, backend):
+    """No web resource by that name; POST create → 204 + id."""
+    m.get(backend.url_for("webresourceset"), json={"value": []})
+    m.post(backend.url_for("webresourceset"), status_code=204,
+           headers={"OData-EntityId": backend.url_for(f"webresourceset({_WR_ID})")})
+
+
+def _mock_webresource_live(m, backend, *, name="new_app.js", content=b"console.log(1)",
+                           display_name="app.js"):
+    """An EXISTING web resource. One GET (collection $filter) serves the existence
+    check and update's id-resolve, carrying the live base64 `content`; PATCH 204."""
+    row = {"webresourceid": _WR_ID, "name": name, "displayname": display_name,
+           "webresourcetype": 3, "content": base64.b64encode(content).decode("ascii")}
+    m.get(backend.url_for("webresourceset"), json={"value": [row]})
+    m.patch(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+
+
+def _wr_spec(tmp_path, *, name="new_app.js", body=b"console.log(1)", **extra):
+    """Build a web resource spec entry backed by a real file under tmp_path."""
+    p = tmp_path / "app.js"
+    p.write_bytes(body)
+    return {"name": name, "file": str(p), **extra}
+
+
+def test_apply_creates_webresource(backend, tmp_path):
+    spec = {"webresources": [_wr_spec(tmp_path)]}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_absent(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["webresource"]
+    assert res["applied"][0]["name"] == "new_app.js"
+    # Web resources are publishable → PublishAllXml runs once at the end.
+    assert len(_publish_hits(m, backend)) == 1
+    assert res["staged"] is False
+
+
+def test_apply_updates_webresource_content_on_drift(backend, tmp_path):
+    # Spec file content differs from the live `content` column → PATCH + republish.
+    spec = {"webresources": [_wr_spec(tmp_path, body=b"console.log(2)")]}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_live(m, backend, content=b"console.log(1)")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["webresource"]
+    patches = [r for r in m.request_history if r.method == "PATCH"]
+    assert len(patches) == 1 and "content" in json.loads(patches[0].body)
+    assert len(_publish_hits(m, backend)) == 1
+
+
+def test_apply_webresource_unchanged_is_skipped(backend, tmp_path):
+    spec = {"webresources": [_wr_spec(tmp_path, body=b"console.log(1)")]}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_live(m, backend, content=b"console.log(1)")  # identical
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["webresource"]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PATCH"] == []
+    assert _publish_hits(m, backend) == []  # nothing changed → no publish
+
+
+def test_apply_dry_run_reports_webresource_content_drift(dry_backend, tmp_path):
+    spec = {"webresources": [_wr_spec(tmp_path, body=b"console.log(2)")]}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_live(m, dry_backend, content=b"console.log(1)")
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["webresource"]
+    assert res["updated"][0]["diff"]["fields"] == ["content"]
+    assert _writes(m) == []  # PATCH suppressed under dry-run
+
+
+def test_apply_webresource_stage_only_defers_publish(backend, tmp_path):
+    spec = {"webresources": [_wr_spec(tmp_path)]}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_absent(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=True)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["webresource"]
+    assert res["staged"] is True
+    assert _publish_hits(m, backend) == []
+
+
+def test_apply_rejects_webresource_missing_file(backend):
+    spec = {"webresources": [{"name": "new_app.js"}]}
+    with pytest.raises(D365Error, match="missing required field 'file'"):
+        apply_mod.apply_spec(backend, spec)
+
+
+# ── Security role kind (#551) ────────────────────────────────────────────────
+
+_ROLE_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+_BU_GUID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+_PRV_READ = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+_PRV_WRITE = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+_REPLACE_ROLE = f"roles({_ROLE_ID})/Microsoft.Dynamics.CRM.ReplacePrivilegesRole"
+_RETRIEVE_ROLE = f"RetrieveRolePrivilegesRole(RoleId={_ROLE_ID})"  # unbound function
+
+
+def _named_priv_row(name, pid, *, basic=True, local=True, deep=True, glob=True):
+    """One `privileges` entity row (lower-case shape) for _named_privileges."""
+    return {"name": name, "privilegeid": pid, "canbebasic": basic,
+            "canbelocal": local, "canbedeep": deep, "canbeglobal": glob}
+
+
+def _mock_role_absent(m, backend, *, name="Contoso Sales"):
+    """No role by that name; create POST echoes the new role record."""
+    m.get(backend.url_for("roles"), json={"value": []})
+    m.post(backend.url_for("roles"), json={"roleid": _ROLE_ID, "name": name})
+
+
+def _mock_role_exists(m, backend):
+    """An EXISTING role (create_role if_exists='skip' returns it)."""
+    m.get(backend.url_for("roles"), json={"value": [{"roleid": _ROLE_ID}]})
+
+
+def _mock_named_privileges(m, backend, rows):
+    """_named_privileges → GET privileges $filter."""
+    m.get(backend.url_for("privileges"), json={"value": rows})
+
+
+def _mock_role_privileges_live(m, backend, privileges):
+    """RetrieveRolePrivilegesRole. `privileges`: list of (privilegeid, depth, name)."""
+    rps = [{"PrivilegeId": pid, "PrivilegeName": nm, "Depth": depth, "BusinessUnitId": _BU_GUID}
+           for pid, depth, nm in privileges]
+    m.get(backend.url_for(_RETRIEVE_ROLE), json={"RolePrivileges": rps})
+
+
+def _mock_role_replace(m, backend):
+    m.post(backend.url_for(_REPLACE_ROLE), status_code=204)
+
+
+def _role_spec(**extra):
+    return {"name": "Contoso Sales", "business_unit": _BU_GUID,
+            "privileges": [{"privilege_names": ["prvReadAccount"], "depth": "global"}],
+            **extra}
+
+
+def test_apply_creates_security_role_and_sets_privileges(backend):
+    spec = {"security_roles": [_role_spec()]}
+    with requests_mock.Mocker() as m:
+        _mock_role_absent(m, backend)
+        _mock_named_privileges(m, backend, [_named_priv_row("prvReadAccount", _PRV_READ)])
+        _mock_role_replace(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["security-role"]
+    # Declared privileges applied via ReplacePrivilegesRole.
+    assert any("ReplacePrivilegesRole" in r.url
+               for r in m.request_history if r.method == "POST")
+    # Roles are not publishable → no PublishAllXml (no mock → would fail if attempted).
+    assert _publish_hits(m, backend) == []
+    assert res["staged"] is False
+
+
+def test_apply_reconciles_role_privileges_to_declared_set(backend):
+    # Live role's declared privilege is missing (it carries only an unlisted one), so
+    # the reconcile fires and replaces to the declared set, dropping the removable
+    # unlisted privilege. (Subset-satisfaction: a removal-only change would be a
+    # no-op — see _reconcile_security_role.)
+    spec = {"security_roles": [_role_spec()]}
+    with requests_mock.Mocker() as m:
+        _mock_role_exists(m, backend)
+        _mock_role_privileges_live(m, backend, [(_PRV_WRITE, "Global", "prvWriteAccount")])
+        _mock_named_privileges(m, backend, [_named_priv_row("prvReadAccount", _PRV_READ)])
+        _mock_role_replace(m, backend)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["security-role"]
+    body = json.loads([r for r in m.request_history if r.method == "POST"][-1].body)
+    assert {p["PrivilegeId"]: p["Depth"] for p in body["Privileges"]} == {_PRV_READ: "Global"}
+    diff = res["updated"][0]["diff"]
+    assert "prvReadAccount" in diff["added"] and "prvWriteAccount" in diff["removed"]
+    assert _publish_hits(m, backend) == []
+
+
+def test_apply_role_privileges_unchanged_is_skipped(backend):
+    spec = {"security_roles": [_role_spec()]}
+    with requests_mock.Mocker() as m:
+        _mock_role_exists(m, backend)
+        _mock_role_privileges_live(m, backend, [(_PRV_READ, "Global", "prvReadAccount")])
+        _mock_named_privileges(m, backend, [_named_priv_row("prvReadAccount", _PRV_READ)])
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["security-role"]
+    assert res["updated"] == []
+    # No ReplacePrivilegesRole POST (no mock → would fail if attempted).
+    assert [r for r in m.request_history if r.method == "POST"] == []
+
+
+def test_apply_dry_run_reports_role_privilege_drift(dry_backend):
+    spec = {"security_roles": [_role_spec()]}
+    with requests_mock.Mocker() as m:
+        _mock_role_exists(m, dry_backend)
+        _mock_role_privileges_live(m, dry_backend, [(_PRV_WRITE, "Global", "prvWriteAccount")])
+        _mock_named_privileges(m, dry_backend, [_named_priv_row("prvReadAccount", _PRV_READ)])
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["security-role"]
+    assert _writes(m) == []  # ReplacePrivilegesRole suppressed under dry-run
+
+
+def test_apply_rejects_security_role_privilege_missing_depth(backend):
+    spec = {"security_roles": [{"name": "R",
+                                "privileges": [{"privilege_names": ["prvReadAccount"]}]}]}
+    with pytest.raises(D365Error, match="missing required field 'depth'"):
+        apply_mod.apply_spec(backend, spec)
+
+
+def test_apply_rejects_security_role_privilege_without_selector(backend):
+    spec = {"security_roles": [{"name": "R", "privileges": [{"depth": "global"}]}]}
+    with pytest.raises(D365Error, match="privilege_names"):
+        apply_mod.apply_spec(backend, spec)
+
+
+def test_apply_command_webresource_file_relative_to_spec(backend, monkeypatch, tmp_path):
+    # A web resource `file` is resolved relative to the spec file's directory, so a
+    # bare basename next to the spec is found (proves the command passes base_dir).
+    import yaml
+    (tmp_path / "app.js").write_bytes(b"console.log(1)")
+    spec = {"webresources": [{"name": "new_app.js", "file": "app.js"}]}
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(yaml.safe_dump(spec), encoding="utf-8")
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    with requests_mock.Mocker() as m:
+        _mock_webresource_absent(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec_file)])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert [e["kind"] for e in payload["data"]["applied"]] == ["webresource"]
