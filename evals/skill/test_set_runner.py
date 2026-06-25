@@ -107,6 +107,24 @@ def test_pass_rate_none_when_nothing_scored():
     assert pass_rate([TaskOutcome("a", SKIP, "onprem"), TaskOutcome("b", DRY, "cloud")]) is None
 
 
+def test_pass_rate_weights_by_trials():
+    # A repeated task contributes its passing fraction, not a hard 0/1, so variance
+    # is smoothed (#573 AC5): 2 of 3 trials passing counts as 2/3 of one task.
+    outcomes = [
+        TaskOutcome("a", PASS, "cloud", trials=3, passes=3),
+        TaskOutcome("b", FAIL, "cloud", trials=3, passes=2),  # flaky: 2/3 passed
+    ]
+    assert pass_rate(outcomes) == pytest.approx(5 / 6)  # (3 + 2) / (3 + 3)
+
+
+def test_task_outcome_passes_defaults_from_status():
+    # An outcome built without explicit trials/passes (the single-run shape used
+    # everywhere before #573) derives passes from its status, so pass_rate is
+    # unchanged for trials=1: a bare PASS counts 1/1, a bare FAIL 0/1.
+    assert pass_rate([TaskOutcome("a", PASS, "cloud")]) == pytest.approx(1.0)
+    assert pass_rate([TaskOutcome("a", FAIL, "cloud")]) == pytest.approx(0.0)
+
+
 def _stub(verdicts: dict[str, bool], *, raises: set[str] | None = None):
     """Build a run_one stub: maps task id → passed, or raises for ids in ``raises``."""
     raises = raises or set()
@@ -168,6 +186,36 @@ def test_live_run_skips_diagnostic_tasks():
     for s in diagnostic:
         assert by_id[s.id].status == SKIP
         assert "diagnostic" in by_id[s.id].reason
+
+
+def test_repeat_runs_each_scored_task_n_times_and_smooths():
+    # --repeat N runs each scored task N times. A task that passes some-but-not-all
+    # trials is recorded FAIL with a k/N reason, yet contributes k/N to the pass-rate
+    # rather than a hard 0 (variance smoothing, #573 AC5).
+    specs = _specs()
+    scored_ids = [s.id for s in specs if s.target in ("cloud", "either") and not s.is_diagnostic]
+    flaky = scored_ids[0]
+    calls: dict[str, int] = {}
+
+    def run_one(path, *, dry_run, agent_cmd, crm_bin):
+        spec = parse_task_file(path)
+        n = calls.get(spec.id, 0)
+        calls[spec.id] = n + 1
+        # the flaky task passes on calls 0 and 2, fails on call 1 → 2 of 3 trials.
+        passed = True if spec.id != flaky else n != 1
+        return RunResult(task_id=spec.id, dry_run=False, isolation_checks={}, passed=passed, reason="x")
+
+    result = run_set(TASKS_DIR, active_target="cloud", repeat=3, run_one=run_one)
+    by_id = {o.task_id: o for o in result.outcomes}
+
+    assert calls[flaky] == 3  # ran three times
+    fo = by_id[flaky]
+    assert fo.trials == 3 and fo.passes == 2
+    assert fo.status == FAIL  # not every trial passed
+    assert "2/3" in fo.reason
+    # a rock-solid scored task ran three times and stays PASS
+    solid = by_id[scored_ids[1]]
+    assert solid.trials == 3 and solid.passes == 3 and solid.status == PASS
 
 
 def test_harness_error_is_isolated_not_fatal():

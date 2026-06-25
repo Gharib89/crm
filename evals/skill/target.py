@@ -19,6 +19,9 @@ from pathlib import Path
 # importing across that boundary would couple the harness to the test tree. ADR 0015
 # calls for the guard to be "honored identically"; the duplication is ~10 lines.
 _E2E_PROFILE_ENV = "D365_E2E_PROFILE"
+#: Public alias of the profile-selection env var: the both-targets runner (#573) sets it
+#: per leg to point the set runner + seed step at each profile in turn.
+E2E_PROFILE_ENV = _E2E_PROFILE_ENV
 _ALLOW_HOST_ENV = "D365_E2E_ALLOW_HOST"
 _PROD_HOST_MARKERS = ("prod", "live")
 _PROD_HOST_RE = re.compile(r"\.crm\d*\.dynamics\.com")
@@ -82,6 +85,61 @@ def active_target() -> str:
     except D365Error as exc:
         raise TargetError(f"{_E2E_PROFILE_ENV}={name!r}: {exc}") from exc
     return _scheme_target(resolved.profile.auth_scheme)
+
+
+# Reachability probe: short timeout so a downed VPN skips fast instead of hanging.
+# Mirrors the e2e conftest's `_probe_or_skip`/`_is_unreachable` (a deliberate copy, not
+# an import — see the prod-host guard note above): both treat any HTTP response, incl
+# 401/403, as *reachable*, and only a status-less transport failure as unreachable.
+_PROBE_TIMEOUT = 8
+
+
+def _is_unreachable(exc: BaseException) -> bool:
+    """True iff a failed probe means the host never answered (DNS/TCP/TLS/timeout).
+
+    The backend wraps a connection-level failure as a status-less ``D365Error`` whose
+    message carries the transport-failure prefix. Any HTTP response sets a status, so
+    it is reachable (its auth/server error surfaces normally), not masked as down.
+    """
+    from crm.utils.d365_backend import _TRANSPORT_FAILURE_PREFIX
+
+    return getattr(exc, "status", None) is None and str(exc).startswith(_TRANSPORT_FAILURE_PREFIX)
+
+
+def probe_reachable(name: str | None = None) -> bool:
+    """One short-timeout GET to the named profile's service root: is the host up?
+
+    Resolves the profile (``name`` or ``D365_E2E_PROFILE``) read-only and fires a
+    single no-retry request. A connection-level failure (host unreachable — VPN down)
+    returns ``False`` so the caller can skip that target with a clear message (#573);
+    any HTTP response, including auth errors, returns ``True``. Raises
+    :class:`TargetError` when the profile cannot be resolved or the prod-host guard
+    trips (config / opt-in problems) — never for unreachability, which returns ``False``.
+    """
+    import dataclasses
+
+    from crm.core.connection import resolve_credentials
+    from crm.utils.d365_backend import D365Backend, D365Error
+
+    profile_name = name or resolve_profile_name()
+    try:
+        resolved = resolve_credentials(profile_name)
+    except D365Error as exc:
+        raise TargetError(f"{_E2E_PROFILE_ENV}={profile_name!r}: {exc}") from exc
+
+    # Honor the prod-host guard before touching the network, exactly as the e2e conftest
+    # guards before its probe: a stray probe must not hit a *.dynamics.com prod org (even
+    # read-only / for the OAuth token) unless D365_E2E_ALLOW_HOST opts that host in.
+    assert_not_production(resolved.profile.url)
+
+    # retry_max=0 → a single shot, so a downed host skips fast instead of paying the
+    # full retry/backoff budget; set via the public profile field, as the e2e conftest does.
+    probe = D365Backend(dataclasses.replace(resolved.profile, retry_max=0), resolved.password, dry_run=False)
+    try:
+        probe.get("", timeout=_PROBE_TIMEOUT)
+    except D365Error as exc:
+        return not _is_unreachable(exc)
+    return True
 
 
 def seed_target(crm_home: Path, required_target: str = "either") -> str:
