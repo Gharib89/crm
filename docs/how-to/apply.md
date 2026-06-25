@@ -21,8 +21,11 @@ the spec rather than blindly skipped. Three outcomes per component:
   → `replace_blocked`: reported, **no write for that component**, run ends
   `ok=false` (exit 1).
 
-Reconciliation runs on a **real apply only**. Under `--dry-run`, an existing
-component is still reported as `skipped` (would-update preview is a future slice).
+Reconciliation also runs under `--dry-run`, read-only: it reads the live org
+while the reads-execute rule suppresses every write, so a dry-run reports the
+full drift — `planned` (would create), `updated` (would update, each entry
+carrying a field-level `diff`), `replace_blocked`, and `pruned` — without issuing
+a write.
 
 See the [CLI reference](../reference/cli.md) for the flags.
 

@@ -27,12 +27,14 @@ the spec, not blindly skipped. Three outcomes per component:
   data-type change. A `replace_blocked` component does not abort siblings — the rest
   of the spec still reconciles.
 
-Reconciliation runs on a **real apply only**. Under `--dry-run`, existing
-components still report as `skipped` (would-update preview is a future slice).
+Reconciliation also runs under `--dry-run`, read-only (writes suppressed by the
+reads-execute rule), so a dry-run is a full drift report: every declared
+component is classified into `planned` (would create), `updated` (would update,
+with a field-level `diff`), `replace_blocked`, or `pruned` — no write issued.
 
 ```bash
 crm --json apply -f project.yaml              # converge, publish once
-crm --dry-run --json apply -f project.yaml    # plan: dependents reported "planned"
+crm --dry-run --json apply -f project.yaml    # drift report: planned/updated/replace_blocked/pruned
 crm --stage-only --json apply -f project.yaml # converge without publishing
 ```
 

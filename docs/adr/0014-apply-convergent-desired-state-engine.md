@@ -56,9 +56,13 @@ trade-off — exactly what an ADR is for.
 
 ## Scope and limitations (this slice)
 
-- Reconciliation runs on a **real apply only**. Under `--dry-run`, an existing
-  component is still reported as `skipped` (the pre-existing preview behavior) — a
-  dry-run that previews *would-update* / *would-block* is a follow-up.
+- Reconciliation also runs under `--dry-run`, read-only: the same reconcile reads
+  the live org while the reads-execute rule suppresses every write, so a dry-run
+  classifies each declared component into the four drift buckets — `planned`
+  (would create), `updated` (would update, with a field-level `diff`),
+  `replace_blocked`, and `pruned` — without issuing a write (the *would-update* /
+  *would-block* drift report, landed in #550; superseding this slice's original
+  "real apply only" limitation).
 - In-place updates cover what the platform allows on the existing kinds: entity
   display name / display-collection name / description; attribute display name,
   description, required level, and string **max-length growth** (shrinking is

@@ -453,8 +453,10 @@ matches (`skipped`), updated in place when an allowed field drifts (`updated`),
 or refused with no write when the divergence would require a destructive
 drop-and-recreate (`replace_blocked`, `ok=false`, exit 1). The full envelope is
 `{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, failed}, meta:{staged}}`.
-`--dry-run` previews what would be created (existing components still report as
-`skipped` in dry-run; would-update preview is a future slice). See
+`--dry-run` reads the live org and reports the full drift without writing —
+`planned` (would create), `updated` (would update), `replace_blocked`, and
+`pruned` — so you can preview exactly what an apply would converge; in `--json`
+mode the envelope's `meta` also carries `dry_run: true`. See
 [how-to/apply](docs/how-to/apply.md).
 
 `crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` is the quick
