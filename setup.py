@@ -10,7 +10,9 @@ setup(
     license="PolyForm-Noncommercial-1.0.0",
     license_files=["LICENSE"],
     python_requires=">=3.9",
-    packages=find_packages(),
+    # `evals/` is the behavioral skill-eval harness (ADR 0015) — maintainer tooling
+    # run on demand, never shipped to users who install only the wheel.
+    packages=find_packages(exclude=["evals", "evals.*"]),
     package_data={
         "crm": ["skills/*.md", "skills/reference/*.md", "README.md"],
     },
