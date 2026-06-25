@@ -2,6 +2,8 @@
 id: connectionrole-create
 domain: connectionrole
 target: cloud
+# The predicate asserts the role is enabled (statecode 0 = Active), so the prompt's
+# "confirm it exists and is enabled" maps to the scored end state, not just existence.
 end_state:
   query:
     - query
@@ -10,11 +12,12 @@ end_state:
     - --filter
     - "name eq 'EvalSet571 ConnRole'"
     - --select
-    - name
+    - name,statecode
   expect:
     count: 1
     row:
       name: EvalSet571 ConnRole
+      statecode: "0"
 cleanup:
   - entity: connectionroles
     id_field: connectionroleid

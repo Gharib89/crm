@@ -2,8 +2,11 @@
 id: security-role-create
 domain: security
 target: cloud
-# Predicate: the role exists by name. Deleting the role (cleanup) also drops the
-# role assignment, so no separate assignment teardown is needed.
+# The predicate scores role *existence* by name — the deterministic floor. The
+# prompt's assign-to-user step is the agent's to demonstrate but is not separately
+# scored: the assignment is an M:N keyed by the run-time user id, which a static
+# predicate query can't express. (Deleting the role in cleanup cascades any
+# assignment, so teardown needs no separate step.)
 end_state:
   query:
     - query
