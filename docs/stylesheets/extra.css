@@ -49,6 +49,12 @@
   --md-accent-fg-color: var(--crm-purple-light);
 }
 
+/* Secondary (outline) buttons take a light foreground in dark mode — the
+ * primary fg is a very dark indigo that would be unreadable on slate. */
+[data-md-color-scheme="slate"] .md-button:not(.md-button--primary) {
+  color: #ffffff;
+}
+
 /* ---- Home page hero ---------------------------------------------------- */
 .crm-hero {
   text-align: center;
