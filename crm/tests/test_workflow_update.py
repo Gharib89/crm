@@ -172,6 +172,196 @@ class TestUpdateWorkflow:
         assert ei.value.response_body == react_err
 
 
+# A minimal well-formed mxswa activity. The namespace URI contains the
+# fully-qualified Activities namespace (so validate_workflow_xaml treats it as an
+# mxswa activity) and references attribute "badattr", which the mocked attribute
+# set below deliberately omits -> an "attribute not found" reference warning.
+_XAML_BAD_ATTR = (
+    '<mxswa:SetEntityProperty Attribute="badattr" '
+    'xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
+    'assembly=Microsoft.Xrm.Sdk.Workflow" />'
+)
+_XAML_NEW = '<Activity x:Class="New" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />'
+_XAML_PRIOR = '<Activity x:Class="Prior" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />'
+
+
+def _oauth_backend() -> D365Backend:
+    """A Dataverse (OAuth) backend — used to assert the XAML cloud gate refuses
+    before any HTTP. No real auth happens: the gate fires on auth_scheme alone."""
+    profile = ConnectionProfile(
+        name="cloudp", url="https://contoso.crm.dynamics.com",
+        domain="", username="", api_version="v9.2", auth_scheme="oauth",
+        tenant_id="11111111-2222-3333-4444-555555555555",
+        client_id="66666666-7777-8888-9999-000000000000",
+    )
+    return D365Backend(profile, password="secret", dry_run=False)
+
+
+def _attrs_url(backend, entity: str) -> str:
+    return backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/Attributes")
+
+
+class TestUpdateWorkflowXaml:
+    """The on-prem-only whole-XAML logic path of update_workflow (#540)."""
+
+    def test_oauth_profile_refuses_before_any_write(self):
+        """Dataverse (OAuth) refuses up front with the provenance-wall reason and
+        makes no HTTP call at all — neither read nor write."""
+        from crm.core import workflow
+        backend = _oauth_backend()
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error) as ei:
+                workflow.update_workflow(backend, _WF_ID, xaml=_XAML_NEW)
+        assert m.call_count == 0, "cloud gate must fire before any request"
+        assert ei.value.code == workflow.XAML_PROVENANCE_CODE
+        assert "on-prem" in str(ei.value).lower()
+
+    def test_validation_warning_surfaces_non_strict(self, backend):
+        """Reference validation runs against the live attribute set; a bad
+        attribute surfaces as a warning but does NOT block the write."""
+        from crm.core import workflow
+        url = backend.url_for(f"workflows({_WF_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"name": "WF", "statecode": 0, "primaryentity": "account",
+                             "xaml": _XAML_PRIOR})
+            m.get(_attrs_url(backend, "account"),
+                  json={"value": [{"LogicalName": "name"}, {"LogicalName": "statecode"}]})
+            m.patch(url, status_code=204)
+            out = workflow.update_workflow(backend, _WF_ID, xaml=_XAML_BAD_ATTR)
+        assert any("attribute not found" in w for w in out["warnings"]), out["warnings"]
+        assert len(_patches(m)) == 1, "non-strict: the write still happens"
+        assert _patches(m)[0].json() == {"xaml": _XAML_BAD_ATTR}
+        assert out["updated"] == {"xaml": True}
+        assert out["reactivated"] is False  # draft stays draft
+
+    def test_strict_promotes_warning_to_failure_before_write(self, backend):
+        """--strict turns any reference-validation warning into a failure raised
+        before the PATCH — nothing is written."""
+        from crm.core import workflow
+        url = backend.url_for(f"workflows({_WF_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"name": "WF", "statecode": 0, "primaryentity": "account",
+                             "xaml": _XAML_PRIOR})
+            m.get(_attrs_url(backend, "account"),
+                  json={"value": [{"LogicalName": "name"}]})
+            m.patch(url, status_code=204)
+            with pytest.raises(D365Error) as ei:
+                workflow.update_workflow(backend, _WF_ID, xaml=_XAML_BAD_ATTR, strict=True)
+        assert "strict" in str(ei.value).lower()
+        assert not _patches(m), "strict failure must precede any write"
+
+    def test_rollback_restores_prior_xaml_on_reactivate_failure(self, backend):
+        """Active workflow: new XAML rejected on reactivation -> prior XAML is
+        restored and the workflow reactivated; both errors reported."""
+        from crm.core import workflow
+        url = backend.url_for(f"workflows({_WF_ID})")
+        react_err = {"error": {"code": "0x80048888", "message": "compile boom"}}
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"name": "Live", "statecode": 1, "primaryentity": "account",
+                             "xaml": _XAML_PRIOR})
+            m.get(_attrs_url(backend, "account"), json={"value": [{"LogicalName": "name"}]})
+            m.patch(url, [
+                {"status_code": 204},                      # deactivate
+                {"status_code": 204},                      # PATCH new xaml
+                {"status_code": 400, "json": react_err},   # reactivate FAILS
+                {"status_code": 204},                      # rollback: PATCH prior xaml
+                {"status_code": 204},                      # reactivate prior OK
+            ])
+            with pytest.raises(D365Error) as ei:
+                workflow.update_workflow(backend, _WF_ID, xaml=_XAML_NEW)
+        bodies = [p.json() for p in _patches(m)]
+        assert bodies == [
+            {"statecode": 0, "statuscode": 1},   # deactivate
+            {"xaml": _XAML_NEW},                 # new xaml
+            {"statecode": 1, "statuscode": 2},   # reactivate (failed)
+            {"xaml": _XAML_PRIOR},               # rollback to prior
+            {"statecode": 1, "statuscode": 2},   # reactivate prior
+        ]
+        assert "rolled back" in str(ei.value).lower()
+        assert ei.value.code == "0x80048888"
+        assert ei.value.response_body == react_err
+
+    def test_no_rollback_leaves_rejected_xaml(self, backend):
+        """--no-rollback: a failed reactivation leaves the new (rejected) XAML in
+        place; no restore PATCH is issued."""
+        from crm.core import workflow
+        url = backend.url_for(f"workflows({_WF_ID})")
+        react_err = {"error": {"code": "0x80048888", "message": "compile boom"}}
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"name": "Live", "statecode": 1, "primaryentity": "account",
+                             "xaml": _XAML_PRIOR})
+            m.get(_attrs_url(backend, "account"), json={"value": [{"LogicalName": "name"}]})
+            m.patch(url, [
+                {"status_code": 204},                      # deactivate
+                {"status_code": 204},                      # PATCH new xaml
+                {"status_code": 400, "json": react_err},   # reactivate FAILS
+            ])
+            with pytest.raises(D365Error) as ei:
+                workflow.update_workflow(backend, _WF_ID, xaml=_XAML_NEW, rollback=False)
+        bodies = [p.json() for p in _patches(m)]
+        assert bodies == [
+            {"statecode": 0, "statuscode": 1},
+            {"xaml": _XAML_NEW},
+            {"statecode": 1, "statuscode": 2},
+        ], "no rollback PATCH expected"
+        assert "no-rollback" in str(ei.value).lower()
+        assert ei.value.code == "0x80048888"
+
+    def test_type2_activation_id_resolves_to_parent(self, backend):
+        """A type=2 activation GUID resolves to its type=1 parent before edit."""
+        from crm.core import workflow
+        child_url = backend.url_for(f"workflows({_CHILD_ID})")
+        parent_url = backend.url_for(f"workflows({_PARENT_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(child_url, json={"_parentworkflowid_value": _PARENT_ID})
+            m.get(parent_url, json={"name": "Parent", "statecode": 0,
+                                    "primaryentity": "account", "xaml": _XAML_PRIOR})
+            m.get(_attrs_url(backend, "account"), json={"value": [{"LogicalName": "name"}]})
+            m.patch(parent_url, status_code=204)
+            out = workflow.update_workflow(backend, _CHILD_ID, xaml=_XAML_NEW)
+        assert _patches(m) and _PARENT_ID in _patches(m)[0].url
+        assert out["workflow_id"] == _PARENT_ID
+        assert out["resolved_from_activation_id"] == _CHILD_ID
+
+    def test_provenance_fault_maps_to_clean_error(self, backend):
+        """An on-prem 0x80045040 fault on the PATCH surfaces as a clean D365Error
+        preserving status/code/response_body (not a leaked raw fault)."""
+        from crm.core import workflow
+        url = backend.url_for(f"workflows({_WF_ID})")
+        fault = {"error": {"code": "0x80045040", "message": "raw provenance fault"}}
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"name": "WF", "statecode": 0, "primaryentity": "account",
+                             "xaml": _XAML_PRIOR})
+            m.get(_attrs_url(backend, "account"), json={"value": [{"LogicalName": "name"}]})
+            m.patch(url, status_code=400, json=fault)
+            with pytest.raises(D365Error) as ei:
+                workflow.update_workflow(backend, _WF_ID, xaml=_XAML_NEW)
+        assert ei.value.code == "0x80045040"
+        assert ei.value.status == 400
+        assert ei.value.response_body == fault
+        assert "provenance" in str(ei.value).lower()
+
+    def test_dry_run_writes_nothing_but_runs_live_validation(self):
+        """Dry-run runs the live existence GET and the live attribute lookup, but
+        issues no PATCH; emits would_update / would_activate."""
+        from crm.core import workflow
+        backend = _dry_backend()
+        url = backend.url_for(f"workflows({_WF_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"name": "Live", "statecode": 1, "primaryentity": "account",
+                             "xaml": _XAML_PRIOR})
+            m.get(_attrs_url(backend, "account"),
+                  json={"value": [{"LogicalName": "name"}]})
+            out = workflow.update_workflow(backend, _WF_ID, xaml=_XAML_BAD_ATTR)
+        assert not _patches(m), "dry-run must not PATCH"
+        assert any("EntityDefinitions" in r.url for r in m.request_history), \
+            "the live attribute lookup must run under dry-run"
+        assert out["_dry_run"] is True
+        assert out["would_update"] == {"xaml": True}
+        assert out["would_activate"] is True  # workflow was active
+        assert any("attribute not found" in w for w in out["warnings"])
+
+
 class TestUpdateCommand:
     def _seed_profile(self, monkeypatch, tmp_path):
         from crm.core import session as session_mod
@@ -239,3 +429,36 @@ class TestUpdateCommand:
             "--profile", "t", "workflow", "update", _WF_ID, "--scope", "99"])
         assert result.exit_code == 2, result.output
         assert "scope must be 1" in result.output.lower() or "out of range" in result.output.lower()
+
+    def test_command_xaml_file_forwards_blob_and_flags(self, monkeypatch, tmp_path):
+        """--xaml-file reads the file and forwards its content plus --strict /
+        --no-rollback to update_workflow."""
+        from crm.commands import workflow as wf_cmd
+        from crm.cli import cli
+        self._seed_profile(monkeypatch, tmp_path)
+        xaml_path = tmp_path / "wf.xaml"
+        xaml_path.write_text("<Activity />", encoding="utf-8")
+        called = {}
+        monkeypatch.setattr(wf_cmd.workflow_mod, "update_workflow",
+                            lambda backend, workflow_id, **kw: called.update(kw)
+                            or {"workflow_id": workflow_id, "updated": {"xaml": True}})
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "workflow", "update", _WF_ID,
+            "--xaml-file", str(xaml_path), "--strict", "--no-rollback"])
+        assert result.exit_code == 0, result.output
+        assert called["xaml"] == "<Activity />"
+        assert called["strict"] is True
+        assert called["rollback"] is False
+        assert called["name"] is None  # metadata fields left alone
+
+    def test_command_xaml_file_excludes_metadata_flags(self, monkeypatch, tmp_path):
+        """--xaml-file combined with a metadata flag is a usage error (exit 2)."""
+        from crm.cli import cli
+        self._seed_profile(monkeypatch, tmp_path)
+        xaml_path = tmp_path / "wf.xaml"
+        xaml_path.write_text("<Activity />", encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "--profile", "t", "workflow", "update", _WF_ID,
+            "--xaml-file", str(xaml_path), "--name", "Nope"])
+        assert result.exit_code == 2, result.output
+        assert "cannot be combined" in result.output.lower()
