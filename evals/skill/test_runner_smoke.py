@@ -33,9 +33,13 @@ def test_task_file_parses(task_file: Path):
     spec = parse_task_file(task_file)
     assert spec.id
     assert spec.prompt.strip()
-    # A predicate task asserts an end state; a diagnostic task (#572) has no
-    # `expect` and is scored by the analysis pass instead.
-    assert spec.expect or spec.is_diagnostic
+    # Validate shape per task kind so a malformed task fails here, not at run time:
+    # a predicate task asserts an `expect` over a fetched payload (non-empty query);
+    # a diagnostic task (#572) has no `expect` and is scored by the analysis pass.
+    if spec.is_diagnostic:
+        assert spec.expect == {}
+    else:
+        assert spec.expect and spec.query
     # cleanup steps are well-formed
     for step in spec.cleanup:
         assert step.entity and step.id_field and step.filter

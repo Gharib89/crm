@@ -105,9 +105,11 @@ def parse_task_file(path: str | Path) -> TaskSpec:
 
     # ``end_state`` is optional: a diagnostic task (#572) omits the programmatic
     # predicate and is scored by the ``--analyze`` pass instead. When present, a
-    # ``query`` is required (it fetches the org state — used for scoring and/or fed
-    # to the analyzer); ``expect`` is optional, and its absence marks the task
-    # diagnostic (org state still flows to the analyzer, just nothing is asserted).
+    # non-empty ``query`` is required (it fetches the org state — used for scoring
+    # and/or fed to the analyzer); ``expect`` is optional, and its absence marks the
+    # task diagnostic (org state still flows to the analyzer, just nothing asserted).
+    # A diagnostic task that needs no org-state query omits ``end_state`` entirely —
+    # an empty query is rejected so it can't silently degrade scoring to NoneType.
     query: list[str] = []
     expect: dict[str, Any] = {}
     end_state = meta.get("end_state")
@@ -115,8 +117,11 @@ def parse_task_file(path: str | Path) -> TaskSpec:
         if not isinstance(end_state, dict):
             raise ValueError(f"{path}: end_state must be a mapping")
         query = end_state.get("query")
-        if not isinstance(query, list) or not all(isinstance(a, str) for a in query):
-            raise ValueError(f"{path}: end_state.query must be a list of strings")
+        if not isinstance(query, list) or not query or not all(isinstance(a, str) for a in query):
+            raise ValueError(
+                f"{path}: end_state.query must be a non-empty list of strings "
+                f"(omit end_state entirely for a diagnostic task that needs no org-state query)"
+            )
         expect = end_state.get("expect") or {}
         if not isinstance(expect, dict):
             raise ValueError(f"{path}: end_state.expect must be a mapping")
