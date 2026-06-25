@@ -497,7 +497,7 @@ def _read_file_bytes(base_dir: str | None, file: str) -> bytes:
         with open(path, "rb") as fh:
             return fh.read()
     except OSError as exc:
-        raise D365Error(f"cannot read web resource file {path!r}: {exc}") from exc
+        raise D365Error(f"cannot read file {path!r}: {exc}") from exc
 
 
 def _reconcile_webresource(
@@ -708,7 +708,7 @@ def _apply_plugin(
     asm_path = os.path.join(base_dir or "", plugin["file"])
     asm_entry: Entry = {"kind": "plugin-assembly", "name": name}
 
-    live_asm = plugin_mod.find_assembly(backend, name)
+    live_asm = _call(asm_entry, lambda: plugin_mod.find_assembly(backend, name), failed)
     assembly_planned = False
     assembly_created = False
     if live_asm is None:
@@ -739,9 +739,10 @@ def _apply_plugin(
             continue
         if not assembly_created:
             if live_typenames is None:
-                live_typenames = {
-                    str(r.get("typename")) for r in
-                    plugin_mod.list_types(backend, assembly=name).get("value", [])}
+                listing = _call(
+                    t_entry, lambda: plugin_mod.list_types(backend, assembly=name), failed)
+                live_typenames = {str(r.get("typename"))
+                                  for r in listing.get("value", [])}
             if typ["type_name"] in live_typenames:
                 skipped.append(t_entry)
                 continue
@@ -758,7 +759,8 @@ def _apply_plugin(
             for img in _as_list(step.get("images")):
                 planned.append({"kind": "plugin-image", "name": img["alias"]})
             continue
-        live_step = plugin_mod.find_step(backend, step["name"])
+        live_step = _call(
+            s_entry, lambda step=step: plugin_mod.find_step(backend, step["name"]), failed)
         step_id: str | None = None
         step_blocked = False
         if live_step is None:
@@ -789,7 +791,10 @@ def _apply_plugin(
             if step_id is None:
                 planned.append(img_entry)  # dry-run: step would be created → image too
                 continue
-            if plugin_mod.find_step_image(backend, step_id, img["alias"]) is not None:
+            existing_img = _call(
+                img_entry, lambda img=img, step_id=step_id:
+                plugin_mod.find_step_image(backend, step_id, img["alias"]), failed)
+            if existing_img is not None:
                 skipped.append(img_entry)
                 continue
             result = _call(img_entry, lambda img=img, step_id=step_id:

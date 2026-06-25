@@ -102,7 +102,7 @@ plugins:
     steps:
       - name: Contoso Account Handler   # required; unique, stable convergent key
         message: Create                 # required; SDK message (e.g. Create, Update)
-        plugin_type: Contoso.Plugins.AccountHandler   # required; must be declared under types
+        plugin_type: Contoso.Plugins.AccountHandler   # required; a registered type (declare it under types to register it)
         entity: account                 # optional; entity scope (omit = message-level)
         stage: postoperation            # optional (prevalidation|preoperation|postoperation), default postoperation
         mode: sync                      # optional (sync|async), default sync
