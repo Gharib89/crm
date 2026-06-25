@@ -16,7 +16,7 @@ from __future__ import annotations
 import base64
 import os
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
@@ -241,7 +241,10 @@ def _present(result: dict[str, Any]) -> bool:
     return bool(result.get("skipped") or result.get("would_skip"))
 
 
-def _call(entry: Entry, fn: Callable[[], dict[str, Any]], failed: list[Entry]) -> dict[str, Any]:
+_T = TypeVar("_T")
+
+
+def _call(entry: Entry, fn: Callable[[], _T], failed: list[Entry]) -> _T:
     """Run a core call; on D365Error record a failed entry and signal abort."""
     try:
         return fn()
@@ -855,8 +858,9 @@ def apply_spec(
                            _reconcile_security_role(backend, role_spec, role_id, entry),
                            failed, routes)
             else:
-                # Freshly created: set the declared set (replace drops the auto-granted
-                # baseline privileges so the role ends as exactly the declared matrix).
+                # Freshly created: apply the declared set. ReplacePrivilegesRole drops
+                # the removable default privileges and applies the declared ones; the
+                # platform's immovable baseline (see _reconcile_security_role) stays.
                 desired = _call(entry, lambda role_spec=role_spec:
                                 _desired_role_privileges(backend, role_spec)[0], failed)
                 _call(entry, lambda role_id=role_id, desired=desired:

@@ -1,10 +1,11 @@
 # How-to: apply
 
 `crm apply -f spec.yaml` stands up a whole custom table — publisher, solution,
-entity, columns, option sets, relationships, and views — from a single
-declarative spec. It orchestrates the existing metadata commands in dependency
-order (publisher → solution → entities → option sets → attributes →
-relationships → views) and runs `PublishAllXml` **once** at the end.
+entity, columns, option sets, relationships, views, web resources, and security
+roles — from a single declarative spec. It orchestrates the existing metadata
+commands in dependency order (publisher → solution → entities → option sets →
+attributes → relationships → views → web resources → security roles) and runs
+`PublishAllXml` **once** at the end.
 
 `apply` is **convergent**: a component that already exists is reconciled against
 the spec rather than blindly skipped. Three outcomes per component:
@@ -68,6 +69,23 @@ entities:
         lookup_display: Project
     views:
       - {name: Active Projects, columns: [contoso_name, contoso_code]}
+webresources:
+  - name: contoso_/scripts/project.js   # required, unique name (must include publisher prefix)
+    file: scripts/project.js            # required, path relative to the spec file
+    display_name: Project Script        # optional
+    # webresourcetype omitted — inferred from .js extension
+security_roles:
+  - name: Contoso Project Manager       # required, role display name (key)
+    # business_unit omitted — defaults to the caller's business unit
+    privileges:
+      - access: [read, write, create]
+        entities: [contoso_project, contoso_task]
+        depth: deep
+      - access: [read]
+        all_entities: true
+        depth: basic
+      - privilege_names: [prvReadSystemForm]
+        depth: global
 ```
 
 `attributes[].kind` is any kind `metadata add-attribute` accepts (`string`,
@@ -79,6 +97,40 @@ inline `options`; a `lookup` needs `target_entity`. `max_length` is optional for
 View `columns` are entity
 **logical** names; use `name:width` (or `{name, width}`) to set a column width
 (default 100). Malformed input is rejected up front, before any HTTP call.
+
+`webresources[].webresourcetype` is an integer (1=HTML, 2=CSS, 3=JS, 4=XML,
+5=PNG, 6=JPG, 7=GIF, 8=XAP, 9=XSL, 10=ICO, 11=SVG, 12=RESX). When omitted, the
+type is inferred from the file extension. `file` is resolved relative to the spec
+file's directory. Web resources are published by the end-of-run `PublishAllXml`
+(deferred by `--stage-only`). Convergent: unchanged content → `skipped`; content
+or display name drift → `updated`.
+
+`security_roles[].privileges` is a list of grant rows that are merged into the
+declared set (highest depth wins per privilege). Each row specifies `depth`
+(`basic`/`local`/`deep`/`global`) and either:
+
+- `access` (list of actions: `read`, `write`, `create`, `delete`, `append`,
+  `appendto`, `assign`, `share`) with `entities` (list of logical names) **or**
+  `all_entities: true`, or
+- `privilege_names` (list of privilege names like `prvReadAccount`).
+
+Convergent: skipped when every declared privilege is already present at its
+declared depth; on drift, replaced to the declared set (extras dropped).
+
+## Security role privileges: platform baseline and removal-only no-op
+
+Dataverse automatically grants every role a set of **immovable baseline
+privileges** (e.g. SharePoint document management, prvReadSharePointData). These
+cannot be removed via `ReplacePrivilegesRole`. "Exactly the declared set" means
+the declared privileges at their declared depths **plus** those immovable platform
+privileges — apply will not report a `replace_blocked` for them.
+
+A privilege **dropped** from the spec is only removed if some other declared
+privilege also drifts in the same run (triggering a fresh replace). A
+**removal-only change** — where all remaining declared privileges are already
+satisfied — is a convergent no-op. To force a remove-only reconciliation, make a
+no-op edit to another privilege in the role (e.g. increment and reset a depth),
+or use `crm security set-role-privileges` directly.
 
 ## Stand up a table in one shot
 

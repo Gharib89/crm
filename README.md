@@ -446,12 +446,13 @@ one call. Write verbs new in 0.5.0:
 - `metadata changes [--since <stamp>] [--entity <logical> ...] [--attributes]` — retrieve new/changed metadata since a version stamp (`RetrieveMetadataChanges`); save the returned `server_version_stamp` and pass it as `--since` next run to get only the delta. Omit `--since` for a baseline snapshot. Omit `--entity` to query every table (expensive on a baseline — scope with `--entity` when possible)
 
 `crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
-columns, option sets, relationships, views) from one declarative spec, in
-dependency order, publishing once at the end. It is **convergent**: a component
-that already exists is reconciled against the spec — left untouched when it
-matches (`skipped`), updated in place when an allowed field drifts (`updated`),
-or refused with no write when the divergence would require a destructive
-drop-and-recreate (`replace_blocked`, `ok=false`, exit 1). The full envelope is
+columns, option sets, relationships, views, web resources, security roles) from
+one declarative spec, in dependency order, publishing once at the end. It is
+**convergent**: a component that already exists is reconciled against the spec —
+left untouched when it matches (`skipped`), updated in place when an allowed
+field drifts (`updated`), or refused with no write when the divergence would
+require a destructive drop-and-recreate (`replace_blocked`, `ok=false`, exit 1).
+The full envelope is
 `{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, failed}, meta:{staged}}`.
 `--dry-run` reads the live org and reports the full drift without writing —
 `planned` (would create), `updated` (would update), `replace_blocked`, and
@@ -462,8 +463,8 @@ mode the envelope's `meta` also carries `dry_run: true`. See
 `crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` is the quick
 one-liner path: builds an entity + N columns in memory and runs them through the
 same apply engine in one publish. Use it for simple tables; use `apply` when you
-need publishers, solutions, option sets, relationships, or views. See
-[how-to/scaffold](docs/how-to/scaffold.md).
+need publishers, solutions, option sets, relationships, views, web resources, or
+security roles. See [how-to/scaffold](docs/how-to/scaffold.md).
 
 Use `crm <group> --help` for command-level details.
 

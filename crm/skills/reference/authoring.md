@@ -1,18 +1,20 @@
 # Schema authoring — apply, scaffold, views, stage-then-publish
 
-Stand up tables, columns, option sets, and views — declaratively or imperatively.
-Commands: top-level `apply`, `scaffold table`, `view create`, the `metadata create-*`
-and `update-*` verbs, and the publish flow. Flags/choices: `crm describe apply`,
-`crm <group> --help`. **To change existing schema:** re-apply the spec (`apply`
-reconciles matching components — equal → skip, updatable drift → update in place,
-destructive divergence → refuse) or use the imperative `metadata update-attribute` /
-`update-entity` / `update-optionset` / `update-relationship` verbs.
+Stand up tables, columns, option sets, views, web resources, and security roles —
+declaratively or imperatively. Commands: top-level `apply`, `scaffold table`,
+`view create`, the `metadata create-*` and `update-*` verbs, and the publish flow.
+Flags/choices: `crm describe apply`, `crm <group> --help`. **To change existing schema:**
+re-apply the spec (`apply` reconciles matching components — equal → skip, updatable drift
+→ update in place, destructive divergence → refuse) or use the imperative
+`metadata update-attribute` / `update-entity` / `update-optionset` /
+`update-relationship` verbs.
 
 ## Declarative apply — `apply -f spec.yaml`
 
 Stand up a whole table from one YAML/JSON spec instead of many imperative commands.
 `apply` runs the metadata cores in dependency order (publisher → solution → entities →
-option sets → attributes → relationships → views) and **publishes once at the end**.
+option sets → attributes → relationships → views → web resources → security roles)
+and **publishes once at the end**.
 
 `apply` is **convergent** — a component that already exists is reconciled against
 the spec, not blindly skipped. Three outcomes per component:
@@ -62,11 +64,28 @@ entities:
       - {kind: lookup,   schema_name: contoso_Owner,    display_name: Owner, target_entity: systemuser}
     views:
       - {name: Active Projects, columns: [contoso_name, contoso_code]}
+webresources:
+  - name: contoso_/scripts/project.js   # unique name; webresourcetype inferred from .js
+    file: scripts/project.js            # path relative to the spec file
+    display_name: Project Script        # optional
+security_roles:
+  - name: Contoso Project Manager
+    privileges:
+      - {access: [read, write, create], entities: [contoso_project], depth: deep}
+      - {privilege_names: [prvReadSystemForm], depth: global}
 ```
 
 In a spec attribute block, `string` and `memo` `max_length` is optional — omit it and
 the create defaults to 100 / 2000 (matching the `scaffold` / column-shorthand path). An
 explicit `max_length` is honored verbatim; `max_length` on any other kind is rejected.
+
+**Security role convergence gotcha — baseline privileges and removal-only no-op.**
+Dataverse auto-grants every role immovable baseline privileges (e.g. SharePoint
+document management) that `ReplacePrivilegesRole` cannot remove — apply treats them
+as invisible and will not block on them. A privilege *dropped* from the spec is only
+removed if another declared privilege also drifts in the same run (triggering a fresh
+replace). A removal-only change where all remaining declared privileges are already
+satisfied is a convergent no-op; use `crm security set-role-privileges` to force it.
 
 ## Scaffold a table — `scaffold table`
 
