@@ -47,7 +47,7 @@ def _specs():
     return [parse_task_file(p) for p in discover_tasks(TASKS_DIR)]
 
 
-def test_set_has_target_count():
+def test_set_task_spec_count():
     # AC1 allows ~12–15 specs; pin to the actual 15 so an accidental task removal
     # fails CI instead of silently passing the lower end of the band.
     files = discover_tasks(TASKS_DIR)

@@ -2,7 +2,8 @@
 id: trial-webresource-iterate
 domain: customizations
 # TRIAL-4 (SCN-013): JavaScript web-resource publish + version iterate. On-prem v9.1;
-# names use the org's default publisher prefix (`new_`), present in every D365 org.
+# names use the stock default publisher prefix (`new_`); adjust to the target org's
+# default publisher prefix if it differs.
 target: onprem
 # webresourceset rows are deletable records, so cleanup is the record-delete model.
 # Predicate scores existence by name only; the v1→v2 content swap the prompt asks

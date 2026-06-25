@@ -2,7 +2,8 @@
 id: trial-customization-workflow
 domain: customizations
 # TRIAL-1 (SCN-005/002/032/029): full table→columns→view→solution→export workflow.
-# On-prem v9.1; custom schema uses the org's default publisher prefix (`new_`).
+# On-prem v9.1; custom schema uses the stock default publisher prefix (`new_`); adjust
+# if the target org's default publisher differs.
 target: onprem
 # Predicate asserts the new view exists (a view requires the table + columns to
 # exist first, so it proves schema creation). The later export-to-zip and the

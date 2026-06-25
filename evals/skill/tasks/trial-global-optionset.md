@@ -2,7 +2,8 @@
 id: trial-global-optionset
 domain: metadata
 # TRIAL-2 (SCN-003): create then evolve a global choice (option set). On-prem v9.1;
-# the logical name uses the org's default publisher prefix (`new_`).
+# the logical name uses the stock default publisher prefix (`new_`); adjust if the
+# target org's default publisher differs.
 target: onprem
 # `metadata list-optionsets` returns the global option-set definitions as a list;
 # the predicate asserts the created set is present by its logical name (existence
