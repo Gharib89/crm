@@ -14,7 +14,11 @@ Isolation here is *by construction*, then *verified*:
   and a throwaway ``CRM_HOME``;
 - the skill is installed into that fresh ``HOME`` via ``crm skill install`` (exactly
   the path a user takes), so the agent reads the installed copy, never the repo tree;
-- the agent's environment is scrubbed of anything pointing back at the repo.
+- the agent's environment is scrubbed of anything pointing back at the repo;
+- *only* the Claude Code subscription credentials are copied into the fresh ``HOME`` so
+  a headless ``claude -p`` agent authenticates without an ``ANTHROPIC_API_KEY`` — auth
+  is orthogonal to repo isolation, and nothing else from the real config dir (no
+  ``CLAUDE.md``, no memory) rides along.
 
 `verify_isolation` then asserts the agent has no path to the repo and that the skill
 is actually present, raising :class:`IsolationError` on any leak. Hard filesystem
@@ -27,6 +31,7 @@ import dataclasses
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -63,6 +68,54 @@ def _crm_bin() -> str:
     return found
 
 
+def _real_claude_config_dir() -> Path:
+    """The maintainer's *real* Claude Code config dir, read from the unscrubbed
+    environment (``CLAUDE_CONFIG_DIR`` if set, else ``$HOME/.claude``). This is where
+    Claude Code keeps the subscription credentials we pass through — resolved before
+    the sandbox repoints ``HOME``."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".claude"
+
+
+def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
+    """Copy *only* the Claude Code credentials file into the sandbox ``HOME`` so an
+    isolated ``claude -p`` authenticates via the maintainer's subscription without an
+    ``ANTHROPIC_API_KEY``.
+
+    The credentials file alone is the minimal auth artifact — it carries no repo state
+    and no agent memory, so the isolation invariants (no repo, no ``CLAUDE.md``, no
+    inherited memory) stay intact. We deliberately do *not* pass ``CLAUDE_CONFIG_DIR``
+    through: that env relocates the agent's *entire* config — ``CLAUDE.md`` and memory
+    included — back onto the real dir, re-exposing global memory. It is scrubbed in
+    :func:`provision_isolation` and asserted absent by :func:`verify_isolation`.
+
+    Best-effort and a no-op on failure: when the maintainer has no credentials file
+    (e.g. an API-key-only setup) *or* the copy can't complete (unreadable creds,
+    unwritable sandbox ``HOME``), the agent simply falls back to ``ANTHROPIC_API_KEY``
+    exactly as before. It must never raise — provisioning runs this before the caller
+    can clean up, so a raise here would abort the run and leak the sandbox. Returns the
+    copied path, or ``None``.
+
+    ponytail: a copy, not a symlink — a mid-run OAuth token refresh writes only to the
+    throwaway copy and is discarded on cleanup, never mutating the real credentials.
+    Fine for a minutes-long eval; revisit only if a run could outlive the access token.
+    """
+    src = _real_claude_config_dir() / ".credentials.json"
+    if not src.is_file():
+        return None
+    try:
+        dest_dir = sandbox_home / ".claude"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / ".credentials.json"
+        shutil.copy2(src, dest)
+        return dest
+    except OSError as exc:
+        print(f"[isolation] could not pass through Claude credentials: {exc}", file=sys.stderr)
+        return None
+
+
 def provision_isolation(crm_bin: str | None = None) -> Isolation:
     """Create a sandbox and install the skill into a fresh HOME via ``crm skill install``.
 
@@ -79,15 +132,26 @@ def provision_isolation(crm_bin: str | None = None) -> Isolation:
 
     skill_dir = home / ".claude" / "skills" / "crm"
 
-    # Scrub the environment of anything that could lead back to the repo: fresh HOME
-    # and CRM_HOME, no PYTHONPATH (which could put the repo's `crm/` package on the
-    # import path), no inherited CLAUDE.md pointers. Built *before* the install so the
-    # skill-install subprocess's own writes (skill_registry.record_install →
-    # installed-skills.json) land in the throwaway CRM_HOME, never the caller's real
+    # Scrub the environment of anything that could lead back to the repo *or* the
+    # maintainer's real agent config: fresh HOME and CRM_HOME, no PYTHONPATH (which
+    # could put the repo's `crm/` package on the import path), no inherited CLAUDE.md
+    # pointers, and no CLAUDE_CONFIG_DIR (it would relocate the agent's whole config —
+    # CLAUDE.md and memory included — onto the real dir, re-exposing global memory; we
+    # pass *only* the credentials file through instead, below). Built *before* the
+    # install so the skill-install subprocess's own writes (skill_registry.record_install
+    # → installed-skills.json) land in the throwaway CRM_HOME, never the caller's real
     # state — otherwise the harness would pollute the maintainer's profile/config.
-    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "CLAUDE_PROJECT_DIR")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("PYTHONPATH", "CLAUDE_PROJECT_DIR", "CLAUDE_CONFIG_DIR")
+    }
     env["HOME"] = str(home)
     env["CRM_HOME"] = str(crm_home)
+
+    # Pass the subscription credentials (only) into the fresh HOME so a headless
+    # `claude -p` agent authenticates without an ANTHROPIC_API_KEY. No-op if absent.
+    _passthrough_claude_auth(home)
 
     # Install the skill the way a user does — from whatever `crm` is on PATH, so the
     # eval exercises the skill *as shipped* in that binary, not the repo's working
@@ -167,6 +231,27 @@ def verify_isolation(iso: Isolation, root: Path | None = None) -> dict[str, str]
         failures.append(f"skill not installed: {skill_md} missing")
     else:
         checks["skill-installed"] = str(skill_md)
+
+    # 6 · The env must not carry CLAUDE_CONFIG_DIR pointing at the real config dir.
+    # Auth is passed by copying *only* the credentials file into the fresh HOME (see
+    # `_passthrough_claude_auth`); CLAUDE_CONFIG_DIR is scrubbed because it would also
+    # relocate CLAUDE.md and memory back onto the real dir. Guard the leak so a future
+    # change that stops scrubbing it (or points it elsewhere) fails loudly here: if
+    # set, it must live inside the sandbox and expose no CLAUDE.md / memory.
+    cfg = iso.env.get("CLAUDE_CONFIG_DIR")
+    if cfg:
+        cfg_path = Path(cfg).resolve()
+        cfg_leaks = [str(cfg_path / m) for m in ("CLAUDE.md", "memory") if (cfg_path / m).exists()]
+        in_sandbox = iso.sandbox.resolve() in (cfg_path, *cfg_path.parents)
+        if cfg_leaks or not in_sandbox:
+            failures.append(
+                f"CLAUDE_CONFIG_DIR points outside the sandbox or at agent memory: "
+                f"{cfg!r} {cfg_leaks}"
+            )
+        else:
+            checks["claude-config-sandboxed"] = cfg
+    else:
+        checks["no-claude-config-leak"] = "unset"
 
     if failures:
         raise IsolationError("isolation leak(s) detected:\n  - " + "\n  - ".join(failures))

@@ -110,6 +110,21 @@ The runner prints a JSON result (`passed`, `reason`, `isolation_checks`, the cap
 `transcript`) and exits non-zero only on a scored failure. Cleanup runs
 unconditionally, so the org is left clean whether the task passed or failed.
 
+### Agent authentication
+
+`CRM_EVAL_AGENT_CMD='claude -p'` drives headless Claude Code as the agent. The sandbox
+hands the agent a fresh `HOME`, so it can't see your real Claude Code login — the
+harness therefore copies **only** your credentials file
+(`~/.claude/.credentials.json`, or under `$CLAUDE_CONFIG_DIR` if you set it) into the
+sandbox `HOME`. A normal **Claude subscription login is enough — no
+`ANTHROPIC_API_KEY` required.** Nothing else from your config dir rides along (no
+`CLAUDE.md`, no memory, no settings), and `CLAUDE_CONFIG_DIR` is scrubbed from the
+agent's environment, so the repo/memory isolation the eval depends on is preserved.
+
+With no credentials file (an API-key-only setup) the copy is a no-op and the agent
+falls back to `ANTHROPIC_API_KEY` from your environment, as before. This applies
+identically to the single-task runner and the set runner below.
+
 ## Run the whole set against one target
 
 The set runner runs every `tasks/*.md` spec against the configured target, skips the

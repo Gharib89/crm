@@ -141,6 +141,91 @@ def test_provision_and_verify_isolation():
     assert not iso.sandbox.exists()
 
 
+def test_credentials_passthrough_copies_into_sandbox(monkeypatch, tmp_path):
+    # Given a real Claude config dir holding a credentials file, provision_isolation
+    # copies ONLY that file into the sandbox HOME so an isolated `claude -p` can
+    # authenticate via the subscription — without dragging in CLAUDE.md / memory /
+    # settings, which the eval deliberately withholds.
+    cfg = tmp_path / "real-claude"
+    cfg.mkdir()
+    (cfg / ".credentials.json").write_text('{"fake": "token"}', encoding="utf-8")
+    (cfg / "CLAUDE.md").write_text("global memory that must NOT leak", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+
+    iso = isolation.provision_isolation()
+    try:
+        creds = iso.home / ".claude" / ".credentials.json"
+        assert creds.is_file()
+        assert creds.read_text(encoding="utf-8") == '{"fake": "token"}'
+        # only the credentials file rode along — the real dir's CLAUDE.md stayed put
+        assert not (iso.home / ".claude" / "CLAUDE.md").exists()
+        # the agent env must not point back at the real config dir
+        assert "CLAUDE_CONFIG_DIR" not in iso.env
+        # isolation still holds (no repo, no inherited memory)
+        isolation.verify_isolation(iso)
+    finally:
+        iso.cleanup()
+
+
+def test_credentials_passthrough_survives_copy_failure(monkeypatch, tmp_path):
+    # A failed credential copy (unreadable creds / unwritable HOME) must NOT abort
+    # provisioning or leak the sandbox — passthrough is best-effort; the agent falls
+    # back to ANTHROPIC_API_KEY. Simulate the failure by making the copy raise OSError.
+    cfg = tmp_path / "real-claude"
+    cfg.mkdir()
+    (cfg / ".credentials.json").write_text('{"fake": "token"}', encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+
+    def boom(*_a, **_k):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("shutil.copy2", boom)
+
+    iso = isolation.provision_isolation()  # must not raise
+    try:
+        assert not (iso.home / ".claude" / ".credentials.json").exists()
+        isolation.verify_isolation(iso)  # provisioning is still valid
+    finally:
+        iso.cleanup()
+    assert not iso.sandbox.exists()
+
+
+def test_credentials_passthrough_noop_without_source(monkeypatch, tmp_path):
+    # API-key-only setups have no credentials file: passthrough is a clean no-op and
+    # isolation is unaffected.
+    cfg = tmp_path / "empty-claude"
+    cfg.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+
+    iso = isolation.provision_isolation()
+    try:
+        assert not (iso.home / ".claude" / ".credentials.json").exists()
+        isolation.verify_isolation(iso)
+    finally:
+        iso.cleanup()
+
+
+def test_verify_isolation_rejects_claude_config_dir_leak(monkeypatch, tmp_path):
+    # Regression guard for the rejected "point CLAUDE_CONFIG_DIR at the real ~/.claude"
+    # approach: that env relocates *everything* (creds AND CLAUDE.md AND memory), so an
+    # agent env carrying it would inherit global memory. verify_isolation must catch it.
+    # Point provisioning at an empty config dir so it doesn't read the real creds;
+    # the guard under test is exercised below by injecting a leak into the agent env.
+    cfg = tmp_path / "empty-claude"
+    cfg.mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    iso = isolation.provision_isolation()
+    try:
+        leaky = tmp_path / "leaky-config"
+        leaky.mkdir()
+        (leaky / "CLAUDE.md").write_text("global memory", encoding="utf-8")
+        iso.env["CLAUDE_CONFIG_DIR"] = str(leaky)  # simulate the scrub regressing
+        with pytest.raises(isolation.IsolationError, match="CLAUDE_CONFIG_DIR"):
+            isolation.verify_isolation(iso)
+    finally:
+        iso.cleanup()
+
+
 def test_verify_isolation_detects_repo_leak():
     iso = isolation.provision_isolation()
     try:
