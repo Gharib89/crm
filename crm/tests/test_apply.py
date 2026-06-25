@@ -2190,6 +2190,35 @@ def test_apply_cmd_prune_json_without_yes_aborts(backend, monkeypatch, tmp_path)
     assert _writes(m) == []  # refused before touching the backend
 
 
+def test_apply_cmd_allow_data_loss_requires_prune(backend, monkeypatch, tmp_path):
+    # --allow-data-loss without --prune is a usage error, not a silent no-op.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    spec_path = tmp_path / "s.yaml"
+    spec_path.write_text("solution:\n  unique_name: ContosoCore\n")
+    result = CliRunner().invoke(
+        cli, ["--json", "apply", "-f", str(spec_path), "--allow-data-loss"])
+    assert result.exit_code == 2, result.output  # click.UsageError
+    assert "--allow-data-loss only applies with --prune" in result.output
+
+
+def test_apply_dry_run_prune_suppresses_would_prune_on_replace_blocked(dry_backend):
+    # When a reconcile is replace-blocked, a real --prune run suppresses deletes;
+    # the dry-run preview must mirror that — the candidate carries no would_prune.
+    spec = {
+        "solution": {"unique_name": "ContosoCore"},
+        "entities": [{"schema_name": "contoso_Project", "display_name": "Project",
+                      "ownership": "OrganizationOwned"}],  # drift vs live UserOwned
+    }
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, dry_backend, [(20, _ROLE_ID)])
+        _mock_entity_create(m, dry_backend, exists=True, ownership="UserOwned")
+        m.get(dry_backend.url_for(f"roles({_ROLE_ID})"), json={"name": "Extra Role"})
+        res = apply_mod.apply_spec(dry_backend, spec, prune=True)
+    assert res["replace_blocked"], "expected an ownership replace-block"
+    assert res["pruned"] == [
+        {"kind": "security-role", "name": "Extra Role", "deleted": False}]  # no would_prune
+
+
 def test_apply_cmd_prune_yes_deletes_schema_only(backend, monkeypatch, tmp_path):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     spec_path = tmp_path / "s.yaml"

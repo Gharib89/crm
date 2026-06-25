@@ -47,7 +47,8 @@ Emits `{ok, data:{applied, updated, skipped, replace_blocked, pruned, planned, f
 each entry is `{kind, name}`. `failed` and `replace_blocked` entries also carry
 `error` / `reason`. `pruned` entries carry `{kind, name, deleted}` (+ `reason`
 when a data-bearing component is refused, + `would_prune: true` under `--dry-run`).
-Without `--prune`, `pruned` is always empty.
+`pruned` is populated under `--dry-run` (candidates, `deleted: false`) and `--prune`
+(deletions); a plain real-run apply with neither leaves it empty.
 **Metadata writes are non-transactional: a hard failure aborts the remaining steps
 and leaves staged-but-unpublished residue.** A new table's views may report
 `planned` until the first publish assigns its ObjectTypeCode — **re-apply to land

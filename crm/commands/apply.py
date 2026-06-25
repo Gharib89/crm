@@ -57,10 +57,15 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
 
     With the global --dry-run flag the same reconcile runs read-only and the
     result is a full drift report — `planned` (would create), `updated` (would
-    update), `replace_blocked`, and `pruned` (reserved) — assembled from live
-    reads with no write issued (#550).
+    update), `replace_blocked`, and `pruned` (solution components absent from the
+    spec, each `{kind, name, deleted: false}`) — assembled from live reads with no
+    write issued (#550). --prune opts in to deleting those extras (#553): schema-
+    only kinds under a confirmation, data-bearing kinds only with --allow-data-loss.
     """
     import yaml
+
+    if allow_data_loss and not prune:
+        raise click.UsageError("--allow-data-loss only applies with --prune.")
 
     with open(spec_file, encoding="utf-8") as fh:
         try:

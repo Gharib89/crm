@@ -29,8 +29,8 @@ the spec rather than blindly skipped. Three outcomes per component:
 Reconciliation also runs under `--dry-run`, read-only: it reads the live org
 while the reads-execute rule suppresses every write, so a dry-run reports the
 full drift — `planned` (would create), `updated` (would update, each entry
-carrying a field-level `diff`), `replace_blocked`, and `pruned` (with `--prune`)
-— without issuing a write.
+carrying a field-level `diff`), `replace_blocked`, and `pruned` (solution
+components absent from the spec) — without issuing a write.
 
 See the [CLI reference](../reference/cli.md) for the flags.
 
@@ -212,7 +212,8 @@ components under `skipped`. A re-apply of a changed spec reports in-place edits
 under `updated`; immutable divergences under `replace_blocked` (and exits 1).
 `pruned` entries carry `{kind, name, deleted}` (plus `reason` when a data-bearing
 component is refused without `--allow-data-loss`, plus `would_prune: true` under
-`--dry-run`). Without `--prune`, `pruned` is always empty.
+`--dry-run`). `pruned` is populated under `--dry-run` (candidates, `deleted: false`)
+and `--prune` (deletions); a plain real-run apply with neither leaves it empty.
 
 ## Preview a greenfield spec
 

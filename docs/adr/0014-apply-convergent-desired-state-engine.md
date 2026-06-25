@@ -15,8 +15,9 @@ outcomes.
 The result of `apply_spec()` and the verb's emit envelope grow three buckets —
 `updated`, `replace_blocked`, `pruned` — alongside the existing
 `applied`/`skipped`/`planned`/`failed`/`staged`. They render in human mode and in
-`--json` `data`. `replace_blocked` was populated first; `pruned` is populated by
-the opt-in `--prune` flag (see "Opt-in pruning" below).
+`--json` `data`. `replace_blocked` was populated first; `pruned` is populated under
+`--dry-run` (prune-candidates, `deleted: false`) and under the opt-in `--prune`
+flag (actual deletions) — see "Opt-in pruning" below.
 
 ## Why record this
 
@@ -55,7 +56,8 @@ trade-off — exactly what an ADR is for.
   limited to six eligible kinds (entity, attribute, view, security-role,
   webresource, plugin-step). Data-bearing kinds (entity, attribute) require an
   additional `--allow-data-loss` flag; schema-only kinds are deleted on confirmation.
-  The `pruned` bucket is populated under `--prune`; without it, it is always empty.
+  The `pruned` bucket lists candidates under `--dry-run` (`deleted: false`) and
+  deletions under `--prune`; a plain real-run apply with neither leaves it empty.
 
 ## Scope and limitations (this slice)
 

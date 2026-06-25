@@ -1300,9 +1300,11 @@ def apply_spec(
             would_delete = prune and (not data_bearing or allow_data_loss)
             if backend.dry_run:
                 entry: Entry = {"kind": kind, "name": name, "deleted": False}
-                if would_delete:
+                # Mirror the real run exactly: it would delete only when not
+                # suppressed by a failed/replace-blocked convergence.
+                if would_delete and not suppressed:
                     entry["would_prune"] = True
-                elif prune and data_bearing:
+                elif prune and data_bearing and not allow_data_loss:
                     entry["reason"] = "data-bearing; pass --allow-data-loss to delete"
                 pruned.append(entry)
             elif prune and data_bearing and not allow_data_loss:
