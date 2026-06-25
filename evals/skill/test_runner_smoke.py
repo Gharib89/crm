@@ -269,13 +269,36 @@ def test_build_analysis_prompt_handles_no_org_state():
 
 
 def test_run_analysis_feeds_prompt_on_stdin():
-    # `cat` echoes stdin back, so the captured analysis contains the prompt verbatim
-    # under the exit-code header — proving the prompt is routed on stdin.
+    # `cat` echoes stdin back, so the captured analysis is the prompt verbatim —
+    # proving the prompt is routed on stdin.
     out = analyze.run_analysis("ANALYZE-ME", ["cat"])
-    assert "[analyzer exit 0]" in out
     assert "ANALYZE-ME" in out
 
 
 def test_run_analysis_missing_binary_raises():
     with pytest.raises(analyze.AnalyzeError, match="not found"):
         analyze.run_analysis("x", ["definitely-not-a-real-binary-xyz"])
+
+
+def test_run_analysis_raises_on_nonzero_exit():
+    # A failed analyzer must surface as an error, not a silently-successful read —
+    # for a diagnostic task the analysis pass is the only score.
+    with pytest.raises(analyze.AnalyzeError, match="exited 3"):
+        analyze.run_analysis("x", ["sh", "-c", "exit 3"])
+
+
+def test_parse_verdict():
+    assert analyze.parse_verdict("some reasoning\nVERDICT: PASS") is True
+    assert analyze.parse_verdict("VERDICT: fail") is False
+    assert analyze.parse_verdict("no verdict at all here") is None
+    # the final verdict line wins over an earlier mention
+    assert analyze.parse_verdict("VERDICT: FAIL\nactually:\nVERDICT: PASS") is True
+    # an inline mention in prose is not a verdict (whole-line anchor)
+    assert analyze.parse_verdict("the VERDICT: PASS or FAIL line should be last") is None
+
+
+def test_build_analysis_prompt_requests_verdict_line():
+    prompt = analyze.build_analysis_prompt(
+        task_prompt="t", transcript="x", org_state=None, verdict={"passed": None, "reason": "d"},
+    )
+    assert "VERDICT: PASS" in prompt and "VERDICT: FAIL" in prompt

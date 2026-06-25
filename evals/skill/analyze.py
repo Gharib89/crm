@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 from typing import Any
@@ -27,6 +28,12 @@ from typing import Any
 #: Default analyzer command when neither ``--analyze-cmd`` nor the env var is set.
 #: ``claude -p`` runs headless Claude Code, reading the prompt on stdin.
 DEFAULT_ANALYZE_CMD = "claude -p"
+
+#: A diagnostic task's analysis must contain a line of exactly this form so the
+#: runner can turn the qualitative read into a pass/fail score (the analysis pass is
+#: that task's only score). Anchored to a whole line so prose mentioning the word
+#: "verdict" can't be mistaken for the verdict itself.
+_VERDICT_RE = re.compile(r"^\s*VERDICT:\s*(PASS|FAIL)\s*$", re.IGNORECASE | re.MULTILINE)
 
 
 class AnalyzeError(RuntimeError):
@@ -69,8 +76,7 @@ def build_analysis_prompt(
         "task the agent was given, the transcript of what it did, the final state of "
         "the org, and the deterministic verdict (if any). Explain *why* the task "
         "passed, failed, or stumbled. If the verdict is null this is a diagnostic "
-        "task with no programmatic predicate — judge it yourself and state a clear "
-        "PASS or FAIL with your reasoning.\n\n"
+        "task with no programmatic predicate — judge it yourself.\n\n"
         "## Task prompt given to the agent\n"
         f"{task_prompt}\n\n"
         "## Agent transcript\n"
@@ -78,16 +84,22 @@ def build_analysis_prompt(
         "## Final org state (scoring query payload)\n"
         f"{org_state_text}\n\n"
         "## Programmatic verdict\n"
-        f"{json.dumps(verdict, default=str)}\n"
+        f"{json.dumps(verdict, default=str)}\n\n"
+        "## Your verdict\n"
+        "After your reasoning, finish with a final line that is exactly one of\n"
+        "    VERDICT: PASS\n"
+        "    VERDICT: FAIL\n"
+        "and nothing after it, so the run can be scored.\n"
     )
 
 
 def run_analysis(prompt: str, analyze_cmd: list[str]) -> str:
     """Feed the composed prompt to the analyzer on stdin; return its analysis text.
 
-    The analyzer's exit code is recorded in a header (mirroring the agent run) so a
-    crashed or misconfigured analyzer is diagnosable rather than silently empty. A
-    missing analyzer binary raises :class:`AnalyzeError` with the offending command.
+    A non-zero analyzer exit is raised as :class:`AnalyzeError`, not returned — for a
+    diagnostic task the analysis pass is the *only* score, so a silently failed
+    analyzer must not look like a successful (and unscoreable) read. A missing
+    analyzer binary raises likewise, naming the offending command.
 
     Unlike the agent under test (which runs in the scrubbed, fresh-HOME isolation
     sandbox), the analyzer runs in the operator's own environment: it is the
@@ -103,5 +115,20 @@ def run_analysis(prompt: str, analyze_cmd: list[str]) -> str:
             f"analyzer command not found: {analyze_cmd!r} — set CRM_EVAL_ANALYZE_CMD "
             f"or pass --analyze-cmd ({exc})"
         ) from exc
-    header = f"[analyzer exit {proc.returncode}]\n"
-    return header + proc.stdout + (f"\n[stderr]\n{proc.stderr}" if proc.stderr else "")
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise AnalyzeError(f"analyzer {analyze_cmd!r} exited {proc.returncode}: {detail[:500]}")
+    return proc.stdout
+
+
+def parse_verdict(analysis: str) -> bool | None:
+    """Extract the analyzer's PASS/FAIL verdict from its analysis text.
+
+    Returns True for PASS, False for FAIL, or ``None`` when the analyzer emitted no
+    parseable ``VERDICT:`` line (the run then has no score). The last verdict line
+    wins, so a stray earlier mention can't pre-empt the analyzer's final call.
+    """
+    matches = _VERDICT_RE.findall(analysis)
+    if not matches:
+        return None
+    return matches[-1].upper() == "PASS"

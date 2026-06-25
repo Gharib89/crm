@@ -198,6 +198,16 @@ def run_task(
                     verdict={"passed": passed, "reason": reason},
                 )
                 analysis = analyze.run_analysis(prompt, resolved_analyze)
+                if spec.is_diagnostic:
+                    # The analysis pass is this task's only score: turn the analyzer's
+                    # PASS/FAIL verdict into the programmatic result. No parseable
+                    # verdict leaves passed=None (unscored) — surfaced by the exit code.
+                    passed = analyze.parse_verdict(analysis)
+                    reason = (
+                        f"diagnostic scored by --analyze: {'PASS' if passed else 'FAIL'}"
+                        if passed is not None
+                        else "diagnostic: analyzer returned no PASS/FAIL verdict"
+                    )
         finally:
             _cleanup_org(spec, iso.env, profile, resolved_bin, work)
         return RunResult(
@@ -228,8 +238,10 @@ def main(argv: list[str] | None = None) -> int:
         analyze_pass=args.analyze, analyze_cmd=args.analyze_cmd,
     )
     print(json.dumps(result.to_dict(), indent=2))
-    # Exit non-zero only on a real scored failure; a dry run is informational.
-    return 1 if result.passed is False else 0
+    # Exit non-zero on a scored failure. A diagnostic task scored via --analyze that
+    # the analyzer failed or returned no verdict for (passed is None) is also a
+    # non-success; only a dry run (unscored by design) is always exit 0.
+    return 0 if result.dry_run or result.passed else 1
 
 
 if __name__ == "__main__":
