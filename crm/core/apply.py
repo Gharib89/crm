@@ -173,9 +173,11 @@ def validate_spec(spec: Any) -> None:
             # source_type / formula_definition (calculated & rollup columns, #554):
             # mirror add_attribute's contract — a non-simple source needs a formula
             # and is invalid for the relationship-backed kinds; a formula is invalid
-            # on a simple column.
+            # on a simple column. Gate on key PRESENCE, not truthiness, so an
+            # explicit null source_type or an empty formula fails HERE rather than
+            # slipping through to a mid-apply add_attribute raise.
             source_type = attr.get("source_type")
-            if source_type is not None and source_type not in mc.SOURCE_TYPES:
+            if "source_type" in attr and source_type not in mc.SOURCE_TYPES:
                 raise D365Error(
                     f"attribute {name!r}: source_type must be one of "
                     f"{sorted(mc.SOURCE_TYPES)}.")
@@ -192,7 +194,7 @@ def validate_spec(spec: Any) -> None:
                     raise D365Error(
                         f"attribute {name!r}: source_type {source_type!r} requires "
                         "formula_definition.")
-            elif formula:
+            elif "formula_definition" in attr:
                 raise D365Error(
                     f"attribute {name!r}: formula_definition is only valid with "
                     "source_type 'calculated' or 'rollup'.")

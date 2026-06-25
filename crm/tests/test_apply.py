@@ -645,6 +645,34 @@ def test_apply_rejects_formula_on_simple_column(backend):
         assert m.request_history == []
 
 
+def test_apply_rejects_empty_formula_on_simple_column(backend):
+    # formula_definition present (even empty) on a non-calc/rollup column is a
+    # malformed spec — must fail up front, not mid-apply.
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "formula_definition": ""}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="only valid with source_type"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_explicit_null_source_type(backend):
+    # An explicit `source_type: null` must fail here — apply_spec's .get(..,'simple')
+    # default only fills an ABSENT key, so a present null would reach add_attribute.
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "source_type": None}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="source_type must be one of"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
 def test_apply_rejects_publisher_missing_prefix(backend):
     spec = {"publisher": {"unique_name": "contosopub", "option_value_prefix": 10000}}
     with requests_mock.Mocker() as m:
