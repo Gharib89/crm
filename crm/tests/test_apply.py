@@ -633,6 +633,18 @@ def test_apply_rejects_calculated_on_lookup_kind(backend):
         assert m.request_history == []
 
 
+def test_apply_rejects_formula_on_simple_column(backend):
+    spec = {"entities": [{
+        "schema_name": "contoso_Project", "display_name": "Project",
+        "attributes": [{"kind": "decimal", "schema_name": "contoso_Total",
+                        "display_name": "Total", "formula_definition": "<x/>"}],
+    }]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="only valid with source_type"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
 def test_apply_rejects_publisher_missing_prefix(backend):
     spec = {"publisher": {"unique_name": "contosopub", "option_value_prefix": 10000}}
     with requests_mock.Mocker() as m:

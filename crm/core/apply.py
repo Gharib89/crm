@@ -172,25 +172,30 @@ def validate_spec(spec: Any) -> None:
                     "(unquoted in YAML).")
             # source_type / formula_definition (calculated & rollup columns, #554):
             # mirror add_attribute's contract — a non-simple source needs a formula
-            # and is invalid for the relationship-backed kinds.
+            # and is invalid for the relationship-backed kinds; a formula is invalid
+            # on a simple column.
             source_type = attr.get("source_type")
             if source_type is not None and source_type not in mc.SOURCE_TYPES:
                 raise D365Error(
                     f"attribute {name!r}: source_type must be one of "
                     f"{sorted(mc.SOURCE_TYPES)}.")
+            formula = attr.get("formula_definition")
+            if formula is not None and not isinstance(formula, str):
+                raise D365Error(
+                    f"attribute {name!r}: formula_definition must be a string.")
             if source_type in ("calculated", "rollup"):
                 if kind in ("lookup", "customer"):
                     raise D365Error(
                         f"attribute {name!r}: source_type {source_type!r} is not "
                         f"valid for kind {kind!r}.")
-                if not attr.get("formula_definition"):
+                if not formula:
                     raise D365Error(
                         f"attribute {name!r}: source_type {source_type!r} requires "
                         "formula_definition.")
-            if (attr.get("formula_definition") is not None
-                    and not isinstance(attr["formula_definition"], str)):
+            elif formula:
                 raise D365Error(
-                    f"attribute {name!r}: formula_definition must be a string.")
+                    f"attribute {name!r}: formula_definition is only valid with "
+                    "source_type 'calculated' or 'rollup'.")
         for rel in _as_list(ent.get("relationships")):
             _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
                            "lookup_schema", "lookup_display"), "relationship")

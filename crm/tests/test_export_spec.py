@@ -1077,3 +1077,39 @@ class TestExportSpecWarnings:
         assert "attributes" not in spec["entities"][0]
         assert len(warnings) == 1
         assert "new_stage" in warnings[0]
+
+
+class TestCalcRoundTrip:
+    def test_export_then_apply_dry_run_reports_zero_drift(self, backend, dry_backend):
+        # AC#3 literal round-trip: build_entity_spec of an entity carrying a calc
+        # column, then apply --dry-run of that EXACT export against the same live
+        # state, reports zero drift — the calc column reconciles to skipped (#554).
+        calc_info = {
+            "SchemaName": "new_Total",
+            "DisplayName": _label("Total"),
+            "AttributeTypeName": {"Value": "DecimalType"},
+            "@odata.type": "#Microsoft.Dynamics.CRM.DecimalAttributeMetadata",
+            "RequiredLevel": {"Value": "None"},
+            "Precision": 2,
+            "SourceType": 1,
+            "FormulaDefinition": "<Formula>calc</Formula>",
+        }
+        attrs = {"value": [_shallow("new_name"),
+                           _shallow("new_total", valid_for_create=False, source_type=1)]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_total"), json=calc_info)
+            spec = build_entity_spec(backend, "new_project")
+            res = apply.apply_spec(dry_backend, spec, stage_only=True)
+
+        calc = next(a for a in spec["entities"][0]["attributes"]
+                    if a["schema_name"] == "new_Total")
+        assert calc["source_type"] == "calculated"
+        assert calc["formula_definition"] == "<Formula>calc</Formula>"
+        # Zero drift: nothing updated or replace-blocked; the calc column is skipped.
+        assert [e["name"] for e in res["updated"]] == []
+        assert [e["name"] for e in res["replace_blocked"]] == []
+        assert "new_Total" in [e["name"] for e in res["skipped"]]
+        assert res["ok"] is True
