@@ -49,9 +49,11 @@ def _specs():
 
 def test_set_task_spec_count():
     # AC1 allows ~12–15 specs; pin to the actual 15 so an accidental task removal
-    # fails CI instead of silently passing the lower end of the band.
-    files = discover_tasks(TASKS_DIR)
-    assert len(files) == 15, f"expected 15 task specs, found {len(files)}"
+    # fails CI instead of silently passing the lower end of the band. Diagnostic
+    # tasks (#572) are scored by the --analyze pass, not this deterministic set, so
+    # they don't count toward it.
+    predicate = [s for s in _specs() if not s.is_diagnostic]
+    assert len(predicate) == 15, f"expected 15 predicate task specs, found {len(predicate)}"
 
 
 def test_eight_trials_formalized():
@@ -134,25 +136,38 @@ def test_dry_run_marks_every_task_dry_regardless_of_gate():
 
 def test_live_run_skips_off_target_and_scores_the_rest():
     # Inject active_target=cloud so no live profile is needed; cloud + either run,
-    # onprem tasks skip. Mark one cloud task as failing to exercise both verdicts.
+    # onprem tasks skip, diagnostic tasks skip. Mark one as failing for both verdicts.
     specs = _specs()
-    cloud_ids = [s.id for s in specs if s.target in ("cloud", "either")]
-    verdicts = {tid: True for tid in cloud_ids}
-    a_failing = cloud_ids[0]
+    scored_ids = [s.id for s in specs if s.target in ("cloud", "either") and not s.is_diagnostic]
+    verdicts = {tid: True for tid in scored_ids}
+    a_failing = scored_ids[0]
     verdicts[a_failing] = False
 
     result = run_set(TASKS_DIR, active_target="cloud", run_one=_stub(verdicts))
 
     by_id = {o.task_id: o for o in result.outcomes}
     for s in specs:
-        if s.target == "onprem":
+        if s.is_diagnostic or s.target == "onprem":
             assert by_id[s.id].status == SKIP
         else:
             assert by_id[s.id].status in (PASS, FAIL)
     assert by_id[a_failing].status == FAIL
-    # pass-rate is over scored (cloud/either) tasks only.
-    scored = len(cloud_ids)
+    # pass-rate is over scored (cloud/either, non-diagnostic) tasks only.
+    scored = len(scored_ids)
     assert result.pass_rate() == pytest.approx((scored - 1) / scored)
+
+
+def test_live_run_skips_diagnostic_tasks():
+    # A diagnostic task (no predicate, #572) is skipped by the set — reported, never
+    # errored on the runner's "diagnostic needs --analyze" guard.
+    specs = _specs()
+    diagnostic = [s for s in specs if s.is_diagnostic]
+    assert diagnostic, "expected at least one diagnostic task in the set"
+    result = run_set(TASKS_DIR, active_target="cloud", run_one=_stub({s.id: True for s in specs}))
+    by_id = {o.task_id: o for o in result.outcomes}
+    for s in diagnostic:
+        assert by_id[s.id].status == SKIP
+        assert "diagnostic" in by_id[s.id].reason
 
 
 def test_harness_error_is_isolated_not_fatal():

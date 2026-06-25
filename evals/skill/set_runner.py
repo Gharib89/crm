@@ -171,6 +171,16 @@ def run_set(
                 outcomes.append(TaskOutcome(spec.id, ERROR, spec.target, str(exc)))
             continue
 
+        # Diagnostic tasks (#572) have no deterministic end-state predicate — they are
+        # scored by the --analyze pass, not this set — so skip them rather than letting
+        # the single-task runner's "diagnostic needs --analyze" guard surface as ERROR.
+        if spec.is_diagnostic:
+            outcomes.append(
+                TaskOutcome(spec.id, SKIP, spec.target,
+                            "diagnostic: scored by the --analyze pass, not the set")
+            )
+            continue
+
         if should_skip(spec.target, resolved or ""):
             outcomes.append(
                 TaskOutcome(
