@@ -242,10 +242,11 @@ def test_apply_webresource_create_noop_update(cli, backend, tmp_path, unique, re
 @pytest.mark.slow
 @covers("apply")
 def test_apply_security_role_create_and_reconcile(cli, backend, tmp_path, unique, request):
-    """apply creates a security role and sets its privileges to EXACTLY the declared
-    set; an unchanged re-apply is a convergent no-op. Target-agnostic — role create +
-    ReplacePrivilegesRole work on both targets (on-prem is the issue's priority).
-    Role deleted in a finalizer.
+    """apply creates a security role and applies the declared privileges, then an
+    unchanged re-apply is a convergent no-op. (The role also keeps Dataverse's
+    immovable baseline privileges, so this asserts the declared set is satisfied,
+    not strict equality.) Target-agnostic — role create + ReplacePrivilegesRole work
+    on both targets (on-prem is the issue's priority). Role deleted in a finalizer.
     """
     role_name = f"E2E Apply Role {unique}"
     spec = {"security_roles": [{

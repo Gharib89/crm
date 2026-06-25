@@ -193,17 +193,36 @@ def validate_spec(spec: Any) -> None:
         if wr.get("webresourcetype") is not None and not isinstance(wr["webresourcetype"], int):
             raise D365Error(
                 f"web resource {wr['name']!r}: webresourcetype must be an integer.")
+        # Fail fast (before any HTTP) when no type is given and it can't be inferred
+        # from the extension — otherwise the create raises mid-run, after earlier
+        # components have already landed. Raises D365Error on an unknown extension.
+        wr_mod.resolve_webresourcetype(wr["file"], wr.get("webresourcetype"))
     for role in _as_list(sp.get("security_roles")):
         _require(role, ("name",), "security role")
+        if not isinstance(role["name"], str):
+            raise D365Error("security role: name must be a string.")
         rlabel = f"security role {role['name']!r}"
+        if role.get("business_unit") is not None and not isinstance(role["business_unit"], str):
+            raise D365Error(f"{rlabel}: business_unit must be a string (GUID).")
         _require_list(role, "privileges", rlabel)
+        # A role with no declared privileges would send an empty ReplacePrivilegesRole,
+        # wiping the role's removable privileges — almost certainly a spec mistake.
+        if not _as_list(role.get("privileges")):
+            raise D365Error(f"{rlabel}: at least one privilege row is required.")
         for row in _as_list(role.get("privileges")):
             _require(row, ("depth",), f"{rlabel} privilege")
-            # The selector fields are passed straight to set-role-privileges, which
-            # expects lists; validate the shape up front for a clear error.
+            if not isinstance(row["depth"], str):
+                raise D365Error(f"{rlabel}: privilege depth must be a string.")
+            # The selectors are passed straight to set-role-privileges, which expects
+            # lists of strings (each item is later .strip()/.lower()'d); validate the
+            # shape up front so a malformed spec fails with a clean D365Error here
+            # rather than an AttributeError mid-apply.
             for key in ("access", "entities", "privilege_names"):
-                if key in row and not isinstance(row[key], list):
-                    raise D365Error(f"{rlabel}: privilege {key!r} must be a list.")
+                if key in row:
+                    if not isinstance(row[key], list):
+                        raise D365Error(f"{rlabel}: privilege {key!r} must be a list.")
+                    if not all(isinstance(item, str) for item in cast("list[Any]", row[key])):
+                        raise D365Error(f"{rlabel}: privilege {key!r} items must be strings.")
             if not (row.get("access") or row.get("privilege_names")):
                 raise D365Error(
                     f"{rlabel}: each privilege row needs 'access' (with 'entities' or "
@@ -532,6 +551,11 @@ def _reconcile_security_role(
     run. So the skip test is "are all declared privileges present at the declared
     depth?" (a satisfied lower bound), not "is the live set exactly the declared
     set?". A re-applied unchanged spec is a true no-op.
+
+    Consequence: a removal-only spec change — dropping a privilege while every
+    remaining declared privilege is still satisfied at its depth — does NOT
+    reconcile (the skip test passes). Unlisted privileges are dropped only when the
+    replace fires because some declared privilege is missing or at the wrong depth.
     """
     desired, _ = _desired_role_privileges(backend, role_spec)
     live = sec_mod.get_role_privileges(backend, role_id)

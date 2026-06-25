@@ -447,7 +447,8 @@ one call. Write verbs new in 0.5.0:
 
 `crm apply -f spec.yaml` stands up a whole table (publisher, solution, entity,
 columns, option sets, relationships, views, web resources, security roles) from
-one declarative spec, in dependency order, publishing once at the end. It is
+one declarative spec, in dependency order, publishing once at the end (when a
+publishable component changed — security roles are not published). It is
 **convergent**: a component that already exists is reconciled against the spec —
 left untouched when it matches (`skipped`), updated in place when an allowed
 field drifts (`updated`), or refused with no write when the divergence would

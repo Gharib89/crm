@@ -5,7 +5,9 @@ entity, columns, option sets, relationships, views, web resources, and security
 roles — from a single declarative spec. It orchestrates the existing metadata
 commands in dependency order (publisher → solution → entities → option sets →
 attributes → relationships → views → web resources → security roles) and runs
-`PublishAllXml` **once** at the end.
+`PublishAllXml` **once** at the end — but only when a publishable component was
+created or updated. Security roles are not publishable customizations, so a
+role-only apply does not publish.
 
 `apply` is **convergent**: a component that already exists is reconciled against
 the spec rather than blindly skipped. Three outcomes per component:

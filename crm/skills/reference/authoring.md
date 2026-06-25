@@ -14,7 +14,8 @@ re-apply the spec (`apply` reconciles matching components — equal → skip, up
 Stand up a whole table from one YAML/JSON spec instead of many imperative commands.
 `apply` runs the metadata cores in dependency order (publisher → solution → entities →
 option sets → attributes → relationships → views → web resources → security roles)
-and **publishes once at the end**.
+and **publishes once at the end** — only when a publishable component changed
+(security roles are not publishable, so a role-only apply does not publish).
 
 `apply` is **convergent** — a component that already exists is reconciled against
 the spec, not blindly skipped. Three outcomes per component:

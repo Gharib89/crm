@@ -1656,8 +1656,10 @@ def test_apply_creates_security_role_and_sets_privileges(backend):
 
 
 def test_apply_reconciles_role_privileges_to_declared_set(backend):
-    # Live role carries an unlisted privilege; spec declares only prvReadAccount@global
-    # → reconcile replaces to EXACTLY the declared set (unlisted one removed).
+    # Live role's declared privilege is missing (it carries only an unlisted one), so
+    # the reconcile fires and replaces to the declared set, dropping the removable
+    # unlisted privilege. (Subset-satisfaction: a removal-only change would be a
+    # no-op — see _reconcile_security_role.)
     spec = {"security_roles": [_role_spec()]}
     with requests_mock.Mocker() as m:
         _mock_role_exists(m, backend)
