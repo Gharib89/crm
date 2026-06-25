@@ -372,3 +372,77 @@ def test_apply_plugin_assembly_type_step_lifecycle(
     assert blocked["ok"] is False, f"expected replace-blocked: {blocked}"
     assert any(e["kind"] == "plugin-step" and e["name"] == step_name
                for e in blocked["data"]["replace_blocked"]), blocked["data"]
+
+
+@pytest.mark.slow
+@covers("apply")
+def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, request):
+    """apply --prune deletes a component that lives in the target solution but is
+    no longer declared in the spec (#553). Seeds a throwaway publisher + solution
+    + web resource, previews the prune under --dry-run, prunes the web resource for
+    real (schema-only kinds need only --prune + --yes), asserts it is gone, and
+    tears down the solution + publisher in a finalizer. Target-agnostic — the
+    publisher/solution/web-resource lifecycle works on both targets; on-prem is the
+    issue's priority and where this is run.
+    """
+    prefix = f"e2e{unique[:4]}"                       # 7 chars, starts with a letter
+    pub_name = f"e2eprunepub{unique}"
+    sol_name = f"e2eprunesol{unique}"
+    wr_name = f"{prefix}_prune_{unique}.js"
+    js = tmp_path / "prune.js"
+    js.write_bytes(b"// e2e prune target\n")
+
+    base = {
+        "publisher": {"unique_name": pub_name, "prefix": prefix,
+                      "option_value_prefix": int(unique[:4], 16) % 90000 + 10000},
+        "solution": {"unique_name": sol_name, "friendly_name": f"E2E Prune {unique}"},
+    }
+    seed = {**base, "webresources": [{"name": wr_name, "file": str(js)}]}
+    seed_path = tmp_path / "seed.json"
+    seed_path.write_text(json.dumps(seed), encoding="utf-8")
+    prune_path = tmp_path / "prune_spec.json"
+    prune_path.write_text(json.dumps(base), encoding="utf-8")
+
+    def _delete_by_filter(entity_set, id_field, name_field, value):
+        try:
+            rows = backend.get_collection(entity_set, params={
+                "$filter": f"{name_field} eq '{value}'", "$select": id_field})
+            for row in rows:
+                backend.delete(f"{entity_set}({row[id_field]})")
+        except Exception:
+            pass
+
+    def _cleanup():
+        # WR first (may already be pruned), then the solution, then the publisher.
+        _delete_by_filter("webresourceset", "webresourceid", "name", wr_name)
+        _delete_by_filter("solutions", "solutionid", "uniquename", sol_name)
+        _delete_by_filter("publishers", "publisherid", "uniquename", pub_name)
+
+    request.addfinalizer(_cleanup)
+
+    # SEED: publisher + solution + a web resource that lands in the solution.
+    seeded = json.loads(cli(["--json", "apply", "-f", str(seed_path)]).stdout)
+    assert seeded["ok"] is True, f"seed apply failed: {seeded}"
+    assert any(e.get("kind") == "webresource" and e.get("name") == wr_name
+               for e in seeded["data"]["applied"]), f"WR not seeded: {seeded['data']}"
+
+    # PREVIEW: --dry-run --prune surfaces the undeclared WR as a candidate, deletes
+    # nothing.
+    preview = json.loads(
+        cli(["--dry-run", "--json", "apply", "-f", str(prune_path), "--prune"]).stdout)
+    assert preview["ok"] is True, f"dry-run prune failed: {preview}"
+    assert any(e.get("name") == wr_name and e.get("deleted") is False
+               for e in preview["data"]["pruned"]), f"WR not previewed: {preview['data']}"
+
+    # PRUNE: the web resource is deleted (schema-only → no --allow-data-loss needed).
+    pruned = json.loads(
+        cli(["--json", "apply", "-f", str(prune_path), "--prune", "--yes"]).stdout)
+    assert pruned["ok"] is True, f"prune apply failed: {pruned}"
+    assert any(e.get("kind") == "webresource" and e.get("name") == wr_name
+               and e.get("deleted") is True
+               for e in pruned["data"]["pruned"]), f"WR not pruned: {pruned['data']}"
+
+    # GONE: the web resource no longer exists in the org.
+    rows = backend.get_collection("webresourceset", params={
+        "$filter": f"name eq '{wr_name}'", "$select": "webresourceid"})
+    assert rows == [], f"web resource still present after prune: {rows}"

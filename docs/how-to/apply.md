@@ -29,8 +29,8 @@ the spec rather than blindly skipped. Three outcomes per component:
 Reconciliation also runs under `--dry-run`, read-only: it reads the live org
 while the reads-execute rule suppresses every write, so a dry-run reports the
 full drift — `planned` (would create), `updated` (would update, each entry
-carrying a field-level `diff`), `replace_blocked`, and `pruned` — without issuing
-a write.
+carrying a field-level `diff`), `replace_blocked`, and `pruned` (solution
+components absent from the spec) — without issuing a write.
 
 See the [CLI reference](../reference/cli.md) for the flags.
 
@@ -210,7 +210,10 @@ Each entry is `{kind, name}`; `failed` and `replace_blocked` entries also carry
 `error` / `reason`. A re-apply of an unchanged spec reports all matching
 components under `skipped`. A re-apply of a changed spec reports in-place edits
 under `updated`; immutable divergences under `replace_blocked` (and exits 1).
-`pruned` is reserved for a future opt-in pruning slice and is always empty today.
+`pruned` entries carry `{kind, name, deleted}` (plus `reason` when a data-bearing
+component is refused without `--allow-data-loss`, plus `would_prune: true` under
+`--dry-run`). `pruned` is populated under `--dry-run` (candidates, `deleted: false`)
+and `--prune` (deletions); a plain real-run apply with neither leaves it empty.
 
 ## Preview a greenfield spec
 
@@ -243,6 +246,74 @@ remaining steps, reports the failure under `failed` (with the error), exits
 non-zero, and does **not** publish. Whatever was already created is left
 staged-but-unpublished (`meta.staged` is `true`) — fix the spec and re-apply;
 the already-created resources are skipped.
+
+## Prune org-extras
+
+`--prune` opts in to solution-bounded deletion of components that are members of
+the target solution but are no longer declared in the spec. A plain `apply`
+never reads solution members and never deletes anything; pruning is entirely
+opt-in.
+
+**Eligible kinds (six):** `entity`, `attribute`, `view`, `security-role`,
+`webresource`, `plugin-step`. Every other solution component type (option sets,
+relationships, plug-in assemblies/types, forms) is out of scope.
+
+**Gating:**
+
+- Schema-only extras (`view`, `security-role`, `webresource`, `plugin-step`) are
+  deleted on `--prune` after confirmation.
+- Data-bearing extras (`entity`, `attribute`) destroy row data and are refused
+  unless `--allow-data-loss` is also passed. Without it they appear in `pruned`
+  with `deleted: false` and `reason: "data-bearing; pass --allow-data-loss to delete"`.
+- Under `--json` or a non-TTY, a **real** `--prune` requires `--yes` (no interactive
+  prompt); a `--dry-run` preview deletes nothing and needs no confirmation.
+- `--prune` requires a target solution (`solution:` block in the spec or
+  `--solution`).
+- Pruning is suppressed when the convergence phase itself has failures or
+  replace-blocked components — a partial-failure run does not also delete org-extras.
+
+**Always preview first:**
+
+```bash
+crm --dry-run --json apply -f project.yaml --prune
+```
+
+Dry-run reports all prune candidates under `pruned` with `deleted: false`; those
+that would actually be deleted carry `would_prune: true`. No write is issued.
+Pruning never triggers a publish.
+
+**Worked example — remove a stale web resource and view from the solution:**
+
+Spec `project.yaml` previously declared `contoso_/scripts/old.js` and a view
+`Old Projects`; both are now removed from the spec. The solution still has them
+as members.
+
+```bash
+# 1. Preview what would be pruned
+crm --dry-run --json apply -f project.yaml --prune --solution ContosoCore
+
+# 2. Apply with pruning (interactive confirmation on a TTY)
+crm apply -f project.yaml --prune --solution ContosoCore
+
+# 3. Under CI / --json there is no prompt, so pass --yes
+crm --json apply -f project.yaml --prune --yes --solution ContosoCore
+```
+
+Example output (`data.pruned`):
+
+```json
+[
+  {"kind": "webresource", "name": "contoso_/scripts/old.js", "deleted": true},
+  {"kind": "view",        "name": "Old Projects",            "deleted": true}
+]
+```
+
+A data-bearing extra refused without `--allow-data-loss`:
+
+```json
+{"kind": "attribute", "name": "contoso_legacycode", "deleted": false,
+ "reason": "data-bearing; pass --allow-data-loss to delete"}
+```
 
 ## Referenced global option sets
 
