@@ -18,6 +18,7 @@ from typing import Any, Iterable, cast
 from uuid import uuid4
 
 from crm.core import entity as entity_ops
+from crm.core import metadata as metadata_ops
 from crm.core import solution as solution_ops
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
@@ -605,6 +606,14 @@ ACTIVATION_DELETE_ERROR_CODE = "0x80045004"
 # draft (statecode=0) is patched in place. Verified live on agent-on-prem v9.1.
 PUBLISHED_DEFINITION_LOCK_CODE = "0x80045002"
 
+# XAML logic-path provenance gates (issue #540). Editing a workflow's step XAML
+# is on-premises only: Dataverse (cloud) refuses the whole path up front, and
+# even on-prem the platform rejects a definition whose XAML it did not author.
+# `0x80045040` = XAML provenance is not the web designer; `0x80045041` = this
+# org does not permit non-UI (hand-authored) workflow XAML.
+XAML_PROVENANCE_CODE = "0x80045040"
+NONUI_XAML_NOT_PERMITTED_CODE = "0x80045041"
+
 
 def update_workflow(
     backend: D365Backend,
@@ -616,6 +625,9 @@ def update_workflow(
     trigger_on_create: bool | None = None,
     trigger_on_delete: bool | None = None,
     trigger_on_update_attributes: str | None = None,
+    xaml: str | None = None,
+    strict: bool = False,
+    rollback: bool = True,
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
@@ -627,6 +639,12 @@ def update_workflow(
     (on-prem and Dataverse cloud). Only the fields passed as non-None are
     written — False / "" are real values (e.g. clear the on-update attribute
     list with ``trigger_on_update_attributes=""``); None means leave alone.
+
+    Passing ``xaml`` instead switches to the **logic path**: a whole-definition
+    XAML replace, which is on-premises only and provenance-gated by the platform
+    (see :func:`_replace_workflow_xaml`). It is its own slice — the metadata
+    fields above are rejected when combined with ``xaml`` so validation and the
+    deactivate/PATCH/reactivate lifecycle have a single home.
 
     A type=2 activation-record id resolves to its type=1 parent definition
     (via `_resolve_parent_workflow_id`) before any edit. The edit is attempted
@@ -643,6 +661,24 @@ def update_workflow(
     """
     if not workflow_id:
         raise D365Error("workflow_id is required.")
+
+    if xaml is not None:
+        # Logic path: whole-XAML replace. Its own home — reject metadata fields
+        # so validation and the deactivate/PATCH/reactivate lifecycle don't
+        # straddle two write shapes. (The command layer already blocks this
+        # combination; this guard keeps the core honest when called directly.)
+        if any(v is not None for v in (name, scope, on_demand, trigger_on_create,
+                                       trigger_on_delete, trigger_on_update_attributes)):
+            raise D365Error(
+                "The XAML logic path cannot be combined with metadata edits "
+                "(name/scope/triggers/on-demand); update them in separate calls.")
+        return _replace_workflow_xaml(
+            backend, workflow_id, xaml, strict=strict, rollback=rollback,
+            caller_id=caller_id, caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
+
     # Map each editable field to its `workflow` attribute logical name; keep only
     # the ones passed (None means leave alone — False / "" are real values, e.g.
     # clearing the on-update attribute list). "On update" is expressed entirely
@@ -736,6 +772,205 @@ def update_workflow(
             status=exc.status, code=exc.code, response_body=exc.response_body,
         ) from exc
     return _result(deactivated=True)
+
+
+def _map_xaml_fault(
+    exc: D365Error, target_id: str, *, note: str | None = None
+) -> D365Error:
+    """Map a server fault from the XAML logic path to a clean ``D365Error``.
+
+    The two provenance gates get an explanatory message instead of a leaked raw
+    server fault; any other fault passes through with its server text. ``note``
+    appends the non-atomic outcome (what state the workflow is left in) so a
+    partial result is reported truthfully. ``status``/``code``/``response_body``
+    are always preserved.
+    """
+    if exc.code == XAML_PROVENANCE_CODE:
+        base = (f"D365 rejected the workflow XAML for {target_id}: its provenance "
+                f"is not the web designer ({XAML_PROVENANCE_CODE}). Workflow step "
+                f"XAML can only be edited on-premises, for definitions the "
+                f"platform authored.")
+    elif exc.code == NONUI_XAML_NOT_PERMITTED_CODE:
+        base = (f"D365 rejected the workflow XAML for {target_id}: this "
+                f"organization does not permit non-UI (hand-authored) workflow "
+                f"XAML ({NONUI_XAML_NOT_PERMITTED_CODE}).")
+    else:
+        base = f"Workflow {target_id} XAML update failed. {exc}"
+    if note:
+        base = f"{base} {note}"
+    return D365Error(
+        base, status=exc.status, code=exc.code, response_body=exc.response_body)
+
+
+def _replace_workflow_xaml(
+    backend: D365Backend,
+    workflow_id: str,
+    xaml: str,
+    *,
+    strict: bool,
+    rollback: bool,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
+) -> dict[str, Any]:
+    """Replace a workflow's step logic by PATCHing a whole XAML definition.
+
+    On-premises only — the lifecycle is ``deactivate-if-active -> PATCH xaml ->
+    reactivate``, and the server's reactivate step is the only semantic/compile
+    authority. The orchestration:
+
+    1. **Cloud gate** — an OAuth (Dataverse) connection refuses up front with the
+       provenance-wall reason, before any read or write; the raw server fault is
+       never leaked.
+    2. A type=2 activation-record id resolves to its type=1 parent first.
+    3. The blob is **reference-validated**: the referenced entity's attribute set
+       is resolved live and handed to :func:`validate_workflow_xaml`. Warnings
+       ride out on the result's ``warnings`` (the command surfaces them on
+       ``meta.warnings``); ``strict`` promotes any warning to a failure before
+       the write.
+    4. The prior XAML is captured so a failed reactivation can be rolled back.
+    5. **Rollback by default** on reactivation failure restores the prior XAML
+       and reactivates, reporting both errors; ``rollback=False`` leaves the
+       rejected definition in place for inspection.
+    6. ``0x80045040`` / ``0x80045041`` surface as a clean ``D365Error`` (via
+       :func:`_map_xaml_fault`) preserving ``status``/``code``/``response_body``.
+    7. Non-atomic outcomes are reported truthfully. ``dry_run`` runs the live
+       reference validation but writes nothing, returning ``would_update`` /
+       ``would_activate``.
+    """
+    # 1. Cloud gate — refuse before any read or write on a Dataverse connection.
+    if backend.profile.auth_scheme == "oauth":
+        raise D365Error(
+            "Editing workflow step XAML is on-premises only. Dataverse rejects a "
+            "definition whose XAML was not authored by its web designer "
+            "(provenance wall); compose and import the workflow through the maker "
+            "portal instead.",
+            code=XAML_PROVENANCE_CODE,
+        )
+
+    admin: dict[str, Any] = {
+        "caller_id": caller_id, "caller_object_id": caller_object_id,
+        "suppress_duplicate_detection": suppress_duplicate_detection,
+        "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
+    }
+
+    # 2. Resolve a type=2 activation-record id to its type=1 parent.
+    parent = _resolve_parent_workflow_id(
+        backend, workflow_id, caller_id=caller_id, caller_object_id=caller_object_id)
+    target_id = parent or workflow_id
+    resolved_from = workflow_id if parent else None
+
+    # 3a. Current state + referenced entity + prior XAML. Runs live even under
+    # dry-run (reads-execute rule), so a missing id raises before any write and
+    # the validation/preview are real.
+    current = as_dict(backend.get(
+        f"workflows({target_id})",
+        params={"$select": "name,statecode,primaryentity,xaml"},
+        caller_id=caller_id, caller_object_id=caller_object_id,
+    ))
+    was_active = current.get("statecode") == STATE_ACTIVATED[0]
+    primary_entity = current.get("primaryentity")
+    prior_xaml = current.get("xaml")
+
+    # 3b. Reference-validate against the entity's live attribute set.
+    warnings: list[str] = []
+    if primary_entity:
+        attribute_set = [
+            a["LogicalName"] for a in metadata_ops.list_attributes(backend, primary_entity)
+            if a.get("LogicalName")
+        ]
+        warnings = validate_workflow_xaml(xaml, attribute_set)
+    if strict and warnings:
+        raise D365Error(
+            f"Refusing to update workflow {target_id} XAML: --strict, and the "
+            f"reference validation produced warnings: " + "; ".join(warnings))
+
+    if backend.dry_run:
+        return {
+            "_dry_run": True,
+            "would_update": {"xaml": True},
+            "would_activate": was_active,
+            "workflow_id": target_id,
+            "name": current.get("name"),
+            "statecode": current.get("statecode"),
+            "resolved_from_activation_id": resolved_from,
+            "warnings": warnings,
+        }
+
+    def _patch_xaml(blob: str) -> None:
+        backend.patch(f"workflows({target_id})", json_body={"xaml": blob},
+                      etag="*", **admin)
+
+    def _result(reactivated: bool) -> dict[str, Any]:
+        # Only returned on success (draft patch, or a clean reactivation). A
+        # rollback is never a success — it raises with both errors — so there is
+        # no rolled_back dimension to report here.
+        return {
+            "workflow_id": target_id,
+            "name": current.get("name"),
+            "updated": {"xaml": True},
+            "reactivated": reactivated,
+            "resolved_from_activation_id": resolved_from,
+            "warnings": warnings,
+        }
+
+    # 4 + 6. Lifecycle: deactivate-if-active -> PATCH xaml -> reactivate.
+    if was_active:
+        set_workflow_state(backend, target_id, activate=False,
+                           auto_resolve_parent=False, **admin)
+    try:
+        _patch_xaml(xaml)
+    except D365Error as exc:
+        raise _map_xaml_fault(
+            exc, target_id,
+            note=(f"Workflow {target_id} was deactivated but the XAML update "
+                  f"failed; it remains a draft (no rollback)." if was_active else None),
+        ) from exc
+
+    # A draft stays a draft — the user's next activate is the compile authority.
+    if not was_active:
+        return _result(reactivated=False)
+
+    # 5. Reactivate (compile/semantic authority); roll back on failure.
+    try:
+        set_workflow_state(backend, target_id, activate=True,
+                           auto_resolve_parent=False, **admin)
+    except D365Error as exc:
+        if not rollback:
+            raise _map_xaml_fault(
+                exc, target_id,
+                note=(f"Workflow {target_id}'s XAML was replaced but reactivation "
+                      f"failed; it remains deactivated with the rejected XAML in "
+                      f"place (--no-rollback)."),
+            ) from exc
+        if not prior_xaml:
+            # An active workflow always has compiled XAML, so this is defensive:
+            # never PATCH an empty blob as a "restore" — that would be a real
+            # state change dressed as a rollback. Report truthfully instead.
+            raise _map_xaml_fault(
+                exc, target_id,
+                note=(f"Workflow {target_id}'s XAML was replaced but reactivation "
+                      f"failed, and no prior XAML was captured to roll back to; "
+                      f"it remains deactivated with the rejected XAML in place."),
+            ) from exc
+        try:
+            _patch_xaml(prior_xaml)
+            set_workflow_state(backend, target_id, activate=True,
+                               auto_resolve_parent=False, **admin)
+        except D365Error as rb_exc:
+            raise _map_xaml_fault(
+                exc, target_id,
+                note=(f"Workflow {target_id}'s XAML was replaced but reactivation "
+                      f"failed, AND the rollback failed ({rb_exc}); the workflow "
+                      f"is deactivated and may hold the rejected XAML."),
+            ) from exc
+        raise _map_xaml_fault(
+            exc, target_id,
+            note=(f"Workflow {target_id}'s new XAML was rejected on reactivation; "
+                  f"rolled back to the prior XAML and reactivated."),
+        ) from exc
+    return _result(reactivated=True)
 
 
 def _resolve_parent_workflow_id(

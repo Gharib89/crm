@@ -1,6 +1,7 @@
 """Workflow commands."""
 # pyright: basic
 from __future__ import annotations
+from pathlib import Path
 import click
 from crm.core import workflow as workflow_mod
 from crm.cli import CLIContext, pass_ctx
@@ -266,25 +267,65 @@ def workflow_delete(ctx: CLIContext, workflow_id, yes,
               help="Comma-separated attribute logical names that trigger the "
                    "workflow on update. Pass an empty string to clear it "
                    "(disables the on-update trigger).")
+@click.option("--xaml-file", type=click.Path(exists=True, dir_okay=False), default=None,
+              help="Replace the workflow's step logic with the XAML in this file "
+                   "(whole-definition replace). On-premises only — refuses on "
+                   "Dataverse. Mutually exclusive with the metadata flags above.")
+@click.option("--strict", is_flag=True, default=False,
+              help="With --xaml-file: promote any reference-validation warning "
+                   "to a hard failure before writing.")
+@click.option("--rollback/--no-rollback", default=True,
+              help="With --xaml-file: on reactivation failure, restore the prior "
+                   "XAML (default). --no-rollback leaves the rejected XAML in "
+                   "place for inspection.")
 @_admin_header_options
 @pass_ctx
 def workflow_update(ctx: CLIContext, workflow_id, name, scope, on_demand,
                     trigger_on_create, trigger_on_delete, trigger_on_update_attributes,
+                    xaml_file, strict, rollback,
                     as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
-    """Edit a workflow definition's metadata (name, scope, triggers, on-demand).
+    """Edit a workflow definition's metadata, or replace its step XAML.
 
-    Works on both targets — metadata edits are not provenance-gated. A published
-    (activated) definition is edited via an automatic deactivate -> edit ->
-    reactivate cycle; a draft is edited in place. An activation-record GUID
-    (type=2) resolves to its parent definition first. Only the fields you pass
-    are changed.
+    Metadata path (default) — edit name, scope, triggers, on-demand. Works on
+    both targets (not provenance-gated). A published (activated) definition is
+    edited via an automatic deactivate -> edit -> reactivate cycle; a draft is
+    edited in place. Only the fields you pass change.
+
+    XAML logic path (--xaml-file) — replace the whole step definition. This is
+    **on-premises only**; on Dataverse it refuses up front with the provenance
+    wall. The blob is reference-validated against the entity's live attribute
+    set (warnings land on meta.warnings; --strict promotes them to a failure),
+    then driven deactivate-if-active -> PATCH xaml -> reactivate. A failed
+    reactivation rolls back to the prior XAML by default (--no-rollback keeps
+    the rejected one). An activation-record GUID (type=2) resolves to its parent
+    definition first in either path.
     """
-    if all(v is None for v in (name, scope, on_demand, trigger_on_create,
-                               trigger_on_delete, trigger_on_update_attributes)):
-        raise click.UsageError(
-            "Pass at least one field to update: --name, --scope, "
-            "--on-demand/--no-on-demand, --on-create/--no-on-create, "
-            "--on-delete/--no-on-delete, or --on-update-attributes.")
+    metadata_flags = (name, scope, on_demand, trigger_on_create,
+                      trigger_on_delete, trigger_on_update_attributes)
+    xaml = None
+    if xaml_file is not None:
+        if any(v is not None for v in metadata_flags):
+            raise click.UsageError(
+                "--xaml-file replaces the workflow's step logic wholesale and "
+                "cannot be combined with the metadata flags; run them separately.")
+        try:
+            xaml = Path(xaml_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise click.UsageError(f"cannot read --xaml-file: {exc}") from exc
+        except UnicodeDecodeError as exc:
+            raise click.UsageError(f"--xaml-file is not valid UTF-8: {exc}") from exc
+    else:
+        # --strict / --no-rollback only steer the XAML path; reject them on the
+        # metadata path rather than silently ignoring them. (`rollback` defaults
+        # True, so `not rollback` means --no-rollback was passed explicitly.)
+        if strict or not rollback:
+            raise click.UsageError(
+                "--strict and --rollback/--no-rollback only apply with --xaml-file.")
+        if all(v is None for v in metadata_flags):
+            raise click.UsageError(
+                "Pass at least one field to update: --name, --scope, "
+                "--on-demand/--no-on-demand, --on-create/--no-on-create, "
+                "--on-delete/--no-on-delete, --on-update-attributes, or --xaml-file.")
     with d365_errors(ctx):
         info = workflow_mod.update_workflow(
             ctx.backend(), workflow_id,
@@ -292,9 +333,15 @@ def workflow_update(ctx: CLIContext, workflow_id, name, scope, on_demand,
             trigger_on_create=trigger_on_create,
             trigger_on_delete=trigger_on_delete,
             trigger_on_update_attributes=trigger_on_update_attributes,
+            xaml=xaml, strict=strict, rollback=rollback,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    ctx.emit(True, data=info, meta=_redirect_note_meta(info))
+    # Route the XAML path's reference-validation warnings through emit's
+    # structured `warnings=` channel (#64) — it appends to meta.warnings in JSON
+    # mode and prints cleanly in human mode. Pop them out of `data` so they are
+    # not also echoed there. The metadata path has no warnings (pop → None).
+    warnings = info.pop("warnings", None)
+    ctx.emit(True, data=info, meta=_redirect_note_meta(info), warnings=warnings or None)
     _journal(ctx, workflow_id, info)
 
 

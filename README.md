@@ -418,7 +418,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `security`   | Create security roles (`create-role`); grant / replace a role's privileges (`set-role-privileges`); list and assign roles to users or teams; show a user's effective privileges (incl. team-inherited); grant / revoke / list record sharing (POA) |
 | `fieldsec`   | Column-level (field) security: create field security profiles, grant `--read`/`--create`/`--update` column permissions, assign profiles to users or teams, list / get |
 | `dup`        | Duplicate-detection rules: create a rule, add match conditions, publish (async) / unpublish, and `check` a candidate record against the published rules (`RetrieveDuplicates`); list / get |
-| `workflow`   | List, activate/deactivate, delete, trigger, clone, export, import, and migration-assess (classic-workflow → cloud-flow readiness) D365 workflow definitions |
+| `workflow`   | List, activate/deactivate, delete, trigger, clone, export, import, update (metadata and on-prem whole-XAML replace), and migration-assess (classic-workflow → cloud-flow readiness) D365 workflow definitions |
 | `sla`        | Full SLA lifecycle: `create` an SLA for a target entity (auto-enabling `IsSLAEnabled` on that entity), `add-kpi` to attach KPI / SLA-item conditions (FetchXML `--applicable-when` / `--success-criteria`), and `activate` (activates backing workflows first, then the SLA, with structured per-step compile-error reporting) |
 | `translation` | Export / import localizable display labels for a solution (`ExportTranslation` / `ImportTranslation`) |
 | `action`     | Call arbitrary OData functions and actions                 |
