@@ -10,12 +10,13 @@ FetchXML, solution, …).
 ### Output & failure
 
 **Emit envelope**:
-The single result a command produces via `CLIContext.emit` — either a human
-rendering or, under `--json`, the `{ok, data?, error?, meta?}` object.
+The single result a command produces via [`CLIContext.emit`](crm/cli.py) — either
+a human rendering or, under `--json`, the `{ok, data?, error?, meta?}` object.
 _Avoid_: response, output blob.
 
 **Data payload**:
-The `data` member of the emit envelope. A *curated, CLI-owned* shape — not a
+The `data` member of the emit envelope. A *curated, CLI-owned* shape
+([ADR 0008](docs/adr/0008-cli-output-contract.md)) — not a
 faithful passthrough of the raw D365 Web API response. The CLI normalizes it for
 cross-command consistency: OData protocol keys (`@odata.context`, `@odata.etag`)
 and paging links are stripped from `data` and, where useful, relocated to `meta`.
@@ -34,10 +35,10 @@ Optional, additive detail a verb layers onto an operational failure — a fix-it
 and/or extra `meta` keys derived from the caught `D365Error`. The canonical
 envelope is *reserved*: `meta`'s `{status, code, category, retryable}` and the
 raw error text always come from the `D365Error` itself and can never be
-overwritten — the `d365_errors` seam raises if an enrichment names a reserved
-key. Enrichment that costs extra reads self-gates on `--json` at the caller (the
-*when-to-pay* gate), so the human render skips it. The alternate-key hint is one
-instance.
+overwritten — the [`d365_errors` seam](crm/commands/_helpers/errors.py) raises if
+an enrichment names a reserved key. Enrichment that costs extra reads self-gates
+on `--json` at the caller (the *when-to-pay* gate), so the human render skips it.
+The alternate-key hint is one instance.
 _Avoid_: error detail, error context (name the specific enrichment).
 
 **Alternate-key hint**:
@@ -45,11 +46,11 @@ A best-effort enrichment attached to an operational failure when a write hits
 the alternate-key uniqueness code `0x80060892`: the entity's alternate keys,
 their attributes, and the colliding `payload_values`, plus a `primary_id_hint`
 when the payload also carries the primary id (the server returns the same code
-for a PK collision). Owned by `crm/core/entity.py` so every write path can reach
-it — emitted in `meta` on `entity create` (`--json`) and per-row on bulk
-`data import` failures. The human render skips it to avoid the extra metadata
-reads (the *when-to-pay* gate stays at the caller, not in core). Self-contained:
-it swallows its own errors and never masks the original failure.
+for a PK collision). Owned by [`crm/core/entity.py`](crm/core/entity.py) so every
+write path can reach it — emitted in `meta` on `entity create` (`--json`) and
+per-row on bulk `data import` failures. The human render skips it to avoid the
+extra metadata reads (the *when-to-pay* gate stays at the caller, not in core).
+Self-contained: it swallows its own errors and never masks the original failure.
 _Avoid_: duplicate error, key error detail.
 
 **Usage error**:
@@ -61,7 +62,7 @@ raised inside the command body).
 **Exit-code contract**:
 The promise that `0` = success, `1` = operational failure, `2` = usage error —
 the signal a coding agent loops on. Detail beyond the code lives in the emit
-envelope.
+envelope. Formalized in [ADR 0001](docs/adr/0001-cli-exit-code-contract.md).
 
 **List payload**:
 The data payload of a list-returning verb: always a **bare array** of row
@@ -114,7 +115,8 @@ instead of guesses. `--dry-run` means "no writes", not "no traffic".
 An operational failure partway through a verb that writes in stages — the
 envelope carries `meta.completed_steps` (what already happened, including any
 ids minted) and `meta.failed_stage`. The error text states the recovery path;
-re-running the whole verb is usually wrong once a stage has written.
+re-running the whole verb is usually wrong once a stage has written
+([ADR 0007](docs/adr/0007-record-clone-no-rollback-continue-and-report.md)).
 _Avoid_: partial failure (ambiguous about whether anything was written).
 
 ### Cloning
@@ -151,13 +153,15 @@ any created record). Anything dropped is re-addable explicitly via `--override`.
 
 **Workflow definition**:
 The authored, editable workflow row (type=1) — the thing a maintainer creates,
-edits, activates, and deletes. All workflow verbs operate on definitions.
+edits, activates, and deletes. All [workflow verbs](crm/core/workflow.py) operate
+on definitions.
 _Avoid_: parent draft (a definition is not always a draft), workflow record.
 
 **Activation record**:
 The server-created internal copy of a definition (type=2) that exists while the
 definition is activated. Read-only from the caller's perspective: it cannot be
-deleted, deactivated, or edited directly — operations resolve to its definition.
+deleted, deactivated, or edited directly — operations resolve to its definition
+([ADR 0013](docs/adr/0013-workflow-step-editing-onprem-direct-patch.md)).
 _Avoid_: activation copy, activation row.
 
 **Provenance wall**:
