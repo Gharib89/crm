@@ -150,6 +150,10 @@ CRM_EVAL_AGENT_CMD='claude -p' \
 
 **Diagnostic tasks** declare no `expect` predicate (see
 `tasks/diagnostic-data-quality.md`) — there is no clean end state to assert, so the
-analysis pass is their *only* score. Running a diagnostic task without `--analyze`
-is refused up front (nothing to score). A diagnostic task may still declare an
-`end_state.query` so its final org state is fetched and fed to the analyzer.
+analysis pass is their *only* score. The analyzer is asked to end with a
+`VERDICT: PASS` / `VERDICT: FAIL` line; the runner parses it into `passed` and the
+process exit code, so a diagnostic task is genuinely scored (and a failed analyzer,
+or one that emits no verdict, is surfaced rather than silently passing). Running a
+diagnostic task without `--analyze` is refused up front (nothing to score). A
+diagnostic task may still declare an `end_state.query` so its final org state is
+fetched and fed to the analyzer.
