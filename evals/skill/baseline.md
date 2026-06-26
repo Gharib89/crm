@@ -18,3 +18,5 @@ Rows are append-only, oldest first. See `evals/skill/README.md` for how to run i
 |------|--------|---------|-----------|--------|--------|-------|
 | 2026-06-26 | cloud | agent-cloud | 100% | 9/9 | 1 |  |
 | 2026-06-26 | onprem | agent-on-prem | 67% | 4/6 | 1 | 2 fails are harness defects, not skill drift (#584): optionset predicate hardcodes `new_` prefix (org uses `ag_`); trial-import-diagnosis precondition `agtrial8` unseeded |
+| 2026-06-26 | cloud | agent-cloud | 100% | 9/9 | 1 |  |
+| 2026-06-26 | onprem | agent-on-prem | 100% | 5/5 | 1 |  |
