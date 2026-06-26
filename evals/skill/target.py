@@ -46,9 +46,12 @@ def assert_not_production(url: str) -> None:
     """Refuse a prod/live host unless ``D365_E2E_ALLOW_HOST`` names it exactly.
 
     Mirrors the e2e conftest guard: cloud orgs are ``*.dynamics.com`` and must be
-    opted in by exact host, so a stray run can't mutate production.
+    opted in by exact host, so a stray run can't mutate production. Parses the host via
+    :func:`host_of` — the same parser the front door uses to derive
+    ``D365_E2E_ALLOW_HOST`` — so the guard's host and the derived allow-host always
+    compare on identical rules (a divergent parse could make the override silently fail).
     """
-    host = url.split("//", 1)[-1].split("/", 1)[0].lower()
+    host = host_of(url)
     allow = os.environ.get(_ALLOW_HOST_ENV, "").lower()
     if allow and allow == host:
         return
