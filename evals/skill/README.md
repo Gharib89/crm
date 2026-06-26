@@ -130,8 +130,9 @@ python -m evals.skill run --target cloud --repeat 3
 - The cloud **allow-host is derived** from the resolved `agent-cloud` profile, so no
   `D365_E2E_ALLOW_HOST` paste is needed for the standing cloud target (an already-set value
   is respected).
-- **`result.json` + `run.log` are written automatically** (to the current dir, or `--out <dir>`)
-  and their paths are printed at the end.
+- **`result.json` + `run.log` are written automatically** (into the run dir under
+  `evals/skill/runs/<ts>/`, beside the per-task records, or `--out <dir>`) and their paths are
+  printed at the end.
 
 It **composes** the existing `set_runner` / `both_runner` entry points (below), which keep
 working unchanged for finer control.

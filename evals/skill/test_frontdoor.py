@@ -192,6 +192,19 @@ def test_writes_result_json_and_run_log(tmp_path, monkeypatch, capsys):
     assert "result.json" in out and "run.log" in out  # paths printed
 
 
+def test_result_and_log_default_into_run_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
+    runs_root = tmp_path / "runs"
+
+    run(target="cloud", out_dir=None, runs_root=runs_root,
+        run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+
+    # No --out → result.json + run.log land inside the timestamped run dir, not cwd.
+    run_dir = next(runs_root.iterdir())
+    assert (run_dir / "result.json").exists()
+    assert (run_dir / "run.log").exists()
+
+
 # --- run-dir / counterfactual / task threading + the review subcommand (#588) --------
 
 def test_run_threads_run_dir_counterfactual_and_task(tmp_path, monkeypatch):

@@ -127,14 +127,16 @@ def run(
         # target has no trend to append. Reject rather than silently ignore the flag.
         raise FrontDoorError("--update-baseline applies only to --target both")
 
-    out = Path(out_dir) if out_dir is not None else Path.cwd()
+    # The durable run dir is a fixed, timestamped location under the eval tree so `review`
+    # can find the latest run; the runner also persists per-task records here on first write.
+    run_dir = Path(runs_root) / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    # result.json + run.log default to the run dir (beside the per-task records) so a run's
+    # artifacts live together instead of littering the repo cwd; --out overrides.
+    out = Path(out_dir) if out_dir is not None else run_dir
     out.mkdir(parents=True, exist_ok=True)
     result_path = out / "result.json"
     log_path = out / "run.log"
-
-    # The durable run dir is a fixed, timestamped location under the eval tree (not --out,
-    # so `review` can find the latest run); created lazily by the runner on first write.
-    run_dir = Path(runs_root) / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     # Save/restore the env knobs we set so an in-process caller's environment is left
     # untouched, matching both_runner.run_both's discipline (a leaked D365_E2E_PROFILE
@@ -204,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--update-baseline", action="store_true",
                        help="(--target both) append a dated per-target row to baseline.md")
     run_p.add_argument("--out", default=None, metavar="DIR",
-                       help="directory for result.json + run.log (default: current dir)")
+                       help="directory for result.json + run.log (default: the run dir under evals/skill/runs/)")
     run_p.add_argument("--counterfactual", action="store_true",
                        help="also run each task with the skill ABSENT so `review` can measure lift "
                             "(2x live cost per task)")
