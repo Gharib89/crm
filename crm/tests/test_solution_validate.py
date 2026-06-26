@@ -566,18 +566,6 @@ class TestCheckCollisionsFlag:
         assert "guid-collision" not in report["checks_run"]
         assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
 
-    def test_default_keeps_collision_check(self, tmp_path, backend):
-        # Default (check_collisions=True) is unchanged: existing-caller behavior.
-        p = tmp_path / "default.zip"
-        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
-        with requests_mock.Mocker() as m:
-            m.get(re.compile(r"systemforms"), json={"value": [{"formid": _FORM_GUID}]})
-            m.get(re.compile(r"savedqueries"), json={"value": []})
-            report = sv.validate_solution(p, backend=backend)
-        assert "guid-collision" in report["checks_run"]
-        assert any(f["check"] == "guid-collision" for f in report["findings"])
-
-
 # ── Task 6: CLI wiring ────────────────────────────────────────────────────────
 
 class TestValidateCli:

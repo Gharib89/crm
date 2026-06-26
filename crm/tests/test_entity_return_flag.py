@@ -81,14 +81,12 @@ def test_create_merges_extra_headers_with_prefer(monkeypatch):
 @pytest.mark.parametrize(
     "no_return,return_record,default,expected",
     [
-        # create default = echo on
-        (False, False, True, True),
-        (True, False, True, False),
-        (False, True, True, True),
-        # update default = silent
-        (False, False, False, False),
-        (False, True, False, True),
-        (True, False, False, False),
+        # default echoes; explicit flags short-circuit before `default` is read,
+        # so each short-circuit needs only one row (default value irrelevant there).
+        (False, False, True, True),    # neither flag → default (echo on)
+        (False, False, False, False),  # neither flag → default (silent)
+        (True, False, True, False),    # no_return wins → False
+        (False, True, True, True),     # return_record wins → True
     ],
 )
 def test_resolver_table(no_return, return_record, default, expected):

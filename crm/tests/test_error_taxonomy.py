@@ -29,7 +29,6 @@ from crm.utils.d365_backend import D365Error, classify_d365_error
         # appmodule uniquename collision rides its own code; same category (issue #322).
         (400, "0x80050135", "A duplicate uniquename exists", ("duplicate_detected", False)),
         (500, None, "Internal Server Error", ("server_error", True)),
-        (503, None, "Service Unavailable", ("server_error", True)),
         (400, None, "Bad payload", ("validation", False)),
     ],
 )

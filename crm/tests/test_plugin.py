@@ -545,7 +545,12 @@ class TestRegisterStep:
         # filtering_attributes only applies to Update steps
         assert "filteringattributes" not in _posts(m)[0].json()
 
-    def test_stage_and_mode_word_to_int(self, backend):
+    @pytest.mark.parametrize("stage,stage_int", [
+        ("prevalidation", 10),
+        ("preoperation", 20),
+        ("postoperation", 40),
+    ])
+    def test_stage_and_mode_word_to_int(self, backend, stage, stage_int):
         from crm.core import plugin
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
         with requests_mock.Mocker() as m:
@@ -555,26 +560,13 @@ class TestRegisterStep:
             out = plugin.register_step(
                 backend, message="Create",
                 plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
-                stage="preoperation", mode="sync", rank=7)
+                stage=stage, mode="sync", rank=7)
         body = _posts(m)[0].json()
-        assert body["stage"] == 20
+        assert body["stage"] == stage_int
         assert body["mode"] == 0
         assert body["rank"] == 7
-        assert out["stage"] == 20
+        assert out["stage"] == stage_int
         assert out["mode"] == 0
-
-    def test_prevalidation_maps_to_ten(self, backend):
-        from crm.core import plugin
-        step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
-        with requests_mock.Mocker() as m:
-            _mock_step_resolution(m, backend)
-            m.post(backend.url_for("sdkmessageprocessingsteps"), status_code=204,
-                   headers={"OData-EntityId": step_url})
-            plugin.register_step(
-                backend, message="Create",
-                plugin_type="Contoso.Plugins.PreCreateAccount", entity="account",
-                stage="prevalidation")
-        assert _posts(m)[0].json()["stage"] == 10
 
     def test_unknown_stage_raises(self, backend):
         from crm.core import plugin

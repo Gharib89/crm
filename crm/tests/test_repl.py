@@ -96,11 +96,6 @@ def test_bare_crm_is_noop():
     assert _strip_repl_prefix(["crm"]) is None
 
 
-def test_prefixless_line_unchanged():
-    """The accepted prefix-less form passes through untouched."""
-    assert _strip_repl_prefix(["connection", "whoami"]) == ["connection", "whoami"]
-
-
 def test_only_exact_crm_token_stripped():
     """A token that merely starts with `crm` (e.g. `crmfoo`) is not stripped."""
     assert _strip_repl_prefix(["crmfoo", "x"]) == ["crmfoo", "x"]

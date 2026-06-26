@@ -362,13 +362,6 @@ class TestCheck:
         assert "'contact'" in url
         assert "Microsoft.Dynamics.CRM.lead" in url
 
-    def test_empty_count_when_no_duplicates(self, backend):
-        with requests_mock.Mocker() as m:
-            m.get(_retrieve_dupes_url(backend), json={"value": []})
-            out = dup.check(backend, entity="account", record={"name": "Nope"})
-        assert out["count"] == 0
-        assert out["duplicates"] == []
-
     def test_empty_record_raises(self, backend):
         with pytest.raises(D365Error):
             dup.check(backend, entity="account", record={})

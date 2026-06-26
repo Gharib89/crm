@@ -71,17 +71,12 @@ class TestValidateProfileNameAccepts:
 # ---------------------------------------------------------------------------
 
 class TestConnectionProfileConstructionBoundary:
-    def test_traversal_name_raises_on_construction(self) -> None:
+    def test_bad_name_raises_on_construction(self) -> None:
+        # __post_init__ routes name through validate_profile_name; one representative
+        # bad input proves the wiring (the full bad-input matrix lives in
+        # TestValidateProfileNameRejects).
         with pytest.raises(D365Error):
             _make_profile("../evil")
-
-    def test_slash_in_name_raises_on_construction(self) -> None:
-        with pytest.raises(D365Error):
-            _make_profile("foo/bar")
-
-    def test_empty_name_raises_on_construction(self) -> None:
-        with pytest.raises(D365Error):
-            _make_profile("")
 
     def test_valid_name_constructs_normally(self) -> None:
         p = _make_profile("prod")
@@ -93,21 +88,15 @@ class TestConnectionProfileConstructionBoundary:
 # ---------------------------------------------------------------------------
 
 class TestPathBuilderBoundary:
-    def test_profile_path_rejects_traversal(self) -> None:
+    # Both builders route the name through validate_profile_name before raising;
+    # one representative bad input per builder proves the wiring.
+    def test_profile_path_rejects_bad_name(self) -> None:
         with pytest.raises(D365Error):
             profile_path("../evil")
 
-    def test_session_path_rejects_traversal(self) -> None:
+    def test_session_path_rejects_bad_name(self) -> None:
         with pytest.raises(D365Error):
             session_path("../evil")
-
-    def test_profile_path_rejects_slash(self) -> None:
-        with pytest.raises(D365Error):
-            profile_path("foo/bar")
-
-    def test_session_path_rejects_slash(self) -> None:
-        with pytest.raises(D365Error):
-            session_path("foo/bar")
 
 
 # ---------------------------------------------------------------------------

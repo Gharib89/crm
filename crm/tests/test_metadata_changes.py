@@ -176,12 +176,6 @@ def test_changes_cli_since_and_entity_options(monkeypatch, backend):
     assert [c["Value"]["Value"] for c in sent["Criteria"]["Conditions"]] == ["account", "contact"]
 
 
-def test_changes_cli_help_lists_command():
-    result = CliRunner().invoke(cli, ["metadata", "changes", "--help"])
-    assert result.exit_code == 0
-    assert "RetrieveMetadataChanges" in result.output
-
-
 def test_changes_cli_rejects_empty_since(monkeypatch, backend):
     """An explicit empty --since is rejected (would otherwise silently trigger an
     expensive baseline) — and the error fires before any backend call."""

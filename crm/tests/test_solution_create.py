@@ -356,19 +356,16 @@ class TestSolutionCreateCommands:
         env = json.loads(result.output)
         assert env["data"]["profile_updated"]["default_solution"] == "CRMWorx"
 
-    def test_create_solution_both_publisher_flags_exit_1(self, monkeypatch):
+    @pytest.mark.parametrize("extra", [
+        ["--publisher", "crmworx", "--publisher-id", _PUB_ID],  # both
+        [],                                                     # neither
+    ])
+    def test_create_solution_publisher_flag_xor_exit_1(self, monkeypatch, extra):
+        # --publisher / --publisher-id: providing both OR neither hits the same
+        # `bool(publisher) == bool(publisher_id)` guard → exit 1.
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
-            "--json", "solution", "create", "--name", "CRMWorx",
-            "--publisher", "crmworx", "--publisher-id", _PUB_ID,
-        ])
-        assert result.exit_code == 1, result.output
-        assert json.loads(result.output)["ok"] is False
-
-    def test_create_solution_neither_publisher_flag_exit_1(self, monkeypatch):
-        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        result = CliRunner().invoke(cli, [
-            "--json", "solution", "create", "--name", "CRMWorx",
+            "--json", "solution", "create", "--name", "CRMWorx", *extra,
         ])
         assert result.exit_code == 1, result.output
         assert json.loads(result.output)["ok"] is False
