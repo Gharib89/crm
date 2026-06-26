@@ -498,3 +498,443 @@ def test_ribbon_remove_unknown_button_errors(monkeypatch):
         "--button-id", "does.not.exist", "--yes"])
     assert res.exit_code == 1
     assert "not found" in res.output
+
+
+# ---------------------------------------------------------------------------
+# ribbon export — dry-run, ValueError, --output
+# ---------------------------------------------------------------------------
+
+def test_ribbon_export_dry_run_emits_preview(monkeypatch):
+    class _FakeBackend:
+        def get(self, path, **kw):
+            return {"_dry_run": True, "path": path}
+
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: _FakeBackend())
+    res = CliRunner().invoke(cli, [
+        "--json", "--dry-run", "ribbon", "export", "cwx_ticket"])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert data["ok"] is True
+
+
+def test_ribbon_export_value_error_emits_failure(monkeypatch):
+    monkeypatch.setattr(
+        ribbon_mod, "retrieve_entity_ribbon",
+        lambda backend, entity: (_ for _ in ()).throw(ValueError("bad entity")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, ["--json", "ribbon", "export", "bad_entity"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+    assert "bad entity" in data.get("error", "")
+
+
+def test_ribbon_export_d365error_emits_failure(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+    monkeypatch.setattr(
+        ribbon_mod, "retrieve_entity_ribbon",
+        lambda backend, entity: (_ for _ in ()).throw(D365Error("api error", status=503)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, ["--json", "ribbon", "export", "cwx_ticket"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_export_writes_output_file(monkeypatch, tmp_path):
+    xml = "<RibbonDiffXml><CustomActions/></RibbonDiffXml>"
+    monkeypatch.setattr(
+        ribbon_mod, "retrieve_entity_ribbon",
+        lambda backend, entity: ET.fromstring(xml))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    out = tmp_path / "ribbon.xml"
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "export", "cwx_ticket", "--output", str(out)])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert data["ok"] is True
+    assert data["data"]["output"] == str(out)
+    assert out.exists()
+    assert "RibbonDiffXml" in out.read_text()
+
+
+def test_ribbon_export_output_oserror_emits_failure(monkeypatch, tmp_path):
+    """Writing to a non-writable path emits ok=False with the OS error message."""
+    xml = "<RibbonDiffXml><CustomActions/></RibbonDiffXml>"
+    monkeypatch.setattr(
+        ribbon_mod, "retrieve_entity_ribbon",
+        lambda backend, entity: ET.fromstring(xml))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    bad_dir = tmp_path / "no_such_dir" / "ribbon.xml"
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "export", "cwx_ticket", "--output", str(bad_dir)])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+    assert "Could not write" in data.get("error", "")
+
+
+# ---------------------------------------------------------------------------
+# ribbon list — dry-run, D365Error
+# ---------------------------------------------------------------------------
+
+def test_ribbon_list_dry_run_emits_preview(monkeypatch):
+    def fake_export(backend, name, output_path, **kw):
+        return {"_dry_run": True, "would_export": name}
+
+    monkeypatch.setattr(ribbon_mod, "export_solution", fake_export)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "--dry-run", "ribbon", "list", "cwx_ticket", "--solution", "MySol"])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert data["ok"] is True
+    assert data["data"]["_dry_run"] is True
+
+
+def test_ribbon_list_d365error_emits_failure(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    def boom_export(backend, name, output_path, **kw):
+        raise D365Error("export failed", status=500)
+
+    monkeypatch.setattr(ribbon_mod, "export_solution", boom_export)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "list", "cwx_ticket", "--solution", "MySol"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_list_value_error_emits_failure(monkeypatch):
+    """ribbon_list ValueError path: export succeeds but entity not found."""
+    import zipfile as zf
+
+    def fake_export_empty(backend, name, output_path, **kw):
+        cust = "<ImportExportXml><Entities/></ImportExportXml>"
+        with zf.ZipFile(output_path, "w") as z:
+            z.writestr("customizations.xml", cust)
+        return {"output": str(output_path)}
+
+    monkeypatch.setattr(ribbon_mod, "export_solution", fake_export_empty)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "list", "cwx_missing", "--solution", "MySol"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# ribbon add-button — D365Error paths in resolve_webresource and apply
+# ---------------------------------------------------------------------------
+
+def test_ribbon_add_button_d365error_in_resolve_webresource(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    def boom(backend, name):
+        raise D365Error("webresource lookup failed", status=500)
+
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id", boom)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_add_button_d365error_in_apply(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(D365Error("apply failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_add_button_value_error_in_apply(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(ValueError("mutate failed")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl"])
+    assert res.exit_code == 1
+    assert "mutate failed" in res.output
+
+
+# ---------------------------------------------------------------------------
+# ribbon remove — D365Error and ValueError in apply
+# ---------------------------------------------------------------------------
+
+def test_ribbon_remove_d365error_in_apply(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(D365Error("apply failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "remove", "cwx_ticket", "--solution", "MySol",
+        "--button-id", "some.button", "--yes"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_remove_value_error_in_apply(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(ValueError("entity not found")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "remove", "cwx_ticket", "--solution", "MySol",
+        "--button-id", "some.button", "--yes"])
+    assert res.exit_code == 1
+    assert "entity not found" in res.output
+
+
+# ---------------------------------------------------------------------------
+# ribbon set-label — D365Error in retrieve_provisioned_languages, D365Error/ValueError in apply
+# ---------------------------------------------------------------------------
+
+def test_ribbon_set_label_d365error_in_retrieve_provisioned_languages(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "retrieve_provisioned_languages",
+                        lambda backend: (_ for _ in ()).throw(D365Error("lang lookup failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Check", "--lcid", "1036"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_set_label_value_error_in_retrieve_provisioned_languages(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "retrieve_provisioned_languages",
+                        lambda backend: (_ for _ in ()).throw(ValueError("bad provisioned call")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Check", "--lcid", "1036"])
+    assert res.exit_code == 1
+    assert "bad provisioned call" in res.output
+
+
+def test_ribbon_set_label_d365error_in_apply(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(D365Error("apply failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Check"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_set_label_value_error_in_apply(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(ValueError("button not found")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol",
+        "--button-id", _BID, "--label", "Check"])
+    assert res.exit_code == 1
+    assert "button not found" in res.output
+
+
+# ---------------------------------------------------------------------------
+# ribbon hide-button — D365Error/ValueError in retrieve_entity_ribbon,
+#                     target has no Command, D365Error/ValueError in apply
+# ---------------------------------------------------------------------------
+
+def test_ribbon_hide_button_d365error_in_retrieve(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "retrieve_entity_ribbon",
+                        lambda backend, entity: (_ for _ in ()).throw(D365Error("ribbon fetch failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_hide_button_value_error_in_retrieve(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "retrieve_entity_ribbon",
+                        lambda backend, entity: (_ for _ in ()).throw(ValueError("entity invalid")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
+    assert res.exit_code == 1
+    assert "entity invalid" in res.output
+
+
+_COMPOSED_NO_CMD = (
+    "<RibbonDefinitions><RibbonDefinition><Tabs><Tab><Groups><Group><Controls>"
+    "<Button Id='Mscrm.NoCommand.Button' TemplateAlias='o2'/>"
+    "</Controls></Group></Groups></Tab></Tabs></RibbonDefinition></RibbonDefinitions>")
+
+
+def test_ribbon_hide_button_target_has_no_command(monkeypatch):
+    """display-rule method requires a Command attribute; element without one errors."""
+    monkeypatch.setattr(ribbon_mod, "retrieve_entity_ribbon",
+                        lambda backend, entity: ET.fromstring(_COMPOSED_NO_CMD))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.NoCommand.Button"])
+    assert res.exit_code == 1
+    assert "no command" in res.output.lower() or "hide-action" in res.output.lower()
+
+
+def test_ribbon_hide_button_d365error_in_apply(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "retrieve_entity_ribbon",
+                        lambda backend, entity: ET.fromstring(_COMPOSED))
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(D365Error("apply failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_hide_button_value_error_in_apply(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "retrieve_entity_ribbon",
+                        lambda backend, entity: ET.fromstring(_COMPOSED))
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(ValueError("mutate failed")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "hide-button", "account", "--solution", "MySol",
+        "--target-id", "Mscrm.HomepageGrid.account.Deactivate"])
+    assert res.exit_code == 1
+    assert "mutate failed" in res.output
+
+
+# ---------------------------------------------------------------------------
+# ribbon set-rules — D365Error/ValueError in apply
+# ---------------------------------------------------------------------------
+
+def test_ribbon_set_rules_d365error_in_apply(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(D365Error("apply failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-rules", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--enable-rule", "Mscrm.SelectionCountExactlyOne"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_set_rules_value_error_in_apply(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(ValueError("command not found")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "set-rules", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--enable-rule", "Mscrm.SelectionCountExactlyOne"])
+    assert res.exit_code == 1
+    assert "command not found" in res.output
+
+
+# ---------------------------------------------------------------------------
+# ribbon add-custom-rule — D365Error in resolve_webresource, OOB warning,
+#                          D365Error/ValueError in apply
+# ---------------------------------------------------------------------------
+
+def test_ribbon_add_custom_rule_d365error_in_resolve_webresource(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: (_ for _ in ()).throw(D365Error("wr lookup failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-custom-rule", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--webresource", "cwx_/x.js", "--function", "ns.canRun"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_add_custom_rule_oob_warning(monkeypatch):
+    """OOB command triggers the unsupported-reuse warning in add-custom-rule."""
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: {"status": "succeeded"})
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-custom-rule", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "Mscrm.SavePrimary",
+        "--webresource", "cwx_/x.js", "--function", "ns.canRun"])
+    assert res.exit_code == 0, res.output
+    data = json.loads(res.output)
+    assert any("unsupported" in w.lower()
+               for w in (data.get("meta", {}).get("warnings") or []))
+
+
+def test_ribbon_add_custom_rule_d365error_in_apply(monkeypatch):
+    from crm.utils.d365_backend import D365Error
+
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(D365Error("apply failed", status=500)))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-custom-rule", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--webresource", "cwx_/x.js", "--function", "ns.canRun"])
+    assert res.exit_code == 1
+    data = json.loads(res.output)
+    assert data["ok"] is False
+
+
+def test_ribbon_add_custom_rule_value_error_in_apply(monkeypatch):
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change",
+                        lambda *a, **k: (_ for _ in ()).throw(ValueError("entity mismatch")))
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    res = CliRunner().invoke(cli, [
+        "--json", "ribbon", "add-custom-rule", "cwx_ticket", "--solution", "MySol",
+        "--command-id", "cwx_ticket.form.Validate.Command",
+        "--webresource", "cwx_/x.js", "--function", "ns.canRun"])
+    assert res.exit_code == 1
+    assert "entity mismatch" in res.output

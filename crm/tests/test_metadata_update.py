@@ -70,6 +70,11 @@ class TestRetrieveMergeWriteEntity:
         assert put_req.url == path
         assert put_req.headers.get("MSCRM.MergeLabels") == "true"
 
+    def test_empty_logical_name_raises(self, backend):
+        from crm.core import metadata_update as mu
+        with pytest.raises(D365Error, match="logical_name"):
+            mu.update_entity(backend, "", display_name="X")
+
     def test_empty_changes_raises_before_any_http(self, backend):
         from crm.core import metadata_update as mu
         with requests_mock.Mocker() as m:
@@ -680,3 +685,164 @@ class TestPublishGating:
             mu.update_entity(backend, "new_project",
                              display_name="X", publish=False)
         assert publish_mock.call_count == 0
+
+
+class TestBuildEntityChanges:
+    """Cover the optional branches of _build_entity_changes (lines 167-181)."""
+
+    def _put(self, backend, **kwargs):
+        from crm.core import metadata_update as mu
+        path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
+        with requests_mock.Mocker() as m:
+            m.get(path, json=_FULL_ENTITY)
+            m.put(path, status_code=204)
+            mu.update_entity(backend, "new_project", **kwargs, publish=False)
+        return m.request_history[-1].json()
+
+    def test_display_collection_name_included(self, backend):
+        body = self._put(backend, display_collection_name="Engagements")
+        assert body["DisplayCollectionName"]["LocalizedLabels"][0]["Label"] == "Engagements"
+
+    def test_description_included(self, backend):
+        body = self._put(backend, description="A project record")
+        assert body["Description"]["LocalizedLabels"][0]["Label"] == "A project record"
+
+    def test_ownership_included(self, backend):
+        body = self._put(backend, ownership="OrganizationOwned")
+        assert body["OwnershipType"] == "OrganizationOwned"
+
+    def test_has_activities_included(self, backend):
+        body = self._put(backend, has_activities=True)
+        assert body["HasActivities"] is True
+
+    def test_has_notes_included(self, backend):
+        body = self._put(backend, has_notes=False)
+        assert body["HasNotes"] is False
+
+    def test_is_sla_enabled_wrapped_as_managed_property(self, backend):
+        body = self._put(backend, is_sla_enabled=True)
+        assert body["IsSLAEnabled"] == {"Value": True}
+
+    def test_solution_header_sent(self, backend):
+        from crm.core import metadata_update as mu
+        path = backend.url_for("EntityDefinitions(LogicalName='new_project')")
+        with requests_mock.Mocker() as m:
+            m.get(path, json=_FULL_ENTITY)
+            m.put(path, status_code=204)
+            mu.update_entity(backend, "new_project", display_name="X",
+                             solution="MySol", publish=False)
+        put_req = m.request_history[-1]
+        assert put_req.headers.get("MSCRM.SolutionUniqueName") == "MySol"
+
+
+_FULL_MEMO_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.MemoAttributeMetadata",
+    "MetadataId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "SchemaName": "new_Notes",
+    "LogicalName": "new_notes",
+    "MaxLength": 2000,
+    "DisplayName": {"LocalizedLabels": [{"Label": "Notes", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+_FULL_INTEGER_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.IntegerAttributeMetadata",
+    "MetadataId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "SchemaName": "new_Count",
+    "LogicalName": "new_count",
+    "DisplayName": {"LocalizedLabels": [{"Label": "Count", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+_FULL_DOUBLE_ATTR = {
+    "@odata.type": "#Microsoft.Dynamics.CRM.DoubleAttributeMetadata",
+    "MetadataId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "SchemaName": "new_Rate",
+    "LogicalName": "new_rate",
+    "Precision": 2,
+    "DisplayName": {"LocalizedLabels": [{"Label": "Rate", "LanguageCode": 1033}]},
+    "RequiredLevel": {"Value": "None", "CanBeChanged": True},
+}
+
+
+class TestBuildAttributeChanges:
+    """Cover the type-guard branches of _build_attribute_changes (lines 260-291)."""
+
+    def _call(self, **kwargs):
+        from crm.core.metadata_update import _build_attribute_changes
+        return _build_attribute_changes(**kwargs)
+
+    def _base(self, odata_type="Microsoft.Dynamics.CRM.StringAttributeMetadata"):
+        return dict(
+            odata_type=odata_type, display_name=None, description=None,
+            required=None, max_length=None, precision=None,
+            min_value=None, max_value=None, format_name=None,
+        )
+
+    def test_description_included(self):
+        out = self._call(**{**self._base(), "description": "The notes field"})
+        assert out["Description"]["LocalizedLabels"][0]["Label"] == "The notes field"
+
+    def test_max_length_on_string_accepted(self):
+        out = self._call(**{**self._base(), "max_length": 200})
+        assert out["MaxLength"] == 200
+
+    def test_max_length_on_memo_accepted(self):
+        out = self._call(
+            **{**self._base("Microsoft.Dynamics.CRM.MemoAttributeMetadata"),
+               "max_length": 4000})
+        assert out["MaxLength"] == 4000
+
+    def test_max_length_on_non_string_raises(self):
+        with pytest.raises(D365Error, match="max-length"):
+            self._call(
+                **{**self._base("Microsoft.Dynamics.CRM.IntegerAttributeMetadata"),
+                   "max_length": 10})
+
+    def test_precision_on_decimal_accepted(self):
+        out = self._call(
+            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"),
+               "precision": 4})
+        assert out["Precision"] == 4
+
+    def test_precision_on_money_accepted(self):
+        out = self._call(
+            **{**self._base("Microsoft.Dynamics.CRM.MoneyAttributeMetadata"),
+               "precision": 2})
+        assert out["Precision"] == 2
+
+    def test_precision_on_non_numeric_raises(self):
+        with pytest.raises(D365Error, match="precision"):
+            self._call(
+                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
+                   "precision": 2})
+
+    def test_min_value_on_decimal_accepted(self):
+        out = self._call(
+            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"),
+               "min_value": 0.0})
+        assert out["MinValue"] == 0.0
+
+    def test_min_value_on_non_numeric_raises(self):
+        with pytest.raises(D365Error, match="--min"):
+            self._call(
+                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
+                   "min_value": 0.0})
+
+    def test_max_value_on_decimal_accepted(self):
+        out = self._call(
+            **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"),
+               "max_value": 100.0})
+        assert out["MaxValue"] == 100.0
+
+    def test_max_value_on_non_numeric_raises(self):
+        with pytest.raises(D365Error, match="--max"):
+            self._call(
+                **{**self._base("Microsoft.Dynamics.CRM.StringAttributeMetadata"),
+                   "max_value": 100.0})
+
+    def test_format_on_non_string_non_datetime_raises(self):
+        with pytest.raises(D365Error, match="string or datetime"):
+            self._call(
+                **{**self._base("Microsoft.Dynamics.CRM.IntegerAttributeMetadata"),
+                   "format_name": "Text"})

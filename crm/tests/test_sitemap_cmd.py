@@ -131,6 +131,93 @@ class TestDuplicateLcidPairing:
         assert f"duplicate --lcid 1033: one --{flag} per language." in result.output
 
 
+class TestMoveNodeValidation:
+    """Lines 153-165: exactly-one-of validation and backend routing."""
+
+    def test_zero_anchors_is_usage_error(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
+        ])
+        assert result.exit_code == 2, result.output
+        assert "exactly one of" in result.output
+
+    def test_two_anchors_is_usage_error(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
+            "--before", "nav_cases", "--after", "nav_leads",
+        ])
+        assert result.exit_code == 2, result.output
+        assert "exactly one of" in result.output
+
+    def test_blank_before_treated_as_missing_triggers_usage_error(self, backend,
+                                                                   monkeypatch):
+        # --before with only whitespace must be normalised to None, not forwarded
+        # as an anchor — the result is zero anchors → usage error (exit 2).
+        _use_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
+            "--before", "   ",
+        ])
+        assert result.exit_code == 2, result.output
+
+    def test_before_anchor_reaches_core(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.get(_sitemaps_url(backend), json={"sitemapxml": _SEED})
+            m.patch(_sitemaps_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
+                "--before", "nav_accts", "--no-publish",
+            ])
+        # core may raise D365Error (node not found / same position) or succeed;
+        # what matters is that we reached the backend (not exit 2)
+        assert result.exit_code != 2, result.output
+
+    def test_after_anchor_reaches_core(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.get(_sitemaps_url(backend), json={"sitemapxml": _SEED})
+            m.patch(_sitemaps_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
+                "--after", "nav_accts", "--no-publish",
+            ])
+        assert result.exit_code != 2, result.output
+
+    def test_index_anchor_reaches_core(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.get(_sitemaps_url(backend), json={"sitemapxml": _SEED})
+            m.patch(_sitemaps_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
+                "--index", "0", "--no-publish",
+            ])
+        assert result.exit_code != 2, result.output
+
+
+class TestSetDescriptionSuccess:
+    """Lines 245-252: set-description happy path (backend call + emit)."""
+
+    def test_set_description_reaches_core(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.get(backend.url_for("RetrieveProvisionedLanguages()"),
+                  json={"RetrieveProvisionedLanguages": [1033]})
+            m.get(_sitemaps_url(backend), json={"sitemapxml": _SEED})
+            m.patch(_sitemaps_url(backend), status_code=204)
+            result = CliRunner().invoke(cli, [
+                "--json", "sitemap", "set-description", _SID,
+                "--id", "SFA", "--lcid", "1033", "--description", "Sales area",
+                "--no-publish",
+            ])
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["action"] == "set-description"
+
+
 class TestCascadeWarningRouting:
     def test_cascade_goes_to_warnings_not_data(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)

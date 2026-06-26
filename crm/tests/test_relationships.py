@@ -362,6 +362,199 @@ class TestCreateManyToMany:
                 intersect_entity="new_xy",
             )
 
+    def test_rejects_schema_without_prefix(self, backend):
+        from crm.core import relationships as rel
+        with pytest.raises(D365Error, match="publisher prefix"):
+            rel.create_many_to_many(
+                backend,
+                schema_name="badschema",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="bad_intersect",
+            )
+
+    def test_rejects_bad_if_exists(self, backend):
+        from crm.core import relationships as rel
+        with pytest.raises(D365Error, match="if_exists"):
+            rel.create_many_to_many(
+                backend,
+                schema_name="new_a_b",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_ab",
+                if_exists="bogus",
+            )
+
+    def test_if_exists_skip_returns_skipped(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                json={"SchemaName": "new_account_project"},  # 200 = exists
+            )
+            info = rel.create_many_to_many(
+                backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+                if_exists="skip",
+            )
+        assert info["skipped"] is True
+        assert info["exists"] is True
+        assert not any(r.method == "POST" for r in m.request_history)
+
+    def test_entity_labels_included_in_post_body(self, backend):
+        from crm.core import relationships as rel
+        rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("RelationshipDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": rel_url},
+            )
+            m.get(
+                rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+                json={"SchemaName": "new_account_project",
+                      "IntersectEntityName": "new_account_project"},
+            )
+            rel.create_many_to_many(
+                backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+                entity1_menu_label="Projects",
+                entity2_menu_label="Accounts",
+            )
+        body = next(r for r in m.request_history if r.method == "POST").json()
+        assert "Label" in body["Entity1AssociatedMenuConfiguration"]
+        assert "Label" in body["Entity2AssociatedMenuConfiguration"]
+
+    def test_readback_failure_non_fatal(self, backend):
+        from crm.core import relationships as rel
+        rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("RelationshipDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": rel_url},
+            )
+            m.get(
+                rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+                status_code=500, json={"error": {"message": "boom"}},
+            )
+            info = rel.create_many_to_many(
+                backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+            )
+        assert info["created"] is True
+        assert "relationship_lookup_error" in info
+
+    def test_no_relationship_id_in_response_sets_lookup_error(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            # POST returns 204 with no OData-EntityId header → no relationship_id
+            m.post(
+                backend.url_for("RelationshipDefinitions"),
+                status_code=204,
+            )
+            info = rel.create_many_to_many(
+                backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+            )
+        assert info["created"] is True
+        assert "relationship_lookup_error" in info
+
+    def test_dryrun_returns_dry_run_envelope(self, profile):
+        from crm.core import relationships as rel
+        dry_backend = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                dry_backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            info = rel.create_many_to_many(
+                dry_backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+            )
+        assert info.get("_dry_run") is True
+        assert "created" not in info
+        post_reqs = [r for r in m.request_history if r.method == "POST"]
+        assert post_reqs == []
+
+    def test_if_exists_error_raises_when_already_exists(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                json={"SchemaName": "new_account_project"},  # 200 = exists
+            )
+            with pytest.raises(D365Error, match="AlreadyExists|already exists"):
+                rel.create_many_to_many(
+                    backend,
+                    schema_name="new_account_project",
+                    entity1_logical="account",
+                    entity2_logical="new_project",
+                    intersect_entity="new_account_project",
+                    if_exists="error",
+                )
+
+    def test_solution_header_set_when_provided(self, backend):
+        from crm.core import relationships as rel
+        rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("RelationshipDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": rel_url},
+            )
+            m.get(
+                rel_url + "/Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
+                json={"SchemaName": "new_account_project",
+                      "IntersectEntityName": "new_account_project"},
+            )
+            rel.create_many_to_many(
+                backend,
+                schema_name="new_account_project",
+                entity1_logical="account",
+                entity2_logical="new_project",
+                intersect_entity="new_account_project",
+                solution="DevSolution",
+            )
+        post_req = next(r for r in m.request_history if r.method == "POST")
+        assert post_req.headers["MSCRM.SolutionUniqueName"] == "DevSolution"
+
 
 class TestDeleteRelationship:
     def test_refuses_non_custom(self, backend):

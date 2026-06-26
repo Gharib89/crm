@@ -128,6 +128,98 @@ class TestCreateOptionset:
                 options=[(1, "A"), (1, "B")],
             )
 
+    def test_create_rejects_empty_option_label(self, backend):
+        from crm.core import optionsets as os_mod
+        with pytest.raises(D365Error, match="empty"):
+            os_mod.create_optionset(
+                backend, name="new_test", display_name="Test",
+                options=[(1, "")],
+            )
+
+    def test_create_rejects_bad_if_exists(self, backend):
+        from crm.core import optionsets as os_mod
+        with pytest.raises(D365Error, match="if_exists"):
+            os_mod.create_optionset(
+                backend, name="new_priority", display_name="Priority",
+                if_exists="bogus",
+            )
+
+    def test_create_if_exists_skip_returns_skipped(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                json={"Name": "new_priority"},  # 200 = exists
+            )
+            info = os_mod.create_optionset(
+                backend, name="new_priority", display_name="Priority",
+                if_exists="skip",
+            )
+        assert info["skipped"] is True
+        assert not any(r.method == "POST" for r in m.request_history)
+
+    def test_create_includes_description_when_given(self, backend):
+        from crm.core import optionsets as os_mod
+        url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("GlobalOptionSetDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": url},
+            )
+            m.get(url, json={"Name": "new_priority", "IsCustomOptionSet": True})
+            os_mod.create_optionset(
+                backend, name="new_priority", display_name="Priority",
+                description="The priority level",
+            )
+        body = next(r for r in m.request_history if r.method == "POST").json()
+        assert "Description" in body
+
+    def test_create_readback_failure_non_fatal(self, backend):
+        from crm.core import optionsets as os_mod
+        url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            m.post(
+                backend.url_for("GlobalOptionSetDefinitions"),
+                status_code=204,
+                headers={"OData-EntityId": url},
+            )
+            m.get(url, status_code=500, json={"error": {"message": "boom"}})
+            info = os_mod.create_optionset(
+                backend, name="new_priority", display_name="Priority",
+            )
+        assert info["created"] is True
+        assert "optionset_lookup_error" in info
+
+    def test_create_no_entity_id_sets_lookup_error(self, backend):
+        from crm.core import optionsets as os_mod
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
+                status_code=404,
+                json={"error": {"code": "0x", "message": "not found"}},
+            )
+            # No OData-EntityId header → no os_id parsed
+            m.post(
+                backend.url_for("GlobalOptionSetDefinitions"),
+                status_code=204,
+            )
+            info = os_mod.create_optionset(
+                backend, name="new_priority", display_name="Priority",
+            )
+        assert info["created"] is True
+        assert "optionset_lookup_error" in info
+
 
 class TestUpdateOptionset:
     def test_insert_only(self, backend):
