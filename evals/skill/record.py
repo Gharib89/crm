@@ -60,7 +60,12 @@ class TaskRunRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TaskRunRecord:
-        return cls(**data)
+        # Records are persisted artifacts the re-review loop re-reads, possibly after the
+        # schema evolved: tolerate unknown keys (a since-removed field) and rely on the
+        # dataclass defaults for absent optional ones, so load_records stays robust across
+        # schema drift. A missing *required* field still raises — that record is corrupt.
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in known})
 
 
 def record_filename(task_id: str, target: str = "", counterfactual: bool = False) -> str:

@@ -64,6 +64,12 @@ def test_read_skill_text_concatenates_skill_and_reference(tmp_path):
     assert text.index("ROUTER BODY") < text.index("QUERY REF")  # SKILL.md first
 
 
+def test_read_skill_text_fails_loud_on_empty_skill(tmp_path):
+    # No SKILL.md / reference/*.md → reviewing against an empty skill is meaningless.
+    with pytest.raises(review.ReviewError, match="empty skill|no skill content"):
+        review.read_skill_text(tmp_path)
+
+
 # --- prompt assembly -----------------------------------------------------------------
 
 def test_build_review_prompt_carries_the_judgable_inputs():

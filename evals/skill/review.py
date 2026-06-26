@@ -92,6 +92,14 @@ def read_skill_text(skills_dir: str | Path = SKILLS_DIR) -> str:
     if router.is_file():
         files.append(router)
     files.extend(sorted(skills_dir.glob("reference/*.md")))
+    if not files:
+        # Reviewing "did the skill help?" against no skill text is meaningless — fail
+        # loudly so the operator notices a wrong --skills-dir / missing checkout rather
+        # than getting confidently misleading verdicts.
+        raise ReviewError(
+            f"no skill content found under {skills_dir} (SKILL.md / reference/*.md) — "
+            f"refusing to review against an empty skill"
+        )
     parts = [
         f"### {f.relative_to(skills_dir)}\n{f.read_text(encoding='utf-8')}" for f in files
     ]

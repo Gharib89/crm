@@ -52,6 +52,20 @@ def test_record_round_trips_through_dict():
     assert back.efficacy_review is None and back.counterfactual is False
 
 
+def test_from_dict_tolerates_schema_drift():
+    # The re-review loop re-reads old records: a record missing newer optional fields
+    # (target/counterfactual/efficacy_review) and carrying an unknown legacy key must
+    # still load — defaults fill the gaps, the unknown key is dropped.
+    legacy = {
+        "task_id": "t", "prompt": "p", "raw_trace": "r", "commands": [],
+        "metrics": {}, "correctness_verdict": {"status": "pass"}, "skill_sha": "abc",
+        "since_removed_field": "ignored",  # unknown key from a later/earlier schema
+    }
+    rec = record.TaskRunRecord.from_dict(legacy)
+    assert rec.task_id == "t" and rec.target == "" and rec.counterfactual is False
+    assert rec.efficacy_review is None
+
+
 def test_build_record_parses_commands_and_metrics_from_transcript():
     rec = record.build_record(_spec(), _result(_TRACE), status="pass", passed=True,
                               reason="all expectations met", sha="deadbeef", target="cloud")
