@@ -912,6 +912,42 @@ class TestRemoveViewFilter:
         fetch = _patch_body(m)["fetchxml"]
         assert "cwx_gone" not in fetch
 
+    def test_remove_publish_reads_back_and_verifies(self, backend):
+        """publish=True triggers read-back; _verify runs against the returned XML."""
+        from crm.core import views
+
+        def _echo_patched(request, context):
+            for r in m.request_history:
+                if r.method == "PATCH":
+                    return r.json()
+            raise AssertionError("read-back before any PATCH")
+
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_patch(m, backend)
+            m.post(re.compile(r"PublishAllXml"), status_code=204)
+            m.get(backend.url_for(f"savedqueries({_VIEW_ID})"), json=_echo_patched)
+            out = views.remove_view_filter(
+                backend, entity=_ENTITY, view="Active Tickets",
+                conditions=[("statecode", "eq", [])], publish=True)
+        assert out["published"] is True
+        assert out["updated"] is True
+
+    def test_remove_publish_readback_verifies_failure(self, backend):
+        """_verify raises if the read-back still shows the removed condition."""
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
+            _mock_patch(m, backend)
+            m.post(re.compile(r"PublishAllXml"), status_code=204)
+            # Read-back returns the ORIGINAL fetchxml (condition was not removed)
+            m.get(backend.url_for(f"savedqueries({_VIEW_ID})"),
+                  json={"fetchxml": _FETCH_WITH_FILTER})
+            with pytest.raises(D365Error, match="read-back"):
+                views.remove_view_filter(
+                    backend, entity=_ENTITY, view="Active Tickets",
+                    conditions=[("statecode", "eq", [])], publish=True)
+
 
 class TestSetViewOrder:
     def test_order_replaces_sort(self, backend):
@@ -1424,3 +1460,4 @@ class TestReadEntityViews:
         assert "width" not in cols[1]
         assert cols[0]["name"] == "cwx_name"
         assert cols[1]["name"] == "cwx_priority"
+

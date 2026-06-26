@@ -617,3 +617,59 @@ class TestOrchestrators:
             json_mode=False, stderr_isatty=True, env={}, stream=stream, now=5000.0
         ) is True
         assert read_cache()["notified_at"] == 5000.0  # type: ignore[index]
+
+
+class TestFetchSha256sums:
+    """_fetch_sha256sums: GET <base>/<version>/SHA256SUMS, parse and return dict."""
+
+    def test_parses_valid_manifest(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import requests
+        body = (
+            "aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455  crm-linux\n"
+            "ddee556677889900ddee556677889900ddee556677889900ddee556677889900  crm-windows.exe\n"
+        )
+        monkeypatch.setattr(requests, "get", lambda url, timeout=None, **k: _Resp(body))
+        from crm.core.update import _fetch_sha256sums
+        result = _fetch_sha256sums("https://r2.example/base", "v3.1.4")
+        assert result["crm-linux"] == "aabbcc1122334455aabbcc1122334455aabbcc1122334455aabbcc1122334455"
+        assert result["crm-windows.exe"] == "ddee556677889900ddee556677889900ddee556677889900ddee556677889900"
+
+    def test_constructs_correct_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import requests
+        seen: dict[str, str] = {}
+
+        def fake_get(url: str, timeout: object = None, **k: object) -> _Resp:
+            seen["url"] = url
+            return _Resp("aabb  crm-linux\n")
+
+        monkeypatch.setattr(requests, "get", fake_get)
+        from crm.core.update import _fetch_sha256sums
+        _fetch_sha256sums("https://r2.example/base", "v3.1.4")
+        assert seen["url"] == "https://r2.example/base/v3.1.4/SHA256SUMS"
+
+    def test_fetch_failure_raises_update_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import requests
+        monkeypatch.setattr(
+            requests, "get",
+            lambda url, timeout=None, **k: (_ for _ in ()).throw(
+                requests.ConnectionError("dead")))
+        from crm.core.update import _fetch_sha256sums, UpdateError
+        with pytest.raises(UpdateError, match="Failed to fetch checksums"):
+            _fetch_sha256sums("https://dead.invalid", "v1.0.0")
+
+    def test_http_error_raises_update_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import requests
+        monkeypatch.setattr(requests, "get", lambda url, timeout=None, **k: _Resp("", status=404))
+        from crm.core.update import _fetch_sha256sums, UpdateError
+        with pytest.raises(UpdateError, match="Failed to fetch checksums"):
+            _fetch_sha256sums("https://r2.example/base", "v1.0.0")
+
+    def test_blank_lines_are_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Blank / whitespace-only lines (len(parts) != 2) are silently skipped."""
+        import requests
+        # blank line and trailing whitespace-only line must not end up in the dict
+        body = "\naabbcc  crm-linux\n  \n"
+        monkeypatch.setattr(requests, "get", lambda url, timeout=None, **k: _Resp(body))
+        from crm.core.update import _fetch_sha256sums
+        result = _fetch_sha256sums("https://r2.example/base", "v1.0.0")
+        assert result == {"crm-linux": "aabbcc"}

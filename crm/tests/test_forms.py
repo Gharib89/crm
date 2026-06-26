@@ -1096,3 +1096,25 @@ class TestMoveSectionInFormxml:
         before = sorted(re.findall(r"\{[^}]+\}", two))
         out = forms.move_section_in_formxml(two, section="new_sec", tab="general")
         assert sorted(re.findall(r"\{[^}]+\}", out)) == before
+
+    def test_after_places_section_following_anchor(self):
+        from crm.core import forms
+        # start: [summary, new_sec] — move new_sec to after=summary (no-op order,
+        # but the after= branch fires); then verify order is [summary, new_sec]
+        two = forms.add_section_to_formxml(
+            _MAIN_FORMXML, name="new_sec", label="N", tab="general")
+        three = forms.add_section_to_formxml(
+            two, name="third_sec", label="T", tab="general")
+        # start: [summary, new_sec, third_sec]; move third_sec after summary
+        out = forms.move_section_in_formxml(
+            three, section="third_sec", tab="general", after="summary")
+        assert _sections(out, "general") == ["summary", "third_sec", "new_sec"]
+
+    def test_after_anchor_not_found_raises(self):
+        from crm.core import forms
+        from crm.utils.d365_backend import D365Error
+        two = forms.add_section_to_formxml(
+            _MAIN_FORMXML, name="new_sec", label="N", tab="general")
+        with pytest.raises(D365Error, match="no_such_sec"):
+            forms.move_section_in_formxml(
+                two, section="new_sec", tab="general", after="no_such_sec")

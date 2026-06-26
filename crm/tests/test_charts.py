@@ -483,6 +483,143 @@ class TestAliasCoupling:
         with pytest.raises(D365Error):
             _validate_alias_coupling(self._root(_EDIT_DATA), self._root(two_series))
 
+    def test_no_category_raises(self):
+        from crm.core.charts import _validate_alias_coupling
+        no_cat = (
+            '<datadefinition><fetchcollection>'
+            '<fetch aggregate="true"><entity name="new_project">'
+            '<attribute name="new_projectid" aggregate="count" alias="agg" />'
+            '</entity></fetch></fetchcollection></datadefinition>'
+        )
+        with pytest.raises(D365Error, match="no <category>"):
+            _validate_alias_coupling(self._root(no_cat))
+
+    def test_category_alias_not_in_groupby_raises(self):
+        from crm.core.charts import _validate_alias_coupling
+        # category alias points to a non-groupby attribute
+        bad = _EDIT_DATA.replace('alias="groupby_column"', 'alias="wrong_alias"', 1)
+        with pytest.raises(D365Error, match="alias-coupling"):
+            _validate_alias_coupling(self._root(bad))
+
+    def test_no_measures_raises(self):
+        from crm.core.charts import _validate_alias_coupling
+        no_measure = (
+            '<datadefinition><fetchcollection>'
+            '<fetch aggregate="true"><entity name="new_project">'
+            '<attribute name="new_priority" groupby="true" alias="groupby_column" />'
+            '</entity></fetch></fetchcollection>'
+            '<categorycollection><category alias="groupby_column">'
+            '<measurecollection></measurecollection>'
+            '</category></categorycollection></datadefinition>'
+        )
+        with pytest.raises(D365Error):
+            _validate_alias_coupling(self._root(no_measure))
+
+    def test_measurecollection_without_alias_raises(self):
+        from crm.core.charts import _validate_alias_coupling
+        # <measure> present but no alias attribute
+        no_alias = _EDIT_DATA.replace(
+            '<measure alias="aggregate_column" />', '<measure />')
+        with pytest.raises(D365Error, match="alias-coupling"):
+            _validate_alias_coupling(self._root(no_alias))
+
+    def test_comparison_chart_two_series_raises(self):
+        from crm.core.charts import _validate_alias_coupling
+        # Two categories each with two measure collections → series count != 1
+        two_mc = (
+            '<datadefinition><fetchcollection>'
+            '<fetch aggregate="true"><entity name="new_project">'
+            '<attribute name="new_priority" groupby="true" alias="g1" />'
+            '<attribute name="new_stage" groupby="true" alias="g2" />'
+            '<attribute name="new_projectid" aggregate="count" alias="agg1" />'
+            '<attribute name="new_budget" aggregate="sum" alias="agg2" />'
+            '</entity></fetch></fetchcollection>'
+            '<categorycollection>'
+            '<category alias="g1">'
+            '<measurecollection><measure alias="agg1" /></measurecollection>'
+            '<measurecollection><measure alias="agg2" /></measurecollection>'
+            '</category>'
+            '<category alias="g2">'
+            '<measurecollection><measure alias="agg1" /></measurecollection>'
+            '<measurecollection><measure alias="agg2" /></measurecollection>'
+            '</category>'
+            '</categorycollection></datadefinition>'
+        )
+        with pytest.raises(D365Error, match="comparison"):
+            _validate_alias_coupling(self._root(two_mc))
+
+    def test_unequal_mc_counts_across_categories_raises(self):
+        from crm.core.charts import _validate_alias_coupling
+        # cat1 has 1 mc, cat2 has 2 mcs → unequal → line 523
+        unequal = (
+            '<datadefinition><fetchcollection>'
+            '<fetch aggregate="true"><entity name="new_project">'
+            '<attribute name="new_priority" groupby="true" alias="g1" />'
+            '<attribute name="new_stage" groupby="true" alias="g2" />'
+            '<attribute name="new_projectid" aggregate="count" alias="agg1" />'
+            '<attribute name="new_budget" aggregate="sum" alias="agg2" />'
+            '</entity></fetch></fetchcollection>'
+            '<categorycollection>'
+            '<category alias="g1">'
+            '<measurecollection><measure alias="agg1" /></measurecollection>'
+            '</category>'
+            '<category alias="g2">'
+            '<measurecollection><measure alias="agg1" /></measurecollection>'
+            '<measurecollection><measure alias="agg2" /></measurecollection>'
+            '</category>'
+            '</categorycollection></datadefinition>'
+        )
+        with pytest.raises(D365Error, match="alias-coupling"):
+            _validate_alias_coupling(self._root(unequal))
+
+    def test_valid_comparison_chart_passes(self):
+        from crm.core.charts import _validate_alias_coupling
+        # Two categories, one series each — the valid comparison case (n_cat==2, n_series==1).
+        _validate_alias_coupling(self._root(_COMPARISON_DATA), self._root(_EDIT_PRES))
+
+    def test_single_cat_too_many_series_raises(self):
+        from crm.core.charts import _validate_alias_coupling, MAX_SERIES
+        # Build a chart with MAX_SERIES+1 measure collections (each aliased)
+        agg_attrs = "".join(
+            f'<attribute name="col{i}" aggregate="count" alias="agg{i}" />'
+            for i in range(MAX_SERIES + 1)
+        )
+        mcs = "".join(
+            f'<measurecollection><measure alias="agg{i}" /></measurecollection>'
+            for i in range(MAX_SERIES + 1)
+        )
+        over_limit = (
+            '<datadefinition><fetchcollection>'
+            '<fetch aggregate="true"><entity name="new_project">'
+            '<attribute name="new_priority" groupby="true" alias="g1" />'
+            + agg_attrs +
+            '</entity></fetch></fetchcollection>'
+            '<categorycollection><category alias="g1">'
+            + mcs +
+            '</category></categorycollection></datadefinition>'
+        )
+        with pytest.raises(D365Error, match=str(MAX_SERIES)):
+            _validate_alias_coupling(self._root(over_limit))
+
+    def test_too_many_categories_raises(self):
+        from crm.core.charts import _validate_alias_coupling
+        three_cats = (
+            '<datadefinition><fetchcollection>'
+            '<fetch aggregate="true"><entity name="new_project">'
+            '<attribute name="a" groupby="true" alias="g1" />'
+            '<attribute name="b" groupby="true" alias="g2" />'
+            '<attribute name="c" groupby="true" alias="g3" />'
+            '<attribute name="new_projectid" aggregate="count" alias="agg" />'
+            '</entity></fetch></fetchcollection>'
+            '<categorycollection>'
+            '<category alias="g1"><measurecollection><measure alias="agg" /></measurecollection></category>'
+            '<category alias="g2"><measurecollection><measure alias="agg" /></measurecollection></category>'
+            '<category alias="g3"><measurecollection><measure alias="agg" /></measurecollection></category>'
+            '</categorycollection></datadefinition>'
+        )
+        with pytest.raises(D365Error, match="one or two categories"):
+            _validate_alias_coupling(self._root(three_cats))
+
 
 class TestUpdateChart:
     def test_partial_update_reads_other_column_and_patches_name(self, backend):
@@ -562,6 +699,25 @@ class TestAddRemoveSeriesOrchestration:
             with pytest.raises(D365Error):
                 charts.remove_chart_series(
                     backend, _EDIT_ID, alias="aggregate_column", publish=False)
+
+    def test_remove_series_patches_both_columns(self, backend):
+        from crm.core import charts
+        # Build a two-series chart by using the pure helpers directly.
+        from crm.core.charts import _append_series
+        data2, pres2 = _append_series(
+            _EDIT_DATA, _EDIT_PRES, column="new_budget", aggregate="sum", alias="series2")
+        two_series_chart = dict(_EDIT_CHART)
+        two_series_chart["datadescription"] = data2
+        two_series_chart["presentationdescription"] = pres2
+        with requests_mock.Mocker() as m:
+            m.get(_edit_url(backend), json=two_series_chart)
+            m.patch(_edit_url(backend), status_code=204)
+            out = charts.remove_chart_series(
+                backend, _EDIT_ID, alias="series2", publish=False)
+        body = m.last_request.json()
+        assert "datadescription" in body and "presentationdescription" in body
+        assert "series2" not in body["datadescription"]
+        assert out["action"] == "remove-series"
 
 
 class TestChartEditPublishGating:

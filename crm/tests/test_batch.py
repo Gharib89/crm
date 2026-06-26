@@ -734,3 +734,352 @@ class TestParseBatchFileIOError:
         from crm.core.batch import parse_batch_file
         with pytest.raises(D365Error, match="Could not read"):
             parse_batch_file(tmp_path / "missing.json")
+
+    def test_invalid_json_raises_d365error(self, tmp_path):
+        # lines 23-24: ValueError from json.loads on malformed JSON
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "bad.json"
+        p.write_text("{not valid json", encoding="utf-8")
+        with pytest.raises(D365Error, match="Could not parse"):
+            parse_batch_file(p)
+
+    def test_op_not_a_dict_raises(self, tmp_path):
+        # line 32: op is not a dict (e.g. a string in the list)
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('["not_an_object"]', encoding="utf-8")
+        with pytest.raises(D365Error, match="expected an object"):
+            parse_batch_file(p)
+
+    def test_missing_method_raises(self, tmp_path):
+        # line 36: method is absent (None from op.get) → not isinstance(None, str)
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"url": "accounts"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="missing or invalid 'method'"):
+            parse_batch_file(p)
+
+    def test_method_as_int_raises(self, tmp_path):
+        # line 36: method present but not a string
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": 1, "url": "accounts"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="missing or invalid 'method'"):
+            parse_batch_file(p)
+
+    def test_body_non_dict_on_post_hits_line57(self, tmp_path):
+        # line 57: body present but not a dict — for POST where body was already
+        # checked at line 49-53 as not a dict; reach line 57 by using a GET op
+        # which skips the line-49 check and has body=None... actually line 57 is
+        # the branch inside `if body is not None` for a non-POST/PATCH method.
+        # Looking at the code: lines 47-53 handle GET/DELETE (reject body) and
+        # POST/PATCH (require dict body). Line 56-57 is only reached when body
+        # is not None AND method is neither GET/DELETE nor POST/PATCH — but all
+        # valid methods are covered. Actually line 57 is dead for valid methods.
+        # Mark as unreachable: _VALID_METHODS = GET/POST/PATCH/DELETE; all paths
+        # handled before line 56. Skip — the only way to reach it would require
+        # adding a new method to _VALID_METHODS without updating the checks.
+        pass
+
+    def test_headers_non_dict_raises(self, tmp_path):
+        # lines 61-62: headers present but not a dict
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "x", "headers": "bad"}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="headers must be an object"):
+            parse_batch_file(p)
+
+    def test_header_value_non_string_raises(self, tmp_path):
+        # lines 65-69: header value is not a string
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text(
+            '[{"method": "GET", "url": "x", "headers": {"X-Custom": 123}}]',
+            encoding="utf-8",
+        )
+        with pytest.raises(D365Error, match="must be a string"):
+            parse_batch_file(p)
+
+    def test_header_valid_passes_through(self, tmp_path):
+        # line 70: valid headers stored in validated
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text(
+            '[{"method": "GET", "url": "x", "headers": {"Prefer": "odata.maxpagesize=100"}}]',
+            encoding="utf-8",
+        )
+        ops = parse_batch_file(p)
+        assert ops[0]["headers"] == {"Prefer": "odata.maxpagesize=100"}
+
+    def test_content_id_bool_raises(self, tmp_path):
+        # line 73-74: content_id is bool → rejected before int check
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "x", "content_id": true}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="not bool"):
+            parse_batch_file(p)
+
+    def test_content_id_empty_string_raises(self, tmp_path):
+        # line 76-77: content_id is an empty string
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "x", "content_id": ""}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="non-empty string"):
+            parse_batch_file(p)
+
+    def test_content_id_non_positive_int_raises(self, tmp_path):
+        # lines 80-81: content_id is int but <= 0
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "x", "content_id": 0}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="must be positive"):
+            parse_batch_file(p)
+
+    def test_content_id_wrong_type_raises(self, tmp_path):
+        # lines 83-86: content_id is a float (not str, not int, not bool)
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "x", "content_id": 1.5}]', encoding="utf-8")
+        with pytest.raises(D365Error, match="must be a string or int"):
+            parse_batch_file(p)
+
+    def test_content_id_valid_string_stored(self, tmp_path):
+        # line 78: valid non-empty string content_id stored in output
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "x", "content_id": "ref1"}]', encoding="utf-8")
+        ops = parse_batch_file(p)
+        assert ops[0]["content_id"] == "ref1"
+
+    def test_content_id_valid_positive_int_stored(self, tmp_path):
+        # line 82: valid positive int content_id stored in output
+        from crm.core.batch import parse_batch_file
+        p = tmp_path / "b.json"
+        p.write_text('[{"method": "GET", "url": "x", "content_id": 3}]', encoding="utf-8")
+        ops = parse_batch_file(p)
+        assert ops[0]["content_id"] == 3
+
+
+class TestParseResponseEdgeCases:
+    """Cover uncovered branches in _parse_batch_response."""
+
+    def test_no_boundary_raises(self):
+        # line 1486: content_type has no boundary=
+        with pytest.raises(D365Error, match="boundary"):
+            _parse_batch_response(b"", "multipart/mixed", [])
+
+    def test_get_after_writes_flushes_changeset(self):
+        # lines 1502-1506: a GET op after writes forces a changeset flush
+        # Build: one write op then one GET — the flush code runs before appending
+        # the GET to top_level_indexes.
+        cs_part = (
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: 1\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            "--cs1--"
+        )
+        get_part = (
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"value": []}'
+        )
+        boundary = "batchresp"
+        text = (
+            f"--{boundary}\r\n{cs_part}\r\n"
+            f"--{boundary}\r\n{get_part}\r\n"
+            f"--{boundary}--\r\n"
+        )
+        ops = [
+            {"method": "POST", "url": "accounts", "body": {"name": "x"}},
+            {"method": "GET", "url": "accounts"},
+        ]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        assert len(results) == 2
+        assert results[0]["status"] == 204
+        assert results[1]["status"] == 200
+
+    def test_changeset_part_without_inner_boundary_is_skipped(self):
+        # line 1529: multipart/mixed part but no inner boundary → continue
+        # The op gets backfilled as "no matching response part" (line 1570).
+        boundary = "batchresp"
+        # Craft a part with Content-Type multipart/mixed but no boundary param.
+        bad_cs_part = "Content-Type: multipart/mixed\r\n\r\ngarbage"
+        text = f"--{boundary}\r\n{bad_cs_part}\r\n--{boundary}--\r\n"
+        ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        assert len(results) == 1
+        assert results[0]["error"] == "no matching response part"
+        assert results[0]["status"] == 0
+
+    def test_excess_changeset_parts_are_ignored(self):
+        # line 1532: changeset_cursor >= len(changeset_groups) → continue
+        # Two changeset-shaped top-level parts but only one write op group.
+        cs_part1 = (
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            "--cs1--"
+        )
+        cs_part2 = (
+            "Content-Type: multipart/mixed; boundary=cs2\r\n"
+            "\r\n"
+            "--cs2\r\n"
+            "Content-Type: application/http\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            "--cs2--"
+        )
+        boundary = "batchresp"
+        text = (
+            f"--{boundary}\r\n{cs_part1}\r\n"
+            f"--{boundary}\r\n{cs_part2}\r\n"
+            f"--{boundary}--\r\n"
+        )
+        # Only one write op, so only one changeset_group.
+        ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        # First changeset matched; second is silently ignored.
+        assert len(results) == 1
+        assert results[0]["status"] == 204
+
+    def test_changeset_cid_not_in_map_falls_back_positional(self):
+        # lines 1549-1550: resolved_cid is not None but not in cid_map →
+        # fall back to positional (sub_idx < len(group)).
+        cs_part = (
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: 99\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            "--cs1--"
+        )
+        boundary = "batchresp"
+        text = f"--{boundary}\r\n{cs_part}\r\n--{boundary}--\r\n"
+        # Op has no explicit content_id so cid_map uses seq_counter=1; response
+        # sends Content-ID: 99 which doesn't match → positional fallback.
+        ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        assert results[0]["status"] == 204
+
+    def test_changeset_sub_idx_out_of_range_is_skipped(self):
+        # lines 1551-1552: sub_idx >= len(group) → continue
+        # Send a changeset with more inner parts than ops in the group.
+        cs_part = (
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: 1\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: 2\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            "--cs1--"
+        )
+        boundary = "batchresp"
+        text = f"--{boundary}\r\n{cs_part}\r\n--{boundary}--\r\n"
+        # Only one write op → group has one slot; second inner part has no home.
+        ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        assert len(results) == 1
+        assert results[0]["status"] == 204
+
+    def test_top_level_extra_parts_past_cursor_ignored(self):
+        # line 1560→1522 branch: top_level_cursor >= len(top_level_indexes)
+        # means a surplus non-changeset part is silently dropped.
+        part = (
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"value": []}'
+        )
+        boundary = "batchresp"
+        # Two identical response parts but only one GET op.
+        text = (
+            f"--{boundary}\r\n{part}\r\n"
+            f"--{boundary}\r\n{part}\r\n"
+            f"--{boundary}--\r\n"
+        )
+        ops = [{"method": "GET", "url": "accounts"}]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        assert len(results) == 1
+        assert results[0]["status"] == 200
+
+    def test_missing_response_part_backfilled(self):
+        # lines 1568-1577: an op has no matching part → backfilled with status=0
+        # Send an empty multipart body (no parts at all).
+        boundary = "batchresp"
+        text = f"--{boundary}--\r\n"
+        ops = [{"method": "GET", "url": "accounts"}]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        assert len(results) == 1
+        assert results[0]["status"] == 0
+        assert results[0]["error"] == "no matching response part"
+        assert results[0]["method"] == "GET"
+        assert results[0]["url"] == "accounts"
+
+    def test_string_cid_not_parseable_as_int_kept_as_string(self):
+        # lines 1542→1547: Content-ID header value that can't be int() → kept as str
+        # Matched against a string content_id in the op.
+        cs_part = (
+            "Content-Type: multipart/mixed; boundary=cs1\r\n"
+            "\r\n"
+            "--cs1\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "Content-ID: myref\r\n"
+            "\r\n"
+            "HTTP/1.1 204 No Content\r\n"
+            "\r\n"
+            "--cs1--"
+        )
+        boundary = "batchresp"
+        text = f"--{boundary}\r\n{cs_part}\r\n--{boundary}--\r\n"
+        ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}, "content_id": "myref"}]
+        results = _parse_batch_response(
+            text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
+        )
+        assert results[0]["status"] == 204

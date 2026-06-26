@@ -2085,3 +2085,70 @@ class TestPluginCommands:
         assert env["ok"] is False
         assert "solution" in env["error"].lower()
         assert called["n"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# update_step
+# --------------------------------------------------------------------------- #
+
+_UPDATE_STEP_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+class TestUpdateStep:
+    def test_patches_single_field_and_returns_fields_list(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"sdkmessageprocessingsteps({_UPDATE_STEP_ID})"),
+                    status_code=204)
+            out = plugin.update_step(backend, step_id=_UPDATE_STEP_ID, rank=5)
+        assert out["updated"] is True
+        assert out["sdkmessageprocessingstepid"] == _UPDATE_STEP_ID
+        assert out["fields"] == ["rank"]
+        patch = _patches(m)[0]
+        assert patch.json() == {"rank": 5}
+
+    def test_patches_multiple_fields_body_correct(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"sdkmessageprocessingsteps({_UPDATE_STEP_ID})"),
+                    status_code=204)
+            out = plugin.update_step(
+                backend, step_id=_UPDATE_STEP_ID,
+                stage="preoperation", mode="sync",
+                filtering_attributes="name,email", configuration="<cfg/>")
+        body = _patches(m)[0].json()
+        assert body["stage"] == 20        # _STAGE["preoperation"]
+        assert body["mode"] == 0          # _MODE["sync"]
+        assert body["filteringattributes"] == "name,email"
+        assert body["configuration"] == "<cfg/>"
+        assert sorted(out["fields"]) == ["configuration", "filteringattributes", "mode", "stage"]
+
+    def test_unknown_stage_raises_before_patch(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="Unknown stage"):
+                plugin.update_step(backend, step_id=_UPDATE_STEP_ID, stage="bogus")
+        assert m.request_history == []
+
+    def test_unknown_mode_raises_before_patch(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error, match="Unknown mode"):
+                plugin.update_step(backend, step_id=_UPDATE_STEP_ID, mode="bogus")
+        assert m.request_history == []
+
+    def test_solution_header_sent(self, backend):
+        from crm.core import plugin
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"sdkmessageprocessingsteps({_UPDATE_STEP_ID})"),
+                    status_code=204)
+            plugin.update_step(backend, step_id=_UPDATE_STEP_ID, rank=1, solution="cwx_sol")
+        assert _patches(m)[0].headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
+
+    def test_dry_run_short_circuits(self, profile):
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            out = plugin.update_step(dry, step_id=_UPDATE_STEP_ID, rank=3)
+        assert out.get("_dry_run") is True
+        assert not _patches(m)

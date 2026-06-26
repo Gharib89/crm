@@ -2370,3 +2370,811 @@ def test_apply_cmd_prune_yes_deletes_schema_only(backend, monkeypatch, tmp_path)
     assert {"kind": "webresource", "name": "contoso_/orphan.js", "deleted": True} \
         in env["data"]["pruned"]
     assert del_mock.called
+
+
+# ── Backfill: validate_spec branches not yet covered (#592) ────────────────────
+#
+# Each test targets a specific uncovered line / branch in validate_spec or
+# apply_spec; no network calls needed for pure-validation tests (assert
+# m.request_history == [] where applicable).
+
+
+# L53-54: _columns with an explicit int width on a dict column.
+def test_columns_dict_with_width():
+    """A dict column carrying an explicit int width is forwarded correctly."""
+    from crm.core.apply import _columns
+    result = _columns([{"name": "contoso_code", "width": 150}])
+    assert result == [("contoso_code", 150)]
+
+
+# L83: _require raises when obj is not a dict.
+def test_require_non_mapping_raises():
+    from crm.core.apply import _require
+    with pytest.raises(Exception, match="must be a mapping"):
+        _require("not-a-dict", ("key",), "publisher")
+
+
+# L99: _validate_option raises when opt is not a dict.
+def test_validate_option_non_mapping_raises():
+    spec = {"optionsets": [{"name": "contoso_p", "display_name": "P",
+                            "options": ["bad"]}]}  # string, not dict
+    with pytest.raises(Exception, match="each option must be a mapping"):
+        apply_mod.validate_spec(spec)
+
+
+# L111: _validate_column empty string.
+def test_validate_column_empty_string_raises():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "views": [{"name": "V", "columns": [""]}]}]}
+    with pytest.raises(Exception, match="column name must not be empty"):
+        apply_mod.validate_spec(spec)
+
+
+# L117: dict column with non-string name raises.
+def test_validate_column_dict_non_string_name_raises():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "views": [{"name": "V", "columns": [{"name": 123}]}]}]}
+    with pytest.raises(Exception, match="non-empty string name"):
+        apply_mod.validate_spec(spec)
+
+
+# L118: dict column with non-int width raises.
+def test_validate_column_dict_non_int_width_raises():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "views": [{"name": "V",
+                                     "columns": [{"name": "col", "width": "100"}]}]}]}
+    with pytest.raises(Exception, match="width must be an integer"):
+        apply_mod.validate_spec(spec)
+
+
+# L120: column that is neither string nor dict raises.
+def test_validate_column_non_string_non_dict_raises():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "views": [{"name": "V", "columns": [42]}]}]}
+    with pytest.raises(Exception, match="column must be a string or a mapping"):
+        apply_mod.validate_spec(spec)
+
+
+# L126: spec is not a dict.
+def test_validate_spec_non_dict_raises():
+    with pytest.raises(Exception, match="spec must be a mapping"):
+        apply_mod.validate_spec(["entities"])
+
+
+# L138: top-level key present but not a list.
+def test_validate_spec_entities_not_list_raises():
+    spec = {"entities": "contoso_Project"}
+    with pytest.raises(Exception, match="entities must be a list"):
+        apply_mod.validate_spec(spec)
+
+
+# L142: spec with no recognised keys is empty.
+def test_validate_spec_empty_raises():
+    spec = {"unknown_key": "value"}
+    with pytest.raises(Exception, match="spec is empty"):
+        apply_mod.validate_spec(spec)
+
+
+# L161: picklist missing both optionset_name and options.
+def test_validate_spec_picklist_missing_optionset_or_options():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "attributes": [{"kind": "picklist", "schema_name": "contoso_Stage",
+                                          "display_name": "Stage"}]}]}
+    with pytest.raises(Exception, match="requires optionset_name or options"):
+        apply_mod.validate_spec(spec)
+
+
+# L186: formula_definition is not a string.
+def test_validate_spec_formula_not_string_raises():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "attributes": [{"kind": "decimal", "schema_name": "contoso_X",
+                                          "display_name": "X", "source_type": "calculated",
+                                          "formula_definition": 123}]}]}
+    with pytest.raises(Exception, match="formula_definition must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L207 (non-list branch): view columns is a string, not a list — caught after _require.
+def test_validate_spec_view_columns_not_list_raises():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "views": [{"name": "V", "columns": "contoso_name"}]}]}
+    with pytest.raises(Exception, match="columns must be a non-empty list"):
+        apply_mod.validate_spec(spec)
+
+
+# L222: webresource name field is not a string (non-string name key).
+def test_validate_spec_webresource_name_not_string_raises():
+    spec = {"webresources": [{"name": 123, "file": "app.js"}]}
+    with pytest.raises(Exception, match="must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L224: webresource webresourcetype not an int.
+def test_validate_spec_webresource_type_not_int_raises():
+    spec = {"webresources": [{"name": "app.js", "file": "app.js",
+                               "webresourcetype": "3"}]}
+    with pytest.raises(Exception, match="webresourcetype must be an integer"):
+        apply_mod.validate_spec(spec)
+
+
+# L233: security_role name not a string.
+def test_validate_spec_role_name_not_string_raises():
+    spec = {"security_roles": [{"name": 123,
+                                "privileges": [{"depth": "global",
+                                                "privilege_names": ["prvRead"]}]}]}
+    with pytest.raises(Exception, match="name must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L236: security_role business_unit not a string.
+def test_validate_spec_role_business_unit_not_string_raises():
+    spec = {"security_roles": [{"name": "R", "business_unit": 42,
+                                "privileges": [{"depth": "global",
+                                                "privilege_names": ["prvRead"]}]}]}
+    with pytest.raises(Exception, match="business_unit must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L241: security_role with no privileges.
+def test_validate_spec_role_no_privileges_raises():
+    spec = {"security_roles": [{"name": "R", "privileges": []}]}
+    with pytest.raises(Exception, match="at least one privilege row is required"):
+        apply_mod.validate_spec(spec)
+
+
+# L245: privilege depth not a string.
+def test_validate_spec_privilege_depth_not_string_raises():
+    spec = {"security_roles": [{"name": "R",
+                                "privileges": [{"depth": 1,
+                                                "privilege_names": ["prvRead"]}]}]}
+    with pytest.raises(Exception, match="depth must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L253: privilege access field is not a list.
+def test_validate_spec_privilege_access_not_list_raises():
+    spec = {"security_roles": [{"name": "R",
+                                "privileges": [{"depth": "global",
+                                                "access": "Create"}]}]}
+    with pytest.raises(Exception, match="'access' must be a list"):
+        apply_mod.validate_spec(spec)
+
+
+# L255: privilege privilege_names items not strings.
+def test_validate_spec_privilege_names_items_not_strings_raises():
+    spec = {"security_roles": [{"name": "R",
+                                "privileges": [{"depth": "global",
+                                                "privilege_names": [123]}]}]}
+    with pytest.raises(Exception, match="items must be strings"):
+        apply_mod.validate_spec(spec)
+
+
+# L263: plugin file is not a string.
+def test_validate_spec_plugin_file_not_string_raises():
+    spec = {"plugins": [{"file": 123}]}
+    with pytest.raises(Exception, match="file must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L265: plugin assembly not a string.
+def test_validate_spec_plugin_assembly_not_string_raises():
+    spec = {"plugins": [{"file": "p.dll", "assembly": 123}]}
+    with pytest.raises(Exception, match="assembly must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L272: plugin type type_name not a string.
+def test_validate_spec_plugin_type_typename_not_string_raises():
+    spec = {"plugins": [{"file": "p.dll",
+                         "types": [{"type_name": 123}]}]}
+    with pytest.raises(Exception, match="type_name must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L280: plugin step field not a string (e.g. entity as int).
+def test_validate_spec_plugin_step_field_not_string_raises():
+    spec = {"plugins": [{"file": "p.dll",
+                         "steps": [{"name": "S", "message": "Create",
+                                    "plugin_type": "My.Type", "entity": 42}]}]}
+    with pytest.raises(Exception, match="'entity' must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L282: plugin step rank not an int.
+def test_validate_spec_plugin_step_rank_not_int_raises():
+    spec = {"plugins": [{"file": "p.dll",
+                         "steps": [{"name": "S", "message": "Create",
+                                    "plugin_type": "My.Type", "rank": "1"}]}]}
+    with pytest.raises(Exception, match="rank must be an integer"):
+        apply_mod.validate_spec(spec)
+
+
+# L290: plugin step image field not a string.
+def test_validate_spec_plugin_step_image_field_not_string_raises():
+    spec = {"plugins": [{"file": "p.dll",
+                         "steps": [{"name": "S", "message": "Create",
+                                    "plugin_type": "My.Type",
+                                    "images": [{"alias": "Pre", "image_type": "pre",
+                                                "attributes": 999}]}]}]}
+    with pytest.raises(Exception, match="'attributes' must be a string"):
+        apply_mod.validate_spec(spec)
+
+
+# L312-313: _classify dry_run path (would_skip → skipped vs planned).
+def test_classify_dry_run_would_skip_goes_to_skipped():
+    from crm.core.apply import _classify
+    applied: list = []; skipped: list = []; planned: list = []
+    entry = {"kind": "publisher", "name": "p"}
+    bucket = _classify({"_dry_run": True, "would_skip": True}, entry, applied, skipped, planned)
+    assert bucket == "skipped" and skipped == [entry]
+    assert planned == [] and applied == []
+
+
+def test_classify_dry_run_would_create_goes_to_planned():
+    from crm.core.apply import _classify
+    applied: list = []; skipped: list = []; planned: list = []
+    entry = {"kind": "publisher", "name": "p"}
+    bucket = _classify({"_dry_run": True}, entry, applied, skipped, planned)
+    assert bucket == "planned" and planned == [entry]
+    assert applied == [] and skipped == []
+
+
+# L397-399: _reconcile D365Error routes to failed + aborts.
+def test_reconcile_d365error_goes_to_failed_and_aborts():
+    from crm.core.apply import _reconcile, _Aborted
+    from crm.utils.d365_backend import D365Error
+    failed: list = []
+    routes = {"updated": [], "skipped": [], "replace_blocked": []}
+    entry = {"kind": "entity", "name": "X"}
+
+    def boom():
+        raise D365Error("boom")
+
+    with pytest.raises(_Aborted):
+        _reconcile(entry, boom, failed, routes)
+    assert failed[0]["error"] == "boom"
+
+
+# L426/428: _reconcile_entity "no changes → skipped" branch directly.
+def test_reconcile_entity_no_drift_returns_skipped(backend):
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project", display_collection_name="Projects")
+        ent = {"schema_name": "contoso_Project", "display_name": "Project",
+               "display_collection_name": "Projects"}
+        from crm.core.apply import _reconcile_entity
+        verdict, payload = _reconcile_entity(backend, ent, "contoso_project", None,
+                                             {"kind": "entity", "name": "contoso_Project"})
+    assert verdict == "skipped"
+
+
+# L466: _reconcile_attribute lookup kind → skipped immediately (no attribute_info GET).
+def test_reconcile_attribute_lookup_kind_is_skipped(backend):
+    """_reconcile_attribute with kind='lookup' returns skipped without reading attribute_info."""
+    from crm.core.apply import _reconcile_attribute
+    attr = {"kind": "lookup", "schema_name": "contoso_Owner", "display_name": "Owner",
+            "target_entity": "systemuser"}
+    entry = {"kind": "attribute", "name": "contoso_Owner"}
+    with requests_mock.Mocker() as m:
+        # No mocks needed — lookup returns skipped before any GET.
+        verdict, payload = _reconcile_attribute(backend, attr, "contoso_project", None, entry)
+    assert verdict == "skipped"
+    assert m.call_count == 0  # no network calls for lookup kind
+
+
+# L527-528: _read_file_bytes OSError → D365Error, recorded as failed entry.
+def test_read_file_bytes_missing_file_raises_d365error(backend):
+    spec = {"webresources": [{"name": "app.js", "file": "/nonexistent/path/app.js"}]}
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("webresourceset"), json={"value": []})
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert any("cannot read file" in e.get("error", "") for e in res["failed"])
+
+
+# L548: _reconcile_webresource display_name drift triggers update.
+def test_apply_updates_webresource_display_name_on_drift(backend, tmp_path):
+    spec = {"webresources": [_wr_spec(tmp_path, body=b"console.log(1)",
+                                      display_name="New Name")]}
+    with requests_mock.Mocker() as m:
+        # Same content but different display_name → PATCH display_name only.
+        _mock_webresource_live(m, backend, content=b"console.log(1)",
+                               display_name="Old Name")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["webresource"]
+    assert res["updated"][0]["diff"]["fields"] == ["display_name"]
+
+
+# L695/697: _reconcile_plugin_step filtering_attributes / configuration drift.
+def test_apply_updates_plugin_step_filtering_and_configuration(backend, tmp_path):
+    step = _step_spec(name="S", message="Update", entity="account",
+                      filtering_attributes="name,address1_city",
+                      configuration="new-config")
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend, _step_row(message="Update", entity="account",
+                                               filtering=None, configuration=None))
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["plugin-step"]
+    patched = sorted(res["updated"][0]["diff"]["fields"])
+    assert "configuration" in patched and "filtering_attributes" in patched
+
+
+# L705/707: _reconcile_plugin_step returns unchanged → skipped.
+def test_reconcile_plugin_step_unchanged_returns_skipped(backend):
+    from crm.core.apply import _reconcile_plugin_step
+    live = _step_row(message="Create", entity="account", stage=40, mode=0, rank=1)
+    step = {"name": "S", "message": "Create", "plugin_type": _TYPE_NAME, "entity": "account"}
+    verdict, _ = _reconcile_plugin_step(backend, step, live, None,
+                                        {"kind": "plugin-step", "name": "S"})
+    assert verdict == "skipped"
+
+
+# L768->777 / L769->774: assembly_created=True → register type directly (no list_types).
+def test_apply_creates_plugin_type_when_assembly_freshly_created(backend, tmp_path):
+    # After a fresh assembly create, register_type resolves the assembly id via
+    # a second GET on pluginassemblies — mock it to return the new id.
+    spec = {"plugins": [_plugin_spec(tmp_path, types=[{"type_name": _TYPE_NAME}])]}
+    asm_row = {"pluginassemblyid": _ASM_ID, "name": _ASM_NAME,
+               "content": ""}
+    with requests_mock.Mocker() as m:
+        # First GET: find_assembly (absence probe) → empty.
+        # Second GET: register_type's _resolve_id_by_name → return new assembly.
+        m.get(backend.url_for("pluginassemblies"),
+              [{"json": {"value": []}}, {"json": {"value": [asm_row]}}])
+        m.post(backend.url_for("pluginassemblies"), status_code=204,
+               headers={"OData-EntityId": backend.url_for(f"pluginassemblies({_ASM_ID})")})
+        m.post(backend.url_for("plugintypes"), status_code=204,
+               headers={"OData-EntityId": backend.url_for(f"plugintypes({_TYPE_ID})")})
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True, res["failed"]
+    assert _kinds(res["applied"]) == ["plugin-assembly", "plugin-type"]
+    # list_types must NOT have been called (no plugintypes GET for listing).
+    type_gets = [r for r in m.request_history if r.method == "GET"
+                 and "plugintypes" in r.url]
+    assert type_gets == []
+
+
+# L808-810: step is replace_blocked → images under it are skipped (step_blocked=True).
+def test_apply_plugin_images_skipped_when_step_replace_blocked(backend, tmp_path):
+    step = _step_spec(name="S", message="Update", entity="account",
+                      images=[{"alias": "PreImage", "image_type": "pre"}])
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        # Binding change → replace_blocked
+        _mock_step_live(m, backend, _step_row(message="Create", entity="account"))
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["plugin-step"]
+    # image is silently skipped (not reported at all) when the step is blocked.
+    all_entries = res["applied"] + res["skipped"] + res["planned"] + res["failed"]
+    assert not any(e["kind"] == "plugin-image" for e in all_entries)
+
+
+# L818: step_id is None (dry-run, step would be created) → image reported planned.
+def test_apply_dry_run_plugin_step_new_image_planned(dry_backend, tmp_path):
+    step = _step_spec(name="S", message="Create",
+                      images=[{"alias": "PreImage", "image_type": "pre"}])
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, dry_backend)
+        m.get(dry_backend.url_for("sdkmessageprocessingsteps"), json={"value": []})
+        _mock_sdkmessage(m, dry_backend, name="Create")
+        m.get(dry_backend.url_for("plugintypes"),
+              json={"value": [{"plugintypeid": _TYPE_ID, "typename": _TYPE_NAME}]})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert any(e["kind"] == "plugin-image" and e["name"] == "PreImage"
+               for e in res["planned"])
+    assert _writes(m) == []
+
+
+# L820-821: existing image → skipped (find_step_image returns non-None).
+def test_apply_plugin_existing_image_is_skipped(backend, tmp_path):
+    step = _step_spec(name="S", message="Update", entity="account", rank=1,
+                      images=[{"alias": "PreImage", "image_type": "pre"}])
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    img_row = {"sdkmessageprocessingstepimageid": _IMG_ID, "alias": "PreImage"}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend, _step_row(message="Update", entity="account", rank=1))
+        m.get(backend.url_for("sdkmessageprocessingstepimages"),
+              json={"value": [img_row]})
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert any(e["kind"] == "plugin-image" and e["name"] == "PreImage"
+               for e in res["skipped"])
+
+
+# L1130: missing MetadataId in solution-component phase → failed (not abort).
+def test_apply_solution_component_missing_metadata_id_is_failed(backend):
+    spec = {
+        "solution": {"unique_name": "contoso_test"},
+        "optionsets": [{"name": "contoso_tagset", "display_name": "Tag Set",
+                        "options": [{"value": 1, "label": "Alpha"}]}],
+    }
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("solutions"),
+              json={"value": [{"solutionid": _GUID2, "uniquename": "contoso_test",
+                               "ismanaged": False}]})
+        # Optionset EXISTS with all spec options already present → reconcile is a no-op.
+        # Return a record WITHOUT MetadataId so the component-phase GET finds nothing.
+        m.get(backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
+              json={"Name": "contoso_tagset",
+                    "Options": [{"Value": 1, "Label": _label("Alpha")}]})  # no MetadataId
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=True)
+    assert any("MetadataId" in e.get("error", "") for e in res["failed"])
+
+
+# L1144-1147: AddSolutionComponent fails → recorded in failed, does NOT abort.
+def test_apply_solution_component_add_failure_is_nonfatal(backend):
+    spec = {
+        "solution": {"unique_name": "contoso_test"},
+        "optionsets": [{"name": "contoso_tagset", "display_name": "Tag Set",
+                        "options": [{"value": 1, "label": "Alpha"}]}],
+    }
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("solutions"),
+              json={"value": [{"solutionid": _GUID2, "uniquename": "contoso_test",
+                               "ismanaged": False}]})
+        m.get(backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
+              json={"MetadataId": _OS_ID, "Name": "contoso_tagset",
+                    "Options": [{"Value": 1, "Label": _label("Alpha")}]})
+        m.post(backend.url_for("AddSolutionComponent"),
+               status_code=500, json={"error": {"message": "component add failed"}})
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=True)
+    assert any("solution-component" == e.get("kind") for e in res["failed"])
+
+
+# L1289-1290: security role dry_run → planned + continue (no roleid resolved).
+def test_apply_dry_run_security_role_greenfield_is_planned(dry_backend):
+    spec = {"security_roles": [_role_spec()]}
+    with requests_mock.Mocker() as m:
+        m.get(dry_backend.url_for("roles"), json={"value": []})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["planned"]) == ["security-role"]
+    assert _writes(m) == []
+
+
+# L1336: prune dry_run would_prune=True when prune=True and not suppressed.
+def test_apply_dry_run_prune_true_sets_would_prune(dry_backend):
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, dry_backend, [(20, _ROLE_ID)])
+        m.get(dry_backend.url_for(f"roles({_ROLE_ID})"), json={"name": "Extra Role"})
+        res = apply_mod.apply_spec(dry_backend, spec, prune=True)
+    pruned = res["pruned"]
+    assert len(pruned) == 1
+    assert pruned[0]["would_prune"] is True
+    assert _writes(m) == []
+
+
+# L1338: prune dry_run data_bearing without allow_data_loss → reason set (no would_prune).
+def test_apply_dry_run_prune_data_bearing_no_force_has_reason(dry_backend):
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, dry_backend, [(1, _ENT_ID)])
+        m.get(dry_backend.url_for(f"EntityDefinitions({_ENT_ID})"),
+              json={"LogicalName": "contoso_orphan"})
+        res = apply_mod.apply_spec(dry_backend, spec, prune=True)
+    pruned = res["pruned"]
+    assert len(pruned) == 1
+    assert "reason" in pruned[0]
+    assert "data-bearing" in pruned[0]["reason"]
+    assert pruned[0].get("would_prune") is None
+
+
+# L1347-1350: prune delete failure → lands in failed (not abort).
+def test_apply_prune_delete_failure_lands_in_failed(backend):
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(61, _WR_ID)])
+        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
+              json={"name": "contoso_/orphan.js"})
+        m.delete(backend.url_for(f"webresourceset({_WR_ID})"),
+                 status_code=500, json={"error": {"message": "delete failed"}})
+        res = apply_mod.apply_spec(backend, spec, prune=True)
+    assert res["ok"] is False
+    assert any(e.get("kind") == "webresource" and "error" in e for e in res["failed"])
+
+
+# L876->874: entity-scoped loop is skipped when solution has no attr or view components.
+def test_prune_candidates_no_entity_scoped_when_no_members(backend):
+    spec = {"solution": {"unique_name": "ContosoCore"},
+            "entities": [{"schema_name": "contoso_Project",
+                          "attributes": [{"schema_name": "contoso_Keep"}],
+                          "views": [{"name": "V"}]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [])
+        cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
+    assert cands == []
+
+
+# L938: _prune_delete "view" kind.
+# Views are entity-scoped (componenttype=26), so the spec must declare an entity
+# with a `views:` key; the orphan view is in the solution but not in the spec.
+def test_prune_delete_view_kind(backend):
+    spec = {"solution": {"unique_name": "ContosoCore"},
+            "entities": [{"schema_name": "contoso_Project", "display_name": "Project",
+                          "views": [{"name": "Active Projects",
+                                     "columns": ["contoso_name"]}]}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(26, _SQ_ID)])
+        # read_entity_views for contoso_project: one declared ("Active Projects")
+        # + one orphan ("Orphan View") that is a solution member.
+        m.get(backend.url_for("savedqueries"), json={"value": [
+            {"name": "Active Projects", "savedqueryid": "00000000-0000-0000-0000-0000000000aa",
+             "querytype": 0, "isdefault": False},
+            {"name": "Orphan View", "savedqueryid": _SQ_ID,
+             "querytype": 0, "isdefault": False},
+        ]})
+        del_mock = m.delete(backend.url_for(f"savedqueries({_SQ_ID})"), status_code=204)
+        # Also need entity probe for the create phase (spec declares entity).
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+              status_code=404)
+        m.post(backend.url_for("EntityDefinitions"), status_code=204,
+               headers={"OData-EntityId": backend.url_for(f"EntityDefinitions({_ENT_ID})")})
+        m.get(backend.url_for(f"EntityDefinitions({_ENT_ID})"),
+              json={"LogicalName": "contoso_project", "SchemaName": "contoso_Project"})
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, prune=True)
+    assert del_mock.called
+    assert any(e["kind"] == "view" and e["name"] == "Orphan View" and e["deleted"]
+               for e in res["pruned"])
+
+
+# L943-946: _prune_delete "security-role" kind.
+def test_prune_delete_security_role_kind(backend):
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(20, _ROLE_ID)])
+        m.get(backend.url_for(f"roles({_ROLE_ID})"), json={"name": "Orphan Role"})
+        del_mock = m.delete(backend.url_for(f"roles({_ROLE_ID})"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, prune=True)
+    assert del_mock.called
+    assert res["pruned"] == [
+        {"kind": "security-role", "name": "Orphan Role", "deleted": True}]
+
+
+# L1106->1084: prune phase suppressed when convergence has failed entries.
+def test_apply_prune_suppressed_on_failed_convergence(backend):
+    # Entity create fails; the prune phase detects a candidate but does NOT delete
+    # it because failed is non-empty (suppressed = True).
+    spec = {"solution": {"unique_name": "ContosoCore"},
+            "entities": [{"schema_name": "contoso_Project", "display_name": "P"}]}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(61, _WR_ID)])
+        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
+              json={"name": "contoso_/orphan.js"})
+        # entity create fails
+        m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+              status_code=404)
+        m.post(backend.url_for("EntityDefinitions"), status_code=500,
+               json={"error": {"message": "entity create failed"}})
+        del_mock = m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, prune=True)
+    # The prune candidate is reported but NOT deleted.
+    assert not del_mock.called
+    assert res["pruned"] == [
+        {"kind": "webresource", "name": "contoso_/orphan.js", "deleted": False}]
+
+
+# ── Backfill round-2: remaining branch gaps (#592) ────────────────────────────
+
+
+# L119: valid dict column passes through _validate_column without raising.
+def test_validate_column_valid_dict_with_int_width_passes():
+    spec = {"entities": [{"schema_name": "contoso_Project", "display_name": "P",
+                          "views": [{"name": "V",
+                                     "columns": [{"name": "contoso_name", "width": 150}]}]}]}
+    apply_mod.validate_spec(spec)  # must not raise
+
+
+# L426: display_collection_name drift on entity triggers update.
+def test_apply_updates_entity_collection_name_on_drift(backend):
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "display_collection_name": "Projects Renamed"}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project",
+                          display_collection_name="Projects")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["entity"]
+    puts = [r for r in m.request_history if r.method == "PUT"]
+    assert len(puts) == 1
+
+
+# L428: description drift on entity triggers update.
+def test_apply_updates_entity_description_on_drift(backend):
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "description": "New description"}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        # Live entity has no description → drift detected.
+        _mock_entity_live(m, backend, display_name="Project")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["entity"]
+
+
+# L466: display_name drift on an attribute triggers update.
+def test_apply_updates_attribute_display_name_on_drift(backend):
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "New Code"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Old Code")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["attribute"]
+
+
+# L472->474: required level drift on attribute (desired_required != live_required).
+# Already covered by test_apply_updates_attribute_required_level_on_drift but
+# that test does not explicitly assert the branch; call the function directly.
+def test_reconcile_attribute_required_drift_adds_to_changes(backend):
+    from crm.core.apply import _reconcile_attribute
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "required": "ApplicationRequired"}
+    entry = {"kind": "attribute", "name": "contoso_Code"}
+    with requests_mock.Mocker() as m:
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Code", required="None")
+        m.put(backend.url_for(
+            "EntityDefinitions(LogicalName='contoso_project')/Attributes(LogicalName='contoso_code')"
+            "/Microsoft.Dynamics.CRM.StringAttributeMetadata"), status_code=204)
+        verdict, _ = _reconcile_attribute(backend, attr, "contoso_project", None, entry)
+    assert verdict == "updated"
+
+
+# L695: stage change in plugin step reconcile triggers update.
+def test_apply_updates_plugin_step_stage_on_drift(backend, tmp_path):
+    # Live step is postoperation (40); spec changes stage to preoperation (20).
+    step = _step_spec(name="S", message="Update", entity="account",
+                      stage="preoperation")
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        # Live step: stage=40 (postoperation), spec wants preoperation (20).
+        _mock_step_live(m, backend, _step_row(message="Update", entity="account",
+                                               stage=40))
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["plugin-step"]
+    assert "stage" in res["updated"][0]["diff"]["fields"]
+
+
+# L697: mode change in plugin step reconcile triggers update.
+def test_apply_updates_plugin_step_mode_on_drift(backend, tmp_path):
+    # Live step is sync (0); spec changes mode to async (1).
+    step = _step_spec(name="S", message="Update", entity="account", mode="async")
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend, _step_row(message="Update", entity="account",
+                                               mode=0))
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["plugin-step"]
+    assert "mode" in res["updated"][0]["diff"]["fields"]
+
+
+# L769->774: second declared type in a pre-existing assembly reuses live_typenames.
+def test_apply_skips_second_type_using_cached_live_typenames(backend, tmp_path):
+    # Pre-existing assembly with both types already registered → both skipped.
+    # On the FIRST type iteration live_typenames=None → list_types GET fires.
+    # On the SECOND type iteration live_typenames is already populated → no extra GET.
+    types = [{"type_name": _TYPE_NAME},
+             {"type_name": "Contoso.Plugins.OrderHandler"}]
+    spec = {"plugins": [_plugin_spec(tmp_path, types=types)]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        # list_types returns both types already registered.
+        m.get(backend.url_for("plugintypes"), json={"value": [
+            {"plugintypeid": _TYPE_ID, "typename": _TYPE_NAME},
+            {"plugintypeid": "f6f6f6f6-f6f6-f6f6-f6f6-f6f6f6f6f6f6",
+             "typename": "Contoso.Plugins.OrderHandler"},
+        ]})
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == [
+        "plugin-assembly", "plugin-type", "plugin-type"]
+    # Only one GET to plugintypes (list_types fired once, not twice).
+    type_gets = [r for r in m.request_history if r.method == "GET"
+                 and "plugintypes" in r.url]
+    assert len(type_gets) == 1
+
+
+# L808-810: D365Error from update_step → fails + _Aborted.
+def test_apply_plugin_step_update_failure_lands_in_failed(backend, tmp_path):
+    # Live step exists with rank drift → update_step fires but the PATCH fails.
+    step = _step_spec(name="S", message="Update", entity="account", rank=5)
+    spec = {"plugins": [_plugin_spec(tmp_path, steps=[step])]}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend)
+        _mock_step_live(m, backend, _step_row(message="Update", entity="account", rank=1))
+        # PATCH fails → update_step raises D365Error → L808-810.
+        m.patch(backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"),
+                status_code=500, json={"error": {"message": "update failed"}})
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert any(e.get("kind") == "plugin-step" and "error" in e for e in res["failed"])
+
+
+# L876->874: malformed component (no objectid string) is silently skipped in loop.
+def test_prune_candidates_skips_malformed_component(backend):
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        # Component with missing objectid → if isinstance(ct, int) and isinstance(oid, str) is False.
+        m.get(backend.url_for("solutions"),
+              json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]})
+        m.get(backend.url_for("solutioncomponents"),
+              json={"value": [
+                  {"componenttype": 61, "objectid": None, "rootcomponentbehavior": 0},
+              ]})
+        cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
+    assert cands == []  # malformed component silently skipped
+
+
+# L938: attribute prune delete — call _prune_delete directly (avoids full apply setup).
+def test_prune_delete_attribute_kind(backend):
+    from crm.core.apply import _prune_delete
+    cand = {"kind": "attribute", "name": "contoso_orphan",
+            "ref": "contoso_orphan", "entity": "contoso_project"}
+    attr_path = backend.url_for(
+        "EntityDefinitions(LogicalName='contoso_project')"
+        "/Attributes(LogicalName='contoso_orphan')")
+    with requests_mock.Mocker() as m:
+        # delete_attribute does a preflight GET before DELETE.
+        m.get(attr_path, json={
+            "IsCustomAttribute": True, "IsManaged": False,
+            "IsPrimaryId": False, "IsPrimaryName": False,
+            "AttributeOf": None, "MetadataId": _ATTR_ID,
+        })
+        del_mock = m.delete(attr_path, status_code=204)
+        _prune_delete(backend, cand)
+    assert del_mock.called
+
+
+# L472->474 False branch: desired_required == live_required → no change needed.
+def test_reconcile_attribute_required_matches_no_drift(backend):
+    from crm.core.apply import _reconcile_attribute
+    # Both spec and live have required="ApplicationRequired" → no change.
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+            "required": "ApplicationRequired"}
+    entry = {"kind": "attribute", "name": "contoso_Code"}
+    with requests_mock.Mocker() as m:
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             display_name="Code", required="ApplicationRequired")
+        verdict, _ = _reconcile_attribute(backend, attr, "contoso_project", None, entry)
+    assert verdict == "skipped"
+
+
+# L1106->1084 False branch: optionset bucket is "skipped" (dry-run created but
+# then bucket == "skipped" in a freshly-created-but-not-applied scenario).
+# The simplest real-world trigger: a spec with a greenfield optionset under dry-run
+# but where create_optionset returns would_skip=True (exists) → bucket="skipped" →
+# L1106 is False → loop continues without adding to os_created.
+def test_apply_optionset_skipped_bucket_not_in_os_created(dry_backend):
+    # Optionset EXISTS → would_skip=True → bucket="skipped" → L1106 False branch.
+    spec = {"optionsets": [_OPTIONSET]}
+    with requests_mock.Mocker() as m:
+        m.get(dry_backend.url_for("GlobalOptionSetDefinitions(Name='contoso_priority')"),
+              json={"Name": "contoso_priority", "MetadataId": _OS_ID,
+                    "Options": [{"Value": 100000000, "Label": _label("Low")},
+                                 {"Value": 100000001, "Label": _label("High")}]})
+        res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
+    assert res["ok"] is True
+    # optionset is skipped (already exists and options match) → bucket="skipped"
+    assert _kinds(res["skipped"]) == ["optionset"]
