@@ -46,9 +46,9 @@ class TaskSpec:
     #: verb, so the result's ``data`` is a bare array of rows). Empty when the task
     #: declares no ``end_state`` at all.
     query: list[str]
-    #: declared expectations over that ``data`` array (``count`` and/or ``row``).
-    #: Empty for a **diagnostic** task — one with no clean programmatic predicate,
-    #: scored instead by the optional ``--analyze`` pass (issue #572).
+    #: declared expectations over that ``data`` array (``count``, ``row``, and/or
+    #: ``row_suffix``). Empty for a **diagnostic** task — one with no clean
+    #: programmatic predicate, scored instead by the optional ``--analyze`` pass (#572).
     expect: dict[str, Any]
     cleanup: list[CleanupStep]
 
@@ -129,6 +129,8 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             raise ValueError(f"{path}: end_state.expect.count must be an integer")
         if "row" in expect and not isinstance(expect["row"], dict):
             raise ValueError(f"{path}: end_state.expect.row must be a mapping")
+        if "row_suffix" in expect and not isinstance(expect["row_suffix"], dict):
+            raise ValueError(f"{path}: end_state.expect.row_suffix must be a mapping")
 
     raw_cleanup = require("cleanup") or []
     if not isinstance(raw_cleanup, list):
@@ -160,13 +162,20 @@ def parse_task_file(path: str | Path) -> TaskSpec:
 def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
     """Score a query's ``data`` payload against a declared ``expect`` mapping.
 
-    The task set (#571) reuses these two matchers unchanged — ``count`` covers
-    exact-cardinality end states (including the 50-row bulk load) and ``row`` covers
-    named-artifact end states — so no new matcher was needed:
+    ``count`` covers exact-cardinality end states (including the 50-row bulk load),
+    ``row`` covers named-artifact end states, and ``row_suffix`` (added in #584)
+    covers named-artifact end states whose logical name carries an org-varying
+    publisher prefix:
 
     - ``count``: the ``data`` array has exactly this many rows;
     - ``row``: at least one row carries every ``field: value`` pair (string compare,
-      so an absent key never matches).
+      so an absent key never matches);
+    - ``row_suffix``: at least one row whose every ``field`` *ends with* the given
+      string (string compare; an absent key never matches, even an empty suffix).
+      Publisher-prefix-agnostic — a global option set named
+      ``ag_maintenancepriority`` matches suffix ``maintenancepriority`` whatever the
+      org's default publisher prefix is, so a correctly-created artifact isn't a false
+      fail just because the prefix differs from the stock ``new_``.
 
     Returns ``(passed, reason)``; ``reason`` explains the first failing matcher so a
     failed run is self-describing.
@@ -185,5 +194,17 @@ def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
             all(str(row.get(k)) == str(v) for k, v in want_row.items()) for row in data
         ):
             return False, f"row: no row matched {want_row!r}"
+
+    if "row_suffix" in expect:
+        want_suffix: dict[str, Any] = expect["row_suffix"]
+        # Require the key to be present (so an absent field never matches, even against
+        # an empty suffix) and skip non-mapping rows so a stray scalar can't crash the
+        # matcher — the endswith semantics are otherwise the suffix analogue of ``row``.
+        if not any(
+            isinstance(row, dict)
+            and all(k in row and str(row[k]).endswith(str(v)) for k, v in want_suffix.items())
+            for row in data
+        ):
+            return False, f"row_suffix: no row matched {want_suffix!r}"
 
     return True, "all expectations met"

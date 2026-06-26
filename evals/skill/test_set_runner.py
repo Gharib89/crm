@@ -48,12 +48,13 @@ def _specs():
 
 
 def test_set_task_spec_count():
-    # AC1 allows ~12–15 specs; pin to the actual 15 so an accidental task removal
+    # AC1 allows ~12–15 specs; pin to the actual count so an accidental task removal
     # fails CI instead of silently passing the lower end of the band. Diagnostic
     # tasks (#572) are scored by the --analyze pass, not this deterministic set, so
-    # they don't count toward it.
+    # they don't count toward it — `trial-import-diagnosis` (#584) is diagnostic, so
+    # 14 predicate + 2 diagnostic (it + `diagnostic-data-quality`).
     predicate = [s for s in _specs() if not s.is_diagnostic]
-    assert len(predicate) == 15, f"expected 15 predicate task specs, found {len(predicate)}"
+    assert len(predicate) == 14, f"expected 14 predicate task specs, found {len(predicate)}"
 
 
 def test_eight_trials_formalized():

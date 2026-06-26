@@ -6,12 +6,15 @@ domain: solutions
 # archive `/tmp/agtrial8-broken.zip` (a real <MissingDependency> failure) and the
 # source solution `agtrial8` exist (constructed in the trial environment).
 target: onprem
-# This task is primarily DIAGNOSTIC: its real signal is the *quality* of the failure
-# diagnosis, scored qualitatively by the optional Claude `--analyze` pass (#572). The
-# programmatic predicate only asserts the source solution `agtrial8` is still present
-# — it does NOT prove the import was attempted, nor detect a side-effect solution, so
-# it can pass without the diagnosis work; that work is what #572 scores. No record
-# cleanup (the local zip is removed out of band).
+# This task is purely DIAGNOSTIC: its only signal is the *quality* of the failure
+# diagnosis, scored qualitatively by the optional Claude `--analyze` pass (#572).
+# There is intentionally no `expect` predicate — the old one only asserted the source
+# solution `agtrial8` is still present, which proves nothing about the diagnosis and
+# false-failed on any org never seeded with the `agtrial8` fixtures (the broken zip
+# and source solution are "constructed in the trial environment" — absent elsewhere).
+# With no `expect`, `is_diagnostic` is True and the set runner SKIPs the task (scored
+# by --analyze, not the set). `end_state.query` is kept so the analyzer still receives
+# org state. No record cleanup (the local zip is removed out of band).
 end_state:
   query:
     - query
@@ -21,10 +24,6 @@ end_state:
     - "uniquename eq 'agtrial8'"
     - --select
     - uniquename
-  expect:
-    count: 1
-    row:
-      uniquename: agtrial8
 cleanup: []
 ---
 
