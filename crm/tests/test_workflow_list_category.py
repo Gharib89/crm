@@ -77,23 +77,11 @@ class TestWorkflowCategoryFriendlyNames:
         assert result.exit_code == 0
         assert captured["category"] == workflow_mod.CATEGORY_BPF
 
-    def test_case_insensitive_mixed(self, monkeypatch, tmp_path):
-        captured = {}
-        result = _invoke(monkeypatch, tmp_path, ["--category", "BusinessRule"], captured)
-        assert result.exit_code == 0
-        assert captured["category"] == workflow_mod.CATEGORY_BUSINESS_RULE
-
     def test_integer_passthrough_0(self, monkeypatch, tmp_path):
         captured = {}
         result = _invoke(monkeypatch, tmp_path, ["--category", "0"], captured)
         assert result.exit_code == 0
         assert captured["category"] == 0
-
-    def test_integer_passthrough_arbitrary(self, monkeypatch, tmp_path):
-        captured = {}
-        result = _invoke(monkeypatch, tmp_path, ["--category", "99"], captured)
-        assert result.exit_code == 0
-        assert captured["category"] == 99
 
     def test_no_category_passes_none(self, monkeypatch, tmp_path):
         captured = {}

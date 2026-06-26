@@ -264,27 +264,6 @@ class TestStringAttribute:
         col = spec["entities"][0]["attributes"][0]
         assert col["format_name"] == "Email"
 
-    def test_string_missing_max_length_skipped(self, backend):
-        # Sparse/permission-limited deep read with no MaxLength -> attribute skipped
-        # (apply makes max_length mandatory for string/memo).
-        info = {
-            "SchemaName": "new_Sparse",
-            "DisplayName": _label("Sparse"),
-            "AttributeTypeName": {"Value": "StringType"},
-            "RequiredLevel": {"Value": "None"},
-            # no MaxLength
-        }
-        attrs = {"value": [_shallow("new_name"), _shallow("new_sparse")]}
-        with requests_mock.Mocker() as m:
-            m.get(_entity_url(backend), json=_ENTITY)
-            m.get(_attrs_url(backend), json=attrs)
-            m.get(_attr_url(backend, "new_name"), json=_primary_info())
-            m.get(_attr_url(backend, "new_sparse"), json=info)
-            spec = build_entity_spec(backend, "new_project")
-
-        assert "attributes" not in spec["entities"][0]
-        apply.validate_spec(spec)  # must not raise
-
 
 class TestNumericAttribute:
     def test_decimal_precision(self, backend):
@@ -302,27 +281,6 @@ class TestNumericAttribute:
         assert col["required"] == "None"
         assert "max_length" not in col
         assert "format_name" not in col
-
-    def test_decimal_missing_precision_skipped(self, backend):
-        # Sparse/permission-limited deep read with no Precision -> attribute skipped
-        # (apply makes precision mandatory for decimal/double/money).
-        info = {
-            "SchemaName": "new_Sparse",
-            "DisplayName": _label("Sparse"),
-            "AttributeTypeName": {"Value": "DecimalType"},
-            "RequiredLevel": {"Value": "None"},
-            # no Precision
-        }
-        attrs = {"value": [_shallow("new_name"), _shallow("new_sparse")]}
-        with requests_mock.Mocker() as m:
-            m.get(_entity_url(backend), json=_ENTITY)
-            m.get(_attrs_url(backend), json=attrs)
-            m.get(_attr_url(backend, "new_name"), json=_primary_info())
-            m.get(_attr_url(backend, "new_sparse"), json=info)
-            spec = build_entity_spec(backend, "new_project")
-
-        assert "attributes" not in spec["entities"][0]
-        apply.validate_spec(spec)  # must not raise
 
 
 class TestLookupAttribute:
@@ -368,27 +326,6 @@ class TestLocalPicklist:
 
 
 class TestUnresolvedPicklistSkipped:
-    def test_local_picklist_empty_options_skipped(self, backend):
-        # Local OptionSet with NO options (and no GlobalOptionSet) -> skipped.
-        attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
-        cast = {
-            "LogicalName": "new_stage",
-            "OptionSet": {"Options": []},
-            "GlobalOptionSet": None,
-        }
-        with requests_mock.Mocker() as m:
-            m.get(_entity_url(backend), json=_ENTITY)
-            m.get(_attrs_url(backend), json=attrs)
-            m.get(_attr_url(backend, "new_name"), json=_primary_info())
-            m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
-            m.get(_pick_cast_url(backend, "new_stage"), json=cast)
-            spec = build_entity_spec(backend, "new_project")
-
-        # The unresolved picklist is absent; no bare picklist / options:[] emitted.
-        assert "attributes" not in spec["entities"][0]
-        assert "optionsets" not in spec
-        apply.validate_spec(spec)  # must not raise
-
     def test_both_null_cast_skipped(self, backend):
         # Sparse/permission-limited read: OptionSet null AND GlobalOptionSet null.
         attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
@@ -909,6 +846,7 @@ class TestExportSpecWarnings:
         assert len(warnings) == 1
         assert "new_code" in warnings[0]
         assert "MaxLength" in warnings[0]
+        apply.validate_spec(spec)  # skipped attr → spec still validates
 
     def test_precision_missing_warns(self, backend):
         attrs = {"value": [_shallow("new_name"), _shallow("new_budget")]}
@@ -931,6 +869,7 @@ class TestExportSpecWarnings:
         assert len(warnings) == 1
         assert "new_budget" in warnings[0]
         assert "Precision" in warnings[0]
+        apply.validate_spec(spec)  # skipped attr → spec still validates
 
     def test_lookup_no_target_warns(self, backend):
         attrs = {"value": [_shallow("new_name"), _shallow("new_accountid")]}

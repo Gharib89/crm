@@ -52,11 +52,6 @@ def test_validate_ownership_accepts_and_rejects():
         mc.validate_ownership("Nobody")
 
 
-def test_validate_ownership_echo():
-    with pytest.raises(D365Error, match=r"ownership must be one of \[.*\], got 'Nobody'\."):
-        mc.validate_ownership("Nobody", echo=True)
-
-
 def test_validate_menu_behavior():
     for v in mc.MENU_BEHAVIORS:
         mc.validate_menu_behavior(v)

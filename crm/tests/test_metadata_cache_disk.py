@@ -144,16 +144,6 @@ def test_read_corrupt_json_returns_none(crm_home: Path) -> None:
     assert read_definitions(profile, now=T0) is None
 
 
-def test_read_corrupt_json_does_not_raise(crm_home: Path) -> None:
-    profile = make_profile()
-    cf = cache_file(profile)
-    cf.parent.mkdir(parents=True, exist_ok=True)
-    cf.write_bytes(b"\x00\x01\x02")
-    # Must not raise
-    result = read_definitions(profile, now=T0)
-    assert result is None
-
-
 def test_read_payload_not_dict_returns_none(crm_home: Path) -> None:
     profile = make_profile()
     cf = cache_file(profile)
@@ -231,13 +221,6 @@ def test_clear_existing_file_returns_true(crm_home: Path) -> None:
 
 def test_clear_nonexistent_returns_false(crm_home: Path) -> None:
     profile = make_profile()
-    assert clear(profile) is False
-
-
-def test_clear_twice_second_is_false(crm_home: Path) -> None:
-    profile = make_profile()
-    write_definitions(profile, SAMPLE_DEFS, now=T0)
-    assert clear(profile) is True
     assert clear(profile) is False
 
 

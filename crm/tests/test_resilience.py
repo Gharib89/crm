@@ -737,12 +737,6 @@ class TestConnectionProfileValidation:
         )
         assert profile.retry_max == 0
 
-    def test_defaults_pass_validation(self):
-        # Sanity: shipped defaults must not trip the validator.
-        profile = ConnectionProfile(**self._BASE)
-        assert profile.retry_max >= 0
-        assert profile.async_timeout >= 0
-
     def test_from_dict_negative_raises(self):
         bad = {**self._BASE, "async_poll_max": -2.0}
         with pytest.raises(D365Error, match="async_poll_max"):

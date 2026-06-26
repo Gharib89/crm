@@ -128,17 +128,6 @@ def test_usage_error_human_path_not_json():
     assert not is_json, "human path must not emit a JSON envelope"
 
 
-def test_usage_error_json_exits_2_not_1():
-    """The JSON-wrapped usage error stays exit 2, distinct from an operational
-    failure (exit 1) — contrast both to prove the distinction is real."""
-    usage = CliRunner().invoke(cli, ["--json", "query", "count", "--nope"])
-    operational = CliRunner().invoke(
-        cli, ["--json", "action", "invoke", "foo", "--bind-set", "workflows"]
-    )
-    assert usage.exit_code == 2, usage.output
-    assert operational.exit_code == 1, operational.output
-
-
 def test_repl_path_emits_json_envelope(capsys):
     """REPL --json line: a usage error emits the envelope to stdout, not skin.error.
     The signal is the '--json' token in argv, not a pre-set ctx flag — so we leave

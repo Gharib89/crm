@@ -556,13 +556,10 @@ class TestBatchMethod:
         assert m.call_count == 2
         assert results[0]["status"] == 200
 
-    def test_batch_rejects_missing_body_on_post(self, backend):
+    @pytest.mark.parametrize("method,url", [("POST", "accounts"), ("PATCH", "accounts(x)")])
+    def test_batch_rejects_missing_body(self, backend, method, url):
         with pytest.raises(D365Error, match="body required"):
-            backend.batch([{"method": "POST", "url": "accounts"}])
-
-    def test_batch_rejects_missing_body_on_patch(self, backend):
-        with pytest.raises(D365Error, match="body required"):
-            backend.batch([{"method": "PATCH", "url": "accounts(x)"}])
+            backend.batch([{"method": method, "url": url}])
 
     def test_batch_rejects_empty_string_content_id(self, backend):
         with pytest.raises(D365Error, match="content_id"):
@@ -720,17 +717,14 @@ class TestRenderBatchSummary:
 
 
 class TestParseBatchFileRequiresBody:
-    def test_post_without_body_rejected(self, tmp_path):
+    @pytest.mark.parametrize("op", [
+        '{"method": "POST", "url": "accounts"}',
+        '{"method": "PATCH", "url": "accounts(1)"}',
+    ])
+    def test_write_without_body_rejected(self, tmp_path, op):
         from crm.core.batch import parse_batch_file
         p = tmp_path / "b.json"
-        p.write_text('[{"method": "POST", "url": "accounts"}]', encoding="utf-8")
-        with pytest.raises(D365Error, match="requires a JSON object 'body'"):
-            parse_batch_file(p)
-
-    def test_patch_without_body_rejected(self, tmp_path):
-        from crm.core.batch import parse_batch_file
-        p = tmp_path / "b.json"
-        p.write_text('[{"method": "PATCH", "url": "accounts(1)"}]', encoding="utf-8")
+        p.write_text(f"[{op}]", encoding="utf-8")
         with pytest.raises(D365Error, match="requires a JSON object 'body'"):
             parse_batch_file(p)
 

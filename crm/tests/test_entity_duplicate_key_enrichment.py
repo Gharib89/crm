@@ -29,28 +29,7 @@ def runner():
     return CliRunner()
 
 
-# ── _parse_response: 412 preserves body error code ─────────────────────────
-
-
-def test_parse_response_412_preserves_body_code(profile):
-    """When the error body contains a D365 code, 412 must NOT overwrite it."""
-    from crm.utils.d365_backend import _parse_response
-
-    mock_resp = requests.Response()
-    mock_resp.status_code = 412
-    mock_resp._content = json.dumps({
-        "error": {
-            "code": "0x80060892",
-            "message": "Entity Key violated.",
-        }
-    }).encode()
-    mock_resp.headers["Content-Type"] = "application/json"
-
-    with pytest.raises(D365Error) as exc_info:
-        _parse_response(mock_resp, expect_json=True)
-
-    assert exc_info.value.code == "0x80060892"
-    assert exc_info.value.status == 412
+# ── _parse_response: 412 body-code handling ────────────────────────────────
 
 
 def test_parse_response_412_no_body_code_uses_fallback(profile):

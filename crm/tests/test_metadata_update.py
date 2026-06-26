@@ -455,39 +455,21 @@ def _mock_resolve_n_n(m, backend):
 
 
 class TestUpdateRelationshipManyToManyGuards:
-    def test_cascade_on_n_n_raises_client_side_no_put(self, backend):
+    # cascade / menu_behavior / is_hierarchical are one-to-many-only knobs; each on
+    # an N:N relationship hits the same client-side guard and never issues a PUT.
+    @pytest.mark.parametrize("kwargs", [
+        {"cascade": {"Delete": "Restrict"}},
+        {"menu_behavior": "UseLabel"},
+        {"is_hierarchical": True},
+    ])
+    def test_one_to_many_only_knob_on_n_n_raises_client_side_no_put(self, backend, kwargs):
         from crm.core import metadata_update as mu
         with requests_mock.Mocker() as m:
             _mock_resolve_n_n(m, backend)
             put = m.put(requests_mock.ANY, status_code=204)
             with pytest.raises(D365Error, match="one-to-many"):
                 mu.update_relationship(
-                    backend, "new_account_new_project_n_n",
-                    cascade={"Delete": "Restrict"},
-                )
-            assert put.call_count == 0
-
-    def test_menu_on_n_n_raises_client_side_no_put(self, backend):
-        from crm.core import metadata_update as mu
-        with requests_mock.Mocker() as m:
-            _mock_resolve_n_n(m, backend)
-            put = m.put(requests_mock.ANY, status_code=204)
-            with pytest.raises(D365Error, match="one-to-many"):
-                mu.update_relationship(
-                    backend, "new_account_new_project_n_n",
-                    menu_behavior="UseLabel",
-                )
-            assert put.call_count == 0
-
-    def test_hierarchical_on_n_n_raises_client_side_no_put(self, backend):
-        from crm.core import metadata_update as mu
-        with requests_mock.Mocker() as m:
-            _mock_resolve_n_n(m, backend)
-            put = m.put(requests_mock.ANY, status_code=204)
-            with pytest.raises(D365Error, match="one-to-many"):
-                mu.update_relationship(
-                    backend, "new_account_new_project_n_n",
-                    is_hierarchical=True,
+                    backend, "new_account_new_project_n_n", **kwargs,
                 )
             assert put.call_count == 0
 

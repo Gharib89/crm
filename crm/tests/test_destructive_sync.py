@@ -13,6 +13,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 import crm.core.destructive as core
 
 # Load the hook as a module by its absolute path — it is NOT an importable package.
@@ -55,12 +57,12 @@ class TestIsDestructive:
     def test_entity_delete_is_destructive(self):
         assert core.is_destructive("entity", "delete") is True
 
-    def test_role_verb_regardless_of_group(self):
-        # ROLE_VERBS are gated by verb name only — any group triggers the gate.
-        assert core.is_destructive("other-group", "assign-role") is True
-
-    def test_non_destructive_solution_verb(self):
-        assert core.is_destructive("solution", "add-component") is False
+    @pytest.mark.parametrize("group,verb", [
+        ("other-group", "assign-role"),  # ROLE_VERBS gate by verb name, any group
+        ("security", "delete-role"),
+    ])
+    def test_role_verb_regardless_of_group(self, group, verb):
+        assert core.is_destructive(group, verb) is True
 
     def test_none_verb_is_not_destructive(self):
         assert core.is_destructive("metadata", None) is False
@@ -68,19 +70,14 @@ class TestIsDestructive:
     def test_unknown_group_unknown_verb(self):
         assert core.is_destructive("query", "accounts") is False
 
-    def test_solution_import_is_destructive(self):
-        assert core.is_destructive("solution", "import") is True
-
-    def test_solution_uninstall_is_destructive(self):
-        assert core.is_destructive("solution", "uninstall") is True
-
-    def test_solution_stage_and_upgrade_is_destructive(self):
-        assert core.is_destructive("solution", "stage-and-upgrade") is True
-
-    def test_solution_apply_upgrade_is_destructive(self):
-        assert core.is_destructive("solution", "apply-upgrade") is True
+    @pytest.mark.parametrize("verb", [
+        "import", "uninstall", "stage-and-upgrade", "apply-upgrade",
+    ])
+    def test_solution_destructive_verbs(self, verb):
+        assert core.is_destructive("solution", verb) is True
 
     def test_solution_clone_as_patch_not_destructive(self):
+        # A non-destructive solution verb still resolves to False.
         assert core.is_destructive("solution", "clone-as-patch") is False
 
     def test_plugin_unregister_assembly_is_destructive(self):
@@ -88,9 +85,6 @@ class TestIsDestructive:
 
     def test_async_cancel_is_destructive(self):
         assert core.is_destructive("async", "cancel") is True
-
-    def test_delete_role_is_destructive_any_group(self):
-        assert core.is_destructive("security", "delete-role") is True
 
     def test_metadata_list_entities_not_destructive(self):
         assert core.is_destructive("metadata", "list-entities") is False

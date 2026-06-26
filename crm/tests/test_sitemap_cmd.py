@@ -67,20 +67,6 @@ class TestSetTitlePairing:
         assert result.exit_code == 2, result.output
         assert "one --title per --lcid" in result.output
 
-    def test_duplicate_lcid_is_usage_error(self, backend, monkeypatch):
-        # Untrusted input is validated at the command layer before ctx.backend()
-        # (house rule), so a repeated --lcid is a Click usage error (exit 2) and
-        # makes no live call.
-        _use_backend(monkeypatch, backend)
-        with rm_module.Mocker() as m:
-            result = CliRunner().invoke(cli, [
-                "--json", "sitemap", "set-title", _SID, "--id", "SFA",
-                "--lcid", "1033", "--title", "A",
-                "--lcid", "1033", "--title", "B", "--no-publish"])
-            assert m.request_history == []  # nothing hit the backend
-        assert result.exit_code == 2, result.output
-        assert "duplicate --lcid 1033" in result.output
-
     @pytest.mark.parametrize("args,needle", [
         (["--id", "  ", "--lcid", "1033", "--title", "X"], "--id must not be empty"),
         (["--id", "SFA", "--lcid", "99", "--title", "X"], "4-digit locale ID"),
@@ -123,16 +109,26 @@ class TestSetDescriptionPairing:
         assert result.exit_code == 2, result.output
         assert "one --description per --lcid" in result.output
 
-    def test_duplicate_lcid_is_usage_error(self, backend, monkeypatch):
+
+class TestDuplicateLcidPairing:
+    @pytest.mark.parametrize("cmd,flag", [
+        ("set-title", "title"),
+        ("set-description", "description"),
+    ])
+    def test_duplicate_lcid_is_usage_error(self, backend, monkeypatch, cmd, flag):
+        # Untrusted input is validated at the command layer before ctx.backend()
+        # (house rule), so a repeated --lcid is a Click usage error (exit 2) that
+        # makes no live call — for both localized-pair commands. The message names
+        # the command's own value flag (--title / --description).
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             result = CliRunner().invoke(cli, [
-                "--json", "sitemap", "set-description", _SID, "--id", "SFA",
-                "--lcid", "1033", "--description", "A",
-                "--lcid", "1033", "--description", "B", "--no-publish"])
+                "--json", "sitemap", cmd, _SID, "--id", "SFA",
+                "--lcid", "1033", f"--{flag}", "A",
+                "--lcid", "1033", f"--{flag}", "B", "--no-publish"])
             assert m.request_history == []
         assert result.exit_code == 2, result.output
-        assert "duplicate --lcid 1033" in result.output
+        assert f"duplicate --lcid 1033: one --{flag} per language." in result.output
 
 
 class TestCascadeWarningRouting:

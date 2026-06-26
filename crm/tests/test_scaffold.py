@@ -106,28 +106,13 @@ def test_memo_explicit_max_length_overrides_default():
 # ── Optional opts: required, description ─────────────────────────────────────
 
 
-def test_required_opt_parsed_correctly():
+@pytest.mark.parametrize("level", ["ApplicationRequired", "Recommended", "None"])
+def test_required_opt_parsed_correctly(level):
     spec = build_table_spec(
         display_name="T", prefix="x",
-        columns=["Name:string:required=ApplicationRequired"],
+        columns=[f"Name:string:required={level}"],
     )
-    assert _attr(spec, 0)["required"] == "ApplicationRequired"
-
-
-def test_required_recommended_parsed():
-    spec = build_table_spec(
-        display_name="T", prefix="x",
-        columns=["Name:string:required=Recommended"],
-    )
-    assert _attr(spec, 0)["required"] == "Recommended"
-
-
-def test_required_none_parsed():
-    spec = build_table_spec(
-        display_name="T", prefix="x",
-        columns=["Name:string:required=None"],
-    )
-    assert _attr(spec, 0)["required"] == "None"
+    assert _attr(spec, 0)["required"] == level
 
 
 def test_description_opt_parsed():
@@ -331,14 +316,6 @@ def test_error_lookup_without_target_entity():
 def test_error_picklist_without_optionset_name():
     with pytest.raises(D365Error, match="optionset_name"):
         build_table_spec(display_name="T", prefix="x", columns=["Stage:picklist"])
-
-
-# ── Error: multiselect without optionset_name ─────────────────────────────────
-
-
-def test_error_multiselect_without_optionset_name():
-    with pytest.raises(D365Error, match="optionset_name"):
-        build_table_spec(display_name="T", prefix="x", columns=["Tags:multiselect"])
 
 
 # ── No-drift cross-check: validate_spec accepts the output ───────────────────

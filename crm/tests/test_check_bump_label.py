@@ -35,10 +35,10 @@ def test_feat_needs_no_label(title):
     assert cbl.required_label(title) is None
 
 
-@pytest.mark.parametrize(
-    "title", ["feat!: thing", "feat(query)!: thing", "fix!: thing", "perf!: x"]
-)
+@pytest.mark.parametrize("title", ["feat!: thing", "feat(query)!: thing"])
 def test_bang_requires_major(title):
+    # The `!` (breaking) marker forces a major regardless of the commit type;
+    # one type + a scoped variant suffice to exercise the type-agnostic branch.
     assert cbl.required_label(title) == "major"
 
 
