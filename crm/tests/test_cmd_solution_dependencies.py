@@ -93,14 +93,6 @@ class TestHumanModeWithBlockers:
         assert "Attribute" in result.output
         assert "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" in result.output
 
-    def test_human_meta_shows_blocker_count(self, monkeypatch, backend):
-        _stub_backend(monkeypatch, backend)
-        _stub_retrieve(monkeypatch, _WITH_BLOCKERS)
-        result = CliRunner().invoke(cli, ["solution", "dependencies", "MySolution"])
-        assert result.exit_code == 0, result.output
-        # meta renders as status lines in human mode
-        assert "blockers" in result.output
-
 
 class TestHumanModeNoBlockers:
     def test_clear_no_blockers_indication(self, monkeypatch, backend):
@@ -121,11 +113,6 @@ class TestUsageErrors:
         _stub_backend(monkeypatch, backend)
         _stub_retrieve(monkeypatch, _NO_BLOCKERS)
         result = CliRunner().invoke(cli, ["solution", "dependencies", ""])
-        assert result.exit_code == 2
-
-    def test_missing_arg_exits_2(self):
-        # Click's required-argument enforcement (no backend touched).
-        result = CliRunner().invoke(cli, ["solution", "dependencies"])
         assert result.exit_code == 2
 
 

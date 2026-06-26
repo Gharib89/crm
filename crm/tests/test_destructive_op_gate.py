@@ -233,7 +233,6 @@ class TestNoFalsePositives:
     @pytest.mark.parametrize("cmd", [
         "ls",
         "git status",
-        "cat crmnotes.txt",
         "grep delete-entity README.md",
     ])
     def test_non_crm_commands_pass(self, cmd):

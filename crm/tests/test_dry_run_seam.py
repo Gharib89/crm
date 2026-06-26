@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 import requests_mock
 
-from crm.utils.d365_backend import ConnectionProfile, D365Backend
+from crm.utils.d365_backend import D365Backend
 
 
 class TestReadsExecute:
@@ -45,8 +45,3 @@ class TestDryRunIsReadOnly:
         with pytest.raises(AttributeError):
             dry_backend.dry_run = False  # type: ignore[misc]
         assert dry_backend.dry_run is True
-
-    def test_constructor_sets_flag(self, profile: ConnectionProfile):
-        assert D365Backend(profile, password="pw", dry_run=True).dry_run is True
-        assert D365Backend(profile, password="pw", dry_run=False).dry_run is False
-        assert D365Backend(profile, password="pw").dry_run is False

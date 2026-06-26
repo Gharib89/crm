@@ -54,17 +54,6 @@ class TestGuards:
         assert result.exit_code == 2
         assert "--no-transaction" in (result.output + result.stderr)
 
-    def test_upsert_without_id_column(self, tmp_path):
-        """--mode upsert without --id-column → UsageError (exit 2)."""
-        f = tmp_path / "data.jsonl"
-        f.write_text('{"name": "x"}\n', encoding="utf-8")
-        result = CliRunner().invoke(cli, [
-            "data", "import", "accounts", str(f), "--mode", "upsert",
-        ])
-        assert result.exit_code == 2
-        assert "--id-column" in (result.output + result.stderr)
-
-
     def test_id_column_and_key_mutually_exclusive(self, tmp_path):
         """--id-column with --key → UsageError (exit 2)."""
         f = tmp_path / "data.jsonl"

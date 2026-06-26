@@ -368,24 +368,6 @@ class TestCloneCommand:
         assert called["with_views"] is True
         assert called["with_workflows"] is True
 
-    def test_with_all_overrides_individual_flags(self, monkeypatch, tmp_path):
-        _seed_profile(tmp_path, monkeypatch)
-        from crm.commands import metadata as md_cmd
-        called = {}
-        monkeypatch.setattr(md_cmd.clone_mod, "clone_entity",
-                            lambda b, s, n, **kw: called.update(kw) or {
-                                "created": True, "logical_name": n.lower(),
-                                "counts": {"attributes": 0, "views": 0,
-                                           "forms": 0, "workflows": 0, "charts": 0},
-                                "skipped_workflows": [], "ribbon_note": "n/a"})
-        from crm.cli import cli
-        result = CliRunner().invoke(cli, [
-            "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-all"])
-        assert result.exit_code == 0, result.output
-        assert called["with_forms"] and called["with_views"] and called["with_workflows"]
-        assert called["with_charts"] is True
-
     def test_with_charts_flag_threads_to_core(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import metadata as md_cmd

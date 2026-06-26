@@ -105,15 +105,7 @@ class TestWorkflowCategoryFriendlyNames:
         captured = {}
         result = _invoke(monkeypatch, tmp_path, ["--category", "invalid"], captured)
         assert result.exit_code == 2
-
-    def test_invalid_name_message_lists_names(self, monkeypatch, tmp_path):
-        captured = {}
-        result = _invoke(monkeypatch, tmp_path, ["--category", "invalid"], captured)
         output = result.output
         for name in ("workflow", "dialog", "businessrule", "action", "bpf", "flow"):
             assert name in output
-
-    def test_invalid_name_message_notes_integers(self, monkeypatch, tmp_path):
-        captured = {}
-        result = _invoke(monkeypatch, tmp_path, ["--category", "invalid"], captured)
-        assert "integer" in result.output.lower()
+        assert "integer" in output.lower()

@@ -98,13 +98,6 @@ def test_append_two_records(crm_home: Path) -> None:
     assert rows[1]["command"] == "cmd2"
 
 
-def test_append_preserves_first_line(crm_home: Path) -> None:
-    record(session=SESSION, profile="p1", command="first", target=None, result=None, now=FIXED_TS)
-    record(session=SESSION, profile="p2", command="second", target=None, result=None, now=FIXED_TS)
-    rows = read(SESSION)
-    assert rows[0]["command"] == "first"
-
-
 # ---------------------------------------------------------------------------
 # dry_run flag
 # ---------------------------------------------------------------------------
@@ -143,12 +136,9 @@ def test_extract_id_no_id_like_key_returns_none(crm_home: Path) -> None:
     assert _extract_result_id({"name": "Acme", "code": "ABC"}) is None
 
 
-def test_extract_id_list_returns_none(crm_home: Path) -> None:
-    assert _extract_result_id(["a", "b"]) is None
-
-
-def test_extract_id_none_returns_none(crm_home: Path) -> None:
-    assert _extract_result_id(None) is None
+@pytest.mark.parametrize("non_dict", [None, ["a", "b"]])
+def test_extract_id_non_dict_returns_none(non_dict: object) -> None:
+    assert _extract_result_id(non_dict) is None
 
 
 def test_extract_id_non_guid_value_returns_none(crm_home: Path) -> None:

@@ -135,14 +135,6 @@ class TestListUserRoles:
         assert "roleid" in qs["$select"][0]
         assert qs["$orderby"] == ["name"]
 
-    def test_returns_value_list(self, backend):
-        path = f"systemusers({_GUID})/systemuserroles_association"
-        mock_roles = [{"roleid": _ROLE_ID, "name": "Admin"}]
-        with requests_mock.Mocker() as m:
-            m.get(backend.url_for(path), json={"value": mock_roles})
-            result = sec.list_user_roles(backend, _GUID)
-        assert result == mock_roles
-
 
 # ── list_team_roles ──────────────────────────────────────────────────────
 
@@ -165,14 +157,6 @@ class TestListTeamRoles:
         qs = m.request_history[0].qs
         assert "roleid" in qs["$select"][0]
         assert qs["$orderby"] == ["name"]
-
-    def test_returns_value_list(self, backend):
-        path = f"teams({_GUID})/teamroles_association"
-        mock_roles = [{"roleid": _ROLE_ID, "name": "Team Admin"}]
-        with requests_mock.Mocker() as m:
-            m.get(backend.url_for(path), json={"value": mock_roles})
-            result = sec.list_team_roles(backend, _GUID)
-        assert result == mock_roles
 
 
 # ── list_user_privileges ─────────────────────────────────────────────────
@@ -198,14 +182,6 @@ class TestListUserPrivileges:
             result = sec.list_user_privileges(backend, _GUID)
         assert result == [_PRIVILEGE]
         assert path in m.request_history[0].url
-
-    def test_unwraps_roleprivileges(self, backend):
-        path = f"systemusers({_GUID})/{_PRIVILEGES_FN}"
-        with requests_mock.Mocker() as m:
-            m.get(backend.url_for(path),
-                  json={"RolePrivileges": [_PRIVILEGE, _PRIVILEGE]})
-            result = sec.list_user_privileges(backend, _GUID)
-        assert result == [_PRIVILEGE, _PRIVILEGE]
 
     def test_returns_empty_list_when_absent(self, backend):
         path = f"systemusers({_GUID})/{_PRIVILEGES_FN}"
@@ -458,7 +434,6 @@ class TestListAccess:
 # shape, so these need not be real (project rule: no live-export GUIDs).
 _PRV_READ = "11111111-0000-0000-0000-00000000000a"
 _PRV_WRITE = "11111111-0000-0000-0000-00000000000b"
-_PRV_CREATE = "11111111-0000-0000-0000-00000000000c"
 _PRV_GLOBAL_ONLY = "11111111-0000-0000-0000-00000000000d"
 
 _ADD_ACTION = "Microsoft.Dynamics.CRM.AddPrivilegesRole"

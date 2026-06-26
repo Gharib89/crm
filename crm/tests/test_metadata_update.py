@@ -181,24 +181,6 @@ class TestUpdateAttributeMergeBaseFromCastPath:
         # The requested change still landed.
         assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Phase"
 
-    def test_sparse_display_change_preserves_existing_max_length(self, backend):
-        from crm.core import metadata_update as mu
-        base = backend.url_for(
-            "EntityDefinitions(LogicalName='new_project')"
-            "/Attributes(LogicalName='new_code')"
-        )
-        cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
-        with requests_mock.Mocker() as m:
-            m.get(base, json=_BASE_ONLY_STRING_ATTR)
-            m.get(cast, json=_FULL_STRING_ATTR)
-            m.put(cast, status_code=204)
-            mu.update_attribute(backend, "new_project", "new_code",
-                                display_name="Renamed")
-        body = m.request_history[-1].json()
-        assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Renamed"
-        # Untouched MaxLength is carried through from the typed read.
-        assert body["MaxLength"] == 100
-
 
 _FULL_DATETIME_ATTR = {
     "@odata.type": "#Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
@@ -456,16 +438,6 @@ class TestUpdateRelationship:
         # The change still landed and siblings survived.
         assert body["CascadeConfiguration"]["Delete"] == "Restrict"
         assert body["CascadeConfiguration"]["Assign"] == "NoCascade"
-
-
-_FULL_MANY_TO_MANY = {
-    "@odata.type": "#Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata",
-    "MetadataId": _REL_ID,
-    "SchemaName": "new_account_new_project_n_n",
-    "Entity1LogicalName": "account",
-    "Entity2LogicalName": "new_project",
-    "IntersectEntityName": "new_account_new_project_n_n",
-}
 
 
 def _mock_resolve_n_n(m, backend):

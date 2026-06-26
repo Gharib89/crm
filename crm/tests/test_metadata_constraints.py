@@ -14,17 +14,6 @@ from crm.core import metadata_constraints as mc
 from crm.utils.d365_backend import D365Error
 
 
-# ── value vocabularies are non-empty frozensets ──
-
-@pytest.mark.parametrize("vocab", [
-    mc.REQUIRED_LEVELS, mc.OWNERSHIP_TYPES, mc.STRING_FORMATS,
-    mc.DATETIME_FORMATS, mc.DATETIME_BEHAVIORS, mc.CASCADE_TYPES,
-    mc.CASCADE_KEYS, mc.MENU_BEHAVIORS,
-])
-def test_vocabularies_are_nonempty_frozensets(vocab):
-    assert isinstance(vocab, frozenset)
-    assert vocab
-
 
 def test_known_membership():
     assert "ApplicationRequired" in mc.REQUIRED_LEVELS

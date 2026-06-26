@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
@@ -161,22 +162,11 @@ def test_mixed_inline_and_alias_params(inject_backend, make_fake_backend):
     }
 
 
-def test_malformed_reference_missing_odata_id_fails(inject_backend, make_fake_backend):
-    """A dict param without @odata.id is a malformed reference: exit 1, no GET."""
+@pytest.mark.parametrize("bad", [{"id": "x"}, {"@odata.id": "accounts(1111)", "x": 1}])
+def test_malformed_reference_missing_odata_id_fails(inject_backend, make_fake_backend, bad):
+    """A dict param that isn't exactly {'@odata.id': ...} is a malformed reference: exit 1, no GET."""
     result, backend = _run(
-        inject_backend, make_fake_backend, ["CalcRollup", "--params", '{"Target": {"id": "x"}}']
-    )
-    assert result.exit_code == 1, result.output
-    assert json.loads(result.output)["ok"] is False
-    assert backend.count("get") == 0
-
-
-def test_malformed_reference_extra_keys_fails(inject_backend, make_fake_backend):
-    """A reference dict with keys beyond @odata.id is rejected (exit 1, no GET)."""
-    result, backend = _run(
-        inject_backend,
-        make_fake_backend,
-        ["CalcRollup", "--params", '{"Target": {"@odata.id": "accounts(1111)", "x": 1}}'],
+        inject_backend, make_fake_backend, ["CalcRollup", "--params", json.dumps({"Target": bad})]
     )
     assert result.exit_code == 1, result.output
     assert json.loads(result.output)["ok"] is False

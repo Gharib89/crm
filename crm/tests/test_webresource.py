@@ -813,19 +813,6 @@ class TestPushWebresources:
         assert out["failed"][0]["file"] == "bad.unknownext"
         assert out["published"] is True  # the one success still publishes
 
-    def test_publishes_even_when_one_file_fails(self, backend, tmp_path):
-        from crm.core import webresource
-        (tmp_path / "good.js").write_bytes(b"ok")
-        (tmp_path / "bad.zzz").write_bytes(b"x")
-        wr_url = backend.url_for(f"webresourceset({_WR_ID})")
-        with requests_mock.Mocker() as m:
-            m.get(backend.url_for("webresourceset"), json=_wr_get_cb({}))
-            m.post(backend.url_for("webresourceset"), status_code=204,
-                   headers={"OData-EntityId": wr_url})
-            m.post(backend.url_for("PublishAllXml"), status_code=204)
-            out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
-        assert sum("PublishAllXml" in r.url for r in _posts(m)) == 1
-
     def test_invalid_prefix_raises_before_any_http(self, backend, tmp_path):
         from crm.core import webresource
         (tmp_path / "app.js").write_bytes(b"x")

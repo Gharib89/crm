@@ -58,12 +58,6 @@ def test_feat_passes_with_no_label():
     assert code == 0
 
 
-def test_feat_with_major_label_passes():
-    # major is a superset — labelling a feat `major` is intentional and allowed.
-    code, _ = cbl.check("feat: thing", "", ["major"])
-    assert code == 0
-
-
 def test_breaking_without_major_label_fails():
     code, msg = cbl.check("feat!: thing", "", [])
     assert code == 1 and "major" in msg

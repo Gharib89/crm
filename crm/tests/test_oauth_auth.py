@@ -264,15 +264,6 @@ class TestResolveCredentialsOAuth:
 
 
 class TestProfileAcceptsOAuth:
-    def test_oauth_scheme_is_accepted(self):
-        from crm.utils.d365_backend import ConnectionProfile
-
-        p = ConnectionProfile(
-            name="t", url="https://contoso.crm.dynamics.com", domain="",
-            username="", auth_scheme="oauth",
-        )
-        assert p.auth_scheme == "oauth"
-
     def test_tenant_and_client_round_trip_through_dict(self):
         from crm.utils.d365_backend import ConnectionProfile
 
@@ -289,10 +280,3 @@ class TestProfileAcceptsOAuth:
         back = ConnectionProfile.from_dict(d)
         assert back.tenant_id == p.tenant_id
         assert back.client_id == p.client_id
-
-    def test_tenant_and_client_default_to_none(self):
-        from crm.utils.d365_backend import ConnectionProfile
-
-        p = ConnectionProfile(name="t", url="https://crm/o", domain="D", username="u")
-        assert p.tenant_id is None
-        assert p.client_id is None

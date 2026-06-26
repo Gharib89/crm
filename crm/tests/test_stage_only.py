@@ -63,10 +63,6 @@ def _mock_add_attribute(m, backend):
     )
 
 
-def _publish_matcher(backend):
-    return requests_mock.ANY, backend.url_for("PublishAllXml")
-
-
 def _add_attribute_args(extra=()):
     return [
         "--json", "metadata", "add-attribute", _ENTITY,
@@ -80,16 +76,6 @@ def _publish_hits(m, backend):
     return [r for r in m.request_history if r.url == target]
 
 
-def test_stage_only_flag_suppresses_publish_for_add_attribute(use_backend):
-    backend = use_backend
-    with requests_mock.Mocker() as m:
-        _mock_add_attribute(m, backend)
-        m.post(backend.url_for("PublishAllXml"), status_code=204)
-        result = CliRunner().invoke(cli, ["--stage-only", *_add_attribute_args()])
-    assert result.exit_code == 0, result.output
-    assert _publish_hits(m, backend) == []
-
-
 def test_stage_only_meta_records_staged_true(use_backend):
     backend = use_backend
     with requests_mock.Mocker() as m:
@@ -97,6 +83,7 @@ def test_stage_only_meta_records_staged_true(use_backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         result = CliRunner().invoke(cli, ["--stage-only", *_add_attribute_args()])
     assert result.exit_code == 0, result.output
+    assert _publish_hits(m, backend) == []
     env = json.loads(result.output)
     assert env["meta"]["staged"] is True
 

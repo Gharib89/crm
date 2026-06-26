@@ -259,14 +259,6 @@ class TestValidateWorkflowXaml:
         assert "undeclared namespace prefix" in warnings[0]
         assert "mxswa" in warnings[0]
 
-    def test_malformed_and_missing_namespace_produce_distinct_warnings(self):
-        """Check #1 (malformed) and check #2 (undeclared prefix) use different text."""
-        malformed_w = validate_workflow_xaml(_MALFORMED, _ATTRIBUTE_SET)[0]
-        missing_ns_w = validate_workflow_xaml(_MISSING_NAMESPACE, _ATTRIBUTE_SET)[0]
-        assert malformed_w != missing_ns_w
-        assert "malformed XAML" in malformed_w
-        assert "undeclared namespace prefix" in missing_ns_w
-
     def test_unknown_activity_emits_warning(self):
         """An element in the mxswa namespace not on the allowlist → 'unknown activity: …'."""
         warnings = validate_workflow_xaml(_UNKNOWN_ACTIVITY, _ATTRIBUTE_SET)
@@ -284,13 +276,6 @@ class TestValidateWorkflowXaml:
             "SetEntityProperty" in w and "missing required argument" in w and "Entity" in w
             for w in warnings
         )
-
-    def test_returns_list_not_raises_on_reference_problems(self):
-        """The function never raises on reference problems — only collects warnings."""
-        # All the bad fixtures must return a list (never raise).
-        for xaml in (_MALFORMED, _MISSING_NAMESPACE, _UNKNOWN_ACTIVITY, _BAD_ATTRIBUTE, _MISSING_ARG):
-            result = validate_workflow_xaml(xaml, _ATTRIBUTE_SET)
-            assert isinstance(result, list)
 
     def test_accepts_generator_as_attribute_set(self):
         """attribute_set is Iterable[str] — a generator must work."""

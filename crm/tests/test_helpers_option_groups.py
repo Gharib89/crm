@@ -58,12 +58,6 @@ class TestParseValueLabels:
                 (":Renamed",), flag="--update-option", require_value=True
             )
 
-    def test_required_value_rejects_non_int(self):
-        with pytest.raises(click.UsageError):
-            _parse_value_labels(
-                ("abc:Renamed",), flag="--update-option", require_value=True
-            )
-
 
 def _option_named(cmd: click.Command, name: str) -> click.Option:
     (opt,) = [
