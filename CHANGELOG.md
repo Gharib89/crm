@@ -9,6 +9,118 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.39.2 (2026-06-26)
+
+### Bug Fixes
+
+- **evals**: Harden row_suffix against absent keys and non-mapping rows
+  ([#586](https://github.com/Gharib89/crm/pull/586),
+  [`8f5d199`](https://github.com/Gharib89/crm/commit/8f5d19984573623fac14b5f04d45f2a5f510363b))
+
+- **evals**: Make skill-eval predicates org-agnostic to stop false on-prem fails
+  ([#586](https://github.com/Gharib89/crm/pull/586),
+  [`8f5d199`](https://github.com/Gharib89/crm/commit/8f5d19984573623fac14b5f04d45f2a5f510363b))
+
+### Chores
+
+- **evals**: Add Machine B tracer — isolated single-task skill eval harness
+  ([#576](https://github.com/Gharib89/crm/pull/576),
+  [`b116fde`](https://github.com/Gharib89/crm/commit/b116fde2e6329d9d4485f6e97612fe141f65a3d1))
+
+- **evals**: Add opt-in Claude --analyze pass to Machine B harness
+  ([#579](https://github.com/Gharib89/crm/pull/579),
+  [`6c96209`](https://github.com/Gharib89/crm/commit/6c962095f6893351d3d1c165bc23e4c022c29d9f))
+
+- **evals**: Add opt-in Claude --analyze pass to the Machine B eval harness
+  ([#579](https://github.com/Gharib89/crm/pull/579),
+  [`6c96209`](https://github.com/Gharib89/crm/commit/6c962095f6893351d3d1c165bc23e4c022c29d9f))
+
+- **evals**: Add workflow-per-domain skill-eval task set + set runner
+  ([#577](https://github.com/Gharib89/crm/pull/577),
+  [`b96eb52`](https://github.com/Gharib89/crm/commit/b96eb5281c0c0b4e2c08277b1d2c29e079d33adc))
+
+- **evals**: Address Copilot round-1 — generic prefixes, stronger predicates
+  ([#577](https://github.com/Gharib89/crm/pull/577),
+  [`b96eb52`](https://github.com/Gharib89/crm/commit/b96eb5281c0c0b4e2c08277b1d2c29e079d33adc))
+
+- **evals**: Address Copilot round-2 — accurate scored-vs-demonstrated comments
+  ([#577](https://github.com/Gharib89/crm/pull/577),
+  [`b96eb52`](https://github.com/Gharib89/crm/commit/b96eb5281c0c0b4e2c08277b1d2c29e079d33adc))
+
+- **evals**: Address Copilot round-3 — test name + accurate prefix note
+  ([#577](https://github.com/Gharib89/crm/pull/577),
+  [`b96eb52`](https://github.com/Gharib89/crm/commit/b96eb5281c0c0b4e2c08277b1d2c29e079d33adc))
+
+- **evals**: Address review round 2 — fix probe docstring + README wording
+  ([#582](https://github.com/Gharib89/crm/pull/582),
+  [`a65a4ee`](https://github.com/Gharib89/crm/commit/a65a4ee21b35e40ad70fb03f54661df54aaf1bc6))
+
+- **evals**: Address review — prod-host guard on probe, utf-8 I/O, validate repeat
+  ([#582](https://github.com/Gharib89/crm/pull/582),
+  [`a65a4ee`](https://github.com/Gharib89/crm/commit/a65a4ee21b35e40ad70fb03f54661df54aaf1bc6))
+
+- **evals**: Address review — reject empty end_state.query, assert task shape
+  ([#579](https://github.com/Gharib89/crm/pull/579),
+  [`6c96209`](https://github.com/Gharib89/crm/commit/6c962095f6893351d3d1c165bc23e4c022c29d9f))
+
+- **evals**: Both-targets union runner + periodic baseline trend
+  ([#582](https://github.com/Gharib89/crm/pull/582),
+  [`a65a4ee`](https://github.com/Gharib89/crm/commit/a65a4ee21b35e40ad70fb03f54661df54aaf1bc6))
+
+- **evals**: Both-targets union runner + periodic baseline trend (#573)
+  ([#582](https://github.com/Gharib89/crm/pull/582),
+  [`a65a4ee`](https://github.com/Gharib89/crm/commit/a65a4ee21b35e40ad70fb03f54661df54aaf1bc6))
+
+- **evals**: Document --dangerously-skip-permissions for headless agent cmd
+  ([#581](https://github.com/Gharib89/crm/pull/581),
+  [`c2ae98f`](https://github.com/Gharib89/crm/commit/c2ae98f606758594bde1acf1c7ecae64728f70c5))
+
+- **evals**: Enforce task target gate, capture agent exit, review polish
+  ([#576](https://github.com/Gharib89/crm/pull/576),
+  [`b116fde`](https://github.com/Gharib89/crm/commit/b116fde2e6329d9d4485f6e97612fe141f65a3d1))
+
+- **evals**: Harden isolation env, task parsing, and cleanup (review round 1)
+  ([#576](https://github.com/Gharib89/crm/pull/576),
+  [`b116fde`](https://github.com/Gharib89/crm/commit/b116fde2e6329d9d4485f6e97612fe141f65a3d1))
+
+- **evals**: Pass Claude subscription auth into skill-eval sandbox
+  ([#580](https://github.com/Gharib89/crm/pull/580),
+  [`0e3762d`](https://github.com/Gharib89/crm/commit/0e3762d05c87bf9809f646dfb624e1b49329e97f))
+
+- **evals**: Record 2026-06-26 baseline — cloud 100%, onprem 67% (2 harness fails, #584)
+  ([`50a9a2a`](https://github.com/Gharib89/crm/commit/50a9a2a789efaccc3c854b77c745324e6a72326b))
+
+- **evals**: Run subprocesses from sandbox, validate expect shape (review round 2)
+  ([#576](https://github.com/Gharib89/crm/pull/576),
+  [`b116fde`](https://github.com/Gharib89/crm/commit/b116fde2e6329d9d4485f6e97612fe141f65a3d1))
+
+- **evals**: Score diagnostic tasks from the analyzer verdict
+  ([#579](https://github.com/Gharib89/crm/pull/579),
+  [`6c96209`](https://github.com/Gharib89/crm/commit/6c962095f6893351d3d1c165bc23e4c022c29d9f))
+
+- **evals**: Self-review polish — typing idiom, cleanup-limitation honesty
+  ([#577](https://github.com/Gharib89/crm/pull/577),
+  [`b96eb52`](https://github.com/Gharib89/crm/commit/b96eb5281c0c0b4e2c08277b1d2c29e079d33adc))
+
+- **evals**: Skip diagnostic tasks in the set runner
+  ([#579](https://github.com/Gharib89/crm/pull/579),
+  [`6c96209`](https://github.com/Gharib89/crm/commit/6c962095f6893351d3d1c165bc23e4c022c29d9f))
+
+- **evals**: Strip only delimiter newlines so prompt body stays verbatim (review round 3)
+  ([#576](https://github.com/Gharib89/crm/pull/576),
+  [`b116fde`](https://github.com/Gharib89/crm/commit/b116fde2e6329d9d4485f6e97612fe141f65a3d1))
+
+### Documentation
+
+- **evals**: Document the --analyze pass and diagnostic tasks
+  ([#579](https://github.com/Gharib89/crm/pull/579),
+  [`6c96209`](https://github.com/Gharib89/crm/commit/6c962095f6893351d3d1c165bc23e4c022c29d9f))
+
+- **evals**: Note diagnostic VERDICT scoring in the analyze section
+  ([#579](https://github.com/Gharib89/crm/pull/579),
+  [`6c96209`](https://github.com/Gharib89/crm/commit/6c962095f6893351d3d1c165bc23e4c022c29d9f))
+
+
 ## v1.39.1 (2026-06-25)
 
 ### Bug Fixes
