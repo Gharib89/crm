@@ -2,6 +2,8 @@
 # pyright: basic
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from crm.core.workflow import retarget_xaml
@@ -109,7 +111,9 @@ class TestCloneWorkflow:
         assert body["name"] == "Update request (Clone)"
         assert body["category"] == 0
         assert out["activated"] is False
-        assert out["workflow_id"] == out["workflow_id"]  # a real GUID string
+        # a fresh GUID was generated for the clone, distinct from the source
+        assert uuid.UUID(out["workflow_id"])
+        assert out["workflow_id"] != _SRC_ID
         # only the upsert PATCH happened, no activation PATCH
         assert len(_patches(m)) == 1
 

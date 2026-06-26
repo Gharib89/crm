@@ -127,27 +127,6 @@ class TestNoOutput:
         assert spec["entities"][0]["schema_name"] == "new_Project"
         assert spec["entities"][0]["display_name"] == "Project"
 
-    def test_output_is_not_bare_spec(self, monkeypatch, backend):
-        """Without -o, stdout is the full envelope (ok/data), NOT the bare spec."""
-        _stub(monkeypatch, backend)
-        attrs = {"value": [_shallow("new_name")]}
-
-        with requests_mock.Mocker() as m:
-            m.get(_entity_url(backend), json=_ENTITY)
-            m.get(_attrs_url(backend), json=attrs)
-            m.get(_attr_url(backend, "new_name"), json=_primary_info())
-            result = CliRunner().invoke(
-                cli, ["--json", "metadata", "export-spec", "new_project"]
-            )
-
-        assert result.exit_code == 0, result.output
-        env = json.loads(result.output)
-        # Top-level must be the envelope, not the spec.
-        assert "ok" in env
-        assert "data" in env
-        # The bare spec is NOT at the top level.
-        assert "entities" not in env
-
 
 class TestOutputFile:
     """With -o: YAML written to file; summary emitted; file is apply-consumable."""

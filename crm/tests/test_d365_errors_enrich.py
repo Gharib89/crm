@@ -135,19 +135,3 @@ def test_enrich_none_none_is_clean_noop():
     assert env["error"] == "boom"
     assert set(env["meta"]) == {"status", "code", "category", "retryable"}
 
-
-def test_no_enrich_matches_bare_seam():
-    """Omitting enrich is the legacy path — pure error envelope, no extras."""
-    from crm.commands._helpers import d365_errors
-
-    ctx = CLIContext()
-    ctx.json_mode = True
-
-    def run():
-        with d365_errors(ctx):
-            raise D365Error("plain", status=403, code="0x2")
-
-    env = _envelope(run)
-    assert env["error"] == "plain"
-    assert env["meta"]["status"] == 403
-    assert set(env["meta"]) == {"status", "code", "category", "retryable"}

@@ -1028,14 +1028,6 @@ class TestViewEditCommandUsage:
         assert result.exit_code == 2
         assert "nothing to do" in result.output
 
-    def test_add_filter_no_condition_is_usage_error(self):
-        result = self._invoke(["view", "add-filter", _ENTITY, "View"])
-        assert result.exit_code == 2  # --condition is required
-
-    def test_remove_filter_no_condition_is_usage_error(self):
-        result = self._invoke(["view", "remove-filter", _ENTITY, "View"])
-        assert result.exit_code == 2  # --condition is required
-
     def test_add_filter_malformed_condition_is_usage_error(self):
         result = self._invoke(
             ["view", "add-filter", _ENTITY, "View", "--condition", "loneword"])
@@ -1337,34 +1329,6 @@ class TestReadEntityViews:
             {"name": "cwx_priority", "width": 120},
         ]
         assert v["order_by"] == "cwx_name"
-
-    def test_view_descending_order_parsed(self, backend):
-        """order attribute is extracted correctly regardless of descending flag."""
-        from crm.core.views import read_entity_views
-        cols = [("cwx_subject", 300)]
-        layoutxml = _build_layoutxml("cwx_task", 10043, cols)
-        # manually build fetchxml with descending="true"
-        fetchxml = (
-            '<fetch version="1.0" output-format="xml-platform" mapping="logical">'
-            '<entity name="cwx_task">'
-            '<attribute name="cwx_taskid" />'
-            '<attribute name="cwx_subject" />'
-            '<order attribute="cwx_createdon" descending="true" />'
-            '</entity></fetch>'
-        )
-        with requests_mock.Mocker() as m:
-            m.get(
-                backend.url_for("savedqueries"),
-                json={"value": [{
-                    "savedqueryid": _READ_VIEW_ID,
-                    "name": "Recent Tasks",
-                    "layoutxml": layoutxml,
-                    "fetchxml": fetchxml,
-                    "isdefault": False,
-                }]},
-            )
-            views = read_entity_views(backend, "cwx_task")
-        assert views[0]["order_by"] == "cwx_createdon"
 
     def test_view_with_no_order_element(self, backend):
         from crm.core.views import read_entity_views

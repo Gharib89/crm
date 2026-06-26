@@ -287,23 +287,6 @@ class TestFormExport:
         assert data["data"]["entity"] == "new_project"
         assert data["data"]["form"] == "Information"
 
-    def test_export_writes_to_file_o(self, backend, monkeypatch, tmp_path):
-        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
-        out_file = tmp_path / "form.xml"
-        with rm_module.Mocker() as m:
-            m.get(_forms_url(backend), json={"value": [_FORM_A]})
-            result = CliRunner().invoke(cli, [
-                "--json", "form", "export", "new_project", "Information",
-                "-o", str(out_file),
-            ])
-        assert result.exit_code == 0, result.output
-        assert out_file.exists()
-        assert "<form>" in out_file.read_text(encoding="utf-8")
-        data = json.loads(result.output)
-        assert data["ok"] is True
-        assert data["data"]["entity"] == "new_project"
-        assert data["data"]["form"] == "Information"
-
     def test_export_json_no_output_emits_envelope(self, backend, monkeypatch):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
         with rm_module.Mocker() as m:

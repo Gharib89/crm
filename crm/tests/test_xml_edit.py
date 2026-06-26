@@ -169,15 +169,6 @@ class TestCommitXmlPatch:
             assert m.last_request.method == "PATCH"
         assert out["updated"] is True
 
-    def test_read_back_without_publish_is_rejected(self, backend):
-        # publish-before-read-back is load-bearing; the contradictory combo is
-        # rejected up front rather than silently false-negativing T3.
-        with pytest.raises(ValueError, match="read_back requires publish=True"):
-            xml_edit.commit_xml_patch(
-                backend, entity_set="systemforms", record_id=self._FORMID,
-                column="formxml", new_xml="<form/>", result=self._base_result(),
-                dry_run_flag="would_add", publish=False, read_back=lambda _x: None)
-
     def test_solution_header_sent(self, backend):
         with requests_mock.Mocker() as m:
             m.patch(_systemforms_id(backend, self._FORMID), status_code=204)

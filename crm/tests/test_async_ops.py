@@ -115,7 +115,11 @@ class TestOwnerValidation:
             assert "CCCCCCCC" not in f
 
     def test_list_all_normalizes_braced_uppercase_owner_id(self, backend, profile):
-        """Braced + uppercase GUID must be emitted canonical (lower, no braces)."""
+        """Braced + uppercase GUID must be emitted canonical (lower, no braces).
+
+        list_all_async_operations has its own normalization block separate from
+        list_async_operations, so this is not redundant with the sibling test.
+        """
         braced = "{CCCCCCCC-DDDD-EEEE-FFFF-000000000000}"
         canonical = "cccccccc-dddd-eeee-ffff-000000000000"
         with requests_mock.Mocker() as m:

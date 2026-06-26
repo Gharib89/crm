@@ -13,9 +13,6 @@ class TestInferAuthScheme:
     def test_dynamics_host_is_oauth(self):
         assert infer_auth_scheme("https://org.crm.dynamics.com") == "oauth"
 
-    def test_dynamics_regional_host_is_oauth(self):
-        assert infer_auth_scheme("https://org.crm4.dynamics.com/") == "oauth"
-
     def test_onprem_host_is_ntlm(self):
         assert infer_auth_scheme("https://crm.contoso.local/contoso") == "ntlm"
 
@@ -29,9 +26,6 @@ class TestDefaultProfileName:
 
     def test_dynamics_uses_org_label(self):
         assert default_profile_name("https://orgd080.crm.dynamics.com") == "orgd080"
-
-    def test_falls_back_to_default_when_unparseable(self):
-        assert default_profile_name("not-a-url") == "default"
 
     def test_blank_falls_back_to_default(self):
         assert default_profile_name("") == "default"

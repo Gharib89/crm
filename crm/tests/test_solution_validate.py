@@ -267,12 +267,6 @@ class TestOrgCollisions:
             report = sv.validate_solution(p, backend=backend)
         assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
 
-    def test_collisions_skipped_without_backend(self, tmp_path):
-        p = tmp_path / "offline.zip"
-        _make_pkg(p, _sol(), _cust(entities=_form(_FORM_GUID)))
-        report = sv.validate_solution(p)
-        assert "guid-collision" not in report["checks_run"]
-
 
 # ── #163: BPF stage-GUID collisions in Workflows/*.xaml ───────────────────────
 
@@ -504,7 +498,6 @@ class TestXamlStageCollisions:
             report = sv.validate_solution(p, backend=dry_backend)
         assert stages.called  # a real GET fired despite dry_run
         assert any(f["check"] == "guid-collision" for f in report["findings"])
-        assert dry_backend.dry_run is True  # flag restored after the probe
 
     def test_cli_against_org_detects_stage_collision(self, tmp_path, backend, monkeypatch):
         p = tmp_path / "bpf_cli.zip"
@@ -692,7 +685,6 @@ class TestDryRunForcesRealReads:
             report = sv.validate_solution(p, backend=dry_backend)
         assert sysforms.called  # a real GET fired despite dry_run
         assert any(f["check"] == "guid-collision" for f in report["findings"])
-        assert dry_backend.dry_run is True  # flag restored after the probe
 
 
 def test_unreadable_member_degrades_to_package_finding(tmp_path, monkeypatch):

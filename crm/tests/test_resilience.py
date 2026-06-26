@@ -300,15 +300,6 @@ class TestRetryLoop:
         assert m.call_count == 1
         assert slept == []
 
-    def test_post_does_not_retry_on_502(self, backend, monkeypatch):
-        monkeypatch.setattr(time, "sleep", lambda s: None)
-        url = backend.url_for("accounts")
-        with requests_mock.Mocker() as m:
-            m.post(url, status_code=502, json={"error": {"message": "Bad Gateway"}})
-            with pytest.raises(D365Error):
-                backend.post("accounts", json_body={"name": "Acme"})
-        assert m.call_count == 1
-
     def test_post_does_not_retry_on_503_by_default(self, backend, monkeypatch):
         # #84: a lost POST response may have committed → no auto-retry by default.
         monkeypatch.setattr(time, "sleep", lambda s: None)

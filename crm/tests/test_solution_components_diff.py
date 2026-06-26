@@ -47,14 +47,12 @@ class TestNormalizeComponents:
         with pytest.raises(ValueError, match="objectid must be a string"):
             sol_mod.normalize_components(raw)
 
-    def test_rootcomponentbehavior_missing_becomes_none(self):
-        raw = [{"componenttype": 1, "objectid": _A}]
-        result = sol_mod.normalize_components(raw)
-        assert result[0]["rootcomponentbehavior"] is None
-
-    def test_rootcomponentbehavior_none_stays_none(self):
-        raw = [{"componenttype": 1, "objectid": _A, "rootcomponentbehavior": None}]
-        result = sol_mod.normalize_components(raw)
+    @pytest.mark.parametrize("row", [
+        {"componenttype": 1, "objectid": _A},                                   # missing key
+        {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": None},    # explicit null
+    ])
+    def test_rootcomponentbehavior_none_stays_none(self, row):
+        result = sol_mod.normalize_components([row])
         assert result[0]["rootcomponentbehavior"] is None
 
     def test_rootcomponentbehavior_coerced_to_int(self):

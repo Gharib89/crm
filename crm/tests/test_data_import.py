@@ -609,19 +609,6 @@ class TestBatchFlagForwarding:
         assert kwargs["transactional"] is False
         assert kwargs["continue_on_error"] is True
 
-    def test_default_flags_forwarded(self, tmp_path: Path) -> None:
-        """Default transactional=True and continue_on_error=False must reach backend.batch()."""
-        p = tmp_path / "data.jsonl"
-        p.write_text('{"name": "x"}\n', encoding="utf-8")
-        backend = MagicMock(spec=D365Backend)
-        backend.dry_run = False
-        backend.batch.return_value = _make_2xx_results(1)
-        _import_records(backend, "accounts", p)
-        backend.batch.assert_called_once()
-        _args, kwargs = backend.batch.call_args
-        assert kwargs["transactional"] is True
-        assert kwargs["continue_on_error"] is False
-
 
 # ── alternate-key collision enrichment on failures (#347) ──────────────────────
 

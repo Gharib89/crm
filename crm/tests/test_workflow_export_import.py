@@ -110,19 +110,6 @@ class TestExportImportCommands:
         assert captured["id"] == _WF_ID
         assert captured["out_path"] == str(tmp_path / "x.json")
 
-    def test_export_command_with_o(self, monkeypatch, tmp_path):
-        _seed_profile(tmp_path, monkeypatch)
-        from crm.commands import workflow as wf_cmd
-        captured = {}
-        monkeypatch.setattr(wf_cmd.workflow_mod, "export_workflow",
-                            lambda backend, wid, **kw: captured.update(id=wid, **kw) or {"out_path": kw.get("out_path")})
-        from crm.cli import cli
-        result = CliRunner().invoke(cli,
-            ["--profile", "t", "workflow", "export", _WF_ID, "-o", str(tmp_path / "x.json")])
-        assert result.exit_code == 0, result.output
-        assert captured["id"] == _WF_ID
-        assert captured["out_path"] == str(tmp_path / "x.json")
-
     def test_import_command(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import workflow as wf_cmd

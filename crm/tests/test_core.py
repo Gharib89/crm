@@ -1960,14 +1960,8 @@ class TestImportSolutionAsync:
         assert call_count["n"] == 1
 
 class TestLoadPayload:
-    def test_rejects_json_list_with_typename(self):
-        import click
-        from crm.commands._helpers import _load_payload
-
-        with pytest.raises(click.UsageError, match=r"JSON object.*list"):
-            _load_payload("[1,2,3]", None)
-
     @pytest.mark.parametrize("raw,typename", [
+        ("[1,2,3]", "list"),
         ('"hello"', "str"),
         ("null", "NoneType"),
         ("42", "int"),

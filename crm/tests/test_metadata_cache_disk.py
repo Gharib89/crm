@@ -10,6 +10,7 @@ import pytest
 
 from crm.utils.d365_backend import ConnectionProfile
 from crm.core.metadata_cache import (
+    SCHEMA_VERSION,
     TTL_SECONDS,
     CacheLookup,
     cache_file,
@@ -178,6 +179,7 @@ def test_read_definitions_not_list_returns_none(crm_home: Path) -> None:
         "url": profile.url.rstrip("/"),
         "api_version": profile.api_version,
         "cached_at": T0,
+        "schema": SCHEMA_VERSION,
         "definitions": "not-a-list",
     }
     cf.write_text(json.dumps(payload), encoding="utf-8")
@@ -193,6 +195,7 @@ def test_read_definitions_type_violation_returns_none(crm_home: Path) -> None:
         "url": profile.url.rstrip("/"),
         "api_version": profile.api_version,
         "cached_at": T0,
+        "schema": SCHEMA_VERSION,
         "definitions": [{"logical": "account", "set_name": 123}],  # int value, not str
     }
     cf.write_text(json.dumps(payload), encoding="utf-8")
@@ -208,6 +211,7 @@ def test_read_definitions_wrong_keys_returns_none(crm_home: Path) -> None:
         "url": profile.url.rstrip("/"),
         "api_version": profile.api_version,
         "cached_at": T0,
+        "schema": SCHEMA_VERSION,
         "definitions": [{"LogicalName": "account", "EntitySetName": "accounts"}],
     }
     cf.write_text(json.dumps(payload), encoding="utf-8")

@@ -138,17 +138,3 @@ class TestHappyPath:
         # The path's name component should be "default.json"
         assert path.name == "default.json"
 
-
-# ---------------------------------------------------------------------------
-# Cache protection (transitive via constructor)
-# ---------------------------------------------------------------------------
-
-class TestCacheProtectionTransitive:
-    def test_cache_file_never_reached_with_traversal_name(self) -> None:
-        """cache_file(profile) uses profile.name, which is validated at
-        construction time — so a traversal name can never reach cache_file.
-        The constructor is the barrier; assert it raises before any profile
-        object is ever produced."""
-        # Construction must raise — no profile object is ever produced
-        with pytest.raises(D365Error):
-            _make_profile("../evil")

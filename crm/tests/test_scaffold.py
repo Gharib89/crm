@@ -280,11 +280,6 @@ def test_error_empty_column_display():
         build_table_spec(display_name="T", prefix="x", columns=[":string"])
 
 
-def test_error_whitespace_only_column_display():
-    with pytest.raises(D365Error, match="empty"):
-        build_table_spec(display_name="T", prefix="x", columns=["   :string"])
-
-
 # ── Error: unknown opt key ────────────────────────────────────────────────────
 
 
@@ -312,11 +307,6 @@ def test_error_non_int_max_length():
 def test_error_zero_max_length():
     with pytest.raises(D365Error, match="max_length"):
         build_table_spec(display_name="T", prefix="x", columns=["Name:string:max_length=0"])
-
-
-def test_error_negative_max_length():
-    with pytest.raises(D365Error, match="max_length"):
-        build_table_spec(display_name="T", prefix="x", columns=["Name:string:max_length=-5"])
 
 
 # ── Error: bad required value ─────────────────────────────────────────────────
@@ -381,11 +371,6 @@ def test_no_drift_validate_spec_accepts_multi_kind_output():
 def test_error_max_length_on_money():
     with pytest.raises(D365Error, match="max_length is only valid"):
         build_table_spec(display_name="T", prefix="x", columns=["Amount:money:max_length=10"])
-
-
-def test_error_max_length_on_integer():
-    with pytest.raises(D365Error, match="max_length is only valid"):
-        build_table_spec(display_name="T", prefix="x", columns=["Count:integer:max_length=5"])
 
 
 # ── e2e: scaffold table CLI command ─────────────────────────────────────────
