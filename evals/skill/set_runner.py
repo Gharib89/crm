@@ -390,18 +390,19 @@ def run_set(
         outcomes.append(o)
         report(o, done)
 
-        # Persist the durable run record (#588) for a scored task, plus — when measuring
-        # lift — a skill-absent counterfactual leg. The verdict is the *aggregate* across
-        # trials (``o.status``/``o.reason``), not the last trial's, so a flaky --repeat run
-        # records a self-consistent verdict against the (last trial's) captured trace. The
-        # absent leg is a *measurement*, not a scored task: its failure is logged and never
-        # flips the outcome or aborts the set.
+        # Persist the durable run record (#588) for any task that produced a trace —
+        # including one that resolved ERROR after a real run (e.g. a later --repeat trial
+        # raised), so the run dir is never empty when a reviewable trace exists. The
+        # verdict is the *aggregate* across trials (``o.status``/``o.reason``), not the last
+        # trial's, so a flaky --repeat run records a self-consistent verdict against the
+        # captured trace. The skill-absent counterfactual leg is only meaningful for a
+        # *scored* task and is a measurement: its failure is logged, never fatal.
         leg_target = resolved or spec.target
-        if run_dir is not None and last_result is not None and o.status in (PASS, FAIL):
+        if run_dir is not None and last_result is not None:
             record_mod.write_record(run_dir, record_mod.build_record(
                 spec, last_result, status=o.status, passed=o.status == PASS, reason=o.reason,
                 sha=skill_sha, target=leg_target))
-            if counterfactual or spec.counterfactual:
+            if o.status in (PASS, FAIL) and (counterfactual or spec.counterfactual):
                 try:
                     cf = run_one(path, dry_run=False, agent_cmd=agent_cmd, crm_bin=crm_bin,
                                  install_skill=False)

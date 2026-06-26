@@ -79,3 +79,14 @@ def test_parse_handles_blank_and_malformed_lines():
 def test_parse_metrics_empty_when_no_result_event():
     raw = _line(_assistant_tool_use("Bash", {"command": "crm whoami"}))
     assert trace.parse_metrics(raw) == {}
+
+
+def test_parse_commands_matches_bare_and_terminal_crm():
+    # A bare `crm` (default help) or a `crm` at the end of a compound line has no trailing
+    # whitespace; it must still be counted, or command-economy is undercounted.
+    raw = "\n".join([
+        _line(_assistant_tool_use("Bash", {"command": "crm"})),                  # bare
+        _line(_assistant_tool_use("Bash", {"command": "cd /tmp && crm"})),        # terminal
+        _line(_assistant_tool_use("Bash", {"command": "crm whoami; echo done"})), # before ;
+    ])
+    assert trace.parse_commands(raw) == ["crm", "cd /tmp && crm", "crm whoami; echo done"]

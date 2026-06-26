@@ -320,3 +320,28 @@ def test_unknown_task_filter_fails_loud_not_silent(tmp_path):
     with pytest.raises(RunError, match="no task matched"):
         run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}),
                 task_filter="does-not-exist", run_dir=tmp_path)
+
+
+def test_errored_task_with_a_captured_trace_still_persists_a_record(tmp_path):
+    # Under --repeat, a task that ran (trial 0) but then raised (trial 1) resolves ERROR;
+    # its captured trace must still persist so the run dir isn't empty (#588 / Copilot).
+    one = _scored_ids()[0]
+    calls: dict[str, int] = {}
+
+    def run_one(path, *, dry_run, agent_cmd, crm_bin, install_skill=True):
+        spec = parse_task_file(path)
+        n = calls.get(spec.id, 0)
+        calls[spec.id] = n + 1
+        if n == 1:  # the second trial raises after the first produced a trace
+            raise RunError("trial 1 boom")
+        return RunResult(task_id=spec.id, dry_run=False, isolation_checks={},
+                         passed=True, reason="ok", transcript=_TRACE)
+
+    result = run_set(TASKS_DIR, active_target="cloud", run_one=run_one, run_dir=tmp_path,
+                     repeat=2, task_filter=one)
+    assert [o.status for o in result.outcomes] == [set_runner.ERROR]
+    recs = record_mod.load_records(tmp_path)
+    assert [r.task_id for r in recs] == [one]
+    assert recs[0].correctness_verdict["status"] == "error"
+    assert recs[0].correctness_verdict["passed"] is False
+    assert recs[0].commands == ["crm whoami"]  # the captured (trial-0) trace, not lost

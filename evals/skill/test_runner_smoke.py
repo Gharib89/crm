@@ -308,6 +308,19 @@ def test_dry_run_counterfactual_proves_skill_absent_isolation():
     assert "skill-installed" not in result.isolation_checks
 
 
+def test_dry_counterfactual_leg_needs_no_crm_binary(monkeypatch):
+    # The skill-absent dry leg provisions/verifies an empty sandbox and touches no org,
+    # so it must not hard-require a crm binary (#588 / Copilot) — but the skill-present
+    # leg installs via crm and still does.
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    result = runner.run_task(
+        TASKS_DIR / "records-create-verify.md", dry_run=True, install_skill=False
+    )
+    assert result.isolation_checks.get("skill-absent")
+    with pytest.raises(runner.RunError, match="crm binary"):
+        runner.run_task(TASKS_DIR / "records-create-verify.md", dry_run=True, install_skill=True)
+
+
 def test_run_requires_agent_cmd_when_not_dry():
     # A real run needs an agent command; absent one, fail clearly before any live call.
     import os

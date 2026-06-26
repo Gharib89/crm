@@ -23,10 +23,12 @@ from collections.abc import Iterator
 from typing import Any
 
 #: A ``crm`` invocation as a *shell word*: at line start or after a shell separator
-#: (whitespace, ``;``, ``&``, ``|``, ``(``), so ``cd x && crm …`` and ``echo|crm …``
-#: count but ``scrmble`` / ``crmfoo`` do not. Defensive — the command may be a compound
-#: line, and the review only needs to know a crm call happened and in what order.
-_CRM_RE = re.compile(r"(?:^|[\s;&|()])crm\s")
+#: (whitespace, ``;``, ``&``, ``|``, ``(``), and followed by whitespace, end-of-string, or
+#: a shell terminator — so ``cd x && crm …``, ``echo|crm …``, a bare ``crm``, and a
+#: trailing ``… && crm`` all count, but ``scrmble`` / ``crmfoo`` do not. Defensive — the
+#: command may be a compound line, and the review only needs to know a crm call happened
+#: and in what order.
+_CRM_RE = re.compile(r"(?:^|[\s;&|()])crm(?=\s|$|[;&|)])")
 
 #: Run metrics lifted verbatim from the terminal ``result`` event, when present.
 _METRIC_KEYS = ("num_turns", "total_cost_usd", "duration_ms")

@@ -171,7 +171,9 @@ def run_task(
             f"to score it via the Claude analysis pass"
         )
     resolved_bin = crm_bin or shutil.which("crm")
-    if not resolved_bin:
+    # Provisioning installs the skill via crm — unless this is the counterfactual
+    # (skill-absent) leg, which provisions/verifies an empty sandbox and needs no binary.
+    if install_skill and not resolved_bin:
         raise RunError("crm binary not on PATH")
 
     iso = isolation.provision_isolation(resolved_bin, install_skill=install_skill)
@@ -180,6 +182,10 @@ def run_task(
         if dry_run:
             return RunResult(task_id=spec.id, dry_run=True, isolation_checks=checks)
 
+        # The live path seeds, scores, and cleans the org via crm, so it needs the binary
+        # (a dry leg returned above; only here is crm actually invoked).
+        if not resolved_bin:
+            raise RunError("crm binary not on PATH")
         agent = _resolve_agent_cmd(agent_cmd)
         resolved_analyze = analyze.resolve_analyze_cmd(analyze_cmd) if analyze_pass else None
         profile = target.seed_target(iso.crm_home, spec.target)
