@@ -321,6 +321,7 @@ def run_set(
             ))
 
     outcomes: list[TaskOutcome] = []
+    matched_filter = False
     for i, path in enumerate(files):
         done = i + 1
         # Parse inside the loop guard so a single malformed file is reported as that
@@ -336,6 +337,7 @@ def run_set(
         # ``--task X`` (#588) restricts the run to one task; others produce no outcome.
         if task_filter is not None and task_filter not in (spec.id, path.stem):
             continue
+        matched_filter = True
 
         if dry_run:
             try:
@@ -389,20 +391,30 @@ def run_set(
         report(o, done)
 
         # Persist the durable run record (#588) for a scored task, plus — when measuring
-        # lift — a skill-absent counterfactual leg. The absent leg is a *measurement*, not
-        # a scored task: its failure is logged and never flips the outcome or aborts the set.
+        # lift — a skill-absent counterfactual leg. The verdict is the *aggregate* across
+        # trials (``o.status``/``o.reason``), not the last trial's, so a flaky --repeat run
+        # records a self-consistent verdict against the (last trial's) captured trace. The
+        # absent leg is a *measurement*, not a scored task: its failure is logged and never
+        # flips the outcome or aborts the set.
+        leg_target = resolved or spec.target
         if run_dir is not None and last_result is not None and o.status in (PASS, FAIL):
-            record_mod.write_record(run_dir, record_mod.build_record(spec, last_result, o.status, skill_sha))
+            record_mod.write_record(run_dir, record_mod.build_record(
+                spec, last_result, status=o.status, passed=o.status == PASS, reason=o.reason,
+                sha=skill_sha, target=leg_target))
             if counterfactual or spec.counterfactual:
                 try:
                     cf = run_one(path, dry_run=False, agent_cmd=agent_cmd, crm_bin=crm_bin,
                                  install_skill=False)
-                    cf_status = PASS if cf.passed else FAIL
-                    record_mod.write_record(
-                        run_dir, record_mod.build_record(spec, cf, cf_status, skill_sha, counterfactual=True)
-                    )
+                    record_mod.write_record(run_dir, record_mod.build_record(
+                        spec, cf, status=PASS if cf.passed else FAIL, passed=bool(cf.passed),
+                        reason=cf.reason, sha=skill_sha, target=leg_target, counterfactual=True))
                 except Exception as exc:  # noqa: BLE001 — measurement leg, never fatal
                     print(f"[counterfactual] {spec.id} skill-absent leg failed: {exc}", file=sys.stderr)
+
+    # ``--task X`` that matched nothing is a typo, not a clean empty success — fail loud
+    # rather than silently scoring zero tasks and exiting 0 (#588).
+    if task_filter is not None and not matched_filter:
+        raise RunError(f"no task matched --task {task_filter!r} under {tasks_dir}")
 
     return SetResult(outcomes=outcomes, active_target=resolved, dry_run=dry_run)
 

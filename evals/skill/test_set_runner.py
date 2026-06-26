@@ -281,10 +281,10 @@ def _scored_ids() -> list[str]:
 def test_run_dir_persists_one_record_per_scored_task(tmp_path):
     run_dir = tmp_path / "run1"
     run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}), run_dir=run_dir)
-    written = {p.stem for p in run_dir.glob("*.json")}
-    assert written == set(_scored_ids())  # skipped/diagnostic tasks persist no record
     recs = record_mod.load_records(run_dir)
-    assert recs and all(r.commands == ["crm whoami"] for r in recs)
+    # one record per scored task (skipped/diagnostic tasks persist none), stamped target.
+    assert {r.task_id for r in recs} == set(_scored_ids())
+    assert recs and all(r.commands == ["crm whoami"] and r.target == "cloud" for r in recs)
     assert all(r.efficacy_review is None and not r.counterfactual for r in recs)
 
 
@@ -312,4 +312,11 @@ def test_task_filter_runs_only_the_named_task(tmp_path):
     result = run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}),
                      task_filter=one, run_dir=tmp_path)
     assert [o.task_id for o in result.outcomes] == [one]
-    assert {p.stem for p in tmp_path.glob("*.json")} == {one}
+    assert {r.task_id for r in record_mod.load_records(tmp_path)} == {one}
+
+
+def test_unknown_task_filter_fails_loud_not_silent(tmp_path):
+    # `--task` with an id that matches nothing is a typo, not a clean empty success.
+    with pytest.raises(RunError, match="no task matched"):
+        run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}),
+                task_filter="does-not-exist", run_dir=tmp_path)

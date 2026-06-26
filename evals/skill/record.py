@@ -44,6 +44,11 @@ class TaskRunRecord:
     metrics: dict[str, Any]
     correctness_verdict: dict[str, Any]
     skill_sha: str
+    #: The active target the trace was produced against (``cloud``/``onprem``/``either``).
+    #: Part of the on-disk identity so a ``both`` run persisting both legs into one run dir
+    #: never overwrites an ``either`` task's two legs, and the review knows which target a
+    #: trace came from.
+    target: str = ""
     #: True for the skill-**absent** leg of a ``--counterfactual`` pair, so it lands in a
     #: separate file and the review can compare it against the skill-present leg.
     counterfactual: bool = False
@@ -58,17 +63,22 @@ class TaskRunRecord:
         return cls(**data)
 
 
-def record_filename(task_id: str, counterfactual: bool = False) -> str:
-    """The on-disk file name for a task's record; the absent leg gets its own name so
-    the two legs of a counterfactual pair never collide."""
-    return f"{task_id}.counterfactual.json" if counterfactual else f"{task_id}.json"
+def record_filename(task_id: str, target: str = "", counterfactual: bool = False) -> str:
+    """The on-disk file name for a task's record.
+
+    Keyed by ``task_id`` **and** ``target`` so a ``both`` run persisting both legs into one
+    run dir never silently overwrites an ``either`` task's cloud and on-prem records; the
+    skill-absent (counterfactual) leg gets its own suffix so a pair never collides either.
+    """
+    base = f"{task_id}.{target}" if target else task_id
+    return f"{base}.counterfactual.json" if counterfactual else f"{base}.json"
 
 
 def write_record(run_dir: str | Path, rec: TaskRunRecord) -> Path:
     """Write ``rec`` into ``run_dir`` (created if absent); return the path written."""
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    path = run_dir / record_filename(rec.task_id, rec.counterfactual)
+    path = run_dir / record_filename(rec.task_id, rec.target, rec.counterfactual)
     path.write_text(json.dumps(rec.to_dict(), indent=2), encoding="utf-8")
     return path
 
@@ -134,12 +144,24 @@ def skill_sha(repo_root: str | Path | None = None) -> str:
 
 
 def build_record(
-    spec: TaskSpec, result: RunResult, status: str, sha: str, *, counterfactual: bool = False
+    spec: TaskSpec,
+    result: RunResult,
+    *,
+    status: str,
+    passed: bool,
+    reason: str,
+    sha: str,
+    target: str = "",
+    counterfactual: bool = False,
 ) -> TaskRunRecord:
     """Build a record from a scored task run: parse the trace, snapshot the verdict.
 
-    ``status`` is the set-runner :class:`~evals.skill.set_runner.TaskOutcome` status
-    (``pass``/``fail``); ``sha`` is the skill SHA stamped once per run.
+    The trace (and the parsed command sequence + metrics) come from ``result``, but the
+    correctness verdict is passed in **explicitly** (``status``/``passed``/``reason``)
+    rather than read off ``result`` — under ``--repeat`` the persisted ``result`` is the
+    final trial's trace while the verdict is the *aggregate* across trials, so deriving
+    ``passed`` from the last trial would contradict the aggregate ``status``. ``sha`` is
+    the skill SHA stamped once per run; ``target`` is the active target.
     """
     return TaskRunRecord(
         task_id=spec.id,
@@ -147,7 +169,8 @@ def build_record(
         raw_trace=result.transcript,
         commands=trace.parse_commands(result.transcript),
         metrics=trace.parse_metrics(result.transcript),
-        correctness_verdict={"passed": result.passed, "reason": result.reason, "status": status},
+        correctness_verdict={"passed": passed, "reason": reason, "status": status},
         skill_sha=sha,
+        target=target,
         counterfactual=counterfactual,
     )

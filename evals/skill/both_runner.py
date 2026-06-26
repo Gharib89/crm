@@ -201,8 +201,9 @@ def run_both(
             if progress is not None:
                 progress.leg(target=tgt, profile=name, reachable=True,
                              runnable=count_runnable(tgt))
-            # Both legs persist into the same run dir (#588); tasks are target-gated so
-            # records don't collide. counterfactual/task_filter are forwarded unchanged.
+            # Both legs persist into the same run dir (#588); records are keyed by task AND
+            # target (record_filename), so an `either` task's two legs don't collide.
+            # counterfactual/task_filter are forwarded unchanged.
             result = run_set_fn(repeat=repeat, agent_cmd=agent_cmd, active_target=tgt,
                                 progress=progress, run_dir=run_dir,
                                 counterfactual=counterfactual, task_filter=task_filter)

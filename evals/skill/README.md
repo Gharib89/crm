@@ -291,9 +291,14 @@ event with `num_turns` / `total_cost_usd` / `duration_ms`). **Every** `python -m
 run` writes a durable run dir:
 
 ```
-evals/skill/runs/<UTC-ts>/<task-id>.json   # {prompt, raw_trace, commands[], metrics,
-                                           #  correctness_verdict, skill_sha, efficacy_review?}
+evals/skill/runs/<UTC-ts>/<task-id>.<target>.json   # {prompt, raw_trace, commands[],
+                                                    #  metrics, correctness_verdict,
+                                                    #  skill_sha, target, efficacy_review?}
 ```
+
+The filename is keyed by task **and** target, so a `--target both` run persisting both legs
+into one dir never overwrites an `either` task's cloud and on-prem records; the skill-absent
+counterfactual leg adds a `.counterfactual` suffix.
 
 `commands[]` is the parsed, ordered list of `crm` invocations — the spine of the efficiency
 question. `runs/` is **gitignored**: a trace carries live-org GUIDs and the org machine

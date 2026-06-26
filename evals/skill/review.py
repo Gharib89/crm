@@ -236,7 +236,9 @@ def review_records(
     unparseable output is recorded as ``{"unparsed": True, ...}`` rather than aborting
     the batch — one bad review must not lose the rest.
     """
-    counterfactuals = {r.task_id: r for r in records if r.counterfactual}
+    # Pair the skill-absent leg to its present sibling by (task_id, target): a `both` run
+    # can hold an `either` task's cloud and on-prem legs, which must not cross-pair.
+    counterfactuals = {(r.task_id, r.target): r for r in records if r.counterfactual}
     reviewed: list[TaskRunRecord] = []
     for rec in records:
         if rec.counterfactual:
@@ -246,7 +248,7 @@ def review_records(
         if failed_only and rec.correctness_verdict.get("status") == "pass":
             continue
         prompt = build_review_prompt(
-            rec=rec, skill_text=skill_text, counterfactual=counterfactuals.get(rec.task_id)
+            rec=rec, skill_text=skill_text, counterfactual=counterfactuals.get((rec.task_id, rec.target))
         )
         raw = reviewer(prompt)
         try:

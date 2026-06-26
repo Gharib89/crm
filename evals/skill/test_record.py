@@ -53,33 +53,46 @@ def test_record_round_trips_through_dict():
 
 
 def test_build_record_parses_commands_and_metrics_from_transcript():
-    rec = record.build_record(_spec(), _result(_TRACE), "pass", "deadbeef")
+    rec = record.build_record(_spec(), _result(_TRACE), status="pass", passed=True,
+                              reason="all expectations met", sha="deadbeef", target="cloud")
     assert rec.task_id == "records-create-verify"
     assert rec.prompt == "Create a contact."
     assert rec.commands == ["crm entity create contacts ..."]
     assert rec.metrics == {"num_turns": 3, "total_cost_usd": 0.04, "duration_ms": 900}
     assert rec.correctness_verdict == {"passed": True, "reason": "all expectations met", "status": "pass"}
     assert rec.skill_sha == "deadbeef"
+    assert rec.target == "cloud"
     assert rec.counterfactual is False
 
 
+def test_build_record_verdict_is_aggregate_not_last_trial():
+    # Under --repeat the captured trace is the last trial but the verdict is the aggregate;
+    # passed/status/reason are passed in explicitly and must agree (no contradiction).
+    rec = record.build_record(_spec(), _result(_TRACE), status="fail", passed=False,
+                              reason="2/3 trials passed", sha="s")
+    assert rec.correctness_verdict == {"passed": False, "reason": "2/3 trials passed", "status": "fail"}
+
+
 def test_write_and_load_round_trip(tmp_path):
-    rec = record.build_record(_spec(), _result(_TRACE), "pass", "sha1")
+    rec = record.build_record(_spec(), _result(_TRACE), status="pass", passed=True,
+                              reason="ok", sha="sha1", target="cloud")
     path = record.write_record(tmp_path, rec)
-    assert path.name == "records-create-verify.json"
+    assert path.name == "records-create-verify.cloud.json"  # filename namespaced by target
     loaded = record.load_records(tmp_path)
-    assert len(loaded) == 1 and loaded[0].commands == rec.commands
+    assert len(loaded) == 1 and loaded[0].commands == rec.commands and loaded[0].target == "cloud"
 
 
-def test_counterfactual_leg_writes_a_separate_file(tmp_path):
-    # The skill-present and skill-absent legs of one task must not collide on disk.
-    present = record.build_record(_spec(), _result(_TRACE), "pass", "sha1")
-    absent = record.build_record(_spec(), _result(_TRACE), "pass", "sha1", counterfactual=True)
-    record.write_record(tmp_path, present)
-    cf_path = record.write_record(tmp_path, absent)
-    assert cf_path.name == "records-create-verify.counterfactual.json"
+def test_legs_of_one_task_across_targets_do_not_collide(tmp_path):
+    # An `either` task in a `both` run produces a cloud and an on-prem leg (plus their
+    # skill-absent counterparts); none may overwrite another on disk.
+    def rec(target, counterfactual=False):
+        return record.build_record(_spec(), _result(_TRACE), status="pass", passed=True,
+                                    reason="ok", sha="s", target=target, counterfactual=counterfactual)
+    for r in (rec("cloud"), rec("onprem"), rec("cloud", True), rec("onprem", True)):
+        record.write_record(tmp_path, r)
     assert {p.name for p in tmp_path.glob("*.json")} == {
-        "records-create-verify.json", "records-create-verify.counterfactual.json",
+        "records-create-verify.cloud.json", "records-create-verify.onprem.json",
+        "records-create-verify.cloud.counterfactual.json", "records-create-verify.onprem.counterfactual.json",
     }
 
 

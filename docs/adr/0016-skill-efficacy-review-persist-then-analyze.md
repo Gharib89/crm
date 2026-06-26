@@ -47,8 +47,11 @@ The default agent command becomes
 so stdout is the full JSONL event stream — every `tool_use`, every `tool_result`, and a
 final `result` event with `num_turns` / `total_cost_usd` / `duration_ms` / `usage`.
 
-**Every run** writes a durable run dir `evals/skill/runs/<UTC-ts>/<task-id>.json` holding
-`{prompt, raw_trace, commands[], metrics, correctness_verdict, skill_sha, efficacy_review?}`.
+**Every run** writes a durable run dir `evals/skill/runs/<UTC-ts>/<task-id>.<target>.json`
+holding `{prompt, raw_trace, commands[], metrics, correctness_verdict, skill_sha, target,
+efficacy_review?}` (the filename is keyed by task **and** target so a `both` run persisting
+both legs into one dir never overwrites an `either` task's cloud and on-prem records; the
+skill-absent leg adds a `.counterfactual` suffix).
 `commands[]` is the parsed ordered list of `crm` invocations pulled from the trace — the
 spine of the efficiency question — so reporting needs no re-parse. `efficacy_review` is
 absent until the review step fills it. `result.json` + `run.log` are unchanged and additive.
