@@ -112,10 +112,11 @@ def test_parse_review_rejects_bad_lift_and_missing_json():
 # --- org-fingerprint guard on the tracked efficacy.md --------------------------------
 
 def test_guard_blocks_guids_and_fingerprint():
+    # Obvious placeholders only — never embed a real org GUID/MAC in a public-repo test.
     with pytest.raises(review.ReviewError, match="GUID"):
-        review.guard_org_agnostic("fix: account 3f2504e0-4f89-41d3-9a0c-0305e82c3301 needs a flag")
+        review.guard_org_agnostic("fix: account 11111111-1111-1111-1111-111111111111 needs a flag")
     with pytest.raises(review.ReviewError, match="00155d|fingerprint"):
-        review.guard_org_agnostic("trace touched mac 00155d467b90")
+        review.guard_org_agnostic("trace touched mac 00155d000000")
 
 
 def test_guard_passes_org_agnostic_text():

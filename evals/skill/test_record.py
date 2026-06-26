@@ -103,3 +103,23 @@ def test_skill_sha_is_the_git_tree_sha_of_the_skill():
 
 def test_skill_sha_unknown_outside_a_repo(tmp_path):
     assert record.skill_sha(tmp_path) == "unknown"
+
+
+def test_skill_sha_marks_dirty_on_uncommitted_skill_edits(tmp_path):
+    # The committed tree SHA can't see uncommitted edits, yet the reviewer reads the skill
+    # live — so a dirty skill tree gets a `-dirty` suffix to keep the provenance honest.
+    import subprocess
+
+    skills = tmp_path / "crm" / "skills"
+    skills.mkdir(parents=True)
+    (skills / "SKILL.md").write_text("router", encoding="utf-8")
+    git = ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+    subprocess.run(git + ["add", "-A"], check=True)
+    subprocess.run(git + ["commit", "-qm", "init"], check=True)
+
+    clean = record.skill_sha(tmp_path)
+    assert _HEX40.match(clean), f"committed tree SHA should be clean 40-hex, got {clean!r}"
+
+    (skills / "SKILL.md").write_text("router edited", encoding="utf-8")  # uncommitted
+    assert record.skill_sha(tmp_path) == f"{clean}-dirty"

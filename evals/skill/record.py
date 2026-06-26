@@ -106,6 +106,11 @@ def skill_sha(repo_root: str | Path | None = None) -> str:
     the provenance the review uses to flag run/review divergence. Best-effort: any git
     failure (not a repo, no such path, git absent) yields ``"unknown"`` rather than
     raising, since the stamp is provenance, not a gate.
+
+    The committed tree SHA can't see *uncommitted* skill edits, yet the reviewer reads
+    ``crm/skills`` live — so an uncommitted change would make the SHA silently misleading
+    (the same SHA, different skill text). When the skill tree is dirty the SHA is suffixed
+    ``-dirty`` so the provenance is honest rather than stale.
     """
     root = Path(repo_root) if repo_root is not None else _repo_root()
     try:
@@ -115,9 +120,17 @@ def skill_sha(repo_root: str | Path | None = None) -> str:
         )
     except OSError:
         return "unknown"
-    if proc.returncode == 0 and proc.stdout.strip():
-        return proc.stdout.strip()
-    return "unknown"
+    if not (proc.returncode == 0 and proc.stdout.strip()):
+        return "unknown"
+    sha = proc.stdout.strip()
+    try:
+        dirty = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--", "crm/skills"],
+            capture_output=True, text=True,
+        )
+    except OSError:
+        return sha
+    return f"{sha}-dirty" if dirty.returncode == 0 and dirty.stdout.strip() else sha
 
 
 def build_record(
