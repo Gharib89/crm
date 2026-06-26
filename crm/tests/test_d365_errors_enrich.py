@@ -43,7 +43,7 @@ def _envelope(run):
 # ── reserved-key guard ──────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("key", ["status"])
+@pytest.mark.parametrize("key", ["status", "code", "category", "retryable"])
 def test_extra_meta_reserved_key_raises_valueerror(key):
     """extra_meta naming a pure-error key raises ValueError before emit — the
     enrich callback can never overwrite the reserved error envelope."""

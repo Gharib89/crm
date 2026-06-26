@@ -48,7 +48,7 @@ class TestAuthSelection:
         assert isinstance(b._session.auth, HttpNtlmAuth)
 
     @pytest.mark.parametrize("scheme", ["kerberos", "negotiate"])
-    def test_kerberos_scheme_raises_when_package_missing(self, scheme, monkeypatch):
+    def test_sspi_scheme_raises_when_package_missing(self, scheme, monkeypatch):
         monkeypatch.setitem(sys.modules, "requests_negotiate_sspi", None)
         with pytest.raises(D365Error, match="requests_negotiate_sspi"):
             D365Backend(_profile(scheme), password="pw")
