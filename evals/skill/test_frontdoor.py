@@ -25,13 +25,19 @@ def _set_result() -> SetResult:
 
 # --- agent-cmd defaulting / override (AC2) -------------------------------------------
 
-def test_default_agent_cmd_is_skip_permissions_sonnet():
-    assert build_agent_cmd(None, None) == "claude -p --dangerously-skip-permissions --model sonnet"
+def test_default_agent_cmd_is_skip_permissions_streamjson_sonnet():
+    # #588: the default emits stream-json (+ --verbose) so the run record captures the
+    # crm command sequence + metrics the skill-efficacy review reads.
+    assert build_agent_cmd(None, None) == (
+        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model sonnet"
+    )
     assert DEFAULT_MODEL == "sonnet"
 
 
 def test_model_swaps_the_default_model():
-    assert build_agent_cmd(None, "opus") == "claude -p --dangerously-skip-permissions --model opus"
+    assert build_agent_cmd(None, "opus") == (
+        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model opus"
+    )
 
 
 def test_agent_cmd_overrides_entirely():
@@ -66,7 +72,7 @@ def test_target_both_routes_to_both_runner(tmp_path, monkeypatch):
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")  # skip host derivation
     calls = {}
 
-    def fake_both(profiles, *, repeat, agent_cmd, progress):
+    def fake_both(profiles, *, repeat, agent_cmd, progress, **_kw):
         calls["both"] = {"profiles": list(profiles), "agent_cmd": agent_cmd}
 
         class _R:
@@ -91,7 +97,7 @@ def test_single_target_routes_to_set_runner(target, profile, tmp_path, monkeypat
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     seen = {}
 
-    def fake_set(*, active_target, repeat, agent_cmd, progress):
+    def fake_set(*, active_target, repeat, agent_cmd, progress, **_kw):
         seen["active_target"] = active_target
         seen["profile_env"] = __import__("os").environ.get("D365_E2E_PROFILE")
         return _set_result()
@@ -115,7 +121,7 @@ def test_cloud_allow_host_derived_from_profile(tmp_path, monkeypatch):
         assert profile_name == "agent-cloud"
         return "org.crm.dynamics.com"
 
-    def fake_set(*, active_target, repeat, agent_cmd, progress):
+    def fake_set(*, active_target, repeat, agent_cmd, progress, **_kw):
         seen["allow_host"] = __import__("os").environ.get("D365_E2E_ALLOW_HOST")
         return _set_result()
 
@@ -134,7 +140,7 @@ def test_single_target_restores_profile_env(tmp_path, monkeypatch):
     monkeypatch.setenv("D365_E2E_PROFILE", "sentinel")
     seen = {}
 
-    def fake_set(*, active_target, repeat, agent_cmd, progress):
+    def fake_set(*, active_target, repeat, agent_cmd, progress, **_kw):
         seen["during"] = __import__("os").environ.get("D365_E2E_PROFILE")
         return _set_result()
 
@@ -169,7 +175,7 @@ def test_onprem_target_skips_host_derivation(tmp_path, monkeypatch):
 def test_writes_result_json_and_run_log(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
 
-    def fake_set(*, active_target, repeat, agent_cmd, progress):
+    def fake_set(*, active_target, repeat, agent_cmd, progress, **_kw):
         progress(  # one line to run.log
             __import__("evals.skill.set_runner", fromlist=["ProgressEvent"]).ProgressEvent(
                 done=1, total=1, task_id="t", target="cloud", status=PASS, runnable=1)
@@ -184,3 +190,39 @@ def test_writes_result_json_and_run_log(tmp_path, monkeypatch, capsys):
     assert "[ 1/1] PASS  t  (cloud)" in log  # progress captured to run.log
     out = capsys.readouterr().out
     assert "result.json" in out and "run.log" in out  # paths printed
+
+
+# --- run-dir / counterfactual / task threading + the review subcommand (#588) --------
+
+def test_run_threads_run_dir_counterfactual_and_task(tmp_path, monkeypatch):
+    monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
+    seen = {}
+
+    def fake_set(*, active_target, repeat, agent_cmd, progress,
+                 run_dir=None, counterfactual=False, task_filter=None):
+        seen.update(run_dir=run_dir, counterfactual=counterfactual, task_filter=task_filter)
+        return _set_result()
+
+    runs_root = tmp_path / "runs"
+    run(target="cloud", out_dir=tmp_path, runs_root=runs_root, counterfactual=True,
+        only_task="records-create-verify", run_set_fn=fake_set, run_both_fn=lambda *a, **k: None)
+    assert seen["counterfactual"] is True
+    assert seen["task_filter"] == "records-create-verify"
+    # the run dir is a timestamped sub-dir of runs_root (not a record written here)
+    assert __import__("pathlib").Path(seen["run_dir"]).parent == runs_root
+
+
+def test_review_subcommand_routes_to_review(monkeypatch):
+    captured = {}
+
+    def fake_review(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(frontdoor.review, "run_review_cmd", fake_review)
+    rc = frontdoor.main(["review", "--run", "/some/dir", "--task", "t", "--failed-only", "--record"])
+    assert rc == 0
+    assert captured["run_dir"] == "/some/dir"
+    assert captured["task"] == "t"
+    assert captured["failed_only"] is True
+    assert captured["record_efficacy"] is True

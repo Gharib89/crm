@@ -37,7 +37,7 @@ def _fakes(reachable: dict[str, bool], targets: dict[str, str]):
     def probe_fn(name: str) -> bool:
         return reachable[name]
 
-    def run_set_fn(*, repeat, agent_cmd, active_target, progress=None):
+    def run_set_fn(*, repeat, agent_cmd, active_target, progress=None, **_kw):
         # one task, all trials pass — proves repeat is threaded through
         return _set_result(active_target, passes=repeat, trials=repeat)
 
@@ -126,7 +126,7 @@ def test_progress_prints_per_leg_header_and_forwards_to_run_set():
     reporter = StderrProgress(stream=buf)
     forwarded: list[object] = []
 
-    def run_set_fn(*, repeat, agent_cmd, active_target, progress=None):
+    def run_set_fn(*, repeat, agent_cmd, active_target, progress=None, **_kw):
         forwarded.append(progress)
         # simulate the set emitting one resolved task line through the forwarded reporter
         if progress is not None:
@@ -165,6 +165,28 @@ def test_no_progress_means_no_header_and_no_runnable_computation():
     res = run_both(["agent-cloud"], run_set_fn=run_set_fn, probe_fn=probe_fn,
                    target_fn=target_fn, runnable_fn=boom)
     assert res.union_scored() == {"cloud-task"}
+
+
+def test_run_both_forwards_run_dir_and_counterfactual_to_each_leg():
+    # #588: a both-targets run persists both legs into the same run dir and forwards the
+    # counterfactual / task_filter knobs unchanged to every reachable leg's run_set.
+    seen: list[dict] = []
+
+    def run_set_fn(*, repeat, agent_cmd, active_target, progress=None,
+                   run_dir=None, counterfactual=False, task_filter=None):
+        seen.append({"target": active_target, "run_dir": run_dir,
+                     "counterfactual": counterfactual, "task_filter": task_filter})
+        return _set_result(active_target, passes=repeat, trials=repeat)
+
+    _, probe_fn, target_fn = _fakes(
+        {"agent-cloud": True, "agent-on-prem": True},
+        {"agent-cloud": "cloud", "agent-on-prem": "onprem"},
+    )
+    run_both(["agent-cloud", "agent-on-prem"], run_set_fn=run_set_fn, probe_fn=probe_fn,
+             target_fn=target_fn, run_dir="/tmp/run-x", counterfactual=True, task_filter="t1")
+    assert len(seen) == 2
+    assert all(s["run_dir"] == "/tmp/run-x" and s["counterfactual"] and s["task_filter"] == "t1"
+               for s in seen)
 
 
 def test_append_baseline_adds_rows_after_table(tmp_path):

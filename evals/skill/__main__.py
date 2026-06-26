@@ -26,10 +26,12 @@ import os
 import sys
 from collections.abc import Callable
 from datetime import date as _date
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from evals.skill import both_runner, set_runner
+from evals.skill import both_runner, review, set_runner
+from evals.skill import record as record_mod
 from evals.skill import target as target_mod
 
 #: The default model baked into the agent command. The harness measures the skill, not
@@ -51,6 +53,11 @@ def build_agent_cmd(agent_cmd: str | None, model: str | None) -> str:
     disabled and ``--model`` (or :data:`DEFAULT_MODEL`) — the gate footgun is gone by
     default. ``--agent-cmd`` overrides the whole command; combining it with ``--model``
     is rejected rather than silently appending a model to a custom command.
+
+    The default emits a ``stream-json`` event stream (``--verbose`` is required for the
+    full per-``tool_use`` stream under ``-p``), so the run record captures the ordered
+    ``crm`` command sequence and run metrics the skill-efficacy review reads (#588). A
+    custom ``--agent-cmd`` that drops these silently blinds the review.
     """
     if agent_cmd:
         if model:
@@ -58,7 +65,10 @@ def build_agent_cmd(agent_cmd: str | None, model: str | None) -> str:
                 "--model cannot be combined with --agent-cmd; bake the model into --agent-cmd"
             )
         return agent_cmd
-    return f"claude -p --dangerously-skip-permissions --model {model or DEFAULT_MODEL}"
+    return (
+        "claude -p --dangerously-skip-permissions --output-format stream-json --verbose "
+        f"--model {model or DEFAULT_MODEL}"
+    )
 
 
 class _Tee:
@@ -88,8 +98,11 @@ def run(
     agent_cmd: str | None = None,
     repeat: int = 1,
     update_baseline: bool = False,
+    counterfactual: bool = False,
+    only_task: str | None = None,
     out_dir: str | Path | None = None,
     live: bool = False,
+    runs_root: str | Path = record_mod.RUNS_ROOT,
     run_set_fn: Callable[..., Any] = set_runner.run_set,
     run_both_fn: Callable[..., Any] = both_runner.run_both,
     host_fn: Callable[[str], str] = target_mod.resolve_host,
@@ -98,6 +111,11 @@ def run(
 
     ``run_set_fn`` / ``run_both_fn`` / ``host_fn`` are injectable so the wiring is
     testable offline without an agent, a live org, or a real profile store.
+
+    Every run persists a durable run dir under ``runs_root`` (``<runs_root>/<UTC-ts>/``,
+    #588) so the skill-efficacy ``review`` step can judge it later; ``counterfactual``
+    adds a skill-absent leg per task to measure lift, and ``only_task`` restricts the run
+    to one task id. The dir is created lazily by the runner on the first record written.
     """
     if target not in ("cloud", "onprem", "both"):
         # run() is a public, importable seam (tested directly); keep a bad target a
@@ -113,6 +131,10 @@ def run(
     out.mkdir(parents=True, exist_ok=True)
     result_path = out / "result.json"
     log_path = out / "run.log"
+
+    # The durable run dir is a fixed, timestamped location under the eval tree (not --out,
+    # so `review` can find the latest run); created lazily by the runner on first write.
+    run_dir = Path(runs_root) / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     # Save/restore the env knobs we set so an in-process caller's environment is left
     # untouched, matching both_runner.run_both's discipline (a leaked D365_E2E_PROFILE
@@ -130,7 +152,8 @@ def run(
             reporter = set_runner.StderrProgress(stream=tee)
             if target == "both":
                 res = run_both_fn(both_runner.DEFAULT_PROFILES, repeat=repeat,
-                                  agent_cmd=resolved_cmd, progress=reporter)
+                                  agent_cmd=resolved_cmd, progress=reporter, run_dir=run_dir,
+                                  counterfactual=counterfactual, task_filter=only_task)
                 if update_baseline:
                     both_runner.append_baseline(
                         both_runner.BASELINE, res.baseline_rows(today=_date.today().isoformat())
@@ -141,7 +164,8 @@ def run(
                 # set_runner's per-task seeding reads D365_E2E_PROFILE; point it at the profile.
                 os.environ[target_mod.E2E_PROFILE_ENV] = PROFILE_BY_TARGET[target]
                 res = run_set_fn(active_target=target, repeat=repeat,
-                                 agent_cmd=resolved_cmd, progress=reporter)
+                                 agent_cmd=resolved_cmd, progress=reporter, run_dir=run_dir,
+                                 counterfactual=counterfactual, task_filter=only_task)
                 payload = res.to_dict()
                 exit_code = (
                     1 if any(o.status in (set_runner.FAIL, set_runner.ERROR) for o in res.outcomes) else 0
@@ -156,6 +180,8 @@ def run(
     result_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"result: {result_path.resolve()}")
     print(f"log:    {log_path.resolve()}")
+    if run_dir.exists():  # lazily created only if at least one task was scored + persisted
+        print(f"runs:   {run_dir.resolve()}  (review with `python -m evals.skill review`)")
     return exit_code
 
 
@@ -179,8 +205,32 @@ def main(argv: list[str] | None = None) -> int:
                        help="(--target both) append a dated per-target row to baseline.md")
     run_p.add_argument("--out", default=None, metavar="DIR",
                        help="directory for result.json + run.log (default: current dir)")
+    run_p.add_argument("--counterfactual", action="store_true",
+                       help="also run each task with the skill ABSENT so `review` can measure lift "
+                            "(2x live cost per task)")
+    run_p.add_argument("--task", default=None, metavar="ID",
+                       help="run only the task with this id (default: the whole set)")
     set_runner.add_progress_flags(run_p)
-    args = parser.parse_args(argv)  # subparser is required → args.cmd is always "run"
+
+    review_p = sub.add_parser(
+        "review", help="judge a saved run's skill efficacy post-hoc (no agent, no live org)")
+    review_p.add_argument("--run", default=None, metavar="DIR",
+                          help="run dir to review (default: the latest under evals/skill/runs/)")
+    review_p.add_argument("--task", default=None, metavar="ID",
+                          help="review only this task id (default: all)")
+    review_p.add_argument("--failed-only", action="store_true",
+                          help="review only tasks whose correctness verdict was not a pass")
+    review_p.add_argument("--record", action="store_true",
+                          help="append the org-agnostic trend to the tracked efficacy.md (human gate)")
+    review_p.add_argument("--review-cmd", default=None,
+                          help="reviewer command (default: $CRM_EVAL_REVIEW_CMD, else 'claude -p --model opus')")
+    args = parser.parse_args(argv)
+
+    if args.cmd == "review":
+        return review.run_review_cmd(
+            run_dir=args.run, task=args.task, failed_only=args.failed_only,
+            record_efficacy=args.record, review_cmd=args.review_cmd,
+        )
 
     live = set_runner.want_progress(
         quiet=args.quiet, progress=args.progress, isatty=sys.stderr.isatty()
@@ -189,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(
             target=args.target, model=args.model, agent_cmd=args.agent_cmd,
             repeat=args.repeat, update_baseline=args.update_baseline,
+            counterfactual=args.counterfactual, only_task=args.task,
             out_dir=args.out, live=live,
         )
     except FrontDoorError as exc:

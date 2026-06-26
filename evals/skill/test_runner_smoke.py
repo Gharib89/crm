@@ -297,6 +297,30 @@ def test_dry_run_proves_isolation_without_agent():
     assert result.transcript == ""  # no agent was invoked
 
 
+def test_dry_run_counterfactual_proves_skill_absent_isolation():
+    # install_skill=False (the --counterfactual leg) provisions without the skill and
+    # verification asserts it is absent — proven offline via the dry path (#588).
+    result = runner.run_task(
+        TASKS_DIR / "records-create-verify.md", dry_run=True, install_skill=False
+    )
+    assert result.dry_run is True
+    assert result.isolation_checks.get("skill-absent")
+    assert "skill-installed" not in result.isolation_checks
+
+
+def test_dry_counterfactual_leg_needs_no_crm_binary(monkeypatch):
+    # The skill-absent dry leg provisions/verifies an empty sandbox and touches no org,
+    # so it must not hard-require a crm binary (#588 / Copilot) — but the skill-present
+    # leg installs via crm and still does.
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+    result = runner.run_task(
+        TASKS_DIR / "records-create-verify.md", dry_run=True, install_skill=False
+    )
+    assert result.isolation_checks.get("skill-absent")
+    with pytest.raises(runner.RunError, match="crm binary"):
+        runner.run_task(TASKS_DIR / "records-create-verify.md", dry_run=True, install_skill=True)
+
+
 def test_run_requires_agent_cmd_when_not_dry():
     # A real run needs an agent command; absent one, fail clearly before any live call.
     import os
@@ -349,6 +373,19 @@ def test_parse_allows_omitted_end_state(tmp_path):
     spec = parse_task_file(f)
     assert spec.is_diagnostic
     assert spec.query == [] and spec.expect == {}
+
+
+def test_counterfactual_frontmatter_defaults_false_and_parses_true(tmp_path):
+    head = ("---\nid: x\ndomain: d\ntarget: either\n"
+            "end_state:\n  query: [query, odata, contacts]\n  expect: {count: 0}\n"
+            "cleanup: []\n")
+    plain = tmp_path / "plain.md"
+    plain.write_text(head + "---\nprompt\n", encoding="utf-8")
+    assert parse_task_file(plain).counterfactual is False
+
+    cf = tmp_path / "cf.md"
+    cf.write_text(head + "counterfactual: true\n---\nprompt\n", encoding="utf-8")
+    assert parse_task_file(cf).counterfactual is True
 
 
 def test_parse_query_without_expect_is_diagnostic(tmp_path):

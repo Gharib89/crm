@@ -116,13 +116,19 @@ def _passthrough_claude_auth(sandbox_home: Path) -> Path | None:
         return None
 
 
-def provision_isolation(crm_bin: str | None = None) -> Isolation:
+def provision_isolation(crm_bin: str | None = None, *, install_skill: bool = True) -> Isolation:
     """Create a sandbox and install the skill into a fresh HOME via ``crm skill install``.
 
     Returns an :class:`Isolation` whose ``env`` launches the agent with no path back
     to the repo. The caller is responsible for :meth:`Isolation.cleanup`.
+
+    ``install_skill=False`` provisions the **counterfactual** (skill-absent) leg of a
+    ``--counterfactual`` run (#588): the skill is deliberately *not* installed, so the
+    sandbox needs no ``crm`` binary at all. Pair it with
+    ``verify_isolation(expect_skill=False)`` to assert the skill is genuinely absent.
     """
-    crm_bin = crm_bin or _crm_bin()
+    if install_skill:
+        crm_bin = crm_bin or _crm_bin()
     sandbox = Path(tempfile.mkdtemp(prefix="crm-eval-"))
     home = sandbox / "home"
     work = sandbox / "work"
@@ -155,19 +161,21 @@ def provision_isolation(crm_bin: str | None = None) -> Isolation:
 
     # Install the skill the way a user does — from whatever `crm` is on PATH, so the
     # eval exercises the skill *as shipped* in that binary, not the repo's working
-    # tree. --dest pins the location; --force makes it idempotent across re-runs.
-    result = subprocess.run(
-        [crm_bin, "skill", "install", "--dest", str(skill_dir), "--force"],
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=str(work),  # run from the sandbox, not the caller's (repo) cwd
-    )
-    if result.returncode != 0:
-        shutil.rmtree(sandbox, ignore_errors=True)
-        raise IsolationError(
-            f"`crm skill install` failed (exit {result.returncode}): {result.stderr.strip()}"
+    # tree. --dest pins the location; --force makes it idempotent across re-runs. The
+    # counterfactual (skill-absent) leg skips this entirely (#588).
+    if install_skill:
+        result = subprocess.run(
+            [crm_bin, "skill", "install", "--dest", str(skill_dir), "--force"],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(work),  # run from the sandbox, not the caller's (repo) cwd
         )
+        if result.returncode != 0:
+            shutil.rmtree(sandbox, ignore_errors=True)
+            raise IsolationError(
+                f"`crm skill install` failed (exit {result.returncode}): {result.stderr.strip()}"
+            )
 
     return Isolation(
         sandbox=sandbox, home=home, work=work, crm_home=crm_home, skill_dir=skill_dir, env=env
@@ -178,11 +186,17 @@ def _has_child(directory: Path, name: str) -> bool:
     return (directory / name).exists()
 
 
-def verify_isolation(iso: Isolation, root: Path | None = None) -> dict[str, str]:
+def verify_isolation(
+    iso: Isolation, root: Path | None = None, *, expect_skill: bool = True
+) -> dict[str, str]:
     """Assert the agent has no path to the repo and the skill is installed.
 
     Returns a dict of passed check-name → detail. Raises :class:`IsolationError`
     naming every failed check, so a leak fails loudly before any agent runs.
+
+    ``expect_skill=False`` flips check 5 for the **counterfactual** (skill-absent) leg:
+    the skill must be *absent*, so a skill leaking in (which would invalidate the lift
+    measurement) fails loudly just as a missing skill does on the normal leg.
     """
     root = (root or repo_root()).resolve()
     work = iso.work.resolve()
@@ -225,12 +239,20 @@ def verify_isolation(iso: Isolation, root: Path | None = None) -> dict[str, str]
     else:
         checks["no-pythonpath"] = "unset"
 
-    # 5 · Positive check: the skill is actually installed in the fresh HOME.
+    # 5 · The skill is present (normal leg) or absent (counterfactual leg). Either
+    # expectation, the wrong state fails loudly: a missing skill invalidates the normal
+    # measurement, a leaked skill invalidates the skill-absent (lift) measurement.
     skill_md = iso.skill_dir / "SKILL.md"
-    if not skill_md.is_file():
-        failures.append(f"skill not installed: {skill_md} missing")
+    if expect_skill:
+        if not skill_md.is_file():
+            failures.append(f"skill not installed: {skill_md} missing")
+        else:
+            checks["skill-installed"] = str(skill_md)
     else:
-        checks["skill-installed"] = str(skill_md)
+        if skill_md.is_file():
+            failures.append(f"skill present in counterfactual (skill-absent) leg: {skill_md}")
+        else:
+            checks["skill-absent"] = str(skill_md)
 
     # 6 · The env must not carry CLAUDE_CONFIG_DIR pointing at the real config dir.
     # Auth is passed by copying *only* the credentials file into the fresh HOME (see

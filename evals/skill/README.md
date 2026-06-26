@@ -12,7 +12,10 @@ specs below) plus a **set runner** that runs the whole set against one target an
 reports an absolute pass-rate; issue #572 added the optional Claude **`--analyze`
 pass** (see below); issue #573 added the **both-targets runner** that unions
 `agent-cloud` + `agent-on-prem` coverage, skips an unreachable target, and appends a
-periodic **baseline trend** (see below).
+periodic **baseline trend** (see below); issue #585 wrapped them in the `run` **front
+door** (see below); and issue #588 (ADR 0016) added the **skill-efficacy review** — a
+second, post-hoc evaluation that judges whether the skill *helped* the agent reach the
+goal efficiently (see "Skill-efficacy review" below).
 
 This tree is **not shipped in the wheel** (excluded in `setup.py`) and is **not
 collected by the default `pytest` suite** (`testpaths = crm/tests`), so it never
@@ -45,9 +48,22 @@ blocks CI. Run it on demand.
   per periodic run, read by a human for drift (ADR 0015). Never a CI gate.
 - `analyze.py` — the optional Claude analysis pass (`build_analysis_prompt` +
   `run_analysis`), a seam unit-testable offline without invoking Claude.
-- `test_runner_smoke.py` / `test_set_runner.py` / `test_target.py` / `test_both_runner.py`
-  — offline smoke tests (parse tasks, dry-run isolation, set-level gating/aggregation,
-  reachability classification, and both-targets orchestration via stubs — no agent, no org).
+- `trace.py` — parses a `stream-json` agent trace into the efficiency signal: the ordered
+  `crm` command sequence (`parse_commands`) and the run metrics (`parse_metrics`) (#588).
+- `record.py` — the durable per-task run record (`TaskRunRecord`) written under `runs/`,
+  plus its read/write helpers and the skill-SHA provenance stamp (#588).
+- `review.py` — the **skill-efficacy review** (`build_review_prompt` / `parse_review` /
+  `review_records` / `build_report` / the `efficacy.md` GUID guard), a seam unit-testable
+  offline without invoking Claude (#588).
+- `efficacy.md` — the tracked **skill-efficacy trend**, appended only by `review --record`
+  through a GUID-shape guard (the efficacy counterpart of `baseline.md`, ADR 0016).
+- `runs/` — **gitignored** durable run dirs (`<UTC-ts>/<task-id>.json` + `report.md`); they
+  carry live-org GUIDs and the org machine fingerprint, so they are never tracked (#588).
+- `test_runner_smoke.py` / `test_set_runner.py` / `test_target.py` / `test_both_runner.py` /
+  `test_trace.py` / `test_record.py` / `test_review.py` / `test_isolation.py` — offline smoke
+  tests (parse tasks, dry-run isolation, set-level gating/aggregation, reachability
+  classification, both-targets orchestration, trace parsing, run-record persistence, and the
+  review prompt/parse/guard — all via stubs, no agent, no org).
 
 ## Task set & domain coverage
 
@@ -257,3 +273,86 @@ or one that emits no verdict, is surfaced rather than silently passing). Running
 diagnostic task without `--analyze` is refused up front (nothing to score). A
 diagnostic task may still declare an `end_state.query` so its final org state is
 fetched and fed to the analyzer.
+
+## Skill-efficacy review (persist-then-analyze, #588, ADR 0016)
+
+The `--analyze` pass above and the pass-rate answer the **correctness verdict**: *did the
+agent reach the goal?* The skill-efficacy review answers the two questions a skill author
+actually has — *did the **skill** help, and did it reach the goal efficiently?* — as a
+**second, post-hoc** evaluation built on a **persist-then-analyze** split. It never changes
+the pass/fail gate.
+
+### Capture — every `run` persists a durable record
+
+The front door's default agent command is now
+`claude -p --dangerously-skip-permissions --output-format stream-json --verbose --model <model>`,
+so the captured trace is the full JSONL event stream (every `tool_use` + a final `result`
+event with `num_turns` / `total_cost_usd` / `duration_ms`). **Every** `python -m evals.skill
+run` writes a durable run dir:
+
+```
+evals/skill/runs/<UTC-ts>/<task-id>.<target>.json   # {prompt, raw_trace, commands[],
+                                                    #  metrics, correctness_verdict,
+                                                    #  skill_sha, target, efficacy_review?}
+```
+
+The filename is keyed by task **and** target, so a `--target both` run persisting both legs
+into one dir never overwrites an `either` task's cloud and on-prem records; the skill-absent
+counterfactual leg adds a `.counterfactual` suffix.
+
+`commands[]` is the parsed, ordered list of `crm` invocations — the spine of the efficiency
+question. `runs/` is **gitignored**: a trace carries live-org GUIDs and the org machine
+fingerprint, and this is a public repo. A custom `--agent-cmd` that drops `stream-json
+--verbose` silently blinds the review.
+
+### Review — judge a saved run, no agent, no live org
+
+```bash
+python -m evals.skill review                 # judge the latest run dir
+python -m evals.skill review --run evals/skill/runs/<ts> --failed-only --task <id>
+```
+
+`review` reads the saved records and, per task, routes
+`{prompt, crm command sequence, metrics, correctness verdict, the live skill text}` to a
+reviewer command (`$CRM_EVAL_REVIEW_CMD` / `--review-cmd`, defaulting to
+`claude -p --model opus` — a judgment task) for a **structured** verdict: three graded axes
+(*goal reached* / *command economy* / *skill adherence*, each `good|weak|bad`), a
+**skill-lift** call (`helped|neutral|hindered`), and a **skill-fix** suggestion (the
+concrete skill edit that would have helped, or `none`). It writes each verdict back into the
+record and emits `report.md` (a per-task table + the clustered skill-fixes digest) into the
+run dir.
+
+The reviewer reads `crm/skills/` **live from disk**; the record stamps the skill **git SHA**.
+So after editing the skill you can re-run `review` over the *same* saved traces to ask "did
+my fix help?" at zero live cost — the `run → review → read report → edit skill → re-review`
+loop.
+
+### Measured lift — the opt-in counterfactual
+
+The judged review is the always-on default. To *measure* (not just judge) lift, the `run`
+step can add a skill-**absent** leg per task:
+
+```bash
+python -m evals.skill run --target cloud --counterfactual          # whole set, both legs
+python -m evals.skill run --target cloud --counterfactual --task <id>
+```
+
+or a task's frontmatter `counterfactual: true` (the per-task "always measure this one"
+knob). The absent leg provisions isolation **without** `crm skill install` and verifies the
+skill is genuinely absent; its record lands beside the present leg as
+`<task-id>.counterfactual.json`. When both legs exist `review` compares them; otherwise it
+is judged-only. The counterfactual doubles live D365 cost per task, so it is opt-in (the
+reason ADR 0015 dropped the always-on A/B arm).
+
+### Tracked trend — `efficacy.md` (promote-on-demand)
+
+`report.md` stays gitignored (per-run, LLM-derived from GUID-laden traces). The durable,
+**tracked** trend lives in `efficacy.md` — the efficacy counterpart of `baseline.md` —
+appended **only** by `review --record` (a human gate) and **only** through a GUID-shape
+assert (a Dataverse GUID or the `…00155d…` org MAC fingerprint fails the write loudly). It
+carries only org-agnostic content: the per-axis tallies, the lift tally, and the clustered
+skill-fix suggestions.
+
+```bash
+python -m evals.skill review --record        # judge + append the org-agnostic trend
+```
