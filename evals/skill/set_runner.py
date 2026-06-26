@@ -46,6 +46,81 @@ PASS, FAIL, ERROR, SKIP, DRY = "pass", "fail", "error", "skip", "dry"
 
 
 @dataclasses.dataclass
+class ProgressEvent:
+    """One live-progress tick emitted by :func:`run_set` as the set advances (#585).
+
+    Progress is a **stderr-only** display concern, kept out of the stdout JSON
+    contract: ``run_set`` constructs an event and hands it to an injected ``progress``
+    callback so imported callers (the tests, and the both-targets runner) stay silent
+    unless they opt in.
+
+    A *resolution* tick (``status`` set) fires once per task when its verdict is final;
+    ``done`` is that task's 1-based position in the full set (skips/dry/errors count
+    immediately) and ``total`` is the set size. A *trial* tick (``status is None``)
+    fires as each trial of a ``--repeat N`` task completes, carrying ``trial``/``trials``
+    so the running index is visible before the task resolves.
+    """
+
+    done: int
+    total: int
+    task_id: str
+    target: str
+    status: str | None = None
+    reason: str = ""
+    trial: int | None = None
+    trials: int | None = None
+    #: Tasks the active target will actually score (not skipped/diagnostic) — the
+    #: denominator for the rolling "of N runnable" tally. None when not computed.
+    runnable: int | None = None
+
+
+ProgressFn = Callable[[ProgressEvent], None]
+
+
+class StderrProgress:
+    """Render :class:`ProgressEvent`s as human-readable lines on a stream (default stderr).
+
+    Holds the rolling per-target pass/fail tally and formats both the per-task line and
+    (for the both-targets runner) the per-leg header. The stream is injectable so a test
+    can capture output to a ``StringIO`` and the front door can tee it to a ``run.log``.
+    Every line is flushed so progress streams under redirection rather than buffering.
+    """
+
+    def __init__(self, stream: Any = None) -> None:
+        self._stream = stream if stream is not None else sys.stderr
+        self._tally: dict[str, dict[str, int]] = {}
+
+    def _emit(self, line: str) -> None:
+        print(line, file=self._stream, flush=True)
+
+    def __call__(self, ev: ProgressEvent) -> None:
+        prefix = f"[{ev.done:2}/{ev.total}]"
+        if ev.status is None:  # trial tick — running index, before the task resolves
+            self._emit(f"{prefix} trial {ev.trial}/{ev.trials}  {ev.task_id} ({ev.target})")
+            return
+        line = f"{prefix} {ev.status.upper():5} {ev.task_id}  ({ev.target})"
+        if ev.reason:
+            line += f"  {ev.reason}"
+        self._emit(line)
+        if ev.status in (PASS, FAIL):
+            tally = self._tally.setdefault(ev.target, {PASS: 0, FAIL: 0})
+            tally[ev.status] += 1
+            denom = f"  (of {ev.runnable} runnable)" if ev.runnable is not None else ""
+            self._emit(f"{ev.target}: {tally[PASS]} pass / {tally[FAIL]} fail{denom}")
+
+    def leg(
+        self, *, target: str, profile: str, reachable: bool,
+        runnable: int | None = None, reason: str | None = None,
+    ) -> None:
+        """A per-leg header for the both-targets runner (#585 AC4)."""
+        if reachable:
+            shown = runnable if runnable is not None else "?"
+            self._emit(f"── {target} ({profile}) ──  reachable, {shown} runnable")
+        else:
+            self._emit(f"── {target} ({profile}) ──  SKIPPED — {reason}")
+
+
+@dataclasses.dataclass
 class TaskOutcome:
     """One task's verdict in a set run.
 
@@ -82,6 +157,24 @@ def should_skip(spec_target: str, active_target: str) -> bool:
     ``either`` runs anywhere; a concrete gate runs only on the matching target.
     """
     return spec_target != "either" and spec_target != active_target
+
+
+def runnable_count(tasks_dir: str | Path = TASKS_DIR, *, active_target: str) -> int:
+    """How many tasks the active target will actually score (not skipped/diagnostic).
+
+    The denominator for the progress "of N runnable" tally (#585) and the both-targets
+    per-leg header. Resilient to a malformed spec — a parse error is reported as that
+    task's ERROR at run time, so it is not counted runnable here.
+    """
+    n = 0
+    for path in discover_tasks(tasks_dir):
+        try:
+            spec = parse_task_file(path)
+        except Exception:  # noqa: BLE001 — a bad file isn't runnable; run_set reports it as ERROR
+            continue
+        if not spec.is_diagnostic and not should_skip(spec.target, active_target):
+            n += 1
+    return n
 
 
 def pass_rate(outcomes: list[TaskOutcome]) -> float | None:
@@ -164,6 +257,7 @@ def run_set(
     active_target: str | None = None,
     repeat: int = 1,
     run_one: Callable[..., RunResult] = run_task,
+    progress: ProgressFn | None = None,
 ) -> SetResult:
     """Run every task in ``tasks_dir`` against one target; return a :class:`SetResult`.
 
@@ -175,6 +269,11 @@ def run_set(
     ``repeat`` (>= 1) runs each *scored* task that many times to smooth run-to-run
     variance (#573): the outcome records how many of its ``repeat`` trials passed, and
     is ``PASS`` only when every trial did. ``repeat`` does not apply to the dry path.
+
+    ``progress`` (#585) is an optional callback invoked with a :class:`ProgressEvent`
+    as each task resolves (and per trial under ``repeat``); it is **stderr-only display**
+    and never touches the returned :class:`SetResult` or the stdout JSON. Left ``None``
+    (the default for imported callers) nothing is emitted.
     """
     if repeat < 1:
         raise ValueError(f"repeat must be >= 1, got {repeat}")
@@ -186,59 +285,108 @@ def run_set(
     if not dry_run and resolved is None:
         resolved = target_mod.active_target()
 
+    total = len(files)
+    # Tally denominator for the progress display; computed once, only when progress is
+    # on and a live run will actually score tasks (a dry run scores nothing).
+    runnable = (
+        runnable_count(tasks_dir, active_target=resolved or "")
+        if progress is not None and not dry_run
+        else None
+    )
+
+    def report(outcome: TaskOutcome, done: int) -> None:
+        if progress is not None:
+            # A scored task is displayed and tallied under the active leg (an "either"
+            # task scored on cloud belongs to the cloud tally, not an "either" bucket);
+            # a skipped/errored task keeps its own gate target, which its reason explains.
+            shown = resolved if outcome.status in (PASS, FAIL) else outcome.target
+            progress(ProgressEvent(
+                done=done, total=total, task_id=outcome.task_id, target=shown or outcome.target,
+                status=outcome.status, reason=outcome.reason, runnable=runnable,
+            ))
+
     outcomes: list[TaskOutcome] = []
-    for path in files:
+    for i, path in enumerate(files):
+        done = i + 1
         # Parse inside the loop guard so a single malformed file is reported as that
         # task's ERROR rather than aborting the whole set.
         try:
             spec = parse_task_file(path)
         except Exception as exc:  # noqa: BLE001 — a bad file is one task's error, not a set abort
-            outcomes.append(TaskOutcome(path.stem, ERROR, "?", f"parse failed: {exc}"))
+            o = TaskOutcome(path.stem, ERROR, "?", f"parse failed: {exc}")
+            outcomes.append(o)
+            report(o, done)
             continue
 
         if dry_run:
             try:
                 run_one(path, dry_run=True, agent_cmd=agent_cmd, crm_bin=crm_bin)
-                outcomes.append(TaskOutcome(spec.id, DRY, spec.target, "isolation verified"))
+                o = TaskOutcome(spec.id, DRY, spec.target, "isolation verified")
             except Exception as exc:  # noqa: BLE001 — resilient: report, keep going
-                outcomes.append(TaskOutcome(spec.id, ERROR, spec.target, str(exc)))
+                o = TaskOutcome(spec.id, ERROR, spec.target, str(exc))
+            outcomes.append(o)
+            report(o, done)
             continue
 
         # Diagnostic tasks (#572) have no deterministic end-state predicate — they are
         # scored by the --analyze pass, not this set — so skip them rather than letting
         # the single-task runner's "diagnostic needs --analyze" guard surface as ERROR.
         if spec.is_diagnostic:
-            outcomes.append(
-                TaskOutcome(spec.id, SKIP, spec.target,
+            o = TaskOutcome(spec.id, SKIP, spec.target,
                             "diagnostic: scored by the --analyze pass, not the set")
-            )
+            outcomes.append(o)
+            report(o, done)
             continue
 
         if should_skip(spec.target, resolved or ""):
-            outcomes.append(
-                TaskOutcome(
-                    spec.id, SKIP, spec.target,
-                    f"requires {spec.target!r} target; active is {resolved!r}",
-                )
+            o = TaskOutcome(
+                spec.id, SKIP, spec.target,
+                f"requires {spec.target!r} target; active is {resolved!r}",
             )
+            outcomes.append(o)
+            report(o, done)
             continue
 
         try:
             passes = 0
             last_reason = ""
-            for _ in range(repeat):
+            for trial in range(repeat):
                 result = run_one(path, dry_run=False, agent_cmd=agent_cmd, crm_bin=crm_bin)
                 passes += 1 if result.passed else 0
                 last_reason = result.reason
+                if progress is not None and repeat > 1:
+                    progress(ProgressEvent(
+                        done=done, total=total, task_id=spec.id, target=resolved or spec.target,
+                        trial=trial + 1, trials=repeat, runnable=runnable,
+                    ))
             status = PASS if passes == repeat else FAIL
             reason = last_reason if repeat == 1 else f"{passes}/{repeat} trials passed"
-            outcomes.append(
-                TaskOutcome(spec.id, status, spec.target, reason, trials=repeat, passes=passes)
-            )
+            o = TaskOutcome(spec.id, status, spec.target, reason, trials=repeat, passes=passes)
         except Exception as exc:  # noqa: BLE001 — resilient: one task's infra error
-            outcomes.append(TaskOutcome(spec.id, ERROR, spec.target, str(exc)))
+            o = TaskOutcome(spec.id, ERROR, spec.target, str(exc))
+        outcomes.append(o)
+        report(o, done)
 
     return SetResult(outcomes=outcomes, active_target=resolved, dry_run=dry_run)
+
+
+def want_progress(*, quiet: bool, progress: bool, isatty: bool) -> bool:
+    """Resolve whether live progress is shown (#585): ``--quiet`` off > ``--progress``
+    on > default (follow the stderr TTY — on at a terminal, off under redirect)."""
+    if quiet:
+        return False
+    if progress:
+        return True
+    return isatty
+
+
+def add_progress_flags(parser: argparse.ArgumentParser) -> None:
+    """Add the mutually-exclusive ``--quiet`` / ``--progress`` gating flags (#585)."""
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--quiet", action="store_true",
+                       help="suppress live progress even at a terminal")
+    group.add_argument("--progress", action="store_true",
+                       help="force live progress on even under redirect / non-TTY")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -249,11 +397,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent-cmd", default=None, help="agent command (default: $CRM_EVAL_AGENT_CMD)")
     parser.add_argument("--repeat", type=int, default=1, metavar="N",
                         help="run each scored task N times and report the passing fraction (default 1)")
+    add_progress_flags(parser)
     parser.add_argument("--json", action="store_true", dest="as_json",
                         help="emit the machine-readable result instead of the table")
     args = parser.parse_args(argv)
 
-    result = run_set(args.tasks_dir, dry_run=args.dry_run, agent_cmd=args.agent_cmd, repeat=args.repeat)
+    # Live progress is stderr-only; a dry run scores nothing, so there is nothing to show.
+    progress = (
+        StderrProgress()
+        if not args.dry_run
+        and want_progress(quiet=args.quiet, progress=args.progress, isatty=sys.stderr.isatty())
+        else None
+    )
+    result = run_set(args.tasks_dir, dry_run=args.dry_run, agent_cmd=args.agent_cmd,
+                     repeat=args.repeat, progress=progress)
     if args.as_json:
         print(json.dumps(result.to_dict(), indent=2))
     else:

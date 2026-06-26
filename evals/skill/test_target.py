@@ -11,7 +11,15 @@ reachable target whose failures should surface). Mirrors the e2e conftest's
 from __future__ import annotations
 
 from crm.utils.d365_backend import D365Error, _TRANSPORT_FAILURE_PREFIX
-from evals.skill.target import _is_unreachable
+from evals.skill.target import _is_unreachable, host_of
+
+
+def test_host_of_strips_scheme_path_and_query():
+    assert host_of("https://org.crm.dynamics.com/api/data/v9.2/") == "org.crm.dynamics.com"
+    assert host_of("https://org.crm.dynamics.com?foo=bar") == "org.crm.dynamics.com"
+    assert host_of("HTTPS://Org.CRM.Dynamics.com") == "org.crm.dynamics.com"
+    # scheme-less value is still parsed as an authority, not swallowed into a path
+    assert host_of("org.crm.dynamics.com/api") == "org.crm.dynamics.com"
 
 
 def test_transport_failure_is_unreachable():
