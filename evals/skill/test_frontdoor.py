@@ -43,6 +43,14 @@ def test_model_with_agent_cmd_is_rejected():
         build_agent_cmd("my-agent", "opus")
 
 
+def test_invalid_target_rejected_cleanly(tmp_path):
+    # run() is importable/tested directly; a bad target is a readable FrontDoorError,
+    # not a KeyError from the internal profile lookup.
+    with pytest.raises(FrontDoorError, match="target"):
+        run(target="foo", out_dir=tmp_path,
+            run_set_fn=lambda **k: _set_result(), run_both_fn=lambda *a, **k: None)
+
+
 def test_update_baseline_rejected_for_single_target(tmp_path, monkeypatch):
     # The baseline trend is a both-targets concept; --update-baseline with a single
     # target is rejected rather than silently doing nothing (issue #585 anti-footgun).

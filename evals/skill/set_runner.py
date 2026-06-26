@@ -114,7 +114,8 @@ class StderrProgress:
     ) -> None:
         """A per-leg header for the both-targets runner (#585 AC4)."""
         if reachable:
-            self._emit(f"── {target} ({profile}) ──  reachable, {runnable} runnable")
+            shown = runnable if runnable is not None else "?"
+            self._emit(f"── {target} ({profile}) ──  reachable, {shown} runnable")
         else:
             self._emit(f"── {target} ({profile}) ──  SKIPPED — {reason}")
 

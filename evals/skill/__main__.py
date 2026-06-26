@@ -99,6 +99,10 @@ def run(
     ``run_set_fn`` / ``run_both_fn`` / ``host_fn`` are injectable so the wiring is
     testable offline without an agent, a live org, or a real profile store.
     """
+    if target not in ("cloud", "onprem", "both"):
+        # run() is a public, importable seam (tested directly); keep a bad target a
+        # readable FrontDoorError rather than a KeyError from the profile lookup below.
+        raise FrontDoorError(f"--target must be cloud|onprem|both, got {target!r}")
     resolved_cmd = build_agent_cmd(agent_cmd, model)  # fail fast before any I/O
     if update_baseline and target != "both":
         # The baseline trend is one row per target across a both-targets run; a single

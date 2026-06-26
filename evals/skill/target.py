@@ -12,6 +12,7 @@ import dataclasses
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 # The prod-host guard below is a small, deliberate copy of the e2e conftest's
 # `_assert_not_production` rather than an import: that helper is a private symbol in a
@@ -32,8 +33,13 @@ class TargetError(RuntimeError):
 
 
 def host_of(url: str) -> str:
-    """The lower-cased host of a service URL (no scheme, no path)."""
-    return url.split("//", 1)[-1].split("/", 1)[0].lower()
+    """The lower-cased authority (host[:port]) of a service URL — no scheme/path/query.
+
+    Uses ``urlparse`` so a trailing path or query can't bleed into the host; a
+    scheme-less value (``org.crm.dynamics.com/api``) is handled by re-parsing it as an
+    authority.
+    """
+    return (urlparse(url).netloc or urlparse(f"//{url}").netloc).lower()
 
 
 def assert_not_production(url: str) -> None:

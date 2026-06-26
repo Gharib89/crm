@@ -99,6 +99,13 @@ def test_stderr_progress_leg_header():
     assert "── onprem (agent-on-prem) ──  SKIPPED — unreachable (VPN down)" in out
 
 
+def test_stderr_progress_leg_header_degrades_without_runnable():
+    # A reachable leg with no runnable count shows '?' rather than the literal 'None'.
+    buf = io.StringIO()
+    StderrProgress(stream=buf).leg(target="cloud", profile="agent-cloud", reachable=True)
+    assert "reachable, ? runnable" in buf.getvalue()
+
+
 def _write_either_task(dir_path):
     (dir_path / "either-task.md").write_text(
         "---\n"
