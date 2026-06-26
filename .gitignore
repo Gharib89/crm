@@ -15,5 +15,9 @@ site/
 data/
 .worktrees/
 
+# skill-efficacy run records + report.md (#588): per-run, carry live-org GUIDs and the
+# org machine fingerprint — never tracked. The trend lives in the guarded efficacy.md.
+evals/skill/runs/
+
 # brainstorming visual companion (transient)
 .superpowers/

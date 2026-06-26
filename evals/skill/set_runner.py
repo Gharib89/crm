@@ -33,6 +33,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from evals.skill import record as record_mod
 from evals.skill import target as target_mod
 from evals.skill.runner import RunError, RunResult, run_task
 from evals.skill.taskspec import parse_task_file
@@ -258,6 +259,9 @@ def run_set(
     repeat: int = 1,
     run_one: Callable[..., RunResult] = run_task,
     progress: ProgressFn | None = None,
+    run_dir: str | Path | None = None,
+    counterfactual: bool = False,
+    task_filter: str | None = None,
 ) -> SetResult:
     """Run every task in ``tasks_dir`` against one target; return a :class:`SetResult`.
 
@@ -274,6 +278,14 @@ def run_set(
     as each task resolves (and per trial under ``repeat``); it is **stderr-only display**
     and never touches the returned :class:`SetResult` or the stdout JSON. Left ``None``
     (the default for imported callers) nothing is emitted.
+
+    ``run_dir`` (#588) is where each scored task's durable run record is written
+    (``<run_dir>/<task-id>.json``) so the skill-efficacy ``review`` step can judge it
+    later. Left ``None`` (every imported caller / test that doesn't opt in) nothing is
+    persisted — the dir is created lazily on the first write. ``counterfactual`` adds a
+    skill-absent leg per scored task (also gated on a task's own ``counterfactual``
+    frontmatter) so the review can measure lift; ``task_filter`` restricts the run to a
+    single task id.
     """
     if repeat < 1:
         raise ValueError(f"repeat must be >= 1, got {repeat}")
@@ -284,6 +296,9 @@ def run_set(
     resolved = active_target
     if not dry_run and resolved is None:
         resolved = target_mod.active_target()
+
+    # Stamp the skill SHA once per run (provenance for the review); only when persisting.
+    skill_sha = record_mod.skill_sha() if run_dir is not None else ""
 
     total = len(files)
     # Tally denominator for the progress display; computed once, only when progress is
@@ -318,6 +333,10 @@ def run_set(
             report(o, done)
             continue
 
+        # ``--task X`` (#588) restricts the run to one task; others produce no outcome.
+        if task_filter is not None and task_filter not in (spec.id, path.stem):
+            continue
+
         if dry_run:
             try:
                 run_one(path, dry_run=True, agent_cmd=agent_cmd, crm_bin=crm_bin)
@@ -347,11 +366,13 @@ def run_set(
             report(o, done)
             continue
 
+        last_result: RunResult | None = None
         try:
             passes = 0
             last_reason = ""
             for trial in range(repeat):
                 result = run_one(path, dry_run=False, agent_cmd=agent_cmd, crm_bin=crm_bin)
+                last_result = result
                 passes += 1 if result.passed else 0
                 last_reason = result.reason
                 if progress is not None and repeat > 1:
@@ -366,6 +387,22 @@ def run_set(
             o = TaskOutcome(spec.id, ERROR, spec.target, str(exc))
         outcomes.append(o)
         report(o, done)
+
+        # Persist the durable run record (#588) for a scored task, plus — when measuring
+        # lift — a skill-absent counterfactual leg. The absent leg is a *measurement*, not
+        # a scored task: its failure is logged and never flips the outcome or aborts the set.
+        if run_dir is not None and last_result is not None and o.status in (PASS, FAIL):
+            record_mod.write_record(run_dir, record_mod.build_record(spec, last_result, o.status, skill_sha))
+            if counterfactual or spec.counterfactual:
+                try:
+                    cf = run_one(path, dry_run=False, agent_cmd=agent_cmd, crm_bin=crm_bin,
+                                 install_skill=False)
+                    cf_status = PASS if cf.passed else FAIL
+                    record_mod.write_record(
+                        run_dir, record_mod.build_record(spec, cf, cf_status, skill_sha, counterfactual=True)
+                    )
+                except Exception as exc:  # noqa: BLE001 — measurement leg, never fatal
+                    print(f"[counterfactual] {spec.id} skill-absent leg failed: {exc}", file=sys.stderr)
 
     return SetResult(outcomes=outcomes, active_target=resolved, dry_run=dry_run)
 

@@ -150,6 +150,7 @@ def run_task(
     crm_bin: str | None = None,
     analyze_pass: bool = False,
     analyze_cmd: str | None = None,
+    install_skill: bool = True,
 ) -> RunResult:
     """Run one task end-to-end (or up to isolation, when ``dry_run``).
 
@@ -157,6 +158,11 @@ def run_task(
     it routes ``{task, transcript, org state, verdict}`` to the analyzer. It is the
     *only* score for a diagnostic task (no ``expect``), so such a task without the
     pass is refused up front rather than running an agent it cannot score.
+
+    ``install_skill=False`` runs the **counterfactual** (skill-absent) leg of a
+    ``--counterfactual`` measurement (#588): isolation is provisioned without the skill
+    and verification asserts it is absent, so the agent runs the same task with nothing
+    but the bare ``crm`` CLI — the comparison the review measures lift against.
     """
     spec = parse_task_file(task_file)
     if not dry_run and spec.is_diagnostic and not analyze_pass:
@@ -168,9 +174,9 @@ def run_task(
     if not resolved_bin:
         raise RunError("crm binary not on PATH")
 
-    iso = isolation.provision_isolation(resolved_bin)
+    iso = isolation.provision_isolation(resolved_bin, install_skill=install_skill)
     try:
-        checks = isolation.verify_isolation(iso)
+        checks = isolation.verify_isolation(iso, expect_skill=install_skill)
         if dry_run:
             return RunResult(task_id=spec.id, dry_run=True, isolation_checks=checks)
 

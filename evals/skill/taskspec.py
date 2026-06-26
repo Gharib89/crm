@@ -51,6 +51,10 @@ class TaskSpec:
     #: programmatic predicate, scored instead by the optional ``--analyze`` pass (#572).
     expect: dict[str, Any]
     cleanup: list[CleanupStep]
+    #: When true, the run step always measures this task's skill **lift** by also
+    #: running a skill-absent (counterfactual) leg (#588) — the per-task "always
+    #: measure this one" knob, equivalent to passing ``run --counterfactual``.
+    counterfactual: bool = False
 
     @property
     def is_diagnostic(self) -> bool:
@@ -156,6 +160,7 @@ def parse_task_file(path: str | Path) -> TaskSpec:
         query=query,
         expect=expect,
         cleanup=cleanup,
+        counterfactual=bool(meta.get("counterfactual", False)),
     )
 
 

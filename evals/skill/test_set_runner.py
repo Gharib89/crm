@@ -11,10 +11,12 @@ Run on demand (not collected by the default suite):
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+from evals.skill import record as record_mod
 from evals.skill import set_runner
 from evals.skill.runner import RunError, RunResult
 from evals.skill.set_runner import (
@@ -248,3 +250,66 @@ def test_set_result_shapes():
 def test_run_set_raises_on_empty_dir(tmp_path):
     with pytest.raises(RunError, match="no task specs"):
         run_set(tmp_path, dry_run=True, run_one=_stub({}))
+
+
+# --- run-record persistence + counterfactual + task filter (#588) --------------------
+
+_TRACE = json.dumps({
+    "type": "assistant",
+    "message": {"content": [{"type": "tool_use", "name": "Bash",
+                             "input": {"command": "crm whoami"}}]}})
+
+
+def _trace_stub(verdicts: dict[str, bool], *, calls: list | None = None):
+    """A run_one stub that returns a transcript and records its install_skill arg, so
+    the persistence + counterfactual wiring can be driven without a real agent."""
+    def run_one(path, *, dry_run, agent_cmd, crm_bin, install_skill=True):
+        spec = parse_task_file(path)
+        if calls is not None:
+            calls.append((spec.id, install_skill))
+        return RunResult(
+            task_id=spec.id, dry_run=False, isolation_checks={},
+            passed=verdicts.get(spec.id, True), reason="stubbed", transcript=_TRACE,
+        )
+    return run_one
+
+
+def _scored_ids() -> list[str]:
+    return [s.id for s in _specs() if s.target in ("cloud", "either") and not s.is_diagnostic]
+
+
+def test_run_dir_persists_one_record_per_scored_task(tmp_path):
+    run_dir = tmp_path / "run1"
+    run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}), run_dir=run_dir)
+    written = {p.stem for p in run_dir.glob("*.json")}
+    assert written == set(_scored_ids())  # skipped/diagnostic tasks persist no record
+    recs = record_mod.load_records(run_dir)
+    assert recs and all(r.commands == ["crm whoami"] for r in recs)
+    assert all(r.efficacy_review is None and not r.counterfactual for r in recs)
+
+
+def test_no_run_dir_writes_nothing(tmp_path):
+    # The default (no run_dir) persists nothing — imported callers/tests opt in.
+    run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}))
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_counterfactual_writes_absent_leg_with_install_skill_false(tmp_path):
+    run_dir = tmp_path / "cf"
+    calls: list = []
+    run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}, calls=calls),
+            run_dir=run_dir, counterfactual=True)
+    present = {p.name for p in run_dir.glob("*.json") if not p.name.endswith(".counterfactual.json")}
+    absent = {p.name for p in run_dir.glob("*.counterfactual.json")}
+    assert present and len(absent) == len(present)  # a paired absent leg per scored task
+    # the absent leg ran the task with the skill not installed
+    assert any(inst is False for _, inst in calls)
+    assert any(inst is True for _, inst in calls)
+
+
+def test_task_filter_runs_only_the_named_task(tmp_path):
+    one = _scored_ids()[0]
+    result = run_set(TASKS_DIR, active_target="cloud", run_one=_trace_stub({}),
+                     task_filter=one, run_dir=tmp_path)
+    assert [o.task_id for o in result.outcomes] == [one]
+    assert {p.stem for p in tmp_path.glob("*.json")} == {one}

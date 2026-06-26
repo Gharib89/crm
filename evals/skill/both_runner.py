@@ -156,6 +156,9 @@ def run_both(
     target_fn: Callable[[], str] = target_mod.active_target,
     progress: StderrProgress | None = None,
     runnable_fn: Callable[[str], int] | None = None,
+    run_dir: str | Path | None = None,
+    counterfactual: bool = False,
+    task_filter: str | None = None,
 ) -> BothResult:
     """Run the set against each reachable profile in ``profiles``; union the coverage.
 
@@ -198,8 +201,11 @@ def run_both(
             if progress is not None:
                 progress.leg(target=tgt, profile=name, reachable=True,
                              runnable=count_runnable(tgt))
+            # Both legs persist into the same run dir (#588); tasks are target-gated so
+            # records don't collide. counterfactual/task_filter are forwarded unchanged.
             result = run_set_fn(repeat=repeat, agent_cmd=agent_cmd, active_target=tgt,
-                                progress=progress)
+                                progress=progress, run_dir=run_dir,
+                                counterfactual=counterfactual, task_filter=task_filter)
             entries.append(TargetRun(name, tgt, result, None))
     finally:
         if saved is None:
