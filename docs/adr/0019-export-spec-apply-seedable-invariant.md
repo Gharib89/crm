@@ -21,7 +21,7 @@ that does not already have it?" — because the recipe's whole point is seeding 
 |---|---|---|
 | entity / attribute / global option set / view / 1:N relationship | **emitted** | `build_entity_spec` projects them and `apply` creates + reconciles them (ADR 0014/0018). |
 | plug-in assembly / type / step | **skipped** | The assembly's DLL **bytes do not exist in a live org's metadata** — only registration rows do. A spec could carry the registration but not the binary, so `apply` could not seed it on the other org. |
-| security role / web resource | **skipped (deferred)** | Apply-seedable in principle (ADR 0014 reconciles them), but projection is a follow-up slice; reported, not silently dropped. |
+| security role / web resource | **emitted** (#614) | Apply-seedable (ADR 0014 reconciles them): roles project under `security_roles` (privileges grouped by depth into `privilege_names` rows), web resources under `webresources` (body inline as base64 `content`, so the spec stays self-contained). Originally deferred; now projected. |
 | everything else (forms, workflows, sitemap, …) | **skipped** | Not in the apply spec surface. |
 
 ## Why record this

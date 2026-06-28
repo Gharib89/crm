@@ -545,6 +545,9 @@ def build_webresource_spec(
     ``webresourcetype`` round-trip too. The result passes `apply.validate_spec` and
     round-trips through `apply_spec` (apply reads inline content, see
     ``_webresource_content``).
+
+    ``warnings`` is accepted for uniform dispatch with `build_role_spec` (see
+    ``build_solution_spec._project``); a web resource has nothing to drop.
     """
     rec = as_dict(backend.get(
         f"webresourceset({webresource_id})",
@@ -583,7 +586,10 @@ def build_role_spec(
     privilege rows raises D365Error (apply rejects an empty privilege set), so the
     caller routes it to the `skipped` bucket.
 
-    Note: on-prem RetrieveRolePrivilegesRole omits PrivilegeName (see
+    Note: ``business_unit`` is the source org's BU id (apply's role spec is
+    GUID-keyed), so it round-trips within the same org; for a cross-org apply the
+    operator drops it (apply then defaults the role to the target's own BU). And
+    on-prem RetrieveRolePrivilegesRole omits PrivilegeName (see
     `security.get_role_privileges`), so an on-prem source emits privilege ids as
     names; those round-trip back to the *same* org but not by-name to another
     on-prem org. Cloud sources emit real names. (A future slice could resolve ids
