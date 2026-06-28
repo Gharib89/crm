@@ -15,20 +15,24 @@ publish.
 the spec rather than blindly skipped. Three outcomes per component:
 
 - **equal** — spec matches live definition → `skipped` (idempotent re-apply).
-- **updatable divergence** — an in-place-editable field drifted → updated in place
-  (a retrieve-merge-write PUT or option-set action, not HTTP PATCH), counted as
-  `updated`. Updatable fields: entity display name / display-collection
-  name / description; attribute display name, description, required level, and
-  string `max_length` growth (shrinking is out of scope); adding declared options
-  to a global option set; relationship cascade configuration, associated-menu
-  (label / behavior / order), and `is_hierarchical`, plus the relationship-backed
-  lookup column's display name, description, and required level (surfaced as one
-  merged `updated` entry per relationship block).
+- **updatable divergence** — an in-place-editable field drifted → updated in place,
+  counted as `updated`. Updatable fields: entity display name / display-collection
+  name / description, and enabling `has_notes` / `has_activities` (`false → true`);
+  attribute display name, description, required level, and string `max_length` growth
+  (shrinking is out of scope); adding declared options to a global option set;
+  relationship cascade configuration, associated-menu (label / behavior / order),
+  and `is_hierarchical`, plus the relationship-backed lookup column's display name,
+  description, and required level (surfaced as one merged `updated` entry per
+  relationship block); view `description`, `is_default`, `columns`, `filter_active`,
+  `order_by`, `order_desc` (reconciled by record PATCH of regenerated fetchxml /
+  layoutxml).
 - **immutable/destructive divergence** — the change cannot be made without
-  dropping the component (entity ownership change, attribute data-type change,
-  relationship type mismatch, or a referenced/referencing-entity or lookup-column
-  change) → `replace_blocked`: reported, **no write for that component**, run ends
-  `ok=false` (exit 1).
+  dropping the component → `replace_blocked`: reported, **no write for that
+  component**, run ends `ok=false` (exit 1). Blocked cases: entity ownership
+  change; explicit `has_notes` / `has_activities` disable (`true → false` —
+  enable-only; platform forbids disabling); `is_activity` change (identity);
+  attribute data-type change; relationship type mismatch or a
+  referenced/referencing-entity or lookup-column change.
 
 > **Create-only vs. reconciled spec keys.** The full builder keyword surface is
 > expressible in the spec. Keys that are **reconciled** on re-apply (drift is detected
@@ -40,18 +44,27 @@ the spec rather than blindly skipped. Three outcomes per component:
 >   and the relationship-backed lookup column's `lookup_display`, `lookup_description`,
 >   `required` (reconciled via the referencing attribute — surfaced as one merged
 >   `updated` entry per relationship block).
+> - **Entity** — `has_notes` and `has_activities` (`false → true` only — enable-only
+>   capability; the platform forbids disabling, so an explicit `true → false` is
+>   `replace_blocked`); display name, display-collection name, and description (see
+>   the updatable bullet above). `is_activity` divergence is `replace_blocked`
+>   (identity change). Only spec-declared fields drift; omission never blanks.
+> - **View** — an existing saved view matched by `(entity, name, query_type)` is
+>   reconciled in place: `description`, `is_default`, `columns` (regenerates
+>   `layoutxml`), `filter_active`, `order_by`, `order_desc` (regenerate `fetchxml`).
+>   A changed `name` or `query_type` has no live match and falls to the create path
+>   (a new view is made; the old one is left for `--prune`) — a documented
+>   limitation. An ambiguous match (>1 live view sharing the identity tuple) is
+>   `skipped` with a reason rather than patching an arbitrary row.
 >
 > Keys that take effect at **CREATE only** (re-applying an existing component does
-> **not** yet reconcile them; follow-up **#598**):
+> **not** yet reconcile them):
 >
 > - **Attribute** — `default_value`, `true_label` / `false_label`, `min_value` /
 >   `max_value`, `max_size_kb`, `auto_number_format`, `behavior_name`,
 >   `relationship_schema`.
-> - **Entity** — `has_activities`, `has_notes`, `is_activity`,
->   `primary_attr_max_length`, `data_provider_id`, `data_source_id`, `external_name`,
->   `external_collection_name` (entity display name / display-collection name /
->   `description` reconcile — see the updatable bullet above).
-> - **View** — `filter_active`, `query_type`, `order_desc`, `description`.
+> - **Entity** — `primary_attr_max_length`, `data_provider_id`, `data_source_id`,
+>   `external_name`, `external_collection_name`.
 >
 > `export-spec` emits the subset of these keys that map to live Web API fields
 > (the flat `cascade_*`/`menu_*`/`is_hierarchical`/`lookup_description`, view

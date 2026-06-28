@@ -217,6 +217,108 @@ def test_apply_reconciles_existing_relationship(cli, backend, ephemeral_entity,
 
 @pytest.mark.slow
 @covers("apply")
+def test_apply_reconciles_entity_capability_and_view(cli, backend, ephemeral_entity,
+                                                     tmp_path, request):
+    """Convergent apply for ADR 0018's entity + view slice (cloud-sufficient — no
+    target divergence is expected: enable-only capability, the savedquery PATCH, and
+    the identity replace-block behave the same on on-prem and cloud).
+
+    - Enabling has_notes (false->true) on the existing table converges in place
+      (updated); a re-apply is a no-op.
+    - Seeding then re-applying a VIEW with a changed filter / columns / description
+      UPDATES the savedquery in place; an unchanged re-apply is a no-op; a renamed
+      view creates a NEW view and leaves the original.
+    - An explicit has_notes true->false is replace-blocked (enable-only — no write).
+
+    The seeded views are cleaned up in a finalizer; the table (and its notes
+    relationship) is torn down by the ephemeral_entity fixture.
+    """
+    suffix = ephemeral_entity[-8:]
+    view_name = f"E2E View {suffix}"
+    renamed = f"E2E View Renamed {suffix}"
+
+    def _views_named(*names):
+        ids = []
+        for nm in names:
+            rows = backend.get_collection("savedqueries", params={
+                "$filter": (f"name eq '{nm}' and "
+                            f"returnedtypecode eq '{ephemeral_entity}'"),
+                "$select": "savedqueryid"})
+            ids += [r["savedqueryid"] for r in rows]
+        return ids
+
+    def _cleanup():
+        for vid in _views_named(view_name, renamed):
+            try:
+                backend.delete(f"savedqueries({vid})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    def _spec_path(entity_block):
+        spec = {"entities": [{"schema_name": ephemeral_entity,
+                              "display_name": f"E2E {suffix}", **entity_block}]}
+        path = tmp_path / "ev_spec.json"
+        path.write_text(json.dumps(spec), encoding="utf-8")
+        return str(path)
+
+    # 1) Entity capability: enable has_notes (false -> true) -> updated in place.
+    enabled = json.loads(cli(["--json", "apply", "-f",
+                              _spec_path({"has_notes": True})]).stdout)
+    assert enabled["ok"] is True, f"enable has_notes failed: {enabled}"
+    assert any(e.get("kind") == "entity" for e in enabled["data"]["updated"]), (
+        f"has_notes enable not reported as updated: {enabled['data']}")
+
+    # 2) Idempotent: notes already on -> no-op (omitting has_notes never blanks it).
+    again = json.loads(cli(["--json", "apply", "-f",
+                            _spec_path({"has_notes": True})]).stdout)
+    assert again["ok"] is True, f"idempotent capability re-apply failed: {again}"
+    assert again["data"]["updated"] == [], f"expected no-op, got: {again['data']}"
+
+    # 3) View: seed a public view on the table.
+    base_view = {"name": view_name, "columns": ["new_name"], "description": "Seed"}
+    seed = json.loads(cli(["--json", "apply", "-f",
+                           _spec_path({"views": [base_view]})]).stdout)
+    assert seed["ok"] is True, f"seed view failed: {seed}"
+
+    # 4) View drift: add a column + the active filter + change the description ->
+    #    the savedquery is reconciled in place (updated).
+    drifted_view = {"name": view_name, "columns": ["new_name", "createdon"],
+                    "filter_active": True, "description": "Active records"}
+    upd = json.loads(cli(["--json", "apply", "-f",
+                          _spec_path({"views": [drifted_view]})]).stdout)
+    assert upd["ok"] is True, f"view update failed: {upd}"
+    assert any(e.get("kind") == "view" and e.get("name") == view_name
+               for e in upd["data"]["updated"]), f"view not updated: {upd['data']}"
+
+    # 5) Idempotent: the now-matching view re-applies to a no-op.
+    noop = json.loads(cli(["--json", "apply", "-f",
+                           _spec_path({"views": [drifted_view]})]).stdout)
+    assert noop["ok"] is True, f"idempotent view re-apply failed: {noop}"
+    assert noop["data"]["updated"] == [], f"expected no-op, got: {noop['data']}"
+
+    # 6) Rename: a changed view name has no live match -> a NEW view is created and
+    #    the original is left untouched (documented limitation, not a reconcile).
+    rn = json.loads(cli(["--json", "apply", "-f",
+                         _spec_path({"views": [{**drifted_view, "name": renamed}]})]).stdout)
+    assert rn["ok"] is True, f"rename apply failed: {rn}"
+    assert any(e.get("kind") == "view" and e.get("name") == renamed
+               for e in rn["data"]["applied"]), f"renamed view not created: {rn['data']}"
+    assert _views_named(view_name), "the original view was removed by the rename"
+
+    # 7) Replace-blocked: disabling an enabled capability is enable-only -> ok=false,
+    #    reported, no write.
+    blocked = json.loads(cli(["--json", "apply", "-f",
+                              _spec_path({"has_notes": False})], check=False).stdout)
+    assert blocked["ok"] is False, f"expected replace-blocked failure, got: {blocked}"
+    assert any(e.get("kind") == "entity"
+               for e in blocked["data"]["replace_blocked"]), (
+        f"entity not in replace_blocked bucket: {blocked['data']}")
+
+
+@pytest.mark.slow
+@covers("apply")
 def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entity,
                                                     tmp_path, request):
     """--dry-run reads the live org and reports drift WITHOUT writing (#550).
