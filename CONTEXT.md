@@ -136,6 +136,42 @@ re-running the whole verb is usually wrong once a stage has written
 ([ADR 0007](docs/adr/0007-record-clone-no-rollback-continue-and-report.md)).
 _Avoid_: partial failure (ambiguous about whether anything was written).
 
+### Apply / desired state
+
+**Reconcile**:
+What `apply` does to a component that already exists — read its live definition,
+diff it against the spec entry, and converge: no-op if equal, update-in-place if
+the divergence is updatable, refuse if destructive
+([ADR 0014](docs/adr/0014-apply-convergent-desired-state-engine.md),
+[ADR 0018](docs/adr/0018-apply-reconcile-wider-spec-surface.md)). Distinct from
+the create path, which only seeds absent components.
+_Avoid_: sync, merge, upsert.
+
+**Updatable drift**:
+A divergence between spec and live the platform allows editing in place; `apply`
+writes only the divergent fields and reports them in the `updated` bucket. A spec
+field left unset never drifts — omission is "leave as-is", not "set to empty".
+_Avoid_: delta, diff.
+
+**Replace-blocked**:
+A divergence `apply` refuses because honouring it would require a destructive
+drop-and-recreate — reported in the `replace_blocked` bucket with no write,
+failing the run (`ok=false`, exit `1`). The operator performs the destructive
+change deliberately, outside `apply`.
+_Avoid_: conflict, immutable error.
+
+**Identity divergence**:
+The replace-blocked trigger — a change to a component's identity: entity
+ownership, attribute data-type, a relationship's referenced/referencing entity,
+`is_activity`. Not editable in place.
+_Avoid_: breaking change.
+
+**Enable-only capability**:
+A table capability the platform switches on after creation but never off —
+`has_notes`, `has_activities`. Enabling is **updatable drift**; an explicit
+disable is **replace-blocked**.
+_Avoid_: toggle (it is one-way).
+
 ### Cloning
 
 **Schema clone**:
@@ -236,6 +272,9 @@ customization XML through a known grammar.
   (its parent); deleting or deactivating the definition removes it.
 - A **dry-run preview** is a successful **emit envelope** (`ok: true`, exit `0`)
   with `meta.dry_run: true` — a previewed write is not an **operational failure**.
+- A **reconcile** read runs under a **dry-run preview** (the reads-execute rule):
+  only its write is suppressed, so the preview surfaces **updatable drift** as a
+  field-level diff and **replace-blocked** components without touching the org.
 
 ## Example dialogue
 
