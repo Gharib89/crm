@@ -6,6 +6,7 @@ import json
 import click
 from crm.core import async_ops as async_ops_mod
 from crm.core import dependencies as dep_mod
+from crm.core import export_spec as export_spec_mod
 from crm.core import solution as sol_mod
 from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
@@ -175,6 +176,63 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
         "" if it.get("rootcomponentbehavior") is None else it.get("rootcomponentbehavior"),
     ] for it in items]
     ctx.emit(True, table={"headers": headers, "rows": rows}, meta={"count": len(items)})
+
+
+@solution_group.command("export-spec")
+@click.argument("unique_name")
+@_output_option(help="Write the bare merged spec as YAML to FILE (directly consumable by crm apply -f).")
+@pass_ctx
+def solution_export_spec(ctx: CLIContext, unique_name, output):
+    """Project a whole solution into one apply-consumable desired-state spec.
+
+    Walks the solution's members (pure GETs, read-only) and merges every entity
+    it touches — entity, attribute, global option set, view, 1:N relationship —
+    into a single spec via build_entity_spec per touched entity. A top-level
+    `solution:` key is emitted so a round-trip `crm apply -f <file> --dry-run`
+    against another org auto-scopes its drift/prune report (the source side of
+    the org-to-org drift recipe).
+
+    Components this slice cannot project (plug-ins, security roles, web
+    resources, ...) are reported in a `skipped` bucket; the verb never fails on
+    an unsupported component and never drops one silently.
+
+    With -o, the bare YAML spec is written to FILE (apply-ready). Without -o, a
+    summary plus the skipped bucket is emitted under the JSON envelope.
+    """
+    warnings: list[str] = []
+    with d365_errors(ctx):
+        result = export_spec_mod.build_solution_spec(
+            ctx.backend(), unique_name, warnings=warnings)
+    spec = result["spec"]
+    skipped = result["skipped"]
+    entities = spec.get("entities", [])
+    attr_count = sum(len(e.get("attributes", [])) for e in entities)
+
+    if output:
+        import yaml
+        try:
+            with open(output, "w", encoding="utf-8") as fh:
+                yaml.safe_dump(spec, fh, sort_keys=False, allow_unicode=True)
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output!r}: {exc}")
+            return
+        ctx.emit(True, data={
+            "path": output,
+            "solution": unique_name,
+            "entities": len(entities),
+            "attributes": attr_count,
+            "optionsets": len(spec.get("optionsets", [])),
+            "skipped": skipped,
+        }, warnings=warnings or None)
+        return
+
+    ctx.emit(True, data={
+        "solution": unique_name,
+        "entities": [e.get("schema_name") for e in entities],
+        "attributes": attr_count,
+        "optionsets": [o.get("name") for o in spec.get("optionsets", [])],
+        "skipped": skipped,
+    }, warnings=warnings or None)
 
 
 @solution_group.command("missing-components")
