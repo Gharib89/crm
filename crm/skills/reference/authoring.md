@@ -32,6 +32,18 @@ the spec, not blindly skipped. Three outcomes per component:
   data-type change. A `replace_blocked` component does not abort siblings — the rest
   of the spec still reconciles.
 
+**Create-only spec keys.** The full builder keyword surface is expressible in the
+spec — `cascade_assign/delete/reparent/share/unshare/merge`, `menu_label/behavior/order`,
+`is_hierarchical`, `lookup_description` (relationship); `default_value`, `true_label/false_label`,
+`min_value/max_value`, `max_size_kb`, `auto_number_format`, `behavior_name`,
+`relationship_schema` (attribute); `has_activities/has_notes/is_activity`,
+`primary_attr_max_length`, `data_provider_id/data_source_id`,
+`external_name/external_collection_name`, `description` (entity); `filter_active`,
+`query_type`, `order_desc`, `description` (view). **These take effect at CREATE only.**
+Re-applying an existing component does not yet reconcile them; `export-spec` does not
+yet emit them (round-trip is lossy for them). Follow-ups: **#597** (export-spec) and
+**#598** (reconcile).
+
 Reconciliation also runs under `--dry-run`, read-only (writes suppressed by the
 reads-execute rule), so a dry-run is a full drift report: every declared
 component is classified into `planned` (would create), `updated` (would update,

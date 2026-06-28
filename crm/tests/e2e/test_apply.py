@@ -446,3 +446,64 @@ def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, requ
     rows = backend.get_collection("webresourceset", params={
         "$filter": f"name eq '{wr_name}'", "$select": "webresourceid"})
     assert rows == [], f"web resource still present after prune: {rows}"
+
+
+@pytest.mark.slow
+@covers("apply")
+def test_apply_forwards_new_builder_kwarg_to_live(cli, backend, ephemeral_entity,
+                                                  tmp_path, request):
+    """A previously-unreachable builder kwarg now flows from a spec to the live org
+    (#596). Boolean ``true_label`` / ``false_label`` were dropped by apply's old
+    fixed-kwarg lambda; the spec-adapter registry forwards them. Apply a boolean
+    column carrying custom labels, then read the live OptionSet back and confirm
+    the labels landed. Target-agnostic; the column is cleaned up in a finalizer.
+    """
+    from crm.utils.d365_backend import as_dict
+
+    suffix = ephemeral_entity[-8:]
+    attr_schema = f"new_applybool_{suffix}"
+    attr_logical = attr_schema.lower()
+
+    def _cleanup():
+        try:
+            backend.delete(
+                f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+                f"/Attributes(LogicalName='{attr_logical}')")
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    spec = {"entities": [{
+        "schema_name": ephemeral_entity, "display_name": f"E2E {suffix}",
+        "attributes": [{
+            "kind": "boolean", "schema_name": attr_schema,
+            "display_name": f"Apply Bool {suffix}",
+            "true_label": "Enabled", "false_label": "Disabled",
+        }],
+    }]}
+    spec_path = tmp_path / "bool_spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+
+    data = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert data["ok"] is True, f"apply failed: {data}"
+    assert not data["data"].get("failed"), f"apply reported failures: {data['data']}"
+
+    # Read the live boolean OptionSet — the custom labels prove the kwarg arrived.
+    raw = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+        f"/Attributes(LogicalName='{attr_logical}')"
+        "/Microsoft.Dynamics.CRM.BooleanAttributeMetadata",
+        params={"$expand": "OptionSet"}))
+    optset = as_dict(raw.get("OptionSet") or {})
+
+    def _label_text(option):
+        lbl = as_dict(as_dict(option or {}).get("Label") or {})
+        ull = as_dict(lbl.get("UserLocalizedLabel") or {})
+        if ull.get("Label"):
+            return ull["Label"]
+        locs = lbl.get("LocalizedLabels") or []
+        return as_dict(locs[0]).get("Label") if locs else None
+
+    assert _label_text(optset.get("TrueOption")) == "Enabled", f"true label not set: {raw}"
+    assert _label_text(optset.get("FalseOption")) == "Disabled", f"false label not set: {raw}"
