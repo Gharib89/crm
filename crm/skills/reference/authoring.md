@@ -32,7 +32,9 @@ the spec, not blindly skipped. Three outcomes per component:
   level — surfaced as one merged `updated` entry per relationship block.
 - **immutable/destructive divergence** → `replace_blocked`: reported, **no write**,
   run exits `ok=false` / exit 1. Blocked cases: entity ownership change, attribute
-  data-type change. A `replace_blocked` component does not abort siblings — the rest
+  data-type change, a relationship's referenced/referencing-entity change, or a
+  relationship-type mismatch (live is N:N, spec expects 1:N). A `replace_blocked`
+  component does not abort siblings — the rest
   of the spec still reconciles.
 
 **Reconciled vs. create-only spec keys.** The full builder keyword surface is

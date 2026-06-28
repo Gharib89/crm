@@ -1572,6 +1572,23 @@ def test_apply_dry_run_reports_relationship_replace_blocked(dry_backend):
     assert _writes(m) == []
 
 
+def test_apply_dry_run_greenfield_relationship_is_planned_not_blocked(dry_backend):
+    # A relationship that does NOT exist must be `planned` under --dry-run, never
+    # routed through reconcile (which would otherwise mis-read an absent definition):
+    # _present is False when the create probe finds no existing relationship, so the
+    # reconcile path never fires for a greenfield relationship.
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        _mock_entity_exists(m, dry_backend, "contoso_task")
+        _mock_one_to_many(m, dry_backend, schema="contoso_project_task", exists=False)
+        res = apply_mod.apply_spec(dry_backend, _rel_spec(_base_rel()), stage_only=False)
+    assert res["ok"] is True
+    assert "relationship" in _kinds(res["planned"])
+    assert res["replace_blocked"] == []
+    assert res["failed"] == []
+    assert _writes(m) == []
+
+
 def test_apply_dry_run_relationship_merged_diff_carries_both(dry_backend):
     # A merged relationship+lookup drift reports both field diffs in the one entry.
     rel = _base_rel(cascade_delete="Cascade", lookup_display="Renamed")
