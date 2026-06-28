@@ -643,6 +643,31 @@ class TestOptInViewsAndRelationships:
         assert views[0]["is_default"] is True
         assert {c["name"] for c in views[0]["columns"]} == {"new_name"}
 
+    def test_view_filter_active_round_trips_through_validate_spec(self, backend):
+        """Acceptance: a view whose fetchxml filters to active records exports
+        `filter_active: True`, and the spec passes validate_spec — so the
+        active-only filter survives export-spec → apply."""
+        from crm.core.views import _build_layoutxml, _build_fetchxml
+        attrs = {"value": [_shallow("new_name")]}
+        cols = [("new_name", 200)]
+        savedqueries = {"value": [{
+            "name": "Active Projects",
+            "layoutxml": _build_layoutxml("new_project", 10042, cols),
+            "fetchxml": _build_fetchxml("new_project", cols, "new_name", True, True),
+            "isdefault": False,
+        }]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(backend.url_for("savedqueries"), json=savedqueries)
+            spec = build_entity_spec(backend, "new_project", with_views=True)
+
+        view = spec["entities"][0]["views"][0]
+        assert view["filter_active"] is True
+        assert view["order_desc"] is True
+        apply.validate_spec(spec)  # must not raise
+
     def test_with_views_filters_empty_columns_and_empty_name(self, backend):
         # Views with empty columns (unparseable layoutxml) OR empty name are both
         # dropped; only the fully-valid view survives and validate_spec passes.
@@ -710,6 +735,166 @@ class TestOptInViewsAndRelationships:
         assert len(rels) == 1
         assert rels[0]["schema_name"] == "new_project_new_task"
         assert rels[0]["lookup_schema"] == "new_projectid"
+
+    def test_non_default_cascade_round_trips_through_validate_spec(self, backend):
+        """Acceptance: a relationship with a non-default cascade exports the flat
+        cascade_* keys the apply adapter consumes, and the spec passes
+        validate_spec — so export-spec → apply does not silently reset cascade."""
+        attrs = {"value": [_shallow("new_name")]}
+        o2m = {"value": [{
+            "SchemaName": "new_project_new_task",
+            "ReferencedEntity": "new_project",
+            "ReferencingEntity": "new_task",
+            "ReferencingAttribute": "new_projectid",
+            "IsCustomRelationship": True,
+            "CascadeConfiguration": {"Assign": "Cascade", "Delete": "Cascade"},
+            "AssociatedMenuConfiguration": {},
+        }]}
+        rel_attr = {
+            "LogicalName": "new_projectid",
+            "DisplayName": _label("Project"),
+            "RequiredLevel": {"Value": "None"},
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_o2m_url(backend), json=o2m)
+            m.get(_attr_url(backend, "new_projectid", entity="new_task"), json=rel_attr)
+            spec = build_entity_spec(backend, "new_project", with_relationships=True)
+
+        rel = spec["entities"][0]["relationships"][0]
+        assert rel["cascade_assign"] == "Cascade"
+        assert rel["cascade_delete"] == "Cascade"
+        apply.validate_spec(spec)  # must not raise
+
+
+class TestWiderAttributeFields:
+    """Attribute kwargs the apply adapter accepts, emitted from the deep-read when
+    non-default (auto_number_format / behavior_name / max_size_kb / int bounds)."""
+
+    def _build_one(self, backend, info):
+        attrs = {"value": [_shallow("new_name"), _shallow("new_col")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_col"), json=info)
+            spec = build_entity_spec(backend, "new_project")
+        apply.validate_spec(spec)
+        return spec["entities"][0]["attributes"][0]
+
+    def test_auto_number_format_emitted(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "None"},
+            "MaxLength": 100, "FormatName": {"Value": "Text"},
+            "AutoNumberFormat": "INV-{SEQNUM:5}",
+        }
+        assert self._build_one(backend, info)["auto_number_format"] == "INV-{SEQNUM:5}"
+
+    def test_string_without_auto_number_omits_key(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "StringType"},
+            "RequiredLevel": {"Value": "None"},
+            "MaxLength": 100, "FormatName": {"Value": "Text"},
+        }
+        assert "auto_number_format" not in self._build_one(backend, info)
+
+    def test_integer_non_default_bounds_emitted(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "IntegerType"},
+            "RequiredLevel": {"Value": "None"},
+            "MinValue": 0, "MaxValue": 100,
+        }
+        attr = self._build_one(backend, info)
+        assert attr["min_value"] == 0
+        assert attr["max_value"] == 100
+
+    def test_integer_full_range_bounds_omitted(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "IntegerType"},
+            "RequiredLevel": {"Value": "None"},
+            "MinValue": -2147483648, "MaxValue": 2147483647,
+        }
+        attr = self._build_one(backend, info)
+        assert "min_value" not in attr and "max_value" not in attr
+
+    def test_datetime_behavior_emitted(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "DateTimeType"},
+            "RequiredLevel": {"Value": "None"},
+            "DateTimeBehavior": {"Value": "DateOnly"},
+        }
+        assert self._build_one(backend, info)["behavior_name"] == "DateOnly"
+
+    def test_datetime_default_behavior_omitted(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "DateTimeType"},
+            "RequiredLevel": {"Value": "None"},
+            "DateTimeBehavior": {"Value": "UserLocal"},
+        }
+        assert "behavior_name" not in self._build_one(backend, info)
+
+    def test_file_max_size_emitted_when_non_default(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "FileType"},
+            "RequiredLevel": {"Value": "None"},
+            "MaxSizeInKB": 10240,
+        }
+        assert self._build_one(backend, info)["max_size_kb"] == 10240
+
+    def test_file_default_max_size_omitted(self, backend):
+        info = {
+            "SchemaName": "new_Col", "DisplayName": _label("Col"),
+            "AttributeTypeName": {"Value": "FileType"},
+            "RequiredLevel": {"Value": "None"},
+            "MaxSizeInKB": 32768,
+        }
+        assert "max_size_kb" not in self._build_one(backend, info)
+
+
+class TestWiderEntityFields:
+    """Entity-level kwargs the apply adapter accepts, emitted when non-default."""
+
+    def _build(self, backend, *, entity=None, primary=None):
+        attrs = {"value": [_shallow("new_name")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=entity or _ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=primary or _primary_info())
+            spec = build_entity_spec(backend, "new_project")
+        apply.validate_spec(spec)
+        return spec["entities"][0]
+
+    def test_has_notes_and_activities_emitted_when_true(self, backend):
+        ent = dict(_ENTITY, HasNotes=True, HasActivities=True)
+        out = self._build(backend, entity=ent)
+        assert out["has_notes"] is True
+        assert out["has_activities"] is True
+
+    def test_has_notes_and_activities_omitted_when_false(self, backend):
+        ent = dict(_ENTITY, HasNotes=False, HasActivities=False)
+        out = self._build(backend, entity=ent)
+        assert "has_notes" not in out
+        assert "has_activities" not in out
+
+    def test_primary_attr_max_length_emitted_when_non_default(self, backend):
+        primary = dict(_primary_info(), MaxLength=150)
+        out = self._build(backend, primary=primary)
+        assert out["primary_attr_max_length"] == 150
+
+    def test_primary_attr_max_length_omitted_at_default(self, backend):
+        # _primary_info() returns MaxLength 200, the create_entity default.
+        out = self._build(backend)
+        assert "primary_attr_max_length" not in out
 
 
 class TestRoundTrip:

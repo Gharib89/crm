@@ -178,7 +178,14 @@ def read_entity_views(
     - ``columns``: list of ``{"name": str, "width": int}`` (may be empty when
       layoutxml is absent or unparseable)
     - ``order_by``: attribute name string (omitted if no <order> element)
+    - ``order_desc``: bool — omitted unless the sort is descending
+    - ``filter_active``: bool — omitted unless fetchxml carries the active-state
+      (``statecode eq 0``) filter
     - ``is_default``: bool
+
+    ``query_type`` is not projected: the read filters to ``querytype eq 0``
+    (public views), so it is always the ``"public"`` default the apply adapter
+    assumes.
 
     Callers that need apply-valid projections (e.g. ``build_entity_spec``) are
     responsible for dropping views with an empty ``name`` or empty ``columns``
@@ -219,8 +226,13 @@ def read_entity_views(
                             pass
                     columns.append(col)
 
-        # --- parse order_by from fetchxml ---
+        # --- parse order_by / order_desc / filter_active from fetchxml ---
+        # These mirror the create_view → _build_fetchxml encoding: a sort lives in
+        # the <order> element (its `descending` attribute carries order_desc), and
+        # the active-records filter is a <condition attribute="statecode" eq "0">.
         order_by: str | None = None
+        order_desc = False
+        filter_active = False
         fetchxml = row.get("fetchxml") or ""
         if fetchxml:
             try:
@@ -231,6 +243,13 @@ def read_entity_views(
                 order_el = fetch_root.find(".//{*}order")
                 if order_el is not None:
                     order_by = order_el.get("attribute") or None
+                    order_desc = (order_el.get("descending") or "").lower() == "true"
+                for cond in fetch_root.findall(".//{*}condition"):
+                    if (cond.get("attribute") == "statecode"
+                            and cond.get("operator") == "eq"
+                            and cond.get("value") == "0"):
+                        filter_active = True
+                        break
 
         view: dict[str, Any] = {
             "name": row.get("name", ""),
@@ -241,6 +260,10 @@ def read_entity_views(
         }
         if order_by is not None:
             view["order_by"] = order_by
+        if order_desc:
+            view["order_desc"] = True
+        if filter_active:
+            view["filter_active"] = True
 
         result.append(view)
 

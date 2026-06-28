@@ -10,7 +10,6 @@ lookup attribute (1:N, via a `Lookup` deep insert) and the intersect entity
 
 from __future__ import annotations
 
-import re
 from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
@@ -135,35 +134,50 @@ def can_relate(
     }
 
 
-def _snake(name: str) -> str:
-    """Convert a PascalCase key to snake_case (e.g. RollupView → rollup_view).
+# CascadeConfiguration dimension → (apply spec key, create_one_to_many default).
+# Only the six dimensions the builder forwards are emitted; RollupView / Archive
+# are not in the relationship adapter, so they are dropped (they don't round-trip).
+_CASCADE_EMIT: dict[str, tuple[str, str]] = {
+    "Assign": ("cascade_assign", "NoCascade"),
+    "Delete": ("cascade_delete", "RemoveLink"),
+    "Reparent": ("cascade_reparent", "NoCascade"),
+    "Share": ("cascade_share", "NoCascade"),
+    "Unshare": ("cascade_unshare", "NoCascade"),
+    "Merge": ("cascade_merge", "NoCascade"),
+}
 
-    Note: consecutive capitals (e.g. XMLFoo) are not split — acceptable for
-    the known D365 cascade/menu key set where no such names appear.
+
+def _emit_cascade(raw: dict[str, Any], out: dict[str, Any]) -> None:
+    """Flatten CascadeConfiguration into the adapter's flat ``cascade_*`` keys.
+
+    Emits a dimension only when it differs from its ``create_one_to_many``
+    default, so a relationship at platform defaults adds no keys (no spec bloat).
     """
-    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name).lower()
+    for src, (spec_key, default) in _CASCADE_EMIT.items():
+        val = raw.get(src)
+        if isinstance(val, str) and val and val != default:
+            out[spec_key] = val
 
 
-def _project_cascade(raw: dict[str, Any]) -> dict[str, Any]:
-    """Strip @-annotation keys and snake_case the remaining cascade config keys."""
-    return {_snake(k): v for k, v in raw.items() if not k.startswith("@")}
+def _emit_menu(raw: dict[str, Any], out: dict[str, Any]) -> None:
+    """Flatten AssociatedMenuConfiguration into ``menu_behavior``/``menu_label``/
+    ``menu_order``, omitting platform defaults.
 
-
-def _project_menu(raw: dict[str, Any]) -> dict[str, Any]:
-    """Project AssociatedMenuConfiguration: snake_case keys, strip @, capture label."""
-    out: dict[str, Any] = {}
-    for k, v in raw.items():
-        if k.startswith("@"):
-            continue
-        if k == "Label":
-            # Extract the UserLocalizedLabel text
-            lbl_dict = cast("dict[str, Any]", v) if isinstance(v, dict) else {}
-            text = label_text(lbl_dict)
+    ``menu_label`` is emitted only alongside ``menu_behavior == "UseLabel"`` —
+    the only behavior that consumes a label — which also satisfies
+    ``validate_spec``'s rule that a ``UseLabel`` block carry a ``menu_label``.
+    """
+    behavior = raw.get("Behavior")
+    if isinstance(behavior, str) and behavior and behavior != "UseCollectionName":
+        out["menu_behavior"] = behavior
+        if behavior == "UseLabel":
+            lbl = raw.get("Label")
+            text = label_text(cast("dict[str, Any]", lbl)) if isinstance(lbl, dict) else ""
             if text:
-                out["label"] = text
-        else:
-            out[_snake(k)] = v
-    return out
+                out["menu_label"] = text
+    order = raw.get("Order")
+    if isinstance(order, int) and order != 10000:
+        out["menu_order"] = order
 
 
 def read_entity_relationships(
@@ -179,8 +193,11 @@ def read_entity_relationships(
 
     Filters to ``IsCustomRelationship == True`` (system relationships such as
     owner/createdby are skipped). For each custom 1:N, the result is projected
-    into the apply-spec relationship sub-schema, plus a faithful capture of
-    cascade and associated-menu config.
+    into the apply-spec relationship sub-schema, including the FLAT cascade /
+    associated-menu / hierarchy keys the relationship apply adapter consumes
+    (``cascade_*``, ``menu_behavior``/``menu_label``/``menu_order``,
+    ``is_hierarchical``). A field at its ``create_one_to_many`` default is
+    omitted so the projection round-trips without spec bloat.
 
     N:N (ManyToMany) relationships are NOT emitted — the apply spec only
     supports 1:N creation via ``create_one_to_many``.
@@ -192,7 +209,7 @@ def read_entity_relationships(
         params={
             "$select": (
                 "SchemaName,ReferencedEntity,ReferencingEntity,"
-                "ReferencingAttribute,IsCustomRelationship,"
+                "ReferencingAttribute,IsCustomRelationship,IsHierarchical,"
                 "CascadeConfiguration,AssociatedMenuConfiguration"
             )
         },
@@ -240,11 +257,14 @@ def read_entity_relationships(
 
         cascade_raw = cast("dict[str, Any]", row.get("CascadeConfiguration") or {})
         if cascade_raw:
-            rel_dict["cascade"] = _project_cascade(cascade_raw)
+            _emit_cascade(cascade_raw, rel_dict)
 
         menu_raw = cast("dict[str, Any]", row.get("AssociatedMenuConfiguration") or {})
         if menu_raw:
-            rel_dict["associated_menu"] = _project_menu(menu_raw)
+            _emit_menu(menu_raw, rel_dict)
+
+        if row.get("IsHierarchical") is True:
+            rel_dict["is_hierarchical"] = True
 
         result.append(rel_dict)
 

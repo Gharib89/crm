@@ -1386,6 +1386,52 @@ class TestReadEntityViews:
         assert len(views) == 1
         assert "order_by" not in views[0]
 
+    def test_filter_active_and_order_desc_emitted_when_set(self, backend):
+        """A view whose fetchxml carries an active-state filter and a descending
+        sort emits `filter_active`/`order_desc` (the apply view adapter keys), so
+        export-spec → apply preserves them."""
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 200)]
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _build_fetchxml("cwx_ticket", cols, "cwx_name", True, True)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "Active Tickets",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        v = views[0]
+        assert v["filter_active"] is True
+        assert v["order_desc"] is True
+        assert v["order_by"] == "cwx_name"
+
+    def test_filter_active_and_order_desc_omitted_when_default(self, backend):
+        """No active-state filter and an ascending (or absent) sort → neither key
+        is emitted (defaults omitted, no spec bloat)."""
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 200)]
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = _build_fetchxml("cwx_ticket", cols, "cwx_name", False, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "name": "All Tickets",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert "filter_active" not in views[0]
+        assert "order_desc" not in views[0]
+
     def test_view_includes_savedqueryid_and_querytype(self, backend):
         """`view list` needs the id + querytype, so the reader must surface them."""
         from crm.core.views import read_entity_views

@@ -76,21 +76,91 @@ class TestReadEntityRelationshipsFull:
         assert r["lookup_display"] == "Account"
         assert r["required"] == "None"
 
-        # Cascade: @-annotations stripped, keys snake_cased, values verbatim
-        cascade = r["cascade"]
-        assert "@odata.type" not in cascade
-        assert cascade["assign"] == "NoCascade"
-        assert cascade["delete"] == "RemoveLink"
-        assert cascade["reparent"] == "NoCascade"
-        assert cascade["rollup_view"] == "NoCascade"
+        # _FULL_ROW's cascade is entirely at create_one_to_many defaults, so no
+        # cascade_* keys are emitted (defaults omitted; RollupView is not in the
+        # relationship adapter and is dropped regardless).
+        assert not any(k.startswith("cascade") for k in r)
+        # Menu: UseLabel behavior + its label emit; Order 10000 is the default
+        # (omitted) and Group is not an adapter key (dropped).
+        assert r["menu_behavior"] == "UseLabel"
+        assert r["menu_label"] == "Projects"
+        assert "menu_order" not in r
+        assert "menu_group" not in r and "group" not in r
 
-        # AssociatedMenuConfiguration: @-stripped, snake_case, label extracted
-        menu = r["associated_menu"]
-        assert "@odata.type" not in menu
-        assert menu["behavior"] == "UseLabel"
-        assert menu["group"] == "Details"
-        assert menu["order"] == 10000
-        assert menu["label"] == "Projects"
+    def test_non_default_cascade_and_menu_emit_flat_adapter_keys(self, backend):
+        """Non-default cascade/menu emit the FLAT keys the relationship adapter
+        consumes (cascade_*, menu_behavior/menu_label/menu_order, is_hierarchical)
+        — not a nested `cascade`/`associated_menu` object the adapter ignores.
+        Dimensions at their create_one_to_many default are omitted (no bloat)."""
+        from crm.core import relationships as rel
+        row = {
+            "SchemaName": "new_account_new_project",
+            "ReferencedEntity": "account",
+            "ReferencingEntity": "new_project",
+            "ReferencingAttribute": "new_accountid",
+            "IsCustomRelationship": True,
+            "IsHierarchical": True,
+            "CascadeConfiguration": {
+                "@odata.type": "#Microsoft.Dynamics.CRM.CascadeConfiguration",
+                "Assign": "Cascade",          # non-default → emitted
+                "Delete": "RemoveLink",       # default → omitted
+                "Reparent": "NoCascade",      # default → omitted
+                "Share": "Cascade",           # non-default → emitted
+                "Unshare": "NoCascade",       # default → omitted
+                "Merge": "NoCascade",         # default → omitted
+                "RollupView": "Cascade",      # not in adapter → dropped
+            },
+            "AssociatedMenuConfiguration": {
+                "Behavior": "UseLabel",
+                "Group": "Details",           # not in adapter → dropped
+                "Order": 500,                 # non-default → emitted
+                "Label": {
+                    "UserLocalizedLabel": {"Label": "Projects", "LanguageCode": 1033},
+                },
+            },
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_o2m_url(backend), json={"value": [row]})
+            m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
+            result = rel.read_entity_relationships(backend, "new_project")
+
+        r = result[0]
+        assert "cascade" not in r and "associated_menu" not in r
+        assert r["cascade_assign"] == "Cascade"
+        assert r["cascade_share"] == "Cascade"
+        # Defaults and non-adapter dimensions omitted.
+        for omitted in ("cascade_delete", "cascade_reparent", "cascade_unshare",
+                        "cascade_merge", "cascade_rollup_view", "rollup_view"):
+            assert omitted not in r
+        assert r["menu_behavior"] == "UseLabel"
+        assert r["menu_label"] == "Projects"
+        assert r["menu_order"] == 500
+        assert "group" not in r and "menu_group" not in r
+        assert r["is_hierarchical"] is True
+
+    def test_default_cascade_and_menu_emit_nothing(self, backend):
+        """A relationship at all platform defaults emits no cascade_*/menu_* keys."""
+        from crm.core import relationships as rel
+        row = {
+            "SchemaName": "new_account_new_project",
+            "ReferencedEntity": "account",
+            "ReferencingEntity": "new_project",
+            "ReferencingAttribute": "new_accountid",
+            "IsCustomRelationship": True,
+            "CascadeConfiguration": {
+                "Assign": "NoCascade", "Delete": "RemoveLink", "Reparent": "NoCascade",
+                "Share": "NoCascade", "Unshare": "NoCascade", "Merge": "NoCascade",
+            },
+            "AssociatedMenuConfiguration": {"Behavior": "UseCollectionName", "Order": 10000},
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_o2m_url(backend), json={"value": [row]})
+            m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
+            result = rel.read_entity_relationships(backend, "new_project")
+
+        r = result[0]
+        assert not any(k.startswith("cascade") or k.startswith("menu") for k in r)
+        assert "is_hierarchical" not in r
 
     def test_system_relationship_excluded(self, backend):
         from crm.core import relationships as rel
@@ -184,14 +254,15 @@ class TestReadEntityRelationshipsFull:
         names = {r["schema_name"] for r in result}
         assert names == {"new_account_new_project", "new_contact_new_project"}
         r2 = next(r for r in result if r["schema_name"] == "new_contact_new_project")
-        assert r2["cascade"]["assign"] == "Cascade"
+        # Both Assign and Delete are non-default (Cascade) → flat keys emitted.
+        assert r2["cascade_assign"] == "Cascade"
+        assert r2["cascade_delete"] == "Cascade"
         assert r2["required"] == "ApplicationRequired"
-        # row2's menu has no Label key — projection should omit "label" key
-        menu2 = r2["associated_menu"]
-        assert menu2["behavior"] == "UseCollectionName"
-        assert menu2["group"] == "Sales"
-        assert menu2["order"] == 500
-        assert "label" not in menu2
+        # Menu: UseCollectionName is the default behavior (omitted); Order 500 is
+        # non-default (emitted); no label for a non-UseLabel behavior.
+        assert "menu_behavior" not in r2
+        assert r2["menu_order"] == 500
+        assert "menu_label" not in r2
 
     def test_attribute_info_404_falls_back_gracefully(self, backend):
         """When attribute_info raises D365Error (404), lookup_display falls back
