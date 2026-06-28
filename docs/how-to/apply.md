@@ -181,10 +181,16 @@ View `columns` are entity
 
 `webresources[].webresourcetype` is an integer (1=HTML, 2=CSS, 3=JS, 4=XML,
 5=PNG, 6=JPG, 7=GIF, 8=XAP, 9=XSL, 10=ICO, 11=SVG, 12=RESX). When omitted, the
-type is inferred from the file extension. `file` is resolved relative to the spec
-file's directory. Web resources are published by the end-of-run `PublishAllXml`
-(deferred by `--stage-only`). Convergent: unchanged content → `skipped`; content
-or display name drift → `updated`.
+type is inferred from the file extension. The web resource body comes from either:
+
+- `file` — a path resolved relative to the spec file's directory (type inferred from
+  extension when `webresourcetype` is omitted), or
+- `content` — an inline base64 string (emitted by `solution export-spec`; when using
+  this form `webresourcetype` is required, as there is no extension to infer from).
+
+Exactly one of `file` or `content` must be present. Web resources are published by the
+end-of-run `PublishAllXml` (deferred by `--stage-only`). Convergent: unchanged content →
+`skipped`; content or display name drift → `updated`.
 
 `security_roles[].privileges` is a list of grant rows that are merged into the
 declared set (highest depth wins per privilege). Each row specifies `depth`

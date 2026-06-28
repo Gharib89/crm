@@ -53,7 +53,7 @@ Adapter fields intentionally NOT emitted (documented gaps, not oversights):
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from crm.core import metadata, optionsets, relationships, solution_components, views
 from crm.core import metadata_constraints as mc
@@ -510,6 +510,13 @@ _ENTITY_SUBCOMPONENT_TYPES = frozenset({2, 3, 9, 10, 26})
 # Plug-in component types (plugintype / pluginassembly / sdkmessageprocessingstep):
 # all hinge on the assembly whose DLL bytes do not exist in live metadata.
 _PLUGIN_COMPONENT_TYPES = frozenset({90, 91, 92})
+# Apply-seedable non-entity members projected in full by their own projector below.
+_ROLE_COMPONENT_TYPE = 20
+_WEBRESOURCE_COMPONENT_TYPE = 61
+# Privilege depths apply can author via set-role-privileges selectors. A live
+# privilege at any other depth (e.g. RecordFilter, which has no authoring
+# counterpart) cannot round-trip, so build_role_spec drops it with a warning.
+_AUTHORABLE_DEPTHS: tuple[str, ...] = ("Basic", "Local", "Deep", "Global")
 
 
 def _resolve_entity_logical(backend: D365Backend, metadata_id: str) -> str:
@@ -521,6 +528,106 @@ def _resolve_entity_logical(backend: D365Backend, metadata_id: str) -> str:
     if not isinstance(name, str) or not name:
         raise D365Error(f"entity metadata id {metadata_id!r} has no LogicalName.")
     return name
+
+
+def build_webresource_spec(
+    backend: D365Backend,
+    webresource_id: str,
+    *,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Project a web resource (a solution member's objectid) into an apply spec entry.
+
+    Reads the web resource by id over the Web API (one GET) and emits the apply
+    ``webresources`` shape with the body carried inline as base64 ``content`` —
+    drifted JS/HTML/CSS is the whole point of a web-resource diff, so the content
+    travels in the spec rather than as a sidecar file. ``display_name`` and
+    ``webresourcetype`` round-trip too. The result passes `apply.validate_spec` and
+    round-trips through `apply_spec` (apply reads inline content, see
+    ``_webresource_content``).
+
+    ``warnings`` is accepted for uniform dispatch with `build_role_spec` (see
+    ``build_solution_spec._project``); a web resource has nothing to drop.
+    """
+    rec = as_dict(backend.get(
+        f"webresourceset({webresource_id})",
+        params={"$select": "name,displayname,webresourcetype,content"}))
+    name = rec.get("name")
+    if not isinstance(name, str) or not name:
+        raise D365Error(f"web resource {webresource_id!r} has no name; cannot project.")
+    spec: dict[str, Any] = {
+        "name": name,
+        "content": str(rec.get("content") or ""),
+        "webresourcetype": rec.get("webresourcetype"),
+    }
+    display = rec.get("displayname")
+    if isinstance(display, str) and display:
+        spec["display_name"] = display
+    return spec
+
+
+def build_role_spec(
+    backend: D365Backend,
+    role_id: str,
+    *,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Project a security role (a solution member's objectid) into an apply spec entry.
+
+    Reads the role and its privileges over the Web API and emits the apply
+    ``security_roles`` shape: ``{name, business_unit?, privileges}``. The role's
+    live privileges (RetrieveRolePrivilegesRole) are grouped by depth into
+    ``privilege_names`` selector rows — the portable, org-independent form apply
+    resolves back (privilege *ids* differ per org; names do not).
+
+    Only the four authorable depths (Basic/Local/Deep/Global) round-trip; a live
+    privilege at any other depth (e.g. RecordFilter) has no authoring counterpart
+    and is dropped with a warning. A role that projects to zero authorable
+    privilege rows raises D365Error (apply rejects an empty privilege set), so the
+    caller routes it to the `skipped` bucket.
+
+    Note: ``business_unit`` is the source org's BU id (apply's role spec is
+    GUID-keyed), so it round-trips within the same org; for a cross-org apply the
+    operator drops it (apply then defaults the role to the target's own BU). And
+    on-prem RetrieveRolePrivilegesRole omits PrivilegeName (see
+    `security.get_role_privileges`), so an on-prem source emits privilege ids as
+    names; those round-trip back to the *same* org but not by-name to another
+    on-prem org. Cloud sources emit real names. (A future slice could resolve ids
+    to names via the privileges catalog.)
+    """
+    from crm.core import security as sec_mod  # lazy import: avoid an import cycle
+
+    warn = warnings if warnings is not None else []
+    rec = as_dict(backend.get(
+        f"roles({role_id})", params={"$select": "name,_businessunitid_value"}))
+    name = rec.get("name")
+    if not isinstance(name, str) or not name:
+        raise D365Error(f"security role {role_id!r} has no name; cannot project.")
+
+    privileges = sec_mod.get_role_privileges(backend, role_id)
+    by_depth: dict[str, list[str]] = {}
+    for priv in privileges:
+        depth = str(priv.get("depth"))
+        if depth not in _AUTHORABLE_DEPTHS:
+            warn.append(
+                f"role {name!r}: privilege {priv.get('name')!r} at non-authorable "
+                f"depth {depth!r} dropped (cannot round-trip through apply).")
+            continue
+        by_depth.setdefault(depth, []).append(str(priv.get("name")))
+
+    if not by_depth:
+        raise D365Error(
+            f"security role {name!r} has no apply-authorable privileges "
+            "(Basic/Local/Deep/Global); nothing to project.")
+
+    # Emit one selector row per depth, depths in canonical order, names sorted.
+    rows = [{"depth": depth, "privilege_names": sorted(by_depth[depth])}
+            for depth in _AUTHORABLE_DEPTHS if depth in by_depth]
+    spec: dict[str, Any] = {"name": name, "privileges": rows}
+    bu = rec.get("_businessunitid_value")
+    if isinstance(bu, str) and bu:
+        spec["business_unit"] = bu
+    return spec
 
 
 def _skip_reason(componenttype: int) -> str:
@@ -535,9 +642,8 @@ def _skip_reason(componenttype: int) -> str:
                 "is always reported here; its data is still exported when that "
                 "parent entity is itself a solution member (projected in full).")
     return (f"{solution_components.component_type_name(componenttype)} is not an "
-            "apply-seedable component type in this slice; export emits only "
-            "entity-rooted components (security roles and web resources are "
-            "deferred to a follow-up slice).")
+            "apply-seedable component type; export emits the apply-seedable kinds "
+            "(entities, security roles, web resources).")
 
 
 def build_solution_spec(
@@ -560,12 +666,14 @@ def build_solution_spec(
     key so a round-trip ``crm --dry-run apply -f <file>`` against another org
     auto-scopes its drift/prune report to this solution.
 
-    Every member that is not an entity is reported in a `skipped` bucket
-    (``{type, objectid, reason}``) — the verb never fails on an unsupported
-    component and never drops one silently. Only components that round-trip a
-    *real* apply (create + reconcile) are emitted; plug-ins (assembly DLL bytes
-    absent from live metadata), security roles and web resources are deferred to
-    a follow-up slice (see ADR 0019).
+    Security-role members project under ``security_roles`` (name, optional
+    business unit, privileges grouped by depth) and web-resource members under
+    ``webresources`` (inline base64 content, display name, type) — both
+    apply-seedable, so they round-trip a real apply. Every member that is not an
+    apply-seedable kind is reported in a `skipped` bucket (``{type, objectid,
+    reason}``) — the verb never fails on an unsupported component and never drops
+    one silently. Plug-ins (assembly DLL bytes absent from live metadata) and
+    other non-seedable kinds remain skipped (see ADR 0019).
 
     Returns ``{"spec": <apply-ready spec>, "skipped": [...]}``. `spec` passes
     `apply.validate_spec` and round-trips through `apply_spec`.
@@ -577,7 +685,23 @@ def build_solution_spec(
 
     skipped: list[dict[str, Any]] = []
     entity_logicals: list[str] = []
+    roles: list[dict[str, Any]] = []
+    webresources: list[dict[str, Any]] = []
     seen: set[str] = set()
+
+    def _project(kind: str, objectid: Any,
+                 projector: Callable[..., dict[str, Any]],
+                 acc: list[dict[str, Any]]) -> None:
+        """Project one objectid-keyed member, routing any failure to `skipped`."""
+        if not isinstance(objectid, str) or not objectid:
+            skipped.append({"type": kind, "objectid": objectid,
+                            "reason": f"{kind} member has no objectid; cannot project."})
+            return
+        try:
+            acc.append(projector(backend, objectid, warnings=warn))
+        except D365Error as exc:
+            skipped.append({"type": kind, "objectid": objectid,
+                            "reason": f"could not project {kind}: {exc}"})
 
     for member in members:
         componenttype = member.get("componenttype")
@@ -611,6 +735,10 @@ def build_solution_spec(
             if logical not in seen:
                 seen.add(logical)
                 entity_logicals.append(logical)
+        elif componenttype == _ROLE_COMPONENT_TYPE:
+            _project("role", objectid, build_role_spec, roles)
+        elif componenttype == _WEBRESOURCE_COMPONENT_TYPE:
+            _project("webresource", objectid, build_webresource_spec, webresources)
         else:
             skipped.append({
                 "type": solution_components.component_type_name(componenttype),
@@ -638,4 +766,8 @@ def build_solution_spec(
     }
     if optionset_acc:
         spec["optionsets"] = list(optionset_acc.values())
+    if webresources:
+        spec["webresources"] = webresources
+    if roles:
+        spec["security_roles"] = roles
     return {"spec": spec, "skipped": skipped}

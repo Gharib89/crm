@@ -2276,6 +2276,26 @@ def test_apply_creates_webresource(backend, tmp_path):
     assert res["staged"] is False
 
 
+def test_apply_creates_webresource_from_inline_content(backend):
+    # Inline base64 `content` (no file on disk) + explicit webresourcetype: the
+    # spec is self-contained, so export-spec can round-trip a web resource's body
+    # without writing sidecar files. The POSTed content column is the inline bytes.
+    body = b"console.log(9)"
+    b64 = base64.b64encode(body).decode("ascii")
+    spec = {"webresources": [
+        {"name": "new_inline.js", "content": b64, "webresourcetype": 3}]}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_absent(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["applied"]) == ["webresource"]
+    post = [r for r in m.request_history if r.method == "POST"
+            and r.url == backend.url_for("webresourceset")][0]
+    sent = json.loads(post.body)
+    assert sent["content"] == b64 and sent["webresourcetype"] == 3
+
+
 def test_apply_updates_webresource_content_on_drift(backend, tmp_path):
     # Spec file content differs from the live `content` column → PATCH + republish.
     spec = {"webresources": [_wr_spec(tmp_path, body=b"console.log(2)")]}
@@ -2324,9 +2344,17 @@ def test_apply_webresource_stage_only_defers_publish(backend, tmp_path):
     assert _publish_hits(m, backend) == []
 
 
-def test_apply_rejects_webresource_missing_file(backend):
+def test_apply_rejects_webresource_missing_body(backend):
+    # Neither a `file` nor inline `content` → no body to push.
     spec = {"webresources": [{"name": "new_app.js"}]}
-    with pytest.raises(D365Error, match="missing required field 'file'"):
+    with pytest.raises(D365Error, match="needs 'file' or inline 'content'"):
+        apply_mod.apply_spec(backend, spec)
+
+
+def test_apply_rejects_inline_content_without_type(backend):
+    # Inline content has no extension, so webresourcetype can't be inferred.
+    spec = {"webresources": [{"name": "new_app.js", "content": "Zm9v"}]}
+    with pytest.raises(D365Error, match="webresourcetype is required when the body is inline"):
         apply_mod.apply_spec(backend, spec)
 
 

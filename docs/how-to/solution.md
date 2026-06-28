@@ -220,7 +220,7 @@ Resolves the solutionid, then **pre-checks `RetrieveDependenciesForUninstall`** 
 
 ## Project a solution into a desired-state spec (org-to-org drift)
 
-Generate an apply-consumable YAML spec from every entity touched by a solution — entity, attribute, global option set, view, and 1:N relationship — in one pass. This is the source side of the **org-to-org drift recipe**: run `export-spec` on dev, then `apply --dry-run` on prod to preview schema drift without writing anything.
+Generate an apply-consumable YAML spec from every component in a solution — entity, attribute, global option set, view, 1:N relationship, security role, and web resource — in one pass. This is the source side of the **org-to-org drift recipe**: run `export-spec` on dev, then `apply --dry-run` on prod to preview schema drift without writing anything.
 
 ```bash
 # Dev org: project the solution into a spec file
@@ -236,7 +236,11 @@ Without `-o`, a summary `data` payload plus a `skipped` bucket is emitted under 
 crm --json solution export-spec MyCustomSolution
 ```
 
-Components that cannot be projected from live metadata — plug-in assemblies, security roles, web resources, and other non-entity-rooted types — appear in a `skipped` bucket `{type, objectid, reason}`. The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops one silently.
+**Security roles** (component type 20) project under `security_roles` — name, optional business unit, and privileges grouped by depth into `privilege_names` selector rows. Roles whose privileges are all at non-authorable depths (e.g. RecordFilter) are routed to `skipped`.
+
+**Web resources** (component type 61) project under `webresources` — the body is carried inline as base64 `content` (no sidecar file needed), plus `display_name` and `webresourcetype`. The emitted spec round-trips through `apply` directly.
+
+Components that cannot be projected — plug-in assemblies, forms, dashboards, workflows, and other non-seedable types — appear in a `skipped` bucket `{type, objectid, reason}`. The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops one silently.
 
 **Known limitation:** projection is driven by entity members only — the exporter does not resolve a subcomponent member to its parent entity. So attribute, view, and relationship members always appear in `skipped`; their data is still exported when the parent entity is itself in the solution (projected in full), and only a lone subcomponent whose parent entity is absent is genuinely not exported (ADR 0019).
 
