@@ -583,6 +583,15 @@ def build_solution_spec(
         componenttype = member.get("componenttype")
         objectid = member.get("objectid")
         if not isinstance(componenttype, int):
+            # Defensive: a well-formed solutioncomponents row always carries an
+            # int componenttype. Surface anything malformed rather than drop it
+            # silently (the never-drop-silently invariant, ADR 0019).
+            skipped.append({
+                "type": str(componenttype),
+                "objectid": objectid,
+                "reason": "solution member has a non-integer componenttype; "
+                          "not projectable.",
+            })
             continue
         if componenttype == _ENTITY_COMPONENT_TYPE:
             if not isinstance(objectid, str) or not objectid:

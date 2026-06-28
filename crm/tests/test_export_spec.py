@@ -1408,3 +1408,17 @@ class TestSolutionLevel:
 
         assert res["failed"] == []
         assert "new_Project" in [e["name"] for e in res["planned"]]
+
+    def test_malformed_componenttype_is_skipped_not_dropped(self, backend):
+        # A row whose componenttype is not an int must surface in skipped, not be
+        # silently dropped (the never-drop-silently invariant, ADR 0019).
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend),
+                  json=_members({"componenttype": None, "objectid": "bad-row"}))
+            result = build_solution_spec(backend, "myorgsln")
+
+        assert result["spec"]["entities"] == []
+        assert len(result["skipped"]) == 1
+        assert result["skipped"][0]["objectid"] == "bad-row"
+        assert "non-integer componenttype" in result["skipped"][0]["reason"]
