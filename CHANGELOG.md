@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.42.0 (2026-06-28)
+
+### Documentation
+
+- **adr**: Classify the wider apply-reconcile spec surface
+  ([#598](https://github.com/Gharib89/crm/pull/598),
+  [`044dd3e`](https://github.com/Gharib89/crm/commit/044dd3e2f7c9806baf9834bbeef08379cd231411))
+
+### Features
+
+- **apply**: Reconcile existing 1:N relationships + lookup attribute
+  ([#607](https://github.com/Gharib89/crm/pull/607),
+  [`67f40c2`](https://github.com/Gharib89/crm/commit/67f40c2c0167546392ff6f1eeb94befb37cb8406))
+
+
 ## v1.41.0 (2026-06-28)
 
 ### Bug Fixes
