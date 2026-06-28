@@ -553,6 +553,7 @@ class D365Backend:
         caller_object_id: str | None = None,
         suppress_duplicate_detection: bool | None = None,
         bypass_custom_plugin_execution: bool | None = None,
+        solution: str | None = None,
         etag: str | None = None,
         timeout: int | None = None,
     ) -> dict[str, Any] | str | None:
@@ -646,6 +647,11 @@ class D365Backend:
             headers["MSCRM.BypassCustomPluginExecution"] = "true"
         else:
             headers.pop("MSCRM.BypassCustomPluginExecution", None)
+
+        # Solution-context header, set after the extra_headers merge so it wins
+        # on conflict — same compose-precedence as the sibling MSCRM.* headers.
+        if solution:
+            headers["MSCRM.SolutionUniqueName"] = solution
 
         if etag is not None:
             if etag == "":
@@ -1585,13 +1591,6 @@ def as_dict(result: dict[str, Any] | str | None) -> dict[str, Any]:
     `result or {}` idiom in a type-safe way under pyright strict.
     """
     return result if isinstance(result, dict) else {}
-
-
-def solution_headers(solution: str | None) -> dict[str, str] | None:
-    """Build the ``MSCRM.SolutionUniqueName`` request header for a solution-aware
-    write, or ``None`` when no solution is given (so ``extra_headers`` stays
-    unset). Shared by the solution-aware core modules."""
-    return {"MSCRM.SolutionUniqueName": solution} if solution else None
 
 
 def odata_literal(value: Any) -> str:

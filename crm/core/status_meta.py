@@ -67,8 +67,7 @@ def add_status_value(
     if description:
         body["Description"] = label(description)
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post("InsertStatusValue", json_body=body, extra_headers=headers))
+    result = as_dict(backend.post("InsertStatusValue", json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["would_add_status"] = True
         result["entity"] = entity
@@ -118,8 +117,7 @@ def relabel_state_value(
     if description:
         body["Description"] = label(description)
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post("UpdateStateValue", json_body=body, extra_headers=headers))
+    result = as_dict(backend.post("UpdateStateValue", json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["would_relabel_state"] = True
         result["entity"] = entity

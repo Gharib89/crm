@@ -23,7 +23,6 @@ from crm.utils.d365_backend import (
     D365Error,
     as_dict,
     normalize_guid,
-    solution_headers,
 )
 
 # ── Constants ──────────────────────────────────────────────────────────────
@@ -99,7 +98,7 @@ def create_role(
     if description is not None:
         body["description"] = description
     result = as_dict(backend.post(
-        ROLES_SET, json_body=body, extra_headers=solution_headers(solution),
+        ROLES_SET, json_body=body, solution=solution,
     ))
     if result.get("_dry_run"):
         result["would_create"] = True
@@ -143,7 +142,7 @@ def scope(
         f"{_ROLE_ID}@odata.bind": f"/{ROLES_SET}({role_id})",
     }
     result = as_dict(backend.post(
-        OBJECTTYPECODES_SET, json_body=body, extra_headers=solution_headers(solution),
+        OBJECTTYPECODES_SET, json_body=body, solution=solution,
     ))
     if result.get("_dry_run"):
         result["would_create"] = True

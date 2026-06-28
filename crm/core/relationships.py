@@ -327,8 +327,7 @@ def delete_relationship(
             deps = dep_mod.retrieve_dependencies(
                 backend, "relationship", schema_name, for_="delete"
             )
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    preview = backend.delete(path, extra_headers=headers)
+    preview = backend.delete(path, solution=solution)
     if isinstance(preview, dict) and preview.get("_dry_run"):
         result: dict[str, Any] = {
             "_dry_run": True,
@@ -453,11 +452,10 @@ def create_one_to_many(
     if is_hierarchical:
         body["IsHierarchical"] = True
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
         "RelationshipDefinitions",
         json_body=body,
-        extra_headers=headers,
+        solution=solution,
     ))
     if result.get("_dry_run"):
         result["_exists"] = exists
@@ -590,11 +588,10 @@ def create_customer_relationships(
         ],
     }
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
         "CreateCustomerRelationships",
         json_body=body,
-        extra_headers=headers,
+        solution=solution,
     ))
     if result.get("_dry_run"):
         result["_exists"] = exists
@@ -690,11 +687,10 @@ def create_many_to_many(
         "Entity2AssociatedMenuConfiguration": entity2_menu,
     }
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
         "RelationshipDefinitions",
         json_body=body,
-        extra_headers=headers,
+        solution=solution,
     ))
     if result.get("_dry_run"):
         result["_exists"] = exists

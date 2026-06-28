@@ -489,8 +489,7 @@ def create_role(
         return {"_dry_run": True,
                 "would_create": {"entity_set": _ROLES_SET, "body": payload,
                                   "solution": solution}}
-    extra_headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = entity_mod.create(backend, _ROLES_SET, payload, extra_headers=extra_headers)
+    result = entity_mod.create(backend, _ROLES_SET, payload, solution=solution)
     return {
         "roleid": str(result.get("roleid", "")),
         "name": str(result.get("name", name)),

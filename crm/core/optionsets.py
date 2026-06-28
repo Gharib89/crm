@@ -119,11 +119,10 @@ def create_optionset(
     if description:
         body["Description"] = label(description)
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
         "GlobalOptionSetDefinitions",
         json_body=body,
-        extra_headers=headers,
+        solution=solution,
     ))
     if result.get("_dry_run"):
         result["_exists"] = exists
@@ -283,7 +282,6 @@ def update_optionset(
             "actions": actions,
         }
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     completed: list[str] = []
 
     def _attach_partial(exc: D365Error, stage: str) -> D365Error:
@@ -297,7 +295,7 @@ def update_optionset(
             if value is not None:
                 body["Value"] = value
             try:
-                backend.post("InsertOptionValue", json_body=body, extra_headers=headers)
+                backend.post("InsertOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
                 raise _attach_partial(exc, "insert")
             completed.append(f"insert:{value if value is not None else 'auto'}")
@@ -311,7 +309,7 @@ def update_optionset(
                 "MergeLabels": False,
             }
             try:
-                backend.post("UpdateOptionValue", json_body=body, extra_headers=headers)
+                backend.post("UpdateOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
                 raise _attach_partial(exc, "update")
             completed.append(f"update:{value}")
@@ -320,7 +318,7 @@ def update_optionset(
         for value in delete:
             body = {"OptionSetName": name, "Value": value}
             try:
-                backend.post("DeleteOptionValue", json_body=body, extra_headers=headers)
+                backend.post("DeleteOptionValue", json_body=body, solution=solution)
             except D365Error as exc:
                 raise _attach_partial(exc, "delete")
             completed.append(f"delete:{value}")
@@ -328,7 +326,7 @@ def update_optionset(
     if reorder:
         body = {"OptionSetName": name, "Values": list(reorder)}
         try:
-            backend.post("OrderOption", json_body=body, extra_headers=headers)
+            backend.post("OrderOption", json_body=body, solution=solution)
         except D365Error as exc:
             raise _attach_partial(exc, "reorder")
         completed.append("reorder")
@@ -385,8 +383,7 @@ def delete_optionset(
             deps = dep_mod.dependencies_by_id(backend, _mid, 9, for_="delete", kind="optionset")
         else:
             deps = dep_mod.retrieve_dependencies(backend, "optionset", name, for_="delete")
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    preview = backend.delete(path, extra_headers=headers)
+    preview = backend.delete(path, solution=solution)
     if isinstance(preview, dict) and preview.get("_dry_run"):
         result: dict[str, Any] = {
             "_dry_run": True,

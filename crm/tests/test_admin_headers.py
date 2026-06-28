@@ -149,6 +149,29 @@ class TestHeaderInjection:
                          bypass_custom_plugin_execution=True)
             assert m.last_request.headers["MSCRM.BypassCustomPluginExecution"] == "true"
 
+    def test_solution_kwarg_sets_header(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204)
+            backend.post("accounts", json_body={"name": "a"}, solution="MySol")
+            assert m.last_request.headers["MSCRM.SolutionUniqueName"] == "MySol"
+
+    def test_solution_none_omits_header(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204)
+            backend.post("accounts", json_body={"name": "a"}, solution=None)
+            assert "MSCRM.SolutionUniqueName" not in m.last_request.headers
+
+    def test_solution_kwarg_wins_over_extra_headers(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.post(f"{profile.api_base}accounts", status_code=204)
+            backend.post(
+                "accounts",
+                json_body={"name": "a"},
+                solution="MySol",
+                extra_headers={"MSCRM.SolutionUniqueName": "Other"},
+            )
+            assert m.last_request.headers["MSCRM.SolutionUniqueName"] == "MySol"
+
     def test_typed_kwargs_win_over_extra_headers(self, backend, profile):
         guid = "11111111-2222-3333-4444-555555555555"
         with requests_mock.Mocker() as m:

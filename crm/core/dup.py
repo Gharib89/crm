@@ -31,7 +31,6 @@ from crm.utils.d365_backend import (
     as_dict,
     normalize_guid,
     odata_literal,
-    solution_headers,
 )
 
 # ── Constants ──────────────────────────────────────────────────────────────
@@ -167,7 +166,7 @@ def create_rule(
     if description is not None:
         body["description"] = description
     result = as_dict(backend.post(
-        RULES_SET, json_body=body, extra_headers=solution_headers(solution),
+        RULES_SET, json_body=body, solution=solution,
     ))
     if result.get("_dry_run"):
         result["would_create"] = True
@@ -236,7 +235,7 @@ def add_condition(
     if needs_param:
         body["operatorparam"] = operator_param
     result = as_dict(backend.post(
-        CONDITIONS_SET, json_body=body, extra_headers=solution_headers(solution),
+        CONDITIONS_SET, json_body=body, solution=solution,
     ))
     if result.get("_dry_run"):
         result["would_create"] = True
