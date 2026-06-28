@@ -134,6 +134,89 @@ def test_apply_reconciles_existing_attribute(cli, backend, ephemeral_entity, tmp
 
 @pytest.mark.slow
 @covers("apply")
+def test_apply_reconciles_existing_relationship(cli, backend, ephemeral_entity,
+                                                tmp_path, request):
+    """Convergent apply for a 1:N relationship (the ADR 0018 relationship slice):
+    re-applying a changed spec UPDATES the cascade and the relationship-backed lookup
+    attribute in place — surfaced as ONE merged `updated` entry — an unchanged
+    re-apply is a no-op, and a referenced-entity divergence is REPLACE-BLOCKED
+    (reported, no write, ok=false, exit 1).
+
+    Target-agnostic — relationship metadata reconcile (the #267 un-cast PUT) and the
+    lookup `update_attribute` work on both on-prem and cloud — so this runs on either
+    live target. On-prem is the issue's priority (relationship cascade is
+    on-prem-relevant; cloud-green ≠ on-prem-fixed). The relationship + its lookup
+    column are torn down in a finalizer.
+    """
+    from crm.core import relationships as rel_mod
+    from crm.utils.d365_backend import as_dict
+
+    suffix = ephemeral_entity[-8:]
+    rel_schema = f"new_account_{ephemeral_entity}"
+    lookup_schema = f"new_applyrel{suffix}"
+
+    def _cleanup():
+        try:
+            rel_mod.delete_relationship(backend, rel_schema)
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    def _spec_path(rel):
+        spec = {"entities": [{"schema_name": ephemeral_entity,
+                              "display_name": f"E2E {suffix}", "relationships": [rel]}]}
+        path = tmp_path / "rel_spec.json"
+        path.write_text(json.dumps(spec), encoding="utf-8")
+        return str(path)
+
+    base_rel = {
+        "schema_name": rel_schema,
+        "referenced_entity": "account",
+        "referencing_entity": ephemeral_entity,
+        "lookup_schema": lookup_schema,
+        "lookup_display": "Account",
+    }
+
+    # 1) Seed: create the 1:N relationship + lookup column (applied first run,
+    #    skipped on a re-run — either is fine).
+    seed = json.loads(cli(["--json", "apply", "-f", _spec_path(base_rel)]).stdout)
+    assert seed["ok"] is True, f"seed apply failed: {seed}"
+
+    # 2) Update: drift the cascade (Assign) and rename the lookup column → the
+    #    relationship and its lookup converge as ONE merged `updated` entry.
+    drifted = {**base_rel, "cascade_assign": "Cascade",
+               "lookup_display": "Account (renamed)"}
+    upd = json.loads(cli(["--json", "apply", "-f", _spec_path(drifted)]).stdout)
+    assert upd["ok"] is True, f"update apply failed: {upd}"
+    rel_updates = [e for e in upd["data"]["updated"]
+                   if e.get("kind") == "relationship" and e.get("name") == rel_schema]
+    assert len(rel_updates) == 1, (
+        f"relationship not a single merged updated entry: {upd['data']}")
+
+    # 3) Idempotent: re-applying the now-matching spec updates nothing.
+    again = json.loads(cli(["--json", "apply", "-f", _spec_path(drifted)]).stdout)
+    assert again["ok"] is True, f"idempotent re-apply failed: {again}"
+    assert again["data"]["updated"] == [], f"expected no-op, got: {again['data']}"
+
+    # 4) Replace-blocked: declaring a different referenced entity is an identity
+    #    divergence → ok=false, reported, NO write.
+    diverged = {**drifted, "referenced_entity": "contact"}
+    blocked = json.loads(
+        cli(["--json", "apply", "-f", _spec_path(diverged)], check=False).stdout)
+    assert blocked["ok"] is False, f"expected replace-blocked failure, got: {blocked}"
+    assert any(e.get("name") == rel_schema for e in blocked["data"]["replace_blocked"]), (
+        f"relationship not in replace_blocked bucket: {blocked['data']}")
+    # The live relationship still references account, not contact.
+    live = as_dict(backend.get(
+        f"RelationshipDefinitions(SchemaName='{rel_schema}')"
+        "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
+        params={"$select": "ReferencedEntity"}))
+    assert live.get("ReferencedEntity") == "account", f"referenced entity changed: {live}"
+
+
+@pytest.mark.slow
+@covers("apply")
 def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entity,
                                                     tmp_path, request):
     """--dry-run reads the live org and reports drift WITHOUT writing (#550).
