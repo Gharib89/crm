@@ -619,11 +619,11 @@ class TestOptInViewsAndRelationships:
         assert "relationships" not in ent
 
     def test_with_views_includes_views(self, backend):
-        from crm.core.views import _build_layoutxml, _build_fetchxml
+        from crm.core.views import build_layoutxml, build_fetchxml
         attrs = {"value": [_shallow("new_name")]}
         cols = [("new_name", 200)]
-        layoutxml = _build_layoutxml("new_project", 10042, cols)
-        fetchxml = _build_fetchxml("new_project", cols, "new_name", False)
+        layoutxml = build_layoutxml("new_project", 10042, cols)
+        fetchxml = build_fetchxml("new_project", cols, "new_name", False)
         savedqueries = {"value": [{
             "name": "Active Projects",
             "layoutxml": layoutxml,
@@ -647,13 +647,13 @@ class TestOptInViewsAndRelationships:
         """Acceptance: a view whose fetchxml filters to active records exports
         `filter_active: True`, and the spec passes validate_spec — so the
         active-only filter survives export-spec → apply."""
-        from crm.core.views import _build_layoutxml, _build_fetchxml
+        from crm.core.views import build_layoutxml, build_fetchxml
         attrs = {"value": [_shallow("new_name")]}
         cols = [("new_name", 200)]
         savedqueries = {"value": [{
             "name": "Active Projects",
-            "layoutxml": _build_layoutxml("new_project", 10042, cols),
-            "fetchxml": _build_fetchxml("new_project", cols, "new_name", True, True),
+            "layoutxml": build_layoutxml("new_project", 10042, cols),
+            "fetchxml": build_fetchxml("new_project", cols, "new_name", True, True),
             "isdefault": False,
         }]}
         with requests_mock.Mocker() as m:
@@ -671,11 +671,11 @@ class TestOptInViewsAndRelationships:
     def test_with_views_filters_empty_columns_and_empty_name(self, backend):
         # Views with empty columns (unparseable layoutxml) OR empty name are both
         # dropped; only the fully-valid view survives and validate_spec passes.
-        from crm.core.views import _build_layoutxml, _build_fetchxml
+        from crm.core.views import build_layoutxml, build_fetchxml
         attrs = {"value": [_shallow("new_name")]}
         cols = [("new_name", 200)]
-        good_layout = _build_layoutxml("new_project", 10042, cols)
-        good_fetch = _build_fetchxml("new_project", cols, "new_name", False)
+        good_layout = build_layoutxml("new_project", 10042, cols)
+        good_fetch = build_fetchxml("new_project", cols, "new_name", False)
         savedqueries = {"value": [
             {
                 "name": "Empty View",        # empty columns → dropped
@@ -924,12 +924,12 @@ class TestRoundTrip:
             "DisplayName": _label("Priority"),
             "Options": [_opt(10, "Low")],
         }
-        from crm.core.views import _build_layoutxml, _build_fetchxml
+        from crm.core.views import build_layoutxml, build_fetchxml
         cols = [("new_name", 200)]
         savedqueries = {"value": [{
             "name": "All",
-            "layoutxml": _build_layoutxml("new_project", 10042, cols),
-            "fetchxml": _build_fetchxml("new_project", cols, None, False),
+            "layoutxml": build_layoutxml("new_project", 10042, cols),
+            "fetchxml": build_fetchxml("new_project", cols, None, False),
             "isdefault": False,
         }]}
         o2m = {"value": [{

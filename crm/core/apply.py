@@ -627,9 +627,14 @@ def _reconcile_entity(
 ) -> _Verdict:
     """Diff an existing entity against the spec; update, skip, or block.
 
-    Replace-blocked: an explicit ownership change (Dataverse rejects OwnershipType
-    edits post-create — a drop-and-recreate is destructive, so apply refuses and
-    writes nothing). Updatable: display name, display-collection name, description.
+    Replace-blocked (immutable/destructive divergence, no write): an ownership
+    change (Dataverse rejects OwnershipType edits post-create); an `is_activity`
+    change (a regular table cannot become an activity table in place — identity);
+    or an explicit request to DISABLE `has_notes`/`has_activities` (enable-only —
+    the platform forbids disabling, so the only way to honour it is a destructive
+    drop-and-recreate). Updatable: display name, display-collection name,
+    description, and ENABLING `has_notes`/`has_activities` (`false -> true`, which
+    the platform applies additively). Only spec-declared fields drift. See ADR 0018.
     """
     live = meta_mod.entity_info(backend, logical)
     desired_ownership = ent.get("ownership")
@@ -640,7 +645,32 @@ def _reconcile_entity(
             "reason": f"ownership change {live_ownership!r} -> {desired_ownership!r} "
                       "requires a destructive drop-and-recreate; refusing (no write).",
         }
+    desired_is_activity = ent.get("is_activity")
+    live_is_activity = live.get("IsActivity")
+    if (desired_is_activity is not None and live_is_activity is not None
+            and desired_is_activity != live_is_activity):
+        return "replace_blocked", {
+            **entry,
+            "reason": f"is_activity change {live_is_activity!r} -> {desired_is_activity!r} "
+                      "is an identity change (a table cannot be converted to/from an "
+                      "activity table in place); refusing (no write).",
+        }
     changes: dict[str, Any] = {}
+    # has_notes / has_activities are enable-only: false->true is additive
+    # (updatable), but the platform forbids disabling, so an explicit true->false
+    # is replace-blocked rather than silently skipped.
+    for spec_key, live_key in (("has_notes", "HasNotes"),
+                               ("has_activities", "HasActivities")):
+        desired = ent.get(spec_key)
+        if desired is None or desired == live.get(live_key):
+            continue
+        if not desired:  # true -> false
+            return "replace_blocked", {
+                **entry,
+                "reason": f"{spec_key} cannot be disabled once enabled (enable-only "
+                          "capability); refusing (no write).",
+            }
+        changes[spec_key] = True
     if _drift(ent.get("display_name"), live.get("DisplayName")):
         changes["display_name"] = ent["display_name"]
     if _drift(ent.get("display_collection_name"), live.get("DisplayCollectionName")):
@@ -821,6 +851,109 @@ def _reconcile_relationship(
                                                solution=solution, **lookup_changes)
         diff.update(cast("dict[str, Any]", out.get("diff") or {}))
     return "updated", ({**entry, "diff": diff} if diff else entry)
+
+
+def _reconcile_view(
+    backend: D365Backend, view: dict[str, Any], entity_logical: str, otc: int,
+    solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing saved view against the spec; update in place or skip.
+
+    A view is matched by ``(returnedtypecode, name, querytype)`` — savedquery has no
+    alternate key, so that tuple is its identity. A drifted description / default /
+    columns / sort / active-filter is reconciled by a record PATCH of the
+    regenerated fetchxml + layoutxml (and the scalar isdefault / description), per
+    ADR 0018's reads-execute rule (the write is suppressed under --dry-run).
+
+    Never blocks: there is no destructive divergence on the in-place PATCH path. A
+    changed ``name`` or ``query_type`` does NOT reach here — it has no live match,
+    so the create path makes a NEW view and leaves the old one for ``--prune``
+    (a documented limitation, not a replace-block). An ambiguous match (>1 live
+    view sharing the identity tuple) is skipped with a reason rather than patching
+    an arbitrary row. An omitted spec field never drifts.
+    """
+    name = view["name"]
+    query_type = view.get("query_type") or "public"
+    querytype = views_mod.QUERY_TYPES[query_type]
+    rows = backend.get_collection(
+        "savedqueries",
+        params={
+            "$filter": (f"name eq {odata_literal(name)} "
+                        f"and returnedtypecode eq {odata_literal(entity_logical)} "
+                        f"and querytype eq {querytype}"),
+            "$select": "savedqueryid,name,fetchxml,layoutxml,isdefault,description",
+        })
+    if len(rows) > 1:
+        return "skipped", {
+            **entry,
+            "reason": f"{len(rows)} {query_type} views named {name!r} on "
+                      f"{entity_logical} share the (name, query_type) identity; "
+                      "refusing to reconcile an arbitrary one (resolve the "
+                      "duplicate, or edit by savedqueryid).",
+        }
+    if not rows:
+        # No live match (the create path owns creation, and a rename creates a new
+        # view); nothing to reconcile in place.
+        return "skipped", entry
+    row = rows[0]
+    sqid = str(row.get("savedqueryid"))
+    # Live state first, so a field the spec omits can fall back to it.
+    live_columns = _columns(views_mod.parse_layout_columns(row.get("layoutxml") or ""))
+    live_order_by, live_order_desc, live_filter_active = \
+        views_mod.parse_fetch_order_filter(row.get("fetchxml") or "")
+    live_is_default = bool(row.get("isdefault", False))
+    live_description = row.get("description")
+
+    # Desired state: a field the spec OMITS falls back to the live value, so
+    # omission never drifts — only a spec-declared field reconciles (issue #606).
+    # `columns` is required by validate_spec, so it is always declared; the
+    # optional fields default to live, not to the create-path default (else an
+    # omitted is_default would silently demote a live default view, and an omitted
+    # filter_active/order would strip a live sort/filter on a columns-only edit).
+    desired_columns = _columns(view.get("columns"))
+    desired_order_by = view["order_by"] if "order_by" in view else live_order_by
+    desired_order_desc = (bool(view["order_desc"]) if "order_desc" in view
+                          else live_order_desc)
+    desired_filter_active = (bool(view["filter_active"]) if "filter_active" in view
+                             else live_filter_active)
+    desired_is_default = (bool(view["is_default"]) if "is_default" in view
+                          else live_is_default)
+    desired_description = view.get("description")
+
+    diff: dict[str, Any] = {}
+    changes: dict[str, Any] = {}
+    # An omitted description never drifts (None → no change, like _drift).
+    if desired_description is not None and desired_description != live_description:
+        diff["description"] = {"old": live_description, "new": desired_description}
+        changes["description"] = desired_description
+    if desired_is_default != live_is_default:
+        diff["is_default"] = {"old": live_is_default, "new": desired_is_default}
+        changes["isdefault"] = desired_is_default
+    # Columns drive layoutxml (names + widths) and the fetchxml attribute set
+    # (names only); a sort/active-filter change drives fetchxml alone.
+    if desired_columns != live_columns:
+        diff["columns"] = {"old": live_columns, "new": desired_columns}
+        changes["layoutxml"] = views_mod.build_layoutxml(
+            entity_logical, otc, desired_columns)
+    if desired_order_by != live_order_by:
+        diff["order_by"] = {"old": live_order_by, "new": desired_order_by}
+    if desired_order_desc != live_order_desc:
+        diff["order_desc"] = {"old": live_order_desc, "new": desired_order_desc}
+    if desired_filter_active != live_filter_active:
+        diff["filter_active"] = {"old": live_filter_active, "new": desired_filter_active}
+    fetch_drift = (
+        [n for n, _ in desired_columns] != [n for n, _ in live_columns]
+        or desired_order_by != live_order_by
+        or desired_order_desc != live_order_desc
+        or desired_filter_active != live_filter_active)
+    if fetch_drift:
+        changes["fetchxml"] = views_mod.build_fetchxml(
+            entity_logical, desired_columns, desired_order_by,
+            desired_filter_active, desired_order_desc)
+    if not changes:
+        return "skipped", entry
+    views_mod.update_view(backend, savedqueryid=sqid, changes=changes, solution=solution)
+    return "updated", ({**entry, "diff": diff} if backend.dry_run else entry)
 
 
 def _reconcile_optionset(
@@ -1551,7 +1684,13 @@ def apply_spec(
                         solution=solution_name,
                         if_exists="skip",
                     ), failed)
-                _classify(result, entry, applied, skipped, planned)
+                if _present(result):
+                    _reconcile(entry, lambda view=view, logical_v=logical_v, otc=otc,
+                               entry=entry: _reconcile_view(
+                                   backend, view, logical_v, otc, solution_name, entry),
+                               failed, routes)
+                else:
+                    _classify(result, entry, applied, skipped, planned)
 
         # Phase: web resources. No if_exists on the core, so probe existence
         # directly (forced-real, dry-run safe); created/updated with publish

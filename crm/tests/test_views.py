@@ -7,7 +7,7 @@ import re
 import pytest
 import requests_mock
 
-from crm.core.views import _build_fetchxml, _build_layoutxml
+from crm.core.views import build_fetchxml, build_layoutxml
 from crm.utils.d365_backend import D365Backend, D365Error
 
 
@@ -1342,8 +1342,8 @@ class TestReadEntityViews:
     def test_view_with_columns_and_order_by(self, backend):
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 220), ("cwx_priority", 120)]
-        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
-        fetchxml = _build_fetchxml("cwx_ticket", cols, "cwx_name", False)
+        layoutxml = build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = build_fetchxml("cwx_ticket", cols, "cwx_name", False)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -1369,8 +1369,8 @@ class TestReadEntityViews:
     def test_view_with_no_order_element(self, backend):
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 200)]
-        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
-        fetchxml = _build_fetchxml("cwx_ticket", cols, None, False)
+        layoutxml = build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = build_fetchxml("cwx_ticket", cols, None, False)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -1392,8 +1392,8 @@ class TestReadEntityViews:
         export-spec → apply preserves them."""
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 200)]
-        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
-        fetchxml = _build_fetchxml("cwx_ticket", cols, "cwx_name", True, True)
+        layoutxml = build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = build_fetchxml("cwx_ticket", cols, "cwx_name", True, True)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -1416,8 +1416,8 @@ class TestReadEntityViews:
         is emitted (defaults omitted, no spec bloat)."""
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 200)]
-        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
-        fetchxml = _build_fetchxml("cwx_ticket", cols, "cwx_name", False, False)
+        layoutxml = build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = build_fetchxml("cwx_ticket", cols, "cwx_name", False, False)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -1451,7 +1451,7 @@ class TestReadEntityViews:
             '</link-entity>'
             '</entity></fetch>'
         )
-        layoutxml = _build_layoutxml("cwx_ticket", 10042, [("cwx_name", 200)])
+        layoutxml = build_layoutxml("cwx_ticket", 10042, [("cwx_name", 200)])
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -1472,8 +1472,8 @@ class TestReadEntityViews:
         """`view list` needs the id + querytype, so the reader must surface them."""
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 200)]
-        layoutxml = _build_layoutxml("cwx_ticket", 10042, cols)
-        fetchxml = _build_fetchxml("cwx_ticket", cols, None, False)
+        layoutxml = build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = build_fetchxml("cwx_ticket", cols, None, False)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -1510,7 +1510,7 @@ class TestReadEntityViews:
 
     def test_non_numeric_width_omitted_no_crash(self, backend):
         """A cell with a non-numeric or empty width attribute must not crash and
-        must omit the width key (inline literal needed: _build_layoutxml always
+        must omit the width key (inline literal needed: build_layoutxml always
         emits integer widths so it cannot produce this edge-case input)."""
         from crm.core.views import read_entity_views
         # Two cells: one with width="auto" (non-numeric), one with width="" (empty).
@@ -1522,7 +1522,7 @@ class TestReadEntityViews:
             '<cell name="cwx_priority" width="" />'
             '</row></grid>'
         )
-        fetchxml = _build_fetchxml("cwx_ticket", [("cwx_name", 1)], None, False)
+        fetchxml = build_fetchxml("cwx_ticket", [("cwx_name", 1)], None, False)
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("savedqueries"),
@@ -1543,3 +1543,61 @@ class TestReadEntityViews:
         assert cols[0]["name"] == "cwx_name"
         assert cols[1]["name"] == "cwx_priority"
 
+
+
+class TestParseHelpers:
+    """The reconcile-path inverses of build_layoutxml / build_fetchxml."""
+
+    def test_layout_columns_round_trip(self):
+        from crm.core.views import parse_layout_columns
+        xml = build_layoutxml("cwx_ticket", 10042,
+                               [("cwx_name", 220), ("cwx_priority", 120)])
+        assert parse_layout_columns(xml) == [
+            {"name": "cwx_name", "width": 220},
+            {"name": "cwx_priority", "width": 120},
+        ]
+
+    def test_layout_columns_empty_or_unparseable(self):
+        from crm.core.views import parse_layout_columns
+        assert parse_layout_columns("") == []
+        assert parse_layout_columns("<not-xml") == []
+
+    def test_fetch_order_filter_round_trip(self):
+        from crm.core.views import parse_fetch_order_filter
+        xml = build_fetchxml("cwx_ticket", [("cwx_name", 100)],
+                              order_by="cwx_name", filter_active=True, order_desc=True)
+        assert parse_fetch_order_filter(xml) == ("cwx_name", True, True)
+
+    def test_fetch_order_filter_none_when_absent(self):
+        from crm.core.views import parse_fetch_order_filter
+        xml = build_fetchxml("cwx_ticket", [("cwx_name", 100)],
+                              order_by=None, filter_active=False)
+        assert parse_fetch_order_filter(xml) == (None, False, False)
+        assert parse_fetch_order_filter("") == (None, False, False)
+
+
+class TestUpdateView:
+    def test_dry_run_issues_no_patch(self, dry_backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.patch(dry_backend.url_for(f"savedqueries({_VIEW_ID})"), status_code=204)
+            out = views.update_view(dry_backend, savedqueryid=_VIEW_ID,
+                                    changes={"description": "x"})
+        assert out["_dry_run"] is True and out["would_update"] is True
+        assert [r for r in m.request_history if r.method == "PATCH"] == []
+
+    def test_patches_changed_fields(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"savedqueries({_VIEW_ID})"), status_code=204)
+            out = views.update_view(backend, savedqueryid=_VIEW_ID,
+                                    changes={"isdefault": True, "description": "x"})
+        assert out["updated"] is True
+        patches = [r for r in m.request_history if r.method == "PATCH"]
+        assert len(patches) == 1
+        assert patches[0].json() == {"isdefault": True, "description": "x"}
+
+    def test_empty_changes_raises(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error):
+            views.update_view(backend, savedqueryid=_VIEW_ID, changes={})
