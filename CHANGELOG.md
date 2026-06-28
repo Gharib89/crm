@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.45.0 (2026-06-28)
+
+### Documentation
+
+- Address self-review — README/ADR-0019 surface, BU/dispatch doc notes
+  ([#614](https://github.com/Gharib89/crm/pull/614),
+  [`4858f24`](https://github.com/Gharib89/crm/commit/4858f24143d792c56702cab1cdbe95710af47c86))
+
+- Export-spec projects roles + web resources; apply accepts inline content
+  ([#614](https://github.com/Gharib89/crm/pull/614),
+  [`4858f24`](https://github.com/Gharib89/crm/commit/4858f24143d792c56702cab1cdbe95710af47c86))
+
+### Features
+
+- **solution**: Export-spec — project security roles + web resources
+  ([#614](https://github.com/Gharib89/crm/pull/614),
+  [`4858f24`](https://github.com/Gharib89/crm/commit/4858f24143d792c56702cab1cdbe95710af47c86))
+
+### Testing
+
+- Isolate CRM_HOME in scaffold tests (fixes #616)
+  ([`b5a3bac`](https://github.com/Gharib89/crm/commit/b5a3bacda81450e55f9a5238a08d11449643a0d3))
+
+
 ## v1.44.0 (2026-06-28)
 
 ### Documentation
