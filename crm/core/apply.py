@@ -758,8 +758,13 @@ def _reconcile_relationship(
         f"RelationshipDefinitions(SchemaName='{schema}')/{_ONE_TO_MANY_CAST}",
         params={"$select": "ReferencedEntity,ReferencingEntity,ReferencingAttribute,"
                            "CascadeConfiguration,AssociatedMenuConfiguration,IsHierarchical"}))
+    # Identity fields fixed at create — referenced/referencing entity, and the
+    # lookup column (ReferencingAttribute, the FK created with the relationship).
+    # A divergence on any of them is an immutable change: reconciling the live
+    # column anyway would silently leave the spec unsatisfied, so refuse instead.
     for spec_key, live_key in (("referenced_entity", "ReferencedEntity"),
-                               ("referencing_entity", "ReferencingEntity")):
+                               ("referencing_entity", "ReferencingEntity"),
+                               ("lookup_schema", "ReferencingAttribute")):
         desired = rel.get(spec_key)
         current = live.get(live_key)
         if desired and current and str(desired).lower() != str(current).lower():

@@ -1483,6 +1483,22 @@ def test_apply_blocks_relationship_referenced_entity_change(backend):
     assert [r for r in m.request_history if r.method == "PUT"] == []
 
 
+def test_apply_blocks_relationship_lookup_column_change(backend):
+    # The live relationship's lookup column (ReferencingAttribute) differs from the
+    # spec's lookup_schema — the FK is fixed at create, so this is an identity
+    # divergence → replace_blocked, no write.
+    rel = _base_rel(lookup_schema="contoso_OtherId")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task",
+                                referencing_attr="contoso_projectid")
+        res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["relationship"]
+    assert "reason" in res["replace_blocked"][0]
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
 def test_apply_blocks_relationship_type_change_to_many_to_many(backend):
     # The live relationship matched by SchemaName is N:N, not the spec's 1:N →
     # relationship-type divergence → replace_blocked.

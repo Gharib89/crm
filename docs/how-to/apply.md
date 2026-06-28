@@ -26,8 +26,8 @@ the spec rather than blindly skipped. Three outcomes per component:
   merged `updated` entry per relationship block).
 - **immutable/destructive divergence** — the change cannot be made without
   dropping the component (entity ownership change, attribute data-type change,
-  relationship type mismatch, or referenced/referencing entity change)
-  → `replace_blocked`: reported, **no write for that component**, run ends
+  relationship type mismatch, or a referenced/referencing-entity or lookup-column
+  change) → `replace_blocked`: reported, **no write for that component**, run ends
   `ok=false` (exit 1).
 
 > **Create-only vs. reconciled spec keys.** The full builder keyword surface is

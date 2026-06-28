@@ -32,8 +32,8 @@ the spec, not blindly skipped. Three outcomes per component:
   level — surfaced as one merged `updated` entry per relationship block.
 - **immutable/destructive divergence** → `replace_blocked`: reported, **no write**,
   run exits `ok=false` / exit 1. Blocked cases: entity ownership change, attribute
-  data-type change, a relationship's referenced/referencing-entity change, or a
-  relationship-type mismatch (live is N:N, spec expects 1:N). A `replace_blocked`
+  data-type change, a relationship's referenced/referencing-entity or lookup-column
+  change, or a relationship-type mismatch (live is N:N, spec expects 1:N). A `replace_blocked`
   component does not abort siblings — the rest
   of the spec still reconciles.
 
@@ -43,8 +43,9 @@ expressible in the spec. **Relationship keys are now reconciled** on re-apply:
 `is_hierarchical`, and the lookup column's `lookup_display`, `lookup_description`,
 `required` (reconciled via the referencing attribute; one merged `updated` entry
 per relationship block). Replace-blocked identity divergences: relationship type
-mismatch (live is N:N, spec expects 1:N) or a referenced/referencing entity
-change — both require a destructive drop-and-recreate that `apply` refuses.
+mismatch (live is N:N, spec expects 1:N), or a referenced/referencing-entity or
+lookup-column (`lookup_schema`) change — each requires a destructive
+drop-and-recreate that `apply` refuses.
 
 **Create-only** (re-applying an existing component does not yet reconcile these;
 follow-up **#598**): attribute — `default_value`, `true_label/false_label`,
