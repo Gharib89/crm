@@ -226,9 +226,11 @@ def read_entity_relationships(
         referencing_entity: str = row.get("ReferencingEntity") or ""
         referencing_attr: str = row.get("ReferencingAttribute") or ""
 
-        # Look up the display name and required level for the lookup column.
+        # Look up the display name, required level, and description for the
+        # lookup column (one read; all three are adapter keys).
         lookup_display: str = referencing_attr
         required: str | None = None
+        lookup_description: str | None = None
         if referencing_entity and referencing_attr:
             try:
                 attr_info = _meta_mod.attribute_info(
@@ -242,6 +244,10 @@ def read_entity_relationships(
                 req_val = req_obj.get("Value")
                 if isinstance(req_val, str) and req_val:
                     required = req_val
+                desc_obj = cast("dict[str, Any]", attr_info.get("Description") or {})
+                desc_text = label_text(desc_obj)
+                if desc_text:
+                    lookup_description = desc_text
             except D365Error:
                 pass  # fall back to referencing_attr / no required key
 
@@ -254,6 +260,8 @@ def read_entity_relationships(
         }
         if required is not None:
             rel_dict["required"] = required
+        if lookup_description is not None:
+            rel_dict["lookup_description"] = lookup_description
 
         cascade_raw = cast("dict[str, Any]", row.get("CascadeConfiguration") or {})
         if cascade_raw:

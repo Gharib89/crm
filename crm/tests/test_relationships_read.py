@@ -203,6 +203,31 @@ class TestReadEntityRelationshipsFull:
         # Required level still captured
         assert result[0]["required"] == "Recommended"
 
+    def test_lookup_description_emitted_when_present(self, backend):
+        """The lookup column's Description rides the attribute read the projection
+        already makes, so it is emitted as `lookup_description` (an adapter key);
+        omitted when blank."""
+        from crm.core import relationships as rel
+        attr_with_desc = {
+            "LogicalName": "new_accountid",
+            "DisplayName": {"UserLocalizedLabel": {"Label": "Account", "LanguageCode": 1033}},
+            "Description": {"UserLocalizedLabel": {"Label": "The owning account", "LanguageCode": 1033}},
+            "RequiredLevel": {"Value": "None"},
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_o2m_url(backend), json={"value": [_FULL_ROW]})
+            m.get(_attr_url(backend, "new_project", "new_accountid"), json=attr_with_desc)
+            result = rel.read_entity_relationships(backend, "new_project")
+        assert result[0]["lookup_description"] == "The owning account"
+
+    def test_lookup_description_omitted_when_blank(self, backend):
+        from crm.core import relationships as rel
+        with requests_mock.Mocker() as m:
+            m.get(_o2m_url(backend), json={"value": [_FULL_ROW]})
+            m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
+            result = rel.read_entity_relationships(backend, "new_project")
+        assert "lookup_description" not in result[0]
+
     def test_no_custom_relationships_returns_empty_list(self, backend):
         from crm.core import relationships as rel
         with requests_mock.Mocker() as m:
