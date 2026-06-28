@@ -218,6 +218,30 @@ crm solution uninstall --solution CRMWorx --yes
 ```
 Resolves the solutionid, then **pre-checks `RetrieveDependenciesForUninstall`** and refuses with the blocker count unless `--force` (use [`solution dependencies`](#preview-what-blocks-uninstalling-a-managed-solution) to inspect the blockers first). For a managed base solution the server also uninstalls its patches. Gated as destructive (`--yes`).
 
+## Project a solution into a desired-state spec (org-to-org drift)
+
+Generate an apply-consumable YAML spec from every entity touched by a solution — entity, attribute, global option set, view, and 1:N relationship — in one pass. This is the source side of the **org-to-org drift recipe**: run `export-spec` on dev, then `apply --dry-run` on prod to preview schema drift without writing anything.
+
+```bash
+# Dev org: project the solution into a spec file
+crm solution export-spec MyCustomSolution -o desired.yaml
+
+# Prod org: preview what drifts — pure dry-run, no writes
+crm apply -f desired.yaml --dry-run
+```
+
+Without `-o`, a summary `data` payload plus a `skipped` bucket is emitted under the standard JSON envelope.
+
+```bash
+crm --json solution export-spec MyCustomSolution
+```
+
+Components that cannot be projected from live metadata — plug-in assemblies, security roles, web resources, and other non-entity-rooted types — appear in a `skipped` bucket `{type, objectid, reason}`. The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops one silently.
+
+**Known limitation:** a lone attribute, view, or relationship member whose parent entity is not itself in the solution is not separately projected — it lands in `skipped` (ADR 0019).
+
+The emitted spec includes a top-level `solution:` key so `apply --dry-run` auto-scopes its drift/prune report. The entity-level counterpart is [`metadata export-spec`](metadata.md#export-a-live-entity-as-an-apply-spec-export-spec-apply-round-trip), which projects a single entity; `solution export-spec` composes it across every entity in the solution.
+
 ## Publish all customizations
 
 ```bash

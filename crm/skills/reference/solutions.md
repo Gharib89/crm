@@ -286,6 +286,54 @@ metadata-dependency blockers. Read-only; the GET fires under `--dry-run`. Unknow
 solution name → clean `{ok:false}`. Use this for "what stops me uninstalling solution
 X?"; use `metadata dependencies` for a single component.
 
+## Project a solution into a desired-state spec — `export-spec`
+
+The **source side of the org-to-org drift recipe**: project every entity touched by a
+solution into one merged apply-consumable spec, then run `apply --dry-run` against the
+target org to see what drifts — pure reads, no writes on either side.
+
+```bash
+# Dev org: write the bare YAML spec
+crm solution export-spec MyCustomSolution -o desired.yaml
+
+# Target org: preview schema drift, zero writes
+crm apply -f desired.yaml --dry-run
+```
+
+Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipped` bucket.
+
+**JSON contract (without `-o`):** `data.entities` / `data.optionsets` are name lists,
+`data.attributes` is a total count; there is no `meta`.
+```json
+{
+  "ok": true,
+  "data": {
+    "solution": "MyCustomSolution",
+    "entities": ["cwx_Ticket", "cwx_Project"],
+    "attributes": 12,
+    "optionsets": ["cwx_priority"],
+    "skipped": [
+      {"type": "pluginassembly", "objectid": "<guid>",
+       "reason": "plugin assembly DLL not projectable from a live org; ..."}
+    ]
+  }
+}
+```
+With `-o FILE`, `data` is instead `{path, solution, entities: <count>, attributes, optionsets: <count>, skipped}`.
+
+**Skipped bucket** — components that cannot be projected from live metadata (plug-in
+assemblies, security roles, web resources, and other non-entity-rooted types) land here.
+The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops
+one silently.
+
+**Known limitation:** a lone attribute, view, or relationship member whose parent entity
+is NOT itself in the solution is not separately projected — it lands in `skipped` (ADR 0019).
+
+The emitted spec includes a top-level `solution:` key so `apply --dry-run` auto-scopes its
+drift/prune report. For a single entity, use `metadata export-spec` (see
+`reference/metadata.md`); `solution export-spec` composes it across every entity in the
+solution.
+
 ## Component drift detection — `components --save` / `--diff`
 
 Snapshot and compare solution contents for CI gates or agent branching:

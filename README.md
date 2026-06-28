@@ -318,6 +318,11 @@ crm query fetchxml accounts --file ./reports/by_industry.xml
 # Solution export
 crm solution export MyCustomSolution -o /tmp/snap.zip
 
+# Org-to-org drift recipe: project a whole solution into one apply-consumable spec on dev,
+# then preview schema drift on prod without writing anything.
+crm solution export-spec MyCustomSolution -o desired.yaml      # dev (source)
+crm apply -f desired.yaml --dry-run                            # prod (preview drift)
+
 # Solution source control: unpack a zip to a diff-able tree and pack it back
 # (offline — no connection needed; needs the Power Platform CLI `pac` on PATH)
 crm solution extract --zipfile /tmp/snap.zip --folder ./src/MyCustomSolution
@@ -404,7 +409,7 @@ partial-optionset failures (which also surface `meta.completed_steps` /
 | `metadata`   | Entity / attribute / relationship CRUD; global option set CRUD |
 | `apply`      | Declarative desired-state from a YAML/JSON spec (`apply -f spec.yaml`); declares publishers, solutions, entities, option sets, web resources, security roles, and plug-in assemblies / types / steps / images; `--prune` opts in to solution-bounded deletion of org components the spec no longer declares (gated; preview with `--dry-run`) |
 | `scaffold`   | Quick one-table shorthand: `scaffold table DISPLAY --column ...` creates an entity + N columns in one publish |
-| `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / missing-components (pre-import dependency check against the target org) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / apply-upgrade (separate promote) / uninstall |
+| `solution`   | List / info / components (`--save`/`--diff` for drift detection) / dependencies (uninstall-blocker preview) / missing-components (pre-import dependency check against the target org) / add-component / remove-component / set-version / export / import / import-result / extract / pack / validate solutions; `export-spec <unique_name> [-o FILE]` projects a whole solution into one `apply`-consumable desired-state spec (org-to-org drift recipe source); managed-upgrade lifecycle: clone-as-patch / stage-and-upgrade (holding import, `--promote`) / apply-upgrade (separate promote) / uninstall |
 | `data`       | Bulk CSV/JSON dataset export + JSONL/CSV import via `$batch`; `--mode upsert`/`--mode delete` resolve records by GUID (`--id-column`) or alternate key (`--key`); `data delete` submits a **server-side BulkDelete async job** for records matching a FetchXML query |
 | `webresource` | Create/update/get/list/delete web resources (HTML/JS/CSS/images); `push <DIR> --prefix <p>` bulk-upserts a directory tree (name = `<prefix>_<relpath>`, type inferred from extension, skips byte-identical, publishes once); set as app icons |
 | `view`       | System views (savedquery): `list` / `create`; `edit-columns` to add, remove, resize, or reorder grid columns in place (keeps layoutxml + fetchxml coupled); `set-order` to replace, append, or clear the sort order; `add-filter` / `remove-filter` to edit FetchXML filter conditions in place — all without manual XML editing |
