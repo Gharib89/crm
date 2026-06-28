@@ -562,8 +562,7 @@ def add_attribute(
     editor-authored, so hand-written XAML is unsupported (it is neither
     generated nor validated here).
     """
-    if "_" not in schema_name:
-        raise D365Error("schema_name must include a publisher prefix.")
+    mc.validate_schema_name(schema_name)
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
     if behavior_name is not None and kind != "datetime":

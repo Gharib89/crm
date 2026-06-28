@@ -345,14 +345,10 @@ def create_one_to_many(
     `POST /RelationshipDefinitions` with a `Lookup` deep insert. Read-back
     populates `schema_name` and `referencing_attribute` from the server.
     """
-    if "_" not in schema_name:
-        raise D365Error(
-            "schema_name must include a publisher prefix, e.g. 'new_account_new_project'."
-        )
+    mc.validate_schema_name(schema_name, example="new_account_new_project")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
-    if "_" not in lookup_schema:
-        raise D365Error("lookup_schema must include a publisher prefix.")
+    mc.validate_schema_name(lookup_schema, subject="lookup_schema")
     mc.validate_required(lookup_required, subject="lookup_required")
     for name, value in (
         ("cascade_assign", cascade_assign), ("cascade_delete", cascade_delete),
@@ -508,8 +504,7 @@ def create_customer_relationships(
     (`<entity>_<lookup>_account` / `_contact`); unlike a single-target lookup,
     they aren't user-nameable because the action owns both.
     """
-    if "_" not in lookup_schema:
-        raise D365Error("lookup_schema must include a publisher prefix.")
+    mc.validate_schema_name(lookup_schema, subject="lookup_schema")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
     mc.validate_required(lookup_required, subject="lookup_required")
@@ -610,10 +605,7 @@ def create_many_to_many(
 
     Server creates the intersect entity (`intersect_entity` is its logical name).
     """
-    if "_" not in schema_name:
-        raise D365Error(
-            "schema_name must include a publisher prefix."
-        )
+    mc.validate_schema_name(schema_name)
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
     if entity1_logical == entity2_logical:

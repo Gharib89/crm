@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, TypeVar, cast
 
 from crm.core import metadata as meta_mod
@@ -120,6 +121,196 @@ def _validate_column(col: Any, view_name: str) -> None:
     raise D365Error(f"view {view_name!r}: column must be a string or a mapping.")
 
 
+# ── spec → builder adapters ──────────────────────────────────────────────────
+@dataclass(frozen=True)
+class Adapter:
+    """Maps a desired-state spec block to one create builder's keyword arguments.
+
+    A spec block (a dict from the parsed spec) reaches a builder through exactly
+    this object, so the set of spec keys a kind accepts *is* the adapter's
+    ``map`` / ``transforms``. ``to_kwargs`` is the single generic projection;
+    ``validate`` routes the block's constrained values through the same
+    :mod:`metadata_constraints` primitives the builder itself calls, so a malformed
+    block fails in the up-front pass instead of mid-apply (closing validate/apply
+    drift by construction). Adapters are *data*: the contract test reads the same
+    ``map``/``transforms`` the runtime uses, so a builder kwarg added without an
+    adapter entry turns the test red.
+
+    Fields:
+      map        spec_key → builder_param (an entry whose key differs from its
+                 value is a rename, e.g. ``"required" → "lookup_required"``).
+      injected   builder params the driver supplies, never the spec (``backend``,
+                 ``entity``, ``object_type_code``, ``solution``, ``if_exists``,
+                 ``publish``).
+      transforms builder_param → ``f(block)`` for the few values that need
+                 computing (option tuples, the nested ``primary_attr`` block,
+                 view columns).
+      defaults   spec_key → fallback when absent (mirrors the old
+                 ``block.get(key, default)`` calls).
+      schema_name_keys / required_keys / cascade_keys / menu_keys
+                 spec keys whose value ``validate`` checks through ``mc.*``.
+    """
+
+    map: dict[str, str]
+    injected: frozenset[str]
+    transforms: dict[str, Callable[[dict[str, Any]], Any]]
+    defaults: dict[str, Any]
+    schema_name_keys: tuple[str, ...] = ()
+    required_keys: tuple[str, ...] = ()
+    cascade_keys: tuple[str, ...] = ()
+    menu_keys: tuple[str, ...] = ()
+
+    @property
+    def transform_targets(self) -> frozenset[str]:
+        """The builder params produced by ``transforms`` (consumed by the contract test)."""
+        return frozenset(self.transforms)
+
+    def to_kwargs(self, block: dict[str, Any]) -> dict[str, Any]:
+        """Project a spec block onto its builder's keyword arguments.
+
+        A mapped key absent from the block falls to ``defaults`` if declared, else
+        is omitted so the builder's own default applies; transforms always run.
+        """
+        out: dict[str, Any] = {}
+        for spec_key, param in self.map.items():
+            if spec_key in block:
+                out[param] = block[spec_key]
+            elif spec_key in self.defaults:
+                out[param] = self.defaults[spec_key]
+        for param, fn in self.transforms.items():
+            out[param] = fn(block)
+        return out
+
+    def validate(self, block: dict[str, Any]) -> None:
+        """Reject constrained values up front via the builders' own ``mc.*`` rules."""
+        for key in self.schema_name_keys:
+            if block.get(key):
+                mc.validate_schema_name(block[key], subject=key)
+        for key in self.required_keys:
+            if key in block:
+                mc.validate_required(block[key], subject=key)
+        for key in self.cascade_keys:
+            if key in block:
+                mc.validate_cascade(block[key], subject=key)
+        for key in self.menu_keys:
+            if key in block:
+                mc.validate_menu_behavior(block[key], subject=key)
+
+
+# One adapter per gap kind. The other six phases (publisher, solution, optionset,
+# webresource, role, plugin) already forward their full builder surface and stay
+# on inline lambdas — a mixed driver is fine during the transition.
+REGISTRY: dict[str, Adapter] = {
+    "attribute": Adapter(
+        map={
+            "kind": "kind",
+            "schema_name": "schema_name",
+            "display_name": "display_name",
+            "description": "description",
+            "required": "required",
+            "max_length": "max_length",
+            "format_name": "format_name",
+            "auto_number_format": "auto_number_format",
+            "behavior_name": "behavior_name",
+            "min_value": "min_value",
+            "max_value": "max_value",
+            "precision": "precision",
+            "default_value": "default_value",
+            "true_label": "true_label",
+            "false_label": "false_label",
+            "optionset_name": "optionset_name",
+            "target_entity": "target_entity",
+            "relationship_schema": "relationship_schema",
+            "max_size_kb": "max_size_kb",
+            "source_type": "source_type",
+            "formula_definition": "formula_definition",
+        },
+        transforms={
+            "options": lambda b: (
+                [(o.get("value"), o["label"]) for o in _as_list(b.get("options"))] or None
+            ),
+        },
+        injected=frozenset({"backend", "entity", "solution", "if_exists", "publish"}),
+        defaults={"required": "None", "source_type": "simple"},
+        schema_name_keys=("schema_name",),
+        required_keys=("required",),
+    ),
+    "relationship": Adapter(
+        map={
+            "schema_name": "schema_name",
+            "referenced_entity": "referenced_entity",
+            "referencing_entity": "referencing_entity",
+            "lookup_schema": "lookup_schema",
+            "lookup_display": "lookup_display",
+            "required": "lookup_required",
+            "lookup_description": "lookup_description",
+            "cascade_assign": "cascade_assign",
+            "cascade_delete": "cascade_delete",
+            "cascade_reparent": "cascade_reparent",
+            "cascade_share": "cascade_share",
+            "cascade_unshare": "cascade_unshare",
+            "cascade_merge": "cascade_merge",
+            "menu_label": "menu_label",
+            "menu_behavior": "menu_behavior",
+            "menu_order": "menu_order",
+            "is_hierarchical": "is_hierarchical",
+        },
+        transforms={},
+        injected=frozenset({"backend", "solution", "if_exists", "publish"}),
+        defaults={"required": "None"},
+        schema_name_keys=("schema_name", "lookup_schema"),
+        required_keys=("required",),
+        cascade_keys=(
+            "cascade_assign", "cascade_delete", "cascade_reparent",
+            "cascade_share", "cascade_unshare", "cascade_merge",
+        ),
+        menu_keys=("menu_behavior",),
+    ),
+    "entity": Adapter(
+        map={
+            "schema_name": "schema_name",
+            "display_name": "display_name",
+            "display_collection_name": "display_collection_name",
+            "primary_attr_max_length": "primary_attr_max_length",
+            "description": "description",
+            "ownership": "ownership",
+            "has_activities": "has_activities",
+            "has_notes": "has_notes",
+            "is_activity": "is_activity",
+            "data_provider_id": "data_provider_id",
+            "data_source_id": "data_source_id",
+            "external_name": "external_name",
+            "external_collection_name": "external_collection_name",
+        },
+        transforms={
+            "primary_attr_schema": lambda b: cast(
+                "dict[str, Any]", b.get("primary_attr") or {}).get("schema_name"),
+            "primary_attr_label": lambda b: cast(
+                "dict[str, Any]", b.get("primary_attr") or {}).get("label"),
+        },
+        injected=frozenset({"backend", "solution", "if_exists"}),
+        defaults={"ownership": "UserOwned"},
+        schema_name_keys=("schema_name",),
+    ),
+    "view": Adapter(
+        map={
+            "name": "name",
+            "order_by": "order_by",
+            "order_desc": "order_desc",
+            "filter_active": "filter_active",
+            "is_default": "is_default",
+            "query_type": "query_type",
+            "description": "description",
+        },
+        transforms={"columns": lambda b: _columns(b.get("columns"))},
+        defaults={},
+        injected=frozenset(
+            {"backend", "entity", "object_type_code", "solution", "if_exists", "publish"}
+        ),
+    ),
+}
+
+
 def validate_spec(spec: Any) -> None:
     """Validate spec shape up front so a malformed file fails before any HTTP call."""
     if not isinstance(spec, dict):
@@ -147,10 +338,15 @@ def validate_spec(spec: Any) -> None:
         # misclassified as a destructive ownership change during reconciliation.
         if ent.get("ownership") is not None:
             mc.validate_ownership(ent["ownership"], subject=f"{elabel} ownership")
+        # Route the constrained values the adapter forwards (schema-name prefix, …)
+        # through the SAME mc.* primitives the builder calls, so a malformed block
+        # fails here rather than mid-apply (closes validate/apply drift, #596).
+        REGISTRY["entity"].validate(ent)
         for sub in ("attributes", "relationships", "views"):
             _require_list(ent, sub, elabel)
         for attr in _as_list(ent.get("attributes")):
             _require(attr, ("kind", "schema_name", "display_name"), "attribute")
+            REGISTRY["attribute"].validate(attr)
             kind, name = attr["kind"], attr["schema_name"]
             if kind not in ATTRIBUTE_KINDS:
                 raise D365Error(f"attribute {name!r}: unknown kind {kind!r}.")
@@ -201,8 +397,10 @@ def validate_spec(spec: Any) -> None:
         for rel in _as_list(ent.get("relationships")):
             _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
                            "lookup_schema", "lookup_display"), "relationship")
+            REGISTRY["relationship"].validate(rel)
         for view in _as_list(ent.get("views")):
             _require(view, ("name", "columns"), "view")
+            REGISTRY["view"].validate(view)
             if not isinstance(view["columns"], list) or not view["columns"]:
                 raise D365Error(f"view {view['name']!r}: columns must be a non-empty list.")
             for col in cast("list[Any]", view["columns"]):
@@ -1055,16 +1253,10 @@ def apply_spec(
 
         # Phase: entities. Capture each schema_name -> logical_name for later phases.
         for ent in _as_list(spec.get("entities")):
-            primary: dict[str, Any] = ent.get("primary_attr") or {}
             entry = {"kind": "entity", "name": ent["schema_name"]}
-            result = _call(entry, lambda ent=ent, primary=primary: meta_mod.create_entity(
+            result = _call(entry, lambda ent=ent: meta_mod.create_entity(
                 backend,
-                schema_name=ent["schema_name"],
-                display_name=ent["display_name"],
-                display_collection_name=ent.get("display_collection_name"),
-                primary_attr_schema=primary.get("schema_name"),
-                primary_attr_label=primary.get("label"),
-                ownership=ent.get("ownership", "UserOwned"),
+                **REGISTRY["entity"].to_kwargs(ent),
                 solution=solution_name,
                 if_exists="skip",
             ), failed)
@@ -1159,26 +1351,12 @@ def apply_spec(
                 if deps & planned_names:
                     planned.append(entry)
                     continue
-                opts = [(o.get("value"), o["label"])
-                        for o in _as_list(attr.get("options"))] or None
                 result = _call(
                     entry,
-                    lambda attr=attr, logical=logical, opts=opts: attrs_mod.add_attribute(
+                    lambda attr=attr, logical=logical: attrs_mod.add_attribute(
                         backend,
+                        **REGISTRY["attribute"].to_kwargs(attr),
                         entity=logical,
-                        kind=attr["kind"],
-                        schema_name=attr["schema_name"],
-                        display_name=attr["display_name"],
-                        description=attr.get("description"),
-                        required=attr.get("required", "None"),
-                        max_length=attr.get("max_length"),
-                        precision=attr.get("precision"),
-                        format_name=attr.get("format_name"),
-                        optionset_name=attr.get("optionset_name"),
-                        options=opts,
-                        target_entity=attr.get("target_entity"),
-                        source_type=attr.get("source_type", "simple"),
-                        formula_definition=attr.get("formula_definition"),
                         solution=solution_name,
                         if_exists="skip",
                     ), failed)
@@ -1198,12 +1376,7 @@ def apply_spec(
                     continue
                 result = _call(entry, lambda rel=rel: rel_mod.create_one_to_many(
                     backend,
-                    schema_name=rel["schema_name"],
-                    referenced_entity=rel["referenced_entity"],
-                    referencing_entity=rel["referencing_entity"],
-                    lookup_schema=rel["lookup_schema"],
-                    lookup_display=rel["lookup_display"],
-                    lookup_required=rel.get("required", "None"),
+                    **REGISTRY["relationship"].to_kwargs(rel),
                     solution=solution_name,
                     if_exists="skip",
                 ), failed)
@@ -1231,12 +1404,9 @@ def apply_spec(
                     entry,
                     lambda view=view, logical_v=logical_v, otc=otc: views_mod.create_view(
                         backend,
+                        **REGISTRY["view"].to_kwargs(view),
                         entity=logical_v,
                         object_type_code=otc,
-                        name=view["name"],
-                        columns=_columns(view.get("columns")),
-                        order_by=view.get("order_by"),
-                        is_default=view.get("is_default", False),
                         solution=solution_name,
                         if_exists="skip",
                     ), failed)

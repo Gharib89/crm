@@ -3178,3 +3178,150 @@ def test_apply_optionset_skipped_bucket_not_in_os_created(dry_backend):
     assert res["ok"] is True
     # optionset is skipped (already exists and options match) → bucket="skipped"
     assert _kinds(res["skipped"]) == ["optionset"]
+
+
+# ── spec-adapter registry (#596) ─────────────────────────────────────────────
+# The adapters in apply.REGISTRY are the single source of truth for "what spec
+# keys kind X accepts". These tests lock the adapter ↔ builder contract so the
+# spec's expressible surface stays equal to the builders' full surface.
+import inspect
+
+from crm.core import metadata as meta_mod
+from crm.core import metadata_attrs as attrs_mod
+from crm.core import relationships as rel_mod
+from crm.core import views as views_mod
+
+_ADAPTER_BUILDERS = {
+    "attribute": attrs_mod.add_attribute,
+    "relationship": rel_mod.create_one_to_many,
+    "entity": meta_mod.create_entity,
+    "view": views_mod.create_view,
+}
+
+
+def _kwonly(fn):
+    """The keyword-only parameter names of a builder (the part after ``*``)."""
+    return {
+        n for n, p in inspect.signature(fn).parameters.items()
+        if p.kind is inspect.Parameter.KEYWORD_ONLY
+    }
+
+
+@pytest.mark.parametrize("kind", sorted(_ADAPTER_BUILDERS))
+def test_adapter_covers_full_builder_surface(kind):
+    """Every builder keyword arg is reachable from a spec (mapped, transformed, or
+    driver-injected) — add a builder kwarg without an adapter entry and this fails."""
+    adapter = apply_mod.REGISTRY[kind]
+    covered = set(adapter.map.values()) | adapter.transform_targets | adapter.injected
+    uncovered = _kwonly(_ADAPTER_BUILDERS[kind]) - covered
+    assert not uncovered, f"{kind}: adapter does not reach builder kwargs {sorted(uncovered)}"
+
+
+@pytest.mark.parametrize("kind", sorted(_ADAPTER_BUILDERS))
+def test_adapter_targets_are_real_builder_params(kind):
+    """Conversely, no adapter maps to a kwarg the builder does not accept (a typo
+    would otherwise raise TypeError only at apply time)."""
+    adapter = apply_mod.REGISTRY[kind]
+    produced = set(adapter.map.values()) | adapter.transform_targets
+    real = _kwonly(_ADAPTER_BUILDERS[kind])
+    bogus = produced - real
+    assert not bogus, f"{kind}: adapter targets non-existent builder kwargs {sorted(bogus)}"
+
+
+# ── capability: previously-dropped builder kwargs now reach the builder (#596) ─
+# Before the adapter registry these kwargs were unreachable from a spec — they
+# silently fell to the builder default. Each test sets a NON-default value and
+# asserts it reaches the outgoing create body.
+def test_apply_forwards_cascade_on_relationship_create(backend):
+    rel = {**_RELATIONSHIP, "cascade_delete": "Cascade"}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "relationships": [rel]}]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_one_to_many(m, backend, schema=rel["schema_name"])
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    body = next(json.loads(r.text) for r in m.request_history
+                if r.method == "POST" and r.url == backend.url_for("RelationshipDefinitions"))
+    assert body["CascadeConfiguration"]["Delete"] == "Cascade"
+    assert res["ok"] is True
+
+
+def test_apply_forwards_true_label_on_boolean_attribute(backend):
+    attr = {"kind": "boolean", "schema_name": "contoso_Flag", "display_name": "Flag",
+            "true_label": "On", "false_label": "Off"}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "attributes": [attr]}]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_attribute_create(m, backend, logical="contoso_flag", schema="contoso_Flag",
+                               attr_type="Boolean")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    attr_post = backend.url_for("EntityDefinitions(LogicalName='contoso_project')/Attributes")
+    body = next(json.loads(r.text) for r in m.request_history
+                if r.method == "POST" and r.url == attr_post)
+    assert body["OptionSet"]["TrueOption"]["Label"]["LocalizedLabels"][0]["Label"] == "On"
+    assert body["OptionSet"]["FalseOption"]["Label"]["LocalizedLabels"][0]["Label"] == "Off"
+    assert res["ok"] is True
+
+
+def test_apply_forwards_filter_active_on_view_create(backend):
+    view = {"name": "Open Projects", "columns": ["contoso_name"], "filter_active": True}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "views": [view]}]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        _mock_view_create(m, backend, name="Open Projects")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    body = next(json.loads(r.text) for r in m.request_history
+                if r.method == "POST" and r.url == backend.url_for("savedqueries"))
+    assert "statecode" in body["fetchxml"]
+    assert res["ok"] is True
+
+
+def test_apply_forwards_has_notes_on_entity_create(backend):
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "has_notes": True}]}
+    with requests_mock.Mocker() as m:
+        _mock_publisher_create(m, backend)
+        _mock_solution_create(m, backend)
+        _mock_entity_create(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    body = next(json.loads(r.text) for r in m.request_history
+                if r.method == "POST" and r.url == backend.url_for("EntityDefinitions"))
+    assert body["HasNotes"] is True
+    assert res["ok"] is True
+
+
+# ── gap closure: a malformed block fails in the up-front pass, before any HTTP ─
+# Pre-#596 these passed validate_spec and raised mid-apply (after publisher /
+# solution / entity had already been written). Now adapter.validate routes through
+# the same mc.* primitive the builder calls, so the failure is fail-fast.
+def test_apply_rejects_attribute_schema_name_without_prefix_before_http(backend):
+    bad = {"kind": "string", "schema_name": "Code", "display_name": "Code"}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "attributes": [bad]}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="must include a publisher prefix"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_bad_required_value_before_http(backend):
+    bad = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
+           "required": "Mandatory"}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "attributes": [bad]}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="required must be one of"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []

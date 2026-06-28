@@ -15,6 +15,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish, target_exists
 from crm.core import dependencies as dep_mod
 from crm.core import metadata_cache
+from crm.core import metadata_constraints as mc
 
 
 def _option_label(label_obj: dict[str, Any]) -> str | None:
@@ -79,8 +80,7 @@ def create_optionset(
     if_exists: str = "error",
 ) -> dict[str, Any]:
     """Create a global option set. Returns `{created, name, metadata_id_url, ...}`."""
-    if not name or "_" not in name:
-        raise D365Error("name must include a publisher prefix, e.g. 'new_priority'.")
+    mc.validate_schema_name(name, subject="name", example="new_priority")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 

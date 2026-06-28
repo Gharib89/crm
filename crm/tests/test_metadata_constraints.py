@@ -157,3 +157,18 @@ def test_casts_follow_the_protocol_shape():
 def test_only_numeric_kinds_carry_precision_range():
     precision_kinds = {k for k, info in mc.KINDS.items() if info.precision_range is not None}
     assert precision_kinds == {"decimal", "double", "money"}
+
+
+def test_validate_schema_name_accepts_prefixed_name():
+    mc.validate_schema_name("contoso_Code")  # has underscore → no raise
+
+
+@pytest.mark.parametrize("bad", ["", "Code", "noprefix"])
+def test_validate_schema_name_rejects_unprefixed(bad):
+    with pytest.raises(D365Error, match="must include a publisher prefix"):
+        mc.validate_schema_name(bad)
+
+
+def test_validate_schema_name_subject_and_example_in_message():
+    with pytest.raises(D365Error, match=r"lookup_schema must include a publisher prefix, e.g. 'new_x'"):
+        mc.validate_schema_name("nope", subject="lookup_schema", example="new_x")
