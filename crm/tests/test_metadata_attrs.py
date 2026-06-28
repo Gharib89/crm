@@ -850,3 +850,78 @@ class TestDeleteAttributeDryRun:
         assert info["blockers"] == []
         delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
         assert delete_reqs == []
+
+
+# --------------------------------------------------------------------------- #
+# Extracted domain predicates (#595): the rules formerly duplicated in the
+# add-attribute command body now live here as the single authority. Tested
+# directly through the core interface — no CliRunner.
+# --------------------------------------------------------------------------- #
+
+class TestCheckFormulaCompat:
+    def test_simple_with_formula_rejected(self):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="only valid with --type"):
+            ma.check_formula_compat("string", "simple", "<x/>")
+
+    def test_simple_without_formula_ok(self):
+        from crm.core import metadata_attrs as ma
+        assert ma.check_formula_compat("string", "simple", None) is None
+
+    def test_rollup_without_formula_rejected(self):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="formula-file is required"):
+            ma.check_formula_compat("integer", "rollup", None)
+
+    def test_rollup_on_lookup_kind_rejected(self):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="not valid for kind"):
+            ma.check_formula_compat("lookup", "rollup", "<x/>")
+
+    def test_calculated_on_customer_kind_rejected(self):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="not valid for kind"):
+            ma.check_formula_compat("customer", "calculated", "<x/>")
+
+    def test_rollup_with_formula_ok(self):
+        from crm.core import metadata_attrs as ma
+        assert ma.check_formula_compat("integer", "rollup", "<x/>") is None
+
+
+class TestParseDefault:
+    def test_none_passes_through(self):
+        from crm.core import metadata_attrs as ma
+        assert ma.parse_default("boolean", None) is None
+
+    @pytest.mark.parametrize("raw", ["true", "1", "yes", "on", "t", "y", "TRUE"])
+    def test_boolean_true_strings(self, raw):
+        from crm.core import metadata_attrs as ma
+        assert ma.parse_default("boolean", raw) is True
+
+    @pytest.mark.parametrize("raw", ["false", "0", "no", "off", "f", "n", "FALSE"])
+    def test_boolean_false_strings(self, raw):
+        from crm.core import metadata_attrs as ma
+        assert ma.parse_default("boolean", raw) is False
+
+    def test_boolean_native_bool_passthrough(self):
+        from crm.core import metadata_attrs as ma
+        assert ma.parse_default("boolean", True) is True
+        assert ma.parse_default("boolean", False) is False
+
+    def test_boolean_garbage_rejected(self):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="true/false"):
+            ma.parse_default("boolean", "maybe")
+
+    def test_numeric_string_coerced(self):
+        from crm.core import metadata_attrs as ma
+        assert ma.parse_default("picklist", "7") == 7
+
+    def test_numeric_native_int_passthrough(self):
+        from crm.core import metadata_attrs as ma
+        assert ma.parse_default("integer", 5) == 5
+
+    def test_numeric_garbage_rejected(self):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="must be int for kind"):
+            ma.parse_default("picklist", "abc")

@@ -30,7 +30,7 @@ _PUBLIC_SURFACE = [
     "_sanitize", "_short_repr", "_emit_with_warning", "_emit_query_result",
     "_infer_columns", "_prune_annotations", "_emit_expectation_failure",
     # d365 errors
-    "_handle_d365_error", "d365_errors", "_auth_error_hint",
+    "_handle_d365_error", "d365_errors", "usage_guard", "_auth_error_hint",
     # solution resolution
     "_resolve_solution", "_require_solution", "_solution_option",
     "_publish_option", "_resolve_publish", "_active_profile",

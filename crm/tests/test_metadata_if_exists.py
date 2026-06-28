@@ -262,6 +262,26 @@ class TestCliIfExistsContract:
         env = json.loads(result.output)
         assert env["ok"] is True
 
+    def test_skip_with_publish_does_not_publish(self, monkeypatch, backend):
+        # if_exists=skip + existing → skipped; --publish must NOT fire PublishAllXml.
+        # Pins the skipped-guard preserved when the inline publish block became
+        # core.maybe_publish(..., publish and not info.get("skipped")) (#595): a
+        # bare maybe_publish would POST PublishAllXml here.
+        probe = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
+        self._stub(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            m.get(probe, json={"LogicalName": "new_widget"})
+            result = CliRunner().invoke(cli, [
+                "--json", "metadata", "create-entity",
+                "--schema-name", "new_Widget", "--display", "Widget",
+                "--if-exists", "skip", "--publish",
+            ])
+            assert _posts(m) == []
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+        assert "published" not in env["data"]
+
     def test_default_error_exit_1_ok_false(self, monkeypatch, backend):
         probe = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
         self._stub(monkeypatch, backend)

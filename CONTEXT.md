@@ -54,10 +54,27 @@ Self-contained: it swallows its own errors and never masks the original failure.
 _Avoid_: duplicate error, key error detail.
 
 **Usage error**:
-A caller mistake Click rejects before the command body runs — unknown flag, bad
-parameter value, missing required argument. Exit code `2` (Click's default).
+A caller mistake that exits `2`. Classically one Click rejects before the command
+body runs — unknown flag, bad parameter value, missing required argument (Click's
+default). Also a **validation predicate** rejection on the CLI path: `usage_guard`
+([`errors.py`](crm/commands/_helpers/errors.py)) maps the predicate's status-less
+`D365Error` to a `click.UsageError`, so the *same rule* that is an **operational
+failure** (exit `1`) on the `apply` / direct-core path is a usage error (exit `2`)
+here — one rule, two exit codes by caller.
 _Avoid_: validation error (that term is reserved for the operational-failure kind
 raised inside the command body).
+
+**Validation predicate**:
+A pure rule check in `crm/core/*` (e.g. `check_formula_compat`, `parse_default` in
+[`metadata_attrs.py`](crm/core/metadata_attrs.py)) that raises a status-less
+`D365Error` on bad input — the *single authority* for a rule shared by the CLI and
+`apply`. The CLI pre-checks it inside `usage_guard` (→ **usage error**, exit `2`,
+before the backend); `apply` / direct-core callers reach it through `d365_errors`
+(→ **operational failure**, exit `1`). Pure coercion with no second caller
+(string→typed parsing unique to the CLI, e.g. the `--reorder` `ParamType`) stays at
+the command seam instead of moving to core.
+_Avoid_: validator, guard (name the predicate); ParamType (that is the coercion
+adapter, not the rule).
 
 **Exit-code contract**:
 The promise that `0` = success, `1` = operational failure, `2` = usage error —
@@ -210,6 +227,9 @@ customization XML through a known grammar.
   raw Click text; under `--json` the root group renders it as an `{ok: false, error}`
   envelope on stdout (still exit `2`, never `1`) — it does not flow through `emit`.
 - The **exit-code contract** is the union: `{0 success, 1 operational failure, 2 usage error}`.
+- A **validation predicate** is one rule with two exit codes by caller: a **usage
+  error** (exit `2`) when the CLI pre-checks it via `usage_guard`, an **operational
+  failure** (exit `1`) when `apply` / direct-core reaches it via `d365_errors`.
 - A **clone pre-flight** failure is an **operational failure** (exit `1`) that
   occurs before any write — the org is untouched.
 - An **activation record** always belongs to exactly one **workflow definition**

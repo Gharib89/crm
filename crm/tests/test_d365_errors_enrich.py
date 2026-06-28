@@ -135,3 +135,31 @@ def test_enrich_none_none_is_clean_noop():
     assert env["error"] == "boom"
     assert set(env["meta"]) == {"status", "code", "category", "retryable"}
 
+
+
+# --------------------------------------------------------------------------- #
+# usage_guard (#595): re-raises a status-less (client-side validation) D365Error
+# as a click.UsageError (exit 2) before the backend is touched, so core
+# validation predicates can be the single rule authority while the CLI keeps its
+# exit-2 usage-error contract. A status-bearing (transport/server) error is left
+# to propagate to d365_errors (exit 1).
+# --------------------------------------------------------------------------- #
+
+class TestUsageGuard:
+    def test_statusless_validation_error_becomes_usage_error(self):
+        from crm.commands._helpers import usage_guard
+        with pytest.raises(click.UsageError, match="bad combo"):
+            with usage_guard():
+                raise D365Error("bad combo")
+
+    def test_status_bearing_error_propagates(self):
+        from crm.commands._helpers import usage_guard
+        with pytest.raises(D365Error):
+            with usage_guard():
+                raise D365Error("server boom", status=500)
+
+    def test_clean_block_does_not_raise(self):
+        from crm.commands._helpers import usage_guard
+        with usage_guard():
+            value = 1 + 1
+        assert value == 2
