@@ -710,6 +710,114 @@ def _reconcile_attribute(
     return "updated", _with_diff(entry, out)
 
 
+# Relationship adapter flat cascade key → CascadeConfiguration dimension.
+_CASCADE_SPEC_TO_DIM: dict[str, str] = {
+    "cascade_assign": "Assign",
+    "cascade_delete": "Delete",
+    "cascade_reparent": "Reparent",
+    "cascade_share": "Share",
+    "cascade_unshare": "Unshare",
+    "cascade_merge": "Merge",
+}
+
+_ONE_TO_MANY_CAST = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+
+
+def _reconcile_relationship(
+    backend: D365Backend, rel: dict[str, Any], solution: str | None, entry: Entry,
+) -> _Verdict:
+    """Diff an existing 1:N relationship against the spec; update, skip, or block.
+
+    Replace-blocked (identity divergence, no write): a relationship-type change
+    (the live relationship matched by SchemaName is N:N, not 1:N) or a
+    referenced/referencing-entity change — neither is editable in place, and a
+    drop-and-recreate is destructive, so apply refuses. Updatable: cascade,
+    associated-menu, and is_hierarchical (via update_relationship), plus the
+    relationship-backed lookup attribute's display/description/required (via
+    update_attribute on the referencing entity, closing ADR 0014's lookup
+    deferral) — surfaced as ONE merged `updated` entry per relationship block. An
+    invalid is_hierarchical toggle is rejected by the platform as a D365Error,
+    surfacing as `failed` (not replace_blocked). See ADR 0018.
+    """
+    schema = rel["schema_name"]
+    # RelationshipType is a base-type property; the un-cast projection carries it
+    # without a cast segment. A non-1:N live match is a type divergence.
+    base = as_dict(backend.get(
+        f"RelationshipDefinitions(SchemaName='{schema}')",
+        params={"$select": "RelationshipType"}))
+    if base.get("RelationshipType") != "OneToManyRelationship":
+        return "replace_blocked", {
+            **entry,
+            "reason": f"relationship type {base.get('RelationshipType')!r} is not "
+                      "one-to-many; a type change requires a destructive "
+                      "drop-and-recreate; refusing (no write).",
+        }
+    # The 1:N cast is the only projection carrying Cascade/AssociatedMenu/the
+    # referenced/referencing entities.
+    live = as_dict(backend.get(
+        f"RelationshipDefinitions(SchemaName='{schema}')/{_ONE_TO_MANY_CAST}",
+        params={"$select": "ReferencedEntity,ReferencingEntity,ReferencingAttribute,"
+                           "CascadeConfiguration,AssociatedMenuConfiguration,IsHierarchical"}))
+    for spec_key, live_key in (("referenced_entity", "ReferencedEntity"),
+                               ("referencing_entity", "ReferencingEntity")):
+        desired = rel.get(spec_key)
+        current = live.get(live_key)
+        if desired and current and str(desired).lower() != str(current).lower():
+            return "replace_blocked", {
+                **entry,
+                "reason": f"{spec_key} change {current!r} -> {desired!r} requires a "
+                          "destructive drop-and-recreate; refusing (no write).",
+            }
+    # Relationship-level drift → update_relationship kwargs.
+    rel_kwargs: dict[str, Any] = {}
+    cascade_live = cast("dict[str, Any]", live.get("CascadeConfiguration") or {})
+    cascade_changes = {
+        dim: rel[spec_key]
+        for spec_key, dim in _CASCADE_SPEC_TO_DIM.items()
+        if rel.get(spec_key) is not None and rel[spec_key] != cascade_live.get(dim)
+    }
+    if cascade_changes:
+        rel_kwargs["cascade"] = cascade_changes
+    menu_live = cast("dict[str, Any]", live.get("AssociatedMenuConfiguration") or {})
+    if rel.get("menu_behavior") is not None and rel["menu_behavior"] != menu_live.get("Behavior"):
+        rel_kwargs["menu_behavior"] = rel["menu_behavior"]
+    if _drift(rel.get("menu_label"), menu_live.get("Label")):
+        rel_kwargs["menu_label"] = rel["menu_label"]
+    if rel.get("menu_order") is not None and rel["menu_order"] != menu_live.get("Order"):
+        rel_kwargs["menu_order"] = rel["menu_order"]
+    if rel.get("is_hierarchical") is not None and rel["is_hierarchical"] != live.get("IsHierarchical"):
+        rel_kwargs["is_hierarchical"] = rel["is_hierarchical"]
+    # Lookup-attribute drift (display / description / required) on the referencing
+    # entity — the relationship-backed lookup column, matched by ReferencingAttribute.
+    lookup_changes: dict[str, Any] = {}
+    referencing = str(live.get("ReferencingEntity") or rel.get("referencing_entity") or "")
+    lookup_logical = str(live.get("ReferencingAttribute") or rel.get("lookup_schema") or "").lower()
+    if referencing and lookup_logical:
+        info = meta_mod.attribute_info(backend, referencing, lookup_logical)
+        if _drift(rel.get("lookup_display"), info.get("DisplayName")):
+            lookup_changes["display_name"] = rel["lookup_display"]
+        if _drift(rel.get("lookup_description"), info.get("Description")):
+            lookup_changes["description"] = rel["lookup_description"]
+        desired_required = rel.get("required")
+        if desired_required is not None:
+            live_required = cast("dict[str, Any]", info.get("RequiredLevel") or {}).get("Value")
+            if desired_required != live_required:
+                lookup_changes["required"] = desired_required
+    if not rel_kwargs and not lookup_changes:
+        return "skipped", entry
+    # Merge the relationship and lookup field-level diffs into one `updated` entry
+    # (a real apply returns no diff; under --dry-run each carries its drift).
+    diff: dict[str, Any] = {}
+    if rel_kwargs:
+        out = meta_update_mod.update_relationship(backend, schema, solution=solution, **rel_kwargs)
+        diff.update(cast("dict[str, Any]", out.get("diff") or {}))
+    if lookup_changes:
+        out = meta_update_mod.update_attribute(backend, referencing, lookup_logical,
+                                               solution=solution, **lookup_changes)
+        diff.update(cast("dict[str, Any]", out.get("diff") or {}))
+    return "updated", ({**entry, "diff": diff} if diff else entry)
+
+
 def _reconcile_optionset(
     backend: D365Backend, os_spec: dict[str, Any], solution: str | None, entry: Entry,
 ) -> _Verdict:
@@ -1403,7 +1511,12 @@ def apply_spec(
                     solution=solution_name,
                     if_exists="skip",
                 ), failed)
-                _classify(result, entry, applied, skipped, planned)
+                if _present(result):
+                    _reconcile(entry, lambda rel=rel, entry=entry:
+                               _reconcile_relationship(backend, rel, solution_name, entry),
+                               failed, routes)
+                else:
+                    _classify(result, entry, applied, skipped, planned)
 
         # Phase: views. ObjectTypeCode is resolved once per entity; when it is not
         # yet readable (greenfield pre-publish) the views are planned, not failed.
