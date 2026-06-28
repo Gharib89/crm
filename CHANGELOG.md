@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.44.0 (2026-06-28)
+
+### Documentation
+
+- **skill**: On-prem CI deploy spine recipe
+  ([`c58f251`](https://github.com/Gharib89/crm/commit/c58f2515985f293b7df937340f1dc358bdd22faa))
+
+### Features
+
+- **solution**: Export-spec — project a solution into a merged apply-spec
+  ([#615](https://github.com/Gharib89/crm/pull/615),
+  [`95f0633`](https://github.com/Gharib89/crm/commit/95f06336797916f18c44c9b8e1ea0e9bd0697fe6))
+
+### Refactoring
+
+- **backend**: Thread solution= through write verbs; delete solution_headers()
+  ([#609](https://github.com/Gharib89/crm/pull/609),
+  [`f50507e`](https://github.com/Gharib89/crm/commit/f50507e7c4f092d744507141c74559dca4985060))
+
+
 ## v1.43.0 (2026-06-28)
 
 ### Features
