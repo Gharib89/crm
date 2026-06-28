@@ -530,10 +530,10 @@ def _skip_reason(componenttype: int) -> str:
                 "DLL bytes are absent from live metadata); export emits only "
                 "apply-seedable components.")
     if componenttype in _ENTITY_SUBCOMPONENT_TYPES:
-        return ("entity-rooted subcomponent: projected via its parent entity's "
-                "full definition when that entity is a solution member; "
-                "a-la-carte single-column membership is not separately projected "
-                "(known simplification).")
+        return ("entity-rooted subcomponent: never projected individually and "
+                "not resolved to its parent entity (known simplification), so it "
+                "is always reported here; its data is still exported when that "
+                "parent entity is itself a solution member (projected in full).")
     return (f"{solution_components.component_type_name(componenttype)} is not an "
             "apply-seedable component type in this slice; export emits only "
             "entity-rooted components (security roles and web resources are "

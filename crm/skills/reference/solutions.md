@@ -326,8 +326,11 @@ assemblies, security roles, web resources, and other non-entity-rooted types) la
 The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops
 one silently.
 
-**Known limitation:** a lone attribute, view, or relationship member whose parent entity
-is NOT itself in the solution is not separately projected — it lands in `skipped` (ADR 0019).
+**Known limitation:** projection is driven by entity members only — a subcomponent member
+is NOT resolved to its parent entity. So attribute / view / relationship members **always**
+appear in `skipped`; their data is still exported when the parent entity is itself a solution
+member (projected in full), and only a lone subcomponent whose parent entity is absent is
+genuinely not exported (ADR 0019).
 
 The emitted spec includes a top-level `solution:` key so `apply --dry-run` auto-scopes its
 drift/prune report. For a single entity, use `metadata export-spec` (see

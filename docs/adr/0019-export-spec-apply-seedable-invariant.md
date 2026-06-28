@@ -45,11 +45,16 @@ convergent engine) and ADR 0018 (apply reconcile wider spec surface).
   relationships and referenced global option sets ride along inside that
   projection; global option sets shared by multiple entities are de-duplicated by
   name.
-- **À-la-carte single-column membership is a documented simplification.** A
-  subcomponent member added without its parent entity (a lone `attribute` / `view` /
-  `relationship`) is *not* separately projected — it lands in `skipped` with that
-  reason. The common case (a whole entity in the solution) needs no such handling;
-  the simplification only affects hand-curated partial solutions.
+- **Subcomponents are not resolved to their parent entity (documented
+  simplification).** Export drives projection from `entity` members only; an
+  entity-rooted subcomponent member (`attribute` / `view` / `relationship` /
+  `optionset`) is never projected individually and is **always** listed in
+  `skipped` — the exporter does not resolve which entity owns it. Its data is
+  still exported whenever that parent entity is *itself* a solution member
+  (projected in full); only a lone subcomponent whose parent entity was not added
+  is genuinely lost. The common case — a whole entity in the solution — is fully
+  covered by its entity member; the simplification only affects hand-curated
+  partial solutions.
 - **`solution:` scope key.** The emitted spec carries `{"solution": {"unique_name":
   …}}` so the round-trip `apply --dry-run` auto-scopes its drift/prune report to the
   same solution. Publisher is omitted — a live solution does not expose it and a
