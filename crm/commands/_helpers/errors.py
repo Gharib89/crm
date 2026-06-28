@@ -3,6 +3,7 @@
 from __future__ import annotations
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Callable
+import click
 if TYPE_CHECKING:
     from crm.cli import CLIContext
     from crm.utils.d365_backend import D365Error
@@ -97,6 +98,26 @@ def d365_errors(
             hint=e_hint if e_hint is not None else hint,
             extra_meta=e_meta, warnings=warnings,
         )
+
+
+@contextmanager
+def usage_guard():
+    """Translate a status-less (client-side validation) `D365Error` raised by a
+    core predicate into a `click.UsageError` (exit 2), before the backend is
+    touched (#595).
+
+    This lets a core validation predicate be the *single rule authority* while the
+    CLI keeps its usage-error contract: a bad flag combination caught here exits
+    `2` just as if Click had rejected it. A status-bearing error (transport /
+    server) is left to propagate to `d365_errors` → exit `1`.
+    """
+    from crm.utils.d365_backend import D365Error
+    try:
+        yield
+    except D365Error as exc:
+        if exc.status is None:
+            raise click.UsageError(str(exc)) from exc
+        raise
 
 
 def _auth_error_hint(status: int | None, profile_name: str) -> str:

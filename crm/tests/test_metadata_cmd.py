@@ -249,7 +249,7 @@ class TestMetadataAddAttributeBranches:
             "--type", "rollup", "--formula-file", str(f), "--no-publish",
         ])
         assert result.exit_code == 2, result.output
-        assert "not valid for --kind lookup" in result.output
+        assert "not valid for kind 'lookup'" in result.output
         assert not fake_backend.called
 
     # ---- boolean default-value parsing (lines 876-891) ----
@@ -319,3 +319,34 @@ class TestMetadataAddAttributeBranches:
         ])
         # Formula file was read successfully (not exit 2 for formula errors)
         assert result.exit_code != 2, result.output
+
+
+# --------------------------------------------------------------------------- #
+# update-optionset --reorder ParamType (#595): comma-separated int parsing moved
+# from an inline command-body try/except to a Click ParamType — exit 2 at parse,
+# unit-testable without CliRunner.
+# --------------------------------------------------------------------------- #
+
+class TestReorderParamType:
+    def test_parses_comma_separated_ints(self):
+        from crm.commands.metadata import _CommaIntListType
+        assert _CommaIntListType().convert("1,2,7", None, None) == [1, 2, 7]
+
+    def test_strips_whitespace_and_empty(self):
+        from crm.commands.metadata import _CommaIntListType
+        assert _CommaIntListType().convert(" 1 , 2 ,7 ", None, None) == [1, 2, 7]
+
+    def test_bad_value_raises_usage_error(self):
+        import click
+        from crm.commands.metadata import _CommaIntListType
+        with pytest.raises(click.UsageError, match="comma-separated list of integers"):
+            _CommaIntListType().convert("1,x,3", None, None)
+
+    def test_cli_bad_reorder_is_exit_2(self, fake_backend, monkeypatch):
+        _use(monkeypatch, fake_backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "metadata", "update-optionset", "new_pick",
+            "--reorder", "1,nope,3", "--no-publish",
+        ])
+        assert result.exit_code == 2, result.output
+        assert not fake_backend.called

@@ -24,6 +24,7 @@ from crm.commands._helpers import (
     _parse_value_labels,
     _handle_d365_error,
     d365_errors,
+    usage_guard,
     _confirm_destructive,
     _journal,
     _output_option,
@@ -39,6 +40,26 @@ from crm.commands._helpers import (
     _MENU,
     _REQUIRED,
 )
+
+
+class _CommaIntListType(click.ParamType):
+    """A comma-separated list of integers, e.g. ``1,2,7`` → ``[1, 2, 7]`` (#595).
+
+    Bad input fails at parse time (exit 2), so the command body never sees a
+    malformed value. Empty / whitespace-only input yields ``None`` (no reorder).
+    """
+    name = "int-list"
+
+    def convert(self, value, param, ctx):
+        if not isinstance(value, str):
+            return value
+        try:
+            parsed = [int(x.strip()) for x in value.split(",") if x.strip()]
+        except ValueError:
+            self.fail(
+                f"{value!r} must be a comma-separated list of integers.", param, ctx
+            )
+        return parsed or None
 
 
 @click.group("metadata")
@@ -489,10 +510,7 @@ def metadata_create_entity(
             solution=solution,
             if_exists=if_exists,
         )
-        if publish and not info.get("_dry_run") and not info.get("skipped"):
-            from crm.core import solution as sol_mod
-            sol_mod.publish_all(ctx.backend())
-            info["published"] = True
+        meta_mod.maybe_publish(ctx.backend(), info, publish and not info.get("skipped"))
     _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, schema_name, info, solution=solution)
 
@@ -852,17 +870,13 @@ def metadata_add_attribute(
     publish = _resolve_publish(ctx, publish)
     parsed_options = _parse_value_labels(options, flag="--option") or None
 
+    # Coercion stays at the CLI seam (single caller): the --formula-file PATH is
+    # read into content here. The domain RULES — formula ↔ source_type ↔ kind, and
+    # default-value parsing — now live in core as the single authority shared with
+    # `apply`; `usage_guard` maps their status-less validation `D365Error` back to
+    # a `click.UsageError` (exit 2) before the backend is touched (#595).
     formula_definition: str | None = None
-    if source_type == "simple":
-        if formula_file is not None:
-            raise click.UsageError(
-                "--formula-file is only valid with --type rollup or calculated."
-            )
-    else:
-        if formula_file is None:
-            raise click.UsageError(f"--formula-file is required for --type {source_type}.")
-        if kind in ("lookup", "customer"):
-            raise click.UsageError(f"--type {source_type} is not valid for --kind {kind}.")
+    if formula_file is not None:
         # click.Path(exists=True) validates at parse time, but a permission edge,
         # a delete-after-check race, or a bad encoding can still fail the read —
         # surface it as a clean usage error rather than an uncaught traceback.
@@ -870,27 +884,9 @@ def metadata_add_attribute(
             formula_definition = Path(formula_file).read_text(encoding="utf-8")
         except OSError as exc:
             raise click.UsageError(f"cannot read --formula-file {formula_file}: {exc}") from exc
-
-    parsed_default: bool | int | None = None
-    if default_value is not None:
-        if kind == "boolean":
-            lv = default_value.lower()
-            if lv in ("1", "true", "yes", "on", "t", "y"):
-                parsed_default = True
-            elif lv in ("0", "false", "no", "off", "f", "n"):
-                parsed_default = False
-            else:
-                raise click.UsageError(
-                    f"--default-value for kind 'boolean' must be one of "
-                    f"true/false/1/0/yes/no/on/off, got: {default_value!r}"
-                )
-        else:
-            try:
-                parsed_default = int(default_value)
-            except ValueError as exc:
-                raise click.UsageError(
-                    f"--default-value must be int for kind {kind!r}: {default_value!r}"
-                ) from exc
+    with usage_guard():
+        ma_mod.check_formula_compat(kind, source_type, formula_definition)
+        parsed_default = ma_mod.parse_default(kind, default_value)
 
     with d365_errors(ctx):
         info = ma_mod.add_attribute(
@@ -977,10 +973,7 @@ def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
             key_attributes=attrs, display_name=display_name,
             solution=solution, if_exists=if_exists,
         )
-        if publish and not info.get("_dry_run") and not info.get("skipped"):
-            from crm.core import solution as sol_mod
-            sol_mod.publish_all(ctx.backend())
-            info["published"] = True
+        meta_mod.maybe_publish(ctx.backend(), info, publish and not info.get("skipped"))
     _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, f"{entity}.{schema_name}", info, solution=solution)
 
@@ -1209,7 +1202,7 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
               help="Update an existing option's label, 'value:label'. Repeatable.")
 @click.option("--delete-option", "delete_options", multiple=True, type=int,
               help="Delete option by value. Repeatable.")
-@click.option("--reorder", default=None,
+@click.option("--reorder", type=_CommaIntListType(), default=None,
               help="Comma-separated full ordered list of values, e.g. '1,2,7,4'.")
 @_solution_option
 @_publish_option
@@ -1227,15 +1220,6 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
         _parse_value_labels(update_options, flag="--update-option", require_value=True),
     )
 
-    reorder_list: list[int] | None = None
-    if reorder:
-        try:
-            reorder_list = [int(x.strip()) for x in reorder.split(",") if x.strip()]
-        except ValueError as exc:
-            raise click.UsageError(
-                f"--reorder must be a comma-separated list of integers: {reorder!r}"
-            ) from exc
-
     with d365_errors(ctx):
         info = os_mod.update_optionset(
             ctx.backend(),
@@ -1243,7 +1227,7 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
             insert=insert or None,
             update=update or None,
             delete=list(delete_options) or None,
-            reorder=reorder_list,
+            reorder=reorder,
             publish=publish,
             solution=solution,
         )

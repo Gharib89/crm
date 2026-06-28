@@ -468,6 +468,61 @@ def delete_attribute(
     return result
 
 
+def check_formula_compat(
+    kind: str, source_type: str, formula_definition: str | None
+) -> None:
+    """Validate the formula ↔ source-type ↔ kind rule (#595).
+
+    A ``simple`` column takes no formula; ``rollup``/``calculated`` require one and
+    are not valid on ``lookup``/``customer`` kinds. The single authority for this
+    rule, shared by the CLI (via ``usage_guard`` → exit 2) and ``add_attribute`` /
+    ``apply`` (via ``d365_errors`` → exit 1). Raises a status-less ``D365Error``
+    (classified ``validation``) on violation.
+    """
+    if source_type == "simple":
+        if formula_definition is not None:
+            raise D365Error(
+                "--formula-file is only valid with --type rollup or calculated."
+            )
+    else:
+        if formula_definition is None:
+            raise D365Error(f"--formula-file is required for --type {source_type}.")
+        if kind in ("lookup", "customer"):
+            raise D365Error(f"--type {source_type} is not valid for kind {kind!r}.")
+
+
+def parse_default(kind: str, value: str | bool | int | None) -> bool | int | None:
+    """Coerce + validate a default value for ``kind`` (#595).
+
+    Accepts the raw string from the CLI or a native ``bool``/``int`` from ``apply``;
+    returns the typed value the metadata body expects (``bool`` for ``boolean``,
+    ``int`` otherwise). Raises a status-less ``D365Error`` (classified
+    ``validation``) on bad input. The single authority for default parsing, shared
+    by the CLI (via ``usage_guard`` → exit 2) and ``add_attribute`` / ``apply``
+    (via ``d365_errors`` → exit 1).
+    """
+    if value is None:
+        return None
+    if kind == "boolean":
+        if isinstance(value, bool):
+            return value
+        lv = str(value).lower()
+        if lv in ("1", "true", "yes", "on", "t", "y"):
+            return True
+        if lv in ("0", "false", "no", "off", "f", "n"):
+            return False
+        raise D365Error(
+            "--default-value for kind 'boolean' must be one of "
+            f"true/false/1/0/yes/no/on/off, got: {value!r}"
+        )
+    try:
+        return int(value)
+    except (ValueError, TypeError) as exc:
+        raise D365Error(
+            f"--default-value must be int for kind {kind!r}: {value!r}"
+        ) from exc
+
+
 def add_attribute(
     backend: D365Backend,
     *,
@@ -515,16 +570,8 @@ def add_attribute(
         raise D365Error("--behavior is not valid for this kind.")
     if source_type not in ("simple", "rollup", "calculated"):
         raise D365Error("source_type must be 'simple', 'rollup', or 'calculated'.")
-    if source_type == "simple":
-        if formula_definition is not None:
-            raise D365Error(
-                "--formula-file is only valid with --type rollup or calculated."
-            )
-    else:
-        if formula_definition is None:
-            raise D365Error(f"--formula-file is required for --type {source_type}.")
-        if kind in ("lookup", "customer"):
-            raise D365Error(f"--type {source_type} is not valid for kind {kind!r}.")
+    check_formula_compat(kind, source_type, formula_definition)
+    default_value = parse_default(kind, default_value)
     logical_name = schema_name.lower()
 
     if kind == "lookup":

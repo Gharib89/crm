@@ -37,6 +37,7 @@ from .options import (
 from .errors import (
     _handle_d365_error,
     d365_errors,
+    usage_guard,
     _auth_error_hint,
 )
 from .solutions import (
@@ -90,7 +91,7 @@ __all__ = [
     # generic option decorators
     "_output_option",
     # d365 errors
-    "_handle_d365_error", "d365_errors", "_auth_error_hint",
+    "_handle_d365_error", "d365_errors", "usage_guard", "_auth_error_hint",
     # solution resolution
     "_resolve_solution", "_require_solution", "_solution_option",
     "_publish_option", "_resolve_publish", "_active_profile",

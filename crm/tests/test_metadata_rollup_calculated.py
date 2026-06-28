@@ -182,7 +182,7 @@ class TestRollupCalculatedCli:
             "--type", "rollup", "--formula-file", str(f), "--no-publish",
         ])
         assert result.exit_code == 2
-        assert "not valid for --kind lookup" in result.output
+        assert "not valid for kind 'lookup'" in result.output
 
     def test_formula_file_with_simple_errors(self, monkeypatch, backend, tmp_path):
         self._stub(monkeypatch, backend)
