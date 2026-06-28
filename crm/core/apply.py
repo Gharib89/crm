@@ -434,20 +434,32 @@ def validate_spec(spec: Any) -> None:
         for opt in cast("list[Any]", os_spec.get("options") or []):
             _validate_option(opt, f"optionset {os_spec['name']!r}")
     for wr in _as_list(sp.get("webresources")):
-        _require(wr, ("name", "file"), "web resource")
-        # name/file/display_name reach os.path.join + the Web API as strings; a
-        # non-string (e.g. an unquoted YAML number) must fail here with a clean
-        # D365Error, not blow up later inside os.path.join.
-        for key in ("name", "file", "display_name"):
+        _require(wr, ("name",), "web resource")
+        # A web resource's body comes from either a `file` on disk or an inline
+        # base64 `content` string (export-spec emits the latter so the spec is
+        # self-contained). Exactly one source is needed.
+        if wr.get("file") is None and wr.get("content") is None:
+            raise D365Error(
+                f"web resource {wr.get('name')!r}: needs 'file' or inline 'content'.")
+        # name/file/display_name/content reach os.path.join + base64 + the Web API
+        # as strings; a non-string (e.g. an unquoted YAML number) must fail here with
+        # a clean D365Error, not blow up later inside os.path.join / base64.
+        for key in ("name", "file", "display_name", "content"):
             if wr.get(key) is not None and not isinstance(wr[key], str):
                 raise D365Error(f"web resource {wr.get('name')!r}: {key} must be a string.")
         if wr.get("webresourcetype") is not None and not isinstance(wr["webresourcetype"], int):
             raise D365Error(
                 f"web resource {wr['name']!r}: webresourcetype must be an integer.")
-        # Fail fast (before any HTTP) when no type is given and it can't be inferred
-        # from the extension — otherwise the create raises mid-run, after earlier
-        # components have already landed. Raises D365Error on an unknown extension.
-        wr_mod.resolve_webresourcetype(wr["file"], wr.get("webresourcetype"))
+        # Fail fast (before any HTTP) on a type that can't be resolved. With a `file`,
+        # an unknown extension and no explicit type is the error; with inline
+        # `content` there is no extension to infer from, so webresourcetype is
+        # required outright.
+        if wr.get("file") is not None:
+            wr_mod.resolve_webresourcetype(wr["file"], wr.get("webresourcetype"))
+        elif wr.get("webresourcetype") is None:
+            raise D365Error(
+                f"web resource {wr['name']!r}: webresourcetype is required when the "
+                "body is inline 'content' (no file extension to infer the type from).")
     for role in _as_list(sp.get("security_roles")):
         _require(role, ("name",), "security role")
         if not isinstance(role["name"], str):
@@ -993,6 +1005,24 @@ def _read_file_bytes(base_dir: str | None, file: str) -> bytes:
             return fh.read()
     except OSError as exc:
         raise D365Error(f"cannot read file {path!r}: {exc}") from exc
+
+
+def _webresource_content(base_dir: str | None, wr: dict[str, Any]) -> bytes:
+    """Web resource body bytes from inline base64 `content` or a `file` on disk.
+
+    export-spec emits a web resource's body as an inline base64 `content` string so
+    the spec round-trips without sidecar files; an authored spec may instead point
+    `file` at a path. validate_spec guarantees exactly one source is present.
+    """
+    inline = wr.get("content")
+    if inline is not None:
+        try:
+            return base64.b64decode(inline, validate=True)
+        except ValueError as exc:  # binascii.Error subclasses ValueError
+            raise D365Error(
+                f"web resource {wr['name']!r}: content is not valid base64: {exc}"
+            ) from exc
+    return _read_file_bytes(base_dir, wr["file"])
 
 
 def _reconcile_webresource(
@@ -1698,7 +1728,7 @@ def apply_spec(
         for wr in _as_list(spec.get("webresources")):
             name: str = wr["name"]
             entry = {"kind": "webresource", "name": name}
-            content = _call(entry, lambda wr=wr: _read_file_bytes(base_dir, wr["file"]),
+            content = _call(entry, lambda wr=wr: _webresource_content(base_dir, wr),
                             failed)
             live_wr = wr_mod.find_webresource(backend, name)
             if live_wr is None:
@@ -1708,7 +1738,7 @@ def apply_spec(
                                    name=name,
                                    content=content,
                                    webresourcetype=wr_mod.resolve_webresourcetype(
-                                       wr["file"], wr.get("webresourcetype")),
+                                       wr.get("file") or "", wr.get("webresourcetype")),
                                    display_name=wr.get("display_name"),
                                    solution=solution_name,
                                    publish=False,

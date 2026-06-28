@@ -12,10 +12,19 @@ whatever `build_entity_spec` produces.
 
 from __future__ import annotations
 
+import base64
+
+import pytest
 import requests_mock
 
 from crm.core import apply
-from crm.core.export_spec import build_entity_spec, build_solution_spec
+from crm.core.export_spec import (
+    build_entity_spec,
+    build_role_spec,
+    build_solution_spec,
+    build_webresource_spec,
+)
+from crm.utils.d365_backend import D365Error
 
 
 # ── URL helpers ──────────────────────────────────────────────────────────────
@@ -1300,14 +1309,14 @@ class TestSolutionLevel:
         apply.validate_spec(spec)
 
     def test_non_entity_members_go_to_skipped_and_verb_succeeds(self, backend):
-        # Plug-in assembly, security role, and an a-la-carte attribute member.
+        # Plug-in (assembly/type/step) and an a-la-carte attribute member: still
+        # non-seedable, so they land in skipped (roles + web resources now project).
         with requests_mock.Mocker() as m:
             m.get(_solutions_url(backend), json=_solution())
             m.get(_components_url(backend), json=_members(
                 _member(90, "33333333-3333-3333-3333-333333333330"),  # plugintype
                 _member(91, "33333333-3333-3333-3333-333333333331"),  # pluginassembly
                 _member(92, "33333333-3333-3333-3333-333333333332"),  # sdkmessageprocessingstep
-                _member(20, "44444444-4444-4444-4444-444444444444"),  # role
                 _member(2,  "55555555-5555-5555-5555-555555555555"),  # attribute
             ))
             result = build_solution_spec(backend, "myorgsln")
@@ -1316,14 +1325,51 @@ class TestSolutionLevel:
         assert result["spec"]["entities"] == []
         by_type = {s["type"]: s for s in result["skipped"]}
         assert set(by_type) == {
-            "plugintype", "pluginassembly", "sdkmessageprocessingstep", "role", "attribute"}
+            "plugintype", "pluginassembly", "sdkmessageprocessingstep", "attribute"}
         # All three plug-in component types share the assembly-bytes reason — it is
         # accurate for the assembly AND its dependent type/step rows.
         for t in ("plugintype", "pluginassembly", "sdkmessageprocessingstep"):
             assert "not projectable from a live org" in by_type[t]["reason"]
-        assert "deferred to a follow-up slice" in by_type["role"]["reason"]
         assert "known simplification" in by_type["attribute"]["reason"]
-        assert by_type["role"]["objectid"] == "44444444-4444-4444-4444-444444444444"
+
+    def test_role_and_webresource_members_project_and_round_trip(self, backend, dry_backend):
+        # Roles (20) + web resources (61) project into the merged spec — not skipped —
+        # and the merged spec round-trips a --dry-run apply against a mocked org.
+        b64 = base64.b64encode(b"console.log(1)").decode("ascii")
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members(
+                _member(20, _ROLE_ID),
+                _member(61, _WR_ID),
+            ))
+            m.get(_role_url(backend), json={
+                "name": "Sales Manager",
+                "_businessunitid_value": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"})
+            m.get(_role_privs_url(backend), json=_role_privs(
+                _rp("prvReadAccount", "Basic", "10000000-0000-0000-0000-000000000001")))
+            m.get(_wr_by_id_url(backend), json={
+                "name": "new_/app.js", "displayname": "App",
+                "webresourcetype": 3, "content": b64})
+            result = build_solution_spec(backend, "myorgsln")
+
+        spec = result["spec"]
+        assert result["skipped"] == []
+        assert [r["name"] for r in spec["security_roles"]] == ["Sales Manager"]
+        assert [w["name"] for w in spec["webresources"]] == ["new_/app.js"]
+        apply.validate_spec(spec)
+
+        # Round-trip: role + web resource absent in the target → dry-run plans both.
+        with requests_mock.Mocker() as m:
+            m.get(backend.url_for("roles"), json={"value": []})  # role absent → create
+            # web resource absent → create; collection $filter existence probe.
+            m.get(backend.url_for("webresourceset"), json={"value": []})
+            # Prune detection (runs under dry_run) reads the target solution.
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members())
+            res = apply.apply_spec(dry_backend, spec)
+        assert res["failed"] == []
+        planned_kinds = {e["kind"] for e in res["planned"]}
+        assert {"security-role", "webresource"} <= planned_kinds
 
     def test_entity_resolution_failure_is_skipped_not_fatal(self, backend):
         with requests_mock.Mocker() as m:
@@ -1422,3 +1468,99 @@ class TestSolutionLevel:
         assert len(result["skipped"]) == 1
         assert result["skipped"][0]["objectid"] == "bad-row"
         assert "non-integer componenttype" in result["skipped"][0]["reason"]
+
+
+# ── Web resource projector ────────────────────────────────────────────────────
+_WR_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+def _wr_by_id_url(backend, wr_id=_WR_ID) -> str:
+    return backend.url_for(f"webresourceset({wr_id})")
+
+
+class TestWebResourceProjector:
+    def test_projects_content_display_and_type(self, backend):
+        b64 = base64.b64encode(b"console.log(1)").decode("ascii")
+        rec = {"webresourceid": _WR_ID, "name": "new_/app.js",
+               "displayname": "App", "webresourcetype": 3, "content": b64}
+        with requests_mock.Mocker() as m:
+            m.get(_wr_by_id_url(backend), json=rec)
+            spec = build_webresource_spec(backend, _WR_ID)
+        # The projected entry is exactly the apply web-resource spec shape (inline
+        # content, no sidecar file) — base64 passed through verbatim from the column.
+        assert spec == {"name": "new_/app.js", "content": b64,
+                        "display_name": "App", "webresourcetype": 3}
+        # Load-bearing: a one-entry spec round-trips validate_spec.
+        apply.validate_spec({"webresources": [spec]})
+
+    def test_missing_name_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_wr_by_id_url(backend),
+                  json={"webresourceid": _WR_ID, "webresourcetype": 3})
+            with pytest.raises(D365Error, match="no name"):
+                build_webresource_spec(backend, _WR_ID)
+
+
+# ── Security-role projector ───────────────────────────────────────────────────
+_ROLE_ID = "44444444-4444-4444-4444-444444444444"
+
+
+def _role_url(backend, rid=_ROLE_ID) -> str:
+    return backend.url_for(f"roles({rid})")
+
+
+def _role_privs_url(backend, rid=_ROLE_ID) -> str:
+    return backend.url_for(f"RetrieveRolePrivilegesRole(RoleId={rid})")
+
+
+def _role_privs(*rows):
+    return {"RolePrivileges": list(rows)}
+
+
+def _rp(name, depth, pid):
+    return {"PrivilegeName": name, "Depth": depth, "PrivilegeId": pid}
+
+
+class TestRoleProjector:
+    def test_groups_privileges_by_depth_and_emits_bu(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_role_url(backend), json={
+                "roleid": _ROLE_ID, "name": "Sales Manager",
+                "_businessunitid_value": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"})
+            m.get(_role_privs_url(backend), json=_role_privs(
+                _rp("prvReadAccount", "Basic", "10000000-0000-0000-0000-000000000001"),
+                _rp("prvWriteAccount", "Basic", "10000000-0000-0000-0000-000000000002"),
+                _rp("prvCreateContact", "Global", "10000000-0000-0000-0000-000000000003"),
+            ))
+            spec = build_role_spec(backend, _ROLE_ID)
+        assert spec["name"] == "Sales Manager"
+        assert spec["business_unit"] == "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        # One privilege_names selector row per depth, depths in canonical order
+        # (Basic before Global), names sorted within a row.
+        assert spec["privileges"] == [
+            {"depth": "Basic", "privilege_names": ["prvReadAccount", "prvWriteAccount"]},
+            {"depth": "Global", "privilege_names": ["prvCreateContact"]},
+        ]
+        apply.validate_spec({"security_roles": [spec]})
+
+    def test_non_authorable_depth_dropped_with_warning(self, backend):
+        warns: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_role_url(backend), json={"name": "Reader"})
+            m.get(_role_privs_url(backend), json=_role_privs(
+                _rp("prvReadAccount", "Basic", "10000000-0000-0000-0000-000000000001"),
+                _rp("prvFiltered", "RecordFilter", "10000000-0000-0000-0000-000000000009"),
+            ))
+            spec = build_role_spec(backend, _ROLE_ID, warnings=warns)
+        assert spec["privileges"] == [
+            {"depth": "Basic", "privilege_names": ["prvReadAccount"]}]
+        assert any("RecordFilter" in w for w in warns)
+        assert "business_unit" not in spec  # absent in the record → key omitted
+
+    def test_no_authorable_privileges_raises(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_role_url(backend), json={"name": "Empty"})
+            m.get(_role_privs_url(backend), json=_role_privs(
+                _rp("prvFiltered", "RecordFilter", "10000000-0000-0000-0000-000000000009")))
+            with pytest.raises(D365Error, match="no apply-authorable privileges"):
+                build_role_spec(backend, _ROLE_ID)
