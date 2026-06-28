@@ -1312,7 +1312,7 @@ def _mock_relationship_live(m, backend, *, schema, referenced="contoso_project",
     MetadataId) serves update_relationship's merge base; the PUT to the un-cast
     MetadataId path is the #267 write. The relationship-backed lookup column on the
     referencing entity is mocked like _mock_attribute_live (base + Lookup cast GET +
-    PUT) so the lookup half of the reconcile diffs and can be updated."""
+    PUT) so the reconcile can diff and update the lookup half."""
     cast = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
     live = {
         "SchemaName": schema, "MetadataId": _REL_ID, "@odata.type": "#" + cast,
