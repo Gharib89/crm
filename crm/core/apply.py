@@ -342,6 +342,14 @@ def validate_spec(spec: Any) -> None:
         # through the SAME mc.* primitives the builder calls, so a malformed block
         # fails here rather than mid-apply (closes validate/apply drift, #596).
         REGISTRY["entity"].validate(ent)
+        # The primary attribute's schema_name is nested under primary_attr (the
+        # adapter forwards it via a transform), so it isn't a top-level schema-name
+        # key — validate it here too, matching create_entity's own check.
+        primary = ent.get("primary_attr")
+        if isinstance(primary, dict):
+            pa = cast("dict[str, Any]", primary)
+            if pa.get("schema_name"):
+                mc.validate_schema_name(pa["schema_name"], subject="primary_attr_schema")
         for sub in ("attributes", "relationships", "views"):
             _require_list(ent, sub, elabel)
         for attr in _as_list(ent.get("attributes")):

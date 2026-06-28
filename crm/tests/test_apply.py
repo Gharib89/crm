@@ -3336,3 +3336,15 @@ def test_apply_rejects_entity_schema_name_without_prefix_before_http(backend):
         with pytest.raises(D365Error, match="must include a publisher prefix"):
             apply_mod.apply_spec(backend, spec, stage_only=False)
         assert m.request_history == []
+
+
+def test_apply_rejects_primary_attr_schema_without_prefix_before_http(backend):
+    # The primary attribute's nested schema_name (forwarded as primary_attr_schema)
+    # is validated up front too — a no-prefix value fails before any write.
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{"schema_name": "contoso_Project", "display_name": "Project",
+                          "primary_attr": {"schema_name": "Name", "label": "Name"}}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="primary_attr_schema must include a publisher prefix"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
