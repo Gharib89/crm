@@ -101,14 +101,18 @@ _WEBHOOK_AUTHTYPE: dict[str, int] = {
 _WEBHOOK_CONTRACT = 8
 _CONNECTION_MODE_NORMAL = 1
 _MESSAGE_FORMAT_JSON = 2
-# Message name (lowercased) -> Request property the image snapshots, from
-# MS Learn "Register a plug-in" (messages that support entity images). Send is
+# Message name (lowercased) -> the image's `messagepropertyname`, from MS Learn
+# "Register a plug-in" (messages that support entity images). Send is
 # deliberately absent: its property depends on what is sent (FaxId / EmailId /
 # TemplateId), so it requires an explicit message_property_name. Merge also
 # accepts SubordinateId; Target (the parent) is the default here.
+# Create is the exception: although the *request* property is Target, a Create
+# image must key on "Id" (the id of the created row) — the platform rejects
+# "Target" on Create with "Message property name 'Target' is not valid on
+# message Create." Only a post-image is valid on Create (no row exists pre-op).
 _MESSAGE_PROPERTY: dict[str, str] = {
     "assign": "Target",
-    "create": "Target",
+    "create": "Id",
     "delete": "Target",
     "merge": "Target",
     "route": "Target",

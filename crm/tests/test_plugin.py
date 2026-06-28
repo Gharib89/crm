@@ -1180,6 +1180,21 @@ class TestRegisterImage:
                     backend, step=_STEP_ID, image_type="pre", alias="preimg")
         assert not _posts(m)
 
+    def test_post_image_on_create_step_keys_on_id(self, backend):
+        # Create images use messagepropertyname "Id" (the created row's id), not
+        # "Target" — the platform rejects "Target" on the Create message. Only a
+        # post-image is valid on Create.
+        from crm.core import plugin
+        img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, backend, stage=40, message="Create")
+            m.post(backend.url_for("sdkmessageprocessingstepimages"),
+                   status_code=204, headers={"OData-EntityId": img_url})
+            out = plugin.register_image(
+                backend, step=_STEP_ID, image_type="post", alias="postimg")
+        assert _posts(m)[0].json()["messagepropertyname"] == "Id"
+        assert out["messagepropertyname"] == "Id"
+
     def test_post_image_on_delete_step_raises(self, backend):
         # MS Learn: no post-image on Delete — the record no longer exists.
         from crm.core import plugin

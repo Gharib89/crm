@@ -225,7 +225,8 @@ Key points:
   Omitting it captures **all** columns — a documented performance
   anti-pattern; always pass a list.
 - `messagepropertyname` is derived from the step's message automatically
-  (`Target` for Assign/Create/Delete/Merge/Route/Update, `EmailId` for
+  (`Target` for Assign/Delete/Merge/Route/Update, `Id` for Create — the platform
+  rejects `Target` on Create — `EmailId` for
   DeliverIncoming/DeliverPromote, `EntityMoniker` for SetState). `Send` steps
   are ambiguous (`FaxId`, `EmailId`, or `TemplateId`) and require an explicit
   `--message-property-name`; messages outside that table do not support
