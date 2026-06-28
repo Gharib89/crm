@@ -541,12 +541,16 @@ crm apply -f project.yaml
 
 **What is captured:**
 
-- Entity: `schema_name`, `display_name`, `display_collection_name`, `ownership`.
+- Entity: `schema_name`, `display_name`, `display_collection_name`, `ownership`,
+  `has_notes`, `has_activities`, `primary_attr_max_length`. Fields equal to their
+  platform default are omitted.
 - Primary name attribute: `schema_name` + `label` (represented as `primary_attr`).
 - Custom, apply-creatable attributes (14 kinds: `string`, `memo`, `integer`,
   `bigint`, `decimal`, `double`, `money`, `boolean`, `datetime`, `picklist`,
   `multiselect`, `lookup`, `image`, `file`). Each attribute is deep-read to capture
   `MaxLength`, `FormatName`, `Precision`, `RequiredLevel`, and option-set options.
+  Also captured where applicable: `auto_number_format` (string), `min_value` /
+  `max_value` (integer/bigint), `behavior_name` (datetime), `max_size_kb` (file).
   Picklists/multiselects bound to a global option set emit `optionset_name`; the
   referenced global option set is captured as a top-level `optionsets` entry.
   Calculated and rollup columns (custom columns with `SourceType` 1/2) are also
@@ -555,8 +559,13 @@ crm apply -f project.yaml
   re-create them in another environment. If the FormulaDefinition cannot be read,
   the column is exported as a plain simple column and a warning is emitted.
   System attributes (Owner, State, Status, Uniqueidentifier, …) are skipped.
-- Relationships (with `--with-relationships`): custom 1:N relationships.
-- Views (with `--with-views`): public saved queries with parseable column layouts.
+- Relationships (with `--with-relationships`): custom 1:N relationships, including
+  flat cascade keys (`cascade_assign`, `cascade_delete`, `cascade_reparent`,
+  `cascade_share`, `cascade_unshare`, `cascade_merge`), associated-menu keys
+  (`menu_behavior`, `menu_label`, `menu_order`), and `is_hierarchical`. Keys equal
+  to platform defaults are omitted.
+- Views (with `--with-views`): public saved queries with parseable column layouts,
+  including `filter_active` and `order_desc` where set.
 - Publisher and solution are **not** emitted — supply them via `crm apply --solution`
   or by editing the YAML before applying.
 
@@ -572,9 +581,6 @@ Caveats:
   re-created with the server default format and `UserLocal` behavior.
 - A polymorphic (multi-target) lookup is exported with its first target only and
   re-created as a single-target lookup (`apply` creates single-target lookups).
-- Relationship `cascade` and `associated_menu` configuration are captured but not
-  yet acted on by `apply` (`create_one_to_many` does not accept them) — the
-  relationship is re-created with default cascade/menu behaviour.
 
 `apply` ignores unknown keys, so the spec file remains apply-consumable throughout.
 Attribute types that `apply` cannot create (Owner, State, Status, and other system

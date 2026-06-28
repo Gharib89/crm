@@ -40,9 +40,12 @@ spec — `cascade_assign/delete/reparent/share/unshare/merge`, `menu_label/behav
 `primary_attr_max_length`, `data_provider_id/data_source_id`,
 `external_name/external_collection_name`, `description` (entity); `filter_active`,
 `query_type`, `order_desc`, `description` (view). **These take effect at CREATE only.**
-Re-applying an existing component does not yet reconcile them; `export-spec` does not
-yet emit them (round-trip is lossy for them). Follow-ups: **#597** (export-spec) and
-**#598** (reconcile).
+Re-applying an existing component does not yet reconcile them (**#598**). `export-spec`
+emits the subset of these keys that map to live Web API fields — relationships emit flat
+`cascade_assign/delete/…` and `menu_behavior/label/order`; attributes emit
+`auto_number_format`, `min_value`/`max_value`, `max_size_kb`, `behavior_name`; entity
+emits `has_notes`, `has_activities`, `primary_attr_max_length`; views emit
+`filter_active`, `order_desc`. Fields equal to platform defaults are omitted.
 
 Reconciliation also runs under `--dry-run`, read-only (writes suppressed by the
 reads-execute rule), so a dry-run is a full drift report: every declared
