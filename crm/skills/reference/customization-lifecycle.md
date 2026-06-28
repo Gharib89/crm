@@ -97,6 +97,31 @@ validate --against-org` now catches it pre-import (it compares the package's
 structural and does not. Build on the lowest version in your dev→test→prod chain, or keep
 every tier on one platform.
 
+## CI deploy spine — profile-per-tier, exit codes as gates
+
+The promote flow above assumes one **active** profile. A CI pipeline instead targets a
+different org per **tier** in one non-interactive run: the global `crm --profile <tier>`
+(before the subcommand) picks the target, and each verb's **exit code gates the next
+step** — any non-zero aborts the chain, so plain `&&` is the whole guard. On-prem gets the
+pipeline experience Microsoft ships only for cloud (Pipelines/PPAC).
+
+```bash
+# Build the artifact once — export from dev, OR pack a source-controlled tree (offline, no profile)
+crm --profile dev solution export MyApp -o myapp.zip --managed
+crm solution pack --zipfile myapp.zip --folder src/MyApp        # alternative source — the pac bridge
+
+# Ship the SAME zip up the tiers (test shown; prod is the identical two lines with --profile prod)
+crm --profile test solution validate myapp.zip --against-org && \  # gate: version ceiling + ref/GUID collisions
+crm --profile test solution import  myapp.zip --yes               # import activates imported workflows
+crm --json --profile test solution components MyApp --diff expected.json  # exit 1 = drift ⇒ fail the build
+```
+
+- **Gates are exit codes** — `validate`, `import`, `components --diff` (1 on drift), and a
+  non-zero `pac` all fail the command; no `--json` needed except to parse the diff.
+- **Workflow activation rides on `import`** — run a standalone `workflow activate <id>` only
+  for processes imported with `--no-publish`, or ones authored outside the solution.
+- `--against-org` goes on each **target**, never the export source. → `reference/solutions.md`
+
 ## Tearing down — reverse the build order
 
 Decommissioning undoes the build order **in reverse**: automation and UI components first,
