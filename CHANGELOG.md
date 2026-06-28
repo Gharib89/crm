@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.41.0 (2026-06-28)
+
+### Bug Fixes
+
+- **apply**: Export-spec emits relationship lookup_description too
+  ([#604](https://github.com/Gharib89/crm/pull/604),
+  [`7d22dd0`](https://github.com/Gharib89/crm/commit/7d22dd042087f0e49db38d7be7598482c21f86d5))
+
+- **apply**: Keep export-spec menu output apply-valid; correct datetime caveat
+  ([#604](https://github.com/Gharib89/crm/pull/604),
+  [`7d22dd0`](https://github.com/Gharib89/crm/commit/7d22dd042087f0e49db38d7be7598482c21f86d5))
+
+- **apply**: Scope view fetchxml parse to the root entity; complete docs
+  ([#604](https://github.com/Gharib89/crm/pull/604),
+  [`7d22dd0`](https://github.com/Gharib89/crm/commit/7d22dd042087f0e49db38d7be7598482c21f86d5))
+
+### Documentation
+
+- **metadata**: Correct remaining stale export-spec round-trip claims
+  ([#604](https://github.com/Gharib89/crm/pull/604),
+  [`7d22dd0`](https://github.com/Gharib89/crm/commit/7d22dd042087f0e49db38d7be7598482c21f86d5))
+
+- **metadata**: Document the wider export-spec round-trip surface
+  ([#604](https://github.com/Gharib89/crm/pull/604),
+  [`7d22dd0`](https://github.com/Gharib89/crm/commit/7d22dd042087f0e49db38d7be7598482c21f86d5))
+
+### Features
+
+- **apply**: Export-spec emits the wider spec surface (lossless round-trip)
+  ([#604](https://github.com/Gharib89/crm/pull/604),
+  [`7d22dd0`](https://github.com/Gharib89/crm/commit/7d22dd042087f0e49db38d7be7598482c21f86d5))
+
+### Testing
+
+- **e2e**: Cover the wider export-spec round-trip live
+  ([#604](https://github.com/Gharib89/crm/pull/604),
+  [`7d22dd0`](https://github.com/Gharib89/crm/commit/7d22dd042087f0e49db38d7be7598482c21f86d5))
+
+
 ## v1.40.0 (2026-06-28)
 
 ### Chores
