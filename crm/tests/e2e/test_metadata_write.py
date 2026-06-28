@@ -272,9 +272,10 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
             f"relationship {rel_schema} not found in account export; saw "
             f"{[x.get('schema_name') for x in rels]}"
         )
-        cascade = rel.get("cascade") or {}
-        assert cascade.get("assign") == "Cascade", cascade   # changed key applied
-        assert cascade.get("delete") == "Restrict", cascade  # untouched key survives
+        # export-spec emits the FLAT cascade_* keys the apply adapter consumes
+        # (#597); a non-default dimension survives the round-trip without reset.
+        assert rel.get("cascade_assign") == "Cascade", rel   # changed key applied
+        assert rel.get("cascade_delete") == "Restrict", rel  # untouched key survives
 
     finally:
         if created:

@@ -153,6 +153,58 @@ def test_view_create_query_type_and_description(backend, cli, request, unique):
     )
 
 
+@covers("view create")
+@pytest.mark.slow
+def test_view_filter_active_and_order_desc_round_trip(backend, cli, request, unique):
+    """Create a public view with --filter-active and a descending sort, then
+    confirm export-spec emits filter_active/order_desc (#597) — the export half
+    of a lossless round-trip. Cleans up."""
+    view_name = f"E2E Active {unique}"
+    otc = _resolve_otc(backend, "contact")
+
+    created_id: list[str] = []
+
+    def _cleanup():
+        if created_id:
+            try:
+                backend.delete(f"savedqueries({created_id[0]})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    result = cli([
+        "--json", "view", "create", "contact",
+        "--name", view_name,
+        "--otc", str(otc),
+        "--column", "contactid",
+        "--column", "createdon",
+        "--order", "createdon desc",
+        "--filter-active",
+        "--no-publish",
+    ])
+    assert result.returncode == 0, (
+        f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    sqid = json.loads(result.stdout)["data"].get("savedqueryid")
+    assert sqid, f"savedqueryid missing from response: {result.stdout}"
+    created_id.append(sqid)
+
+    # export-spec reads the view back from the live fetchxml.
+    r_read = cli(["--json", "metadata", "export-spec", "contact", "--with-views"])
+    assert r_read.returncode == 0, r_read.stderr
+    env = json.loads(r_read.stdout)
+    assert env["ok"], env
+    views = env["data"]["entities"][0].get("views", [])
+    view = next((v for v in views if v.get("name") == view_name), None)
+    assert view is not None, (
+        f"view {view_name!r} not found in export; saw {[v.get('name') for v in views]}"
+    )
+    assert view.get("filter_active") is True, view
+    assert view.get("order_desc") is True, view
+    assert view.get("order_by") == "createdon", view
+
+
 # ── view edit-columns / set-order ───────────────────────────────────────────
 
 
