@@ -82,7 +82,7 @@ def clone_entity(
     skipped_workflows, ribbon_note, apply}``.
     """
     mc.validate_schema_name(
-        new_schema_name, subject="new_schema_name", example="new_TicketClone")
+        new_schema_name, subject="new_schema_name", example="new_TicketClone", echo=True)
     prefix, _, _ = new_schema_name.partition("_")
     validate_customization_prefix(prefix)
 

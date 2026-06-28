@@ -178,3 +178,8 @@ def test_validate_schema_name_rejects_non_string_cleanly():
     # An unquoted YAML/JSON number must raise D365Error, not crash with TypeError.
     with pytest.raises(D365Error, match="must include a publisher prefix"):
         mc.validate_schema_name(123)
+
+
+def test_validate_schema_name_echo_includes_offending_value():
+    with pytest.raises(D365Error, match=r"got 'Bad'"):
+        mc.validate_schema_name("Bad", subject="new_schema_name", echo=True)
