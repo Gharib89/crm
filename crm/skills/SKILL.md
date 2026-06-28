@@ -147,7 +147,7 @@ For per-domain detail:
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, bulk import/export, ad-hoc `action` | `reference/records.md` |
 | metadata: browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`) | `reference/metadata.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
-| solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift, label translation export/import | `reference/solutions.md` |
+| solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift, label translation export/import, `export-spec` (org-to-org drift recipe) | `reference/solutions.md` |
 | customizations: model-driven apps, sitemap live-edit (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description), web resources, ribbon, forms, charts, dashboards, themes, reports | `reference/customizations.md` |
 | automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA lifecycle (create / add-kpi / activate) | `reference/automation.md` |
 | composing classic-workflow **step XAML** to hand `workflow update --xaml-file` (on-prem logic path): the provenance wall, the direct-PATCH routine, the snippet library | `reference/workflow-xaml.md` |

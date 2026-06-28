@@ -15,7 +15,7 @@ from __future__ import annotations
 import requests_mock
 
 from crm.core import apply
-from crm.core.export_spec import build_entity_spec
+from crm.core.export_spec import build_entity_spec, build_solution_spec
 
 
 # ── URL helpers ──────────────────────────────────────────────────────────────
@@ -1237,3 +1237,188 @@ class TestCalcRoundTrip:
         assert [e["name"] for e in res["replace_blocked"]] == []
         assert "new_Total" in [e["name"] for e in res["skipped"]]
         assert res["ok"] is True
+
+
+# ── solution-level projection (build_solution_spec, #613) ─────────────────────
+
+# Obvious placeholder GUIDs — never a real org's identifiers (public repo).
+_SOL_ID = "22222222-2222-2222-2222-222222222222"
+_ENTITY_MD_ID = "11111111-1111-1111-1111-111111111111"
+
+
+def _solutions_url(backend) -> str:
+    return backend.url_for("solutions")
+
+
+def _components_url(backend) -> str:
+    return backend.url_for("solutioncomponents")
+
+
+def _entity_by_id_url(backend, md_id=_ENTITY_MD_ID) -> str:
+    return backend.url_for(f"EntityDefinitions({md_id})")
+
+
+def _solution(unique="myorgsln"):
+    return {"value": [{"solutionid": _SOL_ID, "uniquename": unique}]}
+
+
+def _members(*rows):
+    return {"value": list(rows)}
+
+
+def _member(componenttype, objectid, behavior=0):
+    return {"componenttype": componenttype, "objectid": objectid,
+            "rootcomponentbehavior": behavior}
+
+
+def _mock_minimal_entity(m, backend, *, logical="new_project"):
+    """Mock the GETs build_entity_spec makes for a primary-attr-only entity
+    with views+relationships enabled (both empty)."""
+    m.get(_entity_url(backend, logical), json=_ENTITY)
+    m.get(_attrs_url(backend, logical), json={"value": [_shallow("new_name")]})
+    m.get(_attr_url(backend, "new_name", logical), json=_primary_info())
+    m.get(_o2m_url(backend, logical), json={"value": []})
+    m.get(backend.url_for("savedqueries"), json={"value": []})
+
+
+class TestSolutionLevel:
+    def test_one_entity_member_projects_and_round_trips(self, backend, dry_backend):
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend),
+                  json=_members(_member(1, _ENTITY_MD_ID)))
+            m.get(_entity_by_id_url(backend), json={"LogicalName": "new_project"})
+            _mock_minimal_entity(m, backend)
+            result = build_solution_spec(backend, "myorgsln")
+
+        spec = result["spec"]
+        # Top-level solution key is a dict (validate_spec / apply auto-scope).
+        assert spec["solution"] == {"unique_name": "myorgsln"}
+        assert [e["schema_name"] for e in spec["entities"]] == ["new_Project"]
+        assert result["skipped"] == []
+        # Load-bearing round-trip: the merged spec validates.
+        apply.validate_spec(spec)
+
+    def test_non_entity_members_go_to_skipped_and_verb_succeeds(self, backend):
+        # Plug-in assembly, security role, and an a-la-carte attribute member.
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members(
+                _member(90, "33333333-3333-3333-3333-333333333330"),  # plugintype
+                _member(91, "33333333-3333-3333-3333-333333333331"),  # pluginassembly
+                _member(92, "33333333-3333-3333-3333-333333333332"),  # sdkmessageprocessingstep
+                _member(20, "44444444-4444-4444-4444-444444444444"),  # role
+                _member(2,  "55555555-5555-5555-5555-555555555555"),  # attribute
+            ))
+            result = build_solution_spec(backend, "myorgsln")
+
+        # No entity members -> empty entities, verb still succeeds (no raise).
+        assert result["spec"]["entities"] == []
+        by_type = {s["type"]: s for s in result["skipped"]}
+        assert set(by_type) == {
+            "plugintype", "pluginassembly", "sdkmessageprocessingstep", "role", "attribute"}
+        # All three plug-in component types share the assembly-bytes reason — it is
+        # accurate for the assembly AND its dependent type/step rows.
+        for t in ("plugintype", "pluginassembly", "sdkmessageprocessingstep"):
+            assert "not projectable from a live org" in by_type[t]["reason"]
+        assert "deferred to a follow-up slice" in by_type["role"]["reason"]
+        assert "known simplification" in by_type["attribute"]["reason"]
+        assert by_type["role"]["objectid"] == "44444444-4444-4444-4444-444444444444"
+
+    def test_entity_resolution_failure_is_skipped_not_fatal(self, backend):
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members(_member(1, _ENTITY_MD_ID)))
+            m.get(_entity_by_id_url(backend), status_code=404)
+            result = build_solution_spec(backend, "myorgsln")
+
+        assert result["spec"]["entities"] == []
+        assert len(result["skipped"]) == 1
+        s = result["skipped"][0]
+        assert s["type"] == "entity"
+        assert s["objectid"] == _ENTITY_MD_ID
+        assert "could not resolve entity metadata id" in s["reason"]
+
+    def test_global_optionset_deduped_across_two_entities(self, backend):
+        # Two entity members, each with a global picklist bound to the SAME set.
+        md_a = _ENTITY_MD_ID
+        md_b = "66666666-6666-6666-6666-666666666666"
+        glob = {"Name": "new_priorityset", "IsGlobal": True}
+        gos = {
+            "Name": "new_priorityset",
+            "DisplayName": _label("Priority"),
+            "Options": [_opt(10, "Low"), _opt(20, "High")],
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend),
+                  json=_members(_member(1, md_a), _member(1, md_b)))
+            m.get(_entity_by_id_url(backend, md_a), json={"LogicalName": "new_project"})
+            m.get(_entity_by_id_url(backend, md_b), json={"LogicalName": "new_task"})
+            m.get(backend.url_for("savedqueries"), json={"value": []})
+            # entity new_project
+            m.get(_entity_url(backend, "new_project"), json=_ENTITY)
+            m.get(_attrs_url(backend, "new_project"),
+                  json={"value": [_shallow("new_name"), _shallow("new_priority")]})
+            m.get(_attr_url(backend, "new_name", "new_project"), json=_primary_info())
+            m.get(_attr_url(backend, "new_priority", "new_project"),
+                  json=_global_pick_info("new_Priority"))
+            m.get(_pick_cast_url(backend, "new_priority", "new_project"),
+                  json={"OptionSet": None, "GlobalOptionSet": glob})
+            m.get(_o2m_url(backend, "new_project"), json={"value": []})
+            # entity new_task (its own SchemaName so the merged spec has two entities)
+            task_ent = {**_ENTITY, "LogicalName": "new_task", "SchemaName": "new_Task"}
+            m.get(_entity_url(backend, "new_task"), json=task_ent)
+            m.get(_attrs_url(backend, "new_task"),
+                  json={"value": [_shallow("new_name"), _shallow("new_rank")]})
+            m.get(_attr_url(backend, "new_name", "new_task"), json=_primary_info())
+            m.get(_attr_url(backend, "new_rank", "new_task"),
+                  json=_global_pick_info("new_Rank"))
+            m.get(_pick_cast_url(backend, "new_rank", "new_task"),
+                  json={"OptionSet": None, "GlobalOptionSet": glob})
+            m.get(_o2m_url(backend, "new_task"), json={"value": []})
+            m.get(backend.url_for("GlobalOptionSetDefinitions(Name='new_priorityset')"),
+                  json=gos)
+            result = build_solution_spec(backend, "myorgsln")
+
+        spec = result["spec"]
+        assert sorted(e["schema_name"] for e in spec["entities"]) == ["new_Project", "new_Task"]
+        # Referenced by both entities, emitted exactly once.
+        assert len(spec["optionsets"]) == 1
+        assert spec["optionsets"][0]["name"] == "new_priorityset"
+        apply.validate_spec(spec)
+
+    def test_round_trips_through_dry_run_apply(self, backend, dry_backend):
+        # Build the merged spec, then prove it round-trips through a --dry-run
+        # apply_spec against a mocked target org without error (AC: apply-seedable).
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members(_member(1, _ENTITY_MD_ID)))
+            m.get(_entity_by_id_url(backend), json={"LogicalName": "new_project"})
+            _mock_minimal_entity(m, backend)
+            spec = build_solution_spec(backend, "myorgsln")["spec"]
+
+        with requests_mock.Mocker() as m:
+            # Entity absent in the target -> dry-run plans its creation.
+            m.get(_entity_url(backend), status_code=404)
+            # Prune detection (runs under dry_run) reads the target solution.
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend), json=_members())
+            res = apply.apply_spec(dry_backend, spec)
+
+        assert res["failed"] == []
+        assert "new_Project" in [e["name"] for e in res["planned"]]
+
+    def test_malformed_componenttype_is_skipped_not_dropped(self, backend):
+        # A row whose componenttype is not an int must surface in skipped, not be
+        # silently dropped (the never-drop-silently invariant, ADR 0019).
+        with requests_mock.Mocker() as m:
+            m.get(_solutions_url(backend), json=_solution())
+            m.get(_components_url(backend),
+                  json=_members({"componenttype": None, "objectid": "bad-row"}))
+            result = build_solution_spec(backend, "myorgsln")
+
+        assert result["spec"]["entities"] == []
+        assert len(result["skipped"]) == 1
+        assert result["skipped"][0]["objectid"] == "bad-row"
+        assert "non-integer componenttype" in result["skipped"][0]["reason"]

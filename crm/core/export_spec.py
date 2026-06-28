@@ -55,9 +55,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from crm.core import metadata, optionsets, relationships, views
+from crm.core import metadata, optionsets, relationships, solution_components, views
 from crm.core import metadata_constraints as mc
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 _LENGTH_KINDS = frozenset({"string", "memo"})
@@ -494,3 +494,148 @@ def build_entity_spec(
     if optionset_acc:
         spec["optionsets"] = list(optionset_acc.values())
     return spec
+
+
+# ── solution-level projection (#613) ─────────────────────────────────────────
+
+# Solution component-type codes (see solution_components.SOLUTION_COMPONENT_TYPES).
+# Only `entity` drives projection: each touched entity is projected in full via
+# build_entity_spec, which subsumes that entity's attributes, views, 1:N
+# relationships and referenced global option sets.
+_ENTITY_COMPONENT_TYPE = 1
+# Entity-rooted subcomponents (attribute / relationship / optionset /
+# entityrelationship / savedquery=view): ride along inside their parent entity's
+# full projection. A single column is never projected a la carte — see ADR 0019.
+_ENTITY_SUBCOMPONENT_TYPES = frozenset({2, 3, 9, 10, 26})
+# Plug-in component types (plugintype / pluginassembly / sdkmessageprocessingstep):
+# all hinge on the assembly whose DLL bytes do not exist in live metadata.
+_PLUGIN_COMPONENT_TYPES = frozenset({90, 91, 92})
+
+
+def _resolve_entity_logical(backend: D365Backend, metadata_id: str) -> str:
+    """Resolve an entity MetadataId (a solution member's objectid) to its logical
+    name — the key build_entity_spec projects on. One EntityDefinitions GET."""
+    rec = as_dict(backend.get(
+        f"EntityDefinitions({metadata_id})", params={"$select": "LogicalName"}))
+    name = rec.get("LogicalName")
+    if not isinstance(name, str) or not name:
+        raise D365Error(f"entity metadata id {metadata_id!r} has no LogicalName.")
+    return name
+
+
+def _skip_reason(componenttype: int) -> str:
+    """Explain why a non-entity solution member is not directly projected."""
+    if componenttype in _PLUGIN_COMPONENT_TYPES:
+        return ("plug-in component not projectable from a live org (its assembly "
+                "DLL bytes are absent from live metadata); export emits only "
+                "apply-seedable components.")
+    if componenttype in _ENTITY_SUBCOMPONENT_TYPES:
+        return ("entity-rooted subcomponent: never projected individually and "
+                "not resolved to its parent entity (known simplification), so it "
+                "is always reported here; its data is still exported when that "
+                "parent entity is itself a solution member (projected in full).")
+    return (f"{solution_components.component_type_name(componenttype)} is not an "
+            "apply-seedable component type in this slice; export emits only "
+            "entity-rooted components (security roles and web resources are "
+            "deferred to a follow-up slice).")
+
+
+def build_solution_spec(
+    backend: D365Backend,
+    unique_name: str,
+    *,
+    warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Project a whole solution into one apply-consumable desired-state spec.
+
+    Walks `unique_name`'s members (pure GETs, read-only) and merges every entity
+    the solution touches into a single spec via `build_entity_spec` per entity —
+    each entity is projected in full (attributes, views, 1:N relationships, and
+    referenced global option sets), so an entity-rooted subcomponent member rides
+    along inside its parent entity. Entity members carry ``objectid =
+    MetadataId``; each is resolved to a logical name before projection. Global
+    option sets referenced by more than one entity are de-duplicated by name.
+
+    The emitted spec carries a top-level ``{"solution": {"unique_name": ...}}``
+    key so a round-trip ``crm --dry-run apply -f <file>`` against another org
+    auto-scopes its drift/prune report to this solution.
+
+    Every member that is not an entity is reported in a `skipped` bucket
+    (``{type, objectid, reason}``) — the verb never fails on an unsupported
+    component and never drops one silently. Only components that round-trip a
+    *real* apply (create + reconcile) are emitted; plug-ins (assembly DLL bytes
+    absent from live metadata), security roles and web resources are deferred to
+    a follow-up slice (see ADR 0019).
+
+    Returns ``{"spec": <apply-ready spec>, "skipped": [...]}``. `spec` passes
+    `apply.validate_spec` and round-trips through `apply_spec`.
+    """
+    from crm.core import solution as sol_mod  # lazy import: avoid an import cycle
+
+    warn = warnings if warnings is not None else []
+    members = sol_mod.solution_components(backend, unique_name)
+
+    skipped: list[dict[str, Any]] = []
+    entity_logicals: list[str] = []
+    seen: set[str] = set()
+
+    for member in members:
+        componenttype = member.get("componenttype")
+        objectid = member.get("objectid")
+        if not isinstance(componenttype, int):
+            # Defensive: a well-formed solutioncomponents row always carries an
+            # int componenttype. Surface anything malformed rather than drop it
+            # silently (the never-drop-silently invariant, ADR 0019).
+            skipped.append({
+                "type": str(componenttype),
+                "objectid": objectid,
+                "reason": "solution member has a non-integer componenttype; "
+                          "not projectable.",
+            })
+            continue
+        if componenttype == _ENTITY_COMPONENT_TYPE:
+            if not isinstance(objectid, str) or not objectid:
+                skipped.append({
+                    "type": "entity", "objectid": objectid,
+                    "reason": "entity member has no objectid; cannot resolve.",
+                })
+                continue
+            try:
+                logical = _resolve_entity_logical(backend, objectid)
+            except D365Error as exc:
+                skipped.append({
+                    "type": "entity", "objectid": objectid,
+                    "reason": f"could not resolve entity metadata id: {exc}",
+                })
+                continue
+            if logical not in seen:
+                seen.add(logical)
+                entity_logicals.append(logical)
+        else:
+            skipped.append({
+                "type": solution_components.component_type_name(componenttype),
+                "objectid": objectid,
+                "reason": _skip_reason(componenttype),
+            })
+
+    entity_logicals.sort()
+    entities: list[dict[str, Any]] = []
+    optionset_acc: dict[str, dict[str, Any]] = {}
+    for logical in entity_logicals:
+        es = build_entity_spec(
+            backend, logical,
+            with_views=True, with_relationships=True, warnings=warn,
+        )
+        entities.extend(cast("list[dict[str, Any]]", es.get("entities", [])))
+        for opt_set in cast("list[dict[str, Any]]", es.get("optionsets", [])):
+            name = opt_set.get("name")
+            if isinstance(name, str):
+                optionset_acc.setdefault(name, opt_set)
+
+    spec: dict[str, Any] = {
+        "solution": {"unique_name": unique_name},
+        "entities": entities,
+    }
+    if optionset_acc:
+        spec["optionsets"] = list(optionset_acc.values())
+    return {"spec": spec, "skipped": skipped}

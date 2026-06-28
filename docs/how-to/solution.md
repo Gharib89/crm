@@ -218,6 +218,30 @@ crm solution uninstall --solution CRMWorx --yes
 ```
 Resolves the solutionid, then **pre-checks `RetrieveDependenciesForUninstall`** and refuses with the blocker count unless `--force` (use [`solution dependencies`](#preview-what-blocks-uninstalling-a-managed-solution) to inspect the blockers first). For a managed base solution the server also uninstalls its patches. Gated as destructive (`--yes`).
 
+## Project a solution into a desired-state spec (org-to-org drift)
+
+Generate an apply-consumable YAML spec from every entity touched by a solution — entity, attribute, global option set, view, and 1:N relationship — in one pass. This is the source side of the **org-to-org drift recipe**: run `export-spec` on dev, then `apply --dry-run` on prod to preview schema drift without writing anything.
+
+```bash
+# Dev org: project the solution into a spec file
+crm solution export-spec MyCustomSolution -o desired.yaml
+
+# Prod org: preview what drifts — pure dry-run, no writes
+crm --dry-run apply -f desired.yaml
+```
+
+Without `-o`, a summary `data` payload plus a `skipped` bucket is emitted under the standard JSON envelope.
+
+```bash
+crm --json solution export-spec MyCustomSolution
+```
+
+Components that cannot be projected from live metadata — plug-in assemblies, security roles, web resources, and other non-entity-rooted types — appear in a `skipped` bucket `{type, objectid, reason}`. The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops one silently.
+
+**Known limitation:** projection is driven by entity members only — the exporter does not resolve a subcomponent member to its parent entity. So attribute, view, and relationship members always appear in `skipped`; their data is still exported when the parent entity is itself in the solution (projected in full), and only a lone subcomponent whose parent entity is absent is genuinely not exported (ADR 0019).
+
+The emitted spec includes a top-level `solution:` key so `apply --dry-run` auto-scopes its drift/prune report. The entity-level counterpart is [`metadata export-spec`](metadata.md#export-a-live-entity-as-an-apply-spec-export-spec-apply-round-trip), which projects a single entity; `solution export-spec` composes it across every entity in the solution.
+
 ## Publish all customizations
 
 ```bash
