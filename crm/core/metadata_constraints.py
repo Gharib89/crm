@@ -158,19 +158,21 @@ def validate_cascade(value: str, *, subject: str = "cascade", echo: bool = False
 
 
 def validate_schema_name(
-    name: str, *, subject: str = "schema_name", example: str | None = None
+    name: object, *, subject: str = "schema_name", example: str | None = None
 ) -> None:
     """Reject a schema / unique name that carries no publisher prefix.
 
     Every customisation name (entity, attribute, relationship, option set, web
     resource, app module) must be ``<prefix>_<name>`` — the underscore separates
-    the publisher's customization prefix from the local name. An empty name or one
-    with no underscore is rejected. ``subject`` names the offending input
-    (``"schema_name"``, ``"lookup_schema"``, ``"unique_name"``, …); ``example``
-    appends a concrete ``e.g. '…'`` hint where a call site had one. (Only the
-    prefix is checked — casing is not enforced.)
+    the publisher's customization prefix from the local name. A non-string (e.g. an
+    unquoted YAML number), an empty name, or one with no underscore is rejected
+    cleanly — ``name`` is typed ``object`` so this is safe to call on raw,
+    untyped spec values without risking a ``TypeError``. ``subject`` names the
+    offending input (``"schema_name"``, ``"lookup_schema"``, ``"unique_name"``, …);
+    ``example`` appends a concrete ``e.g. '…'`` hint where a call site had one.
+    (Only the prefix is checked — casing is not enforced.)
     """
-    if not name or "_" not in name:
+    if not isinstance(name, str) or "_" not in name:
         hint = f", e.g. {example!r}" if example else ""
         raise D365Error(f"{subject} must include a publisher prefix{hint}.")
 

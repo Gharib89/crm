@@ -3348,3 +3348,27 @@ def test_apply_rejects_primary_attr_schema_without_prefix_before_http(backend):
         with pytest.raises(D365Error, match="primary_attr_schema must include a publisher prefix"):
             apply_mod.apply_spec(backend, spec, stage_only=False)
         assert m.request_history == []
+
+
+def test_apply_rejects_uselabel_without_menu_label_before_http(backend):
+    # menu_behavior 'UseLabel' needs menu_label (create_one_to_many enforces it);
+    # the relationship phase writes after entities/attrs, so this must fail up front.
+    rel = {**_RELATIONSHIP, "menu_behavior": "UseLabel"}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "relationships": [rel]}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="UseLabel"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
+def test_apply_rejects_unknown_query_type_before_http(backend):
+    # query_type is spec-expressible now; an unknown value fails up front, not in
+    # the views phase (the last phase to write).
+    view = {"name": "Bad", "columns": ["contoso_name"], "query_type": "nope"}
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "entities": [{**_ENTITY, "views": [view]}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="unknown query_type"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []

@@ -172,3 +172,9 @@ def test_validate_schema_name_rejects_unprefixed(bad):
 def test_validate_schema_name_subject_and_example_in_message():
     with pytest.raises(D365Error, match=r"lookup_schema must include a publisher prefix, e.g. 'new_x'"):
         mc.validate_schema_name("nope", subject="lookup_schema", example="new_x")
+
+
+def test_validate_schema_name_rejects_non_string_cleanly():
+    # An unquoted YAML/JSON number must raise D365Error, not crash with TypeError.
+    with pytest.raises(D365Error, match="must include a publisher prefix"):
+        mc.validate_schema_name(123)

@@ -406,9 +406,24 @@ def validate_spec(spec: Any) -> None:
             _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
                            "lookup_schema", "lookup_display"), "relationship")
             REGISTRY["relationship"].validate(rel)
+            # Cross-field rule create_one_to_many enforces: an associated-menu label
+            # is mandatory under UseLabel. Mirror it up front so a malformed menu
+            # config fails before the relationship phase writes (it runs after the
+            # entity/attribute phases have already landed).
+            if rel.get("menu_behavior") == "UseLabel" and not rel.get("menu_label"):
+                raise D365Error(
+                    f"relationship {rel['schema_name']!r}: menu_behavior 'UseLabel' "
+                    "requires menu_label.")
         for view in _as_list(ent.get("views")):
             _require(view, ("name", "columns"), "view")
             REGISTRY["view"].validate(view)
+            # query_type is now spec-expressible; validate it against the same
+            # vocabulary create_view checks so an unknown value fails up front
+            # rather than in the views phase (the last phase to write).
+            if view.get("query_type") is not None and view["query_type"] not in views_mod.QUERY_TYPES:
+                raise D365Error(
+                    f"view {view['name']!r}: unknown query_type {view['query_type']!r}; "
+                    f"choose from {sorted(views_mod.QUERY_TYPES)}.")
             if not isinstance(view["columns"], list) or not view["columns"]:
                 raise D365Error(f"view {view['name']!r}: columns must be a non-empty list.")
             for col in cast("list[Any]", view["columns"]):
