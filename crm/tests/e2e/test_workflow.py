@@ -222,16 +222,26 @@ def test_workflow_export(backend, cli, tmp_path):
 def test_workflow_activate_deactivate(backend, cli, request):
     """Activate then deactivate an existing draft custom on-demand workflow.
 
-    Finds a draft background on-demand unmanaged workflow on the org.
-    Skips if none is found. Toggles activate→deactivate and verifies statecode
-    via a direct GET after each transition. A finalizer ensures deactivation
-    even if the test fails mid-way.
+    Finds a draft background on-demand unmanaged workflow on the org and toggles
+    activate→deactivate, verifying statecode via a direct GET after each
+    transition. A finalizer restores the draft even if the test fails mid-way.
+
+    Unlike the other data-gated e2e tests, this one is *not* self-seeded: it
+    operates on a pre-existing workflow and skips when none is found. A
+    self-seeded throwaway clone cannot be cleaned up after activation on on-prem —
+    activating creates a type=2 activation copy that survives deactivate and
+    orphans (undeletable via the Web API, 0x80045004) once the type=1 parent is
+    deleted (see ``test_workflow_update_metadata``). So a seed-and-delete cycle
+    would leak; we exercise a durable seeded workflow (ADR 0012 / #503) instead.
     """
     wf_id = _find_draft_custom_workflow_id(backend)
     if wf_id is None:
         pytest.skip(
-            "No draft background on-demand unmanaged workflow found on this org; "
-            "cannot safely exercise activate/deactivate without one."
+            "No draft background on-demand unmanaged workflow found on this org. "
+            "Not self-seeded: activating a throwaway clone leaks an undeletable "
+            "type=2 activation copy on on-prem (survives deactivate, orphans on "
+            "parent-delete), so seed-and-delete cannot leave the org clean. Seed a "
+            "draft on-demand workflow (ADR 0012 / #503) to exercise this live."
         )
 
     # Register a finalizer to put the workflow back to draft regardless.

@@ -47,6 +47,14 @@ LOCAL_GROUPS = frozenset(
 # foreign hand-authored XAML and accepts genuine designer XAML, on both targets.
 # clone/import reuse a real workflow's designer XAML, so the upsert is accepted;
 # they now have live coverage in test_workflow.py.
+#
+# `workflow activate` / `deactivate` are @covers-stamped (test_workflow.py) so they
+# are NOT in this map, but they remain *data-gated*: the test toggles a pre-existing
+# draft and skips on a bare org. They are deliberately not self-seeded — activating
+# a throwaway clone leaks an undeletable type=2 activation copy on on-prem v9.1 (it
+# survives deactivate and orphans on parent-delete, 0x80045004), so a seed-and-delete
+# cycle cannot leave the org clean. They run whenever a suitable draft exists (e.g.
+# the ADR 0012 / #503 seeded workflow). See test_workflow_activate_deactivate.
 E2E_SKIP: dict[str, str] = {}
 
 

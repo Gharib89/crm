@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from crm.core.views import build_fetchxml, build_layoutxml
+from crm.tests.e2e.conftest import _safe_delete
 from crm.tests.e2e.coverage import covers
 
 # Reused from the production BulkDelete path so the seed goes through the exact
@@ -72,29 +74,58 @@ def test_query_odata_contacts(cli):
     assert isinstance(env["data"], list)
 
 
-# ── query saved ───────────────────────────────────────────────────────────────
+# ── query saved / query user (self-seeded) ─────────────────────────────────────
+#
+# Both verbs need a stored query to execute. A bare test org has none, so rather
+# than discover-or-skip — which left the verb "covered" but exercised on no rows,
+# and whose returnedtypecode filter was itself fragile — each test self-seeds a
+# throwaway contact view, runs the verb, and a finalizer removes it. Runs on any
+# target. `returnedtypecode` is POSTed as the entity LOGICAL NAME (the shape
+# crm/core/views.py uses); the server may echo it back as the int OTC, but we
+# never read it back — we seed for contact and query `contacts` directly.
+
+_SEED_COLUMNS = [("fullname", 200)]
+_CONTACT_OTC = 2  # contact ObjectTypeCode — used only in layoutxml's grid object=
+
+
+def _seed_savedquery(backend, suffix: str) -> str:
+    """Create a throwaway public savedquery for contact; return its id."""
+    body = {
+        "name": f"E2E SavedQuery {suffix}",
+        "returnedtypecode": "contact",
+        "querytype": 0,  # public view
+        "fetchxml": build_fetchxml("contact", _SEED_COLUMNS, None, False),
+        "layoutxml": build_layoutxml("contact", _CONTACT_OTC, _SEED_COLUMNS),
+    }
+    created = backend.post(
+        "savedqueries", json_body=body,
+        extra_headers={"Prefer": "return=representation"},
+    )
+    return str(created["savedqueryid"])
+
+
+def _seed_userquery(backend, suffix: str) -> str:
+    """Create a throwaway userquery for contact (owned by the caller); return its id."""
+    body = {
+        "name": f"E2E UserQuery {suffix}",
+        "returnedtypecode": "contact",
+        "querytype": 0,  # required on userquery create ("The query type is missing.")
+        "fetchxml": build_fetchxml("contact", _SEED_COLUMNS, None, False),
+        "layoutxml": build_layoutxml("contact", _CONTACT_OTC, _SEED_COLUMNS),
+    }
+    created = backend.post(
+        "userqueries", json_body=body,
+        extra_headers={"Prefer": "return=representation"},
+    )
+    return str(created["userqueryid"])
 
 
 @covers("query saved")
-def test_query_saved_discovers_and_executes(backend, cli):
-    """Fetch a saved query GUID for contacts from the backend, then execute it via the CLI."""
-    # querytype=0 means "Public View"; returnedtypecode 2 is contact.
-    # Use separate filters to avoid OData type-mismatch (returnedtypecode may be
-    # Edm.Int32 or Edm.String depending on server version).
-    resp = backend.get(
-        "savedqueries",
-        params={
-            "$select": "savedqueryid,name,returnedtypecode",
-            "$filter": "querytype eq 0",
-            "$top": "50",
-        },
-    )
-    rows = (resp or {}).get("value", [])
-    # Filter client-side for returnedtypecode == 2 (contact) to avoid server-side type issues.
-    contact_views = [r for r in rows if str(r.get("returnedtypecode", "")).strip() in ("2", "2.0")]
-    if not contact_views:
-        pytest.skip("no savedquery for contacts found on this org")
-    sqid = contact_views[0]["savedqueryid"]
+def test_query_saved_seeds_and_executes(backend, cli, unique, request):
+    """Self-seed a contact public view (savedquery), execute it via the CLI, then
+    remove it. Runs on any org — no pre-existing view required."""
+    sqid = _seed_savedquery(backend, unique)
+    request.addfinalizer(lambda: _safe_delete(backend, f"savedqueries({sqid})"))
 
     r = cli(["--json", "query", "saved", "contacts", sqid])
     assert r.returncode == 0, r.stderr
@@ -104,38 +135,14 @@ def test_query_saved_discovers_and_executes(backend, cli):
     assert isinstance(env["data"], list)
 
 
-# ── query user ────────────────────────────────────────────────────────────────
-
-
 @covers("query user")
-def test_query_user_discovers_and_executes(backend, cli):
-    """Fetch a user query GUID if any exist, then execute it via the CLI.
-    Skips at runtime when the org has no userqueries (fresh/test orgs often don't)."""
-    resp = backend.get(
-        "userqueries",
-        params={
-            "$select": "userqueryid,name",
-            "$top": "1",
-        },
-    )
-    rows = (resp or {}).get("value", [])
-    if not rows:
-        pytest.skip("no userquery found on this org")
-    uqid = rows[0]["userqueryid"]
+def test_query_user_seeds_and_executes(backend, cli, unique, request):
+    """Self-seed a contact userquery owned by the caller, execute it via the CLI,
+    then remove it. Runs on any org — no pre-existing view required."""
+    uqid = _seed_userquery(backend, unique)
+    request.addfinalizer(lambda: _safe_delete(backend, f"userqueries({uqid})"))
 
-    # userqueries can target any entity — derive entity set from returnedtypecode
-    # or just try contacts (returnedtypecode=2). If the org has any user query at
-    # all, use whichever entity set matches via the first row's returnedtypecode.
-    detail = backend.get(
-        f"userqueries({uqid})",
-        params={"$select": "userqueryid,returnedtypecode"},
-    )
-    code = detail.get("returnedtypecode")
-    # Map common type codes to entity sets; fall back to contacts.
-    _CODE_MAP = {1: "accounts", 2: "contacts", 3: "opportunities"}
-    entity_set = _CODE_MAP.get(code, "contacts")
-
-    r = cli(["--json", "query", "user", entity_set, uqid])
+    r = cli(["--json", "query", "user", "contacts", uqid])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"] is True
