@@ -227,7 +227,7 @@ Generate an apply-consumable YAML spec from every entity touched by a solution â
 crm solution export-spec MyCustomSolution -o desired.yaml
 
 # Prod org: preview what drifts â€” pure dry-run, no writes
-crm apply -f desired.yaml --dry-run
+crm --dry-run apply -f desired.yaml
 ```
 
 Without `-o`, a summary `data` payload plus a `skipped` bucket is emitted under the standard JSON envelope.

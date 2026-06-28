@@ -321,7 +321,7 @@ crm solution export MyCustomSolution -o /tmp/snap.zip
 # Org-to-org drift recipe: project a whole solution into one apply-consumable spec on dev,
 # then preview schema drift on prod without writing anything.
 crm solution export-spec MyCustomSolution -o desired.yaml      # dev (source)
-crm apply -f desired.yaml --dry-run                            # prod (preview drift)
+crm --dry-run apply -f desired.yaml                            # prod (preview drift)
 
 # Solution source control: unpack a zip to a diff-able tree and pack it back
 # (offline — no connection needed; needs the Power Platform CLI `pac` on PATH)

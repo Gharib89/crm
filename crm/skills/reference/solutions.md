@@ -297,7 +297,7 @@ target org to see what drifts — pure reads, no writes on either side.
 crm solution export-spec MyCustomSolution -o desired.yaml
 
 # Target org: preview schema drift, zero writes
-crm apply -f desired.yaml --dry-run
+crm --dry-run apply -f desired.yaml
 ```
 
 Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipped` bucket.
