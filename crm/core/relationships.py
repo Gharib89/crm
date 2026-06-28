@@ -167,7 +167,9 @@ def _emit_menu(raw: dict[str, Any], out: dict[str, Any]) -> None:
     ``validate_spec`` rejects a ``UseLabel`` block that carries no ``menu_label``
     (apply.py), so emitting the behavior without a readable label would make the
     exported spec un-appliable. A label-less ``UseLabel`` therefore falls back to
-    omitting the menu keys (the default ``UseCollectionName`` behavior).
+    omitting the ``menu_behavior``/``menu_label`` keys (the default
+    ``UseCollectionName`` behavior). ``menu_order`` is independent of the behavior
+    and is still emitted when non-default.
     """
     behavior = raw.get("Behavior")
     if isinstance(behavior, str) and behavior and behavior != "UseCollectionName":

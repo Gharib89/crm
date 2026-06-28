@@ -1432,6 +1432,42 @@ class TestReadEntityViews:
         assert "filter_active" not in views[0]
         assert "order_desc" not in views[0]
 
+    def test_link_entity_order_and_filter_do_not_leak_into_main_view(self, backend):
+        """order_by/order_desc/filter_active are read from the ROOT entity only —
+        a sort or active-state filter that lives inside a <link-entity> must not
+        be mis-attributed to the main view (which would export a key that changes
+        the view's semantics on re-apply)."""
+        from crm.core.views import read_entity_views
+        # Root entity: plain ascending sort on cwx_name, no active filter.
+        # Link-entity: a descending order AND a statecode=0 filter — neither
+        # should surface on the main view.
+        fetchxml = (
+            '<fetch><entity name="cwx_ticket">'
+            '<attribute name="cwx_ticketid" />'
+            '<order attribute="cwx_name" descending="false" />'
+            '<link-entity name="account" from="accountid" to="cwx_accountid">'
+            '<order attribute="name" descending="true" />'
+            '<filter type="and"><condition attribute="statecode" operator="eq" value="0" /></filter>'
+            '</link-entity>'
+            '</entity></fetch>'
+        )
+        layoutxml = _build_layoutxml("cwx_ticket", 10042, [("cwx_name", 200)])
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "name": "Joined View",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        v = views[0]
+        assert v["order_by"] == "cwx_name"      # root sort, not the link-entity's
+        assert "order_desc" not in v            # root sort is ascending
+        assert "filter_active" not in v         # statecode filter was the link-entity's
+
     def test_view_includes_savedqueryid_and_querytype(self, backend):
         """`view list` needs the id + querytype, so the reader must surface them."""
         from crm.core.views import read_entity_views

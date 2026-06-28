@@ -230,6 +230,9 @@ def read_entity_views(
         # These mirror the create_view → _build_fetchxml encoding: a sort lives in
         # the <order> element (its `descending` attribute carries order_desc), and
         # the active-records filter is a <condition attribute="statecode" eq "0">.
+        # Scope strictly to the ROOT <entity> (its own <order> and direct-child
+        # <filter>s): a <link-entity>'s sort or statecode filter belongs to the
+        # joined table, not this view, so it must not surface as a main-view key.
         order_by: str | None = None
         order_desc = False
         filter_active = False
@@ -239,16 +242,25 @@ def read_entity_views(
                 fetch_root = ElementTree.fromstring(fetchxml)
             except ElementTree.ParseError:
                 fetch_root = None
-            if fetch_root is not None:
-                order_el = fetch_root.find(".//{*}order")
+            entity_el = fetch_root.find("{*}entity") if fetch_root is not None else None
+            if entity_el is not None:
+                order_el = entity_el.find("{*}order")  # direct child of the root entity
                 if order_el is not None:
                     order_by = order_el.get("attribute") or None
                     order_desc = (order_el.get("descending") or "").lower() == "true"
-                for cond in fetch_root.findall(".//{*}condition"):
-                    if (cond.get("attribute") == "statecode"
-                            and cond.get("operator") == "eq"
-                            and cond.get("value") == "0"):
-                        filter_active = True
+                # The active-state filter is a condition inside the root entity's
+                # own <filter> (link-entity filters are nested under <link-entity>,
+                # not under these, so they are excluded).
+                for filt in entity_el.findall("{*}filter"):
+                    # `.//` (not Element.iter) so the namespace wildcard applies;
+                    # covers conditions nested in and/or sub-filter groups too.
+                    for cond in filt.findall(".//{*}condition"):
+                        if (cond.get("attribute") == "statecode"
+                                and cond.get("operator") == "eq"
+                                and cond.get("value") == "0"):
+                            filter_active = True
+                            break
+                    if filter_active:
                         break
 
         view: dict[str, Any] = {

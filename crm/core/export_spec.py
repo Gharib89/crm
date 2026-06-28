@@ -32,7 +32,8 @@ Wider apply-surface emit (#597): each kind's projected dict mirrors the fields i
 *non-default* (a field equal to the platform/builder default is omitted so the spec
 does not bloat with defaults). Covered now:
 - relationship — flat `cascade_*` (six dimensions), `menu_behavior`/`menu_label`/
-  `menu_order`, `is_hierarchical` (see `relationships.read_entity_relationships`);
+  `menu_order`, `is_hierarchical`, and the lookup column's `lookup_description`
+  (see `relationships.read_entity_relationships`);
 - view — `filter_active`, `order_desc` (see `views.read_entity_views`);
 - attribute — `auto_number_format` (string), `min_value`/`max_value` (integer/bigint),
   `behavior_name` (datetime), `max_size_kb` (file);

@@ -562,8 +562,8 @@ crm apply -f project.yaml
 - Relationships (with `--with-relationships`): custom 1:N relationships, including
   flat cascade keys (`cascade_assign`, `cascade_delete`, `cascade_reparent`,
   `cascade_share`, `cascade_unshare`, `cascade_merge`), associated-menu keys
-  (`menu_behavior`, `menu_label`, `menu_order`), and `is_hierarchical`. Keys equal
-  to platform defaults are omitted.
+  (`menu_behavior`, `menu_label`, `menu_order`), `is_hierarchical`, and the lookup
+  column's `lookup_description`. Keys equal to platform defaults are omitted.
 - Views (with `--with-views`): public saved queries with parseable column layouts,
   including `filter_active` and `order_desc` where set.
 - Publisher and solution are **not** emitted — supply them via `crm apply --solution`

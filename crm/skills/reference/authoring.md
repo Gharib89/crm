@@ -42,7 +42,8 @@ spec — `cascade_assign/delete/reparent/share/unshare/merge`, `menu_label/behav
 `query_type`, `order_desc`, `description` (view). **These take effect at CREATE only.**
 Re-applying an existing component does not yet reconcile them (**#598**). `export-spec`
 emits the subset of these keys that map to live Web API fields — relationships emit flat
-`cascade_assign/delete/…` and `menu_behavior/label/order`; attributes emit
+`cascade_assign/delete/…`, `menu_behavior/label/order`, `is_hierarchical`, and
+`lookup_description`; attributes emit
 `auto_number_format`, `min_value`/`max_value`, `max_size_kb`, `behavior_name`; entity
 emits `has_notes`, `has_activities`, `primary_attr_max_length`; views emit
 `filter_active`, `order_desc`. Fields equal to platform defaults are omitted.
