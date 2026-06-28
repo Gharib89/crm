@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.43.0 (2026-06-28)
+
+### Features
+
+- **apply**: Entity enable-only/identity + view record-PATCH reconcile
+  ([#608](https://github.com/Gharib89/crm/pull/608),
+  [`beb48fb`](https://github.com/Gharib89/crm/commit/beb48fb0ef8c92d2794b73087bbc29faae567195))
+
+
 ## v1.42.0 (2026-06-28)
 
 ### Documentation
