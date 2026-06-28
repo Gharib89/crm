@@ -524,11 +524,7 @@ def create_entity(
 
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/use-web-api-metadata#create-and-update-entity-definitions
     """
-    if not schema_name or "_" not in schema_name:
-        raise D365Error(
-            "schema_name must include a publisher prefix and be PascalCase, "
-            "e.g. 'new_Project'."
-        )
+    mc.validate_schema_name(schema_name, example="new_Project")
     mc.validate_ownership(ownership)
 
     if if_exists not in ("error", "skip"):
@@ -577,11 +573,8 @@ def create_entity(
         }
 
     primary_schema = primary_attr_schema or f"{prefix}_Name"
-    if "_" not in primary_schema:
-        raise D365Error(
-            "primary_attr_schema must include the publisher prefix, "
-            f"e.g. '{prefix}_Name'."
-        )
+    mc.validate_schema_name(
+        primary_schema, subject="primary_attr_schema", example=f"{prefix}_Name")
     primary_logical = primary_schema.lower()
     primary_label_text = primary_attr_label or "Name"
     collection_label = display_collection_name or (display_name + "s")
@@ -894,11 +887,7 @@ def create_entity_key(
     """
     if not entity:
         raise D365Error("entity is required.")
-    if not schema_name or "_" not in schema_name:
-        raise D365Error(
-            "schema_name must include a publisher prefix and be PascalCase, "
-            "e.g. 'new_Code'."
-        )
+    mc.validate_schema_name(schema_name, example="new_Code")
     if not key_attributes:
         raise D365Error("at least one key attribute is required.")
     if if_exists not in ("error", "skip"):

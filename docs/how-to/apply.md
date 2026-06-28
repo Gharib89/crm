@@ -26,6 +26,20 @@ the spec rather than blindly skipped. Three outcomes per component:
   → `replace_blocked`: reported, **no write for that component**, run ends
   `ok=false` (exit 1).
 
+> **Create-only spec keys.** The full builder keyword surface is now expressible in
+> the spec — `default_value`, `true_label` / `false_label`, `min_value` / `max_value`,
+> `max_size_kb`, `auto_number_format`, `behavior_name`, `relationship_schema` (attribute);
+> `cascade_assign`, `cascade_delete`, `cascade_reparent`, `cascade_share`,
+> `cascade_unshare`, `cascade_merge`, `menu_label`, `menu_behavior`, `menu_order`,
+> `is_hierarchical`, `lookup_description` (relationship); `description`, `has_activities`,
+> `has_notes`, `is_activity`, `primary_attr_max_length`, `data_provider_id`,
+> `data_source_id`, `external_name`, `external_collection_name` (entity);
+> `filter_active`, `query_type`, `order_desc`, `description` (view). These keys take
+> effect at **CREATE only** — re-applying an existing component does **not** yet reconcile
+> them (drift in these fields is not detected or updated). `export-spec` does not yet
+> emit them, so a round-trip is lossy for them. Follow-ups: **#597** (export-spec
+> lossless round-trip) and **#598** (reconcile the wider surface).
+
 Reconciliation also runs under `--dry-run`, read-only: it reads the live org
 while the reads-execute rule suppresses every write, so a dry-run reports the
 full drift — `planned` (would create), `updated` (would update, each entry

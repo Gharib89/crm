@@ -17,6 +17,7 @@ from crm.core.export_spec import build_entity_spec
 from crm.core.forms import clone_form_to_entity, read_entity_forms
 from crm.core.solution import publish_all, validate_customization_prefix
 from crm.core.workflow import clone_workflow_to_entity, list_workflows
+from crm.core import metadata_constraints as mc
 from crm.utils.d365_backend import D365Backend, D365Error
 
 
@@ -80,11 +81,8 @@ def clone_entity(
     Returns ``{created, source, logical_name, schema_name, counts,
     skipped_workflows, ribbon_note, apply}``.
     """
-    if not new_schema_name or "_" not in new_schema_name:
-        raise D365Error(
-            "new_schema_name must include a publisher prefix and be PascalCase, "
-            f"e.g. 'new_TicketClone'. Got: {new_schema_name!r}"
-        )
+    mc.validate_schema_name(
+        new_schema_name, subject="new_schema_name", example="new_TicketClone", echo=True)
     prefix, _, _ = new_schema_name.partition("_")
     validate_customization_prefix(prefix)
 

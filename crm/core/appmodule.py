@@ -23,6 +23,7 @@ from crm.utils.d365_backend import (
     odata_literal)
 from crm.core.entity_names import load_name_map
 from crm.core.metadata import maybe_publish
+from crm.core import metadata_constraints as mc
 
 # Default app-icon web resource the platform ships (MS Learn, op-9-1).
 DEFAULT_APP_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
@@ -78,8 +79,7 @@ def create_app(
     """Create a model-driven app module. Returns `{created, appmoduleid, ...}`."""
     if not name:
         raise D365Error("name is required.")
-    if not unique_name or "_" not in unique_name:
-        raise D365Error("unique_name must include a publisher prefix, e.g. 'cwx_crmworx'.")
+    mc.validate_schema_name(unique_name, subject="unique_name", example="cwx_crmworx")
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
