@@ -55,7 +55,7 @@ class TestSolutionExportSpecCommand:
 
         # The file holds the BARE apply-ready spec — solution dict + entities,
         # and crucially NO `skipped` key (that would break `crm apply -f`).
-        written = yaml.safe_load(out_file.read_text())
+        written = yaml.safe_load(out_file.read_text(encoding="utf-8"))
         assert written["solution"] == {"unique_name": "myorgsln"}
         assert [e["schema_name"] for e in written["entities"]] == ["new_Project"]
         assert "skipped" not in written

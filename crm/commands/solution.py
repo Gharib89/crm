@@ -188,7 +188,7 @@ def solution_export_spec(ctx: CLIContext, unique_name, output):
     Walks the solution's members (pure GETs, read-only) and merges every entity
     it touches — entity, attribute, global option set, view, 1:N relationship —
     into a single spec via build_entity_spec per touched entity. A top-level
-    `solution:` key is emitted so a round-trip `crm apply -f <file> --dry-run`
+    `solution:` key is emitted so a round-trip `crm --dry-run apply -f <file>`
     against another org auto-scopes its drift/prune report (the source side of
     the org-to-org drift recipe).
 

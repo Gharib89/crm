@@ -557,7 +557,7 @@ def build_solution_spec(
     option sets referenced by more than one entity are de-duplicated by name.
 
     The emitted spec carries a top-level ``{"solution": {"unique_name": ...}}``
-    key so a round-trip ``crm apply -f <file> --dry-run`` against another org
+    key so a round-trip ``crm --dry-run apply -f <file>`` against another org
     auto-scopes its drift/prune report to this solution.
 
     Every member that is not an entity is reported in a `skipped` bucket

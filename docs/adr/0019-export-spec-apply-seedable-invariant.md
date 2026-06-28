@@ -2,7 +2,7 @@
 
 `crm solution export-spec <unique_name>` (#613) projects a live solution into a
 single merged desired-state spec — the source side of the org-to-org drift recipe
-(`export-spec` on dev → `apply -f <file> --dry-run` on prod, parent #611). It walks
+(`export-spec` on dev → `crm --dry-run apply -f <file>` on prod, parent #611). It walks
 the solution's members and merges every entity it touches via `build_entity_spec`
 (ADR 0014's projector inverse). This ADR records the invariant that governs *which*
 components the verb is allowed to emit.
