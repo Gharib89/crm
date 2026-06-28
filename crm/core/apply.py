@@ -897,23 +897,32 @@ def _reconcile_view(
         return "skipped", entry
     row = rows[0]
     sqid = str(row.get("savedqueryid"))
-    desired_columns = _columns(view.get("columns"))
-    desired_order_by = view.get("order_by")
-    desired_order_desc = bool(view.get("order_desc", False))
-    desired_filter_active = bool(view.get("filter_active", False))
-    desired_is_default = bool(view.get("is_default", False))
-    desired_description = view.get("description")
-
-    live_columns = _columns(views_mod._parse_layout_columns(row.get("layoutxml") or ""))
+    # Live state first, so a field the spec omits can fall back to it.
+    live_columns = _columns(views_mod.parse_layout_columns(row.get("layoutxml") or ""))
     live_order_by, live_order_desc, live_filter_active = \
-        views_mod._parse_fetch_order_filter(row.get("fetchxml") or "")
+        views_mod.parse_fetch_order_filter(row.get("fetchxml") or "")
     live_is_default = bool(row.get("isdefault", False))
     live_description = row.get("description")
 
+    # Desired state: a field the spec OMITS falls back to the live value, so
+    # omission never drifts — only a spec-declared field reconciles (issue #606).
+    # `columns` is required by validate_spec, so it is always declared; the
+    # optional fields default to live, not to the create-path default (else an
+    # omitted is_default would silently demote a live default view, and an omitted
+    # filter_active/order would strip a live sort/filter on a columns-only edit).
+    desired_columns = _columns(view.get("columns"))
+    desired_order_by = view["order_by"] if "order_by" in view else live_order_by
+    desired_order_desc = (bool(view["order_desc"]) if "order_desc" in view
+                          else live_order_desc)
+    desired_filter_active = (bool(view["filter_active"]) if "filter_active" in view
+                             else live_filter_active)
+    desired_is_default = (bool(view["is_default"]) if "is_default" in view
+                          else live_is_default)
+    desired_description = view.get("description")
+
     diff: dict[str, Any] = {}
     changes: dict[str, Any] = {}
-    # Scalar fields: an omitted description never drifts; is_default carries an
-    # explicit adapter default (False) so it always compares.
+    # An omitted description never drifts (None → no change, like _drift).
     if desired_description is not None and desired_description != live_description:
         diff["description"] = {"old": live_description, "new": desired_description}
         changes["description"] = desired_description
@@ -924,7 +933,7 @@ def _reconcile_view(
     # (names only); a sort/active-filter change drives fetchxml alone.
     if desired_columns != live_columns:
         diff["columns"] = {"old": live_columns, "new": desired_columns}
-        changes["layoutxml"] = views_mod._build_layoutxml(
+        changes["layoutxml"] = views_mod.build_layoutxml(
             entity_logical, otc, desired_columns)
     if desired_order_by != live_order_by:
         diff["order_by"] = {"old": live_order_by, "new": desired_order_by}
@@ -938,7 +947,7 @@ def _reconcile_view(
         or desired_order_desc != live_order_desc
         or desired_filter_active != live_filter_active)
     if fetch_drift:
-        changes["fetchxml"] = views_mod._build_fetchxml(
+        changes["fetchxml"] = views_mod.build_fetchxml(
             entity_logical, desired_columns, desired_order_by,
             desired_filter_active, desired_order_desc)
     if not changes:

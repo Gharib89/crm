@@ -1331,8 +1331,8 @@ def _mock_view_live(m, backend, *, name="Active Projects", sqid=_GUID,
     cols = list(columns)
     row = {
         "savedqueryid": sqid, "name": name, "querytype": querytype,
-        "layoutxml": views_mod._build_layoutxml(entity, otc, cols),
-        "fetchxml": views_mod._build_fetchxml(entity, cols, order_by, filter_active,
+        "layoutxml": views_mod.build_layoutxml(entity, otc, cols),
+        "fetchxml": views_mod.build_fetchxml(entity, cols, order_by, filter_active,
                                               order_desc),
         "isdefault": is_default,
     }
@@ -1424,6 +1424,40 @@ def test_apply_view_unchanged_is_skipped(backend):
     assert "view" in _kinds(res["skipped"])
     assert res["updated"] == []
     assert _patches(m) == []
+
+
+def test_apply_view_omitted_default_not_demoted(backend):
+    # Live view is the default; the spec omits is_default and matches everything
+    # else. An omitted field must never drift → no demotion, no PATCH (#606).
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend, is_default=True)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert "view" in _kinds(res["skipped"])
+    assert res["updated"] == []
+    assert _patches(m) == []
+
+
+def test_apply_view_omitted_filter_preserved_on_column_change(backend):
+    # Live view carries the active filter; the spec changes columns but omits
+    # filter_active → the regenerated fetchxml must KEEP the live filter, not
+    # strip it (omitted field never drifts).
+    view = {"name": "Active Projects",
+            "columns": ["contoso_name", "contoso_code", "contoso_status"]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend,
+                        columns=(("contoso_name", 100), ("contoso_code", 100)),
+                        filter_active=True)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["view"]
+    body = _patches(m)[0].json()
+    assert "layoutxml" in body and "fetchxml" in body
+    assert "statecode" in body["fetchxml"], "omitted filter_active stripped the live filter"
 
 
 def test_apply_view_ambiguous_match_is_skipped(backend):

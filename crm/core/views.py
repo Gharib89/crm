@@ -29,7 +29,7 @@ QUERY_TYPES: dict[str, int] = {
 }
 
 
-def _build_layoutxml(entity: str, object_type_code: int,
+def build_layoutxml(entity: str, object_type_code: int,
                      columns: list[tuple[str, int]]) -> str:
     id_attr = f"{entity}id"
     cells = "".join(
@@ -44,7 +44,7 @@ def _build_layoutxml(entity: str, object_type_code: int,
     )
 
 
-def _build_fetchxml(entity: str, columns: list[tuple[str, int]],
+def build_fetchxml(entity: str, columns: list[tuple[str, int]],
                     order_by: str | None, filter_active: bool,
                     order_desc: bool = False) -> str:
     id_attr = f"{entity}id"
@@ -67,10 +67,10 @@ def _build_fetchxml(entity: str, columns: list[tuple[str, int]],
     )
 
 
-def _parse_layout_columns(layoutxml: str) -> list[dict[str, Any]]:
+def parse_layout_columns(layoutxml: str) -> list[dict[str, Any]]:
     """Parse a savedquery layoutxml grid into ``[{name[, width:int]}]`` column dicts.
 
-    The inverse of :func:`_build_layoutxml`. A cell with no parseable ``width``
+    The inverse of :func:`build_layoutxml`. A cell with no parseable ``width``
     yields a name-only dict; an absent/unparseable layoutxml yields ``[]``.
     """
     columns: list[dict[str, Any]] = []
@@ -95,10 +95,10 @@ def _parse_layout_columns(layoutxml: str) -> list[dict[str, Any]]:
     return columns
 
 
-def _parse_fetch_order_filter(fetchxml: str) -> tuple[str | None, bool, bool]:
+def parse_fetch_order_filter(fetchxml: str) -> tuple[str | None, bool, bool]:
     """Parse ``(order_by, order_desc, filter_active)`` from a savedquery fetchxml.
 
-    The inverse of :func:`_build_fetchxml`, scoped strictly to the ROOT ``<entity>``
+    The inverse of :func:`build_fetchxml`, scoped strictly to the ROOT ``<entity>``
     (its own ``<order>`` and direct-child ``<filter>``s): a ``<link-entity>``'s sort
     or statecode filter belongs to the joined table, not this view, so it must not
     surface as a main-view key. Returns ``(None, False, False)`` when fetchxml is
@@ -197,8 +197,8 @@ def create_view(
         "returnedtypecode": entity,
         "querytype": querytype,
         "isdefault": is_default,
-        "layoutxml": _build_layoutxml(entity, object_type_code, columns),
-        "fetchxml": _build_fetchxml(entity, columns, order_by, filter_active,
+        "layoutxml": build_layoutxml(entity, object_type_code, columns),
+        "fetchxml": build_fetchxml(entity, columns, order_by, filter_active,
                                     order_desc),
     }
     if query_type == "quick-find":
@@ -297,8 +297,8 @@ def read_entity_views(
 
     result: list[dict[str, Any]] = []
     for row in rows:
-        columns = _parse_layout_columns(row.get("layoutxml") or "")
-        order_by, order_desc, filter_active = _parse_fetch_order_filter(
+        columns = parse_layout_columns(row.get("layoutxml") or "")
+        order_by, order_desc, filter_active = parse_fetch_order_filter(
             row.get("fetchxml") or "")
 
         view: dict[str, Any] = {
