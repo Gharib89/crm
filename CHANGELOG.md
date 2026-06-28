@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.45.1 (2026-06-28)
+
+### Bug Fixes
+
+- **plugin**: Create-message images key on "Id", not "Target"
+  ([#620](https://github.com/Gharib89/crm/pull/620),
+  [`6e0f204`](https://github.com/Gharib89/crm/commit/6e0f20447129832c5951ac4ca70586c676d5fe36))
+
+
 ## v1.45.0 (2026-06-28)
 
 ### Documentation
