@@ -138,6 +138,35 @@ class TestReadEntityRelationshipsFull:
         assert "group" not in r and "menu_group" not in r
         assert r["is_hierarchical"] is True
 
+    def test_uselabel_without_readable_label_omits_menu_behavior(self, backend):
+        """A UseLabel menu whose Label is missing/empty must NOT emit
+        menu_behavior alone — validate_spec rejects UseLabel without menu_label,
+        which would make export-spec output un-appliable. Fall back to omitting
+        the menu keys (default behavior)."""
+        from crm.core import relationships as rel
+        row = {
+            "SchemaName": "new_account_new_project",
+            "ReferencedEntity": "account",
+            "ReferencingEntity": "new_project",
+            "ReferencingAttribute": "new_accountid",
+            "IsCustomRelationship": True,
+            "CascadeConfiguration": {},
+            "AssociatedMenuConfiguration": {
+                "Behavior": "UseLabel",
+                "Label": {"UserLocalizedLabel": None, "LocalizedLabels": []},
+                "Order": 500,
+            },
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_o2m_url(backend), json={"value": [row]})
+            m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
+            result = rel.read_entity_relationships(backend, "new_project")
+        r = result[0]
+        assert "menu_behavior" not in r
+        assert "menu_label" not in r
+        # A non-default Order is still independent of the behavior fallback.
+        assert r["menu_order"] == 500
+
     def test_default_cascade_and_menu_emit_nothing(self, backend):
         """A relationship at all platform defaults emits no cascade_*/menu_* keys."""
         from crm.core import relationships as rel

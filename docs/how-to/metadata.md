@@ -577,8 +577,9 @@ Caveats:
 
 - A string column whose live format is `Json` or `RichText` (formats `apply` cannot
   create) is re-created as plain `Text`.
-- A datetime column's format and `DateTimeBehavior` are **not** captured; it is
-  re-created with the server default format and `UserLocal` behavior.
+- A datetime column's display *format* is **not** captured (re-created with the
+  server default format); its `DateTimeBehavior` **is** captured as `behavior_name`
+  when it differs from the `UserLocal` default.
 - A polymorphic (multi-target) lookup is exported with its first target only and
   re-created as a single-target lookup (`apply` creates single-target lookups).
 

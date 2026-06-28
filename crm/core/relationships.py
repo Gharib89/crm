@@ -163,18 +163,22 @@ def _emit_menu(raw: dict[str, Any], out: dict[str, Any]) -> None:
     """Flatten AssociatedMenuConfiguration into ``menu_behavior``/``menu_label``/
     ``menu_order``, omitting platform defaults.
 
-    ``menu_label`` is emitted only alongside ``menu_behavior == "UseLabel"`` —
-    the only behavior that consumes a label — which also satisfies
-    ``validate_spec``'s rule that a ``UseLabel`` block carry a ``menu_label``.
+    ``UseLabel`` is emitted only when a non-empty ``menu_label`` can be extracted:
+    ``validate_spec`` rejects a ``UseLabel`` block that carries no ``menu_label``
+    (apply.py), so emitting the behavior without a readable label would make the
+    exported spec un-appliable. A label-less ``UseLabel`` therefore falls back to
+    omitting the menu keys (the default ``UseCollectionName`` behavior).
     """
     behavior = raw.get("Behavior")
     if isinstance(behavior, str) and behavior and behavior != "UseCollectionName":
-        out["menu_behavior"] = behavior
         if behavior == "UseLabel":
             lbl = raw.get("Label")
             text = label_text(cast("dict[str, Any]", lbl)) if isinstance(lbl, dict) else ""
             if text:
+                out["menu_behavior"] = behavior
                 out["menu_label"] = text
+        else:
+            out["menu_behavior"] = behavior
     order = raw.get("Order")
     if isinstance(order, int) and order != 10000:
         out["menu_order"] = order
