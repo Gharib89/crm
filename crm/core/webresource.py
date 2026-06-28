@@ -91,8 +91,7 @@ def create_webresource(
         "webresourcetype": webresourcetype,
         "content": content_b64,
     }
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post("webresourceset", json_body=body, extra_headers=headers))
+    result = as_dict(backend.post("webresourceset", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -139,9 +138,8 @@ def update_webresource(
     if display_name is not None:
         body["displayname"] = display_name
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.patch(
-        f"webresourceset({wid})", json_body=body, extra_headers=headers))
+        f"webresourceset({wid})", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 

@@ -474,6 +474,7 @@ def create(
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
+    solution: str | None = None,
 ) -> dict[str, Any]:
     """POST a new record.
 
@@ -481,9 +482,9 @@ def create(
     record back in the response. Otherwise we extract the GUID from the
     `OData-EntityId` header and return `{ "_entity_id": "<guid>", "_entity_id_url": ... }`.
 
-    `extra_headers` are merged on top of the `Prefer` header — used by callers that
-    must ride a request header on the create (e.g. `MSCRM.SolutionUniqueName` to add
-    the new record to a solution as a component).
+    `solution` adds the new record to that solution as a component, via the backend's
+    `MSCRM.SolutionUniqueName` write header. `extra_headers` are merged on top of the
+    `Prefer` header for any other caller-supplied request headers.
     """
     headers: dict[str, str] = {}
     if return_record:
@@ -499,6 +500,7 @@ def create(
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        solution=solution,
     )
     result_dict = as_dict(result)
     if not result_dict:

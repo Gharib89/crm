@@ -149,9 +149,8 @@ def create_report(
         return {"_dry_run": True,
                 "would_create": {"entity_set": _REPORT_SET, "body": payload}}
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        _REPORT_SET, json_body=payload, extra_headers=headers))
+        _REPORT_SET, json_body=payload, solution=solution))
     report_id = result.get("_entity_id")
     out: dict[str, Any] = {"created": True, "name": name, _ID_FIELD: report_id}
     if report_id is None:
@@ -189,9 +188,8 @@ def set_category(
         return {"_dry_run": True,
                 "would_create": {"entity_set": _CATEGORY_SET, "body": payload}}
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        _CATEGORY_SET, json_body=payload, extra_headers=headers))
+        _CATEGORY_SET, json_body=payload, solution=solution))
     out: dict[str, Any] = {
         _ID_FIELD: report_id,
         "category": category,

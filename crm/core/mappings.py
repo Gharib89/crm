@@ -87,8 +87,7 @@ def create_mapping(
         "targetattributename": target_attr,
         "entitymapid@odata.bind": f"/entitymaps({entity_map_id})",
     }
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post("attributemaps", json_body=body, extra_headers=headers))
+    result = as_dict(backend.post("attributemaps", json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["would_create_mapping"] = True
         result["source_entity"] = source
@@ -125,8 +124,7 @@ def auto_map(
     source, target = _resolve_pair(backend, relationship)
     entity_map_id = _find_entity_map(backend, source, target)
     body = {"EntityMapId": entity_map_id}
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post("AutoMapEntity", json_body=body, extra_headers=headers))
+    result = as_dict(backend.post("AutoMapEntity", json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["would_auto_map"] = True
         result["source_entity"] = source

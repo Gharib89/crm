@@ -138,10 +138,7 @@ def _retrieve_merge_write(
         }
 
     merged = _deep_merge(current, changes)
-    write_headers = dict(_WRITE_HEADERS)
-    if solution:
-        write_headers["MSCRM.SolutionUniqueName"] = solution
-    backend.put(target, json_body=merged, extra_headers=write_headers)
+    backend.put(target, json_body=merged, extra_headers=_WRITE_HEADERS, solution=solution)
 
     out: dict[str, Any] = {"updated": True, "path": target, "solution": solution}
     maybe_publish(backend, out, publish)

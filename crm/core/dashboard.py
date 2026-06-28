@@ -828,8 +828,7 @@ def create_dashboard(
         return {"_dry_run": True,
                 "would_create": {"entity_set": _FORM_SET, "body": body}}
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post(_FORM_SET, json_body=body, extra_headers=headers))
+    result = as_dict(backend.post(_FORM_SET, json_body=body, solution=solution))
     entity_id_url = result.get("_entity_id_url") or ""
     dashboard_id = result.get("_entity_id")
     out: dict[str, Any] = {

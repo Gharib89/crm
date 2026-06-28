@@ -175,9 +175,8 @@ def register_assembly(
     if description is not None:
         body["description"] = description
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "pluginassemblies", json_body=body, extra_headers=headers))
+        "pluginassemblies", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -265,9 +264,8 @@ def register_type(
         "friendlyname": friendly_name or type_name,
         "pluginassemblyid@odata.bind": f"/pluginassemblies({pid})",
     }
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "plugintypes", json_body=body, extra_headers=headers))
+        "plugintypes", json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["would_create"] = True
         return result
@@ -431,9 +429,8 @@ def register_step(
     if filtering_attributes is not None and message.lower() == "update":
         body["filteringattributes"] = filtering_attributes
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "sdkmessageprocessingsteps", json_body=body, extra_headers=headers))
+        "sdkmessageprocessingsteps", json_body=body, solution=solution))
     if result.get("_dry_run"):
         if references:
             result["references"] = references
@@ -520,9 +517,8 @@ def register_webhook(
         "authtype": authtype_int,
         "authvalue": auth_value,
     }
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "serviceendpoints", json_body=body, extra_headers=headers))
+        "serviceendpoints", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -612,9 +608,8 @@ def register_image(
     if attributes is not None:
         body["attributes"] = attributes
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "sdkmessageprocessingstepimages", json_body=body, extra_headers=headers))
+        "sdkmessageprocessingstepimages", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -933,10 +928,9 @@ def _update_assembly_content(
     update lands in that solution (mirrors webresource.update_webresource).
     """
     pid = _resolve_id_by_name(backend, name)
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.patch(
         f"pluginassemblies({pid})", json_body={"content": content_b64},
-        extra_headers=headers))
+        solution=solution))
     if result.get("_dry_run"):
         return result
     return {
@@ -1086,10 +1080,9 @@ def update_step(
         body["filteringattributes"] = filtering_attributes
     if configuration is not None:
         body["configuration"] = configuration
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.patch(
         f"sdkmessageprocessingsteps({step_id})", json_body=body,
-        extra_headers=headers))
+        solution=solution))
     if result.get("_dry_run"):
         return result
     return {

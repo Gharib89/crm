@@ -19,7 +19,6 @@ from crm.utils.d365_backend import (
     D365Error,
     as_dict,
     normalize_guid,
-    solution_headers,
 )
 
 # ── Constants ──────────────────────────────────────────────────────────────
@@ -116,7 +115,7 @@ def create_profile(
     if description is not None:
         body["description"] = description
     result = as_dict(backend.post(
-        PROFILES_SET, json_body=body, extra_headers=solution_headers(solution),
+        PROFILES_SET, json_body=body, solution=solution,
     ))
     if result.get("_dry_run"):
         result["would_create"] = True
@@ -171,7 +170,7 @@ def add_permission(
         f"{_PROFILE_ID}@odata.bind": f"/{PROFILES_SET}({profile_id})",
     }
     result = as_dict(backend.post(
-        PERMISSIONS_SET, json_body=body, extra_headers=solution_headers(solution),
+        PERMISSIONS_SET, json_body=body, solution=solution,
     ))
     if result.get("_dry_run"):
         result["would_create"] = True

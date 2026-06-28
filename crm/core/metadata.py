@@ -609,14 +609,10 @@ def create_entity(
         if data_source_id:
             body["DataSourceId"] = data_source_id
 
-    headers = {}
-    if solution:
-        headers["MSCRM.SolutionUniqueName"] = solution
-
     result = as_dict(backend.post(
         "EntityDefinitions",
         json_body=body,
-        extra_headers=headers or None,
+        solution=solution,
     ))
     if result.get("_dry_run"):
         result["_exists"] = exists
@@ -711,8 +707,7 @@ def delete_entity(
             deps = dep_mod.dependencies_by_id(backend, _mid, 1, for_="delete", kind="entity")
         else:
             deps = dep_mod.retrieve_dependencies(backend, "entity", logical_name, for_="delete")
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    preview = backend.delete(path, extra_headers=headers)
+    preview = backend.delete(path, solution=solution)
     if isinstance(preview, dict) and preview.get("_dry_run"):
         result: dict[str, Any] = {
             "_dry_run": True,
@@ -921,11 +916,10 @@ def create_entity_key(
         "DisplayName": label(display),
         "KeyAttributes": list(key_attributes),
     }
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
         f"EntityDefinitions(LogicalName='{entity}')/Keys",
         json_body=body,
-        extra_headers=headers,
+        solution=solution,
     ))
     if result.get("_dry_run"):
         result["_exists"] = exists
@@ -966,8 +960,7 @@ def delete_entity_key(
         f"EntityDefinitions(LogicalName='{entity}')"
         f"/Keys(LogicalName='{key_logical}')"
     )
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    preview = backend.delete(path, extra_headers=headers)
+    preview = backend.delete(path, solution=solution)
     if isinstance(preview, dict) and preview.get("_dry_run"):
         return {
             "_dry_run": True,

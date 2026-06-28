@@ -205,9 +205,8 @@ def create_view(
         body["isquickfindquery"] = True
     if description is not None:
         body["description"] = description
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post("savedqueries", json_body=body,
-                                  extra_headers=headers))
+                                  solution=solution))
     if result.get("_dry_run"):
         result["_exists"] = bool(existing)
         result["would_skip"] = bool(existing) and if_exists == "skip"
@@ -252,9 +251,8 @@ def update_view(
         raise D365Error("nothing to update on the view.")
     if backend.dry_run:
         return {"_dry_run": True, "would_update": True, "savedqueryid": savedqueryid}
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.patch(f"savedqueries({savedqueryid})", json_body=changes,
-                  extra_headers=headers)
+                  solution=solution)
     return {"updated": True, "savedqueryid": savedqueryid}
 
 

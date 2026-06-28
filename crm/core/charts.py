@@ -184,9 +184,8 @@ def clone_chart_to_entity(
     }
     if chart.get("description") is not None:
         body["description"] = chart["description"]
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     result = as_dict(backend.post(
-        "savedqueryvisualizations", json_body=body, extra_headers=headers))
+        "savedqueryvisualizations", json_body=body, solution=solution))
     if result.get("_dry_run"):
         return result
 
@@ -312,8 +311,7 @@ def create_chart(
         return {"_dry_run": True,
                 "would_create": {"entity_set": entity_set, "body": body}}
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    result = as_dict(backend.post(entity_set, json_body=body, extra_headers=headers))
+    result = as_dict(backend.post(entity_set, json_body=body, solution=solution))
     entity_id_url = result.get("_entity_id_url") or ""
     chart_id = result.get("_entity_id")
     out: dict[str, Any] = {

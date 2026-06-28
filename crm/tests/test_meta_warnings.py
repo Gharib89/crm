@@ -137,7 +137,7 @@ class TestUpdateOptionsetPartialEndToEnd:
     class _PartialStub:
         dry_run = False
 
-        def post(self, path, *, json_body=None, extra_headers=None):
+        def post(self, path, *, json_body=None, solution=None):
             if path == "InsertOptionValue":
                 return {}
             raise D365Error("value 99 not found", status=400)

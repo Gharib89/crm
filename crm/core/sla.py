@@ -21,7 +21,6 @@ from crm.utils.d365_backend import (
     D365Error,
     as_dict,
     normalize_guid,
-    solution_headers,
 )
 
 
@@ -177,7 +176,7 @@ def create_sla(
     }
     result = as_dict(backend.post(
         SLAS_SET, json_body=body,
-        extra_headers=solution_headers(solution), **admin,
+        solution=solution, **admin,
     ))
     if result.get("_dry_run"):
         return {
@@ -259,7 +258,7 @@ def add_kpi(
     }
     result = as_dict(backend.post(
         SLA_ITEMS_SET, json_body=body,
-        extra_headers=solution_headers(solution), **admin,
+        solution=solution, **admin,
     ))
     if result.get("_dry_run"):
         return {

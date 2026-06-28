@@ -443,8 +443,7 @@ def delete_attribute(
             deps = dep_mod.retrieve_dependencies(
                 backend, "attribute", f"{entity}.{attribute}", for_="delete"
             )
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
-    preview = backend.delete(path, extra_headers=headers)
+    preview = backend.delete(path, solution=solution)
     if isinstance(preview, dict) and preview.get("_dry_run"):
         result: dict[str, Any] = {
             "_dry_run": True,
@@ -719,9 +718,8 @@ def add_attribute(
             "logical_name": logical_name,
         }
 
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     path = f"EntityDefinitions(LogicalName='{entity}')/Attributes"
-    result = as_dict(backend.post(path, json_body=body, extra_headers=headers))
+    result = as_dict(backend.post(path, json_body=body, solution=solution))
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"

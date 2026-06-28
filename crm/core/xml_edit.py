@@ -203,9 +203,8 @@ def commit_xml_patches(
         result["_dry_run"] = True
         result[dry_run_flag] = True
         return result
-    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
     backend.patch(f"{entity_set}({record_id})",
-                  json_body=dict(columns), extra_headers=headers)
+                  json_body=dict(columns), solution=solution)
     result["updated"] = True
     maybe_publish(backend, result, publish)
     if read_back is not None:
