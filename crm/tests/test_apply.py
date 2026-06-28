@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
+from crm.core import views as views_mod
 from crm.utils.d365_backend import D365Error
 
 _GUID = "11111111-1111-1111-1111-111111111111"
@@ -152,10 +153,17 @@ def _mock_one_to_many(m, backend, *, schema, exists=False):
 
 
 def _mock_view_create(m, backend, *, name="Active Projects", sqid=_GUID, exists=False):
-    """Mock view existence GET (savedqueries $filter) + 204 create + readback."""
+    """Mock view existence GET (savedqueries $filter) + 204 create + readback.
+
+    exists=True delegates to `_mock_view_live`: the reconcile path now runs for an
+    existing view, so the mock serves a full live savedquery matching the canonical
+    `_VIEW` spec (columns contoso_name/contoso_code, no filter/order/default) — a
+    re-applied unchanged spec is a no-op skip, not a spurious PATCH."""
+    if exists:
+        _mock_view_live(m, backend, name=name, sqid=sqid)
+        return
     sq_url = backend.url_for(f"savedqueries({sqid})")
-    rows = [{"savedqueryid": sqid, "name": name}] if exists else []
-    m.get(backend.url_for("savedqueries"), json={"value": rows})
+    m.get(backend.url_for("savedqueries"), json={"value": []})
     m.post(backend.url_for("savedqueries"), status_code=204,
            headers={"OData-EntityId": sq_url})
     m.get(sq_url, json={"name": name, "savedqueryid": sqid})
@@ -1116,16 +1124,20 @@ def _label(text):
 
 def _mock_entity_live(m, backend, *, logical="contoso_project", schema="contoso_Project",
                       display_name="Project", display_collection_name="Projects",
-                      description=None, ownership="UserOwned"):
+                      description=None, ownership="UserOwned",
+                      has_notes=False, has_activities=False, is_activity=False):
     """Mock an EXISTING entity. One GET matcher serves the full live definition for
     every read (target_exists probe, entity_info, update_entity's merge read);
-    PUT 204 for the write."""
+    PUT 204 for the write. HasNotes/HasActivities/IsActivity are readable booleans
+    on the live EntityMetadata, so the capability/identity reconcile diffs them."""
     url = backend.url_for(f"EntityDefinitions(LogicalName='{logical}')")
     live = {
         "MetadataId": _ENT_ID, "LogicalName": logical, "SchemaName": schema,
         "EntitySetName": logical + "s", "OwnershipType": ownership,
         "DisplayName": _label(display_name),
         "DisplayCollectionName": _label(display_collection_name),
+        "HasNotes": has_notes, "HasActivities": has_activities,
+        "IsActivity": is_activity,
     }
     if description is not None:
         live["Description"] = _label(description)
@@ -1204,6 +1216,263 @@ def test_apply_command_replace_blocked_exits_nonzero(backend, monkeypatch, tmp_p
     assert payload["ok"] is False
     assert [e["kind"] for e in payload["data"]["replace_blocked"]] == ["entity"]
     assert "updated" in payload["data"] and "pruned" in payload["data"]
+
+
+def test_apply_enables_has_notes_on_drift(backend):
+    # Live table has notes off; spec wants has_notes=True. Enabling is additive
+    # (the platform creates the Annotation relationship) → updatable in place.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "has_notes": True,
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project", has_notes=False)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["entity"]
+    puts = [r for r in m.request_history if r.method == "PUT"]
+    assert len(puts) == 1
+
+
+def test_apply_enables_has_activities_on_drift(backend):
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "has_activities": True,
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project", has_activities=False)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["entity"]
+
+
+def test_apply_blocks_disabling_has_notes(backend):
+    # Live table has notes ON; spec explicitly wants has_notes=False. The platform
+    # forbids disabling (enable-only) → replace_blocked, no write, ok=false.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "has_notes": False,
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project", has_notes=True)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["entity"]
+    assert "reason" in res["replace_blocked"][0]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+    assert len(_publish_hits(m, backend)) == 0
+
+
+def test_apply_blocks_is_activity_change(backend):
+    # Spec wants an activity table; live table is a regular table → identity
+    # divergence, not editable in place → replace_blocked, no write.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "is_activity": True,
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project", is_activity=False)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["entity"]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_omitted_capability_never_drifts(backend):
+    # Spec omits has_notes/has_activities/is_activity; live has notes ON. An
+    # unspecified capability is left as-is (never blanked) → skipped no-op.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "display_collection_name": "Projects",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project",
+                          display_collection_name="Projects", has_notes=True)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["entity"]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_enabling_already_enabled_capability_is_skipped(backend):
+    # has_notes=True and live already ON → no drift → idempotent skip.
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "display_collection_name": "Projects", "has_notes": True,
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"entities": [ent]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project",
+                          display_collection_name="Projects", has_notes=True)
+        res = apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["skipped"]) == ["entity"]
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def _mock_view_live(m, backend, *, name="Active Projects", sqid=_GUID,
+                    entity="contoso_project", otc=10112, querytype=0,
+                    columns=(("contoso_name", 100), ("contoso_code", 100)),
+                    order_by=None, order_desc=False, filter_active=False,
+                    is_default=False, description=None, rows=None):
+    """Mock an EXISTING savedquery for the reconcile path.
+
+    One savedqueries $filter GET serves BOTH create_view's existence probe and
+    _reconcile_view's identity-match query; the row's live fetchxml/layoutxml are
+    built from the canonical builders so a matching spec is a no-op and a changed
+    spec drifts. `rows` overrides the returned set (e.g. two rows → ambiguous).
+    PATCH 204 is the reconcile write."""
+    cols = list(columns)
+    row = {
+        "savedqueryid": sqid, "name": name, "querytype": querytype,
+        "layoutxml": views_mod._build_layoutxml(entity, otc, cols),
+        "fetchxml": views_mod._build_fetchxml(entity, cols, order_by, filter_active,
+                                              order_desc),
+        "isdefault": is_default,
+    }
+    if description is not None:
+        row["description"] = description
+    served = rows if rows is not None else [row]
+    m.get(backend.url_for("savedqueries"), json={"value": served})
+    m.patch(backend.url_for(f"savedqueries({sqid})"), status_code=204)
+
+
+def _view_spec(view):
+    """A spec: one existing (no-op) entity carrying one view to reconcile."""
+    return {"entities": [{**_ENTITY, "views": [view]}]}
+
+
+def _patches(m):
+    return [r for r in m.request_history if r.method == "PATCH"]
+
+
+def test_apply_reconciles_view_filter_change(backend):
+    # Spec wants the active-records filter; live view has none → fetchxml drift.
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"],
+            "filter_active": True}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend, filter_active=False)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["view"]
+    assert _kinds(res["skipped"]) == ["entity"]
+    assert len(_patches(m)) == 1
+    assert "fetchxml" in _patches(m)[0].json()
+
+
+def test_apply_reconciles_view_columns_change(backend):
+    # Spec adds a column → layoutxml AND fetchxml regenerated.
+    view = {"name": "Active Projects",
+            "columns": ["contoso_name", "contoso_code", "contoso_status"]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend,
+                        columns=(("contoso_name", 100), ("contoso_code", 100)))
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["view"]
+    body = _patches(m)[0].json()
+    assert "layoutxml" in body and "fetchxml" in body
+
+
+def test_apply_reconciles_view_description_change(backend):
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"],
+            "description": "Currently active projects"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend, description="stale")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["view"]
+    body = _patches(m)[0].json()
+    assert body.get("description") == "Currently active projects"
+    # A pure-description edit must not regenerate the XML.
+    assert "fetchxml" not in body and "layoutxml" not in body
+
+
+def test_apply_reconciles_view_default_change(backend):
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"],
+            "is_default": True}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend, is_default=False)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["view"]
+    assert _patches(m)[0].json().get("isdefault") is True
+
+
+def test_apply_view_unchanged_is_skipped(backend):
+    # Spec matches the live view exactly → idempotent no-op, no PATCH.
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert "view" in _kinds(res["skipped"])
+    assert res["updated"] == []
+    assert _patches(m) == []
+
+
+def test_apply_view_ambiguous_match_is_skipped(backend):
+    # Two live views share the (name, query_type) identity → cannot pick one to
+    # reconcile → skipped with a reason, no PATCH.
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"],
+            "filter_active": True}
+    rows = [{"savedqueryid": _GUID, "name": "Active Projects", "querytype": 0,
+             "layoutxml": "", "fetchxml": "", "isdefault": False},
+            {"savedqueryid": _GUID2, "name": "Active Projects", "querytype": 0,
+             "layoutxml": "", "fetchxml": "", "isdefault": False}]
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_live(m, backend, rows=rows)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    skipped_views = [e for e in res["skipped"] if e["kind"] == "view"]
+    assert len(skipped_views) == 1 and "reason" in skipped_views[0]
+    assert res["updated"] == []
+    assert _patches(m) == []
+
+
+def test_apply_view_rename_creates_new_view(backend):
+    # A changed name has no live match → the create path makes a NEW view (the old
+    # one is left for --prune); the reconcile path is never entered, no PATCH.
+    view = {"name": "Renamed Projects", "columns": ["contoso_name", "contoso_code"]}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, backend, exists=True, otc=10112)
+        _mock_view_create(m, backend, name="Renamed Projects", exists=False)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert "view" in _kinds(res["applied"])
+    assert _patches(m) == []
+
+
+def test_apply_dry_run_reports_view_drift(dry_backend):
+    # Dry-run: a drifted view is reported in `updated` with a field-level diff and
+    # writes nothing (reads-execute).
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"],
+            "filter_active": True}
+    with requests_mock.Mocker() as m:
+        _mock_entity_create(m, dry_backend, exists=True, otc=10112)
+        _mock_view_live(m, dry_backend, filter_active=False)
+        res = apply_mod.apply_spec(dry_backend, _view_spec(view), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["view"]
+    assert "filter_active" in res["updated"][0]["diff"]
+    assert _writes(m) == []
 
 
 def _mock_attribute_live(m, backend, *, entity="contoso_project", logical, schema,

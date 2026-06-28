@@ -1543,3 +1543,61 @@ class TestReadEntityViews:
         assert cols[0]["name"] == "cwx_name"
         assert cols[1]["name"] == "cwx_priority"
 
+
+
+class TestParseHelpers:
+    """The reconcile-path inverses of _build_layoutxml / _build_fetchxml."""
+
+    def test_layout_columns_round_trip(self):
+        from crm.core.views import _parse_layout_columns
+        xml = _build_layoutxml("cwx_ticket", 10042,
+                               [("cwx_name", 220), ("cwx_priority", 120)])
+        assert _parse_layout_columns(xml) == [
+            {"name": "cwx_name", "width": 220},
+            {"name": "cwx_priority", "width": 120},
+        ]
+
+    def test_layout_columns_empty_or_unparseable(self):
+        from crm.core.views import _parse_layout_columns
+        assert _parse_layout_columns("") == []
+        assert _parse_layout_columns("<not-xml") == []
+
+    def test_fetch_order_filter_round_trip(self):
+        from crm.core.views import _parse_fetch_order_filter
+        xml = _build_fetchxml("cwx_ticket", [("cwx_name", 100)],
+                              order_by="cwx_name", filter_active=True, order_desc=True)
+        assert _parse_fetch_order_filter(xml) == ("cwx_name", True, True)
+
+    def test_fetch_order_filter_none_when_absent(self):
+        from crm.core.views import _parse_fetch_order_filter
+        xml = _build_fetchxml("cwx_ticket", [("cwx_name", 100)],
+                              order_by=None, filter_active=False)
+        assert _parse_fetch_order_filter(xml) == (None, False, False)
+        assert _parse_fetch_order_filter("") == (None, False, False)
+
+
+class TestUpdateView:
+    def test_dry_run_issues_no_patch(self, dry_backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.patch(dry_backend.url_for(f"savedqueries({_VIEW_ID})"), status_code=204)
+            out = views.update_view(dry_backend, savedqueryid=_VIEW_ID,
+                                    changes={"description": "x"})
+        assert out["_dry_run"] is True and out["would_update"] is True
+        assert [r for r in m.request_history if r.method == "PATCH"] == []
+
+    def test_patches_changed_fields(self, backend):
+        from crm.core import views
+        with requests_mock.Mocker() as m:
+            m.patch(backend.url_for(f"savedqueries({_VIEW_ID})"), status_code=204)
+            out = views.update_view(backend, savedqueryid=_VIEW_ID,
+                                    changes={"isdefault": True, "description": "x"})
+        assert out["updated"] is True
+        patches = [r for r in m.request_history if r.method == "PATCH"]
+        assert len(patches) == 1
+        assert patches[0].json() == {"isdefault": True, "description": "x"}
+
+    def test_empty_changes_raises(self, backend):
+        from crm.core import views
+        with pytest.raises(D365Error):
+            views.update_view(backend, savedqueryid=_VIEW_ID, changes={})

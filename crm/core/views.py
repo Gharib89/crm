@@ -67,6 +67,74 @@ def _build_fetchxml(entity: str, columns: list[tuple[str, int]],
     )
 
 
+def _parse_layout_columns(layoutxml: str) -> list[dict[str, Any]]:
+    """Parse a savedquery layoutxml grid into ``[{name[, width:int]}]`` column dicts.
+
+    The inverse of :func:`_build_layoutxml`. A cell with no parseable ``width``
+    yields a name-only dict; an absent/unparseable layoutxml yields ``[]``.
+    """
+    columns: list[dict[str, Any]] = []
+    if not layoutxml:
+        return columns
+    try:
+        root = ElementTree.fromstring(layoutxml)
+    except ElementTree.ParseError:
+        return columns
+    for cell in root.iter("cell"):
+        col_name = cell.get("name")
+        if not col_name:
+            continue
+        col: dict[str, Any] = {"name": col_name}
+        width_str = cell.get("width")
+        if width_str is not None:
+            try:
+                col["width"] = int(width_str)
+            except ValueError:
+                pass
+        columns.append(col)
+    return columns
+
+
+def _parse_fetch_order_filter(fetchxml: str) -> tuple[str | None, bool, bool]:
+    """Parse ``(order_by, order_desc, filter_active)`` from a savedquery fetchxml.
+
+    The inverse of :func:`_build_fetchxml`, scoped strictly to the ROOT ``<entity>``
+    (its own ``<order>`` and direct-child ``<filter>``s): a ``<link-entity>``'s sort
+    or statecode filter belongs to the joined table, not this view, so it must not
+    surface as a main-view key. Returns ``(None, False, False)`` when fetchxml is
+    absent/unparseable.
+    """
+    order_by: str | None = None
+    order_desc = False
+    filter_active = False
+    if not fetchxml:
+        return order_by, order_desc, filter_active
+    try:
+        fetch_root = ElementTree.fromstring(fetchxml)
+    except ElementTree.ParseError:
+        return order_by, order_desc, filter_active
+    entity_el = fetch_root.find("{*}entity")
+    if entity_el is not None:
+        order_el = entity_el.find("{*}order")  # direct child of the root entity
+        if order_el is not None:
+            order_by = order_el.get("attribute") or None
+            order_desc = (order_el.get("descending") or "").lower() == "true"
+        # The active-state filter is a condition inside the root entity's own
+        # <filter> (link-entity filters are nested under <link-entity>, excluded).
+        for filt in entity_el.findall("{*}filter"):
+            # `.//` (not Element.iter) so the namespace wildcard applies; covers
+            # conditions nested in and/or sub-filter groups too.
+            for cond in filt.findall(".//{*}condition"):
+                if (cond.get("attribute") == "statecode"
+                        and cond.get("operator") == "eq"
+                        and cond.get("value") == "0"):
+                    filter_active = True
+                    break
+            if filter_active:
+                break
+    return order_by, order_desc, filter_active
+
+
 def create_view(
     backend: D365Backend,
     *,
@@ -165,6 +233,31 @@ def create_view(
     return out
 
 
+def update_view(
+    backend: D365Backend,
+    *,
+    savedqueryid: str,
+    changes: dict[str, Any],
+    solution: str | None = None,
+) -> dict[str, Any]:
+    """Record-PATCH a savedquery's reconciled fields, in place.
+
+    A thin write primitive for apply's view reconcile (ADR 0018): ``changes`` is the
+    already-diffed set of savedquery columns to write — any of ``fetchxml`` /
+    ``layoutxml`` / ``isdefault`` / ``description``. Under ``backend.dry_run`` no
+    write is issued (the caller's field-level diff is the preview). Returns
+    ``{updated|_dry_run, savedqueryid}``.
+    """
+    if not changes:
+        raise D365Error("nothing to update on the view.")
+    if backend.dry_run:
+        return {"_dry_run": True, "would_update": True, "savedqueryid": savedqueryid}
+    headers = {"MSCRM.SolutionUniqueName": solution} if solution else None
+    backend.patch(f"savedqueries({savedqueryid})", json_body=changes,
+                  extra_headers=headers)
+    return {"updated": True, "savedqueryid": savedqueryid}
+
+
 def read_entity_views(
     backend: D365Backend,
     entity_logical_name: str,
@@ -204,64 +297,9 @@ def read_entity_views(
 
     result: list[dict[str, Any]] = []
     for row in rows:
-        # --- parse columns from layoutxml ---
-        columns: list[dict[str, Any]] = []
-        layoutxml = row.get("layoutxml") or ""
-        if layoutxml:
-            try:
-                root = ElementTree.fromstring(layoutxml)
-            except ElementTree.ParseError:
-                root = None
-            if root is not None:
-                for cell in root.iter("cell"):
-                    col_name = cell.get("name")
-                    if not col_name:
-                        continue
-                    col: dict[str, Any] = {"name": col_name}
-                    width_str = cell.get("width")
-                    if width_str is not None:
-                        try:
-                            col["width"] = int(width_str)
-                        except ValueError:
-                            pass
-                    columns.append(col)
-
-        # --- parse order_by / order_desc / filter_active from fetchxml ---
-        # These mirror the create_view → _build_fetchxml encoding: a sort lives in
-        # the <order> element (its `descending` attribute carries order_desc), and
-        # the active-records filter is a <condition attribute="statecode" eq "0">.
-        # Scope strictly to the ROOT <entity> (its own <order> and direct-child
-        # <filter>s): a <link-entity>'s sort or statecode filter belongs to the
-        # joined table, not this view, so it must not surface as a main-view key.
-        order_by: str | None = None
-        order_desc = False
-        filter_active = False
-        fetchxml = row.get("fetchxml") or ""
-        if fetchxml:
-            try:
-                fetch_root = ElementTree.fromstring(fetchxml)
-            except ElementTree.ParseError:
-                fetch_root = None
-            entity_el = fetch_root.find("{*}entity") if fetch_root is not None else None
-            if entity_el is not None:
-                order_el = entity_el.find("{*}order")  # direct child of the root entity
-                if order_el is not None:
-                    order_by = order_el.get("attribute") or None
-                    order_desc = (order_el.get("descending") or "").lower() == "true"
-                # The active-state filter is a condition inside the root entity's
-                # own <filter> (link-entity filters are nested under <link-entity>,
-                # not under these, so they are excluded).
-                for filt in entity_el.findall("{*}filter"):
-                    # `.//` (not Element.iter) so the namespace wildcard applies;
-                    # covers conditions nested in and/or sub-filter groups too.
-                    for cond in filt.findall(".//{*}condition"):
-                        if (cond.get("attribute") == "statecode"
-                                and cond.get("operator") == "eq"
-                                and cond.get("value") == "0"):
-                            filter_active = True
-                            break
-                    if filter_active:
-                        break
+        columns = _parse_layout_columns(row.get("layoutxml") or "")
+        order_by, order_desc, filter_active = _parse_fetch_order_filter(
+            row.get("fetchxml") or "")
 
         view: dict[str, Any] = {
             "name": row.get("name", ""),
