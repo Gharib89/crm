@@ -41,8 +41,14 @@ def test_display_home_path_under_home_uses_tilde():
     assert _display_home_path(str(p)) == "~/wip/proj"
 
 
-def test_display_home_path_outside_home_is_absolute(tmp_path):
-    # tmp_path lives under /tmp, not $HOME → returned as a resolved abs path.
-    result = _display_home_path(str(tmp_path))
-    assert result == str(tmp_path.resolve())
+def test_display_home_path_outside_home_is_absolute(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    outside_home = tmp_path / "outside-home"
+    home.mkdir()
+    outside_home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+
+    result = _display_home_path(str(outside_home))
+
+    assert result == str(outside_home.resolve())
     assert not result.startswith("~")
