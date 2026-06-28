@@ -57,7 +57,7 @@ class _CommaIntListType(click.ParamType):
             parsed = [int(x.strip()) for x in value.split(",") if x.strip()]
         except ValueError:
             self.fail(
-                f"{value!r} must be a comma-separated list of integers.", param, ctx
+                f"'{value}' must be a comma-separated list of integers.", param, ctx
             )
         return parsed or None
 
