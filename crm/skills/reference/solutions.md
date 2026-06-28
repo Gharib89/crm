@@ -288,9 +288,10 @@ X?"; use `metadata dependencies` for a single component.
 
 ## Project a solution into a desired-state spec — `export-spec`
 
-The **source side of the org-to-org drift recipe**: project every entity touched by a
-solution into one merged apply-consumable spec, then run `apply --dry-run` against the
-target org to see what drifts — pure reads, no writes on either side.
+The **source side of the org-to-org drift recipe**: project every component in a solution
+— entities, security roles, and web resources — into one merged apply-consumable spec,
+then run `apply --dry-run` against the target org to see what drifts — pure reads, no
+writes on either side.
 
 ```bash
 # Dev org: write the bare YAML spec
@@ -303,7 +304,8 @@ crm --dry-run apply -f desired.yaml
 Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipped` bucket.
 
 **JSON contract (without `-o`):** `data.entities` / `data.optionsets` are name lists,
-`data.attributes` is a total count; there is no `meta`.
+`data.security_roles` / `data.webresources` are name lists, `data.attributes` is a total
+count; there is no `meta`.
 ```json
 {
   "ok": true,
@@ -312,6 +314,8 @@ Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipp
     "entities": ["cwx_Ticket", "cwx_Project"],
     "attributes": 12,
     "optionsets": ["cwx_priority"],
+    "security_roles": ["Contoso Project Manager"],
+    "webresources": ["contoso_/scripts/project.js"],
     "skipped": [
       {"type": "pluginassembly", "objectid": "<guid>",
        "reason": "plug-in component not projectable from a live org (assembly DLL bytes absent); ..."}
@@ -319,12 +323,21 @@ Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipp
   }
 }
 ```
-With `-o FILE`, `data` is instead `{path, solution, entities: <count>, attributes, optionsets: <count>, skipped}`.
+With `-o FILE`, `data` is instead `{path, solution, entities: <count>, attributes,
+optionsets: <count>, security_roles: <count>, webresources: <count>, skipped}`.
+
+**Security roles** project as `security_roles[]` — name, optional `business_unit`, and
+privileges grouped by depth into `privilege_names` selector rows. Roles whose privileges
+are all at non-authorable depths (e.g. RecordFilter) are routed to `skipped`.
+
+**Web resources** project as `webresources[]` — body carried inline as base64 `content`
+(no sidecar file), plus `display_name` and `webresourcetype`. The inline form requires
+`webresourcetype` when applied (apply cannot infer the type without a file extension).
 
 **Skipped bucket** — components that cannot be projected from live metadata (plug-in
-assemblies, security roles, web resources, and other non-entity-rooted types) land here.
-The verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops
-one silently.
+assemblies, forms, dashboards, workflows, and other non-seedable types) land here. The
+verb **never fails** on an unsupported component (exit 0, `ok: true`) and never drops one
+silently.
 
 **Known limitation:** projection is driven by entity members only — a subcomponent member
 is NOT resolved to its parent entity. So attribute / view / relationship members **always**
