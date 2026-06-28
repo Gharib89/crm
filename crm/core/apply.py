@@ -184,7 +184,7 @@ class Adapter:
     def validate(self, block: dict[str, Any]) -> None:
         """Reject constrained values up front via the builders' own ``mc.*`` rules."""
         for key in self.schema_name_keys:
-            if block.get(key):
+            if key in block:
                 mc.validate_schema_name(block[key], subject=key)
         for key in self.required_keys:
             if key in block:
@@ -303,7 +303,7 @@ REGISTRY: dict[str, Adapter] = {
             "description": "description",
         },
         transforms={"columns": lambda b: _columns(b.get("columns"))},
-        defaults={},
+        defaults={"is_default": False},
         injected=frozenset(
             {"backend", "entity", "object_type_code", "solution", "if_exists", "publish"}
         ),
