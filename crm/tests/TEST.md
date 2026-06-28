@@ -241,9 +241,10 @@ Full coverage = the **union** of the two runs. Capability-gated tests skip on th
 non-matching target (e.g. `plugin register-image` is on-prem-only;
 `solution layer-conflicts` are cloud-only). The `bigint` attribute test xfails on
 on-prem (system-managed) and xpasses on cloud. The 5/4 xfails are documented product
-defects — see `crm/tests/e2e/DISCOVERED_BUGS.md`. Skips (`query saved`/`query user`,
-`sla activate`, `workflow activate`) are data-gated: those records aren't present on
-either test org. Hostnames omitted (Contoso placeholders only).
+defects — see `crm/tests/e2e/DISCOVERED_BUGS.md`. Skips (`sla activate`,
+`workflow activate`) are data-gated: those records aren't present on either test org
+(`query saved`/`query user` now self-seed a throwaway view, so they no longer skip).
+Hostnames omitted (Contoso placeholders only).
 
 ## Realistic Workflow Scenarios
 
