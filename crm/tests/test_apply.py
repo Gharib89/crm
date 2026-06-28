@@ -133,13 +133,18 @@ def _mock_attribute_create(m, backend, *, entity="contoso_project", logical, sch
 
 
 def _mock_one_to_many(m, backend, *, schema, exists=False):
-    """Mock a one-to-many relationship existence GET + 204 create + readback."""
+    """Mock a one-to-many relationship existence GET + 204 create + readback.
+
+    exists=True delegates to `_mock_relationship_live`: the reconcile path now runs
+    for an existing relationship, so the mock must serve a full live 1:N definition
+    matching the canonical `_RELATIONSHIP` spec (no drift → skipped), not just a
+    bare existence probe."""
+    if exists:
+        _mock_relationship_live(m, backend, schema=schema)
+        return
     rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
     probe = backend.url_for(f"RelationshipDefinitions(SchemaName='{schema}')")
-    if exists:
-        m.get(probe, json={"SchemaName": schema})
-    else:
-        m.get(probe, status_code=404)
+    m.get(probe, status_code=404)
     m.post(backend.url_for("RelationshipDefinitions"), status_code=204,
            headers={"OData-EntityId": rel_url})
     m.get(rel_url + "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata",
@@ -1292,6 +1297,327 @@ def test_apply_blocks_attribute_datatype_change(backend):
     assert res["updated"] == []
     assert [r for r in m.request_history if r.method == "PUT"] == []
     assert len(_publish_hits(m, backend)) == 0
+
+
+def _mock_relationship_live(m, backend, *, schema, referenced="contoso_project",
+                            referencing="contoso_task", referencing_attr="contoso_projectid",
+                            rel_type="OneToManyRelationship", cascade=None, menu=None,
+                            is_hierarchical=False, lookup_display="Project",
+                            lookup_required="None", lookup_description=None):
+    """Mock an EXISTING 1:N relationship + its lookup column for reconcile.
+
+    The SchemaName GET serves the create-path existence probe, the reconcile
+    base-type read, and update_relationship's MetadataId resolve. The OneToMany
+    cast GET (by SchemaName) serves the reconcile diff; the cast GET (by
+    MetadataId) serves update_relationship's merge base; the PUT to the un-cast
+    MetadataId path is the #267 write. The relationship-backed lookup column on the
+    referencing entity is mocked like _mock_attribute_live (base + Lookup cast GET +
+    PUT) so the reconcile can diff and update the lookup half."""
+    cast = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
+    live = {
+        "SchemaName": schema, "MetadataId": _REL_ID, "@odata.type": "#" + cast,
+        "RelationshipType": rel_type,
+        "ReferencedEntity": referenced, "ReferencingEntity": referencing,
+        "ReferencingAttribute": referencing_attr,
+        "CascadeConfiguration": cascade or {
+            "Assign": "NoCascade", "Delete": "RemoveLink", "Reparent": "NoCascade",
+            "Share": "NoCascade", "Unshare": "NoCascade", "Merge": "NoCascade"},
+        "AssociatedMenuConfiguration": menu or {
+            "Behavior": "UseCollectionName", "Group": "Details", "Order": 10000},
+        "IsHierarchical": is_hierarchical,
+    }
+    probe = backend.url_for(f"RelationshipDefinitions(SchemaName='{schema}')")
+    rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
+    m.get(probe, json=live)
+    m.get(probe + "/" + cast, json=live)
+    m.get(rel_url + "/" + cast, json=live)
+    m.put(rel_url, status_code=204)
+    # The relationship-backed lookup column on the referencing entity.
+    lk_cast = "Microsoft.Dynamics.CRM.LookupAttributeMetadata"
+    lk_base = backend.url_for(
+        f"EntityDefinitions(LogicalName='{referencing}')/Attributes(LogicalName='{referencing_attr}')")
+    lk = {"MetadataId": _ATTR_ID, "LogicalName": referencing_attr,
+          "@odata.type": "#" + lk_cast, "DisplayName": _label(lookup_display),
+          "RequiredLevel": {"Value": lookup_required}}
+    if lookup_description is not None:
+        lk["Description"] = _label(lookup_description)
+    m.get(lk_base, json=lk)
+    m.get(lk_base + "/" + lk_cast, json=lk)
+    m.put(lk_base + "/" + lk_cast, status_code=204)
+
+
+def _rel_spec(rel):
+    """A minimal spec: one existing entity (no-op) carrying one relationship."""
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "relationships": [rel],
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    return {"entities": [ent]}
+
+
+def _base_rel(**overrides):
+    """A relationship spec block matching `_mock_relationship_live`'s live defaults
+    (so it is a no-op unless an override forces drift)."""
+    rel = {"schema_name": "contoso_project_task", "referenced_entity": "contoso_project",
+           "referencing_entity": "contoso_task", "lookup_schema": "contoso_ProjectId",
+           "lookup_display": "Project"}
+    rel.update(overrides)
+    return rel
+
+
+def test_apply_updates_relationship_cascade_on_drift(backend):
+    # Live cascade Delete=RemoveLink; spec wants Cascade → update → updated.
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel(cascade_delete="Cascade")),
+                                   stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+    assert _kinds(res["skipped"]) == ["entity"]
+    # One PUT to the relationship definition (the #267 un-cast write); no lookup PUT.
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+
+
+def test_apply_updates_relationship_menu_order_on_drift(backend):
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel(menu_order=5)),
+                                   stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+
+
+def test_apply_updates_relationship_menu_label_on_drift(backend):
+    # Live menu is UseCollectionName; spec wants a custom UseLabel menu → update.
+    rel = _base_rel(menu_behavior="UseLabel", menu_label="Tasks")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+
+
+def test_apply_updates_relationship_is_hierarchical_on_drift(backend):
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel(is_hierarchical=True)),
+                                   stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+
+
+def test_apply_updates_relationship_lookup_display_on_drift(backend):
+    # Only the lookup column drifts → updated via update_attribute (one lookup PUT).
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task",
+                                lookup_display="Project")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel(lookup_display="Renamed")),
+                                   stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+
+
+def test_apply_updates_relationship_lookup_required_on_drift(backend):
+    rel = _base_rel(required="ApplicationRequired")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task",
+                                lookup_required="None")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+
+
+def test_apply_relationship_and_lookup_merge_into_one_updated_entry(backend):
+    # Both the relationship (cascade) and its lookup (display) drift → TWO PUTs
+    # (update_relationship + update_attribute) but ONE merged `updated` entry.
+    rel = _base_rel(cascade_delete="Cascade", lookup_display="Renamed")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+    assert len(res["updated"]) == 1  # one merged entry, not two
+    assert len([r for r in m.request_history if r.method == "PUT"]) == 2
+
+
+def test_apply_blocks_relationship_referencing_entity_change(backend):
+    # Spec references a different referencing entity → identity divergence →
+    # replace_blocked: reported, NO write, ok=false.
+    rel = _base_rel(referencing_entity="contoso_other")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["relationship"]
+    assert "reason" in res["replace_blocked"][0]
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+    assert len(_publish_hits(m, backend)) == 0
+
+
+def test_apply_blocks_relationship_referenced_entity_change(backend):
+    rel = _base_rel(referenced_entity="contoso_other")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["relationship"]
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_blocks_relationship_lookup_column_change(backend):
+    # The live relationship's lookup column (ReferencingAttribute) differs from the
+    # spec's lookup_schema — the FK is fixed at create, so this is an identity
+    # divergence → replace_blocked, no write.
+    rel = _base_rel(lookup_schema="contoso_OtherId")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task",
+                                referencing_attr="contoso_projectid")
+        res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["relationship"]
+    assert "reason" in res["replace_blocked"][0]
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_blocks_relationship_type_change_to_many_to_many(backend):
+    # The live relationship matched by SchemaName is N:N, not the spec's 1:N →
+    # relationship-type divergence → replace_blocked.
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task",
+                                rel_type="ManyToManyRelationship")
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel()), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["relationship"]
+    assert "one-to-many" in res["replace_blocked"][0]["reason"]
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_relationship_unchanged_is_skipped(backend):
+    # Live relationship already matches the spec → idempotent no-op skipped.
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel()), stage_only=False)
+    assert res["ok"] is True
+    assert "relationship" in _kinds(res["skipped"])
+    assert res["updated"] == []
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_relationship_omitted_field_never_drifts(backend):
+    # Live cascade Assign=Cascade (non-default); the spec omits cascade_assign, so
+    # the unspecified field is left as-is → no drift → skipped.
+    live_cascade = {"Assign": "Cascade", "Delete": "RemoveLink", "Reparent": "NoCascade",
+                    "Share": "NoCascade", "Unshare": "NoCascade", "Merge": "NoCascade"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task",
+                                cascade=live_cascade)
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel()), stage_only=False)
+    assert res["ok"] is True
+    assert "relationship" in _kinds(res["skipped"])
+    assert [r for r in m.request_history if r.method == "PUT"] == []
+
+
+def test_apply_relationship_invalid_hierarchical_toggle_fails_not_blocked(backend):
+    # An invalid is_hierarchical toggle is rejected by the platform (a backend
+    # error on the write), surfacing as `failed` — NOT replace_blocked.
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Project")
+        _mock_relationship_live(m, backend, schema="contoso_project_task")
+        # The #267 un-cast PUT is rejected by the server (later registration wins).
+        m.put(backend.url_for(f"RelationshipDefinitions({_REL_ID})"), status_code=400,
+              json={"error": {"code": "0x80045002", "message": "invalid hierarchical toggle"}})
+        res = apply_mod.apply_spec(backend, _rel_spec(_base_rel(is_hierarchical=True)),
+                                   stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["failed"]) == ["relationship"]
+    assert res["replace_blocked"] == []
+
+
+def _mock_entity_exists(m, backend, logical):
+    """Minimal EntityDefinitions GET so a dry-run create's reference resolution
+    (entity_exists on the relationship's two entities) finds the entity."""
+    m.get(backend.url_for(f"EntityDefinitions(LogicalName='{logical}')"),
+          json={"MetadataId": _ENT_ID, "LogicalName": logical})
+
+
+def test_apply_dry_run_reports_relationship_cascade_as_drift(dry_backend):
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        _mock_entity_exists(m, dry_backend, "contoso_task")
+        _mock_relationship_live(m, dry_backend, schema="contoso_project_task")
+        res = apply_mod.apply_spec(dry_backend, _rel_spec(_base_rel(cascade_delete="Cascade")),
+                                   stage_only=False)
+    assert res["ok"] is True
+    assert _kinds(res["updated"]) == ["relationship"]
+    assert "CascadeConfiguration" in res["updated"][0]["diff"]
+    assert _writes(m) == []  # reads-execute: GETs only, zero writes
+
+
+def test_apply_dry_run_reports_relationship_replace_blocked(dry_backend):
+    rel = _base_rel(referencing_entity="contoso_other")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        _mock_entity_exists(m, dry_backend, "contoso_other")
+        _mock_relationship_live(m, dry_backend, schema="contoso_project_task")
+        res = apply_mod.apply_spec(dry_backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["relationship"]
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_greenfield_relationship_is_planned_not_blocked(dry_backend):
+    # A relationship that does NOT exist must be `planned` under --dry-run, never
+    # routed through reconcile (which would otherwise mis-read an absent definition):
+    # _present is False when the create probe finds no existing relationship, so the
+    # reconcile path never fires for a greenfield relationship.
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        _mock_entity_exists(m, dry_backend, "contoso_task")
+        _mock_one_to_many(m, dry_backend, schema="contoso_project_task", exists=False)
+        res = apply_mod.apply_spec(dry_backend, _rel_spec(_base_rel()), stage_only=False)
+    assert res["ok"] is True
+    assert "relationship" in _kinds(res["planned"])
+    assert res["replace_blocked"] == []
+    assert res["failed"] == []
+    assert _writes(m) == []
+
+
+def test_apply_dry_run_relationship_merged_diff_carries_both(dry_backend):
+    # A merged relationship+lookup drift reports both field diffs in the one entry.
+    rel = _base_rel(cascade_delete="Cascade", lookup_display="Renamed")
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, dry_backend, display_name="Project")
+        _mock_entity_exists(m, dry_backend, "contoso_task")
+        _mock_relationship_live(m, dry_backend, schema="contoso_project_task")
+        res = apply_mod.apply_spec(dry_backend, _rel_spec(rel), stage_only=False)
+    assert res["ok"] is True
+    assert len(res["updated"]) == 1
+    diff = res["updated"][0]["diff"]
+    assert "CascadeConfiguration" in diff and "DisplayName" in diff
+    assert _writes(m) == []
 
 
 def _mock_optionset_live(m, backend, *, name="contoso_priority", options):

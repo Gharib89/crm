@@ -26,26 +26,40 @@ the spec, not blindly skipped. Three outcomes per component:
 - **updatable divergence** → updated in place → counted in `updated`. Updatable:
   entity display name / display-collection name / description; attribute display
   name, description, required level, and string `max_length` growth; adding
-  declared options to a global option set.
+  declared options to a global option set; relationship cascade configuration,
+  associated-menu (label / behavior / order), and `is_hierarchical`, plus the
+  relationship-backed lookup column's display name, description, and required
+  level — surfaced as one merged `updated` entry per relationship block.
 - **immutable/destructive divergence** → `replace_blocked`: reported, **no write**,
   run exits `ok=false` / exit 1. Blocked cases: entity ownership change, attribute
-  data-type change. A `replace_blocked` component does not abort siblings — the rest
+  data-type change, a relationship's referenced/referencing-entity or lookup-column
+  change, or a relationship-type mismatch (live is N:N, spec expects 1:N). A `replace_blocked`
+  component does not abort siblings — the rest
   of the spec still reconciles.
 
-**Create-only spec keys.** The full builder keyword surface is expressible in the
-spec — `cascade_assign/delete/reparent/share/unshare/merge`, `menu_label/behavior/order`,
-`is_hierarchical`, `lookup_description` (relationship); `default_value`, `true_label/false_label`,
+**Reconciled vs. create-only spec keys.** The full builder keyword surface is
+expressible in the spec. **Relationship keys are now reconciled** on re-apply:
+`cascade_assign/delete/reparent/share/unshare/merge`, `menu_label/behavior/order`,
+`is_hierarchical`, and the lookup column's `lookup_display`, `lookup_description`,
+`required` (reconciled via the referencing attribute; one merged `updated` entry
+per relationship block). Replace-blocked identity divergences: relationship type
+mismatch (live is N:N, spec expects 1:N), or a referenced/referencing-entity or
+lookup-column (`lookup_schema`) change — each requires a destructive
+drop-and-recreate that `apply` refuses.
+
+**Create-only** (re-applying an existing component does not yet reconcile these;
+follow-up **#598**): attribute — `default_value`, `true_label/false_label`,
 `min_value/max_value`, `max_size_kb`, `auto_number_format`, `behavior_name`,
-`relationship_schema` (attribute); `has_activities/has_notes/is_activity`,
+`relationship_schema`; entity — `has_activities/has_notes/is_activity`,
 `primary_attr_max_length`, `data_provider_id/data_source_id`,
-`external_name/external_collection_name`, `description` (entity); `filter_active`,
-`query_type`, `order_desc`, `description` (view). **These take effect at CREATE only.**
-Re-applying an existing component does not yet reconcile them (**#598**). `export-spec`
-emits the subset of these keys that map to live Web API fields — relationships emit flat
-`cascade_assign/delete/…`, `menu_behavior/label/order`, `is_hierarchical`, and
-`lookup_description`; attributes emit
-`auto_number_format`, `min_value`/`max_value`, `max_size_kb`, `behavior_name`; entity
-emits `has_notes`, `has_activities`, `primary_attr_max_length`; views emit
+`external_name/external_collection_name`, `description`; view — `filter_active`,
+`query_type`, `order_desc`, `description`.
+
+`export-spec` emits the subset of these keys that map to live Web API fields —
+relationships emit flat `cascade_assign/delete/…`, `menu_behavior/label/order`,
+`is_hierarchical`, and `lookup_description`; attributes emit
+`auto_number_format`, `min_value`/`max_value`, `max_size_kb`, `behavior_name`;
+entity emits `has_notes`, `has_activities`, `primary_attr_max_length`; views emit
 `filter_active`, `order_desc`. Fields equal to platform defaults are omitted.
 
 Reconciliation also runs under `--dry-run`, read-only (writes suppressed by the

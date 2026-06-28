@@ -20,24 +20,40 @@ the spec rather than blindly skipped. Three outcomes per component:
   `updated`. Updatable fields: entity display name / display-collection
   name / description; attribute display name, description, required level, and
   string `max_length` growth (shrinking is out of scope); adding declared options
-  to a global option set.
+  to a global option set; relationship cascade configuration, associated-menu
+  (label / behavior / order), and `is_hierarchical`, plus the relationship-backed
+  lookup column's display name, description, and required level (surfaced as one
+  merged `updated` entry per relationship block).
 - **immutable/destructive divergence** — the change cannot be made without
-  dropping the component (entity ownership change, attribute data-type change)
-  → `replace_blocked`: reported, **no write for that component**, run ends
+  dropping the component (entity ownership change, attribute data-type change,
+  relationship type mismatch, or a referenced/referencing-entity or lookup-column
+  change) → `replace_blocked`: reported, **no write for that component**, run ends
   `ok=false` (exit 1).
 
-> **Create-only spec keys.** The full builder keyword surface is now expressible in
-> the spec — `default_value`, `true_label` / `false_label`, `min_value` / `max_value`,
-> `max_size_kb`, `auto_number_format`, `behavior_name`, `relationship_schema` (attribute);
-> `cascade_assign`, `cascade_delete`, `cascade_reparent`, `cascade_share`,
-> `cascade_unshare`, `cascade_merge`, `menu_label`, `menu_behavior`, `menu_order`,
-> `is_hierarchical`, `lookup_description` (relationship); `description`, `has_activities`,
-> `has_notes`, `is_activity`, `primary_attr_max_length`, `data_provider_id`,
-> `data_source_id`, `external_name`, `external_collection_name` (entity);
-> `filter_active`, `query_type`, `order_desc`, `description` (view). These keys take
-> effect at **CREATE only** — re-applying an existing component does **not** yet reconcile
-> them (drift in these fields is not detected or updated; follow-up **#598**).
-> `export-spec` now emits the subset of these keys that map to live Web API fields
+> **Create-only vs. reconciled spec keys.** The full builder keyword surface is
+> expressible in the spec. Keys that are **reconciled** on re-apply (drift is detected
+> and updated in place):
+>
+> - **Relationship** — `cascade_assign`, `cascade_delete`, `cascade_reparent`,
+>   `cascade_share`, `cascade_unshare`, `cascade_merge` (cascade configuration);
+>   `menu_label`, `menu_behavior`, `menu_order` (associated-menu); `is_hierarchical`;
+>   and the relationship-backed lookup column's `lookup_display`, `lookup_description`,
+>   `required` (reconciled via the referencing attribute — surfaced as one merged
+>   `updated` entry per relationship block).
+>
+> Keys that take effect at **CREATE only** (re-applying an existing component does
+> **not** yet reconcile them; follow-up **#598**):
+>
+> - **Attribute** — `default_value`, `true_label` / `false_label`, `min_value` /
+>   `max_value`, `max_size_kb`, `auto_number_format`, `behavior_name`,
+>   `relationship_schema`.
+> - **Entity** — `has_activities`, `has_notes`, `is_activity`,
+>   `primary_attr_max_length`, `data_provider_id`, `data_source_id`, `external_name`,
+>   `external_collection_name` (entity display name / display-collection name /
+>   `description` reconcile — see the updatable bullet above).
+> - **View** — `filter_active`, `query_type`, `order_desc`, `description`.
+>
+> `export-spec` emits the subset of these keys that map to live Web API fields
 > (the flat `cascade_*`/`menu_*`/`is_hierarchical`/`lookup_description`, view
 > `filter_active`/`order_desc`, attribute `auto_number_format`/`min_value`/`max_value`/
 > `behavior_name`/`max_size_kb`, entity `has_notes`/`has_activities`/`primary_attr_max_length`),
