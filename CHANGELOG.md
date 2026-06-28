@@ -9,6 +9,84 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.40.0 (2026-06-28)
+
+### Chores
+
+- **evals**: Address Copilot round 1 — active-leg progress key + env restore
+  ([#587](https://github.com/Gharib89/crm/pull/587),
+  [`dcc6cc3`](https://github.com/Gharib89/crm/commit/dcc6cc3c7bb2d43981c024e2331aeec45e294cc7))
+
+- **evals**: Address Copilot round 2 — robust host parse, graceful leg, target guard
+  ([#587](https://github.com/Gharib89/crm/pull/587),
+  [`dcc6cc3`](https://github.com/Gharib89/crm/commit/dcc6cc3c7bb2d43981c024e2331aeec45e294cc7))
+
+- **evals**: Default result.json + run.log into the run dir
+  ([`51289b2`](https://github.com/Gharib89/crm/commit/51289b2ae7c218188b382e2be1b6cbbf5c9288ac))
+
+- **evals**: Live stderr progress + python -m evals.skill run front door
+  ([#587](https://github.com/Gharib89/crm/pull/587),
+  [`dcc6cc3`](https://github.com/Gharib89/crm/commit/dcc6cc3c7bb2d43981c024e2331aeec45e294cc7))
+
+- **evals**: Record 2026-06-26 baseline — cloud 100%, onprem 100%
+  ([`4cbf83e`](https://github.com/Gharib89/crm/commit/4cbf83e15a37f4bb5daf763172d79e64b100e8ee))
+
+- **evals**: Reject --update-baseline for a single target; drop dead return
+  ([#587](https://github.com/Gharib89/crm/pull/587),
+  [`dcc6cc3`](https://github.com/Gharib89/crm/commit/dcc6cc3c7bb2d43981c024e2331aeec45e294cc7))
+
+- **evals**: Skill-efficacy review — persist traces, judge skill help/efficiency post-hoc
+  ([#589](https://github.com/Gharib89/crm/pull/589),
+  [`b609486`](https://github.com/Gharib89/crm/commit/b6094861fc03f968c6567d6c0d35e74a67ac2031))
+
+- **evals**: Use host_of() in the prod-host guard for parser consistency
+  ([#587](https://github.com/Gharib89/crm/pull/587),
+  [`dcc6cc3`](https://github.com/Gharib89/crm/commit/dcc6cc3c7bb2d43981c024e2331aeec45e294cc7))
+
+### Documentation
+
+- **context**: Sharpen usage-error term + add validation-predicate
+  ([#600](https://github.com/Gharib89/crm/pull/600),
+  [`5a33012`](https://github.com/Gharib89/crm/commit/5a33012494738178ccb7d030be6be0097e65e532))
+
+### Features
+
+- **apply**: Let specs reach the full builder surface (attribute/relationship/entity/view)
+  ([#603](https://github.com/Gharib89/crm/pull/603),
+  [`a023108`](https://github.com/Gharib89/crm/commit/a0231082db9f1936331bff5cc4ba3e8ba466d325))
+
+### Refactoring
+
+- **metadata**: Explicit quoting in reorder ParamType error (Copilot)
+  ([#600](https://github.com/Gharib89/crm/pull/600),
+  [`5a33012`](https://github.com/Gharib89/crm/commit/5a33012494738178ccb7d030be6be0097e65e532))
+
+- **metadata**: Sink command-body rules to core predicates + usage_guard
+  ([#600](https://github.com/Gharib89/crm/pull/600),
+  [`5a33012`](https://github.com/Gharib89/crm/commit/5a33012494738178ccb7d030be6be0097e65e532))
+
+### Testing
+
+- Audit & prune offline suite — remove 54 low-value tests, fix 6 drifted
+  ([#591](https://github.com/Gharib89/crm/pull/591),
+  [`d89b10b`](https://github.com/Gharib89/crm/commit/d89b10bc401f8d738972f30956ebcfcf4766fef4))
+
+- Backfill offline coverage for testable blind spots (#592)
+  ([#594](https://github.com/Gharib89/crm/pull/594),
+  [`973dbc1`](https://github.com/Gharib89/crm/commit/973dbc1c7ecf33214189a8487af740ede2e2678b))
+
+- Cover repl_skin pure layout helpers (_strip_ansi, _visible_len, _display_home_path)
+  ([`1290908`](https://github.com/Gharib89/crm/commit/12909082ac112b1f686d614729d33d60ac0f1862))
+
+- Prune round-2 audit findings — collapse redundancy, delete low-value tests (#590)
+  ([#593](https://github.com/Gharib89/crm/pull/593),
+  [`4380d87`](https://github.com/Gharib89/crm/commit/4380d87355a6136cff1c0cb82e466363bf2ed5d0))
+
+- **repl_skin**: Make outside-home path test platform-independent
+  ([#600](https://github.com/Gharib89/crm/pull/600),
+  [`5a33012`](https://github.com/Gharib89/crm/commit/5a33012494738178ccb7d030be6be0097e65e532))
+
+
 ## v1.39.2 (2026-06-26)
 
 ### Bug Fixes
