@@ -17,6 +17,14 @@ from crm.core import apply as apply_mod
 from crm.core.scaffold import build_table_spec
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
+# Isolate CRM_HOME: the dry-run scaffold path resolves the solution through
+# `_helpers.solutions._resolve_solution`, whose `_active_profile` lookup is *not*
+# the one `_monkeypatch_profile` patches (that patches `commands.scaffold`'s). On
+# a real CRM_HOME it reads the developer's active profile, and a profile with a
+# `default_solution` fires an unmocked `solutions?$filter=uniquename eq '…'` GET
+# → requests_mock.NoMockAddress. Isolation makes every test cache/profile-blind.
+pytestmark = pytest.mark.usefixtures("isolated_home")
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
