@@ -36,9 +36,12 @@ the spec rather than blindly skipped. Three outcomes per component:
 > `data_source_id`, `external_name`, `external_collection_name` (entity);
 > `filter_active`, `query_type`, `order_desc`, `description` (view). These keys take
 > effect at **CREATE only** — re-applying an existing component does **not** yet reconcile
-> them (drift in these fields is not detected or updated). `export-spec` does not yet
-> emit them, so a round-trip is lossy for them. Follow-ups: **#597** (export-spec
-> lossless round-trip) and **#598** (reconcile the wider surface).
+> them (drift in these fields is not detected or updated; follow-up **#598**).
+> `export-spec` now emits the subset of these keys that map to live Web API fields
+> (the flat `cascade_*`/`menu_*`/`is_hierarchical`/`lookup_description`, view
+> `filter_active`/`order_desc`, attribute `auto_number_format`/`min_value`/`max_value`/
+> `behavior_name`/`max_size_kb`, entity `has_notes`/`has_activities`/`primary_attr_max_length`),
+> omitting platform defaults, so a create-side round-trip is lossless for those.
 
 Reconciliation also runs under `--dry-run`, read-only: it reads the live org
 while the reads-execute rule suppresses every write, so a dry-run reports the

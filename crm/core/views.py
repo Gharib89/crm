@@ -178,7 +178,14 @@ def read_entity_views(
     - ``columns``: list of ``{"name": str, "width": int}`` (may be empty when
       layoutxml is absent or unparseable)
     - ``order_by``: attribute name string (omitted if no <order> element)
+    - ``order_desc``: bool — omitted unless the sort is descending
+    - ``filter_active``: bool — omitted unless fetchxml carries the active-state
+      (``statecode eq 0``) filter
     - ``is_default``: bool
+
+    ``query_type`` is not projected: the read filters to ``querytype eq 0``
+    (public views), so it is always the ``"public"`` default the apply adapter
+    assumes.
 
     Callers that need apply-valid projections (e.g. ``build_entity_spec``) are
     responsible for dropping views with an empty ``name`` or empty ``columns``
@@ -219,18 +226,42 @@ def read_entity_views(
                             pass
                     columns.append(col)
 
-        # --- parse order_by from fetchxml ---
+        # --- parse order_by / order_desc / filter_active from fetchxml ---
+        # These mirror the create_view → _build_fetchxml encoding: a sort lives in
+        # the <order> element (its `descending` attribute carries order_desc), and
+        # the active-records filter is a <condition attribute="statecode" eq "0">.
+        # Scope strictly to the ROOT <entity> (its own <order> and direct-child
+        # <filter>s): a <link-entity>'s sort or statecode filter belongs to the
+        # joined table, not this view, so it must not surface as a main-view key.
         order_by: str | None = None
+        order_desc = False
+        filter_active = False
         fetchxml = row.get("fetchxml") or ""
         if fetchxml:
             try:
                 fetch_root = ElementTree.fromstring(fetchxml)
             except ElementTree.ParseError:
                 fetch_root = None
-            if fetch_root is not None:
-                order_el = fetch_root.find(".//{*}order")
+            entity_el = fetch_root.find("{*}entity") if fetch_root is not None else None
+            if entity_el is not None:
+                order_el = entity_el.find("{*}order")  # direct child of the root entity
                 if order_el is not None:
                     order_by = order_el.get("attribute") or None
+                    order_desc = (order_el.get("descending") or "").lower() == "true"
+                # The active-state filter is a condition inside the root entity's
+                # own <filter> (link-entity filters are nested under <link-entity>,
+                # not under these, so they are excluded).
+                for filt in entity_el.findall("{*}filter"):
+                    # `.//` (not Element.iter) so the namespace wildcard applies;
+                    # covers conditions nested in and/or sub-filter groups too.
+                    for cond in filt.findall(".//{*}condition"):
+                        if (cond.get("attribute") == "statecode"
+                                and cond.get("operator") == "eq"
+                                and cond.get("value") == "0"):
+                            filter_active = True
+                            break
+                    if filter_active:
+                        break
 
         view: dict[str, Any] = {
             "name": row.get("name", ""),
@@ -241,6 +272,10 @@ def read_entity_views(
         }
         if order_by is not None:
             view["order_by"] = order_by
+        if order_desc:
+            view["order_desc"] = True
+        if filter_active:
+            view["filter_active"] = True
 
         result.append(view)
 

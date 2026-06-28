@@ -133,14 +133,11 @@ Publisher/solution are **not** emitted — supply them via `--solution` on `appl
 edit the YAML. **Fidelity caveats** (these silently lose information on round-trip):
 
 - A string column whose live format is `Json` or `RichText` is re-created as plain `Text`.
-- A datetime column's format and `DateTimeBehavior` are NOT captured (re-created with
-  the server default format and `UserLocal` behavior).
+- A datetime column's display *format* is NOT captured (re-created with the server
+  default format); its `DateTimeBehavior` IS captured as `behavior_name` when it
+  differs from the `UserLocal` default.
 - A polymorphic (multi-target) lookup is exported with its **first target only** and
   re-created as a single-target lookup.
-- Relationship `cascade` / `associated_menu` are captured by `export-spec` but emitted
-  as nested `cascade` / `associated_menu` dicts. `apply` reads flat `cascade_assign`,
-  `cascade_delete`, … keys, not the nested form, so a spec produced by `export-spec` is
-  still re-created with default cascade/menu. Follow-up **#597** will close this gap.
 - A calculated/rollup column whose `FormulaDefinition` cannot be read is exported as
   a plain simple column (a warning is emitted in `meta.warnings`). The reconcile
   pass does **not** compare formulas — formula drift is not detected or updated.

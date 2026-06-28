@@ -26,6 +26,29 @@ Fidelity notes:
   (`multiselect_options`) — a multiselect column is NOT a PicklistAttributeMetadata,
   so the Picklist cast raises on it. A *local* set emits inline `options`; a
   *global* set is handled the same as a picklist (emits `optionset_name`).
+
+Wider apply-surface emit (#597): each kind's projected dict mirrors the fields its
+`apply.REGISTRY` adapter accepts, read from the live metadata and emitted only when
+*non-default* (a field equal to the platform/builder default is omitted so the spec
+does not bloat with defaults). Covered now:
+- relationship — flat `cascade_*` (six dimensions), `menu_behavior`/`menu_label`/
+  `menu_order`, `is_hierarchical`, and the lookup column's `lookup_description`
+  (see `relationships.read_entity_relationships`);
+- view — `filter_active`, `order_desc` (see `views.read_entity_views`);
+- attribute — `auto_number_format` (string), `min_value`/`max_value` (integer/bigint),
+  `behavior_name` (datetime), `max_size_kb` (file);
+- entity — `has_notes`, `has_activities`, `primary_attr_max_length`.
+
+Adapter fields intentionally NOT emitted (documented gaps, not oversights):
+- attribute `default_value` and boolean `true_label`/`false_label` live under the
+  `OptionSet`, which does not ride the un-cast attribute read (cf. `_project_options`,
+  which casts for it); projecting them would need an extra per-column cast read.
+- `min_value`/`max_value` for decimal/double/money — their platform default ranges
+  are version-sensitive, so there is no stable sentinel to omit-on-default against.
+- attribute `relationship_schema`, and entity `is_activity` + the virtual-table
+  fields (`data_provider_id`/`data_source_id`/`external_name`/`external_collection_name`)
+  — niche (virtual tables are read-only on v9.1) and not round-trip-relevant for the
+  custom tables this exporter targets.
 """
 
 from __future__ import annotations
@@ -39,6 +62,17 @@ from crm.utils.d365_backend import D365Backend, D365Error
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 _LENGTH_KINDS = frozenset({"string", "memo"})
 _PRECISION_KINDS = frozenset({"decimal", "double", "money"})
+# Integer/bigint full-range bounds: a column reading the type's full range was
+# created without explicit min/max, so the bound is omitted (no default bloat).
+# Decimal/double/money are deliberately absent — their platform default ranges
+# are version-sensitive, so their bounds are not projected (see module docstring).
+_INT_BOUND_DEFAULTS: dict[str, tuple[int, int]] = {
+    "integer": (-2147483648, 2147483647),
+    "bigint": (-9223372036854775808, 9223372036854775807),
+}
+_FILE_DEFAULT_MAX_KB = 32768
+# Datetime behavior other than the platform default (UserLocal) round-trips.
+_DATETIME_DEFAULT_BEHAVIOR = "UserLocal"
 # SourceType ints apply can re-create (add_attribute --type): 1=calculated, 2=rollup.
 # 0/None (simple) and 3/4 (formula/prompt, which apply cannot create) map to None.
 _SOURCE_TYPES = {1: "calculated", 2: "rollup"}
@@ -229,6 +263,29 @@ def _project_attribute(
         fmt = _format_name(info)
         if fmt and fmt in mc.STRING_FORMATS:
             out["format_name"] = fmt
+        auto = info.get("AutoNumberFormat")
+        if isinstance(auto, str) and auto:
+            out["auto_number_format"] = auto
+
+    if kind in _INT_BOUND_DEFAULTS:
+        lo_default, hi_default = _INT_BOUND_DEFAULTS[kind]
+        lo = info.get("MinValue")
+        if isinstance(lo, int) and lo != lo_default:
+            out["min_value"] = lo
+        hi = info.get("MaxValue")
+        if isinstance(hi, int) and hi != hi_default:
+            out["max_value"] = hi
+
+    if kind == "datetime":
+        behavior = _as_dict(info.get("DateTimeBehavior")).get("Value")
+        if (isinstance(behavior, str) and behavior
+                and behavior != _DATETIME_DEFAULT_BEHAVIOR):
+            out["behavior_name"] = behavior
+
+    if kind == "file":
+        size = info.get("MaxSizeInKB")
+        if isinstance(size, int) and size != _FILE_DEFAULT_MAX_KB:
+            out["max_size_kb"] = size
 
     if kind in _PRECISION_KINDS:
         precision = info.get("Precision")
@@ -337,6 +394,12 @@ def build_entity_spec(
     ownership = ent.get("OwnershipType")
     if isinstance(ownership, str) and ownership:
         entity["ownership"] = ownership
+    # has_notes / has_activities: emit only when enabled (create_entity default
+    # for both is False, so an entity without them adds no keys).
+    if ent.get("HasNotes") is True:
+        entity["has_notes"] = True
+    if ent.get("HasActivities") is True:
+        entity["has_activities"] = True
 
     optionset_acc: dict[str, dict[str, Any]] = {}
 
@@ -382,6 +445,12 @@ def build_entity_spec(
                     metadata.label_text(_as_dict(info.get("DisplayName"))), p_schema
                 ),
             }
+            # primary_attr_max_length is a top-level entity kwarg (not nested in
+            # primary_attr); emit only when it differs from the create_entity
+            # default of 200.
+            p_max = info.get("MaxLength")
+            if isinstance(p_max, int) and p_max != 200:
+                entity["primary_attr_max_length"] = p_max
             continue
 
         # Custom, non-primary: the shallow row lacks AttributeTypeName, so deep-read
