@@ -1304,7 +1304,9 @@ class TestSolutionLevel:
         with requests_mock.Mocker() as m:
             m.get(_solutions_url(backend), json=_solution())
             m.get(_components_url(backend), json=_members(
-                _member(91, "33333333-3333-3333-3333-333333333333"),  # pluginassembly
+                _member(90, "33333333-3333-3333-3333-333333333330"),  # plugintype
+                _member(91, "33333333-3333-3333-3333-333333333331"),  # pluginassembly
+                _member(92, "33333333-3333-3333-3333-333333333332"),  # sdkmessageprocessingstep
                 _member(20, "44444444-4444-4444-4444-444444444444"),  # role
                 _member(2,  "55555555-5555-5555-5555-555555555555"),  # attribute
             ))
@@ -1313,8 +1315,12 @@ class TestSolutionLevel:
         # No entity members -> empty entities, verb still succeeds (no raise).
         assert result["spec"]["entities"] == []
         by_type = {s["type"]: s for s in result["skipped"]}
-        assert set(by_type) == {"pluginassembly", "role", "attribute"}
-        assert "plugin assembly DLL not projectable" in by_type["pluginassembly"]["reason"]
+        assert set(by_type) == {
+            "plugintype", "pluginassembly", "sdkmessageprocessingstep", "role", "attribute"}
+        # All three plug-in component types share the assembly-bytes reason — it is
+        # accurate for the assembly AND its dependent type/step rows.
+        for t in ("plugintype", "pluginassembly", "sdkmessageprocessingstep"):
+            assert "not projectable from a live org" in by_type[t]["reason"]
         assert "deferred to a follow-up slice" in by_type["role"]["reason"]
         assert "known simplification" in by_type["attribute"]["reason"]
         assert by_type["role"]["objectid"] == "44444444-4444-4444-4444-444444444444"

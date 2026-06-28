@@ -314,7 +314,7 @@ Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipp
     "optionsets": ["cwx_priority"],
     "skipped": [
       {"type": "pluginassembly", "objectid": "<guid>",
-       "reason": "plugin assembly DLL not projectable from a live org; ..."}
+       "reason": "plug-in component not projectable from a live org (assembly DLL bytes absent); ..."}
     ]
   }
 }

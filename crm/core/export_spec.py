@@ -507,7 +507,8 @@ _ENTITY_COMPONENT_TYPE = 1
 # entityrelationship / savedquery=view): ride along inside their parent entity's
 # full projection. A single column is never projected a la carte — see ADR 0019.
 _ENTITY_SUBCOMPONENT_TYPES = frozenset({2, 3, 9, 10, 26})
-# Plug-in component types whose assembly DLL bytes do not exist in live metadata.
+# Plug-in component types (plugintype / pluginassembly / sdkmessageprocessingstep):
+# all hinge on the assembly whose DLL bytes do not exist in live metadata.
 _PLUGIN_COMPONENT_TYPES = frozenset({90, 91, 92})
 
 
@@ -525,8 +526,9 @@ def _resolve_entity_logical(backend: D365Backend, metadata_id: str) -> str:
 def _skip_reason(componenttype: int) -> str:
     """Explain why a non-entity solution member is not directly projected."""
     if componenttype in _PLUGIN_COMPONENT_TYPES:
-        return ("plugin assembly DLL not projectable from a live org; "
-                "export emits only apply-seedable components.")
+        return ("plug-in component not projectable from a live org (its assembly "
+                "DLL bytes are absent from live metadata); export emits only "
+                "apply-seedable components.")
     if componenttype in _ENTITY_SUBCOMPONENT_TYPES:
         return ("entity-rooted subcomponent: projected via its parent entity's "
                 "full definition when that entity is a solution member; "
