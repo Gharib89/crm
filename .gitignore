@@ -21,3 +21,6 @@ evals/skill/runs/
 
 # brainstorming visual companion (transient)
 .superpowers/
+
+# Local e2e run logs (scripts/e2e_all.py)
+/logs/

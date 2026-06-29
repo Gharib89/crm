@@ -103,6 +103,16 @@ surfaces as an OAuth/auth error rather than a skip — an MSAL failure carries a
 401, not a transport failure. Cloud is the no-VPN target, so this is rare; the skip path
 is aimed at on-prem/VPN.)
 
+### Running all three targets at once (`scripts/e2e_all.py`)
+
+`python scripts/e2e_all.py` runs the suite across all three standing profiles in one go —
+on-prem (`-m e2e`), cloud and cs-trial (`-m 'e2e and requires_cloud'`) — each with its own
+profile, host-guard override, and the dotnet/pac PATH the plugin/packager tests need. It
+writes `logs/e2e/<ts>/<leg>.{log,xml}` and a `summary.txt` scored on **union coverage**: a
+test is a GAP only if it skipped on *every* leg (ran nowhere); a skip that's covered on
+another leg is counted, not chased. `rerun <logdir>` re-runs just the failures and genuine
+gaps, each on its original leg. See the script's docstring; `selftest` self-checks the parser.
+
 ### Dedicated CS cloud target — provisioning checklist (ADR 0012)
 
 Several verbs need a **Customer-Service-provisioned, pollution-tolerant** Dataverse org
