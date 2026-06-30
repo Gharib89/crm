@@ -43,6 +43,14 @@ SOLUTION_COMPONENT_TYPES: dict[str, int] = {
     "pluginassembly": 91,
     "sdkmessageprocessingstep": 92,
     "serviceendpoint": 95,
+    # Customer-Service family (#627). These live above the common range and were
+    # undiscoverable from `solution components` output until surfaced here.
+    "routingrule": 150,
+    "routingruleitem": 151,
+    "sla": 152,
+    "slaitem": 153,
+    "convertrule": 154,
+    "convertruleitem": 155,
 }
 
 
