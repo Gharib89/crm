@@ -397,17 +397,16 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
     Rewrites the profile file, updates the OS keyring (best-effort), and
     repoints the active-session pointer when OLD_NAME is currently active.
     """
-    from crm.core import session as _sm
-    from crm.utils.d365_backend import validate_profile_name, D365Error as _D365Error
+    from crm.utils.d365_backend import validate_profile_name
 
     # ── 1. Validate before any mutation ─────────────────────────────────
     try:
         validate_profile_name(new_name)
-    except _D365Error as exc:
+    except D365Error as exc:
         ctx.emit(False, error=str(exc))
         return
 
-    profiles = _sm.list_profiles()
+    profiles = session_mod.list_profiles()
     if old_name not in profiles:
         _handle_d365_error(ctx, D365Error(f"Profile {old_name!r} not found."))
         return
@@ -445,8 +444,7 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
 
     # ── 4. Cache dir — best-effort ───────────────────────────────────────
     try:
-        import crm.core.session as _session_core
-        cache_root = _session_core._state_root() / "cache"
+        cache_root = session_mod._state_root() / "cache"
         old_cache = cache_root / old_name
         new_cache = cache_root / new_name
         if old_cache.exists():
