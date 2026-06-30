@@ -13,10 +13,26 @@ broken link. See the [CLI reference](../reference/cli.md) for every flag.
 ```bash
 crm --json connection whoami
 ```
-Returns `UserId` / `BusinessUnitId` / `OrganizationId`. A non-zero exit (e.g. `401`)
-means the credentials are wrong — for NTLM the `DOMAIN\username` / password, for
-OAuth (online) the app-registration client id / secret / tenant, or a missing
-application user with a security role in Dynamics. There is no automatic retry.
+Returns the user identity GUIDs plus connection metadata so the result is
+self-identifying — useful for confirming which org is active without matching
+`OrganizationId` by hand:
+
+| field | meaning |
+|---|---|
+| `UserId` | the calling user's GUID |
+| `BusinessUnitId` | the user's business unit GUID |
+| `OrganizationId` | the org GUID |
+| `profile` | the resolved profile name (reflects any `--profile` override) |
+| `url` | the resolved Web API base URL, e.g. `https://host/org/api/data/v9.1/` |
+| `org_name` | friendly org name from the `organizations` table (null on read failure) |
+
+The success envelope also carries `meta.profile` and `meta.url` (as for every
+backend-connected `--json` command — see "Connection identity" in `CONTEXT.md`).
+
+A non-zero exit (e.g. `401`) means the credentials are wrong — for NTLM the
+`DOMAIN\username` / password, for OAuth (online) the app-registration client id /
+secret / tenant, or a missing application user with a security role in Dynamics.
+There is no automatic retry.
 
 ## Reachability check with the API base
 

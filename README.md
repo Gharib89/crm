@@ -393,6 +393,12 @@ may mean the write already landed. Pass
 `--retry-on-ambiguous` (env: `CRM_RETRY_ON_AMBIGUOUS`) to opt back into retrying
 POSTs when re-sending is acceptable. `$batch` keeps its own retry loop regardless.
 
+`meta.profile` and `meta.url` appear on every success envelope from a command
+that opened a connection — the resolved profile name and Web API base URL, so a
+result is self-identifying without GUID-matching. They are absent on error
+envelopes and on local verbs that never connect (`connection status`, `session`,
+`profile list`, etc.).
+
 `meta.warnings` is an array of non-fatal advisories — the one place to scan for
 staged-but-unpublished changes, created-but-read-back-failed records, and
 partial-optionset failures (which also surface `meta.completed_steps` /

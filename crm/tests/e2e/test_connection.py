@@ -8,11 +8,32 @@ from crm.tests.e2e.coverage import covers
 
 
 @covers("connection whoami")
-def test_whoami_returns_identity(backend):
+def test_whoami_returns_identity(backend, cli):
+    # Direct backend: GUIDs present.
     result = backend.get("WhoAmI")
     assert result is not None
     assert "UserId" in result
     assert len(result["UserId"]) >= 36  # GUID-ish
+
+    # CLI --json: enriched data shape and connection identity on meta (#624).
+    import json as _json
+    proc = cli(["--json", "connection", "whoami"])
+    assert proc.returncode == 0
+    env = _json.loads(proc.stdout)
+    assert env["ok"] is True
+    data = env["data"]
+    # Original GUIDs still present.
+    assert "UserId" in data
+    assert "OrganizationId" in data
+    # Enriched fields from whoami_identity (#624).
+    assert "profile" in data
+    assert "url" in data
+    assert data["url"].startswith("http")
+    assert "org_name" in data  # may be None on read failure, but key must exist
+    # Connection identity on the success envelope.
+    meta = env.get("meta", {})
+    assert meta.get("profile") == data["profile"]
+    assert meta.get("url") == data["url"]
 
 
 @covers("connection status")

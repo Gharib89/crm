@@ -61,9 +61,16 @@ before guessing:
 ```bash
 crm --json connection doctor          # or the top-level alias: crm doctor
 crm --json connection test            # reachability: WhoAmI + reported API version
-crm --json connection whoami          # confirm the live target (check @odata.context host)
-crm --json connection status          # active profile + resolved config
+crm --json connection whoami          # confirm the live target (profile/url/org_name + GUIDs)
+crm --json connection status          # active profile + resolved config (no network call)
 ```
+
+`connection whoami` (`--json`) now returns `data.profile` (the resolved profile
+name), `data.url` (the Web API base), and `data.org_name` (the org friendly name,
+best-effort — null if the `organizations` read fails), alongside the standard
+`UserId` / `BusinessUnitId` / `OrganizationId` GUIDs. The success envelope also
+carries `meta.profile` / `meta.url` (standard for all connected verbs). Use
+`data.org_name` to confirm the friendly org name without matching GUIDs by hand.
 
 `doctor` exercises the full auth + request path; for OAuth profiles a failure may
 surface as a `D365Error` raised **during** the request (token acquisition), not as a
@@ -75,7 +82,7 @@ The same commands hit both targets; only auth + API version differ. On-prem caps
 API **v9.1** (`v9.2` → HTTP 501), and `CreateMultiple`/`UpdateMultiple`/`DeleteMultiple`
 are **cloud-only** — which is why bulk `data import` routes through `$batch` (see
 `reference/records.md`). The active profile selects the target; `crm profile list`
-shows it and `crm --json connection whoami` confirms the live host.
+shows it and `crm --json connection whoami` confirms the live host and org name.
 
 ## Session & audit
 
