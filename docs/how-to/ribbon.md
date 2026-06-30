@@ -72,9 +72,8 @@ crm ribbon set-label cwx_ticket \
 ```
 
 `--button-id` is the CustomAction Id as reported by `crm ribbon list`. Like the
-other ribbon writers, `set-label` requires a solution to resolve — pass
-`--solution` or set a profile `default_solution`; if neither resolves the command
-errors rather than guessing a target.
+other ribbon writers, `set-label` requires `--solution` — pass it explicitly; the
+command errors rather than guessing a target.
 
 **Localization with `--lcid`.** When `--lcid <LCID>` is given, the button
 attribute is set to a `$LocLabels:<id>` directive and the actual text lands in a

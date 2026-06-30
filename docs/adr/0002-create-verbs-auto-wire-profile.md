@@ -1,8 +1,15 @@
 ---
-status: accepted
+status: partially superseded by ADR 0020
 ---
 
 # `solution create-publisher` / `create` auto-wire the active profile
+
+**Partial supersession (ADR 0020).** The `default_solution` auto-wire from
+`solution create` is **removed** — the profile `default_solution` field no longer
+exists and `solution create --set-default` is gone. The `publisher_prefix` auto-wire
+from `solution create-publisher --set-default` **remains** (it is a schema-name aid,
+not a solution-targeting mechanism). The narrative below is preserved for history; the
+`default_solution` portions no longer reflect current behaviour.
 
 The new `solution create-publisher` and `solution create` verbs (issue #34) exist so
 the CRMWorx prerequisite — a custom `cwx` publisher and `CRMWorx` solution — needs

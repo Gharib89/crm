@@ -32,7 +32,7 @@ crm --json plugin list-types --assembly Contoso.Plugins
 # register-webhook: creates a serviceendpoint (contract=8). The platform POSTs
 # the JSON execution context to --url. --auth choices: webhookkey (appends
 # ?code=<auth-value>), httpheader, httpquerystring. --auth-value is write-only
-# (the platform never returns it). --solution/--require-solution accepted.
+# (the platform never returns it). --solution accepted (required).
 crm --json plugin register-webhook \
     --name MyWebhook \
     --url https://func.azurewebsites.net/api/d365hook \
@@ -47,7 +47,7 @@ crm --json plugin register-webhook \
 # --filtering-attributes (comma-separated) restricts an Update step. The step
 # name is auto-derived as '<handler>: <message> of <entity>'; pass --name when
 # that would exceed the 256-char platform limit.
-# --solution/--require-solution accepted (same semantics as register-assembly).
+# --solution accepted (required, same semantics as register-assembly).
 crm --json plugin register-step \
     --message Update \
     --plugin-type Contoso.Plugins.AccountPostUpdate \
@@ -67,7 +67,7 @@ crm --json plugin register-step \
 # omitting it snapshots ALL columns (documented performance anti-pattern).
 # Rejected client-side: pre-image on Create, post-image on Delete, post-image
 # on a non-PostOperation step, messages that don't support images.
-# --solution/--require-solution accepted (same semantics as register-assembly/step).
+# --solution accepted (required, same semantics as register-assembly/step).
 crm --json plugin register-image \
     --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
     --type pre --alias preimg --attributes name,telephone1

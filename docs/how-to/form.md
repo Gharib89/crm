@@ -57,12 +57,7 @@ crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog \
     --solution cwx_crmworx
 ```
 
-Use `--require-solution` to fail if no solution name is resolved:
-
-```bash
-crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog \
-    --require-solution
-```
+`--solution` is required to scope the write to an unmanaged solution.
 
 ### Ambiguous form names
 

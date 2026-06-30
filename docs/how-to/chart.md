@@ -96,8 +96,7 @@ crm chart create contact --name "Q" \
     --solution cwx_crmworx
 ```
 
-Use `--require-solution` to fail if no solution name resolves (from `--solution`
-or the profile default).
+`--solution` is required to scope the write to an unmanaged solution.
 
 ### Preview without writing
 
@@ -155,8 +154,8 @@ a chart to a different table is not supported.
 
 ### Publishing and solution
 
-`update` follows the same `--publish` / `--no-publish` / `--solution` /
-`--require-solution` contract as `create` (see above). For system charts the
+`update` follows the same `--publish` / `--no-publish` / `--solution` (required)
+contract as `create` (see above). For system charts the
 change is only visible in the UI after `PublishAllXml` runs; user charts
 (`--user`) are never published and take effect immediately.
 

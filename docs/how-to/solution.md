@@ -10,7 +10,20 @@ crm --json solution create-publisher --name crmworx --display CRMWorx --prefix c
   --option-value-prefix 30000 --if-exists skip
 crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
 ```
-Create both from the CLI before any metadata work ([#34](https://github.com/Gharib89/crm/issues/34)); with a named profile active they auto-wire `publisher_prefix=cwx` and `default_solution=CRMWorx`. `--if-exists skip` makes re-runs a no-op.
+Create both from the CLI before any metadata work ([#34](https://github.com/Gharib89/crm/issues/34)).
+`--if-exists skip` makes re-runs a no-op.
+
+`create-publisher` auto-wires `publisher_prefix=cwx` back to the active named
+profile so later `metadata create-*` commands can derive schema names without a
+prefix flag. There is no longer a `default_solution` profile field — pass
+`--solution CRMWorx` explicitly on every metadata write command.
+
+**Why `--solution` is required.** In D365, every new metadata component is always
+added to the system Default Solution regardless of `MSCRM.SolutionUniqueName`;
+the solution header only *additionally* files the component into a named unmanaged
+solution. A silent profile default therefore cannot protect against
+Default-Solution-only writes — it only hides which solution is targeted. Requiring
+`--solution` on every write makes the target explicit and auditable.
 
 ## List the components in a solution
 

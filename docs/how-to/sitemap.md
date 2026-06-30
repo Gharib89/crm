@@ -259,8 +259,7 @@ crm --json sitemap add-area <SITEMAP_ID> \
     --solution cwx_crmworx --publish
 ```
 
-`--require-solution` fails the command if no solution name resolves from `--solution`
-or the profile default.
+`--solution` is required on all sitemap write commands; omitting it exits 2.
 
 ## Preview without writing
 

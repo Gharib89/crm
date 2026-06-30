@@ -76,8 +76,7 @@ crm solution publish    # publish when ready
 crm dashboard create --name "Q" --formxml d.xml --solution cwx_crmworx
 ```
 
-Use `--require-solution` to fail if no solution name resolves (from `--solution`
-or the profile default).
+`--solution` is required to scope the write to an unmanaged solution.
 
 ### Preview without writing
 

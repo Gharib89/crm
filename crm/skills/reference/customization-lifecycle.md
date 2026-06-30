@@ -38,16 +38,17 @@ its assembly registered and its type confirmed first. The sibling files call out
 
 ## Cross-cutting disciplines (the things that bite)
 
-**1 — Publisher + solution before anything.** With a named profile active,
-`create-publisher` / `create` auto-wire `publisher_prefix` + `default_solution` into the
-profile, so every `metadata create-*` afterward targets the right prefix/solution without
-repeating `--solution`. Skip this and components fall into the default solution with the
-wrong prefix and can't be cleanly exported.
+**1 — Publisher + solution before anything.** `solution create-publisher` auto-wires
+`publisher_prefix` into the active named profile, so every `metadata create-*` afterward
+can derive schema names without repeating the prefix. **`--solution <unique_name>` is
+required on every customization write** — there is no `default_solution` profile field.
+Pass it on every `metadata create-*` call. Skip this and components fall into the Default
+Solution with the wrong prefix and can't be cleanly exported.
 
-**2 — Thread `--solution` for components that don't auto-wire.** `webresource`, `plugin
-register-assembly`, `app`, and friends take `--solution <unique_name>` to drop the
-component into your solution; omitting it strands it in the Default solution, outside your
-export. (The `metadata` verbs already honor the profile default from discipline 1.)
+**2 — Thread `--solution` on every write.** Every write command — `metadata create-*`,
+`webresource`, `plugin register-assembly`, `app`, and friends — requires
+`--solution <unique_name>`; omitting it exits 2. This prevents silently landing components
+in the Default Solution, outside your export.
 
 **3 — Stage many, publish once.** Each `metadata create/update` auto-publishes, and a
 publish is slow and disruptive. Across a batch, set `--stage-only` (or `CRM_STAGE_ONLY=1`)

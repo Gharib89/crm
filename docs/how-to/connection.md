@@ -31,7 +31,7 @@ active profile reaches the server.
 ```bash
 crm --json connection status
 ```
-Shows the `active_profile` with its `default_solution` and `publisher_prefix`. It
+Shows the `active_profile` with its `publisher_prefix`. It
 makes **no network call** — use it to confirm which target the next command will hit.
 
 ## Diagnose a broken connection

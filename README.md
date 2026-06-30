@@ -229,12 +229,21 @@ bearer token is cached at `~/.crm/msal_token_cache.json` (mode `0600`) and reuse
 across invocations until it expires. Username/password/domain are not used in
 this mode.
 
-Attach a default solution and schema-name prefix so metadata write commands target
-them by default:
+Attach a schema-name prefix so metadata write commands auto-derive column names:
 
 ```bash
-crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
+crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
+
+> **BREAKING — v1.46:** `--solution` is now **required** on all customization
+> writes (metadata create/update of components, plug-ins, web resources, etc.).
+> Omitting it exits with error 2. The `--default-solution` flag on `profile add`
+> / `profile edit`, the `default_solution` profile field, the `--require-solution`
+> flag, and the `CRM_REQUIRE_SOLUTION` env var are all **removed**. Pass
+> `--solution <unique_name>` explicitly on every write command.
+> `solution create --set-default` is also removed (there is no longer a
+> `default_solution` to write). `solution create-publisher --set-default`
+> (which writes `publisher_prefix`) is still available.
 
 State lives under `~/.crm/` — `CRM_HOME` is the only env var involved in
 credential/connection resolution (it relocates that directory). No credentials
@@ -255,6 +264,8 @@ behavior — logging, retries, stage-only — but never supply connection config
   existing profile (NTLM password or OAuth client secret alike); never contacts the
   server. `crm profile delete-password --profile NAME` removes it.
 - `crm profile list` shows each profile's storage type (keyring / plaintext / none).
+- `crm profile rename OLD NEW` — renames a profile (file, active-session pointer,
+  keyring entry, and cache dir); refuses to clobber an existing name.
 
 Secret resolution order: `--password` (per-run override) > stored secret (plaintext
 entry, then keyring) > interactive prompt (TTY only). No environment variable is

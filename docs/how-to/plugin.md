@@ -54,7 +54,7 @@ runs live even under `--dry-run` (reads-execute rule).
 Unknown assembly name raises a `D365Error` (clean error, no server round-trip
 for the write).
 
-`--solution` / `--require-solution` land the type row in a target solution.
+`--solution` (required) lands the type row in a target solution.
 
 ## List plug-in types
 
@@ -93,7 +93,7 @@ After registering the webhook, bind a step to it with `--service-endpoint`
 Dry-run preview (no write): `crm --dry-run --json plugin register-webhook ...`
 carries `meta.dry_run: true`.
 
-`--solution` / `--require-solution` land the endpoint row in a target solution.
+`--solution` (required) lands the endpoint row in a target solution.
 
 ## Register a processing step
 
@@ -148,10 +148,8 @@ Key points:
   limit.
 - `--assembly` scopes the type lookup to a single assembly when multiple
   assemblies share a type name (relevant only with `--plugin-type`).
-- `--solution` / `--require-solution` land the step row in a target solution
-  (sets `MSCRM.SolutionUniqueName`); defaults to the profile's
-  `default_solution`. `--require-solution` (or `CRM_REQUIRE_SOLUTION`) fails
-  when no solution resolves.
+- `--solution` (required) lands the step row in a target solution
+  (sets `MSCRM.SolutionUniqueName`). Omitting it exits 2.
 
 ## Full registration workflow
 
@@ -234,8 +232,8 @@ Key points:
 - Platform validity rules are enforced before any write: no pre-image on a
   `Create` step, no post-image on a `Delete` step, and post-images (or `both`) require a
   step registered in the **PostOperation** stage.
-- `--solution` / `--require-solution` land the image row in a target solution
-  (same semantics as on `register-step` and `register-assembly`).
+- `--solution` (required) lands the image row in a target solution
+  (same semantics as `register-step` and `register-assembly`).
 
 ## Unregister a step image
 

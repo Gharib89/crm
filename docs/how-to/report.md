@@ -91,9 +91,8 @@ crm report create --name "Pipeline" --body-file pipeline.rdl \
     --solution cwx_crmworx
 ```
 
-Use `--require-solution` to fail if no solution name resolves (from
-`--solution` or the profile default). `set-category` also accepts `--solution`
-to scope the `reportcategory` record.
+`--solution` is required to scope the write to an unmanaged solution. `set-category`
+also accepts `--solution` to scope the `reportcategory` record.
 
 ## File under a report area
 

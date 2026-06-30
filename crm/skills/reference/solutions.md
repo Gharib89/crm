@@ -13,10 +13,21 @@ crm --json solution create-publisher --name crmworx --display CRMWorx \
 crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
 ```
 
-With a named profile active, both verbs auto-wire `publisher_prefix` (from
-`create-publisher`) and `default_solution` (from `create`) back into it, so later
-`metadata create-*` commands target that prefix/solution by default. Pass
-`--no-set-default` to opt out.
+With a named profile active, `create-publisher` auto-wires `publisher_prefix` back
+into it so later `metadata create-*` commands can derive schema names without a
+per-command prefix flag. Pass `--no-set-default` to opt out.
+
+There is no `default_solution` profile field — `solution create` no longer
+auto-wires it, and `--set-default` on `create` is removed. Pass
+`--solution <unique_name>` explicitly on every metadata write command.
+
+**Why `--solution` is required.** D365 always adds a new component to the system
+Default Solution regardless of `MSCRM.SolutionUniqueName`; the header only
+*additionally* files it into a named unmanaged solution. A silent profile default
+cannot prevent Default-Solution-only writes — it only hides the target. Every
+customization write must name an explicit unmanaged solution; omitting `--solution`
+exits 2. The old `--require-solution` flag and `CRM_REQUIRE_SOLUTION` env var are
+gone — strict is the only mode.
 
 Bump the version (or friendly name / description) of an **unmanaged** solution before
 exporting — at least one field is required, `--version` is validated as 4-part dotted

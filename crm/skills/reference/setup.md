@@ -61,7 +61,22 @@ env knob is `CRM_HOME` (state-directory override; default `~/.crm/`).
 
 Switch or inspect profiles with `crm profile use [name]` (no name → interactive
 picker; `--none` clears the active profile) and `crm profile list` (marks the
-active one); edit or delete one with `crm profile edit` / `crm profile rm`. On a
+active one); edit or delete one with `crm profile edit` / `crm profile rm`;
+rename one with `crm profile rename OLD NEW` (rewrites the profile file, migrates
+the keyring entry best-effort, moves the cache dir, and updates the active-session
+pointer when OLD is currently active — refuses to clobber an existing NEW). On a
 fresh machine, any connection command with no profile drops
 into `crm profile add` automatically on a terminal (under `--json`/no-TTY it
 errors cleanly telling you to run `crm profile add`).
+
+**`--solution` is required for every customization write.** There is no profile
+`default_solution` field — pass `--solution <unique_name>` explicitly on every
+`metadata create-*`, `metadata update-*`, and component write. Omitting it exits 2
+with a clear error. The old `--require-solution` flag and `CRM_REQUIRE_SOLUTION`
+env var are gone — strict is now the only mode.
+
+**Publisher prefix.** `crm profile add` prompts for an optional publisher prefix
+(press Enter to skip); `--publisher-prefix <prefix>` sets it non-interactively. A
+profile `publisher_prefix` lets `metadata create-*` auto-derive schema names
+(`<prefix>_<PascalName>`) without a per-command `--schema-name` flag. Invalid
+prefixes are rejected immediately (both wizard and flag paths).

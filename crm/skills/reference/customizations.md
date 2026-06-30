@@ -537,8 +537,8 @@ data XML's category count, etc. — a malformed pair fails with a `400`
 doubt, start from a known-good chart captured via `chart get`.
 
 **Publish + solution + dry-run, same contract as the metadata verbs.** `create`
-runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
-`--require-solution` scope the write. Under `--dry-run`, `create` returns
+runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` scopes the
+write (required). Under `--dry-run`, `create` returns
 `{_dry_run, would_create: {entity_set, body}}` with the resolved body (a
 `--web-resource` name is resolved live first) and `delete` returns
 `{_dry_run, would_delete: true, <id>}` — neither issues the write. To take a chart
@@ -547,7 +547,7 @@ runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
 ### Chart editors — `update`, `set-fetch`, `add-series`, `remove-series`, `set-groupby`
 
 Five in-place editor verbs mutate a chart without recreating it. All honor
-`--user`, `--solution`, `--require-solution`, and `--publish` / `--no-publish`.
+`--user`, `--solution` (required), and `--publish` / `--no-publish`.
 
 ```bash
 # update: replace XML, name, description, or ChartType on every <Series>
@@ -617,8 +617,8 @@ fails fast with a clear error rather than silently creating a standard dashboard
 author interactive-experience dashboards in the designer.
 
 **Publish + solution + dry-run, same contract as the other customization verbs.**
-`create` runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
-`--require-solution` scope the write. Under `--dry-run`, `create` returns
+`create` runs `PublishAllXml` by default (`--no-publish` to stage); `--solution`
+scopes the write (required). Under `--dry-run`, `create` returns
 `{_dry_run, would_create: {entity_set, body}}` and `delete` returns
 `{_dry_run, would_delete: true, formid}` — neither issues the write.
 
@@ -757,8 +757,8 @@ used. Without `--org`, reports are personal (`ispersonal=true`).
 XML. Dataverse online only accepts RDLs using the fetch data provider; on-prem
 v9.x uses the standard D365 data source. RDL authoring is out of scope.
 
-**Reports are solution-aware.** `create` and `set-category` honor `--solution` /
-`--require-solution` to scope the write to an unmanaged solution.
+**Reports are solution-aware.** `create` and `set-category` honor `--solution`
+(required) to scope the write to an unmanaged solution.
 
 **`set-category` creates a `reportcategory` record** (categorycode 1–4: sales,
 service, marketing, administrative). A report can belong to multiple areas.

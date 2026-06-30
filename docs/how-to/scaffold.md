@@ -148,8 +148,7 @@ crm --json scaffold table "Project" \
   --column "Name:string"
 ```
 
-Pass `--require-solution` to fail with exit 2 when no solution resolves instead
-of creating the entity without a solution context.
+`--solution` is required for the entity create write; omitting it exits 2.
 
 ### OrganizationOwned entity
 

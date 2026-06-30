@@ -2,7 +2,8 @@
 
 Set up and switch connection targets. A **profile** holds the server URL, auth
 scheme, identity fields (NTLM username/domain or OAuth tenant/client id), and the
-optional `default_solution` / `publisher_prefix` used by metadata write commands.
+optional `publisher_prefix` used by metadata write commands to auto-derive schema
+names.
 The secret (NTLM password or OAuth client secret) is stored alongside it. This is
 the only place credentials come from — there is no `.env` and no credential
 environment variables. See the [CLI reference](../reference/cli.md) for every flag.
@@ -48,12 +49,18 @@ label. Override the inferred scheme with `--auth-scheme` when the URL doesn't ma
 the heuristic — the interactive wizard offers the same choice as an inline arrow-key
 picker (↑/↓ then Enter, Esc to cancel) with the inferred scheme preselected. Omit `--api-version` to
 **auto-negotiate** — on-prem is capped at v9.1 (v9.2 returns HTTP 501), so the CLI
-steps down automatically. Attach a default solution and schema-name prefix so
-metadata commands target them without per-command flags:
+steps down automatically. Attach a schema-name prefix so metadata commands
+auto-derive column schema names without a per-command flag:
 
 ```bash
-crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
+crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
+
+The interactive wizard also prompts for an optional publisher prefix — press Enter
+to skip it. The prefix is validated immediately (invalid characters raise an error).
+
+`--solution` is now **required** on every customization write — it cannot be stored
+as a profile default. Pass it explicitly on each write command.
 
 ## Switch the active profile
 
@@ -76,15 +83,27 @@ crm --json profile list
 Marks the active profile and shows each one's target (on-prem / cloud), URL, and
 where its secret lives (`cred=keyring`, `cred=plaintext`, or `cred=none`).
 
+## Rename a profile
+
+```bash
+crm profile rename old-name new-name
+```
+
+Renames a profile: rewrites the profile file, updates the active-session pointer
+when `old-name` is currently active, migrates the OS keyring entry (best-effort —
+if the keyring step fails, a warning is printed and you can run
+`crm profile set-password new-name` to fix it), and moves the cache directory.
+Refuses to clobber an existing profile named `new-name`.
+
 ## Edit a profile's fields
 
 ```bash
-crm profile edit prod --default-solution CRMWorx --publisher-prefix cwx
+crm profile edit prod --publisher-prefix cwx
 crm profile edit online --url https://contoso.crm.dynamics.com --client-id <new-id>
 ```
 
-`edit` changes any non-secret field — URL, identity fields, api-version, default
-solution, publisher prefix. To change the secret, use `set-password` (below).
+`edit` changes any non-secret field — URL, identity fields, api-version, publisher
+prefix. To change the secret, use `set-password` (below).
 
 ## Delete a profile
 
