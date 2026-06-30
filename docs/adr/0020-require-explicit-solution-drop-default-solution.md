@@ -64,7 +64,7 @@ the mistake is caught at the point of invocation, not after the fact.
 - Every scripted or agent-driven customization workflow must pass `--solution`
   explicitly. This is a **breaking change** for any caller that relied on the
   profile default.
-- `crm profile list --json` no longer emits `default_solution` in its data
+- `crm --json profile list` no longer emits `default_solution` in its data
   rows. Any automation parsing that field will see it absent (not `null`).
 - `crm profile add` and `crm profile edit` no longer accept `--default-solution`.
   A caller passing it gets a `No such option` error (exit 2).
