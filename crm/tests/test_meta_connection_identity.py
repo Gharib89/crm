@@ -165,21 +165,21 @@ class TestWhoamiEnriched:
         with requests_mock.Mocker() as m:
             m.get(f"{_API_BASE}WhoAmI", json={
                 "@odata.context": f"{_API_BASE}$metadata#Microsoft.Dynamics.CRM.WhoAmIResponse",
-                "UserId": "2b1b0000-0000-0000-0000-000000000001",
-                "BusinessUnitId": "337f0000-0000-0000-0000-000000000002",
-                "OrganizationId": "a5dd0000-0000-0000-0000-000000000003",
+                "UserId": "11111111-1111-1111-1111-111111111111",
+                "BusinessUnitId": "22222222-2222-2222-2222-222222222222",
+                "OrganizationId": "33333333-3333-3333-3333-333333333333",
             })
             m.get(
-                f"{_API_BASE}organizations(a5dd0000-0000-0000-0000-000000000003)",
+                f"{_API_BASE}organizations(33333333-3333-3333-3333-333333333333)",
                 json={"name": "Contoso Dev"},
             )
             result = CliRunner().invoke(
                 cli, ["--json", "--profile", "t", "connection", "whoami"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
-        assert data["UserId"] == "2b1b0000-0000-0000-0000-000000000001"
-        assert data["BusinessUnitId"] == "337f0000-0000-0000-0000-000000000002"
-        assert data["OrganizationId"] == "a5dd0000-0000-0000-0000-000000000003"
+        assert data["UserId"] == "11111111-1111-1111-1111-111111111111"
+        assert data["BusinessUnitId"] == "22222222-2222-2222-2222-222222222222"
+        assert data["OrganizationId"] == "33333333-3333-3333-3333-333333333333"
         assert data["profile"] == "t"
         assert data["url"] == _API_BASE
         assert data["org_name"] == "Contoso Dev"
@@ -191,12 +191,12 @@ class TestWhoamiEnriched:
         _seed_profile(tmp_path, monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(f"{_API_BASE}WhoAmI", json={
-                "UserId": "2b1b0000-0000-0000-0000-000000000001",
-                "BusinessUnitId": "337f0000-0000-0000-0000-000000000002",
-                "OrganizationId": "a5dd0000-0000-0000-0000-000000000003",
+                "UserId": "11111111-1111-1111-1111-111111111111",
+                "BusinessUnitId": "22222222-2222-2222-2222-222222222222",
+                "OrganizationId": "33333333-3333-3333-3333-333333333333",
             })
             m.get(
-                f"{_API_BASE}organizations(a5dd0000-0000-0000-0000-000000000003)",
+                f"{_API_BASE}organizations(33333333-3333-3333-3333-333333333333)",
                 status_code=403, json={"error": {"message": "denied"}},
             )
             result = CliRunner().invoke(
