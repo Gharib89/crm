@@ -133,12 +133,13 @@ class TestAddWizard:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
+            # "\n" satisfies the optional publisher-prefix prompt (empty = skip).
             result = runner.invoke(cli, [
                 "profile", "add",
                 "--url", "https://crm.contoso.local/contoso",
                 "--tenant-id", "t1", "--client-id", "c1",
                 "--password", "pw", "--name", "wiz", "--yes",
-            ])
+            ], input="\n")
         assert result.exit_code == 0, result.output
         assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
         assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth"]
@@ -167,11 +168,12 @@ class TestAddWizard:
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
+            # "\n" satisfies the optional publisher-prefix prompt (empty = skip).
             result = runner.invoke(cli, [
                 "profile", "add", "--auth-scheme", "ntlm",
                 "--url", "https://crm.contoso.local/c",
                 "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz3", "--yes"])
+                "--name", "wiz3", "--yes"], input="\n")
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz3").auth_scheme == "ntlm"
 
@@ -371,3 +373,212 @@ class TestAuthHints:
         payload = json.loads(result.output)
         assert "set-password" in (payload.get("meta", {}).get("hint", "")
                                   or payload.get("error", ""))
+
+
+# ── Helpers shared by rename + prefix tests ──────────────────────────────
+
+
+def _seed_profile(name, *, secret=None, publisher_prefix=None):
+    """Create a minimal NTLM profile in the current CRM_HOME."""
+    from crm.utils.d365_backend import ConnectionProfile
+    p = ConnectionProfile(
+        name=name, url=f"https://{name}.contoso.local/o",
+        domain="C", username="u",
+        publisher_prefix=publisher_prefix,
+    )
+    session_mod.save_profile(p)
+    if secret is not None:
+        session_mod.save_profile_secret_plaintext(name, secret)
+
+
+class TestRename:
+    """crm profile rename OLD NEW — file, session-pointer, keyring, cache."""
+
+    def test_rename_moves_file_and_updates_internal_name(self, crm_home):
+        _seed_profile("alpha")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "alpha", "bravo"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["ok"] is True
+        assert payload["data"]["old"] == "alpha"
+        assert payload["data"]["new"] == "bravo"
+        assert "alpha" not in session_mod.list_profiles()
+        assert "bravo" in session_mod.list_profiles()
+        p = session_mod.load_profile("bravo")
+        assert p.name == "bravo"
+
+    def test_rename_carries_inline_secret(self, crm_home):
+        _seed_profile("alpha", secret="topsecret")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "alpha", "bravo"])
+        assert result.exit_code == 0, result.output
+        # old profile must be gone
+        assert session_mod.load_profile_secret("alpha") is None
+        # new profile must have the secret
+        assert session_mod.load_profile_secret("bravo") == "topsecret"
+
+    def test_rename_repoints_active_session_when_old_is_active(self, crm_home):
+        _seed_profile("alpha")
+        # Activate alpha first.
+        runner = CliRunner()
+        runner.invoke(cli, ["--json", "profile", "use", "alpha"])
+        assert session_mod.load_session("default")["active_profile"] == "alpha"
+
+        result = runner.invoke(cli, ["--json", "profile", "rename", "alpha", "bravo"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["data"]["active_updated"] is True
+        assert session_mod.load_session("default")["active_profile"] == "bravo"
+
+    def test_rename_does_not_touch_session_when_old_is_not_active(self, crm_home):
+        _seed_profile("alpha")
+        _seed_profile("other")
+        runner = CliRunner()
+        runner.invoke(cli, ["--json", "profile", "use", "other"])
+
+        result = runner.invoke(cli, ["--json", "profile", "rename", "alpha", "bravo"])
+        assert result.exit_code == 0, result.output
+        payload = json.loads(result.output)
+        assert payload["data"]["active_updated"] is False
+        # active pointer must still be 'other'
+        assert session_mod.load_session("default")["active_profile"] == "other"
+
+    def test_rename_refuses_to_clobber_existing_new_name(self, crm_home):
+        _seed_profile("alpha")
+        _seed_profile("bravo")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "alpha", "bravo"])
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        assert "bravo" in payload["error"]
+        # Both profiles must still exist — no partial mutation.
+        assert "alpha" in session_mod.list_profiles()
+        assert "bravo" in session_mod.list_profiles()
+
+    def test_rename_errors_when_old_missing(self, crm_home):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "ghost", "new"])
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        assert "ghost" in payload["error"]
+
+    def test_rename_invalid_new_name_errors_before_any_mutation(self, crm_home):
+        _seed_profile("alpha")
+        runner = CliRunner()
+        # A name with a path separator is invalid.
+        result = runner.invoke(cli, ["--json", "profile", "rename", "alpha", "bad/name"])
+        assert result.exit_code == 1, result.output
+        payload = json.loads(result.output)
+        assert payload["ok"] is False
+        # alpha must still exist untouched.
+        assert "alpha" in session_mod.list_profiles()
+
+
+class TestRenameSessionHelper:
+    """Unit tests for session_mod.rename_profile (the strict-typed helper)."""
+
+    def test_helper_moves_file_and_returns_pointer_flag(self, crm_home):
+        _seed_profile("x")
+        # Activate x in the default session.
+        state = session_mod.load_session("default")
+        state["active_profile"] = "x"
+        session_mod.save_session(state, "default")
+
+        updated = session_mod.rename_profile("x", "y")
+        assert updated is True
+        assert "x" not in session_mod.list_profiles()
+        assert "y" in session_mod.list_profiles()
+        assert session_mod.load_profile("y").name == "y"
+        assert session_mod.load_session("default")["active_profile"] == "y"
+
+    def test_helper_raises_file_not_found_for_missing_old(self, crm_home):
+        with pytest.raises(FileNotFoundError, match="ghost"):
+            session_mod.rename_profile("ghost", "new")
+
+    def test_helper_raises_file_exists_for_existing_new(self, crm_home):
+        _seed_profile("a"); _seed_profile("b")
+        with pytest.raises(FileExistsError, match="b"):
+            session_mod.rename_profile("a", "b")
+
+
+class TestPublisherPrefixValidation:
+    """publisher_prefix is validated on both the flag path and the wizard."""
+
+    def test_flag_bad_prefix_errors_with_exit2(self, crm_home):
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "add",
+            "--url", "https://crm.contoso.local/org",
+            "--username", "alice", "--domain", "CONTOSO",
+            "--password", "pw", "--name", "p1", "--yes",
+            "--publisher-prefix", "!bad!",
+        ])
+        assert result.exit_code == 2, result.output
+
+    def test_flag_mscrm_prefix_errors(self, crm_home):
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "add",
+            "--url", "https://crm.contoso.local/org",
+            "--username", "alice", "--domain", "CONTOSO",
+            "--password", "pw", "--name", "p1", "--yes",
+            "--publisher-prefix", "mscrm",
+        ])
+        assert result.exit_code == 2, result.output
+
+    def test_flag_valid_prefix_is_stored(self, crm_home):
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://crm.contoso.local/org",
+                "--username", "alice", "--domain", "CONTOSO",
+                "--password", "pw", "--name", "p1", "--yes",
+                "--publisher-prefix", "contoso",
+            ])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("p1").publisher_prefix == "contoso"
+
+    def test_wizard_bad_prefix_reprompts_then_accepts_good(self, crm_home, monkeypatch):
+        """An invalid prefix in the wizard loop re-prompts; a good one is stored."""
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        # Stub the auth-scheme picker so we don't need a full TTY.
+        monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: "ntlm")
+
+        prompts = iter(["alice", "CONTOSO", "mywiz", "pw", "!bad!", "good"])
+        monkeypatch.setattr("click.prompt", lambda msg, **kw: next(prompts))
+
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "profile", "add",
+                "--url", "https://crm.contoso.local/org",
+                "--yes",
+            ])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("mywiz").publisher_prefix == "good"
+
+    def test_wizard_empty_prefix_skips_and_stores_none(self, crm_home, monkeypatch):
+        """Empty prefix input in the wizard skips the field (None stored)."""
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: "ntlm")
+
+        # username, domain, name, password, publisher_prefix (empty → skip)
+        prompts = iter(["alice", "CONTOSO", "wiz2", "pw", ""])
+        monkeypatch.setattr("click.prompt", lambda msg, **kw: next(prompts))
+
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "profile", "add",
+                "--url", "https://crm.contoso.local/org",
+                "--yes",
+            ])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("wiz2").publisher_prefix is None

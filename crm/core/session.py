@@ -197,6 +197,61 @@ def _atomic_write_json(path: Path, payload: Any) -> None:
     tmp.replace(path)
 
 
+# ── Profile rename ──────────────────────────────────────────────────────
+
+
+def rename_profile(
+    old_name: str,
+    new_name: str,
+    session_name: str = "default",
+) -> bool:
+    """Rename a profile on disk and repoint the active-session pointer.
+
+    Moves ``profiles/OLD.json`` → ``profiles/NEW.json``, rewrites the internal
+    ``name`` field, and carries the inline ``_secret`` along unchanged.  Updates
+    the active-profile pointer in *session_name* if it currently equals *old_name*.
+
+    Returns True iff the active-session pointer was updated.
+
+    Raises:
+        FileNotFoundError — OLD does not exist.
+        FileExistsError   — NEW already exists (refuse to clobber).
+        D365Error         — NEW fails ``validate_profile_name``.
+    """
+    from crm.utils.d365_backend import validate_profile_name
+
+    validate_profile_name(new_name)  # raises D365Error on bad name
+
+    old_path = profile_path(old_name)
+    new_path = profile_path(new_name)
+
+    if not old_path.is_file():
+        raise FileNotFoundError(f"Profile {old_name!r} not found (looked at {old_path})")
+    if new_path.exists():
+        raise FileExistsError(f"Profile {new_name!r} already exists; refusing to clobber")
+
+    # Read the raw payload (preserves _secret and any future keys).
+    with old_path.open("r", encoding="utf-8") as fh:
+        payload: dict[str, Any] = json.load(fh)
+
+    payload["name"] = new_name
+
+    _atomic_write_json(new_path, payload)
+    # Mirror save_profile: re-enforce 0600 when a plaintext secret rides along.
+    if payload.get("_secret") is not None and os.name == "posix":
+        os.chmod(new_path, 0o600)
+    old_path.unlink()
+
+    # Repoint the active-profile pointer when it currently names OLD.
+    state = load_session(session_name)
+    pointer_updated = state.get("active_profile") == old_name
+    if pointer_updated:
+        state["active_profile"] = new_name
+        save_session(state, session_name)
+
+    return pointer_updated
+
+
 # ── History file (REPL line history) ────────────────────────────────────
 
 

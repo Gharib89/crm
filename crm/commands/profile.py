@@ -128,6 +128,33 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         raise click.UsageError(
             "--password (or --client-secret) is required (no TTY to prompt for it).")
 
+    # ── Publisher prefix: validate flag path; optional wizard prompt ─────
+    from crm.core.solution import validate_customization_prefix
+    if publisher_prefix is not None:
+        # Flag path — validate immediately; error out on bad input.
+        try:
+            validate_customization_prefix(publisher_prefix)
+        except D365Error as exc:
+            raise click.UsageError(str(exc)) from exc
+    elif interactive:
+        # Wizard path — offer an optional prompt; re-prompt on invalid input;
+        # empty input (Enter) skips the field entirely (None).
+        while True:
+            raw = click.prompt(
+                "Publisher prefix (optional, e.g. 'new')",
+                default="", show_default=False,
+            ).strip()
+            if not raw:
+                publisher_prefix = None
+                break
+            try:
+                validate_customization_prefix(raw)
+                publisher_prefix = raw
+                break
+            except D365Error as exc:
+                click.echo(f"  Invalid prefix: {exc}", err=True)
+                # loop — re-prompt
+
     if name in session_mod.list_profiles() and not yes:
         _confirm_destructive(ctx, "profile", name, yes,
                              message=f"Profile {name!r} exists. Overwrite?")
@@ -358,6 +385,79 @@ def profile_rm(ctx: CLIContext, name, yes):
         ctx.profile_name = None
         ctx.invalidate_backend()
     ctx.emit(True, data={"profile": name, "removed": True})
+
+
+@profile_group.command("rename")
+@click.argument("old_name")
+@click.argument("new_name")
+@pass_ctx
+def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
+    """Rename a profile (OLD_NAME → NEW_NAME).
+
+    Rewrites the profile file, updates the OS keyring (best-effort), and
+    repoints the active-session pointer when OLD_NAME is currently active.
+    """
+    from crm.core import session as _sm
+    from crm.utils.d365_backend import validate_profile_name, D365Error as _D365Error
+
+    # ── 1. Validate before any mutation ─────────────────────────────────
+    try:
+        validate_profile_name(new_name)
+    except _D365Error as exc:
+        ctx.emit(False, error=str(exc))
+        return
+
+    profiles = _sm.list_profiles()
+    if old_name not in profiles:
+        _handle_d365_error(ctx, D365Error(f"Profile {old_name!r} not found."))
+        return
+    if new_name in profiles:
+        ctx.emit(False, error=(
+            f"Profile {new_name!r} already exists; "
+            "choose a different name or remove it first."
+        ))
+        return
+
+    # ── 2. Profile file + active-session pointer ─────────────────────────
+    try:
+        pointer_updated = session_mod.rename_profile(old_name, new_name, ctx.session_name)
+    except (FileNotFoundError, FileExistsError, D365Error) as exc:
+        ctx.emit(False, error=str(exc))
+        return
+
+    # Sync the in-memory context when the active pointer moved.
+    if pointer_updated:
+        ctx.profile_name = new_name
+        ctx.invalidate_backend()
+
+    # ── 3. Keyring — best-effort ─────────────────────────────────────────
+    warnings = []
+    try:
+        secret = keyring_store.get_secret(old_name)
+        if secret is not None:
+            keyring_store.set_secret(new_name, secret)
+            keyring_store.delete_secret(old_name)
+    except D365Error as exc:
+        warnings.append(
+            f"Keyring update failed ({exc}); run "
+            f"`crm profile set-password {new_name}` to fix."
+        )
+
+    # ── 4. Cache dir — best-effort ───────────────────────────────────────
+    try:
+        import crm.core.session as _session_core
+        cache_root = _session_core._state_root() / "cache"
+        old_cache = cache_root / old_name
+        new_cache = cache_root / new_name
+        if old_cache.exists():
+            old_cache.rename(new_cache)
+    except Exception:
+        pass  # disposable read-through cache; silent best-effort
+
+    ctx.emit(True, data={"old": old_name, "new": new_name,
+                         "active_updated": pointer_updated},
+             meta={"profile": new_name},
+             warnings=warnings or None)
 
 
 @profile_group.command("set-password")
