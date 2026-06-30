@@ -161,7 +161,6 @@ class ConnectionProfile:
     auth_scheme: str = "ntlm"      # ntlm | kerberos | negotiate | oauth
     tenant_id: str | None = None   # oauth: AAD tenant (non-secret)
     client_id: str | None = None   # oauth: app-registration id (non-secret)
-    default_solution: str | None = None  # uniquename for MSCRM.SolutionUniqueName
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
     timeout: int = 120
     retry_max: int = 5
@@ -214,7 +213,6 @@ class ConnectionProfile:
             "auth_scheme": self.auth_scheme,
             "tenant_id": self.tenant_id,
             "client_id": self.client_id,
-            "default_solution": self.default_solution,
             "publisher_prefix": self.publisher_prefix,
             "timeout": self.timeout,
             "retry_max": self.retry_max,
@@ -238,7 +236,6 @@ class ConnectionProfile:
             auth_scheme=d.get("auth_scheme", "ntlm"),
             tenant_id=d.get("tenant_id"),
             client_id=d.get("client_id"),
-            default_solution=d.get("default_solution"),
             publisher_prefix=d.get("publisher_prefix"),
             timeout=d.get("timeout", 120),
             retry_max=d.get("retry_max", 5),

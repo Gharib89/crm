@@ -37,6 +37,7 @@ class TestAddAttributeBooleanDefaultParsing:
             "--json", "metadata", "add-attribute", "new_widget",
             "--kind", "boolean",
             "--schema-name", "new_isactive", "--display", "Active",
+            "--solution", "MySol",
             "--default-value", "maybe",
         ])
         # Click UsageError → non-zero exit + message routed to stderr

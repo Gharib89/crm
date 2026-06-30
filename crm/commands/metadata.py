@@ -477,7 +477,7 @@ def metadata_create_entity(
     ctx: CLIContext, schema_name, display_name, display_collection, primary_attr_schema,
     primary_attr_label, primary_max_length, description, ownership,
     has_activities, has_notes, is_activity, data_provider, data_source,
-    external_name, external_collection_name, solution, require_solution, if_exists, publish,
+    external_name, external_collection_name, solution, if_exists, publish,
 ):
     """Create a new custom entity (table).
 
@@ -487,7 +487,7 @@ def metadata_create_entity(
     first.
     """
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = meta_mod.create_entity(
@@ -536,7 +536,7 @@ def metadata_create_entity(
 def metadata_clone_entity(
     ctx: CLIContext, source, new_schema_name, display,
     with_forms, with_views, with_workflows, with_charts, with_all,
-    solution, require_solution, publish,
+    solution, publish,
 ):
     """Duplicate a custom entity (skeleton + opt-in forms/views/workflows/charts).
 
@@ -546,7 +546,7 @@ def metadata_clone_entity(
     """
     if with_all:
         with_forms = with_views = with_workflows = with_charts = True
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = clone_mod.clone_entity(
@@ -779,10 +779,10 @@ def metadata_can_relate(ctx: CLIContext, entity, role, valid_partners):
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, require_solution, check_dependencies):
+def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_dependencies):
     """Permanently delete a custom entity (table) and ALL its rows."""
     _confirm_destructive(ctx, "entity", logical_name, yes)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = meta_mod.delete_entity(
             ctx.backend(), logical_name, solution=solution,
@@ -862,11 +862,11 @@ def metadata_add_attribute(
     max_length, format_name, auto_number_format, behavior_name, min_value, max_value, precision,
     true_label, false_label, default_value,
     optionset_name, options, target_entity, relationship_schema,
-    max_size_kb, source_type, formula_file, solution, require_solution, if_exists, publish,
+    max_size_kb, source_type, formula_file, solution, if_exists, publish,
 ):
     """Add an attribute (column) to an existing entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     parsed_options = _parse_value_labels(options, flag="--option") or None
 
@@ -930,10 +930,10 @@ def metadata_add_attribute(
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, require_solution, check_dependencies):
+def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, check_dependencies):
     """Delete a custom attribute (column) from an entity."""
     _confirm_destructive(ctx, "attribute", f"{entity}.{attribute}", yes)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = ma_mod.delete_attribute(
             ctx.backend(), entity, attribute, solution=solution,
@@ -959,10 +959,10 @@ def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution,
 @_publish_option
 @pass_ctx
 def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
-                        display_name, solution, require_solution, if_exists, publish):
+                        display_name, solution, if_exists, publish):
     """Create an alternate key on an entity."""
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--name")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     attrs = [a.strip() for a in key_attributes.split(",") if a.strip()]
     if not attrs:
@@ -984,13 +984,13 @@ def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
 @_destructive_option
 @_solution_option
 @pass_ctx
-def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution, require_solution):
+def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution):
     """Delete an alternate key from an entity."""
     _confirm_destructive(
         ctx, "alternate key", f"{entity}.{key}", yes,
         message=f"This will delete alternate key {entity}.{key!r}. Continue?",
     )
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = meta_mod.delete_entity_key(ctx.backend(), entity, key, solution=solution)
     _emit_with_warning(ctx, info, warning)
@@ -1032,10 +1032,10 @@ def metadata_create_one_to_many(
     lookup_display, lookup_required, lookup_description,
     cascade_assign, cascade_delete, cascade_reparent, cascade_share,
     cascade_unshare, cascade_merge, menu_label, menu_behavior, menu_order,
-    hierarchical, solution, require_solution, if_exists, publish,
+    hierarchical, solution, if_exists, publish,
 ):
     """Create a 1:N relationship and its lookup attribute atomically."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = rel_mod.create_one_to_many(
@@ -1085,10 +1085,10 @@ def metadata_create_many_to_many(
     ctx: CLIContext, schema_name, entity1_logical, entity2_logical, intersect_entity,
     entity1_menu_label, entity1_menu_behavior, entity1_menu_order,
     entity2_menu_label, entity2_menu_behavior, entity2_menu_order,
-    solution, require_solution, if_exists, publish,
+    solution, if_exists, publish,
 ):
     """Create an N:N relationship via the dedicated action."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = rel_mod.create_many_to_many(
@@ -1118,10 +1118,10 @@ def metadata_create_many_to_many(
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, require_solution, check_dependencies):
+def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, check_dependencies):
     """Delete a custom relationship (1:N or N:N) by schema name."""
     _confirm_destructive(ctx, "relationship", schema_name, yes)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = rel_mod.delete_relationship(
             ctx.backend(), schema_name, solution=solution,
@@ -1177,10 +1177,10 @@ def metadata_get_optionset(ctx: CLIContext, name):
 @_publish_option
 @pass_ctx
 def metadata_create_optionset(ctx: CLIContext, name, display_name, description, options,
-                              solution, require_solution, if_exists, publish):
+                              solution, if_exists, publish):
     """Create a global option set."""
     name = _resolve_schema_name(ctx, name, display_name, "--name")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     parsed = _parse_value_labels(options, flag="--option")
     with d365_errors(ctx):
@@ -1208,9 +1208,9 @@ def metadata_create_optionset(ctx: CLIContext, name, display_name, description, 
 @_publish_option
 @pass_ctx
 def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_options,
-                              delete_options, reorder, solution, require_solution, publish):
+                              delete_options, reorder, solution, publish):
     """Granular update: insert/update/delete/reorder options."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     insert = _parse_value_labels(insert_options, flag="--insert-option")
     # require_value=True guarantees an int for every value, so this narrowing
@@ -1242,10 +1242,10 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
-def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solution, check_dependencies):
+def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, check_dependencies):
     """Delete a custom global option set."""
     _confirm_destructive(ctx, "option set", name, yes)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = os_mod.delete_optionset(ctx.backend(), name, solution=solution,
                                        check_dependencies=check_dependencies)
@@ -1265,9 +1265,9 @@ def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, require_solu
 @_publish_option
 @pass_ctx
 def metadata_status_add(ctx: CLIContext, entity, state_code, label_text, value,
-                        description, solution, require_solution, publish):
+                        description, solution, publish):
     """Add a statuscode option tied to a state (InsertStatusValue)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sm_mod.add_status_value(
@@ -1290,9 +1290,9 @@ def metadata_status_add(ctx: CLIContext, entity, state_code, label_text, value,
 @_publish_option
 @pass_ctx
 def metadata_state_relabel(ctx: CLIContext, entity, value, label_text, description,
-                           merge_labels, solution, require_solution, publish):
+                           merge_labels, solution, publish):
     """Relabel a statecode state option (UpdateStateValue)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sm_mod.relabel_state_value(
@@ -1316,9 +1316,9 @@ def metadata_state_relabel(ctx: CLIContext, entity, value, label_text, descripti
 @_solution_option
 @pass_ctx
 def metadata_create_mapping(ctx: CLIContext, relationship, source_attr, target_attr,
-                            auto, solution, require_solution):
+                            auto, solution):
     """Create a field mapping on a 1:N relationship, or --auto generate them."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     if auto:
         if source_attr or target_attr:
             raise click.UsageError("--auto cannot be combined with --from/--to.")

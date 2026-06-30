@@ -330,10 +330,10 @@ class TestSolutionCreateCommands:
         assert result.exit_code == 0, result.output
         assert saved["called"] is False
 
-    def test_create_solution_wires_core_and_autowires_default(self, monkeypatch):
-        prof = _named_profile()
+    def test_create_solution_wires_core(self, monkeypatch):
+        # --set-default / default_solution autowire is removed in #623 Pass A;
+        # solution create now just creates and emits the result.
         captured = {}
-        saved = {}
 
         def fake(backend, **kw):
             captured.update(kw)
@@ -341,20 +341,15 @@ class TestSolutionCreateCommands:
 
         monkeypatch.setattr("crm.core.solution.create_solution", fake)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        monkeypatch.setattr("crm.commands.solution._active_profile", lambda ctx: prof)
-        monkeypatch.setattr(
-            "crm.commands.solution.session_mod.save_profile",
-            lambda p: saved.update({"name": p.name, "default_solution": p.default_solution}))
         result = CliRunner().invoke(cli, [
             "--json", "solution", "create",
             "--name", "CRMWorx", "--publisher", "crmworx",
         ])
         assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
         assert captured["publisher_unique_name"] == "crmworx"
         assert captured["publisher_id"] is None
-        assert saved == {"name": "crmworx", "default_solution": "CRMWorx"}
-        env = json.loads(result.output)
-        assert env["data"]["profile_updated"]["default_solution"] == "CRMWorx"
 
     @pytest.mark.parametrize("extra", [
         ["--publisher", "crmworx", "--publisher-id", _PUB_ID],  # both

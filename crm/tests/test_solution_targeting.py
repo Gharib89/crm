@@ -1,10 +1,12 @@
-"""Issue #22: profile-level default solution + publisher prefix targeting.
+"""Issue #623: --solution is always required for customization writes.
 
-Covers four acceptance criteria:
-  - explicit --solution wins
-  - profile default applied when no --solution
-  - no resolvable solution -> warning (non-strict) / hard error (strict)
-  - publisher prefix supplies schema-name default for create commands
+Covers the acceptance criteria from issue #623 (Pass A):
+  - explicit --solution resolves correctly
+  - no --solution raises UsageError (exit 2) — the old default_solution fallback is gone
+  - the old --require-solution / CRM_REQUIRE_SOLUTION opt-in is removed
+  - publisher prefix still supplies schema-name default for create commands
+  - a legacy profile dict carrying default_solution round-trips through
+    from_dict/to_dict without error (key is silently ignored)
 
 All HTTP is dry-run or mocked; no live D365 server needed.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import json
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -24,25 +27,43 @@ from crm.utils.d365_backend import ConnectionProfile
 # ── ConnectionProfile round-trip ─────────────────────────────────────────
 
 
-def test_profile_roundtrips_new_fields():
+def test_profile_roundtrips_publisher_prefix():
     p = ConnectionProfile(
         name="p",
         url="https://crm.contoso.local/contoso",
         domain="CONTOSO",
         username="alice",
-        default_solution="MySolution",
         publisher_prefix="new",
     )
     d = p.to_dict()
-    assert d["default_solution"] == "MySolution"
+    assert "default_solution" not in d, "default_solution must not appear in to_dict output"
     assert d["publisher_prefix"] == "new"
     p2 = ConnectionProfile.from_dict(d)
-    assert p2.default_solution == "MySolution"
     assert p2.publisher_prefix == "new"
 
 
-def test_profile_from_dict_defaults_new_fields_when_absent():
-    # Back-compat: existing profile JSON without the new keys.
+def test_profile_from_dict_ignores_legacy_default_solution():
+    """Back-compat: existing profile JSON carrying default_solution loads fine
+    (the key is simply ignored) — no migration code, no error."""
+    d = {
+        "name": "p",
+        "url": "https://crm.contoso.local/contoso",
+        "domain": "CONTOSO",
+        "username": "alice",
+        "default_solution": "MySolution",  # legacy key
+        "publisher_prefix": "new",
+    }
+    p = ConnectionProfile.from_dict(d)
+    assert p.publisher_prefix == "new"
+    # No default_solution attribute on the profile
+    assert not hasattr(p, "default_solution")
+    # to_dict must not re-emit the legacy key
+    out = p.to_dict()
+    assert "default_solution" not in out
+
+
+def test_profile_from_dict_defaults_publisher_prefix_when_absent():
+    # Back-compat: existing profile JSON without publisher_prefix.
     d = {
         "name": "p",
         "url": "https://crm.contoso.local/contoso",
@@ -50,21 +71,19 @@ def test_profile_from_dict_defaults_new_fields_when_absent():
         "username": "alice",
     }
     p = ConnectionProfile.from_dict(d)
-    assert p.default_solution is None
     assert p.publisher_prefix is None
 
 
 # ── _resolve_solution helper ─────────────────────────────────────────────
 
 
-def _ctx_with_profile(monkeypatch, *, default_solution=None, publisher_prefix=None):
-    """Build a CLIContext whose active profile carries the given defaults."""
+def _ctx_with_profile(monkeypatch, *, publisher_prefix=None):
+    """Build a CLIContext whose active profile carries the given prefix."""
     profile = ConnectionProfile(
         name="p",
         url="https://crm.contoso.local/contoso",
         domain="",
         username="alice",
-        default_solution=default_solution,
         publisher_prefix=publisher_prefix,
     )
     ctx = CLIContext()
@@ -74,38 +93,26 @@ def _ctx_with_profile(monkeypatch, *, default_solution=None, publisher_prefix=No
     return ctx
 
 
-def test_resolve_explicit_solution_wins(monkeypatch):
-    ctx = _ctx_with_profile(monkeypatch, default_solution="ProfileSol")
-    solution, warning = _resolve_solution(ctx, "ExplicitSol", False)
+def test_resolve_explicit_solution_returns_it(monkeypatch):
+    ctx = _ctx_with_profile(monkeypatch, publisher_prefix="new")
+    solution, warning = _resolve_solution(ctx, "ExplicitSol")
     assert solution == "ExplicitSol"
     assert warning is None
 
 
-def test_resolve_profile_default_applied(monkeypatch):
-    ctx = _ctx_with_profile(monkeypatch, default_solution="ProfileSol")
-    solution, warning = _resolve_solution(ctx, None, False)
-    assert solution == "ProfileSol"
-    assert warning is None
+def test_resolve_no_solution_raises_usage_error(monkeypatch):
+    """No --solution → UsageError (exit 2), regardless of profile."""
+    ctx = _ctx_with_profile(monkeypatch, publisher_prefix="new")
+    with pytest.raises(click.UsageError) as exc_info:
+        _resolve_solution(ctx, None)
+    assert "solution" in str(exc_info.value).lower()
 
 
-def test_resolve_none_warns(monkeypatch):
-    # The require flag is the raw --require-solution; _resolve_solution now folds
-    # the CRM_REQUIRE_SOLUTION OR-check in, so clear it to test the non-strict path.
-    monkeypatch.delenv("CRM_REQUIRE_SOLUTION", raising=False)
-    ctx = _ctx_with_profile(monkeypatch, default_solution=None)
-    solution, warning = _resolve_solution(ctx, None, False)
-    assert solution is None
-    assert warning is not None
-    assert "solution" in warning.lower()
-
-
-def test_resolve_none_strict_raises(monkeypatch):
-    import click
-
-    ctx = _ctx_with_profile(monkeypatch, default_solution=None)
-    ctx.json_mode = True
-    with pytest.raises(click.exceptions.Exit):
-        _resolve_solution(ctx, None, True)
+def test_resolve_empty_string_raises_usage_error(monkeypatch):
+    """Empty string is falsy → UsageError too."""
+    ctx = _ctx_with_profile(monkeypatch)
+    with pytest.raises(click.UsageError):
+        _resolve_solution(ctx, "")
 
 
 # ── CLI integration ──────────────────────────────────────────────────────
@@ -132,7 +139,7 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
 
 def test_create_entity_uses_publisher_prefix(monkeypatch, tmp_path):
     """No --schema-name: schema name is built from the profile publisher prefix."""
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
     captured = {}
 
     from crm.core import metadata as meta_mod
@@ -145,7 +152,7 @@ def test_create_entity_uses_publisher_prefix(monkeypatch, tmp_path):
     result = CliRunner().invoke(
         cli,
         ["--json", "--profile", "p", "metadata", "create-entity",
-         "--display", "Project", "--no-publish"],
+         "--display", "Project", "--solution", "MySol", "--no-publish"],
     )
     assert result.exit_code == 0, result.output
     assert captured["schema_name"] == "new_Project"
@@ -153,7 +160,7 @@ def test_create_entity_uses_publisher_prefix(monkeypatch, tmp_path):
 
 def test_create_entity_multiword_display_pascalcases(monkeypatch, tmp_path):
     """No --schema-name + multi-word --display: PascalCased across word boundaries."""
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
     captured = {}
 
     from crm.core import metadata as meta_mod
@@ -166,7 +173,7 @@ def test_create_entity_multiword_display_pascalcases(monkeypatch, tmp_path):
     result = CliRunner().invoke(
         cli,
         ["--json", "--profile", "p", "metadata", "create-entity",
-         "--display", "Project Task", "--no-publish"],
+         "--display", "Project Task", "--solution", "MySol", "--no-publish"],
     )
     assert result.exit_code == 0, result.output
     assert captured["schema_name"] == "new_ProjectTask"
@@ -174,7 +181,7 @@ def test_create_entity_multiword_display_pascalcases(monkeypatch, tmp_path):
 
 def test_create_optionset_multiword_display_pascalcases(monkeypatch, tmp_path):
     """No --name + multi-word --display: PascalCased across word boundaries."""
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
     captured = {}
 
     from crm.core import optionsets as os_mod
@@ -187,16 +194,15 @@ def test_create_optionset_multiword_display_pascalcases(monkeypatch, tmp_path):
     result = CliRunner().invoke(
         cli,
         ["--json", "--profile", "p", "metadata", "create-optionset",
-         "--display", "Task Priority", "--no-publish"],
+         "--display", "Task Priority", "--solution", "MySol", "--no-publish"],
     )
     assert result.exit_code == 0, result.output
     assert captured["name"] == "new_TaskPriority"
 
 
-def test_create_entity_strict_no_solution_errors(monkeypatch, tmp_path):
-    """CRM_REQUIRE_SOLUTION=1 + no resolvable solution -> non-zero, ok=false."""
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")  # no default_solution
-    monkeypatch.setenv("CRM_REQUIRE_SOLUTION", "1")
+def test_create_entity_no_solution_exits_2(monkeypatch, tmp_path):
+    """No --solution → UsageError (exit 2), never calls the core function."""
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
 
     from crm.core import metadata as meta_mod
     monkeypatch.setattr(
@@ -208,16 +214,12 @@ def test_create_entity_strict_no_solution_errors(monkeypatch, tmp_path):
         ["--json", "--profile", "p", "metadata", "create-entity",
          "--schema-name", "new_Project", "--display", "Project", "--no-publish"],
     )
-    assert result.exit_code != 0, result.output
-    env = json.loads(result.output)
-    assert env["ok"] is False
-    assert "solution" in env["error"].lower()
+    assert result.exit_code == 2, result.output
 
 
-def test_add_attribute_no_solution_warns(monkeypatch, tmp_path):
-    """Non-strict + no resolvable solution -> exit 0 but meta.warnings present."""
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")  # no default_solution
-    monkeypatch.delenv("CRM_REQUIRE_SOLUTION", raising=False)
+def test_add_attribute_no_solution_exits_2(monkeypatch, tmp_path):
+    """No --solution → UsageError (exit 2) for add-attribute too."""
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
 
     from crm.core import metadata_attrs as ma_mod
     monkeypatch.setattr(
@@ -230,20 +232,17 @@ def test_add_attribute_no_solution_warns(monkeypatch, tmp_path):
          "--kind", "string", "--schema-name", "new_Note", "--display", "Note",
          "--no-publish"],
     )
-    assert result.exit_code == 0, result.output
-    env = json.loads(result.output)
-    assert env["ok"] is True
-    warnings = env.get("meta", {}).get("warnings", [])
-    assert any("solution" in w.lower() for w in warnings)
+    assert result.exit_code == 2, result.output
 
 
-def test_connection_status_surfaces_new_fields(monkeypatch, tmp_path):
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new", default_solution="MySol")
+def test_connection_status_no_default_solution_field(monkeypatch, tmp_path):
+    """connection status profile data must not contain a default_solution key."""
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
     result = CliRunner().invoke(
         cli, ["--json", "--profile", "p", "connection", "status"],
     )
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     prof = env["data"]["profile"]
-    assert prof["default_solution"] == "MySol"
+    assert "default_solution" not in prof
     assert prof["publisher_prefix"] == "new"

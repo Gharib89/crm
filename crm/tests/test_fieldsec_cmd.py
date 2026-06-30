@@ -67,7 +67,8 @@ class TestCreateProfile:
             m.post(_profiles_url(backend), status_code=204,
                    headers=_entity_id_headers(backend, "fieldsecurityprofiles", _PROFILE_ID))
             result = CliRunner().invoke(
-                cli, ["--json", "fieldsec", "create-profile", "Comp", "--description", "x"])
+                cli, ["--json", "fieldsec", "create-profile", "Comp",
+                      "--solution", "MySol", "--description", "x"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -87,7 +88,8 @@ class TestCreateProfile:
         _use_backend(dry_backend, monkeypatch)
         with rm_module.Mocker():  # no POST registered → a real call would 404
             result = CliRunner().invoke(
-                cli, ["--json", "--dry-run", "fieldsec", "create-profile", "Comp"])
+                cli, ["--json", "--dry-run", "fieldsec", "create-profile", "Comp",
+                      "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -102,7 +104,8 @@ class TestAddPermission:
                    headers=_entity_id_headers(backend, "fieldpermissions", _NEW_PERM_ID))
             result = CliRunner().invoke(cli, [
                 "--json", "fieldsec", "add-permission", _PROFILE_ID,
-                "account", "creditlimit", "--read", "--update"])
+                "account", "creditlimit", "--solution", "MySol",
+                "--read", "--update"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["canread"] == 4 and body["canupdate"] == 4 and body["cancreate"] == 0

@@ -124,7 +124,7 @@ def test_edit_columns_add_calls_core(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, [
         "--json", "view", "edit-columns", "account", "My View",
-        "--add", "statecode:120",
+        "--add", "statecode:120", "--solution", "MySol",
     ])
     assert res.exit_code == 0, res.output
     assert called["entity"] == "account"
@@ -146,7 +146,7 @@ def test_edit_columns_remove_calls_core(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, [
         "--json", "view", "edit-columns", "account", "My View",
-        "--remove", "statecode",
+        "--remove", "statecode", "--solution", "MySol",
     ])
     assert res.exit_code == 0, res.output
     assert called["remove"] == ["statecode"]
@@ -164,7 +164,7 @@ def test_edit_columns_width_calls_core(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, [
         "--json", "view", "edit-columns", "account", "My View",
-        "--width", "name:200",
+        "--width", "name:200", "--solution", "MySol",
     ])
     assert res.exit_code == 0, res.output
     assert called["width"] == [("name", 200)]
@@ -182,7 +182,7 @@ def test_edit_columns_reorder_calls_core(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, [
         "--json", "view", "edit-columns", "account", "My View",
-        "--reorder", "name , createdon , statecode",
+        "--reorder", "name , createdon , statecode", "--solution", "MySol",
     ])
     assert res.exit_code == 0, res.output
     assert called["reorder"] == ["name", "createdon", "statecode"]
@@ -222,7 +222,7 @@ def test_set_order_calls_core(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, [
         "--json", "view", "set-order", "account", "My View",
-        "--order", "createdon desc",
+        "--order", "createdon desc", "--solution", "MySol",
     ])
     assert res.exit_code == 0, res.output
     assert called["entity"] == "account"
@@ -243,7 +243,7 @@ def test_set_order_add_order_calls_core(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, [
         "--json", "view", "set-order", "account", "My View",
-        "--add-order", "name asc",
+        "--add-order", "name asc", "--solution", "MySol",
     ])
     assert res.exit_code == 0, res.output
     assert called["add_order"] == [("name", False)]
@@ -261,7 +261,7 @@ def test_set_order_clear_order_calls_core(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, [
         "--json", "view", "set-order", "account", "My View",
-        "--clear-order",
+        "--clear-order", "--solution", "MySol",
     ])
     assert res.exit_code == 0, res.output
     assert called["clear_order"] is True

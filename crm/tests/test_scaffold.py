@@ -469,6 +469,7 @@ def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
 
         result = CliRunner().invoke(cli, [
             "--json", "scaffold", "table", "Project",
+            "--solution", "contoso_sol",
             "--column", "Code:string:max_length=100",
             "--column", "Owner:lookup:target_entity=systemuser",
         ])
@@ -504,9 +505,13 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
             dry_backend.url_for("EntityDefinitions(LogicalName='systemuser')"),
             json={"MetadataId": "77777777-7777-7777-7777-777777777777"},
         )
+        # apply_spec calls _solution_exists + _prune_candidates under dry-run.
+        m.get(dry_backend.url_for("solutions"), json={"value": [{"solutionid": "sol-1"}]})
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
 
         result = CliRunner().invoke(cli, [
             "--dry-run", "--json", "scaffold", "table", "Project",
+            "--solution", "contoso_sol",
             "--column", "Code:string:max_length=100",
             "--column", "Owner:lookup:target_entity=systemuser",
         ])
@@ -520,9 +525,7 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
     # The lookup column's target entity is resolved and reported as existing.
     refs = env["data"]["references"]
     assert refs == [{"kind": "target_entity", "value": "systemuser", "_exists": True}]
-    # A resolvable reference adds no reference-not-found warning. (An unrelated
-    # solution-resolution advisory may or may not be present depending on the
-    # active profile's default_solution, so assert on the reference channel only.)
+    # A resolvable reference adds no reference-not-found warning.
     assert not any(
         "reference not found" in w for w in env["meta"].get("warnings", []))
 
@@ -542,9 +545,13 @@ def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch)
             dry_backend.url_for("GlobalOptionSetDefinitions(Name='ghost_set')"),
             status_code=404,
         )
+        # apply_spec calls _solution_exists + _prune_candidates under dry-run.
+        m.get(dry_backend.url_for("solutions"), json={"value": [{"solutionid": "sol-1"}]})
+        m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
 
         result = CliRunner().invoke(cli, [
             "--dry-run", "--json", "scaffold", "table", "Project",
+            "--solution", "contoso_sol",
             "--column", "Status:picklist:optionset_name=ghost_set",
         ])
 
@@ -554,8 +561,7 @@ def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch)
     assert env["meta"]["dry_run"] is True
     assert env["data"]["references"] == [
         {"kind": "optionset", "value": "ghost_set", "_exists": False}]
-    # The dangling option set is named in the warnings channel (alongside any
-    # unrelated solution-resolution advisory).
+    # The dangling option set is named in the warnings channel.
     assert "reference not found: optionset='ghost_set'" in env["meta"]["warnings"]
     # No write was attempted (dry-run): nothing applied, nothing published.
     assert env["data"]["applied"] == []
@@ -576,6 +582,7 @@ def test_e2e_scaffold_table_stage_only(backend, monkeypatch):
 
         result = CliRunner().invoke(cli, [
             "--stage-only", "--json", "scaffold", "table", "Project",
+            "--solution", "contoso_sol",
             "--column", "Code:string:max_length=100",
             "--column", "Owner:lookup:target_entity=systemuser",
         ])
@@ -597,6 +604,7 @@ def test_e2e_scaffold_table_malformed_column_fails_clean(backend, monkeypatch):
     with requests_mock.Mocker() as m:
         result = CliRunner().invoke(cli, [
             "--json", "scaffold", "table", "Project",
+            "--solution", "contoso_sol",
             "--column", "Bad:notakind",
         ])
 

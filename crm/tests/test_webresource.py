@@ -514,7 +514,8 @@ class TestWebresourceCommands:
                 fh.write("alert(1)")
             result = runner.invoke(cli, [
                 "--json", "webresource", "create",
-                "--name", "cwx_/scripts/foo.js", "--file", "foo.js", "--no-publish",
+                "--name", "cwx_/scripts/foo.js", "--file", "foo.js",
+                "--solution", "MySol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         # real resolve_webresourcetype ran: .js -> 3
@@ -541,7 +542,7 @@ class TestWebresourceCommands:
             result = runner.invoke(cli, [
                 "--json", "webresource", "create",
                 "--name", "cwx_/foo.js", "--file", "foo.js",
-                "--type", "1", "--no-publish",
+                "--type", "1", "--solution", "MySol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         # --type 1 overrides the inferred .js -> 3
@@ -558,7 +559,8 @@ class TestWebresourceCommands:
                 fh.write("x")
             result = runner.invoke(cli, [
                 "--json", "webresource", "create",
-                "--name", "cwx_/foo.xyz", "--file", "foo.xyz", "--no-publish",
+                "--name", "cwx_/foo.xyz", "--file", "foo.xyz",
+                "--solution", "MySol", "--no-publish",
             ])
         assert result.exit_code != 0, result.output
         env = json.loads(result.output)
@@ -581,7 +583,8 @@ class TestWebresourceCommands:
                 fh.write("updated()")
             result = runner.invoke(cli, [
                 "--json", "webresource", "update", "cwx_/foo.js",
-                "--file", "foo.js", "--display-name", "Foo", "--no-publish",
+                "--file", "foo.js", "--display-name", "Foo",
+                "--solution", "MySol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         assert captured["name"] == "cwx_/foo.js"
@@ -890,7 +893,8 @@ class TestPushCommand:
                             lambda backend, directory, **kw: res)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
-            "--json", "webresource", "push", str(tmp_path), "--prefix", "cwx"])
+            "--json", "webresource", "push", str(tmp_path),
+            "--prefix", "cwx", "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
@@ -910,7 +914,8 @@ class TestPushCommand:
                             lambda backend, directory, **kw: res)
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
-            "--json", "webresource", "push", str(tmp_path), "--prefix", "cwx"])
+            "--json", "webresource", "push", str(tmp_path),
+            "--prefix", "cwx", "--solution", "MySol"])
         assert result.exit_code == 1, result.output
         env = json.loads(result.output)
         assert env["ok"] is False
@@ -932,7 +937,7 @@ class TestPushCommand:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "webresource", "push", str(tmp_path),
-            "--prefix", "cwx", "--no-publish"])
+            "--prefix", "cwx", "--solution", "MySol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert captured["publish"] is False
 

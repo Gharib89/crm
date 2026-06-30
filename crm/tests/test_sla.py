@@ -466,7 +466,8 @@ class TestSlaCreateCommand:
         from crm.cli import cli
         result = CliRunner().invoke(cli, [
             "--json", "--profile", "t", "sla", "create",
-            "--name", "Gold SLA", "--entity", "incident"])
+            "--name", "Gold SLA", "--entity", "incident",
+            "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
@@ -511,6 +512,7 @@ class TestSlaAddKpiCommand:
         result = CliRunner().invoke(cli, [
             "--json", "--profile", "t", "sla", "add-kpi",
             "--sla", _SLA_ID, "--kpi", "resolvebykpiid",
+            "--solution", "cwx_sol",
             "--applicable-when", _FETCH,
             "--success-criteria-file", str(crit)])
         assert result.exit_code == 0, result.output

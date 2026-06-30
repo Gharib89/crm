@@ -97,9 +97,9 @@ def _load_solution_ribbon_diff(ctx: CLIContext, solution: str, entity: str):
 @click.argument("entity")
 @_solution_option
 @pass_ctx
-def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
+def ribbon_list(ctx: CLIContext, entity, solution):
     """List the custom buttons declared in a solution's RibbonDiffXml."""
-    solution, warning = _resolve_solution(ctx, solution, True)
+    solution, warning = _resolve_solution(ctx, solution)
     assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     if ctx.dry_run:
         with d365_errors(ctx):
@@ -148,9 +148,9 @@ def ribbon_list(ctx: CLIContext, entity, solution, require_solution):
 @_solution_option
 @pass_ctx
 def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
-                      function, param, sequence, id_base, solution, require_solution):
+                      function, param, sequence, id_base, solution):
     """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
-    solution, warning = _resolve_solution(ctx, solution, True)
+    solution, warning = _resolve_solution(ctx, solution)
     assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     try:
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
@@ -193,9 +193,9 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
 @_destructive_option
 @_solution_option
 @pass_ctx
-def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
+def ribbon_remove(ctx, entity, button_id, yes, solution):
     """Remove a custom button (CustomAction + its CommandDefinition)."""
-    solution, warning = _resolve_solution(ctx, solution, True)
+    solution, warning = _resolve_solution(ctx, solution)
     assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     _confirm_destructive(ctx, "ribbon button", button_id, yes)
 
@@ -239,8 +239,7 @@ def ribbon_remove(ctx, entity, button_id, yes, solution, require_solution):
 @_solution_option
 @pass_ctx
 def ribbon_set_label(ctx, entity, button_id, label, tooltip_title,
-                     tooltip_description, lcid, publish, solution,
-                     require_solution):
+                     tooltip_description, lcid, publish, solution):
     """Set a custom command-bar button's label and tooltips.
 
     Touches only LabelText / ToolTipTitle / ToolTipDescription — the button's
@@ -250,7 +249,7 @@ def ribbon_set_label(ctx, entity, button_id, label, tooltip_title,
     in a <Title languagecode=LCID> row), so it can be re-run per language; without
     --lcid the text is set inline. Text is XML-escaped automatically.
     """
-    solution, warning = _resolve_solution(ctx, solution, True)
+    solution, warning = _resolve_solution(ctx, solution)
     assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
     if label is None and tooltip_title is None and tooltip_description is None:
@@ -312,7 +311,7 @@ def ribbon_set_label(ctx, entity, button_id, label, tooltip_title,
 @_solution_option
 @pass_ctx
 def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
-                       solution, require_solution):
+                       solution):
     """Hide an out-of-box command-bar button (reversibly by default).
 
     Validates --target-id against the live composed ribbon so a typo errors instead
@@ -321,7 +320,7 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
     always-false platform DisplayRules; `hide-action` writes a HideCustomAction,
     which is irreversible without a new solution version and is gated behind --yes.
     """
-    solution, warning = _resolve_solution(ctx, solution, True)
+    solution, warning = _resolve_solution(ctx, solution)
     assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
 
@@ -396,7 +395,7 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
 @_solution_option
 @pass_ctx
 def ribbon_set_rules(ctx, entity, command_id, enable_rules, display_rules,
-                     publish, solution, require_solution):
+                     publish, solution):
     """Set the enable/display rule references on a command's CommandDefinition.
 
     Each rule id is a platform rule (validated against a curated `Mscrm.*`
@@ -405,7 +404,7 @@ def ribbon_set_rules(ctx, entity, command_id, enable_rules, display_rules,
     """
     if not enable_rules and not display_rules:
         raise click.UsageError("pass at least one --enable-rule or --display-rule")
-    solution, warning = _resolve_solution(ctx, solution, True)
+    solution, warning = _resolve_solution(ctx, solution)
     assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
     try:
@@ -456,14 +455,14 @@ def ribbon_set_rules(ctx, entity, command_id, enable_rules, display_rules,
 @_solution_option
 @pass_ctx
 def ribbon_add_custom_rule(ctx, entity, command_id, webresource, function,
-                           publish, solution, require_solution):
+                           publish, solution):
     """Add a custom (JavaScript) enable rule to a command and reference it.
 
     Defines an EnableRule whose CustomRule calls the given web-resource function,
     then references it on the command. The web resource must already exist. The
     CommandDefinition Id is never touched.
     """
-    solution, warning = _resolve_solution(ctx, solution, True)
+    solution, warning = _resolve_solution(ctx, solution)
     assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
     try:

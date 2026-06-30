@@ -213,7 +213,7 @@ def test_cmd_create_key_json(runner, backend, monkeypatch):
         result = runner.invoke(
             cli, ["--json", "metadata", "create-key", "account",
                   "--name", "new_Code", "--key-attributes", "accountnumber",
-                  "--no-publish"],
+                  "--solution", "MySol", "--no-publish"],
             catch_exceptions=False)
     assert result.exit_code == 0
     data = json.loads(result.output)
@@ -234,7 +234,7 @@ def test_cmd_create_key_splits_comma_attributes(runner, backend, monkeypatch):
             cli, ["--json", "metadata", "create-key", "contact",
                   "--name", "new_NameEmail",
                   "--key-attributes", "firstname, emailaddress1",
-                  "--no-publish"],
+                  "--solution", "MySol", "--no-publish"],
             catch_exceptions=False)
     assert result.exit_code == 0
     assert post.last_request.json()["KeyAttributes"] == ["firstname", "emailaddress1"]
@@ -247,7 +247,7 @@ def test_cmd_delete_key_json(runner, backend, monkeypatch):
         m.delete(_key_url(backend, "account", "new_code"), status_code=204)
         result = runner.invoke(
             cli, ["--json", "metadata", "delete-key", "account", "new_code",
-                  "--yes"],
+                  "--yes", "--solution", "MySol"],
             catch_exceptions=False)
     assert result.exit_code == 0
     data = json.loads(result.output)

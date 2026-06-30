@@ -47,9 +47,9 @@ def fieldsec_get(ctx: CLIContext, profile: str) -> None:
 @_solution_option
 @pass_ctx
 def fieldsec_create_profile(ctx: CLIContext, name, description,
-                            solution, require_solution) -> None:
+                            solution) -> None:
     """Create a field security profile named NAME."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = fieldsec_mod.create_profile(
             ctx.backend(), name=name, description=description, solution=solution,
@@ -69,7 +69,7 @@ def fieldsec_create_profile(ctx: CLIContext, name, description,
 @pass_ctx
 def fieldsec_add_permission(ctx: CLIContext, profile, entity, attribute,
                             read, create, update,
-                            solution, require_solution) -> None:
+                            solution) -> None:
     """Grant column permissions on ENTITY.ATTRIBUTE for PROFILE (name or id).
 
     Pass at least one of --read / --create / --update.
@@ -79,7 +79,7 @@ def fieldsec_add_permission(ctx: CLIContext, profile, entity, attribute,
     # is built. The core function repeats the check for direct (non-CLI) callers.
     if not (read or create or update):
         raise click.UsageError("pass at least one of --read / --create / --update.")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = fieldsec_mod.add_permission(
             ctx.backend(), profile=profile, entity=entity, attribute=attribute,

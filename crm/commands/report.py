@@ -96,7 +96,6 @@ def report_create(
     description: str | None,
     org: bool,
     solution: str | None,
-    require_solution: bool,
 ) -> None:
     """Create a report from an RDL file (--body-file) or a link (--url)."""
     if bool(body_file) == bool(url):
@@ -109,7 +108,7 @@ def report_create(
         if filename is None:
             filename = os.path.basename(body_file)
 
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = report_mod.create_report(
             ctx.backend(),
@@ -137,10 +136,9 @@ def report_set_category(
     report_id: str,
     category: str,
     solution: str | None,
-    require_solution: bool,
 ) -> None:
     """File REPORT_ID under a report area (creates a reportcategory record)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = report_mod.set_category(
             ctx.backend(), report_id, category=category, solution=solution)

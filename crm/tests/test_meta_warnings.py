@@ -148,7 +148,8 @@ class TestUpdateOptionsetPartialEndToEnd:
         result = CliRunner().invoke(
             cli,
             ["--json", "metadata", "update-optionset", "new_priority",
-             "--insert-option", "7:OK", "--update-option", "99:Bad", "--no-publish"],
+             "--insert-option", "7:OK", "--update-option", "99:Bad",
+             "--solution", "MySol", "--no-publish"],
             env={"CRM_HOME": str(tmp_path)},
         )
         assert result.exit_code == 1, result.output

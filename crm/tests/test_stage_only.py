@@ -67,7 +67,8 @@ def _add_attribute_args(extra=()):
     return [
         "--json", "metadata", "add-attribute", _ENTITY,
         "--kind", "string", "--schema-name", "new_Label",
-        "--display", "Label", "--max-length", "10", *extra,
+        "--display", "Label", "--max-length", "10",
+        "--solution", "MySol", *extra,
     ]
 
 
@@ -188,6 +189,7 @@ def test_stage_only_applies_to_create_entity(use_backend):
         result = CliRunner().invoke(cli, [
             "--stage-only", "--json", "metadata", "create-entity",
             "--schema-name", "new_Project", "--display", "Project",
+            "--solution", "MySol",
         ])
     assert result.exit_code == 0, result.output
     assert _publish_hits(m, backend) == []
@@ -218,6 +220,7 @@ def _setup_one_to_many(m, backend):
         "--schema-name", "new_a_new_b",
         "--referenced-entity", "new_a", "--referencing-entity", "new_b",
         "--lookup-schema", "new_AId", "--lookup-display", "A",
+        "--solution", "MySol",
     ]
 
 
@@ -241,6 +244,7 @@ def _setup_many_to_many(m, backend):
         "--schema-name", "new_a_new_b",
         "--entity1", "new_a", "--entity2", "new_b",
         "--intersect-entity", "new_a_new_b",
+        "--solution", "MySol",
     ]
 
 
@@ -249,6 +253,7 @@ def _setup_update_optionset(m, backend):
     return [
         "--json", "metadata", "update-optionset", "new_priority",
         "--insert-option", "3:Critical",
+        "--solution", "MySol",
     ]
 
 
@@ -288,6 +293,7 @@ def test_stage_only_applies_to_create_optionset(use_backend):
             "--stage-only", "--json", "metadata", "create-optionset",
             "--name", "new_priority", "--display", "Priority",
             "--option", "1:Low", "--option", "2:High",
+            "--solution", "MySol",
         ])
     assert result.exit_code == 0, result.output
     assert _publish_hits(m, backend) == []

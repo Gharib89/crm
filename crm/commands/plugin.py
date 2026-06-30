@@ -38,11 +38,11 @@ def plugin_group():
 @pass_ctx
 def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
                           public_key_token, isolation_mode, description,
-                          solution, require_solution, update):
+                          solution, update):
     """Register a plug-in assembly from a .dll file (uploads its bytes)."""
     update_warning = _ignored_update_flags_warning(update, version, culture,
                                                     public_key_token, description)
-    solution, sol_warning = _resolve_solution(ctx, solution, require_solution)
+    solution, sol_warning = _resolve_solution(ctx, solution)
     warning = "; ".join(w for w in (update_warning, sol_warning) if w) or None
     with d365_errors(ctx):
         info = plugin_mod.register_assembly(
@@ -66,13 +66,13 @@ def register_assembly_cmd(ctx: CLIContext, path, name, version, culture,
 @_solution_option
 @pass_ctx
 def register_type_cmd(ctx: CLIContext, assembly, type_name, friendly_name,
-                      solution, require_solution):
+                      solution):
     """Register a plug-in type (plugintypes) under an existing assembly.
 
     A content-only register-assembly does not create plugintype rows, so name
     each type here before register-step --plugin-type can resolve it.
     """
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_type(
             ctx.backend(), assembly=assembly, type_name=type_name,
@@ -140,13 +140,13 @@ def list_types_cmd(ctx: CLIContext, assembly):
 def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
                       entity, stage, mode, rank, filtering_attributes, name,
                       configuration, asyncautodelete,
-                      assembly, solution, require_solution):
+                      assembly, solution):
     """Register a plug-in step (sdkmessageprocessingstep).
 
     The step's event handler is a plug-in type (--plugin-type) or a service
     endpoint such as a webhook (--service-endpoint) — pass exactly one.
     """
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_step(
             ctx.backend(), message=message, plugin_type=plugin_type,
@@ -178,9 +178,9 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
 @_solution_option
 @pass_ctx
 def register_webhook_cmd(ctx: CLIContext, name, url, auth, auth_value,
-                         solution, require_solution):
+                         solution):
     """Register a webhook service endpoint (serviceendpoint, contract=8)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_webhook(
             ctx.backend(), name=name, url=url, auth=auth,
@@ -211,9 +211,9 @@ def register_webhook_cmd(ctx: CLIContext, name, url, auth, auth_value,
 @_solution_option
 @pass_ctx
 def register_image_cmd(ctx: CLIContext, step, image_type, alias, attributes,
-                       name, message_property_name, solution, require_solution):
+                       name, message_property_name, solution):
     """Register a step entity image (sdkmessageprocessingstepimage)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = plugin_mod.register_image(
             ctx.backend(), step=step, image_type=image_type, alias=alias,

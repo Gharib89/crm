@@ -358,7 +358,7 @@ class TestCloneCommand:
         runner = CliRunner()
         result = runner.invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--display", "Ticket Clone", "--with-all",
+            "--display", "Ticket Clone", "--with-all", "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert called["source"] == "new_project"
@@ -381,7 +381,7 @@ class TestCloneCommand:
         from crm.cli import cli
         result = CliRunner().invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-charts"])
+            "--with-charts", "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is False
@@ -400,7 +400,7 @@ class TestCloneCommand:
         from crm.cli import cli
         result = CliRunner().invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-all"])
+            "--with-all", "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is True
@@ -421,6 +421,6 @@ class TestCloneCommand:
         from crm.cli import cli
         result = CliRunner().invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-workflows"])
+            "--with-workflows", "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         assert "BadAction" in result.output

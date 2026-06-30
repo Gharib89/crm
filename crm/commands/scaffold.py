@@ -63,7 +63,6 @@ def table(
     display_collection: str | None,
     ownership: str,
     solution: str | None,
-    require_solution: bool,
 ) -> None:
     """Create an entity (table) with N columns in a single publish.
 
@@ -92,7 +91,7 @@ def table(
         )
 
     # --- 2. Resolve solution ---
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
 
     # --- 3. Build the spec (pure, no backend) ---
     with d365_errors(ctx):

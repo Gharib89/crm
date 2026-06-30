@@ -62,12 +62,12 @@ def test_plaintext_file_is_0600():
 
 
 def test_secret_survives_unrelated_profile_resave():
-    # Regression (#130): an unrelated profile mutation (e.g. solution autowire)
+    # Regression (#130): an unrelated profile mutation (e.g. publisher_prefix autowire)
     # re-saves via save_profile(); a stored plaintext secret must survive it.
     _save_base_profile()
     session_mod.save_profile_secret_plaintext("prod", "p@ss")
     p = session_mod.load_profile("prod")
-    p.default_solution = "MySolution"
+    p.publisher_prefix = "new"
     session_mod.save_profile(p)
     assert session_mod.load_profile_secret("prod") == "p@ss"
 
@@ -79,7 +79,7 @@ def test_secret_file_stays_0600_after_unrelated_resave():
     _save_base_profile()
     session_mod.save_profile_secret_plaintext("prod", "p@ss")
     p = session_mod.load_profile("prod")
-    p.default_solution = "MySolution"
+    p.publisher_prefix = "new"
     path = session_mod.save_profile(p)
     assert (path.stat().st_mode & 0o777) == 0o600
 

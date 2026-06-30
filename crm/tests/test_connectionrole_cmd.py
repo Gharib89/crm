@@ -30,7 +30,8 @@ class TestCreate:
                    headers=_entity_id_headers(backend, "connectionroles", _ROLE_A))
             result = CliRunner().invoke(cli, [
                 "--json", "connectionrole", "create",
-                "--name", "Stakeholder", "--category", "stakeholder"])
+                "--name", "Stakeholder", "--category", "stakeholder",
+                "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -48,7 +49,8 @@ class TestCreate:
         _use_backend(monkeypatch, dry_backend)
         with rm_module.Mocker():
             result = CliRunner().invoke(cli, [
-                "--json", "--dry-run", "connectionrole", "create", "--name", "X"])
+                "--json", "--dry-run", "connectionrole", "create", "--name", "X",
+                "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["_dry_run"] is True
 
@@ -61,7 +63,8 @@ class TestScope:
                    headers=_entity_id_headers(
                        backend, "connectionroleobjecttypecodes", _OTC_ID))
             result = CliRunner().invoke(cli, [
-                "--json", "connectionrole", "scope", _ROLE_A, "--entity", "account"])
+                "--json", "connectionrole", "scope", _ROLE_A, "--entity", "account",
+                "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -72,7 +75,7 @@ class TestScope:
         with rm_module.Mocker():
             result = CliRunner().invoke(cli, [
                 "--json", "--dry-run", "connectionrole", "scope", _ROLE_A,
-                "--entity", "account"])
+                "--entity", "account", "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["_dry_run"] is True
 

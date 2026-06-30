@@ -370,6 +370,23 @@ ALLOWLIST: dict[str, str] = {
     "bpf": "guides/crmworx-walkthrough: hypothetical future command (#37)",
     # README architecture diagram, not an invocation.
     "(Click + REPL)": "README architecture ASCII diagram",
+    # #623 Pass A: --default-solution removed from profile add/edit; docs update is
+    # Pass B. These examples are stale pending the docs-sync agent pass.
+    "profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx": (
+        "#623 Pass A: --default-solution removed; docs updated in Pass B"
+    ),
+    "--json profile add --url https://crm.contoso.local/Contoso --username alice"
+    " --domain CONTOSO --password $SECRET --api-version v9.1 --default-solution CRMWorx"
+    " --publisher-prefix cwx --name crmworx": (
+        "#623 Pass A: --default-solution removed; docs updated in Pass B"
+    ),
+    "profile edit prod --default-solution CRMWorx --publisher-prefix cwx": (
+        "#623 Pass A: --default-solution removed from profile edit; docs updated in Pass B"
+    ),
+    # #623 Pass A: --require-solution removed from all metadata/form commands; docs update is Pass B.
+    "form clone cwx_ticket Ticket Main Form --to new_incidentlog --require-solution": (
+        "#623 Pass A: --require-solution removed; docs updated in Pass B"
+    ),
 }
 
 

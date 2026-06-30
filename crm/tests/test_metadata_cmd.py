@@ -149,7 +149,7 @@ class TestMetadataUpdateRelationship:
             "--json", "metadata", "update-relationship", "new_rel",
             "--cascade-assign", "Cascade",
             "--cascade-delete", "RemoveLink",
-            "--no-publish",
+            "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -162,7 +162,7 @@ class TestMetadataUpdateRelationship:
         _use(monkeypatch, b)
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "update-relationship", "new_rel",
-            "--no-publish",
+            "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 1, result.output
         assert "nothing to update" in result.output
@@ -173,7 +173,7 @@ class TestMetadataUpdateRelationship:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "update-relationship", "new_rel",
             "--menu-behavior", "UseLabel", "--menu-label", "My Rel",
-            "--no-publish",
+            "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
 
@@ -182,7 +182,7 @@ class TestMetadataUpdateRelationship:
         _use(monkeypatch, b)
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "update-relationship", "new_rel",
-            "--hierarchical", "--no-publish",
+            "--hierarchical", "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
 
@@ -192,7 +192,7 @@ class TestMetadataUpdateRelationship:
         _use(monkeypatch, b)
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "update-relationship", "new_rel",
-            "--cascade-assign", "Cascade", "--no-publish",
+            "--cascade-assign", "Cascade", "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 1, result.output
 
@@ -219,7 +219,7 @@ class TestMetadataAddAttributeBranches:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", "string", "--schema-name", "new_Foo", "--display", "Foo",
-            "--formula-file", str(f), "--no-publish",
+            "--formula-file", str(f), "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 2, result.output
         assert "only valid with --type" in result.output
@@ -231,7 +231,7 @@ class TestMetadataAddAttributeBranches:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", "integer", "--schema-name", "new_Amt", "--display", "Amt",
-            "--type", "rollup", "--no-publish",
+            "--type", "rollup", "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 2, result.output
         assert "formula-file is required" in result.output
@@ -246,7 +246,7 @@ class TestMetadataAddAttributeBranches:
             "--json", "metadata", "add-attribute", "account",
             "--kind", "lookup", "--schema-name", "new_Ref", "--display", "Ref",
             "--target-entity", "contact",
-            "--type", "rollup", "--formula-file", str(f), "--no-publish",
+            "--type", "rollup", "--formula-file", str(f), "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 2, result.output
         assert "not valid for kind 'lookup'" in result.output
@@ -260,7 +260,8 @@ class TestMetadataAddAttributeBranches:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", "boolean", "--schema-name", "new_Active",
-            "--display", "Active", "--default-value", "maybe", "--no-publish",
+            "--display", "Active", "--default-value", "maybe",
+            "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 2, result.output
         assert "true/false" in result.output
@@ -275,7 +276,8 @@ class TestMetadataAddAttributeBranches:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", "boolean", "--schema-name", "new_Active",
-            "--display", "Active", "--default-value", val, "--no-publish",
+            "--display", "Active", "--default-value", val,
+            "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code != 2, result.output
 
@@ -285,7 +287,8 @@ class TestMetadataAddAttributeBranches:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", "integer", "--schema-name", "new_Count",
-            "--display", "Count", "--default-value", "not_a_number", "--no-publish",
+            "--display", "Count", "--default-value", "not_a_number",
+            "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code == 2, result.output
         assert "must be int" in result.output
@@ -298,7 +301,8 @@ class TestMetadataAddAttributeBranches:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", kind, "--schema-name", "new_Count",
-            "--display", "Count", "--default-value", "42", "--no-publish",
+            "--display", "Count", "--default-value", "42",
+            "--solution", "MySol", "--no-publish",
         ])
         assert result.exit_code != 2, result.output
 
@@ -315,7 +319,7 @@ class TestMetadataAddAttributeBranches:
             "--json", "metadata", "add-attribute", "account",
             "--kind", "integer", "--schema-name", "new_Calc",
             "--display", "Calc", "--type", "rollup",
-            "--formula-file", str(f), "--no-publish",
+            "--formula-file", str(f), "--solution", "MySol", "--no-publish",
         ])
         # Formula file was read successfully (not exit 2 for formula errors)
         assert result.exit_code != 2, result.output

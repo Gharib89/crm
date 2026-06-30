@@ -1596,6 +1596,7 @@ class TestPluginCommands:
                 fh.write(b"MZ\x90\x00fake")
             result = runner.invoke(cli, [
                 "--json", "plugin", "register-assembly", "Contoso.Plugins.dll",
+                "--solution", "MySol",
             ])
         assert result.exit_code == 0, result.output
         # command passes the path through; core reads the bytes
@@ -1624,6 +1625,7 @@ class TestPluginCommands:
             "--assembly", "Contoso.Plugins",
             "--type", "Contoso.Plugins.PreCreateAccount",
             "--friendly-name", "Pre-create account",
+            "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["assembly"] == "Contoso.Plugins"
@@ -1646,7 +1648,7 @@ class TestPluginCommands:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "plugin", "register-type",
-            "--assembly", "Nope", "--type", "X.Y",
+            "--assembly", "Nope", "--type", "X.Y", "--solution", "MySol",
         ])
         assert result.exit_code != 0
         env = json.loads(result.output)
@@ -1671,7 +1673,7 @@ class TestPluginCommands:
                 "--name", "Custom.Name", "--version", "2.0.0.0",
                 "--culture", "en-US", "--public-key-token", "abc",
                 "--isolation-mode", "none", "--description", "desc",
-                "--update",
+                "--update", "--solution", "MySol",
             ])
         assert result.exit_code == 0, result.output
         assert captured["name"] == "Custom.Name"
@@ -1697,7 +1699,7 @@ class TestPluginCommands:
                 fh.write(b"MZ")
             result = runner.invoke(cli, [
                 "--json", "plugin", "register-assembly", "a.dll",
-                "--update", "--version", "2.0.0.0",
+                "--update", "--version", "2.0.0.0", "--solution", "MySol",
             ])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -1743,6 +1745,7 @@ class TestPluginCommands:
                 fh.write(b"MZ")
             result = runner.invoke(cli, [
                 "--json", "plugin", "register-assembly", "a.dll",
+                "--solution", "MySol",
             ])
         assert result.exit_code != 0
         env = json.loads(result.output)
@@ -1822,6 +1825,7 @@ class TestPluginCommands:
             "--stage", "preoperation", "--mode", "async", "--rank", "5",
             "--filtering-attributes", "name,telephone1",
             "--name", "My Step", "--assembly", "Contoso.Plugins",
+            "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["message"] == "Create"
@@ -1851,6 +1855,7 @@ class TestPluginCommands:
             "--json", "plugin", "register-step",
             "--message", "Create",
             "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+            "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["entity"] is None
@@ -1874,6 +1879,7 @@ class TestPluginCommands:
         result = CliRunner().invoke(cli, [
             "--json", "plugin", "register-step",
             "--message", "Create", "--service-endpoint", "Contoso Hook",
+            "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["service_endpoint"] == "Contoso Hook"
@@ -1898,6 +1904,7 @@ class TestPluginCommands:
             "--json", "plugin", "register-webhook",
             "--name", "Contoso Hook", "--url", "https://example.com/hook",
             "--auth", "webhookkey", "--auth-value", "secret-code",
+            "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["name"] == "Contoso Hook"
@@ -1942,6 +1949,7 @@ class TestPluginCommands:
             "--step", _STEP_ID, "--type", "pre", "--alias", "preimg",
             "--attributes", "name,telephone1",
             "--name", "My Image", "--message-property-name", "Target",
+            "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["step"] == _STEP_ID
@@ -1966,6 +1974,7 @@ class TestPluginCommands:
         result = CliRunner().invoke(cli, [
             "--json", "plugin", "register-image",
             "--step", _STEP_ID, "--type", "post", "--alias", "postimg",
+            "--solution", "MySol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["image_type"] == "post"
@@ -1997,6 +2006,7 @@ class TestPluginCommands:
         result = CliRunner().invoke(cli, [
             "--json", "plugin", "register-image",
             "--step", _STEP_ID, "--type", "pre", "--alias", "preimg",
+            "--solution", "MySol",
         ])
         assert result.exit_code != 0
         env = json.loads(result.output)
@@ -2017,6 +2027,7 @@ class TestPluginCommands:
             "--json", "plugin", "register-step",
             "--message", "Create",
             "--plugin-type", "Contoso.Plugins.PreCreateAccount",
+            "--solution", "MySol",
         ])
         assert result.exit_code != 0
         env = json.loads(result.output)
@@ -2025,7 +2036,7 @@ class TestPluginCommands:
 
     def test_register_verbs_expose_shared_solution_options(self):
         # All three register verbs must carry the shared _solution_option:
-        # both flags plus the env knob and header named in its help text.
+        # --solution flag plus the header named in its help text.
         from click.testing import CliRunner
         from crm.cli import cli
         runner = CliRunner()
@@ -2033,10 +2044,10 @@ class TestPluginCommands:
             result = runner.invoke(cli, ["plugin", verb, "--help"])
             assert result.exit_code == 0, result.output
             assert "--solution" in result.output
-            assert "--require-solution" in result.output
+            # --require-solution is removed in #623 Pass A
+            assert "--require-solution" not in result.output
             # single tokens from the shared help, robust to Click's line wrapping
             assert "MSCRM.SolutionUniqueName" in result.output
-            assert "CRM_REQUIRE_SOLUTION" in result.output
 
     def test_register_step_command_threads_solution(self, monkeypatch):
         from click.testing import CliRunner
@@ -2074,16 +2085,14 @@ class TestPluginCommands:
         assert result.exit_code == 0, result.output
         assert captured["solution"] == "cwx_sol"
 
-    def test_register_step_require_solution_strict_errors(
+    def test_register_step_no_solution_exits_2(
             self, monkeypatch, tmp_path):
-        # --require-solution with no resolvable solution must fail before any
-        # core call. Isolate CRM_HOME so no ambient profile default resolves.
+        # No --solution must fail with exit 2 (UsageError) before any core call.
         import json
         from click.testing import CliRunner
         from crm.cli import cli
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
         monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
-        monkeypatch.delenv("CRM_REQUIRE_SOLUTION", raising=False)
         called = {"n": 0}
         monkeypatch.setattr(
             "crm.core.plugin.register_step",
@@ -2093,12 +2102,8 @@ class TestPluginCommands:
             "--json", "plugin", "register-step",
             "--message", "Create",
             "--plugin-type", "Contoso.Plugins.PreCreateAccount",
-            "--require-solution",
         ])
-        assert result.exit_code != 0, result.output
-        env = json.loads(result.output)
-        assert env["ok"] is False
-        assert "solution" in env["error"].lower()
+        assert result.exit_code == 2, result.output
         assert called["n"] == 0
 
 

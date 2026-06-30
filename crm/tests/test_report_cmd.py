@@ -74,7 +74,8 @@ class TestReportCreate:
             self._post_mock(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "report", "create",
-                "--name", "Sales", "--body-file", self._rdl_file(tmp_path)])
+                "--name", "Sales", "--body-file", self._rdl_file(tmp_path),
+                "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["created"] is True
@@ -88,7 +89,8 @@ class TestReportCreate:
             self._post_mock(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "report", "create",
-                "--name", "Link", "--url", "https://example.com/r", "--org"])
+                "--name", "Link", "--url", "https://example.com/r", "--org",
+                "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["bodyurl"] == "https://example.com/r"
@@ -111,7 +113,8 @@ class TestReportCreate:
         _use_backend(monkeypatch, dry_backend)
         result = CliRunner().invoke(cli, [
             "--json", "report", "create",
-            "--name", "Link", "--url", "https://example.com/r"])
+            "--name", "Link", "--url", "https://example.com/r",
+            "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -127,7 +130,8 @@ class TestReportSetCategory:
                    headers={"OData-EntityId":
                             backend.url_for(f"reportcategories({_RC_ID})")})
             result = CliRunner().invoke(cli, [
-                "--json", "report", "set-category", rid, "--category", "sales"])
+                "--json", "report", "set-category", rid, "--category", "sales",
+                "--solution", "MySol"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["categorycode"] == 1

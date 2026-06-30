@@ -1,7 +1,6 @@
 """Solution / publish / schema-name resolution helpers."""
 # pyright: basic
 from __future__ import annotations
-import os
 import re
 from typing import TYPE_CHECKING
 import click
@@ -71,60 +70,34 @@ def _active_profile(ctx: "CLIContext") -> ConnectionProfile | None:
         return None
 
 
-def _require_solution(require_flag: bool) -> bool:
-    """Strict mode active when the --require-solution flag OR CRM_REQUIRE_SOLUTION set."""
-    if require_flag:
-        return True
-    return os.environ.get("CRM_REQUIRE_SOLUTION", "").strip().lower() in (
-        "1", "true", "yes", "on",
-    )
-
-
 def _solution_option(f):
-    """Stack `--solution` / `--require-solution` on a mutating metadata command."""
-    f = click.option(
-        "--require-solution", is_flag=True, default=False,
-        help="Fail if no solution resolves (also via CRM_REQUIRE_SOLUTION).",
-    )(f)
+    """Stack `--solution` on a mutating metadata command."""
     f = click.option(
         "--solution", default=None,
-        help="Target solution uniquename (MSCRM.SolutionUniqueName). "
-             "Defaults to the profile's default_solution.",
+        help="Target unmanaged solution uniquename (MSCRM.SolutionUniqueName). "
+             "Required for customization writes.",
     )(f)
     return f
 
 
 def _resolve_solution(
-    ctx: "CLIContext", explicit: str | None, require_solution: bool,
-) -> tuple[str | None, str | None]:
+    ctx: "CLIContext", explicit: str | None,
+) -> tuple[str, None]:
     """Resolve the effective solution for a mutating metadata command.
 
-    Precedence: explicit `--solution` > profile `default_solution` > None.
+    `--solution` is now always required. Raises UsageError (exit 2) when no
+    explicit solution is provided.
 
-    `require_solution` is the raw `--require-solution` flag; the strict-mode
-    OR-with-`CRM_REQUIRE_SOLUTION` check is folded in here (it was a
-    `_require_solution(...)` wrapper at every call site). Always-strict callers
-    pass a literal `True`.
-
-    Returns `(solution, warning)`. When none resolves and strict mode is off,
-    `warning` is a non-empty string the caller stashes under the JSON `meta`
-    envelope (or prints via skin.warning in human mode). When none resolves and
-    strict mode is on, this routes a hard failure through `ctx.emit(False)`
-    (raising click.exceptions.Exit per ADR 0001) instead of returning.
+    Returns `(solution, None)`. The `None` second element preserves the
+    `solution, warning = _resolve_solution(...)` unpacking at all call sites —
+    `warning` is always `None` and callers that stash it are harmless.
     """
-    if explicit:
-        return explicit, None
-    profile = _active_profile(ctx)
-    if profile and profile.default_solution:
-        return profile.default_solution, None
-    msg = (
-        "No solution resolved: pass --solution or set a profile default_solution. "
-        "The change targets the default (unmanaged) solution."
-    )
-    if _require_solution(require_solution):
-        ctx.emit(False, error=msg)
-        return None, None  # unreachable: emit(False) raises Exit
-    return None, msg
+    if not explicit:
+        raise click.UsageError(
+            "--solution is required for customization writes — components must "
+            "target an explicit unmanaged solution. Pass --solution <unique_name>."
+        )
+    return explicit, None
 
 
 def _resolve_schema_name(

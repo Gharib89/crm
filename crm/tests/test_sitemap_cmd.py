@@ -92,7 +92,8 @@ class TestSetTitlePairing:
             result = CliRunner().invoke(cli, [
                 "--json", "sitemap", "set-title", _SID, "--id", "SFA",
                 "--lcid", "1033", "--title", "Sales",
-                "--lcid", "1031", "--title", "Vertrieb", "--no-publish"])
+                "--lcid", "1031", "--title", "Vertrieb",
+                "--solution", "MySol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "set-title"
@@ -169,7 +170,7 @@ class TestMoveNodeValidation:
             m.patch(_sitemaps_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
-                "--before", "nav_accts", "--no-publish",
+                "--before", "nav_accts", "--solution", "MySol", "--no-publish",
             ])
         # core may raise D365Error (node not found / same position) or succeed;
         # what matters is that we reached the backend (not exit 2)
@@ -182,7 +183,7 @@ class TestMoveNodeValidation:
             m.patch(_sitemaps_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
-                "--after", "nav_accts", "--no-publish",
+                "--after", "nav_accts", "--solution", "MySol", "--no-publish",
             ])
         assert result.exit_code != 2, result.output
 
@@ -193,7 +194,7 @@ class TestMoveNodeValidation:
             m.patch(_sitemaps_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "sitemap", "move-node", _SID, "--id", "nav_accts",
-                "--index", "0", "--no-publish",
+                "--index", "0", "--solution", "MySol", "--no-publish",
             ])
         assert result.exit_code != 2, result.output
 
@@ -211,7 +212,7 @@ class TestSetDescriptionSuccess:
             result = CliRunner().invoke(cli, [
                 "--json", "sitemap", "set-description", _SID,
                 "--id", "SFA", "--lcid", "1033", "--description", "Sales area",
-                "--no-publish",
+                "--solution", "MySol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -226,7 +227,7 @@ class TestCascadeWarningRouting:
             m.patch(_sitemaps_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "sitemap", "remove-node", _SID, "--id", "SFA",
-                "--no-publish"])
+                "--solution", "MySol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         # advisory surfaces on meta.warnings, and is NOT left in data

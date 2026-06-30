@@ -104,7 +104,6 @@ def chart_create(
     user_owned: bool,
     description: str | None,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Create a chart on ENTITY.
@@ -134,7 +133,7 @@ def chart_create(
     data_xml = _read_file(data_description_file)
     pres_xml = _read_file(presentation_description_file)
 
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
 
     with d365_errors(ctx):
@@ -186,7 +185,6 @@ def chart_update(
     chart_type: str | None,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Update a chart's XML, name/description, or series chart type.
@@ -198,7 +196,7 @@ def chart_update(
     """
     data_xml = _read_file(data_description_file)
     pres_xml = _read_file(presentation_description_file)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.update_chart(
@@ -225,12 +223,11 @@ def chart_set_fetch(
     fetch_file: str,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Replace the inner <fetch> of a chart's datadescription (keeps its categories)."""
     fetch_xml = _read_file(fetch_file) or ""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_fetch(
@@ -259,11 +256,10 @@ def chart_add_series(
     alias: str,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Add an aggregate series to a chart (fetch attribute + measure + presentation series)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.add_chart_series(
@@ -286,11 +282,10 @@ def chart_remove_series(
     alias: str,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Remove an aggregate series from a chart by its alias (refuses the last series)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.remove_chart_series(
@@ -319,11 +314,10 @@ def chart_set_groupby(
     dategrouping: str | None,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Set a chart's grouping (category) column, optionally with a date grouping."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_groupby(

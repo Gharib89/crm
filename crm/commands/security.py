@@ -75,7 +75,7 @@ def _csv(value: str | None) -> list[str]:
 @_destructive_option
 @pass_ctx
 def create_role(ctx: CLIContext, name, business_unit, if_exists, solution,
-                require_solution, yes):
+                yes):
     """Create a security role (NAME is the role's display name).
 
     The role starts with no privileges; grant them with
@@ -87,7 +87,7 @@ def create_role(ctx: CLIContext, name, business_unit, if_exists, solution,
     if not ctx.dry_run:
         _confirm_destructive(ctx, "role", name, yes,
                              message=f"Create security role {name!r}?")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution, warning = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         result = security_mod.create_role(
             ctx.backend(), name, business_unit=business_unit, if_exists=if_exists,

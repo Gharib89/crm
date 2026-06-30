@@ -255,7 +255,7 @@ class TestCliIfExistsContract:
             result = CliRunner().invoke(cli, [
                 "--json", "metadata", "create-entity",
                 "--schema-name", "new_Widget", "--display", "Widget",
-                "--if-exists", "skip", "--no-publish",
+                "--if-exists", "skip", "--solution", "MySol", "--no-publish",
             ])
             assert _posts(m) == []
         assert result.exit_code == 0, result.output
@@ -274,7 +274,7 @@ class TestCliIfExistsContract:
             result = CliRunner().invoke(cli, [
                 "--json", "metadata", "create-entity",
                 "--schema-name", "new_Widget", "--display", "Widget",
-                "--if-exists", "skip", "--publish",
+                "--if-exists", "skip", "--solution", "MySol", "--publish",
             ])
             assert _posts(m) == []
         assert result.exit_code == 0, result.output
@@ -290,7 +290,7 @@ class TestCliIfExistsContract:
             result = CliRunner().invoke(cli, [
                 "--json", "metadata", "create-entity",
                 "--schema-name", "new_Widget", "--display", "Widget",
-                "--no-publish",
+                "--solution", "MySol", "--no-publish",
             ])
             assert _posts(m) == []
         assert result.exit_code == 1, result.output
