@@ -366,11 +366,14 @@ crm --json solution components CRMWorx --diff components.json
 #             "error": "Drift detected: 1 missing, 0 unexpected component(s)."}
 ```
 
-Each component entry: `{"componenttype": <int>, "objectid": "<guid-lowercase>",
-"rootcomponentbehavior": <int|null>}`. Components are keyed on the tuple
-`(componenttype, objectid, rootcomponentbehavior)` — `missing` = in expected not live;
-`unexpected` = in live not expected. **Exits 1 on drift.** The flags are mutually
-exclusive; bare `components <name>` lists components unchanged.
+Snapshot/diff entries use the normalized 3-key form: `{"componenttype": <int>,
+"objectid": "<guid-lowercase>", "rootcomponentbehavior": <int|null>}`. Components are
+keyed on the tuple `(componenttype, objectid, rootcomponentbehavior)` — `missing` = in
+expected not live; `unexpected` = in live not expected. **Exits 1 on drift.** The flags
+are mutually exclusive; bare `components <name>` (no `--save`/`--diff`) emits the full
+OData rows including `componenttypename` (the friendly string for the integer
+`componenttype`, e.g. `"entity"`, `"webresource"`, `"sla"`) — so agent code does not
+need to maintain its own type-code map.
 
 ## Unmanaged-layer conflicts — `layer-conflicts`
 
