@@ -39,9 +39,9 @@ def connection_status(ctx: CLIContext):
 @connection_group.command("whoami")
 @pass_ctx
 def connection_whoami(ctx: CLIContext):
-    """Issue WhoAmI() against the server."""
+    """Issue WhoAmI() against the server, with the serving profile/org/URL."""
     with d365_errors(ctx):
-        info = conn_mod.whoami(ctx.backend())
+        info = conn_mod.whoami_identity(ctx.backend())
     ctx.emit(True, data=info)
 
 
