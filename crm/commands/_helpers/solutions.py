@@ -82,15 +82,17 @@ def _solution_option(f):
 
 def _resolve_solution(
     ctx: "CLIContext", explicit: str | None,
-) -> tuple[str, None]:
+) -> tuple[str, str | None]:
     """Resolve the effective solution for a mutating metadata command.
 
     `--solution` is now always required. Raises UsageError (exit 2) when no
     explicit solution is provided.
 
-    Returns `(solution, None)`. The `None` second element preserves the
-    `solution, warning = _resolve_solution(...)` unpacking at all call sites —
-    `warning` is always `None` and callers that stash it are harmless.
+    Returns `(solution, warning)`. The second element is always `None` at
+    runtime (the old "no solution resolved" warning path is gone), but is
+    typed `str | None` so the `solution, warning = ...` unpacking at every call
+    site keeps inferring `warning` as `str | None` (callers build `list[str]`
+    warning lists from it).
     """
     if not explicit:
         raise click.UsageError(
