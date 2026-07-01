@@ -88,9 +88,10 @@ with a `meta.next_link` cursor, the envelope also sets `meta.has_more: true` and
 appends a `meta.warnings` advisory ("Returned one server page; more rows exist —
 use --all or --max-records to enumerate."). If `--count` was requested and the
 returned `meta.count` lands exactly on the server's standard-table ceiling of
-5000 while a cursor is present, a second warning flags that count as a clamped
-lower bound, not an exact total — use `query count` or `--all` to get the real
-number. A query that fits in a single page (no cursor) gets neither `has_more`
+5000 while a cursor is present, a second warning flags that count as a lower
+bound, not an exact total. To get this query's real count, enumerate with
+`--all`/`--max-records` — `query count` returns a whole-table total only and
+ignores `--filter`. A query that fits in a single page (no cursor) gets neither `has_more`
 nor a warning, and an honest small `--count` is unaffected. This applies to
 `query odata`, `query fetchxml`, `query saved`, and `query user` alike.
 

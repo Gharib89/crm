@@ -57,8 +57,9 @@ server still returns a `meta.next_link` cursor, the envelope also sets
 `meta.has_more: true` and adds a `meta.warnings` entry telling you to reach for
 `--all`/`--max-records` — don't mistake a single page for the whole result set.
 If `--count` was on that same request and `meta.count` lands exactly on the
-server's 5000-row ceiling, a second warning flags it as a clamped lower bound,
-not the true total (see `query count` below for an exact/whole-table figure).
+server's 5000-row ceiling, a second warning flags it as a lower bound, not the
+true total. For this query's real count, enumerate with `--all`/`--max-records`;
+`query count` (below) returns only a whole-table total and ignores `--filter`.
 No cursor, no `--count` at the ceiling → neither signal fires. Same behaviour on
 `query odata/fetchxml/saved/user`.
 
