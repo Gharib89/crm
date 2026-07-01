@@ -9,6 +9,40 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.45.2 (2026-07-01)
+
+### Bug Fixes
+
+- Surface componenttypename in solution components JSON output
+  ([#629](https://github.com/Gharib89/crm/pull/629),
+  [`7de5e4d`](https://github.com/Gharib89/crm/commit/7de5e4dda20484a255f4eb4ef2918f16bd8a747d))
+
+### Chores
+
+- Add multi-target e2e runner (scripts/e2e_all.py)
+  ([#622](https://github.com/Gharib89/crm/pull/622),
+  [`4b4760d`](https://github.com/Gharib89/crm/commit/4b4760df3ed40760ab8cf5a1d3f42a549c8790a8))
+
+- Multi-target e2e runner (scripts/e2e_all.py) ([#622](https://github.com/Gharib89/crm/pull/622),
+  [`4b4760d`](https://github.com/Gharib89/crm/commit/4b4760df3ed40760ab8cf5a1d3f42a549c8790a8))
+
+### Documentation
+
+- Document componenttypename and component-type code list
+  ([#629](https://github.com/Gharib89/crm/pull/629),
+  [`7de5e4d`](https://github.com/Gharib89/crm/commit/7de5e4dda20484a255f4eb4ef2918f16bd8a747d))
+
+### Testing
+
+- Update solution components JSON-mode test for componenttypename
+  ([#629](https://github.com/Gharib89/crm/pull/629),
+  [`7de5e4d`](https://github.com/Gharib89/crm/commit/7de5e4dda20484a255f4eb4ef2918f16bd8a747d))
+
+- **e2e**: Self-seed query saved/user skips; document workflow-activate fallback
+  ([#621](https://github.com/Gharib89/crm/pull/621),
+  [`767d2e5`](https://github.com/Gharib89/crm/commit/767d2e555e0a9ed59653fb4f88947bb6642a8b61))
+
+
 ## v1.45.1 (2026-06-28)
 
 ### Bug Fixes
