@@ -54,14 +54,17 @@ default single-page behaviour and thread `meta.next_link` yourself.
 
 **Default single page is self-describing.** When neither flag is passed and the
 server still returns a `meta.next_link` cursor, the envelope also sets
-`meta.has_more: true` and adds a `meta.warnings` entry telling you to reach for
-`--all`/`--max-records` — don't mistake a single page for the whole result set.
-If `--count` was on that same request and `meta.count` lands exactly on the
+`meta.has_more: true` and adds a `meta.warnings` entry — page through the rest by
+following `meta.next_link` (visible with `--json`), or with `--all`/`--max-records`
+on `query odata`; don't mistake a single page for the whole result set. If
+`--count` was on that same request and `meta.count` lands exactly on the
 server's 5000-row ceiling, a second warning flags it as a clamped lower bound,
 not the true total (re-run with `--all` for an exact count of this query;
 `query count` below gives a whole-table cached figure only, ignoring `--filter`).
-No cursor, no `--count` at the ceiling → neither signal fires. Same behaviour on
-`query odata/fetchxml/saved/user`.
+The signals fire wherever a response carries an `@odata.nextLink` cursor —
+`query odata/saved/user`; `query fetchxml` pages via a fetch cookie (no cursor),
+so it never surfaces them, and `--all`/`--max-records`/`--count` are `query
+odata`-only.
 
 ```bash
 crm --json query odata contacts \

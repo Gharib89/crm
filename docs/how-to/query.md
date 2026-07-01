@@ -83,19 +83,23 @@ Default behaviour (neither flag) still returns a single server page — the row
 more pages exist. Use `--page-size` to control how many rows the server puts on
 each page. That default page is now self-describing in `meta` (see below).
 
-**Self-describing single page.** When the default (non-`--all`) read comes back
-with a `meta.next_link` cursor, the envelope also sets `meta.has_more: true` and
-appends a `meta.warnings` advisory ("Returned one server page; more rows exist —
-re-run with --all/--max-records to enumerate, or follow meta.next_link (shown
-with --json; the only paging option under --track-changes)."). If `--count` was
-requested and the returned `meta.count` lands exactly on the server's
-standard-table ceiling of 5000 while a cursor is present, a second
-warning flags that count as a clamped lower bound, not an exact total — re-run
-with `--all` for an exact count of *this* query (`query count` gives a
-whole-table total only, ignoring `--filter`). A query that fits in a single page
-(no cursor) gets neither `has_more` nor a warning, and an honest small `--count`
-is unaffected. This applies to
-`query odata`, `query fetchxml`, `query saved`, and `query user` alike.
+**Self-describing single page.** When a read comes back with a `meta.next_link`
+cursor, the envelope also sets `meta.has_more: true` and appends a
+`meta.warnings` advisory ("Returned one server page; more rows exist — follow
+meta.next_link (in the --json envelope) to page through them, or use
+--all/--max-records on query odata."). If `--count` was requested and the
+returned `meta.count` lands exactly on the server's standard-table ceiling of
+5000 while a cursor is present, a second warning flags that count as a clamped
+lower bound, not an exact total — re-run with `--all` for an exact count of
+*this* query (`query count` gives a whole-table total only, ignoring `--filter`).
+A query that fits in a single page (no cursor) gets neither `has_more` nor a
+warning, and an honest small `--count` is unaffected.
+
+These signals fire whenever the response carries an `@odata.nextLink` cursor —
+so on `query odata`, `query saved`, and `query user`. `query fetchxml` pages via
+a FetchXML paging cookie rather than a cursor, so it never surfaces them. The
+`--all`/`--max-records` and `--count` flags are `query odata`-only; `query
+saved`/`query user` page by following `meta.next_link` (or widen `--page-size`).
 
 ## Strip annotations for token-efficient JSON (`--minimal`)
 

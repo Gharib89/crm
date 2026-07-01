@@ -109,9 +109,12 @@ def test_max_records_run_has_no_has_more_or_warnings(make_fake_backend, inject_b
     assert "warnings" not in env["meta"]
 
 
-def test_shared_helper_signals_apply_to_fetchxml(make_fake_backend, inject_backend):
-    # The signals live in the shared query-emit helper, so a fetchxml page with a
-    # server cursor is self-describing too (docs claim all four verbs share this).
+def test_shared_helper_signals_fire_on_any_cursor_page(make_fake_backend, inject_backend):
+    # The signals live in the shared query-emit helper — keyed purely on
+    # @odata.nextLink — so any verb routing through it self-describes a cursor page.
+    # Uses the fetchxml verb as the vehicle with a synthetic cursor; live fetchxml
+    # pages via a FetchXML cookie (never @odata.nextLink), so in practice the
+    # signals surface on query odata/saved/user, not fetchxml.
     inject_backend(make_fake_backend(responses={"get":
         {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT}}))
     result = CliRunner().invoke(cli, [
