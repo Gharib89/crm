@@ -22,8 +22,8 @@ import pytest
 # Every symbol imported via `from crm.commands._helpers import ...` across the
 # whole tree (commands + tests), plus the two module references the old module
 # exposed at top level (`session_mod`, `_stdin_is_tty`) that the suite
-# monkeypatches through the package. Internal-only names (`_require_solution`,
-# `_infer_columns`, `_ASYNC_STATE_NAMES`, `_CLOUD_HOST_MARKER`) are deliberately
+# monkeypatches through the package. Internal-only names (`_infer_columns`,
+# `_ASYNC_STATE_NAMES`, `_CLOUD_HOST_MARKER`) are deliberately
 # NOT re-exported — nothing imports them — so they are not pinned here.
 _PUBLIC_SURFACE = [
     # rendering / output envelope
@@ -32,7 +32,7 @@ _PUBLIC_SURFACE = [
     # d365 errors
     "_handle_d365_error", "d365_errors", "usage_guard", "_auth_error_hint",
     # solution resolution
-    "_resolve_solution", "_require_solution", "_solution_option",
+    "_resolve_solution", "_solution_option",
     "_publish_option", "_resolve_publish", "_active_profile",
     "_resolve_schema_name", "_EXPORT_SETTING_KEYS",
     # confirm / secret UX

@@ -117,13 +117,13 @@ def _parse_width(raw: str) -> tuple[str, int]:
 def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
                 order_by, filter_active, is_default, if_exists,
                 query_type, description,
-                solution, require_solution, publish):
+                solution, publish):
     """Create a system view on ENTITY (public by default; see --query-type)."""
     parsed = [_parse_column(c) for c in columns]
     order_desc = False
     if order_by is not None:
         order_by, order_desc = _parse_order(order_by)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.create_view(
@@ -133,7 +133,7 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
             solution=solution, if_exists=if_exists, publish=publish,
             query_type=query_type, description=description,
         )
-    _emit_with_warning(ctx, info, warning,
+    _emit_with_warning(ctx, info, None,
                        meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
@@ -164,7 +164,7 @@ _query_type_option = click.option(
 @pass_ctx
 def view_edit_columns(ctx: CLIContext, entity, view, query_type,
                       add, remove, width, reorder,
-                      solution, require_solution, publish):
+                      solution, publish):
     """Edit the grid columns of VIEW on ENTITY (by name or savedqueryid).
 
     \b
@@ -182,14 +182,14 @@ def view_edit_columns(ctx: CLIContext, entity, view, query_type,
     reorder_parsed = (
         [c.strip() for c in reorder.split(",") if c.strip()]
         if reorder is not None else None)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.edit_view_columns(
             ctx.backend(), entity=entity, view=view, query_type=query_type,
             add=add_parsed, remove=list(remove), width=width_parsed,
             reorder=reorder_parsed, solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)
 
 
@@ -224,7 +224,7 @@ def _parse_condition(raw: str) -> tuple[str, str, list[str]]:
 @_publish_option
 @pass_ctx
 def view_add_filter(ctx: CLIContext, entity, view, query_type, conditions,
-                    filter_type, solution, require_solution, publish):
+                    filter_type, solution, publish):
     """Add FetchXML filter condition(s) to VIEW on ENTITY (by name or savedqueryid).
 
     \b
@@ -232,14 +232,14 @@ def view_add_filter(ctx: CLIContext, entity, view, query_type, conditions,
     solution upgrade may revert.
     """
     parsed = [_parse_condition(c) for c in conditions]
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.add_view_filter(
             ctx.backend(), entity=entity, view=view, query_type=query_type,
             conditions=parsed, filter_type=filter_type,
             solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)
 
 
@@ -255,7 +255,7 @@ def view_add_filter(ctx: CLIContext, entity, view, query_type, conditions,
 @_publish_option
 @pass_ctx
 def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions,
-                       solution, require_solution, publish):
+                       solution, publish):
     """Remove FetchXML filter condition(s) from VIEW on ENTITY (by name or id).
 
     \b
@@ -263,13 +263,13 @@ def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions,
     solution upgrade may revert.
     """
     parsed = [_parse_condition(c) for c in conditions]
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.remove_view_filter(
             ctx.backend(), entity=entity, view=view, query_type=query_type,
             conditions=parsed, solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)
 
 
@@ -289,7 +289,7 @@ def view_remove_filter(ctx: CLIContext, entity, view, query_type, conditions,
 @pass_ctx
 def view_set_order(ctx: CLIContext, entity, view, query_type,
                    order, add_order, clear_order,
-                   solution, require_solution, publish):
+                   solution, publish):
     """Set the sort order of VIEW on ENTITY (by name or savedqueryid).
 
     \b
@@ -301,12 +301,12 @@ def view_set_order(ctx: CLIContext, entity, view, query_type,
             "nothing to do: pass --order, --add-order, or --clear-order.")
     order_parsed = [_parse_order(o) for o in order]
     add_order_parsed = [_parse_order(o) for o in add_order]
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = views_mod.set_view_order(
             ctx.backend(), entity=entity, view=view, query_type=query_type,
             order=order_parsed, add_order=add_order_parsed,
             clear_order=clear_order, solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, view, info, solution=solution)

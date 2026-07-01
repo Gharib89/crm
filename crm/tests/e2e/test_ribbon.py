@@ -142,6 +142,7 @@ def test_ribbon_add_and_remove_button(
         "--name", wr_name,
         "--file", str(js_src),
         "--display-name", f"E2E Ribbon WR {unique}",
+        "--solution", ephemeral_solution,
     ])
     assert wr_result.returncode == 0, (
         f"webresource create failed:\n{wr_result.stderr}\nstdout: {wr_result.stdout}"
@@ -244,6 +245,7 @@ def test_ribbon_set_label_relabels_custom_button(
     wr_result = cli([
         "--json", "webresource", "create", "--name", wr_name,
         "--file", str(js_src), "--display-name", f"E2E SetLabel WR {unique}",
+        "--solution", ephemeral_solution,
     ])
     assert wr_result.returncode == 0, (
         f"webresource create failed:\n{wr_result.stderr}\n{wr_result.stdout}"
@@ -454,6 +456,7 @@ def test_ribbon_set_rules_and_add_custom_rule(
         "--json", "webresource", "create",
         "--name", wr_name, "--file", str(js_src),
         "--display-name", f"E2E Rule WR {unique}",
+        "--solution", ephemeral_solution,
     ])
     assert wr_result.returncode == 0, (
         f"webresource create failed:\n{wr_result.stderr}\nstdout: {wr_result.stdout}"

@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
 import requests_mock
 import yaml
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
+from crm.utils.d365_backend import D365Error
 
 
 # ── URL helpers ────────────────────────────────────────────────────────────────
@@ -132,7 +134,8 @@ class TestOutputFile:
     """With -o: YAML written to file; summary emitted; file is apply-consumable."""
 
     def test_round_trip_validate_spec(self, monkeypatch, backend, tmp_path):
-        """Acceptance test: written file passes validate_spec and is the bare spec."""
+        """Without --solution: bare spec has no top-level 'solution' key, and it
+        is a valid-but-non-appliable document — validate_spec raises (#636)."""
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
         out_file = tmp_path / "spec.yaml"
@@ -156,6 +159,38 @@ class TestOutputFile:
         loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
         assert "ok" not in loaded        # NOT the envelope
         assert "entities" in loaded      # bare spec
+        assert "solution" not in loaded  # no --solution -> no solution block
+        assert loaded["entities"][0]["schema_name"] == "new_Project"
+
+        # A spec without a solution block is valid but not apply-consumable.
+        with pytest.raises(D365Error, match="solution"):
+            apply_mod.validate_spec(loaded)
+
+    def test_with_solution_bakes_solution_block_and_validates(
+        self, monkeypatch, backend, tmp_path
+    ):
+        """--solution X bakes a top-level solution: block, and the written file
+        then round-trips through validate_spec (#636)."""
+        _stub(monkeypatch, backend)
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        out_file = tmp_path / "spec.yaml"
+
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=_string_info())
+            result = CliRunner().invoke(
+                cli, ["--json", "metadata", "export-spec", "new_project",
+                      "--solution", "testsln", "-o", str(out_file)]
+            )
+
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["ok"] is True
+
+        loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
+        assert loaded["solution"] == {"unique_name": "testsln"}
         assert loaded["entities"][0]["schema_name"] == "new_Project"
 
         # The key acceptance gate: validate_spec must not raise.
@@ -223,7 +258,7 @@ class TestWithViewsAndRelationships:
             m.get(_savedqueries_url(backend), json=savedqueries)
             result = CliRunner().invoke(
                 cli, ["--json", "metadata", "export-spec", "new_project",
-                      "--with-views", "-o", str(out_file)]
+                      "--with-views", "--solution", "testsln", "-o", str(out_file)]
             )
 
         assert result.exit_code == 0, result.output
@@ -232,6 +267,7 @@ class TestWithViewsAndRelationships:
         assert env["data"]["views"] == 1
 
         loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
+        assert loaded["solution"] == {"unique_name": "testsln"}
         assert "views" in loaded["entities"][0]
         assert loaded["entities"][0]["views"][0]["name"] == "Active Projects"
         apply_mod.validate_spec(loaded)
@@ -263,7 +299,8 @@ class TestWithViewsAndRelationships:
             m.get(_attr_url(backend, "new_projectid", entity="new_task"), json=rel_attr)
             result = CliRunner().invoke(
                 cli, ["--json", "metadata", "export-spec", "new_project",
-                      "--with-relationships", "-o", str(out_file)]
+                      "--with-relationships", "--solution", "testsln",
+                      "-o", str(out_file)]
             )
 
         assert result.exit_code == 0, result.output
@@ -272,6 +309,7 @@ class TestWithViewsAndRelationships:
         assert env["data"]["relationships"] == 1
 
         loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
+        assert loaded["solution"] == {"unique_name": "testsln"}
         assert "relationships" in loaded["entities"][0]
         assert loaded["entities"][0]["relationships"][0]["schema_name"] == "new_project_new_task"
         apply_mod.validate_spec(loaded)

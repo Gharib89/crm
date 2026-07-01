@@ -24,15 +24,15 @@ def connectionrole_group():
 @_solution_option
 @pass_ctx
 def connectionrole_create(ctx: CLIContext, name, category, description,
-                          solution, require_solution) -> None:
+                          solution) -> None:
     """Create a connection role named NAME."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = cr_mod.create_role(
             ctx.backend(), name=name, category=category,
             description=description, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
@@ -43,17 +43,17 @@ def connectionrole_create(ctx: CLIContext, name, category, description,
 @_solution_option
 @pass_ctx
 def connectionrole_scope(ctx: CLIContext, role, entity,
-                         solution, require_solution) -> None:
+                         solution) -> None:
     """Restrict ROLE (name or id) to records of ENTITY.
 
     Call repeatedly to scope a role to several entity types.
     """
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = cr_mod.scope(
             ctx.backend(), role=role, entity=entity, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, f"{role}:{entity}", info, solution=solution)
 
 

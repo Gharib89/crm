@@ -60,20 +60,20 @@ def dup_get(ctx: CLIContext, rule: str) -> None:
 @_solution_option
 @pass_ctx
 def dup_create(ctx: CLIContext, entity, name, matching_entity, description,
-               solution, require_solution) -> None:
+               solution) -> None:
     """Create an (unpublished) duplicate-detection rule on ENTITY.
 
     The rule is created unpublished — add conditions with `dup add-condition`,
     then activate it with `dup publish`.
     """
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = dup_mod.create_rule(
             ctx.backend(), name=name, entity=entity,
             matching_entity=matching_entity, description=description,
             solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
@@ -93,7 +93,7 @@ def dup_create(ctx: CLIContext, entity, name, matching_entity, description,
 @pass_ctx
 def dup_add_condition(ctx: CLIContext, rule, attribute, operator,
                       matching_attribute, operator_param, ignore_blank_values,
-                      solution, require_solution) -> None:
+                      solution) -> None:
     """Add a match condition to RULE (name or id).
 
     --operator one of: exact, same-first, same-last, same-date, same-datetime,
@@ -101,14 +101,14 @@ def dup_add_condition(ctx: CLIContext, rule, attribute, operator,
     operators require --operator-param N (the character count); the others
     reject it.
     """
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = dup_mod.add_condition(
             ctx.backend(), rule=rule, attribute=attribute, operator=operator,
             matching_attribute=matching_attribute, operator_param=operator_param,
             ignore_blank_values=ignore_blank_values, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, f"{rule}:{attribute}", info, solution=solution)
 
 

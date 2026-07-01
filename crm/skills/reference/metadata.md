@@ -117,9 +117,14 @@ Read-only schema only — records and secrets are never cached.
 ## Export a live entity as an apply spec (round-trip)
 
 ```bash
-crm metadata export-spec new_project --with-views --with-relationships -o project.yaml
+crm metadata export-spec new_project --with-views --with-relationships \
+    --solution ContosoCore -o project.yaml
 crm apply -f project.yaml   # re-create / idempotently re-apply in any environment
 ```
+
+`--solution` bakes the mandatory top-level `solution:` block into the spec — `apply`
+requires one (there is no `apply --solution` flag); without it here, `apply -f`
+would reject the spec.
 
 `export-spec` reads the entity over the Web API (pure GETs) and emits a `crm apply -f`
 desired-state spec (see `reference/authoring.md`). With `-o FILE` it writes bare YAML
@@ -129,8 +134,11 @@ It captures: entity definition, primary-name attribute, all custom apply-creatab
 columns (including calculated and rollup columns with their `source_type` and
 `formula_definition` XAML), referenced global option sets, and (with flags)
 relationships and views.
-Publisher/solution are **not** emitted — supply them via `--solution` on `apply`, or
-edit the YAML. **Fidelity caveats** (these silently lose information on round-trip):
+A publisher is never emitted. A top-level `solution:` block is emitted only when
+`--solution <name>` is passed to `export-spec` — `apply` requires one (there is no
+`apply --solution` flag), so a spec exported without it is valid but not appliable
+until you add the block (or re-export with `--solution`). **Fidelity caveats**
+(these silently lose information on round-trip):
 
 - A string column whose live format is `Json` or `RichText` is re-created as plain `Text`.
 - A datetime column's display *format* is NOT captured (re-created with the server
@@ -151,16 +159,18 @@ definition, custom attributes (lookups recreated pointing at the same parent tab
 and reuses referenced global option sets by name. Forms, views, workflows, and charts
 are opt-in.
 
+`--solution` is required (no profile default, no opt-out).
+
 ```bash
 # skeleton only (entity + attributes + lookups + reused option sets)
-crm --json metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone"
+crm --json metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone" --solution MySolution
 
 # everything cloneable over the API
 crm --json metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
 
 # opt-in flags
 crm --json metadata clone-entity new_project cwx_TicketClone \
-    --with-forms --with-views --with-workflows --with-charts
+    --with-forms --with-views --with-workflows --with-charts --solution MySolution
 ```
 
 **Not cloned (Web API limits):**
@@ -204,7 +214,7 @@ blocker carries `dependent_type`, `dependent_id`, `dependent_parent_id`,
 all three modes. Read-only. To fold dependency info into a delete result non-destructively:
 
 ```bash
-crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --check-dependencies
+crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --solution cwx_crmworx --yes --check-dependencies
 ```
 
 `--check-dependencies` is available on `delete-entity`, `delete-attribute`,
@@ -217,7 +227,7 @@ reflects the change, then retry if it hasn't:
 
 ```bash
 crm metadata add-attribute new_widget --kind string \
-    --schema-name new_Label --display Label --max-length 100 \
+    --schema-name new_Label --display Label --max-length 100 --solution ContosoCore \
   && crm solution publish-all \
   && crm --json metadata attribute new_widget new_label --expect AttributeType=String \
   || echo "attribute not ready yet — retry"

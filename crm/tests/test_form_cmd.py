@@ -166,7 +166,7 @@ class TestFormClone:
                    headers={"OData-EntityId": _CLONE_ENTITY_ID_URL})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "clone", "new_project", "Information",
-                "--to", "cwx_ticketclone", "--no-publish",
+                "--to", "cwx_ticketclone", "--solution", "TestSol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
@@ -199,7 +199,7 @@ class TestFormClone:
                    headers={"OData-EntityId": _CLONE_ENTITY_ID_URL})
             result = CliRunner().invoke(cli, [
                 "form", "clone", "new_project", "Information",
-                "--to", "cwx_ticketclone", "--no-publish",
+                "--to", "cwx_ticketclone", "--solution", "TestSol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         post_urls = [r.url for r in m.request_history if r.method == "POST"]
@@ -216,7 +216,7 @@ class TestFormClone:
             m.get(_forms_url(dry_backend), json={"value": [_FORM_A]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "clone", "new_project", "Information",
-                "--to", "cwx_ticketclone", "--no-publish",
+                "--to", "cwx_ticketclone", "--solution", "TestSol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
@@ -232,7 +232,7 @@ class TestFormClone:
             m.get(_forms_url(backend), json={"value": [_FORM_A, _FORM_B]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "clone", "new_project", "NoSuchForm",
-                "--to", "cwx_ticketclone",
+                "--to", "cwx_ticketclone", "--solution", "TestSol",
             ])
         assert result.exit_code == 1
         data = json.loads(result.output)
@@ -246,7 +246,7 @@ class TestFormClone:
             m.get(_forms_url(backend), json={"value": [_FORM_A, _FORM_A_DUP]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "clone", "new_project", "Information",
-                "--to", "cwx_ticketclone",
+                "--to", "cwx_ticketclone", "--solution", "TestSol",
             ])
         assert result.exit_code == 1
         data = json.loads(result.output)
@@ -376,7 +376,7 @@ class TestFormAddField:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-field", "new_project", "new_owner",
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert 'datafieldname="new_owner"' in body["formxml"]
@@ -396,7 +396,7 @@ class TestFormAddField:
             patched = m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "--dry-run", "form", "add-field",
-                "new_project", "new_owner"])
+                "new_project", "new_owner", "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         assert patched.call_count == 0  # no write under dry-run
         data = json.loads(result.output)
@@ -411,7 +411,7 @@ class TestFormAddField:
             m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-field", "new_project", "new_tags",
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "MultiSelectPicklist" in result.output
 
@@ -424,7 +424,7 @@ class TestFormRemoveField:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "remove-field", "new_project", "new_name",
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert 'datafieldname="new_name"' not in body["formxml"]
@@ -447,7 +447,8 @@ class TestFormSetField:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "set-field", "new_project", "new_name",
-                "--tab", "details", "--section", "extra", "--no-publish"])
+                "--tab", "details", "--section", "extra",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["formxml"].index('name="details"') < body["formxml"].index("new_name")
@@ -458,7 +459,7 @@ class TestFormSetField:
             m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "set-field", "new_project", "nope",
-                "--tab", "details", "--no-publish"])
+                "--tab", "details", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "add-field" in result.output
 
@@ -471,7 +472,7 @@ class TestFormSetFieldProps:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "set-field-props", "new_project", "new_name",
-                "--disabled", "--no-publish"])
+                "--disabled", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert 'datafieldname="new_name"' in body["formxml"]
@@ -487,7 +488,8 @@ class TestFormSetFieldProps:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "set-field-props", "new_project", "new_name",
-                "--locked", "--hidden", "--no-show-label", "--no-publish"])
+                "--locked", "--hidden", "--no-show-label",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         xml = m.last_request.json()["formxml"]
         assert 'locklevel="1"' in xml
@@ -502,7 +504,8 @@ class TestFormSetFieldProps:
             patched = m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "--dry-run", "form", "set-field-props",
-                "new_project", "new_name", "--disabled"])
+                "new_project", "new_name", "--disabled",
+                "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         assert patched.call_count == 0
         data = json.loads(result.output)["data"]
@@ -514,7 +517,7 @@ class TestFormSetFieldProps:
             m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "set-field-props", "new_project", "new_name",
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "at least one" in result.output.lower()
 
@@ -525,7 +528,8 @@ class TestFormSetFieldProps:
             patched = m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "set-field-props", "new_project", "new_name",
-                "--required", "ApplicationRequired", "--no-publish"])
+                "--required", "ApplicationRequired",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert patched.call_count == 0  # never touches the form layer
         # Routes the user to the attribute-metadata command, not a silent no-op.
@@ -537,7 +541,7 @@ class TestFormSetFieldProps:
             m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "set-field-props", "new_project", "nope",
-                "--disabled", "--no-publish"])
+                "--disabled", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "add-field" in result.output
 
@@ -551,7 +555,7 @@ class TestFormFieldFormSelection:
             m.get(_forms_url(backend), json={"value": [_FORM_LAYOUT, second]})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "remove-field", "new_project", "new_name",
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "--form" in result.output
 
@@ -575,7 +579,7 @@ class TestFormAddLibrary:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-library", "new_project",
-                "--library", "new_lib.js", "--no-publish"])
+                "--library", "new_lib.js", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert '<Library name="new_lib.js"' in body["formxml"]
@@ -587,7 +591,7 @@ class TestFormAddLibrary:
             m.get(_webresource_url(backend), json={"value": []})
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-library", "new_project",
-                "--library", "nope.js", "--no-publish"])
+                "--library", "nope.js", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "not found" in result.output.lower()
 
@@ -600,7 +604,7 @@ class TestFormAddLibrary:
             patched = m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "--dry-run", "form", "add-library", "new_project",
-                "--library", "new_lib.js"])
+                "--library", "new_lib.js", "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         assert patched.call_count == 0
         assert json.loads(result.output)["data"]["would_add_library"] is True
@@ -616,7 +620,7 @@ class TestFormAddHandler:
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-handler", "new_project",
                 "--event", "onload", "--library", "new_lib.js",
-                "--function", "App.onLoad", "--no-publish"])
+                "--function", "App.onLoad", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()["formxml"]
         assert '<event name="onload"' in body
@@ -632,7 +636,7 @@ class TestFormAddHandler:
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-handler", "new_project",
                 "--event", "onchange", "--library", "new_lib.js",
-                "--function", "App.c", "--no-publish"])
+                "--function", "App.c", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "onchange" in result.output
 
@@ -644,7 +648,8 @@ class TestFormAddHandler:
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-handler", "new_project",
                 "--event", "onchange", "--field", "ghost",
-                "--library", "new_lib.js", "--function", "App.c", "--no-publish"])
+                "--library", "new_lib.js", "--function", "App.c",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "not on the form" in result.output
 
@@ -655,7 +660,7 @@ class TestFormAddHandler:
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-handler", "new_project",
                 "--event", "onload", "--library", "nope.js",
-                "--function", "App.x", "--no-publish"])
+                "--function", "App.x", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "not found" in result.output.lower()
 
@@ -669,7 +674,7 @@ class TestFormAddHandler:
             result = CliRunner().invoke(cli, [
                 "--json", "--dry-run", "form", "add-handler", "new_project",
                 "--event", "onload", "--library", "new_lib.js",
-                "--function", "App.onLoad"])
+                "--function", "App.onLoad", "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         assert patched.call_count == 0
         assert json.loads(result.output)["data"]["would_add_handler"] is True
@@ -696,7 +701,8 @@ class TestFormRemoveHandler:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "remove-handler", "new_project",
-                "--event", "onload", "--function", "App.onLoad", "--no-publish"])
+                "--event", "onload", "--function", "App.onLoad",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert 'functionName="App.onLoad"' not in m.last_request.json()["formxml"]
 
@@ -748,7 +754,7 @@ class TestFormTabCommands:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-tab", "new_project", "new_tab",
-                "--label", "New Tab", "--no-publish"])
+                "--label", "New Tab", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert 'name="new_tab"' in body["formxml"]
@@ -762,7 +768,7 @@ class TestFormTabCommands:
             patched = m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "remove-tab", "new_project", "general",
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "new_name" in result.output  # the orphaned field is named
         assert patched.call_count == 0  # no write on refusal
@@ -774,7 +780,7 @@ class TestFormTabCommands:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "remove-tab", "new_project", "general",
-                "--force", "--no-publish"])
+                "--force", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert 'name="general"' not in body["formxml"]
@@ -792,7 +798,7 @@ class TestFormTabCommands:
             patched = m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "remove-tab", "new_project", "solo",
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "only tab" in result.output
         assert patched.call_count == 0
@@ -804,7 +810,7 @@ class TestFormTabCommands:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "rename-tab", "new_project", "general",
-                "--label", "Overview", "--no-publish"])
+                "--label", "Overview", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert 'description="Overview"' in m.last_request.json()["formxml"]
 
@@ -828,7 +834,7 @@ class TestFormSectionCommands:
             m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "add-section", "new_project", "new_sec",
-                "--tab", "details", "--no-publish"])
+                "--tab", "details", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert 'name="new_sec"' in m.last_request.json()["formxml"]
 
@@ -839,7 +845,7 @@ class TestFormSectionCommands:
             patched = m.patch(_form_pk_url(backend), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "form", "remove-section", "new_project", "summary",
-                "--tab", "general", "--no-publish"])
+                "--tab", "general", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "new_name" in result.output
         assert patched.call_count == 0
@@ -849,19 +855,22 @@ class TestFormSectionCommands:
 # fires and the response carries the would_* flag (issue #460 AC: "--dry-run
 # (would_*, zero HTTP)" — i.e. zero *write* traffic; the read still happens).
 _DRY_RUN_CASES = [
-    (["form", "add-tab", "new_project", "new_tab"], "would_add"),
-    (["form", "remove-tab", "new_project", "details"], "would_remove"),
-    (["form", "rename-tab", "new_project", "general", "--label", "X"],
-     "would_rename"),
-    (["form", "move-tab", "new_project", "details"], "would_move"),
-    (["form", "add-section", "new_project", "new_sec", "--tab", "details"],
-     "would_add"),
-    (["form", "remove-section", "new_project", "extra", "--tab", "details"],
-     "would_remove"),
+    (["form", "add-tab", "new_project", "new_tab",
+      "--solution", "TestSol"], "would_add"),
+    (["form", "remove-tab", "new_project", "details",
+      "--solution", "TestSol"], "would_remove"),
+    (["form", "rename-tab", "new_project", "general", "--label", "X",
+      "--solution", "TestSol"], "would_rename"),
+    (["form", "move-tab", "new_project", "details",
+      "--solution", "TestSol"], "would_move"),
+    (["form", "add-section", "new_project", "new_sec", "--tab", "details",
+      "--solution", "TestSol"], "would_add"),
+    (["form", "remove-section", "new_project", "extra", "--tab", "details",
+      "--solution", "TestSol"], "would_remove"),
     (["form", "rename-section", "new_project", "summary", "--tab", "general",
-      "--label", "X"], "would_rename"),
-    (["form", "move-section", "new_project", "extra", "--tab", "details"],
-     "would_move"),
+      "--label", "X", "--solution", "TestSol"], "would_rename"),
+    (["form", "move-section", "new_project", "extra", "--tab", "details",
+      "--solution", "TestSol"], "would_move"),
 ]
 
 

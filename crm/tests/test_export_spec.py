@@ -241,7 +241,7 @@ class TestStringAttribute:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_payload"), json=info)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         col = spec["entities"][0]["attributes"][0]
         assert col["kind"] == "string"
@@ -349,7 +349,7 @@ class TestUnresolvedPicklistSkipped:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
             m.get(_pick_cast_url(backend, "new_stage"), json=cast)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         assert "attributes" not in spec["entities"][0]
         assert "optionsets" not in spec
@@ -372,7 +372,7 @@ class TestUnresolvedPicklistSkipped:
             m.get(_pick_cast_url(backend, "new_stage"), status_code=404,
                   json={"error": {"message": "Not Found"}})
             m.get(_attr_url(backend, "new_code"), json=_string_info())
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         # The picklist is absent; the string column is still present.
         cols = spec["entities"][0]["attributes"]
@@ -451,7 +451,7 @@ class TestMultiselect:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_tags"), json=_multiselect_info())
             m.get(_multi_cast_url(backend, "new_tags"), json=cast)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         col = spec["entities"][0]["attributes"][0]
         assert col["kind"] == "multiselect"
@@ -488,7 +488,7 @@ class TestMultiselect:
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_tagset')"),
                 json=gos,
             )
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         col = spec["entities"][0]["attributes"][0]
         assert col["kind"] == "multiselect"
@@ -522,7 +522,7 @@ class TestEmptyLabelFallback:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_code"), json=info)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         col = spec["entities"][0]["attributes"][0]
         assert col["display_name"] == "new_Code"
@@ -542,7 +542,7 @@ class TestEmptyLabelFallback:
             m.get(_entity_url(backend), json=ent)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         assert spec["entities"][0]["display_name"] == "new_Project"
         apply.validate_spec(spec)  # must not raise
@@ -562,7 +562,7 @@ class TestEmptyLabelFallback:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=primary)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         assert spec["entities"][0]["primary_attr"] == {
             "schema_name": "new_Name",
@@ -670,7 +670,9 @@ class TestOptInViewsAndRelationships:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(backend.url_for("savedqueries"), json=savedqueries)
-            spec = build_entity_spec(backend, "new_project", with_views=True)
+            spec = build_entity_spec(
+                backend, "new_project", with_views=True, solution="testsln"
+            )
 
         view = spec["entities"][0]["views"][0]
         assert view["filter_active"] is True
@@ -710,7 +712,9 @@ class TestOptInViewsAndRelationships:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(backend.url_for("savedqueries"), json=savedqueries)
-            spec = build_entity_spec(backend, "new_project", with_views=True)
+            spec = build_entity_spec(
+                backend, "new_project", with_views=True, solution="testsln"
+            )
 
         ent_views = spec["entities"][0]["views"]
         assert [v["name"] for v in ent_views] == ["Active Projects"]
@@ -770,7 +774,9 @@ class TestOptInViewsAndRelationships:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_o2m_url(backend), json=o2m)
             m.get(_attr_url(backend, "new_projectid", entity="new_task"), json=rel_attr)
-            spec = build_entity_spec(backend, "new_project", with_relationships=True)
+            spec = build_entity_spec(
+                backend, "new_project", with_relationships=True, solution="testsln"
+            )
 
         rel = spec["entities"][0]["relationships"][0]
         assert rel["cascade_assign"] == "Cascade"
@@ -789,7 +795,7 @@ class TestWiderAttributeFields:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_col"), json=info)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
         apply.validate_spec(spec)
         return spec["entities"][0]["attributes"][0]
 
@@ -879,7 +885,7 @@ class TestWiderEntityFields:
             m.get(_entity_url(backend), json=entity or _ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=primary or _primary_info())
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
         apply.validate_spec(spec)
         return spec["entities"][0]
 
@@ -975,7 +981,8 @@ class TestRoundTrip:
             m.get(_o2m_url(backend), json=o2m)
             m.get(_attr_url(backend, "new_projectid", entity="new_task"), json=rel_attr)
             spec = build_entity_spec(
-                backend, "new_project", with_views=True, with_relationships=True
+                backend, "new_project", with_views=True, with_relationships=True,
+                solution="testsln",
             )
             # Pure read-only projection — every round-trip is a GET.
             assert {r.method for r in m.request_history} == {"GET"}
@@ -1034,7 +1041,9 @@ class TestExportSpecWarnings:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_code"), json=no_len)
-            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+            spec = build_entity_spec(
+                backend, "new_project", warnings=warnings, solution="testsln"
+            )
 
         assert "attributes" not in spec["entities"][0]
         assert len(warnings) == 1
@@ -1057,7 +1066,9 @@ class TestExportSpecWarnings:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_budget"), json=no_prec)
-            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+            spec = build_entity_spec(
+                backend, "new_project", warnings=warnings, solution="testsln"
+            )
 
         assert "attributes" not in spec["entities"][0]
         assert len(warnings) == 1
@@ -1126,7 +1137,7 @@ class TestExportSpecWarnings:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_total"), json=info)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         col = spec["entities"][0]["attributes"][0]
         assert col["kind"] == "decimal"
@@ -1151,7 +1162,7 @@ class TestExportSpecWarnings:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_count"), json=info)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         col = spec["entities"][0]["attributes"][0]
         assert col["source_type"] == "rollup"
@@ -1186,7 +1197,9 @@ class TestExportSpecWarnings:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_code"), json=info)
-            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+            spec = build_entity_spec(
+                backend, "new_project", warnings=warnings, solution="testsln"
+            )
 
         col = spec["entities"][0]["attributes"][0]
         assert "source_type" not in col
@@ -1234,7 +1247,10 @@ class TestCalcRoundTrip:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_total"), json=calc_info)
-            spec = build_entity_spec(backend, "new_project")
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
+            # dry_backend.dry_run=True runs prune detection, which first checks
+            # whether the target solution exists — absent here, so it short-circuits.
+            m.get(backend.url_for("solutions"), json={"value": []})
             res = apply.apply_spec(dry_backend, spec, stage_only=True)
 
         calc = next(a for a in spec["entities"][0]["attributes"]
@@ -1491,7 +1507,9 @@ class TestWebResourceProjector:
         assert spec == {"name": "new_/app.js", "content": b64,
                         "display_name": "App", "webresourcetype": 3}
         # Load-bearing: a one-entry spec round-trips validate_spec.
-        apply.validate_spec({"webresources": [spec]})
+        apply.validate_spec({
+            "solution": {"unique_name": "testsln"}, "webresources": [spec]
+        })
 
     def test_missing_name_raises(self, backend):
         with requests_mock.Mocker() as m:
@@ -1541,7 +1559,9 @@ class TestRoleProjector:
             {"depth": "Basic", "privilege_names": ["prvReadAccount", "prvWriteAccount"]},
             {"depth": "Global", "privilege_names": ["prvCreateContact"]},
         ]
-        apply.validate_spec({"security_roles": [spec]})
+        apply.validate_spec({
+            "solution": {"unique_name": "testsln"}, "security_roles": [spec]
+        })
 
     def test_non_authorable_depth_dropped_with_warning(self, backend):
         warns: list[str] = []

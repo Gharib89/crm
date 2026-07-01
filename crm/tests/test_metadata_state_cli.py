@@ -21,7 +21,8 @@ class TestStatusAdd:
         fake = make_fake_backend(responses={"post": {"NewOptionValue": 12}})
         res = _run(
             ["--json", "metadata", "status-add", "new_widget",
-             "--state", "0", "--label", "Pending", "--no-publish"],
+             "--state", "0", "--label", "Pending",
+             "--solution", "TestSol", "--no-publish"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code == 0, res.output
@@ -36,7 +37,7 @@ class TestStatusAdd:
         fake = make_fake_backend(dry_run=True)
         res = _run(
             ["--json", "--dry-run", "metadata", "status-add", "new_widget",
-             "--state", "0", "--label", "Pending"],
+             "--state", "0", "--label", "Pending", "--solution", "TestSol"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code == 0, res.output
@@ -48,7 +49,8 @@ class TestStateRelabel:
         fake = make_fake_backend(responses={"post": None})
         res = _run(
             ["--json", "metadata", "state-relabel", "new_widget",
-             "--value", "1", "--label", "Dormant", "--no-publish"],
+             "--value", "1", "--label", "Dormant",
+             "--solution", "TestSol", "--no-publish"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code == 0, res.output
@@ -59,7 +61,7 @@ class TestStateRelabel:
         fake = make_fake_backend(dry_run=True)
         res = _run(
             ["--json", "--dry-run", "metadata", "state-relabel", "new_widget",
-             "--value", "1", "--label", "Dormant"],
+             "--value", "1", "--label", "Dormant", "--solution", "TestSol"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code == 0, res.output
@@ -80,7 +82,7 @@ class TestCreateMapping:
         fake = self._pair_backend(make_fake_backend)
         res = _run(
             ["--json", "metadata", "create-mapping", "new_account_new_widget",
-             "--from", "name", "--to", "new_name"],
+             "--from", "name", "--to", "new_name", "--solution", "TestSol"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code == 0, res.output
@@ -90,7 +92,8 @@ class TestCreateMapping:
     def test_auto(self, make_fake_backend, inject_backend, tmp_path):
         fake = self._pair_backend(make_fake_backend)
         res = _run(
-            ["--json", "metadata", "create-mapping", "new_account_new_widget", "--auto"],
+            ["--json", "metadata", "create-mapping", "new_account_new_widget",
+             "--auto", "--solution", "TestSol"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code == 0, res.output
@@ -102,7 +105,8 @@ class TestCreateMapping:
         fake.dry_run = True
         res = _run(
             ["--json", "--dry-run", "metadata", "create-mapping",
-             "new_account_new_widget", "--from", "name", "--to", "new_name"],
+             "new_account_new_widget", "--from", "name", "--to", "new_name",
+             "--solution", "TestSol"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code == 0, res.output
@@ -111,7 +115,8 @@ class TestCreateMapping:
     def test_auto_with_from_is_usage_error(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend()
         res = _run(
-            ["metadata", "create-mapping", "rel", "--auto", "--from", "x"],
+            ["metadata", "create-mapping", "rel", "--auto", "--from", "x",
+             "--solution", "TestSol"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code != 0
@@ -120,7 +125,8 @@ class TestCreateMapping:
     def test_missing_from_to_is_usage_error(self, make_fake_backend, inject_backend, tmp_path):
         fake = make_fake_backend()
         res = _run(
-            ["metadata", "create-mapping", "rel", "--from", "x"],
+            ["metadata", "create-mapping", "rel", "--from", "x",
+             "--solution", "TestSol"],
             inject_backend, fake, tmp_path,
         )
         assert res.exit_code != 0

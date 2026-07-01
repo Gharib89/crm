@@ -63,7 +63,6 @@ def table(
     display_collection: str | None,
     ownership: str,
     solution: str | None,
-    require_solution: bool,
 ) -> None:
     """Create an entity (table) with N columns in a single publish.
 
@@ -92,7 +91,7 @@ def table(
         )
 
     # --- 2. Resolve solution ---
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
 
     # --- 3. Build the spec (pure, no backend) ---
     with d365_errors(ctx):
@@ -104,17 +103,20 @@ def table(
             display_collection=display_collection,
             ownership=ownership,
         )
+    # The solution target is declared state on the spec (apply reads it there),
+    # not a per-run knob (#636).
+    spec["solution"] = {"unique_name": solution}
 
     # --- 4. Apply via apply_spec ---
     backend = ctx.backend()
     with d365_errors(ctx):
         res = apply_mod.apply_spec(
-            backend, spec, solution=solution, stage_only=ctx.stage_only
+            backend, spec, stage_only=ctx.stage_only
         )
 
     # --- 5. Emit result ---
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
-    warnings = [warning] if warning else []
+    warnings = []
     # Under dry-run the columns' references (lookup target entities, picklist
     # option sets) are reported even when the (new) table itself is only planned,
     # so a dangling reference is a pre-flight finding, not a write-time fault (#281).

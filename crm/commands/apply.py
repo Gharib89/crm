@@ -23,8 +23,6 @@ from crm.core import apply as apply_mod
 @click.option("-f", "--file", "spec_file", required=True,
               type=click.Path(exists=True, dir_okay=False, readable=True),
               help="Path to the YAML or JSON desired-state spec.")
-@click.option("--solution", default=None,
-              help="Override the spec's target solution (unique name).")
 @click.option("--include-referenced-optionsets/--no-include-referenced-optionsets",
               "include_referenced_optionsets", default=True, show_default=True,
               help="Add a picklist's referenced global option set to the target "
@@ -38,7 +36,7 @@ from crm.core import apply as apply_mod
                    "attributes) — this destroys their row data.")
 @_destructive_option
 @pass_ctx
-def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionsets,
+def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
               prune, allow_data_loss, yes):
     """Apply a declarative desired-state spec.
 
@@ -78,17 +76,18 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
                  "(publisher / solution / entities / optionsets).")
         return
 
-    # --prune is solution-scoped, so a target solution is part of the flag
-    # contract: reject up front as a usage error (exit 2), before prompting or
-    # building a backend. (apply_spec re-checks for programmatic callers.)
-    if prune:
-        sol_block = spec.get("solution")
-        target_solution = solution or (
-            sol_block.get("unique_name") if isinstance(sol_block, dict) else None)
-        if not target_solution:
-            raise click.UsageError(
-                "--prune requires a target solution (a spec 'solution:' block or "
-                "--solution).")
+    # A customization write must target an explicit unmanaged solution: the spec
+    # must declare a top-level `solution:` block with `unique_name` (#636). Reject
+    # up front as a usage error (exit 2), before prompting or building a backend
+    # and including under --dry-run. This also satisfies --prune, which is scoped
+    # to that solution's components. (apply_spec re-checks for programmatic callers.)
+    sol_block = spec.get("solution")
+    if not isinstance(sol_block, dict) or not sol_block.get("unique_name"):
+        raise click.UsageError(
+            "apply requires a top-level 'solution:' block with 'unique_name' — "
+            "customization writes must target an explicit unmanaged solution. Add "
+            "a solution: block to the spec (or re-export with "
+            "`metadata export-spec --solution <unique_name>`).")
 
     # Gate destructive pruning behind a confirmation (real runs only — --dry-run
     # is a read-only preview that deletes nothing). Under --json / a non-TTY there
@@ -110,7 +109,7 @@ def apply_cmd(ctx: CLIContext, spec_file, solution, include_referenced_optionset
 
     with d365_errors(ctx):
         res = apply_mod.apply_spec(
-            ctx.backend(), spec, solution=solution, stage_only=ctx.stage_only,
+            ctx.backend(), spec, stage_only=ctx.stage_only,
             include_referenced_optionsets=include_referenced_optionsets,
             base_dir=os.path.dirname(os.path.abspath(spec_file)),
             prune=prune, allow_data_loss=allow_data_loss)

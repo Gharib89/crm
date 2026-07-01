@@ -87,7 +87,7 @@ class TestDashboardCreate:
             result = CliRunner().invoke(cli, [
                 "--json", "dashboard", "create",
                 "--name", "Sales", "--formxml", self._formxml_file(tmp_path),
-                "--no-publish"])
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["created"] is True
@@ -116,7 +116,7 @@ class TestDashboardCreate:
         result = CliRunner().invoke(cli, [
             "--json", "dashboard", "create",
             "--name", "Sales", "--formxml", self._formxml_file(tmp_path),
-            "--no-publish"])
+            "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -153,7 +153,8 @@ class TestDashboardAddChart:
             self._mock(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "dashboard", "add-chart", _DASH["formid"],
-                "--view", _VIEW_ID, "--chart", _VIS_ID, "--no-publish"])
+                "--view", _VIEW_ID, "--chart", _VIS_ID,
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["updated"] is True
@@ -171,7 +172,8 @@ class TestDashboardAddView:
                   json={"savedqueryid": _VIEW_ID, "returnedtypecode": "account", "name": "v"})
             result = CliRunner().invoke(cli, [
                 "--json", "dashboard", "add-view", did,
-                "--view", _VIEW_ID, "--mode", "all", "--no-publish"])
+                "--view", _VIEW_ID, "--mode", "all",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -191,7 +193,8 @@ class TestDashboardAddIframe:
             m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "dashboard", "add-iframe", did,
-                "--url", "https://example.com/x", "--security", "--no-publish"])
+                "--url", "https://example.com/x", "--security",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "add-iframe"
@@ -226,7 +229,8 @@ class TestDashboardAddWebresource:
             m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "dashboard", "add-webresource", did,
-                "--webresource", "new_/logic.js", "--no-publish"])
+                "--webresource", "new_/logic.js",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "add-webresource"
@@ -267,7 +271,7 @@ class TestDashboardRemoveComponent:
             m.patch(backend.url_for(f"systemforms({did})"), status_code=204)
             result = CliRunner().invoke(cli, [
                 "--json", "dashboard", "remove-component", did,
-                "--view", self._RV, "--no-publish"])
+                "--view", self._RV, "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "remove-component"

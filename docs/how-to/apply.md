@@ -326,8 +326,9 @@ relationships, plug-in assemblies/types, forms) is out of scope.
   with `deleted: false` and `reason: "data-bearing; pass --allow-data-loss to delete"`.
 - Under `--json` or a non-TTY, a **real** `--prune` requires `--yes` (no interactive
   prompt); a `--dry-run` preview deletes nothing and needs no confirmation.
-- `--prune` requires a target solution (`solution:` block in the spec or
-  `--solution`).
+- `--prune` is scoped to the spec's mandatory top-level `solution:` block —
+  every spec must declare one (see "Spec schema" above), so a target solution
+  is always in place.
 - Pruning is suppressed when the convergence phase itself has failures or
   replace-blocked components — a partial-failure run does not also delete org-extras.
 
@@ -343,19 +344,19 @@ Pruning never triggers a publish.
 
 **Worked example — remove a stale web resource and view from the solution:**
 
-Spec `project.yaml` previously declared `contoso_/scripts/old.js` and a view
-`Old Projects`; both are now removed from the spec. The solution still has them
-as members.
+Spec `project.yaml` declares `solution: {unique_name: ContosoCore}` and
+previously declared `contoso_/scripts/old.js` and a view `Old Projects`; both
+are now removed from the spec. The solution still has them as members.
 
 ```bash
 # 1. Preview what would be pruned
-crm --dry-run --json apply -f project.yaml --prune --solution ContosoCore
+crm --dry-run --json apply -f project.yaml --prune
 
 # 2. Apply with pruning (interactive confirmation on a TTY)
-crm apply -f project.yaml --prune --solution ContosoCore
+crm apply -f project.yaml --prune
 
 # 3. Under CI / --json there is no prompt, so pass --yes
-crm --json apply -f project.yaml --prune --yes --solution ContosoCore
+crm --json apply -f project.yaml --prune --yes
 ```
 
 Example output (`data.pruned`):
@@ -376,8 +377,8 @@ A data-bearing extra refused without `--allow-data-loss`:
 
 ## Referenced global option sets
 
-When a spec contains an `optionsets` block and a `--solution` is provided, `apply`
-automatically adds each referenced global option set to the solution (via
+When a spec contains an `optionsets` block, `apply` automatically adds each
+referenced global option set to the spec's `solution:` block target (via
 `AddSolutionComponent`) even if the option set already existed and was skipped
 during creation. This ensures option sets created in a previous apply run (or
 pre-existing) are properly linked to the solution.
@@ -385,7 +386,7 @@ pre-existing) are properly linked to the solution.
 To opt out:
 
 ```bash
-crm apply -f spec.yaml --solution MySolution --no-include-referenced-optionsets
+crm apply -f spec.yaml --no-include-referenced-optionsets
 ```
 
 This flag is also exposed as `include_referenced_optionsets` on the Python

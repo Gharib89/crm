@@ -322,15 +322,19 @@ def validate_spec(spec: Any) -> None:
         if not isinstance(sp["publisher"]["option_value_prefix"], int):
             raise D365Error("publisher: option_value_prefix must be an integer "
                             "(10000-99999), not a quoted string.")
-    if sp.get("solution") is not None:
-        _require(sp["solution"], ("unique_name",), "solution")
+    # A customization write must target an explicit unmanaged solution: the
+    # spec's top-level `solution:` block is mandatory (#636). A spec exported
+    # without one (`metadata export-spec` sans --solution) is a valid document
+    # but not appliable until a solution block is added.
+    if sp.get("solution") is None:
+        raise D365Error(
+            "spec must declare a top-level 'solution:' block with 'unique_name' — "
+            "customization writes must target an explicit unmanaged solution "
+            "(re-export with `metadata export-spec --solution`).")
+    _require(sp["solution"], ("unique_name",), "solution")
     for key in ("entities", "optionsets", "webresources", "security_roles", "plugins"):
         if key in sp and not isinstance(sp[key], list):
             raise D365Error(f"{key} must be a list.")
-    if not (sp.get("publisher") or sp.get("solution") or sp.get("entities")
-            or sp.get("optionsets") or sp.get("webresources")
-            or sp.get("security_roles") or sp.get("plugins")):
-        raise D365Error("spec is empty: nothing to apply.")
     for ent in _as_list(sp.get("entities")):
         _require(ent, ("schema_name", "display_name"), "entity")
         elabel = f"entity {ent['schema_name']!r}"
@@ -1449,7 +1453,6 @@ def apply_spec(
     backend: D365Backend,
     spec: dict[str, Any],
     *,
-    solution: str | None = None,
     stage_only: bool = False,
     include_referenced_optionsets: bool = True,
     base_dir: str | None = None,
@@ -1501,12 +1504,11 @@ def apply_spec(
     # option set). In a real apply nothing is ever planned, so this stays empty.
     planned_names: set[str] = set()
 
-    sol = spec.get("solution")
-    solution_name = solution or (sol["unique_name"] if sol else None)
-    if prune and not solution_name:
-        raise D365Error(
-            "--prune requires a target solution (a spec 'solution:' block or "
-            "--solution); prune is scoped to that solution's components.")
+    # validate_spec (above) guarantees a solution block with unique_name, so the
+    # target is always explicit — customization writes never fall back to the
+    # system Default Solution silently (#636). --prune is scoped to it.
+    sol = spec["solution"]
+    solution_name = sol["unique_name"]
     pub = spec.get("publisher")
     pub_id: str | None = None
     entity_logicals: dict[str, str] = {}

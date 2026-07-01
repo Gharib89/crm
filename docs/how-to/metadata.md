@@ -64,14 +64,17 @@ typical values are `Active`, `Pending`, `Failed`, `InProgress`.
 
 ```bash
 crm --json metadata create-key account --name new_AccountCode \
-  --key-attributes accountnumber --if-exists skip
+  --key-attributes accountnumber --solution cwx_crmworx --if-exists skip
 
 # composite key (two or more attributes)
 crm --json metadata create-key cwx_sla --name cwx_TierRegion \
-  --key-attributes cwx_tier,cwx_region
+  --key-attributes cwx_tier,cwx_region --solution cwx_crmworx
 ```
 
-`--key-attributes` is a comma-separated list of attribute **logical** names. The
+`--key-attributes` is a comma-separated list of attribute **logical** names.
+`--solution` is required — a component created without an explicit target
+solution would otherwise land only in the system Default Solution; pass
+`--solution Default` for a deliberate Default-Solution-only write. The
 server builds the supporting index asynchronously, so a freshly created key starts
 with `index_status` `Pending` — poll `metadata keys <entity>` (or
 `entity upsert --key` returns 404) until it reaches `Active`. `--if-exists skip`
@@ -81,11 +84,11 @@ makes re-runs a no-op. This is the key that `entity upsert --key` and
 ## Delete an alternate key
 
 ```bash
-crm --json metadata delete-key account new_accountcode --yes
+crm --json metadata delete-key account new_accountcode --solution cwx_crmworx --yes
 ```
 
 Addresses the key by its logical name (lower-case; the schema name also works).
-Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an
+`--solution` is required to scope the delete. Destructive: needs `--yes` (or an
 interactive confirmation).
 
 ## Read option set values (flattened)
@@ -105,8 +108,13 @@ so its `meta.options` is empty — read those raw fields instead.
 
 ```bash
 crm --json metadata create-optionset --name cwx_priority --display "CRMWorx Priority" \
-  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical --if-exists skip
+  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical \
+  --solution cwx_crmworx --if-exists skip
 ```
+`--solution` is required on every metadata write verb (`create-*`, `update-*`,
+`delete-*`, `add-attribute`) — a component created without an explicit target
+solution would otherwise land only in the system Default Solution; pass
+`--solution Default` for a deliberate Default-Solution-only write.
 `--if-exists skip` makes re-runs a no-op; the response reports `created`, the metadata id, and `published: true`.
 
 ## List entities filtered by managed/custom
@@ -133,7 +141,8 @@ logical/set names.
 crm --json metadata create-entity \
   --schema-name cwx_Ticket --display "Support Ticket" --display-collection "Support Tickets" \
   --primary-attr cwx_Name --primary-label "Ticket Title" \
-  --ownership UserOwned --has-notes --has-activities --if-exists skip
+  --ownership UserOwned --has-notes --has-activities \
+  --solution cwx_crmworx --if-exists skip
 ```
 Note the returned `entity_set_name` (plural, e.g. `cwx_tickets`) — that is what `entity`/`query` commands take, not the logical name.
 
@@ -161,7 +170,8 @@ crm --json metadata create-entity \
   --data-provider  "<data-provider-guid>" \
   --external-name "products" \
   --external-collection-name "products" \
-  --data-source "<data-source-guid>"   # optional
+  --data-source "<data-source-guid>" \  # optional
+  --solution cwx_crmworx
 ```
 
 `--external-name`, `--external-collection-name`, and `--data-provider` are
@@ -177,7 +187,8 @@ write support.
 
 ```bash
 crm --json metadata add-attribute cwx_ticket --kind picklist \
-  --schema-name cwx_Priority --display "Priority" --optionset-name cwx_priority --if-exists skip
+  --schema-name cwx_Priority --display "Priority" --optionset-name cwx_priority \
+  --solution cwx_crmworx --if-exists skip
 ```
 `--kind` also accepts `integer` (with `--min`/`--max`), `memo`, `boolean`, `datetime`, etc.
 For `--kind string`/`memo`, `--max-length` is optional — omit it to default to 100 / 2000.
@@ -187,16 +198,16 @@ For `--kind string`/`memo`, `--max-length` is optional — omit it to default to
 ```bash
 # Default — DateAndTime format; behavior omitted, so the server applies UserLocal
 crm --json metadata add-attribute cwx_ticket --kind datetime \
-  --schema-name cwx_DueDate --display "Due Date"
+  --schema-name cwx_DueDate --display "Due Date" --solution cwx_crmworx
 
 # DateOnly behavior (date with no time component)
 crm --json metadata add-attribute cwx_ticket --kind datetime \
-  --schema-name cwx_DueDate --display "Due Date" --behavior DateOnly
+  --schema-name cwx_DueDate --display "Due Date" --behavior DateOnly --solution cwx_crmworx
 
 # TimeZoneIndependent — stored and displayed without conversion
 crm --json metadata add-attribute cwx_ticket --kind datetime \
   --schema-name cwx_ScheduledAt --display "Scheduled At" \
-  --behavior TimeZoneIndependent --format DateAndTime
+  --behavior TimeZoneIndependent --format DateAndTime --solution cwx_crmworx
 ```
 
 `--behavior` accepts `UserLocal`, `DateOnly`, or `TimeZoneIndependent` and sets the
@@ -216,7 +227,7 @@ column is created — get it right on create. `--behavior` is only valid for
 ```bash
 crm --json metadata add-attribute cwx_ticket --kind string \
   --schema-name cwx_TicketNumber --display "Ticket Number" \
-  --auto-number-format "TKT-{SEQNUM:5}"
+  --auto-number-format "TKT-{SEQNUM:5}" --solution cwx_crmworx
 ```
 
 `--auto-number-format` sets `AutoNumberFormat` on a string column so the server
@@ -259,7 +270,8 @@ not partners specific to the entity you named. The eligibility check
 ```bash
 crm --json metadata create-one-to-many --schema-name cwx_sla_cwx_ticket \
   --referenced-entity cwx_sla --referencing-entity cwx_ticket \
-  --lookup-schema cwx_SLA --lookup-display "SLA Policy" --if-exists skip
+  --lookup-schema cwx_SLA --lookup-display "SLA Policy" \
+  --solution cwx_crmworx --if-exists skip
 ```
 The response reports the `referencing_attribute` (the lookup column) the server generated on the N-side entity.
 
@@ -278,11 +290,11 @@ crm --json metadata create-one-to-many \
   --referencing-entity cwx_ticket \
   --lookup-schema cwx_ParentTicket \
   --lookup-display "Parent Ticket" \
-  --hierarchical
+  --hierarchical --solution cwx_crmworx
 
 # Set (or clear) IsHierarchical on an existing 1:N relationship
-crm --json metadata update-relationship cwx_ticket_cwx_ticket_parent --hierarchical
-crm --json metadata update-relationship cwx_ticket_cwx_ticket_parent --no-hierarchical
+crm --json metadata update-relationship cwx_ticket_cwx_ticket_parent --hierarchical --solution cwx_crmworx
+crm --json metadata update-relationship cwx_ticket_cwx_ticket_parent --no-hierarchical --solution cwx_crmworx
 ```
 
 `--hierarchical` is only accepted on 1:N relationships; passing it on an N:N
@@ -294,7 +306,8 @@ These name-taking writes point at other server objects: `add-attribute --kind lo
 
 ```bash
 crm --dry-run --json metadata add-attribute cwx_ticket --kind lookup \
-  --schema-name cwx_OwnerId --display "Owner" --target-entity cwx_missing
+  --schema-name cwx_OwnerId --display "Owner" --target-entity cwx_missing \
+  --solution cwx_crmworx
 ```
 
 A reference that does not resolve keeps the preview non-failing (`ok: true`) and adds a `meta.warnings` advisory naming it — so a dangling target entity or option set surfaces as a pre-flight finding instead of a server 400/404 at write time.
@@ -305,7 +318,7 @@ A *Customer* column is a single lookup that can point at **either an account or 
 
 ```bash
 crm --json metadata add-attribute cwx_ticket --kind customer \
-  --schema-name cwx_CustomerId --display "Customer" --if-exists skip
+  --schema-name cwx_CustomerId --display "Customer" --solution cwx_crmworx --if-exists skip
 ```
 
 The targets are fixed to `account` + `contact`, so `--kind customer` takes no `--target-entity` (and the two relationship schema names are derived as `<entity>_<lookup>_account` / `_contact` — they aren't user-nameable). The result reports `targets: ["account", "contact"]` and the created `relationship_ids`.
@@ -328,17 +341,17 @@ use an SDK tool) rather than writing it by hand.
 # Calculated integer column — SourceType=1
 crm --json metadata add-attribute account \
   --kind integer --schema-name new_Total --display "Total" \
-  --type calculated --formula-file calculated.xaml
+  --type calculated --formula-file calculated.xaml --solution cwx_crmworx
 
 # Rollup money column — SourceType=2
 crm --json metadata add-attribute account \
   --kind money --schema-name new_TotalRevenue --display "Total Revenue" \
-  --precision 2 --type rollup --formula-file rollup.xaml
+  --precision 2 --type rollup --formula-file rollup.xaml --solution cwx_crmworx
 
 # Dry-run previews the would-be POST body (SourceType + FormulaDefinition) without writing
 crm --dry-run --json metadata add-attribute account \
   --kind integer --schema-name new_Total --display "Total" \
-  --type rollup --formula-file rollup.xaml
+  --type rollup --formula-file rollup.xaml --solution cwx_crmworx
 ```
 
 `--kind` picks the data type; `--type` layers rollup or calculated on top. The
@@ -355,7 +368,7 @@ A metadata change isn't readable until it's published. The repeatable `--expect 
 
 ```bash
 crm metadata add-attribute cwx_ticket --kind string \
-    --schema-name cwx_Label --display "Label" --max-length 100 \
+    --schema-name cwx_Label --display "Label" --max-length 100 --solution cwx_crmworx \
   && crm solution publish-all \
   && crm --json metadata attribute cwx_ticket cwx_label --expect AttributeType=String \
   || echo "attribute not ready yet — retry"
@@ -384,12 +397,12 @@ Read-only — no changes are made.
 ## Delete a custom column
 
 ```bash
-crm --json metadata delete-attribute cwx_ticket cwx_priority --yes
+crm --json metadata delete-attribute cwx_ticket cwx_priority --solution cwx_crmworx --yes
 ```
-Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute targets before any DELETE. Pass `--solution` to scope the delete to a solution. The server rejects with a 4xx if the column is still referenced (forms, views, workflows) — remove those dependencies first. Destructive: needs `--yes` (or an interactive confirmation). Add `--check-dependencies` (with `--dry-run` for a non-destructive preview) to fold blockers into the result:
+Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute targets before any DELETE. `--solution` is required to scope the delete to a solution. The server rejects with a 4xx if the column is still referenced (forms, views, workflows) — remove those dependencies first. Destructive: needs `--yes` (or an interactive confirmation). Add `--check-dependencies` (with `--dry-run` for a non-destructive preview) to fold blockers into the result:
 
 ```bash
-crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --yes --check-dependencies
+crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --solution cwx_crmworx --yes --check-dependencies
 ```
 
 ## Speed up repeated calls with the entity-definition cache
@@ -464,9 +477,9 @@ on-disk cache.
 ## Delete a custom relationship
 
 ```bash
-crm --json metadata delete-relationship cwx_sla_cwx_ticket --yes
+crm --json metadata delete-relationship cwx_sla_cwx_ticket --solution cwx_crmworx --yes
 ```
-Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. Pass `--solution` to scope the delete. Destructive: needs `--yes` (or an interactive confirmation). Pass `--check-dependencies` (optionally with `--dry-run`) to preview blocking dependencies inline before the delete.
+Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. `--solution` is required to scope the delete. Destructive: needs `--yes` (or an interactive confirmation). Pass `--check-dependencies` (optionally with `--dry-run`) to preview blocking dependencies inline before the delete.
 
 ## Clone an entity
 
@@ -477,11 +490,14 @@ pointing at the same parent tables), and the global option sets it references
 
 ```bash
 # skeleton only (entity + attributes + lookups + reused option sets)
-crm metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone"
+crm metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone" --solution MySolution
 
 # everything cloneable over the API (forms, views, workflows, charts)
 crm metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
 ```
+
+`--solution` is required — a component created without an explicit target
+solution would otherwise land only in the system Default Solution.
 
 `--with-forms` clones **Main** forms only. `--with-workflows` clones classic
 workflows and business rules whose primary entity is the source; actions, BPFs,
@@ -522,6 +538,7 @@ environment, or treat it as a starting point for declarative management.
 # Export to a YAML file ready for crm apply -f
 crm metadata export-spec new_project \
     --with-views --with-relationships \
+    --solution ContosoCore \
     -o project.yaml
 
 # Then apply it (creates the entity and all captured components, idempotent)
@@ -535,6 +552,10 @@ crm apply -f project.yaml
   `apply` requires at least one column per view.
 - `--with-relationships` — include the entity's custom 1:N relationships (including
   `CascadeConfiguration` and `AssociatedMenuConfiguration`) in the spec.
+- `--solution NAME` — bake a top-level `solution: {unique_name: NAME}` block into
+  the spec so it applies directly. `crm apply` requires one; omit `--solution` to
+  emit a valid but non-appliable document (add the block by hand, or re-export
+  with `--solution`, before running `crm apply -f`).
 - `-o / --output FILE` — write the bare spec as YAML to FILE. The file is directly
   consumable by `crm apply -f <file>`. Without `-o` the spec is emitted under the
   standard JSON envelope (useful for piping or `--json` capture).
@@ -566,8 +587,11 @@ crm apply -f project.yaml
   column's `lookup_description`. Keys equal to platform defaults are omitted.
 - Views (with `--with-views`): public saved queries with parseable column layouts,
   including `filter_active` and `order_desc` where set.
-- Publisher and solution are **not** emitted — supply them via `crm apply --solution`
-  or by editing the YAML before applying.
+- A publisher is never emitted — an existing entity does not know its publisher.
+  A top-level `solution:` block is emitted only when `--solution <name>` is
+  passed to `export-spec`; `crm apply` requires one, so a spec exported without
+  it is valid but not appliable until you add a `solution:` block (or re-export
+  with `--solution`).
 
 **Fidelity note:** these attribute properties round-trip through `apply` —
 `max_length`, `required`, option-set options, lookup `target_entity`, `precision`
@@ -597,20 +621,20 @@ nothing is silently lost.
 
 ```bash
 # Add a "Pending" status tied to the Active state (statecode 0)
-crm --json metadata status-add cwx_ticket --state 0 --label "Pending" --publish
+crm --json metadata status-add cwx_ticket --state 0 --label "Pending" --solution cwx_crmworx --publish
 
 # Supply an explicit numeric value (must be unique; server validates)
-crm --json metadata status-add cwx_ticket --state 0 --label "Escalated" --value 100001 --publish
+crm --json metadata status-add cwx_ticket --state 0 --label "Escalated" --value 100001 --solution cwx_crmworx --publish
 
 # Preview without writing
-crm --dry-run --json metadata status-add cwx_ticket --state 0 --label "Pending"
+crm --dry-run --json metadata status-add cwx_ticket --state 0 --label "Pending" --solution cwx_crmworx
 ```
 
 `--state` is the `statecode` value the new option belongs to (e.g. `0` = Active on most
 entities; check `crm --json metadata picklist <entity> statecode` to confirm). When
 `--value` is omitted the server assigns the next available value with the publisher prefix.
-Pass `--publish` to publish immediately; without it the change is staged and
-`meta.warnings` will carry a "staged, not published" advisory.
+`--solution` is required. Pass `--publish` to publish immediately; without it the
+change is staged and `meta.warnings` will carry a "staged, not published" advisory.
 
 ```json
 {
@@ -621,7 +645,7 @@ Pass `--publish` to publish immediately; without it the change is staged and
     "attribute": "statuscode",
     "state_code": 0,
     "value": 100003,
-    "solution": null
+    "solution": "cwx_crmworx"
   }
 }
 ```
@@ -630,21 +654,21 @@ Pass `--publish` to publish immediately; without it the change is staged and
 
 ```bash
 # Rename the Inactive state (statecode 1) to "Closed"
-crm --json metadata state-relabel cwx_ticket --value 1 --label "Closed" --publish
+crm --json metadata state-relabel cwx_ticket --value 1 --label "Closed" --solution cwx_crmworx --publish
 
 # Preserve existing labels in other languages while updating the default language
 crm --json metadata state-relabel cwx_ticket --value 1 --label "Closed" \
-    --merge-labels --publish
+    --merge-labels --solution cwx_crmworx --publish
 
 # Dry-run preview
-crm --dry-run --json metadata state-relabel cwx_ticket --value 1 --label "Closed"
+crm --dry-run --json metadata state-relabel cwx_ticket --value 1 --label "Closed" --solution cwx_crmworx
 ```
 
 `--value` is the `statecode` integer to relabel. Typical values are `0` (Active) and `1`
 (Inactive), but custom entities may vary — check `crm --json metadata picklist <entity>
 statecode` first. `--merge-labels` sets `MergeLabels: true` on the server call, which
 preserves the translated label text for languages you are not updating; without it the
-server replaces all language labels. Pass `--solution` to scope the change to a solution.
+server replaces all language labels. `--solution` is required to scope the change.
 
 ```json
 {
@@ -654,7 +678,7 @@ server replaces all language labels. Pass `--solution` to scope the change to a 
     "entity": "cwx_ticket",
     "attribute": "statecode",
     "value": 1,
-    "solution": null
+    "solution": "cwx_crmworx"
   }
 }
 ```
@@ -679,7 +703,7 @@ crm --json metadata create-mapping new_account_cwx_ticket --auto --solution MyCu
 
 # Preview a single mapping without writing
 crm --dry-run --json metadata create-mapping new_account_cwx_ticket \
-    --from accountnumber --to cwx_accountref
+    --from accountnumber --to cwx_accountref --solution MyCust
 ```
 
 `--auto` calls the `AutoMapEntity` Web API action, which **overwrites** any manually

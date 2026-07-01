@@ -11,11 +11,13 @@ from crm.tests.e2e.coverage import covers
 
 @pytest.mark.slow
 @covers("apply")
-def test_apply_add_attribute_to_ephemeral_entity(cli, backend, ephemeral_entity, tmp_path, request):
+def test_apply_add_attribute_to_ephemeral_entity(cli, backend, ephemeral_entity,
+                                                 ephemeral_solution, tmp_path, request):
     """Apply a spec that adds a single string attribute to the ephemeral entity.
 
     Adding one attribute to an existing entity is a minimal reversible change:
-    - No publisher/solution creation is needed (spec can omit them).
+    - No publisher creation is needed (spec can omit it); the solution: block is
+      mandatory (#636) and points at the ephemeral_solution fixture.
     - The attribute is cleaned up in a finalizer so re-runs are safe.
     - Exercises a distinct backend path (PublishAllXml at the end of apply).
     """
@@ -23,6 +25,7 @@ def test_apply_add_attribute_to_ephemeral_entity(cli, backend, ephemeral_entity,
     attr_schema = f"new_applytest_{suffix}"
 
     spec = {
+        "solution": {"unique_name": ephemeral_solution},
         "entities": [
             {
                 "schema_name": ephemeral_entity,
@@ -67,7 +70,8 @@ def test_apply_add_attribute_to_ephemeral_entity(cli, backend, ephemeral_entity,
 
 @pytest.mark.slow
 @covers("apply")
-def test_apply_reconciles_existing_attribute(cli, backend, ephemeral_entity, tmp_path, request):
+def test_apply_reconciles_existing_attribute(cli, backend, ephemeral_entity,
+                                             ephemeral_solution, tmp_path, request):
     """Convergent apply: re-applying a changed spec UPDATES an existing attribute
     in place, an unchanged re-apply is a no-op, and a data-type change is
     REPLACE-BLOCKED (reported, no write, ok=false, exit 1).
@@ -94,7 +98,8 @@ def test_apply_reconciles_existing_attribute(cli, backend, ephemeral_entity, tmp
     request.addfinalizer(_cleanup)
 
     def _spec_path(attr):
-        spec = {"entities": [{"schema_name": ephemeral_entity,
+        spec = {"solution": {"unique_name": ephemeral_solution},
+                "entities": [{"schema_name": ephemeral_entity,
                               "display_name": f"E2E {suffix}", "attributes": [attr]}]}
         path = tmp_path / "conv_spec.json"
         path.write_text(json.dumps(spec), encoding="utf-8")
@@ -135,7 +140,7 @@ def test_apply_reconciles_existing_attribute(cli, backend, ephemeral_entity, tmp
 @pytest.mark.slow
 @covers("apply")
 def test_apply_reconciles_existing_relationship(cli, backend, ephemeral_entity,
-                                                tmp_path, request):
+                                                ephemeral_solution, tmp_path, request):
     """Convergent apply for a 1:N relationship (the ADR 0018 relationship slice):
     re-applying a changed spec UPDATES the cascade and the relationship-backed lookup
     attribute in place — surfaced as ONE merged `updated` entry — an unchanged
@@ -164,7 +169,8 @@ def test_apply_reconciles_existing_relationship(cli, backend, ephemeral_entity,
     request.addfinalizer(_cleanup)
 
     def _spec_path(rel):
-        spec = {"entities": [{"schema_name": ephemeral_entity,
+        spec = {"solution": {"unique_name": ephemeral_solution},
+                "entities": [{"schema_name": ephemeral_entity,
                               "display_name": f"E2E {suffix}", "relationships": [rel]}]}
         path = tmp_path / "rel_spec.json"
         path.write_text(json.dumps(spec), encoding="utf-8")
@@ -218,7 +224,7 @@ def test_apply_reconciles_existing_relationship(cli, backend, ephemeral_entity,
 @pytest.mark.slow
 @covers("apply")
 def test_apply_reconciles_entity_capability_and_view(cli, backend, ephemeral_entity,
-                                                     tmp_path, request):
+                                                     ephemeral_solution, tmp_path, request):
     """Convergent apply for ADR 0018's entity + view slice (cloud-sufficient — no
     target divergence is expected: enable-only capability, the savedquery PATCH, and
     the identity replace-block behave the same on on-prem and cloud).
@@ -257,7 +263,8 @@ def test_apply_reconciles_entity_capability_and_view(cli, backend, ephemeral_ent
     request.addfinalizer(_cleanup)
 
     def _spec_path(entity_block):
-        spec = {"entities": [{"schema_name": ephemeral_entity,
+        spec = {"solution": {"unique_name": ephemeral_solution},
+                "entities": [{"schema_name": ephemeral_entity,
                               "display_name": f"E2E {suffix}", **entity_block}]}
         path = tmp_path / "ev_spec.json"
         path.write_text(json.dumps(spec), encoding="utf-8")
@@ -320,7 +327,7 @@ def test_apply_reconciles_entity_capability_and_view(cli, backend, ephemeral_ent
 @pytest.mark.slow
 @covers("apply")
 def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entity,
-                                                    tmp_path, request):
+                                                    ephemeral_solution, tmp_path, request):
     """--dry-run reads the live org and reports drift WITHOUT writing (#550).
 
     Seed a column, then dry-run a spec that drifts it: the column must land in the
@@ -347,7 +354,8 @@ def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entit
     request.addfinalizer(_cleanup)
 
     def _spec_path(attr):
-        spec = {"entities": [{"schema_name": ephemeral_entity,
+        spec = {"solution": {"unique_name": ephemeral_solution},
+                "entities": [{"schema_name": ephemeral_entity,
                               "display_name": f"E2E {suffix}", "attributes": [attr]}]}
         path = tmp_path / "dry_spec.json"
         path.write_text(json.dumps(spec), encoding="utf-8")
@@ -379,7 +387,8 @@ def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entit
 
 @pytest.mark.slow
 @covers("apply")
-def test_apply_webresource_create_noop_update(cli, backend, tmp_path, unique, request):
+def test_apply_webresource_create_noop_update(cli, backend, ephemeral_solution,
+                                              tmp_path, unique, request):
     """apply creates a web resource from a file, no-ops an unchanged re-apply, and
     updates its content when the file changes (convergent). Target-agnostic — web
     resource CRUD + PublishAllXml work on both targets. Cleaned up in a finalizer.
@@ -387,7 +396,8 @@ def test_apply_webresource_create_noop_update(cli, backend, tmp_path, unique, re
     name = f"new_e2e_apply_{unique}.js"
     js = tmp_path / "app.js"
     js.write_bytes(b"// e2e apply v1\n")
-    spec = {"webresources": [{"name": name, "file": str(js),
+    spec = {"solution": {"unique_name": ephemeral_solution},
+            "webresources": [{"name": name, "file": str(js),
                               "display_name": f"E2E apply WR {unique}"}]}
     spec_path = tmp_path / "wr_spec.json"
     spec_path.write_text(json.dumps(spec), encoding="utf-8")
@@ -426,7 +436,8 @@ def test_apply_webresource_create_noop_update(cli, backend, tmp_path, unique, re
 
 @pytest.mark.slow
 @covers("apply")
-def test_apply_security_role_create_and_reconcile(cli, backend, tmp_path, unique, request):
+def test_apply_security_role_create_and_reconcile(cli, backend, ephemeral_solution,
+                                                   tmp_path, unique, request):
     """apply creates a security role and applies the declared privileges, then an
     unchanged re-apply is a convergent no-op. (The role also keeps Dataverse's
     immovable baseline privileges, so this asserts the declared set is satisfied,
@@ -434,7 +445,8 @@ def test_apply_security_role_create_and_reconcile(cli, backend, tmp_path, unique
     on both targets (on-prem is the issue's priority). Role deleted in a finalizer.
     """
     role_name = f"E2E Apply Role {unique}"
-    spec = {"security_roles": [{
+    spec = {"solution": {"unique_name": ephemeral_solution},
+            "security_roles": [{
         "name": role_name,
         "privileges": [{"privilege_names": ["prvReadAccount"], "depth": "global"}],
     }]}
@@ -470,7 +482,7 @@ def test_apply_security_role_create_and_reconcile(cli, backend, tmp_path, unique
 @pytest.mark.requires_onprem
 @covers("apply")
 def test_apply_plugin_assembly_type_step_lifecycle(
-        cli, plugin_assembly, backend, tmp_path, request):
+        cli, plugin_assembly, backend, ephemeral_solution, tmp_path, request):
     """apply provisions a plug-in from a spec — assembly + type + step + image in
     one run — then converges: an unchanged re-apply is a no-op, a step-config drift
     updates in place, and a step binding change (the message) is replace-blocked (no
@@ -489,7 +501,7 @@ def test_apply_plugin_assembly_type_step_lifecycle(
     step_name = f"{asm.assembly_name} apply step"
 
     def _spec(*, rank, message):
-        spec = {"plugins": [{
+        spec = {"solution": {"unique_name": ephemeral_solution}, "plugins": [{
             "assembly": asm.assembly_name,
             "file": asm.dll,
             "public_key_token": asm.public_key_token,
@@ -636,7 +648,7 @@ def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, requ
 @pytest.mark.slow
 @covers("apply")
 def test_apply_forwards_new_builder_kwarg_to_live(cli, backend, ephemeral_entity,
-                                                  tmp_path, request):
+                                                  ephemeral_solution, tmp_path, request):
     """A previously-unreachable builder kwarg now flows from a spec to the live org
     (#596). Boolean ``true_label`` / ``false_label`` were dropped by apply's old
     fixed-kwarg lambda; the spec-adapter registry forwards them. Apply a boolean
@@ -659,7 +671,7 @@ def test_apply_forwards_new_builder_kwarg_to_live(cli, backend, ephemeral_entity
 
     request.addfinalizer(_cleanup)
 
-    spec = {"entities": [{
+    spec = {"solution": {"unique_name": ephemeral_solution}, "entities": [{
         "schema_name": ephemeral_entity, "display_name": f"E2E {suffix}",
         "attributes": [{
             "kind": "boolean", "schema_name": attr_schema,

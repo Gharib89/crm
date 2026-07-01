@@ -13,10 +13,12 @@ crm --json solution create-publisher --name crmworx --display CRMWorx \
 crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
 ```
 
-With a named profile active, both verbs auto-wire `publisher_prefix` (from
-`create-publisher`) and `default_solution` (from `create`) back into it, so later
-`metadata create-*` commands target that prefix/solution by default. Pass
-`--no-set-default` to opt out.
+With a named profile active, `create-publisher` auto-wires `publisher_prefix` back into
+it (pass `--no-set-default` to opt out), which only sets the schema-name prefix used to
+derive column names. It does **not** set a target solution: every customization write
+(`metadata create-*`, `apply`, `webresource`, `form`, …) requires its own explicit
+`--solution <unique_name>` — there is no profile default and no opt-out (`--solution
+Default` for a deliberate Default-Solution-only write).
 
 Bump the version (or friendly name / description) of an **unmanaged** solution before
 exporting — at least one field is required, `--version` is validated as 4-part dotted

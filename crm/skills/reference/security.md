@@ -14,9 +14,9 @@ crm --json security list-team-roles <team-guid>              # roles on a team
 
 crm --json security user-privileges <user-guid>             # effective privileges on a user
 
-# role authoring: create-role then set-role-privileges
-crm --json security create-role "My Role" --yes              # defaults to caller's BU
-crm --json security create-role "My Role" --if-exists skip --yes  # idempotent
+# role authoring: create-role then set-role-privileges (--solution is required)
+crm --json security create-role "My Role" --solution cwx_crmworx --yes              # defaults to caller's BU
+crm --json security create-role "My Role" --solution cwx_crmworx --if-exists skip --yes  # idempotent
 crm --json security set-role-privileges <role> --access read --all-entities --depth organization --replace --yes
 crm --json security set-role-privileges <role> --access read,write,create --entities account,contact --depth organization --add --yes
 crm --json security set-role-privileges <role> --privilege prvCreateEntity,prvPublishCustomization --depth global --add --yes
@@ -68,7 +68,7 @@ admin-header options (`--as-user`, `--as-user-object-id`, `--suppress-dup-detect
 **Agent discovery pattern — read-only access to everything:**
 
 ```bash
-crm security create-role "Agent Read-Only" --yes
+crm security create-role "Agent Read-Only" --solution cwx_crmworx --yes
 crm security set-role-privileges <roleid> --access read --all-entities --depth organization --replace --yes
 ```
 
@@ -88,7 +88,11 @@ For "let the agent customize", prefer assigning the OOB `System Customizer` role
 
 ### Gotchas
 
-**`--if-exists skip` does not add the role to `--solution`.** When an existing same-name role is returned via `--if-exists skip`, it is reused unchanged — solution membership is not applied retroactively. To guarantee placement in a solution, the role must be newly created in the same call.
+**`create-role` requires `--solution`** (no profile default, no opt-out; `--solution
+Default` for a deliberate Default-Solution-only write). **`--if-exists skip` does not
+add the role to it.** When an existing same-name role is returned via `--if-exists
+skip`, it is reused unchanged — solution membership is not applied retroactively. To
+guarantee placement in a solution, the role must be newly created in the same call.
 
 **`--replace` is destructive.** It wipes every privilege not in the resolved set. Use `--add` when layering; reserve `--replace` for a full reset (e.g. freshly created roles).
 

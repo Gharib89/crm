@@ -349,6 +349,7 @@ class TestSetSitemap:
             result = runner.invoke(cli, [
                 "--json", "app", "set-sitemap", "CRMWorx SiteMap",
                 "--xml-file", "sm.xml", "--unique-name", "cwx_crmworx",
+                "--solution", "cwx_sol",
             ])
         assert result.exit_code == 0, result.output
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
@@ -805,6 +806,7 @@ class TestAppCommands:
         result = CliRunner().invoke(cli, [
             "--json", "app", "create", "--name", "CRMWorx",
             "--unique-name", "cwx_crmworx", "--no-publish",
+            "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["unique_name"] == "cwx_crmworx"
@@ -825,6 +827,7 @@ class TestAppCommands:
             "--json", "app", "create", "--name", "CRMWorx",
             "--unique-name", "cwx_crmworx", "--no-publish",
             "--icon-webresource", "11111111-1111-1111-1111-111111111111",
+            "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["web_resource_id"] == "11111111-1111-1111-1111-111111111111"
@@ -851,6 +854,7 @@ class TestAppCommands:
             "--json", "app", "create", "--name", "CRMWorx",
             "--unique-name", "cwx_crmworx", "--no-publish",
             "--icon-webresource", "cwx_/icons/app.svg",
+            "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert seen["name_or_guid"] == "cwx_/icons/app.svg"
@@ -871,6 +875,7 @@ class TestAppCommands:
         result = CliRunner().invoke(cli, [
             "--json", "app", "create", "--name", "CRMWorx",
             "--unique-name", "cwx_crmworx", "--no-publish",
+            "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["web_resource_id"] == _DEFAULT_ICON
@@ -894,6 +899,7 @@ class TestAppCommands:
             "--subarea", "sales/accts:entity=account:Accounts",
             "--subarea", "sales/accts:entity=contact",
             "--unique-name", "cwx_crmworx", "--no-publish",
+            "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
@@ -929,6 +935,7 @@ class TestAppCommands:
             "--area", "sales:Sales",
             "--group", "sales/accts:Accounts",
             "--subarea", "sales/accts:entity=account",
+            "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert "<SiteMap" in result.output
@@ -959,6 +966,7 @@ class TestAppCommands:
             "--group", "sales/accts:Accounts",
             "--subarea", "sales/accts:entity=account:Accounts",
             "--subarea", "sales/accts:entity=contact:Contacts",
+            "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         # stdout must be pure XML so `> sitemap.xml` works: it starts with the

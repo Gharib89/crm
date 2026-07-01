@@ -49,8 +49,15 @@ two mutually exclusive authoring modes.
 crm chart create contact \
     --name "Contacts by Method" \
     --data-description chart.data.xml \
-    --presentation-description chart.pres.xml
+    --presentation-description chart.pres.xml \
+    --solution cwx_crmworx
 ```
+
+`--solution` is required on every mutating chart verb (`create`, `update`,
+`set-fetch`, `add-series`, `remove-series`, `set-groupby`) — a component created
+without an explicit target solution would otherwise land only in the system
+Default Solution. Pass `--solution Default` for a deliberate
+Default-Solution-only write.
 
 Both files are required in XML mode. The server validates the XML (for example,
 the number of chart areas in the presentation XML must match the number of
@@ -59,7 +66,7 @@ categories in the data XML), so a malformed pair is rejected with a `400`.
 ### Web-resource mode — script-based visualization
 
 ```bash
-crm chart create contact --name "Custom Viz" --web-resource new_chartscript
+crm chart create contact --name "Custom Viz" --web-resource new_chartscript --solution cwx_crmworx
 ```
 
 `--web-resource` takes a web resource name or GUID and is mutually exclusive
@@ -72,6 +79,7 @@ its `webresourceid` automatically.
 crm chart create contact --name "My View" \
     --data-description chart.data.xml \
     --presentation-description chart.pres.xml \
+    --solution cwx_crmworx \
     --user
 ```
 
@@ -84,31 +92,23 @@ operations before a single publish:
 
 ```bash
 crm chart create contact --name "Q" \
-    --data-description d.xml --presentation-description p.xml --no-publish
+    --data-description d.xml --presentation-description p.xml \
+    --solution cwx_crmworx --no-publish
 crm solution publish    # publish when ready
 ```
-
-### Add the chart to a solution
-
-```bash
-crm chart create contact --name "Q" \
-    --data-description d.xml --presentation-description p.xml \
-    --solution cwx_crmworx
-```
-
-Use `--require-solution` to fail if no solution name resolves (from `--solution`
-or the profile default).
 
 ### Preview without writing
 
 ```bash
 crm --dry-run chart create contact --name "Q" \
-    --data-description d.xml --presentation-description p.xml
+    --data-description d.xml --presentation-description p.xml \
+    --solution cwx_crmworx
 ```
 
 Returns `{_dry_run: true, would_create: {entity_set, body}}` with the fully
 resolved request body (a `--web-resource` name is resolved live first); no chart
-is created.
+is created. `--solution` is still required under `--dry-run` — it is validated
+before any backend call.
 
 ## Delete a chart
 
@@ -129,11 +129,11 @@ a chart from a solution (rather than delete it), use
 description, or the chart type on every series — any combination, in one call:
 
 ```bash
-crm chart update <id> --data-description new.data.xml
-crm chart update <id> --presentation-description new.pres.xml
-crm chart update <id> --name "Contacts by Region" --description "Q3 rollout"
-crm chart update <id> --type Bar
-crm chart update <id> --data-description d.xml --presentation-description p.xml
+crm chart update <id> --data-description new.data.xml --solution cwx_crmworx
+crm chart update <id> --presentation-description new.pres.xml --solution cwx_crmworx
+crm chart update <id> --name "Contacts by Region" --description "Q3 rollout" --solution cwx_crmworx
+crm chart update <id> --type Bar --solution cwx_crmworx
+crm chart update <id> --data-description d.xml --presentation-description p.xml --solution cwx_crmworx
 ```
 
 `--type` sets `ChartType` on **every** `<Series>` element in the
@@ -155,14 +155,14 @@ a chart to a different table is not supported.
 
 ### Publishing and solution
 
-`update` follows the same `--publish` / `--no-publish` / `--solution` /
-`--require-solution` contract as `create` (see above). For system charts the
+`update` follows the same `--publish` / `--no-publish` / `--solution` contract
+as `create` (see above) — `--solution` is required. For system charts the
 change is only visible in the UI after `PublishAllXml` runs; user charts
 (`--user`) are never published and take effect immediately.
 
 ```bash
 crm chart update <id> --type Line --solution cwx_crmworx
-crm chart update <id> --name "New Name" --no-publish
+crm chart update <id> --name "New Name" --solution cwx_crmworx --no-publish
 crm solution publish    # publish when ready
 ```
 
@@ -172,8 +172,8 @@ crm solution publish    # publish when ready
 while leaving the `<categorycollection>` (grouping categories) intact:
 
 ```bash
-crm chart set-fetch <id> --fetch new_query.xml
-crm chart set-fetch <id> --fetch new_query.xml --user
+crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx
+crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --user
 crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --no-publish
 ```
 
@@ -191,8 +191,8 @@ existing `<measurecollection>` aliases.
 measurecollection entry, and a presentation `<Series>` — in one call:
 
 ```bash
-crm chart add-series <id> --column estimatedvalue --aggregate sum --alias total_value
-crm chart add-series <id> --column opportunityid --aggregate count --alias opp_count
+crm chart add-series <id> --column estimatedvalue --aggregate sum --alias total_value --solution cwx_crmworx
+crm chart add-series <id> --column opportunityid --aggregate count --alias opp_count --solution cwx_crmworx
 ```
 
 A chart is capped at **5 series**. Per-series edits are not supported on a
@@ -215,8 +215,8 @@ attribute, its measurecollection entry, and the positionally-coupled
 presentation `<Series>`:
 
 ```bash
-crm chart remove-series <id> --alias total_value
-crm chart remove-series <id> --alias opp_count --user
+crm chart remove-series <id> --alias total_value --solution cwx_crmworx
+crm chart remove-series <id> --alias opp_count --solution cwx_crmworx --user
 ```
 
 Removing the **last** series is refused — a chart must have at least one — as is
@@ -228,8 +228,8 @@ removing a series from a comparison chart (see `add-series` above).
 `<entity>` element and in the datadescription's `<categorycollection>`:
 
 ```bash
-crm chart set-groupby <id> --column createdon --dategrouping month
-crm chart set-groupby <id> --column ownerid
+crm chart set-groupby <id> --column createdon --dategrouping month --solution cwx_crmworx
+crm chart set-groupby <id> --column ownerid --solution cwx_crmworx
 ```
 
 `--dategrouping` is only meaningful for date/datetime columns. It is rejected

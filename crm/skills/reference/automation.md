@@ -10,6 +10,11 @@ The full workflow is **upload assembly → register-type (one per IPlugin class;
 no reflection, you name them) → register a step** against one of those types,
 then optionally attach entity images to the step:
 
+`register-assembly`, `register-type`, `register-webhook`, `register-step`, and
+`register-image` all **require** `--solution <unique_name>` — there is no profile
+default and no opt-out (`--solution Default` for a deliberate Default-Solution-only
+write).
+
 ```bash
 # register-assembly: .dll bytes are base64'd into `content`. --solution sends
 # MSCRM.SolutionUniqueName.
@@ -17,14 +22,14 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_con
 
 # --update: re-uploads content of an existing assembly (resolved by name); the
 # identity flags --version/--culture/--public-key-token/--description/--isolation-mode
-# are IGNORED under --update and produce a warning.
-crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update
+# are IGNORED under --update and produce a warning. --solution is still required.
+crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solution cwx_contoso
 
 # register-type: create one plugintypes row per IPlugin class. The CLI does NOT
 # reflect the assembly — plugintype rows are never auto-created via the Web API.
-# --friendly-name defaults to the type name. --solution accepted.
+# --friendly-name defaults to the type name.
 crm --json plugin register-type --assembly Contoso.Plugins \
-    --type Contoso.Plugins.AccountPostUpdate
+    --type Contoso.Plugins.AccountPostUpdate --solution cwx_contoso
 
 # list-types: shows explicitly registered rows; empty until register-type is run.
 crm --json plugin list-types --assembly Contoso.Plugins
@@ -32,7 +37,7 @@ crm --json plugin list-types --assembly Contoso.Plugins
 # register-webhook: creates a serviceendpoint (contract=8). The platform POSTs
 # the JSON execution context to --url. --auth choices: webhookkey (appends
 # ?code=<auth-value>), httpheader, httpquerystring. --auth-value is write-only
-# (the platform never returns it). --solution/--require-solution accepted.
+# (the platform never returns it).
 crm --json plugin register-webhook \
     --name MyWebhook \
     --url https://func.azurewebsites.net/api/d365hook \
@@ -47,17 +52,16 @@ crm --json plugin register-webhook \
 # --filtering-attributes (comma-separated) restricts an Update step. The step
 # name is auto-derived as '<handler>: <message> of <entity>'; pass --name when
 # that would exceed the 256-char platform limit.
-# --solution/--require-solution accepted (same semantics as register-assembly).
 crm --json plugin register-step \
     --message Update \
     --plugin-type Contoso.Plugins.AccountPostUpdate \
     --entity account --stage postoperation --mode sync \
-    --filtering-attributes name,telephone1
+    --filtering-attributes name,telephone1 --solution cwx_contoso
 
 # Bind a step to a webhook instead of a plug-in type:
 crm --json plugin register-step \
     --message Create --service-endpoint MyWebhook \
-    --entity account --stage postoperation --mode async
+    --entity account --stage postoperation --mode async --solution cwx_contoso
 ```
 
 ```bash
@@ -67,10 +71,9 @@ crm --json plugin register-step \
 # omitting it snapshots ALL columns (documented performance anti-pattern).
 # Rejected client-side: pre-image on Create, post-image on Delete, post-image
 # on a non-PostOperation step, messages that don't support images.
-# --solution/--require-solution accepted (same semantics as register-assembly/step).
 crm --json plugin register-image \
     --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
-    --type pre --alias preimg --attributes name,telephone1
+    --type pre --alias preimg --attributes name,telephone1 --solution cwx_contoso
 ```
 
 ```bash
@@ -210,7 +213,8 @@ crm --json workflow delete <workflow-guid> --yes
 crm --json workflow run <workflow-guid> --target <record-guid>   # trigger on-demand
 
 # Clone a classic workflow onto another entity (xaml-retargeted; activates by default)
-crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone
+# --solution is required — there is no profile default and no opt-out.
+crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone --solution my_solution
 crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone \
     --name "My Clone" --solution my_solution --no-activate
 

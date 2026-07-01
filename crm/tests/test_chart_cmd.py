@@ -110,7 +110,7 @@ class TestChartCreate:
                 "--name", "By Priority",
                 "--data-description", str(dd),
                 "--presentation-description", str(pd),
-                "--no-publish",
+                "--solution", "TestSol", "--no-publish",
             ])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -156,7 +156,8 @@ class TestChartCreate:
             self._post_mock(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "create", "new_project", "--name", "Script",
-                "--web-resource", "new_chartscript", "--no-publish"])
+                "--web-resource", "new_chartscript",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["created"] is True
 
@@ -172,7 +173,7 @@ class TestChartCreate:
             "--json", "chart", "create", "new_project",
             "--name", "By Priority",
             "--data-description", str(dd), "--presentation-description", str(pd),
-            "--no-publish"])
+            "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True
@@ -218,7 +219,8 @@ class TestChartUpdateCmd:
             _edit_mocks(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "update", _EDIT_ID,
-                "--name", "Renamed", "--type", "Bar", "--no-publish"])
+                "--name", "Renamed", "--type", "Bar",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert body["name"] == "Renamed"
@@ -232,7 +234,7 @@ class TestChartUpdateCmd:
             _edit_mocks(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "update", _EDIT_ID,
-                "--data-description", str(dd), "--no-publish"])
+                "--data-description", str(dd), "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert m.last_request.json()["datadescription"] == _EDIT_DATA
 
@@ -250,7 +252,7 @@ class TestChartSetFetchCmd:
             _edit_mocks(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "set-fetch", _EDIT_ID,
-                "--fetch", str(fetch), "--no-publish"])
+                "--fetch", str(fetch), "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert 'name="new_stage"' in m.last_request.json()["datadescription"]
 
@@ -263,7 +265,7 @@ class TestChartSeriesCmd:
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "add-series", _EDIT_ID,
                 "--column", "new_budget", "--aggregate", "sum",
-                "--alias", "series2", "--no-publish"])
+                "--alias", "series2", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         assert 'alias="series2"' in m.last_request.json()["datadescription"]
 
@@ -273,7 +275,7 @@ class TestChartSeriesCmd:
             _edit_mocks(m, backend)
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "remove-series", _EDIT_ID,
-                "--alias", "ghost", "--no-publish"])
+                "--alias", "ghost", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "ghost" in result.output.lower()
 
@@ -289,7 +291,8 @@ class TestChartSetGroupbyCmd:
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "DateTime"})
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "set-groupby", _EDIT_ID,
-                "--column", "createdon", "--dategrouping", "month", "--no-publish"])
+                "--column", "createdon", "--dategrouping", "month",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         body = m.last_request.json()
         assert 'name="createdon"' in body["datadescription"]
@@ -303,7 +306,8 @@ class TestChartSetGroupbyCmd:
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "set-groupby", _EDIT_ID,
-                "--column", "new_priority", "--dategrouping", "month", "--no-publish"])
+                "--column", "new_priority", "--dategrouping", "month",
+                "--solution", "TestSol", "--no-publish"])
         assert result.exit_code != 0
         assert "date column" in result.output.lower()
 
@@ -316,7 +320,7 @@ class TestChartSetGroupbyCmd:
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
             result = CliRunner().invoke(cli, [
                 "--json", "chart", "set-groupby", _EDIT_ID,
-                "--column", "new_priority", "--no-publish"])
+                "--column", "new_priority", "--solution", "TestSol", "--no-publish"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["_dry_run"] is True

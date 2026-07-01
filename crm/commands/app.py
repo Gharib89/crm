@@ -31,9 +31,9 @@ def app_group():
 @_publish_option
 @pass_ctx
 def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
-               icon_webresource, solution, require_solution, publish):
+               icon_webresource, solution, publish):
     """Create a model-driven app."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         backend = ctx.backend()
@@ -46,7 +46,7 @@ def app_create(ctx: CLIContext, name, unique_name, description, if_exists,
             description=description, web_resource_id=web_resource_id,
             solution=solution, if_exists=if_exists, publish=publish,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, unique_name, info, solution=solution)
 
 
@@ -181,12 +181,12 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
 @_publish_option
 @pass_ctx
 def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
-                      unique_name, solution, require_solution, publish):
+                      unique_name, solution, publish):
     """Build a SiteMapXml from areas/groups/subareas and create the sitemap."""
     parsed_areas = [_parse_area(a) for a in areas]
     parsed_groups = [_parse_group(g) for g in groups]
     parsed_subareas = [_parse_subarea(s) for s in subareas]
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = app_mod.build_sitemap(
@@ -198,13 +198,9 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
     # full (and to stdout, so `> sitemap.xml` works) — the default emit path
     # would truncate it via _short_repr. JSON mode already carries the full XML.
     if info.get("_dry_run") and not ctx.json_mode:
-        # Warning to stderr (raw, bypassing skin.warning to skip its ⚠ icon) so
-        # stdout stays pure XML and `> sitemap.xml` produces a valid file.
-        if warning:
-            click.echo(warning, err=True)
         click.echo(info["sitemapxml"])
         return
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, sitemap_name, info, solution=solution)
 
 
@@ -217,14 +213,14 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
 @_solution_option
 @pass_ctx
 def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name,
-                    solution, require_solution):
+                    solution):
     """Create a sitemap from a SiteMapXml file."""
     with open(xml_file, "r", encoding="utf-8") as fh:
         xml = fh.read()
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = app_mod.set_sitemap(ctx.backend(), sitemap_name=sitemap_name,
                                    sitemap_xml=xml, unique_name=unique_name,
                                    solution=solution)
-    _emit_with_warning(ctx, info, warning)
+    _emit_with_warning(ctx, info, None)
     _journal(ctx, sitemap_name, info, solution=solution)

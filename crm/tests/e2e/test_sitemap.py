@@ -44,7 +44,7 @@ def _has(root: ET.Element, tag: str, node_id: str) -> bool:
 @covers("sitemap add-area", "sitemap add-group", "sitemap add-subarea",
         "sitemap move-node", "sitemap remove-node")
 @pytest.mark.slow
-def test_sitemap_live_edit_lifecycle(cli, unique):
+def test_sitemap_live_edit_lifecycle(cli, unique, ephemeral_solution):
     """Build a throwaway sitemap, then add/remove nav nodes over the live RMW
     path and assert each edit lands on the published layer (T3)."""
     name = f"E2E SiteMap {unique}"
@@ -54,28 +54,33 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
         "--area", "cwxarea:CWX Area",
         "--group", "cwxarea/cwxgrp:CWX Group",
         "--subarea", "cwxarea/cwxgrp:entity=account:Accounts",
-        "--unique-name", uniq, "--no-publish"]))
+        "--unique-name", uniq, "--no-publish",
+        "--solution", ephemeral_solution]))
     sitemap_id = created["sitemapid"]
     assert sitemap_id, created
 
     try:
         # add-area (publish → T3 read-back inside the verb)
         _data(cli(["--json", "sitemap", "add-area", sitemap_id,
-                   "--id", "cwx_ops", "--title", "Operations", "--publish"]))
+                   "--id", "cwx_ops", "--title", "Operations", "--publish",
+                   "--solution", ephemeral_solution]))
         # add-group under the new area
         _data(cli(["--json", "sitemap", "add-group", sitemap_id,
                    "--area", "cwx_ops", "--id", "cwx_opsgrp",
-                   "--title", "Ops Group", "--publish"]))
+                   "--title", "Ops Group", "--publish",
+                   "--solution", ephemeral_solution]))
         # add-subarea binding a real table (entity validated to exist live)
         _data(cli(["--json", "sitemap", "add-subarea", sitemap_id,
                    "--area", "cwx_ops", "--group", "cwx_opsgrp",
                    "--id", "cwx_opscontacts", "--entity", "contact",
-                   "--title", "Contacts", "--publish"]))
+                   "--title", "Contacts", "--publish",
+                   "--solution", ephemeral_solution]))
         # a second SubArea, so move-node has a sibling to reorder against
         _data(cli(["--json", "sitemap", "add-subarea", sitemap_id,
                    "--area", "cwx_ops", "--group", "cwx_opsgrp",
                    "--id", "cwx_opsaccts", "--entity", "account",
-                   "--title", "Accounts", "--publish"]))
+                   "--title", "Accounts", "--publish",
+                   "--solution", ephemeral_solution]))
 
         root = _sitemapxml(cli, sitemap_id)
         assert _has(root, "Area", "cwx_ops"), ET.tostring(root, "unicode")
@@ -96,7 +101,7 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
         # reorder contacts after accts.
         _data(cli(["--json", "sitemap", "move-node", sitemap_id,
                    "--id", "cwx_opscontacts", "--after", "cwx_opsaccts",
-                   "--publish"]))
+                   "--publish", "--solution", ephemeral_solution]))
         root = _sitemapxml(cli, sitemap_id)
         grp = next(g for g in root.iter("Group") if g.get("Id") == "cwx_opsgrp")
         order = [s.get("Id") for s in grp if s.tag == "SubArea"]
@@ -107,18 +112,21 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
 
         # tidy the extra SubArea before tearing down the rest
         _data(cli(["--json", "sitemap", "remove-node", sitemap_id,
-                   "--id", "cwx_opsaccts", "--publish"]))
+                   "--id", "cwx_opsaccts", "--publish",
+                   "--solution", ephemeral_solution]))
 
         # remove-node (publish → T3 asserts absence on the published layer)
         _data(cli(["--json", "sitemap", "remove-node", sitemap_id,
-                   "--id", "cwx_opscontacts", "--publish"]))
+                   "--id", "cwx_opscontacts", "--publish",
+                   "--solution", ephemeral_solution]))
         root = _sitemapxml(cli, sitemap_id)
         assert not _has(root, "SubArea", "cwx_opscontacts")
         assert _has(root, "Group", "cwx_opsgrp")  # parent survives
 
         # remove-node --comment-out (publish → soft-delete must stay well-formed)
         _data(cli(["--json", "sitemap", "remove-node", sitemap_id,
-                   "--id", "cwx_opsgrp", "--comment-out", "--publish"]))
+                   "--id", "cwx_opsgrp", "--comment-out", "--publish",
+                   "--solution", ephemeral_solution]))
         raw = _sitemap_raw(cli, sitemap_id)
         ET.fromstring(raw)  # the commented node round-trips (well-formed)
         assert not _has(ET.fromstring(raw), "Group", "cwx_opsgrp")  # not live
@@ -134,7 +142,7 @@ def test_sitemap_live_edit_lifecycle(cli, unique):
 # on both targets; CI runs it on each leg (union coverage).
 @covers("sitemap set-title", "sitemap set-description")
 @pytest.mark.slow
-def test_sitemap_set_localized_title_description(cli, unique):
+def test_sitemap_set_localized_title_description(cli, unique, ephemeral_solution):
     """Set a localized <Title>/<Description> on a nav node over the live RMW
     path and assert the published layer carries them in schema-valid element
     order (Titles → Descriptions → child nodes), one entry per LCID."""
@@ -145,7 +153,8 @@ def test_sitemap_set_localized_title_description(cli, unique):
         "--area", "cwxarea:CWX Area",
         "--group", "cwxarea/cwxgrp:CWX Group",
         "--subarea", "cwxarea/cwxgrp:entity=account:Accounts",
-        "--unique-name", uniq, "--no-publish"]))
+        "--unique-name", uniq, "--no-publish",
+        "--solution", ephemeral_solution]))
     sitemap_id = created["sitemapid"]
     assert sitemap_id, created
 
@@ -154,10 +163,11 @@ def test_sitemap_set_localized_title_description(cli, unique):
         # title + description on the Area (which has a Group child).
         _data(cli(["--json", "sitemap", "set-title", sitemap_id,
                    "--id", "cwxarea", "--lcid", "1033", "--title", "Sales L10n",
-                   "--publish"]))
+                   "--publish", "--solution", ephemeral_solution]))
         _data(cli(["--json", "sitemap", "set-description", sitemap_id,
                    "--id", "cwxarea", "--lcid", "1033",
-                   "--description", "Sales area", "--publish"]))
+                   "--description", "Sales area", "--publish",
+                   "--solution", ephemeral_solution]))
 
         area = next(a for a in _sitemapxml(cli, sitemap_id).iter("Area")
                     if a.get("Id") == "cwxarea")
@@ -174,7 +184,7 @@ def test_sitemap_set_localized_title_description(cli, unique):
         # re-setting the same LCID updates in place — no duplicate <Title>
         _data(cli(["--json", "sitemap", "set-title", sitemap_id,
                    "--id", "cwxarea", "--lcid", "1033", "--title", "Selling",
-                   "--publish"]))
+                   "--publish", "--solution", ephemeral_solution]))
         area = next(a for a in _sitemapxml(cli, sitemap_id).iter("Area")
                     if a.get("Id") == "cwxarea")
         assert [t.get("Title") for t in area.findall("Titles/Title")] == [

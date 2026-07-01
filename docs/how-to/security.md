@@ -88,10 +88,13 @@ CLI does not implement.
 ## Create a security role
 
 ```bash
-crm --json security create-role "Agent Read-Only" --yes
+crm --json security create-role "Agent Read-Only" --solution cwx_mysolution --yes
 ```
 
-`create-role` is confirmation-gated, so pass `--yes` in non-interactive /
+`--solution` is required — a role created without an explicit target solution
+would otherwise land only in the system Default Solution. Pass
+`--solution Default` for a deliberate Default-Solution-only write.
+`create-role` is also confirmation-gated, so pass `--yes` in non-interactive /
 automation contexts (under `--json`, a missing `--yes` aborts on a non-TTY).
 Creates a new security role with the given display name. The role is created in
 the caller's business unit by default (resolved from `WhoAmI`). Pass
@@ -102,7 +105,7 @@ The role starts with **no privileges**. Grant privileges immediately after with
 
 ```bash
 # Skip if a same-name role already exists in the same BU (returns the existing role id)
-crm --json security create-role "Agent Read-Only" --if-exists skip --yes
+crm --json security create-role "Agent Read-Only" --solution cwx_mysolution --if-exists skip --yes
 ```
 
 `--if-exists error` (default) raises an error if a role with the same name
@@ -112,17 +115,13 @@ the extra `existed: true` field) — making the call idempotent.
 
 A real run returns `{roleid, name, businessunitid}`. Pass `--dry-run` to
 preview the creation without writing — it returns a `{_dry_run, would_create}`
-preview instead (no role is created, so there is no `roleid`).
+preview instead (no role is created, so there is no `roleid`). `--solution` is
+still required under `--dry-run` — it is validated before any backend call.
 
 ### Add the role to a solution
 
-```bash
-crm --json security create-role "Agent Read-Only" --solution cwx_mysolution --yes
-```
-
 `--solution` sets `MSCRM.SolutionUniqueName` to place the new role in an
-unmanaged solution as a component. Use `--require-solution` to fail if no
-solution name resolves (from `--solution` or the profile default).
+unmanaged solution as a component.
 
 > **Note — `--if-exists skip` does not add to `--solution`.** When
 > `--if-exists skip` returns an existing same-name role, that role is reused
@@ -187,7 +186,7 @@ run for real.
 
 ```bash
 # 1. Create the role
-crm security create-role "Agent Read-Only"
+crm security create-role "Agent Read-Only" --solution cwx_mysolution --yes
 # 2. Grant read on everything at org depth (replace — fresh role, nothing to preserve)
 crm security set-role-privileges <roleid> \
     --access read --all-entities --depth organization --replace --yes

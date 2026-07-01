@@ -42,8 +42,13 @@ crm --json report get <id> | jq -r '.data.bodytext' > report.rdl
 ## Create a report from an RDL file
 
 ```bash
-crm report create --name "Sales Pipeline" --body-file pipeline.rdl
+crm report create --name "Sales Pipeline" --body-file pipeline.rdl --solution cwx_crmworx
 ```
+
+`--solution` is required on `create` and `set-category` — a component created
+without an explicit target solution would otherwise land only in the system
+Default Solution. Pass `--solution Default` for a deliberate
+Default-Solution-only write.
 
 The `--filename` defaults to the file's basename; override with
 `--filename "Custom Name.rdl"`. The server stores the RDL in `bodytext`
@@ -52,7 +57,7 @@ The `--filename` defaults to the file's basename; override with
 ## Create a link report
 
 ```bash
-crm report create --name "External Dashboard" --url "https://example.com/dash"
+crm report create --name "External Dashboard" --url "https://example.com/dash" --solution cwx_crmworx
 ```
 
 Registers the URL as a link report (`reporttypecode 3`, stored in `bodyurl`).
@@ -65,7 +70,7 @@ By default a newly created report is personal (`ispersonal=true`). Pass
 `--org` to make it available to the whole organization:
 
 ```bash
-crm report create --name "Sales Pipeline" --body-file pipeline.rdl --org
+crm report create --name "Sales Pipeline" --body-file pipeline.rdl --org --solution cwx_crmworx
 ```
 
 `--org` sets `ispersonal=false` on the `reports` record. This is the
@@ -81,33 +86,23 @@ crm entity update reports <id> --data '{"ispersonal":false}'
 
 ```bash
 crm report create --name "Pipeline" --body-file pipeline.rdl \
-    --description "SSRS report for sales pipeline by owner."
+    --description "SSRS report for sales pipeline by owner." --solution cwx_crmworx
 ```
-
-## Add the report to a solution
-
-```bash
-crm report create --name "Pipeline" --body-file pipeline.rdl \
-    --solution cwx_crmworx
-```
-
-Use `--require-solution` to fail if no solution name resolves (from
-`--solution` or the profile default). `set-category` also accepts `--solution`
-to scope the `reportcategory` record.
 
 ## File under a report area
 
 ```bash
-crm report set-category 1111aaaa-2222-bbbb-3333-cccccccccccc --category sales
+crm report set-category 1111aaaa-2222-bbbb-3333-cccccccccccc --category sales --solution cwx_crmworx
 ```
 
 Creates a `reportcategory` record linking the report to one of four areas:
 `sales`, `service`, `marketing`, or `administrative`. A report can be filed
-under more than one area by calling `set-category` multiple times. To remove a
-category, delete the `reportcategory` record directly:
+under more than one area by calling `set-category` multiple times (`--solution`
+scopes the `reportcategory` record and is required). To remove a category,
+delete the `reportcategory` record directly:
 
 ```bash
-crm --json report set-category <id> --category sales   # returns reportcategoryid
+crm --json report set-category <id> --category sales --solution cwx_crmworx   # returns reportcategoryid
 crm entity delete reportcategories <reportcategoryid> --yes
 ```
 
@@ -116,11 +111,12 @@ crm entity delete reportcategories <reportcategoryid> --yes
 `report create` honors the global `--dry-run` flag:
 
 ```bash
-crm --dry-run report create --name "Pipeline" --body-file pipeline.rdl --org
+crm --dry-run report create --name "Pipeline" --body-file pipeline.rdl --org --solution cwx_crmworx
 ```
 
 Returns `{_dry_run: true, would_create: {entity_set, body}}` with the fully
-resolved request body; no report is created.
+resolved request body; no report is created. `--solution` is still required
+under `--dry-run` — it is validated before any backend call.
 
 ## Delete a report
 

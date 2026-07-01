@@ -10,7 +10,7 @@ crm --json solution create-publisher --name crmworx --display CRMWorx --prefix c
   --option-value-prefix 30000 --if-exists skip
 crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
 ```
-Create both from the CLI before any metadata work ([#34](https://github.com/Gharib89/crm/issues/34)); with a named profile active they auto-wire `publisher_prefix=cwx` and `default_solution=CRMWorx`. `--if-exists skip` makes re-runs a no-op.
+Create both from the CLI before any metadata work ([#34](https://github.com/Gharib89/crm/issues/34)); `solution create-publisher` auto-wires `publisher_prefix=cwx` back onto the active named profile. `--if-exists skip` makes re-runs a no-op. Every customization-write command still needs its own `--solution <name>` — creating the solution here does not set a default; see `crm apply` / `crm metadata create-entity` / etc.
 
 ## List the components in a solution
 

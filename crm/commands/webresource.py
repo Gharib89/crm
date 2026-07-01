@@ -31,9 +31,9 @@ def webresource_group():
 @_publish_option
 @pass_ctx
 def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
-                       solution, require_solution, publish):
+                       solution, publish):
     """Create a web resource."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         wtype = wr_mod.resolve_webresourcetype(file, wr_type)
@@ -41,7 +41,7 @@ def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
         info = wr_mod.create_webresource(
             ctx.backend(), name=name, content=content, webresourcetype=wtype,
             display_name=display_name, solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning,
+    _emit_with_warning(ctx, info, None,
                        meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
@@ -55,16 +55,16 @@ def webresource_create(ctx: CLIContext, name, file, display_name, wr_type,
 @_publish_option
 @pass_ctx
 def webresource_update(ctx: CLIContext, name, file, display_name,
-                       solution, require_solution, publish):
+                       solution, publish):
     """Update a web resource by name (content and/or display name)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     content = Path(file).read_bytes() if file else None
     with d365_errors(ctx):
         info = wr_mod.update_webresource(
             ctx.backend(), name, content=content, display_name=display_name,
             solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning,
+    _emit_with_warning(ctx, info, None,
                        meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
@@ -110,7 +110,7 @@ def _validate_prefix(_ctx, _param, value):
 @_publish_option
 @pass_ctx
 def webresource_push(ctx: CLIContext, directory, prefix, solution,
-                     require_solution, publish):
+                     publish):
     """Walk DIRECTORY and upsert every file as a web resource, publishing once.
 
     The filesystem is the source of truth: a missing resource is created, a
@@ -122,7 +122,7 @@ def webresource_push(ctx: CLIContext, directory, prefix, solution,
     For a continuous redeploy loop, pair with a file watcher, e.g.
     `find webresources -name '*.js' | entr crm webresource push webresources --prefix cwx`.
     """
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         res = wr_mod.push_webresources(
@@ -133,7 +133,7 @@ def webresource_push(ctx: CLIContext, directory, prefix, solution,
     if res["failed"]:
         error = f"{len(res['failed'])} file(s) failed — " + "; ".join(
             f"{e['name']}: {e['error']}" for e in res["failed"])
-    warnings = [warning] if warning else None
+    warnings = None
     meta = ctx.staged_meta()
     if ctx.json_mode:
         ctx.emit(ok, data=res, error=error, meta=meta, warnings=warnings)

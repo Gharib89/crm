@@ -37,7 +37,7 @@ def test_dup_list(cli):
 @covers("dup create", "dup add-condition", "dup publish", "dup unpublish",
         "dup check", "dup get")
 @pytest.mark.slow
-def test_dup_lifecycle(backend, cli, request, unique):
+def test_dup_lifecycle(backend, cli, request, unique, ephemeral_solution):
     """Build a rule on account, publish it, check a candidate, then clean up."""
     name = f"E2E Dup {unique}"
     created_id: list[str] = []
@@ -57,7 +57,10 @@ def test_dup_lifecycle(backend, cli, request, unique):
     request.addfinalizer(_cleanup)
 
     # create (unpublished)
-    result = cli(["--json", "dup", "create", "account", "--name", name])
+    result = cli([
+        "--json", "dup", "create", "account", "--name", name,
+        "--solution", ephemeral_solution,
+    ])
     assert result.returncode == 0, (
         f"dup create failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -70,6 +73,7 @@ def test_dup_lifecycle(backend, cli, request, unique):
     # add-condition (name exact-match)
     result = cli([
         "--json", "dup", "add-condition", rid, "--attr", "name", "--operator", "exact",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"dup add-condition failed:\n{result.stderr}\nstdout: {result.stdout}"

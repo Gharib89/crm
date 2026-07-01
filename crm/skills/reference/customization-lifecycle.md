@@ -18,8 +18,8 @@ updates.
 Canonical order; each step's detail lives in the linked file:
 
 1. **Publisher + solution first.** `solution create-publisher`, then `solution create` —
-   every component you author next inherits the publisher prefix and lands in this
-   solution. → `reference/solutions.md`
+   name this solution explicitly (`--solution <unique_name>`) on every component you
+   author next; nothing inherits it automatically. → `reference/solutions.md`
 2. **Author schema.** Tables, columns, option sets, relationships — declaratively with
    `apply -f` / `scaffold table`, or imperatively with the `metadata create-*` verbs.
    → `reference/authoring.md`, `reference/metadata.md`
@@ -38,16 +38,22 @@ its assembly registered and its type confirmed first. The sibling files call out
 
 ## Cross-cutting disciplines (the things that bite)
 
-**1 — Publisher + solution before anything.** With a named profile active,
-`create-publisher` / `create` auto-wire `publisher_prefix` + `default_solution` into the
-profile, so every `metadata create-*` afterward targets the right prefix/solution without
-repeating `--solution`. Skip this and components fall into the default solution with the
-wrong prefix and can't be cleanly exported.
+**1 — `--solution <unique_name>` is mandatory on every customization write.** There is no
+profile default and no opt-out: omit it and the command exits 2 before touching the
+backend (even under `--dry-run`) with "`--solution is required for customization writes`".
+This spans every domain in the shape above — `metadata create-*`/`update-*`/`delete-*`,
+`apply` (a spec-level `solution:` block, not a flag — discipline 5), `scaffold table`,
+`webresource`, `form`, `view`, `chart`, `dashboard`, `sitemap`, `app`, `plugin
+register-*`/`update-step-*`, `sla`, `report`, `connectionrole`, `dup`, `fieldsec`,
+`security create-role`, `ribbon`, `workflow clone`. Pass `--solution Default` for a
+deliberate Default-Solution-only write. With a named profile active,
+`solution create-publisher` still auto-wires `publisher_prefix` onto it (schema-name
+derivation only) — that does not cover the solution target.
 
-**2 — Thread `--solution` for components that don't auto-wire.** `webresource`, `plugin
-register-assembly`, `app`, and friends take `--solution <unique_name>` to drop the
-component into your solution; omitting it strands it in the Default solution, outside your
-export. (The `metadata` verbs already honor the profile default from discipline 1.)
+**2 — Publisher + solution before anything.** `solution create-publisher`, then
+`solution create`, before authoring any component — then pass that solution's unique name
+on every write in discipline 1. Skip this and there is nowhere valid to point `--solution`
+at.
 
 **3 — Stage many, publish once.** Each `metadata create/update` auto-publishes, and a
 publish is slow and disruptive. Across a batch, set `--stage-only` (or `CRM_STAGE_ONLY=1`)
@@ -63,7 +69,10 @@ rather than trusting an immediate read. → `reference/metadata.md`
 up a whole table idempotently in dependency order with a single publish — re-applying an
 unchanged spec is a no-op, and `metadata export-spec` round-trips a live entity back into
 a spec for the next environment. Use the imperative `metadata create-*` verbs for a single
-targeted change to an existing table. → `reference/authoring.md`
+targeted change to an existing table. `apply`'s mandatory solution target (discipline 1)
+is a top-level `solution: {unique_name: ...}` block in the spec itself, not a `--solution`
+flag; `metadata export-spec --solution <name>` bakes that block in on export.
+→ `reference/authoring.md`
 
 **6 — `--dry-run` first on every write.** Reads still fire under dry-run, so a preview
 reports live facts (`_exists`, `would_skip`) not guesses; `meta.dry_run: true` flags it.

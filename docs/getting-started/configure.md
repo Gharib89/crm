@@ -45,12 +45,16 @@ registration needs an **application user** with a security role in Dynamics. The
 bearer token is cached under `~/.crm/` (`0600`) and reused until it expires;
 username / password / domain are not used in this mode.
 
-Attach a default solution and schema-name prefix so metadata write commands target
-them without per-command flags:
+Attach a schema-name prefix so scaffolding and column-name derivation don't need
+a per-command flag:
 
 ```bash
-crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
+crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
+
+There is no profile default for the target **solution** — every
+customization-write command requires its own explicit `--solution
+<unique_name>` (see [How-to: profile](../how-to/profile.md)).
 
 ## How the secret is stored
 

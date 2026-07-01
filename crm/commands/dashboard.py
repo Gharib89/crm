@@ -88,17 +88,17 @@ def _layout_options(fn):
 def dashboard_add_chart(
     ctx: CLIContext, dashboard_id: str, view: str, chart: str,
     tab: str | None, section: str | None, rowspan: int, colspan: int,
-    force: bool, solution: str | None, require_solution: bool, publish: bool,
+    force: bool, solution: str | None, publish: bool,
 ) -> None:
     """Add a chart tile (ChartGrid) to dashboard DASHBOARD_ID's FormXml."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_chart_to_dashboard(
             ctx.backend(), dashboard_id, view=view, chart=chart,
             tab=tab, section=section, rowspan=rowspan, colspan=colspan,
             force=force, solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, dashboard_id, info, solution=solution)
 
 
@@ -120,10 +120,10 @@ def dashboard_add_view(
     ctx: CLIContext, dashboard_id: str, view: str, mode: str,
     records_per_page: int, tab: str | None, section: str | None,
     rowspan: int, colspan: int, force: bool,
-    solution: str | None, require_solution: bool, publish: bool,
+    solution: str | None, publish: bool,
 ) -> None:
     """Add a view-only grid tile (ChartGrid) to dashboard DASHBOARD_ID's FormXml."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_view_to_dashboard(
@@ -131,7 +131,7 @@ def dashboard_add_view(
             records_per_page=records_per_page, tab=tab, section=section,
             rowspan=rowspan, colspan=colspan, force=force,
             solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, dashboard_id, info, solution=solution)
 
 
@@ -153,7 +153,7 @@ def dashboard_add_iframe(
     ctx: CLIContext, dashboard_id: str, url: str, security: bool,
     scrolling: bool, border: bool, pass_parameters: bool,
     tab: str | None, section: str | None, rowspan: int, colspan: int,
-    force: bool, solution: str | None, require_solution: bool, publish: bool,
+    force: bool, solution: str | None, publish: bool,
 ) -> None:
     """Add an IFRAME tile to dashboard DASHBOARD_ID's FormXml."""
     # A blank-ish --url (Click's required=True still admits '' / '   ') is a usage
@@ -161,7 +161,7 @@ def dashboard_add_iframe(
     url = (url or "").strip()
     if not url:
         raise click.UsageError("--url must be a non-empty URL.")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_iframe_to_dashboard(
@@ -169,7 +169,7 @@ def dashboard_add_iframe(
             scrolling=scrolling, border=border, pass_parameters=pass_parameters,
             tab=tab, section=section, rowspan=rowspan, colspan=colspan,
             force=force, solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, dashboard_id, info, solution=solution)
 
 
@@ -184,7 +184,7 @@ def dashboard_add_iframe(
 def dashboard_add_webresource(
     ctx: CLIContext, dashboard_id: str, webresource: str,
     tab: str | None, section: str | None, rowspan: int, colspan: int,
-    force: bool, solution: str | None, require_solution: bool, publish: bool,
+    force: bool, solution: str | None, publish: bool,
 ) -> None:
     """Add a web-resource tile to dashboard DASHBOARD_ID's FormXml."""
     # As with --url: a blank-ish --webresource is a usage error here (exit 2),
@@ -192,7 +192,7 @@ def dashboard_add_webresource(
     webresource = (webresource or "").strip()
     if not webresource:
         raise click.UsageError("--webresource must be a non-empty id or name.")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.add_webresource_to_dashboard(
@@ -201,7 +201,7 @@ def dashboard_add_webresource(
             force=force, solution=solution, publish=publish)
     # fold a not-form-enabled advisory into the warnings channel
     wr_warning = info.pop("warning", None) if isinstance(info, dict) else None
-    combined = "; ".join(w for w in (warning, wr_warning) if w) or None
+    combined = wr_warning
     _emit_with_warning(ctx, info, combined, meta=ctx.staged_meta())
     _journal(ctx, dashboard_id, info, solution=solution)
 
@@ -224,7 +224,7 @@ def dashboard_add_webresource(
 def dashboard_remove_component(
     ctx: CLIContext, dashboard_id: str, cell_id: str | None, index: int | None,
     view: str | None, chart: str | None, url: str | None,
-    solution: str | None, require_solution: bool, publish: bool,
+    solution: str | None, publish: bool,
 ) -> None:
     """Remove one component from dashboard DASHBOARD_ID, selected by exactly one
     of --cell-id / --index / --view / --chart / --url."""
@@ -239,14 +239,14 @@ def dashboard_remove_component(
     if sum(1 for v in (cell_id, index, view, chart, url) if v is not None) != 1:
         raise click.UsageError(
             "Provide exactly one of --cell-id, --index, --view, --chart or --url.")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.remove_component_from_dashboard(
             ctx.backend(), dashboard_id, cell_id=cell_id, index=index,
             view=view, chart=chart, url=url,
             solution=solution, publish=publish)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, dashboard_id, info, solution=solution)
 
 
@@ -269,7 +269,6 @@ def dashboard_create(
     description: str | None,
     interactive: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Create an organization-owned system dashboard from a FormXml file."""
@@ -280,7 +279,7 @@ def dashboard_create(
             "Omit --interactive to create a standard system dashboard (type-0).")
 
     formxml = _read_file(formxml_file)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
 
     with d365_errors(ctx):
@@ -292,5 +291,5 @@ def dashboard_create(
             solution=solution,
             publish=publish,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)

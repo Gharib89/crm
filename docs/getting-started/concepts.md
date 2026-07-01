@@ -30,11 +30,14 @@ directory.
 ## Solution and publisher prefix
 
 In Dynamics, customizations belong to a **solution**, and new schema names carry a
-**publisher prefix** (e.g. `cwx_caseid`). Metadata-write commands need both. Attach
-defaults to a profile so you don't pass them every time:
+**publisher prefix** (e.g. `cwx_caseid`). Every customization-write command
+requires its own explicit `--solution <unique_name>` — there is no profile
+default and no opt-out, so an accidental write can never silently land only in
+the system Default Solution. Attach a publisher prefix to a profile so you
+don't pass it every time:
 
 ```bash
-crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
+crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
 
 See [Configure & switch](configure.md) for the full field reference.

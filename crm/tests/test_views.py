@@ -1092,7 +1092,8 @@ class TestViewCommand:
             "--json", "view", "create", "cwx_ticket",
             "--name", "Active Tickets", "--otc", "10042",
             "--column", "cwx_name:220", "--column", "cwx_priority:120",
-            "--order", "cwx_name", "--filter-active", "--no-publish",
+            "--order", "cwx_name", "--filter-active",
+            "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["entity"] == "cwx_ticket"
@@ -1112,7 +1113,8 @@ class TestViewCommand:
         result = CliRunner().invoke(cli, [
             "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
             "--column", "cwx_name:220", "--query-type", "quick-find",
-            "--description", "Quick find columns", "--no-publish",
+            "--description", "Quick find columns",
+            "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["query_type"] == "quick-find"
@@ -1128,7 +1130,7 @@ class TestViewCommand:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
-            "--column", "cwx_name:220", "--no-publish",
+            "--column", "cwx_name:220", "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["query_type"] == "public"
@@ -1154,7 +1156,8 @@ class TestViewCommand:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
-            "--column", "cwx_name:220", "--order", "createdon desc", "--no-publish",
+            "--column", "cwx_name:220", "--order", "createdon desc",
+            "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["order_by"] == "createdon"
@@ -1170,7 +1173,8 @@ class TestViewCommand:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
-            "--column", "cwx_name:220", "--order", "createdon", "--no-publish",
+            "--column", "cwx_name:220", "--order", "createdon",
+            "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["order_by"] == "createdon"
@@ -1199,7 +1203,7 @@ class TestViewCommand:
         result = CliRunner().invoke(cli, [
             "--json", "view", "add-filter", "cwx_ticket", "Active Tickets",
             "--condition", "cwx_status eq 1", "--condition", "cwx_amount between 5 9",
-            "--type", "or", "--no-publish",
+            "--type", "or", "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["conditions"] == [
@@ -1216,7 +1220,7 @@ class TestViewCommand:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "view", "remove-filter", "cwx_ticket", "Active Tickets",
-            "--condition", "statecode eq", "--no-publish",
+            "--condition", "statecode eq", "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["conditions"] == [("statecode", "eq", [])]
@@ -1231,7 +1235,7 @@ class TestViewCommand:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, [
             "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
-            "--column", " cwx_name : 220 ", "--no-publish",
+            "--column", " cwx_name : 220 ", "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 0, result.output
         assert captured["columns"] == [("cwx_name", 220)]
