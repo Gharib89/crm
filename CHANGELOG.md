@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.46.1 (2026-07-01)
+
+### Bug Fixes
+
+- Flag clamped --count and signal more rows on a capped query page
+  ([#635](https://github.com/Gharib89/crm/pull/635),
+  [`06746c7`](https://github.com/Gharib89/crm/commit/06746c7d89140ac03cad0839473e39f83b033f90))
+
+
 ## v1.46.0 (2026-07-01)
 
 ### Features
