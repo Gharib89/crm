@@ -100,7 +100,6 @@ def _load_solution_ribbon_diff(ctx: CLIContext, solution: str, entity: str):
 def ribbon_list(ctx: CLIContext, entity, solution):
     """List the custom buttons declared in a solution's RibbonDiffXml."""
     solution, warning = _resolve_solution(ctx, solution)
-    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     if ctx.dry_run:
         with d365_errors(ctx):
             with tempfile.TemporaryDirectory() as td:
@@ -151,7 +150,6 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
                       function, param, sequence, id_base, solution):
     """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
     solution, warning = _resolve_solution(ctx, solution)
-    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     try:
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
     except (D365Error, ValueError) as exc:
@@ -196,7 +194,6 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
 def ribbon_remove(ctx, entity, button_id, yes, solution):
     """Remove a custom button (CustomAction + its CommandDefinition)."""
     solution, warning = _resolve_solution(ctx, solution)
-    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     _confirm_destructive(ctx, "ribbon button", button_id, yes)
 
     def mutate(cust_root):
@@ -250,7 +247,6 @@ def ribbon_set_label(ctx, entity, button_id, label, tooltip_title,
     --lcid the text is set inline. Text is XML-escaped automatically.
     """
     solution, warning = _resolve_solution(ctx, solution)
-    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
     if label is None and tooltip_title is None and tooltip_description is None:
         raise click.UsageError(
@@ -321,7 +317,6 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
     which is irreversible without a new solution version and is gated behind --yes.
     """
     solution, warning = _resolve_solution(ctx, solution)
-    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
 
     # T2: resolve --target-id in the live composed ribbon; a typo must error here,
@@ -405,7 +400,6 @@ def ribbon_set_rules(ctx, entity, command_id, enable_rules, display_rules,
     if not enable_rules and not display_rules:
         raise click.UsageError("pass at least one --enable-rule or --display-rule")
     solution, warning = _resolve_solution(ctx, solution)
-    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
     try:
         ribbon_mod.validate_rule_ids(enable_rules, kind="enable")
@@ -463,7 +457,6 @@ def ribbon_add_custom_rule(ctx, entity, command_id, webresource, function,
     CommandDefinition Id is never touched.
     """
     solution, warning = _resolve_solution(ctx, solution)
-    assert solution is not None  # require=True: _resolve_solution raised on no-resolve
     publish = _resolve_publish(ctx, publish)
     try:
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
