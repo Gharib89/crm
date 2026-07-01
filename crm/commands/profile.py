@@ -347,7 +347,13 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     if tenant_id is not None: p.tenant_id = tenant_id
     if client_id is not None: p.client_id = client_id
     if api_version is not None: p.api_version = api_version
-    if publisher_prefix is not None: p.publisher_prefix = publisher_prefix
+    if publisher_prefix is not None:
+        from crm.core.solution import validate_customization_prefix
+        try:
+            validate_customization_prefix(publisher_prefix)
+        except D365Error as exc:
+            raise click.UsageError(str(exc)) from exc
+        p.publisher_prefix = publisher_prefix
     # Fail fast on an edit that leaves the profile unusable, rather than letting
     # it surface later as a confusing backend-build error.
     if not p.url:
@@ -403,7 +409,7 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
     try:
         validate_profile_name(new_name)
     except D365Error as exc:
-        ctx.emit(False, error=str(exc))
+        _handle_d365_error(ctx, exc)
         return
 
     profiles = session_mod.list_profiles()
@@ -411,7 +417,7 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
         _handle_d365_error(ctx, D365Error(f"Profile {old_name!r} not found."))
         return
     if new_name in profiles:
-        ctx.emit(False, error=(
+        _handle_d365_error(ctx, D365Error(
             f"Profile {new_name!r} already exists; "
             "choose a different name or remove it first."
         ))
@@ -420,8 +426,12 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
     # ── 2. Profile file + active-session pointer ─────────────────────────
     try:
         pointer_updated = session_mod.rename_profile(old_name, new_name, ctx.session_name)
-    except (FileNotFoundError, FileExistsError, D365Error) as exc:
-        ctx.emit(False, error=str(exc))
+    except (OSError, ValueError, D365Error) as exc:
+        # OSError covers FileNotFoundError/FileExistsError (both raised by
+        # rename_profile) plus a permissions failure; ValueError covers a
+        # corrupt profile file (json.JSONDecodeError is a subclass) — none of
+        # these should crash the CLI with a traceback.
+        _handle_d365_error(ctx, exc if isinstance(exc, D365Error) else D365Error(str(exc)))
         return
 
     # Sync the in-memory context when the active pointer moved.
@@ -430,12 +440,15 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
         ctx.invalidate_backend()
 
     # ── 3. Keyring — best-effort ─────────────────────────────────────────
+    # Uses the _or_raise variants (unlike get_secret/delete_secret elsewhere in
+    # this file) so a flaky/locked backend on the read or delete side surfaces
+    # the warning below instead of silently looking like "nothing was stored".
     warnings = []
     try:
-        secret = keyring_store.get_secret(old_name)
+        secret = keyring_store.get_secret_or_raise(old_name)
         if secret is not None:
             keyring_store.set_secret(new_name, secret)
-            keyring_store.delete_secret(old_name)
+            keyring_store.delete_secret_or_raise(old_name)
     except D365Error as exc:
         warnings.append(
             f"Keyring update failed ({exc}); run "
@@ -452,9 +465,15 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
     except Exception:
         pass  # disposable read-through cache; silent best-effort
 
+    # meta.profile reflects the active profile after this command runs — mirrors
+    # profile_add (which sets it because it unconditionally activates). A rename
+    # of a non-active profile leaves the active pointer untouched, so report
+    # whatever it currently is rather than the just-renamed NEW_NAME.
+    active_profile = new_name if pointer_updated else \
+        session_mod.load_session(ctx.session_name).get("active_profile")
     ctx.emit(True, data={"old": old_name, "new": new_name,
                          "active_updated": pointer_updated},
-             meta={"profile": new_name},
+             meta={"profile": active_profile},
              warnings=warnings or None)
 
 

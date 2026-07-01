@@ -429,6 +429,7 @@ class TestRename:
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["data"]["active_updated"] is True
+        assert payload["meta"]["profile"] == "bravo"
         assert session_mod.load_session("default")["active_profile"] == "bravo"
 
     def test_rename_does_not_touch_session_when_old_is_not_active(self, crm_home):
@@ -441,6 +442,8 @@ class TestRename:
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         assert payload["data"]["active_updated"] is False
+        # meta.profile must reflect the still-active 'other', not the renamed 'bravo'.
+        assert payload["meta"]["profile"] == "other"
         # active pointer must still be 'other'
         assert session_mod.load_session("default")["active_profile"] == "other"
 
@@ -464,6 +467,20 @@ class TestRename:
         payload = json.loads(result.output)
         assert payload["ok"] is False
         assert "ghost" in payload["error"]
+
+    def test_rename_moves_cache_dir(self, crm_home):
+        _seed_profile("alpha")
+        cache_dir = session_mod._state_root() / "cache" / "alpha"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "marker.json").write_text("{}", encoding="utf-8")
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "alpha", "bravo"])
+        assert result.exit_code == 0, result.output
+
+        new_cache_dir = session_mod._state_root() / "cache" / "bravo"
+        assert not cache_dir.exists()
+        assert (new_cache_dir / "marker.json").is_file()
 
     def test_rename_invalid_new_name_errors_before_any_mutation(self, crm_home):
         _seed_profile("alpha")
@@ -502,6 +519,19 @@ class TestRenameSessionHelper:
         _seed_profile("a"); _seed_profile("b")
         with pytest.raises(FileExistsError, match="b"):
             session_mod.rename_profile("a", "b")
+
+    def test_helper_drops_legacy_default_solution_key(self, crm_home):
+        """A pre-#623 profile carrying `default_solution` loads fine and drops
+        the key on next save — renaming counts as a save (session.py:233)."""
+        _seed_profile("legacy")
+        raw = json.loads(session_mod.profile_path("legacy").read_text(encoding="utf-8"))
+        raw["default_solution"] = "MySolution"
+        session_mod.profile_path("legacy").write_text(json.dumps(raw), encoding="utf-8")
+
+        session_mod.rename_profile("legacy", "modern")
+
+        new_raw = json.loads(session_mod.profile_path("modern").read_text(encoding="utf-8"))
+        assert "default_solution" not in new_raw
 
 
 class TestPublisherPrefixValidation:

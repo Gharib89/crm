@@ -87,6 +87,19 @@ def get_secret(profile_name: str) -> str | None:
         return None
 
 
+def get_secret_or_raise(profile_name: str) -> str | None:
+    """Like get_secret, but a flaky/locked backend raises D365Error instead of
+    soft-failing to None. Used by callers (profile rename) that must tell "no
+    secret was ever stored" apart from "the backend errored reading it" so they
+    can surface a recovery-hint warning instead of silently skipping migration."""
+    if not is_available():
+        return None
+    try:
+        return _import_keyring().get_password(KEYRING_SERVICE, profile_name)
+    except Exception as exc:
+        raise D365Error(f"Keyring read failed: {exc}") from exc
+
+
 def set_secret(profile_name: str, secret: str) -> None:
     """Store the secret. Hard error if keyring is unavailable — the caller asked
     for keyring storage explicitly (--store-password)."""
@@ -107,6 +120,21 @@ def set_secret(profile_name: str, secret: str) -> None:
             f"Failed to store the secret in the OS keyring: {exc}. Use "
             "--store-password-plaintext, or env vars, instead."
         ) from exc
+
+
+def delete_secret_or_raise(profile_name: str) -> bool:
+    """Like delete_secret, but a flaky/locked backend raises D365Error instead of
+    soft-failing to False. See get_secret_or_raise."""
+    if not is_available():
+        return False
+    kr = _import_keyring()
+    try:
+        if kr.get_password(KEYRING_SERVICE, profile_name) is None:
+            return False
+        kr.delete_password(KEYRING_SERVICE, profile_name)
+        return True
+    except Exception as exc:
+        raise D365Error(f"Keyring delete failed: {exc}") from exc
 
 
 def delete_secret(profile_name: str) -> bool:

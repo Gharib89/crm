@@ -218,7 +218,7 @@ def rename_profile(
         FileExistsError   — NEW already exists (refuse to clobber).
         D365Error         — NEW fails ``validate_profile_name``.
     """
-    from crm.utils.d365_backend import validate_profile_name
+    from crm.utils.d365_backend import ConnectionProfile, validate_profile_name
 
     validate_profile_name(new_name)  # raises D365Error on bad name
 
@@ -230,15 +230,24 @@ def rename_profile(
     if new_path.exists():
         raise FileExistsError(f"Profile {new_name!r} already exists; refusing to clobber")
 
-    # Read the raw payload (preserves _secret and any future keys).
+    # Read the raw payload for the opt-in plaintext _secret (never part of
+    # ConnectionProfile), then round-trip the profile fields through
+    # from_dict/to_dict — mirrors save_profile() and, like every other
+    # mutation, drops any legacy key (e.g. a pre-#623 `default_solution`)
+    # ConnectionProfile no longer knows about, instead of carrying it along.
     with old_path.open("r", encoding="utf-8") as fh:
-        payload: dict[str, Any] = json.load(fh)
+        raw: dict[str, Any] = json.load(fh)
+    secret = raw.get("_secret")
 
-    payload["name"] = new_name
+    profile = ConnectionProfile.from_dict(raw)
+    profile.name = new_name
+    payload = profile.to_dict()
+    if secret is not None:
+        payload["_secret"] = secret
 
     _atomic_write_json(new_path, payload)
     # Mirror save_profile: re-enforce 0600 when a plaintext secret rides along.
-    if payload.get("_secret") is not None and os.name == "posix":
+    if secret is not None and os.name == "posix":
         os.chmod(new_path, 0o600)
     old_path.unlink()
 
