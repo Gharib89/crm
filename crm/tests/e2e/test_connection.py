@@ -16,10 +16,9 @@ def test_whoami_returns_identity(backend, cli):
     assert len(result["UserId"]) >= 36  # GUID-ish
 
     # CLI --json: enriched data shape and connection identity on meta (#624).
-    import json as _json
     proc = cli(["--json", "connection", "whoami"])
     assert proc.returncode == 0
-    env = _json.loads(proc.stdout)
+    env = json.loads(proc.stdout)
     assert env["ok"] is True
     data = env["data"]
     # Original GUIDs still present.

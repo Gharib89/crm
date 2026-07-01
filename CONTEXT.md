@@ -29,7 +29,9 @@ every **success** envelope from a command that resolved a backend connection —
 `meta.profile` (the resolved profile name, reflecting any per-run `--profile`
 override) and `meta.url` (the resolved Web API base URL,
 e.g. `http://host/org/api/data/v9.1/`). Injected once at the central emit
-chokepoint; the caller never sets them. Gating rules: (1) success envelopes only
+chokepoint, not hand-set per command; where a command does pass its own
+`meta.profile` (`profile add`), the gate below excludes that envelope, so
+injection never overwrites it. Gating rules: (1) success envelopes only
 — error envelopes keep their reserved `{status, code, category, retryable}` meta
 shape unchanged; (2) a backend must have been resolved *this command* —
 `connection_resolved` is reset per invocation so a subsequent REPL line over a
