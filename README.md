@@ -379,7 +379,7 @@ under the single normalized key `_entity_id` (with `_entity_id_url`) on
 across commands.
 
 `query odata` follows `@odata.nextLink` automatically when you opt in: `--all`
-merges every page into one `data` array (no `meta.next_link` in the result); `--max-records N` follows pages only until N rows are collected and caps the array there. When `--max-records` truncated the result (more rows existed), `meta.truncated: true` appears in the envelope. Default (neither flag) is unchanged: one server page, `meta.next_link` present when more pages exist.
+merges every page into one `data` array (no `meta.next_link` in the result); `--max-records N` follows pages only until N rows are collected and caps the array there. When `--max-records` truncated the result (more rows existed), `meta.truncated: true` appears in the envelope. Default (neither flag) is unchanged: one server page, `meta.next_link` present when more pages exist — that default single page also sets `meta.has_more: true` and adds a `meta.warnings` advisory to use `--all`/`--max-records`; a `--count` that lands exactly on the server's 5000-row cap alongside a cursor gets a second warning that the count is a clamped lower bound. `query odata|fetchxml|saved|user` all share this behavior. A read that fits in one page gets neither signal.
 
 Errors come back as `{"ok": false, "error": "...", "meta": {"status": 404, "code": "...", "category": "not_found", "retryable": false}}`.
 `meta.category` is a closed enum (`not_found`, `auth_failed`, `forbidden`,

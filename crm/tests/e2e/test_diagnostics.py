@@ -74,6 +74,52 @@ def test_query_odata_contacts(cli):
     assert isinstance(env["data"], list)
 
 
+@covers("query odata")
+def test_query_odata_default_page_with_more_rows_is_self_describing(cli):
+    """A default (non-`--all`) read that leaves a live `@odata.nextLink` cursor
+    sets `meta.has_more: true` and warns to use `--all`/`--max-records` (#626,
+    #625). `--page-size 1` forces a cursor cheaply — no need for a huge table —
+    as long as contacts has at least 2 rows on this org."""
+    count_env = json.loads(cli(["--json", "query", "count", "contact"]).stdout)
+    if count_env["data"]["count"] < 2:
+        pytest.skip("contacts has fewer than 2 rows on this org; cannot force a cursor")
+
+    r = cli(["--json", "query", "odata", "contacts", "--select", "fullname",
+             "--page-size", "1"])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"] is True
+    assert env["meta"].get("has_more") is True
+    assert any("more rows exist" in w for w in env["meta"]["warnings"])
+
+
+@covers("query odata")
+def test_query_odata_count_clamped_at_server_ceiling_warns(cli):
+    """A `--count` that lands exactly on the server's 5000-row standard-table
+    ceiling alongside a live cursor is flagged as a clamped lower bound, not an
+    exact total (#626). Needs a table with >5000 rows reachable on this org;
+    skips with instructions when none is known to qualify."""
+    for entity_set, logical in (("contacts", "contact"), ("accounts", "account")):
+        count_env = json.loads(cli(["--json", "query", "count", logical]).stdout)
+        if count_env["data"]["count"] > 5000:
+            # No `--top`: `$top` is a hard limit that suppresses `@odata.nextLink`,
+            # which the clamp signal keys on. `--page-size 1` keeps the page cheap
+            # while still leaving a live cursor.
+            r = cli(["--json", "query", "odata", entity_set, "--count",
+                      "--page-size", "1"])
+            assert r.returncode == 0, r.stderr
+            env = json.loads(r.stdout)
+            assert env["ok"] is True
+            if env["meta"].get("count") == 5000 and env["meta"].get("has_more"):
+                assert any("clamped at 5000" in w for w in env["meta"]["warnings"])
+                return
+    pytest.skip(
+        "no reachable table with >5000 rows on this org to exercise the "
+        "server $count clamp; seed one (e.g. bulk-import >5000 contacts) to "
+        "run this assertion live"
+    )
+
+
 # ── query saved / query user (self-seeded) ─────────────────────────────────────
 #
 # Both verbs need a stored query to execute. A bare test org has none, so rather

@@ -82,6 +82,17 @@ Default behaviour (neither flag) is **byte-identical** to pre-flag behaviour:
 one server page is returned, `meta.next_link` is present when more pages exist.
 Use `--page-size` to control how many rows the server puts on each page.
 
+**Self-describing single page.** When the default (non-`--all`) read comes back
+with a `meta.next_link` cursor, the envelope also sets `meta.has_more: true` and
+appends a `meta.warnings` advisory ("Returned one server page; more rows exist —
+use --all or --max-records to enumerate."). If `--count` was requested and the
+returned `meta.count` lands exactly on the server's standard-table ceiling of
+5000 while a cursor is present, a second warning flags that count as a clamped
+lower bound, not an exact total — use `query count` or `--all` to get the real
+number. A query that fits in a single page (no cursor) gets neither `has_more`
+nor a warning, and an honest small `--count` is unaffected. This applies to
+`query odata`, `query fetchxml`, `query saved`, and `query user` alike.
+
 ## Strip annotations for token-efficient JSON (`--minimal`)
 
 ```bash

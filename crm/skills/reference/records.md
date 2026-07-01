@@ -52,6 +52,16 @@ the follow reached exhaustion before the cap.  A valid resume cursor cannot be
 synthesised after a capped follow — if you need to paginate manually, use the
 default single-page behaviour and thread `meta.next_link` yourself.
 
+**Default single page is self-describing.** When neither flag is passed and the
+server still returns a `meta.next_link` cursor, the envelope also sets
+`meta.has_more: true` and adds a `meta.warnings` entry telling you to reach for
+`--all`/`--max-records` — don't mistake a single page for the whole result set.
+If `--count` was on that same request and `meta.count` lands exactly on the
+server's 5000-row ceiling, a second warning flags it as a clamped lower bound,
+not the true total (see `query count` below for an exact/whole-table figure).
+No cursor, no `--count` at the ceiling → neither signal fires. Same behaviour on
+`query odata/fetchxml/saved/user`.
+
 ```bash
 crm --json query odata contacts \
     --filter "statecode eq 0" --select fullname,emailaddress1 --top 5 --minimal
