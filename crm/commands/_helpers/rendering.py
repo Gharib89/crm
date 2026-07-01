@@ -190,14 +190,15 @@ def _capped_page_warnings(result: Any) -> list[str]:
     if not (isinstance(result, dict) and result.get("@odata.nextLink")):
         return []
     warnings = [
-        "Returned one server page; more rows exist — "
-        "use --all or --max-records to enumerate."
+        "Returned one server page; more rows exist — follow meta.next_link, "
+        "or re-run with --all/--max-records to enumerate."
     ]
     if result.get("@odata.count") == _COUNT_CLAMP_STANDARD:
         warnings.append(
             f"$count reached the server's {_COUNT_CLAMP_STANDARD} ceiling; treat it "
             "as a lower bound — the true total may be higher (Dataverse clamps "
-            "counts above this). Use `query count` or --all for an exact total."
+            "counts above this). Re-run with --all for an exact count of this query "
+            "(`query count` gives a whole-table total only, ignoring --filter)."
         )
     return warnings
 

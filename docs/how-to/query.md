@@ -86,12 +86,14 @@ each page. That default page is now self-describing in `meta` (see below).
 **Self-describing single page.** When the default (non-`--all`) read comes back
 with a `meta.next_link` cursor, the envelope also sets `meta.has_more: true` and
 appends a `meta.warnings` advisory ("Returned one server page; more rows exist —
-use --all or --max-records to enumerate."). If `--count` was requested and the
-returned `meta.count` lands exactly on the server's standard-table ceiling of
-5000 while a cursor is present, a second warning flags that count as a clamped
-lower bound, not an exact total — use `query count` or `--all` to get the real
-number. A query that fits in a single page (no cursor) gets neither `has_more`
-nor a warning, and an honest small `--count` is unaffected. This applies to
+follow meta.next_link, or re-run with --all/--max-records to enumerate."). If
+`--count` was requested and the returned `meta.count` lands exactly on the
+server's standard-table ceiling of 5000 while a cursor is present, a second
+warning flags that count as a clamped lower bound, not an exact total — re-run
+with `--all` for an exact count of *this* query (`query count` gives a
+whole-table total only, ignoring `--filter`). A query that fits in a single page
+(no cursor) gets neither `has_more` nor a warning, and an honest small `--count`
+is unaffected. This applies to
 `query odata`, `query fetchxml`, `query saved`, and `query user` alike.
 
 ## Strip annotations for token-efficient JSON (`--minimal`)

@@ -58,7 +58,8 @@ server still returns a `meta.next_link` cursor, the envelope also sets
 `--all`/`--max-records` — don't mistake a single page for the whole result set.
 If `--count` was on that same request and `meta.count` lands exactly on the
 server's 5000-row ceiling, a second warning flags it as a clamped lower bound,
-not the true total (see `query count` below for an exact/whole-table figure).
+not the true total (re-run with `--all` for an exact count of this query;
+`query count` below gives a whole-table cached figure only, ignoring `--filter`).
 No cursor, no `--count` at the ceiling → neither signal fires. Same behaviour on
 `query odata/fetchxml/saved/user`.
 
