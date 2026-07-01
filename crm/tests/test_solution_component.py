@@ -63,6 +63,24 @@ class TestResolveComponentType:
             sol_mod.resolve_component_type("nonsense")
 
 
+class TestComponentTypeName:
+    """Reverse resolver: componenttype int → friendly name (#627)."""
+
+    @pytest.mark.parametrize("code,expected", [
+        (1, "entity"),
+        (20, "role"),
+        (29, "workflow"),
+        (152, "sla"),         # #627: Customer-Service family, previously unmapped
+        (153, "slaitem"),
+    ])
+    def test_known_codes(self, code, expected):
+        assert sol_mod.component_type_name(code) == expected
+
+    def test_unknown_code_falls_back_to_str(self):
+        # An unmapped code must not crash — it renders as its integer's string form.
+        assert sol_mod.component_type_name(99999) == "99999"
+
+
 class TestAddSolutionComponent:
     def test_posts_expected_body(self, backend):
         with requests_mock.Mocker() as m:

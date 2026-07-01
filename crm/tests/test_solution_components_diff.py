@@ -356,3 +356,26 @@ class TestComponentsDiffSave:
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "Could not read" in data["error"]
+
+    # 11. bare --json components injects componenttypename per row (#627), keeps
+    #     the raw componenttype and every other original key, and falls back to
+    #     the integer's string form for an unmapped code (no crash).
+    def test_json_injects_componenttypename(self, monkeypatch):
+        live = [
+            {"componenttype": 20, "objectid": _A, "rootcomponentbehavior": 0,
+             "solutioncomponentid": _C},
+            {"componenttype": 99999, "objectid": _B, "rootcomponentbehavior": None},
+        ]
+        monkeypatch.setattr("crm.core.solution.solution_components",
+                            lambda backend, name: live)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._invoke()
+        assert result.exit_code == 0, result.output
+        rows = json.loads(result.output)["data"]
+        # known code → friendly name, alongside the preserved raw integer
+        assert rows[0]["componenttypename"] == "role"
+        assert rows[0]["componenttype"] == 20
+        # other original keys survive the injection
+        assert rows[0]["solutioncomponentid"] == _C
+        # unmapped code → str fallback, no crash
+        assert rows[1]["componenttypename"] == "99999"

@@ -67,17 +67,19 @@ class TestSolutionComponentsTable:
         assert result.exit_code == 0, result.output
         assert "99999" in result.output
 
-    def test_json_mode_unchanged(self, monkeypatch):
+    def test_json_mode_injects_typename_and_strips_odata(self, monkeypatch):
         items = [{"@odata.etag": 'W/"1"', "componenttype": 61, "objectid": _OID_B,
                   "rootcomponentbehavior": 0}]
         _stub_components(monkeypatch, items)
         result = CliRunner().invoke(cli, ["--json", "solution", "components", "CRMWorx"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        # JSON carries the items with the numeric type, but `@odata.*` protocol
-        # keys are stripped from the curated data payload (ADR 0008 / #304).
+        # JSON carries the numeric type plus the resolved `componenttypename`
+        # (#627), while `@odata.*` protocol keys are still stripped from the
+        # curated data payload (ADR 0008 / #304).
         assert payload["data"] == [{"componenttype": 61, "objectid": _OID_B,
-                                    "rootcomponentbehavior": 0}]
+                                    "rootcomponentbehavior": 0,
+                                    "componenttypename": "webresource"}]
         assert payload["meta"]["count"] == 1
 
 

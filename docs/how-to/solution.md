@@ -17,7 +17,42 @@ Create both from the CLI before any metadata work ([#34](https://github.com/Ghar
 ```bash
 crm --json solution components CRMWorx
 ```
-Returns one row per component with **`componenttype`, `objectid`, and `rootcomponentbehavior`** (componenttype `9` = option set, `1` = entity) — use it to verify the model landed. Those three fields are the tuple key used by `--save`/`--diff` below.
+Returns one row per component. Each `--json` row carries **`componenttype`** (raw integer), **`componenttypename`** (friendly string, e.g. `"entity"`, `"webresource"`, `"sla"`), **`objectid`**, **`rootcomponentbehavior`**, and additional OData fields. Use it to verify the model landed.
+
+Common component-type codes (full map in `crm/core/solution_components.py`):
+
+| code | name |
+|------|------|
+| 1 | entity |
+| 2 | attribute |
+| 3 | relationship |
+| 9 | optionset |
+| 10 | entityrelationship |
+| 14 | entitykey |
+| 20 | role |
+| 24 | form |
+| 26 | savedquery |
+| 29 | workflow |
+| 36 | emailtemplate |
+| 44 | duplicaterule |
+| 59 | savedqueryvisualization |
+| 60 | systemform |
+| 61 | webresource |
+| 62 | sitemap |
+| 63 | connectionrole |
+| 70 | fieldsecurityprofile |
+| 90 | plugintype |
+| 91 | pluginassembly |
+| 92 | sdkmessageprocessingstep |
+| 95 | serviceendpoint |
+| 150 | routingrule |
+| 151 | routingruleitem |
+| 152 | sla |
+| 153 | slaitem |
+| 154 | convertrule |
+| 155 | convertruleitem |
+
+Unmapped codes fall back to the integer as a string in `componenttypename`. The `componenttype`/`objectid`/`rootcomponentbehavior` triple is the tuple key used by `--save`/`--diff` below.
 
 ## Detect drift: save & diff a component inventory
 

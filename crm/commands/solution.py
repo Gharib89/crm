@@ -167,7 +167,14 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path):
         return
 
     if ctx.json_mode:
-        ctx.emit(True, data=items, meta={"count": len(items)})
+        # Surface the friendly component-type name alongside the raw integer so
+        # JSON callers don't each maintain their own componenttype→name map
+        # (#627). The human table below already resolves it for display.
+        enriched = [
+            {**it, "componenttypename": sol_mod.component_type_name(it.get("componenttype", 0))}
+            for it in items
+        ]
+        ctx.emit(True, data=enriched, meta={"count": len(enriched)})
         return
     headers = ["componenttype", "objectid", "rootcomponentbehavior"]
     rows = [[
