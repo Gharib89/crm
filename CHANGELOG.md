@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.47.0 (2026-07-01)
+
+### Features
+
+- Require explicit --solution for all customization writes
+  ([#636](https://github.com/Gharib89/crm/pull/636),
+  [`34967f9`](https://github.com/Gharib89/crm/commit/34967f9d7688e2c4cbe48c4e40e4b4d251ca9626))
+
+
 ## v1.46.1 (2026-07-01)
 
 ### Bug Fixes
