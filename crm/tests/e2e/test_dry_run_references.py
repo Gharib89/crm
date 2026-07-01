@@ -29,7 +29,7 @@ def _refs(env):
 
 
 @covers("metadata create-one-to-many")
-def test_create_one_to_many_dry_run_resolves_entities(cli, unique):
+def test_create_one_to_many_dry_run_resolves_entities(cli, unique, ephemeral_solution):
     r = cli([
         "--dry-run", "--json", "metadata", "create-one-to-many",
         "--schema-name", f"new_e2eref_{unique}",
@@ -38,6 +38,7 @@ def test_create_one_to_many_dry_run_resolves_entities(cli, unique):
         "--lookup-schema", f"new_E2eRef{unique}",
         "--lookup-display", "E2E Ref Probe",
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -49,7 +50,7 @@ def test_create_one_to_many_dry_run_resolves_entities(cli, unique):
 
 
 @covers("metadata create-one-to-many")
-def test_create_one_to_many_dry_run_flags_dangling_entity(cli, unique):
+def test_create_one_to_many_dry_run_flags_dangling_entity(cli, unique, ephemeral_solution):
     r = cli([
         "--dry-run", "--json", "metadata", "create-one-to-many",
         "--schema-name", f"new_e2eref_{unique}",
@@ -58,6 +59,7 @@ def test_create_one_to_many_dry_run_flags_dangling_entity(cli, unique):
         "--lookup-schema", f"new_E2eRef{unique}",
         "--lookup-display", "E2E Ref Probe",
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -69,7 +71,7 @@ def test_create_one_to_many_dry_run_flags_dangling_entity(cli, unique):
 
 
 @covers("metadata add-attribute")
-def test_add_attribute_lookup_dry_run_target_entity(cli, unique):
+def test_add_attribute_lookup_dry_run_target_entity(cli, unique, ephemeral_solution):
     # Resolvable target (a real system entity) on a system host entity.
     r = cli([
         "--dry-run", "--json", "metadata", "add-attribute", "account",
@@ -78,6 +80,7 @@ def test_add_attribute_lookup_dry_run_target_entity(cli, unique):
         "--display", "E2E Ref Probe",
         "--target-entity", "contact",
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -86,7 +89,7 @@ def test_add_attribute_lookup_dry_run_target_entity(cli, unique):
 
 
 @covers("metadata add-attribute")
-def test_add_attribute_lookup_dry_run_flags_dangling_target(cli, unique):
+def test_add_attribute_lookup_dry_run_flags_dangling_target(cli, unique, ephemeral_solution):
     r = cli([
         "--dry-run", "--json", "metadata", "add-attribute", "account",
         "--kind", "lookup",
@@ -94,6 +97,7 @@ def test_add_attribute_lookup_dry_run_flags_dangling_target(cli, unique):
         "--display", "E2E Ref Probe",
         "--target-entity", _GHOST_ENTITY,
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -103,7 +107,7 @@ def test_add_attribute_lookup_dry_run_flags_dangling_target(cli, unique):
 
 
 @covers("metadata add-attribute")
-def test_add_attribute_picklist_dry_run_flags_dangling_optionset(cli, unique):
+def test_add_attribute_picklist_dry_run_flags_dangling_optionset(cli, unique, ephemeral_solution):
     r = cli([
         "--dry-run", "--json", "metadata", "add-attribute", "account",
         "--kind", "picklist",
@@ -111,6 +115,7 @@ def test_add_attribute_picklist_dry_run_flags_dangling_optionset(cli, unique):
         "--display", "E2E Ref Probe",
         "--optionset-name", _GHOST_OPTIONSET,
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -120,7 +125,7 @@ def test_add_attribute_picklist_dry_run_flags_dangling_optionset(cli, unique):
 
 
 @covers("metadata add-attribute")
-def test_add_attribute_calculated_dry_run_sets_source_type(cli, unique, tmp_path):
+def test_add_attribute_calculated_dry_run_sets_source_type(cli, unique, tmp_path, ephemeral_solution):
     # Rollup/calculated turn the typed --kind column into a specialized column by
     # setting SourceType (1=calculated, 2=rollup) + FormulaDefinition on the body.
     # Dry-run echoes the would-be POST body, so we can assert the wiring without a
@@ -138,6 +143,7 @@ def test_add_attribute_calculated_dry_run_sets_source_type(cli, unique, tmp_path
         "--type", "calculated",
         "--formula-file", str(f),
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -148,7 +154,7 @@ def test_add_attribute_calculated_dry_run_sets_source_type(cli, unique, tmp_path
 
 
 @covers("metadata add-attribute")
-def test_add_attribute_rollup_dry_run_sets_source_type(cli, unique, tmp_path):
+def test_add_attribute_rollup_dry_run_sets_source_type(cli, unique, tmp_path, ephemeral_solution):
     f = tmp_path / "formula.xaml"
     f.write_text("<formula/>", encoding="utf-8")
     r = cli([
@@ -159,6 +165,7 @@ def test_add_attribute_rollup_dry_run_sets_source_type(cli, unique, tmp_path):
         "--type", "rollup",
         "--formula-file", str(f),
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
@@ -169,7 +176,7 @@ def test_add_attribute_rollup_dry_run_sets_source_type(cli, unique, tmp_path):
 
 
 @covers("plugin register-step")
-def test_register_step_dry_run_references(cli):
+def test_register_step_dry_run_references(cli, ephemeral_solution):
     # Create (a built-in SDK message) and account (a system entity supporting it)
     # resolve on every org; the plug-in type is deliberately absent. No assembly
     # is needed because the write never happens under --dry-run.
@@ -178,6 +185,7 @@ def test_register_step_dry_run_references(cli):
         "--message", "Create",
         "--plugin-type", _GHOST_TYPE,
         "--entity", "account",
+        "--solution", ephemeral_solution,
     ])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)

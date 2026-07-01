@@ -252,7 +252,9 @@ def _role_privilege_ids(backend, role_id):
 
 
 @covers("security create-role", "security set-role-privileges")
-def test_create_role_and_set_privileges_roundtrip(cli, backend, unique, request):
+def test_create_role_and_set_privileges_roundtrip(
+    cli, backend, unique, request, ephemeral_solution
+):
     """Create a throwaway role, add then replace its privileges, verifying each
     grant lands, and confirm --dry-run previews without writing. The role is
     deleted in a finalizer regardless of outcome — fully reversible.
@@ -274,7 +276,10 @@ def test_create_role_and_set_privileges_roundtrip(cli, backend, unique, request)
 
     # ── CREATE via CLI (defaults BU to caller) ──────────────────────────────
     role_name = f"e2e_role_{unique}"
-    created = cli(["--json", "security", "create-role", role_name, "--yes"])
+    created = cli([
+        "--json", "security", "create-role", role_name,
+        "--solution", ephemeral_solution, "--yes",
+    ])
     assert created.returncode == 0, (
         f"security create-role failed:\n{created.stderr}\nstdout: {created.stdout}"
     )

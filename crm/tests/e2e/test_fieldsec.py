@@ -41,7 +41,7 @@ def test_fieldsec_list(cli):
 
 @covers("fieldsec create-profile", "fieldsec assign", "fieldsec get")
 @pytest.mark.slow
-def test_fieldsec_lifecycle(backend, cli, request, unique):
+def test_fieldsec_lifecycle(backend, cli, request, unique, ephemeral_solution):
     """Create a profile, assign it to the calling user, read it back, clean up."""
     from crm.utils.d365_backend import as_dict
 
@@ -64,6 +64,7 @@ def test_fieldsec_lifecycle(backend, cli, request, unique):
     # create-profile
     result = cli([
         "--json", "fieldsec", "create-profile", name, "--description", "e2e",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"create-profile failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -99,7 +100,7 @@ def test_fieldsec_lifecycle(backend, cli, request, unique):
 @covers("fieldsec add-permission")
 @pytest.mark.slow
 def test_fieldsec_add_permission_on_secured_custom_attribute(
-    backend, cli, request, unique
+    backend, cli, request, unique, ephemeral_solution
 ):
     """Grant a column permission on a field-secured custom attribute.
 
@@ -162,7 +163,8 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     sol_mod.publish_all(backend)
 
     # 3. Field-security profile (its own cleanup is registered above).
-    result = cli(["--json", "fieldsec", "create-profile", f"E2E FS {unique}"])
+    result = cli(["--json", "fieldsec", "create-profile", f"E2E FS {unique}",
+                 "--solution", ephemeral_solution])
     assert result.returncode == 0, (
         f"create-profile failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -173,7 +175,7 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     # 4. add-permission — the verb under test. Grant read + update.
     result = cli([
         "--json", "fieldsec", "add-permission", pid, entity_logical, attr_logical,
-        "--read", "--update",
+        "--read", "--update", "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"add-permission failed:\n{result.stderr}\nstdout: {result.stdout}"

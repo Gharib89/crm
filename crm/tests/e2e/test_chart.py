@@ -70,7 +70,7 @@ def test_chart_list_contact(cli):
 
 @covers("chart create", "chart get", "chart delete")
 @pytest.mark.slow
-def test_chart_system_lifecycle(cli, tmp_path, unique):
+def test_chart_system_lifecycle(cli, tmp_path, unique, ephemeral_solution):
     """Create a system chart on 'contact', read it back, then delete it."""
     name = f"E2E Chart {unique}"
     dd, pd = _write_xml(tmp_path)
@@ -80,6 +80,7 @@ def test_chart_system_lifecycle(cli, tmp_path, unique):
         "--name", name,
         "--data-description", dd,
         "--presentation-description", pd,
+        "--solution", ephemeral_solution,
         "--no-publish",
     ])
     assert result.returncode == 0, (
@@ -108,7 +109,7 @@ def test_chart_system_lifecycle(cli, tmp_path, unique):
 
 @covers("chart create", "chart get", "chart delete", "chart list")
 @pytest.mark.slow
-def test_chart_user_lifecycle(cli, tmp_path, unique):
+def test_chart_user_lifecycle(cli, tmp_path, unique, ephemeral_solution):
     """Create a user chart on 'contact' (--user), read it back, then delete it."""
     name = f"E2E User Chart {unique}"
     dd, pd = _write_xml(tmp_path)
@@ -118,6 +119,7 @@ def test_chart_user_lifecycle(cli, tmp_path, unique):
         "--name", name,
         "--data-description", dd,
         "--presentation-description", pd,
+        "--solution", ephemeral_solution,
         "--user", "--no-publish",
     ])
     assert result.returncode == 0, (
@@ -160,7 +162,7 @@ _FETCH_XML = (
 @covers("chart update", "chart set-fetch", "chart add-series",
         "chart remove-series", "chart set-groupby")
 @pytest.mark.slow
-def test_chart_editor_lifecycle(cli, tmp_path, unique):
+def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
     """Exercise every chart editor on a freshly-created USER chart, then delete.
 
     Editors run against a userqueryvisualization (--user): a user chart is not
@@ -175,6 +177,7 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique):
     created = cli([
         "--json", "chart", "create", "contact", "--name", name,
         "--data-description", dd, "--presentation-description", pd,
+        "--solution", ephemeral_solution,
         "--user", "--no-publish"])
     assert created.returncode == 0, (
         f"chart create failed:\n{created.stderr}\nstdout: {created.stdout}")
@@ -189,7 +192,9 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique):
     try:
         # update: rename + change the chart type
         upd = cli(["--json", "chart", "update", chart_id,
-                   "--name", f"{name} v2", "--type", "Bar", "--user", "--no-publish"])
+                   "--name", f"{name} v2", "--type", "Bar",
+                   "--solution", ephemeral_solution,
+                   "--user", "--no-publish"])
         assert upd.returncode == 0, f"update failed:\n{upd.stderr}\n{upd.stdout}"
         data = _get()
         assert data["name"] == f"{name} v2", data
@@ -198,19 +203,25 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique):
         # add-series: a second count measure (1 category, 2 series ≤ cap)
         add = cli(["--json", "chart", "add-series", chart_id,
                    "--column", "telephone1", "--aggregate", "count",
-                   "--alias", "series2", "--user", "--no-publish"])
+                   "--alias", "series2",
+                   "--solution", ephemeral_solution,
+                   "--user", "--no-publish"])
         assert add.returncode == 0, f"add-series failed:\n{add.stderr}\n{add.stdout}"
         assert 'alias="series2"' in _get()["datadescription"]
 
         # remove-series: drop the one just added
         rm = cli(["--json", "chart", "remove-series", chart_id,
-                  "--alias", "series2", "--user", "--no-publish"])
+                  "--alias", "series2",
+                  "--solution", ephemeral_solution,
+                  "--user", "--no-publish"])
         assert rm.returncode == 0, f"remove-series failed:\n{rm.stderr}\n{rm.stdout}"
         assert "series2" not in _get()["datadescription"]
 
         # set-groupby: regroup by a different column
         gb = cli(["--json", "chart", "set-groupby", chart_id,
-                  "--column", "gendercode", "--user", "--no-publish"])
+                  "--column", "gendercode",
+                  "--solution", ephemeral_solution,
+                  "--user", "--no-publish"])
         assert gb.returncode == 0, f"set-groupby failed:\n{gb.stderr}\n{gb.stdout}"
         assert 'name="gendercode"' in _get()["datadescription"]
 
@@ -218,7 +229,9 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique):
         fx = tmp_path / "fetch.xml"
         fx.write_text(_FETCH_XML, encoding="utf-8")
         sf = cli(["--json", "chart", "set-fetch", chart_id,
-                  "--fetch", str(fx), "--user", "--no-publish"])
+                  "--fetch", str(fx),
+                  "--solution", ephemeral_solution,
+                  "--user", "--no-publish"])
         assert sf.returncode == 0, f"set-fetch failed:\n{sf.stderr}\n{sf.stdout}"
         data = _get()
         assert '<category alias="groupby_column">' in data["datadescription"], data

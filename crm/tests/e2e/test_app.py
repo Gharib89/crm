@@ -50,7 +50,7 @@ def _find_account_view(backend) -> str | None:
 @covers("app create", "app add-components", "app remove-components",
         "app build-sitemap", "app set-sitemap")
 @pytest.mark.slow
-def test_app_lifecycle(backend, cli, request, unique):
+def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     """Create a throwaway app, add a view component, build and set a sitemap.
 
     Cleans up the app and both sitemaps in a finalizer.  If on-prem rejects
@@ -83,6 +83,7 @@ def test_app_lifecycle(backend, cli, request, unique):
         "--name", app_name,
         "--unique-name", app_unique,
         "--no-publish",
+        "--solution", ephemeral_solution,
     ], check=False)
     if r_create.returncode != 0:
         # Error may appear in stderr or in the JSON envelope stdout.
@@ -118,6 +119,7 @@ def test_app_lifecycle(backend, cli, request, unique):
         "--unique-name", app_unique,
         "--if-exists", "skip",
         "--no-publish",
+        "--solution", ephemeral_solution,
     ], check=False)
     assert r_skip.returncode == 0, (
         f"app create --if-exists skip should not error:\n{r_skip.stderr}\n"
@@ -168,6 +170,7 @@ def test_app_lifecycle(backend, cli, request, unique):
         "--subarea", "Area1/Grp1:entity=account:Accounts",
         "--unique-name", app_unique,
         "--no-publish",
+        "--solution", ephemeral_solution,
     ], check=False)
     assert r_build.returncode == 0, (
         f"app build-sitemap failed:\n{r_build.stderr}\nstdout: {r_build.stdout}"
@@ -205,6 +208,7 @@ def test_app_lifecycle(backend, cli, request, unique):
             "--json", "app", "set-sitemap", sitemap_name_set,
             "--xml-file", xml_path,
             "--unique-name", sitemap_unique_set,
+            "--solution", ephemeral_solution,
         ], check=False)
     finally:
         try:
@@ -243,7 +247,8 @@ def test_app_delete_unknown_target_errors(cli, unique):
 @covers("app delete")
 @pytest.mark.requires_onprem
 @pytest.mark.slow
-def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique):
+def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique,
+                                                  ephemeral_solution):
     """`app delete` removes a published app whose `appsetting` rows FK-block it.
 
     Gated `requires_onprem`: the appmodule DELETE block (`0x80048d21`) reproduces
@@ -280,7 +285,8 @@ def test_app_delete_sweeps_fk_blocking_dependents(backend, cli, request, unique)
     # Publish so the appmodule is readable (on-prem is not readable pre-publish)
     # and so the platform materializes its appsetting rows.
     r_create = cli(["--json", "app", "create", "--name", app_name,
-                    "--unique-name", app_unique, "--publish"], check=False)
+                    "--unique-name", app_unique, "--publish",
+                    "--solution", ephemeral_solution], check=False)
     if r_create.returncode != 0:
         combined = (r_create.stderr or "") + (r_create.stdout or "")
         if any(k in combined.lower() for k in (

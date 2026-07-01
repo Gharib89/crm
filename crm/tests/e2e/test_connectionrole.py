@@ -16,7 +16,7 @@ from crm.tests.e2e.coverage import covers
 
 @covers("connectionrole create", "connectionrole scope", "connectionrole match")
 @pytest.mark.slow
-def test_connectionrole_lifecycle(backend, cli, request, unique):
+def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solution):
     """Create two roles, scope one to account, match them, then clean up."""
     created: list[str] = []
 
@@ -34,6 +34,7 @@ def test_connectionrole_lifecycle(backend, cli, request, unique):
     # create role A (with a category)
     result = cli([
         "--json", "connectionrole", "create",
+        "--solution", ephemeral_solution,
         "--name", f"E2E Role A {unique}", "--category", "business",
     ])
     assert result.returncode == 0, (
@@ -47,7 +48,9 @@ def test_connectionrole_lifecycle(backend, cli, request, unique):
 
     # create role B
     result = cli([
-        "--json", "connectionrole", "create", "--name", f"E2E Role B {unique}",
+        "--json", "connectionrole", "create",
+        "--solution", ephemeral_solution,
+        "--name", f"E2E Role B {unique}",
     ])
     assert result.returncode == 0, (
         f"connectionrole create B failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -58,7 +61,9 @@ def test_connectionrole_lifecycle(backend, cli, request, unique):
 
     # scope role A to the account entity
     result = cli([
-        "--json", "connectionrole", "scope", role_a, "--entity", "account",
+        "--json", "connectionrole", "scope", role_a,
+        "--solution", ephemeral_solution,
+        "--entity", "account",
     ])
     assert result.returncode == 0, (
         f"connectionrole scope failed:\n{result.stderr}\nstdout: {result.stdout}"

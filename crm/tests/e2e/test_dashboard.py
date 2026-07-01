@@ -61,14 +61,16 @@ def test_dashboard_list(cli):
 
 @covers("dashboard create", "dashboard get", "dashboard delete")
 @pytest.mark.slow
-def test_dashboard_lifecycle(cli, tmp_path, unique):
+def test_dashboard_lifecycle(cli, tmp_path, unique, ephemeral_solution):
     """Create an org dashboard from FormXml, read it back, then delete it."""
     name = f"E2E Dashboard {unique}"
     formxml = _write_formxml(tmp_path)
 
     result = cli([
         "--json", "dashboard", "create",
-        "--name", name, "--formxml", formxml, "--no-publish"])
+        "--name", name, "--formxml", formxml,
+        "--solution", ephemeral_solution,
+        "--no-publish"])
     assert result.returncode == 0, (
         f"dashboard create failed:\n{result.stderr}\nstdout: {result.stdout}")
     created = json.loads(result.stdout)
@@ -119,7 +121,7 @@ def _control(cell):
 
 @covers("dashboard add-chart", "dashboard add-view")
 @pytest.mark.slow
-def test_dashboard_add_chart_and_view(cli, tmp_path, unique):
+def test_dashboard_add_chart_and_view(cli, tmp_path, unique, ephemeral_solution):
     """Splice a chart tile then a view tile into a dashboard and read them back.
 
     Publishes so the Web API GET returns the edited (published) layer — a
@@ -134,20 +136,26 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique):
 
     name = f"E2E ChartGrid {unique}"
     created = cli(["--json", "dashboard", "create", "--name", name,
-                   "--formxml", _write_formxml(tmp_path), "--no-publish"])
+                   "--formxml", _write_formxml(tmp_path),
+                   "--solution", ephemeral_solution,
+                   "--no-publish"])
     assert created.returncode == 0, created.stderr
     dashboard_id = json.loads(created.stdout)["data"]["formid"]
 
     try:
         added = cli(["--json", "dashboard", "add-chart", dashboard_id,
                      "--view", view_id, "--chart", chart_id,
-                     "--rowspan", "4", "--colspan", "2", "--publish"])
+                     "--rowspan", "4", "--colspan", "2",
+                     "--solution", ephemeral_solution,
+                     "--publish"])
         assert added.returncode == 0, (
             f"add-chart failed:\n{added.stderr}\nstdout: {added.stdout}")
         assert json.loads(added.stdout)["data"]["updated"] is True
 
         added2 = cli(["--json", "dashboard", "add-view", dashboard_id,
-                      "--view", view_id, "--mode", "all", "--publish"])
+                      "--view", view_id, "--mode", "all",
+                      "--solution", ephemeral_solution,
+                      "--publish"])
         assert added2.returncode == 0, (
             f"add-view failed:\n{added2.stderr}\nstdout: {added2.stdout}")
 
@@ -198,7 +206,9 @@ def _form_enabled_webresource(cli):
 @covers("dashboard add-iframe", "dashboard add-webresource",
         "dashboard remove-component")
 @pytest.mark.slow
-def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique):
+def test_dashboard_iframe_webresource_remove(
+    cli, tmp_path, unique, ephemeral_solution
+):
     """Add an IFRAME and a web-resource tile, then remove one, reading back.
 
     Publishes so the Web API GET returns the edited (published) layer. Asserts
@@ -211,19 +221,25 @@ def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique):
 
     name = f"E2E IFRAME {unique}"
     created = cli(["--json", "dashboard", "create", "--name", name,
-                   "--formxml", _write_formxml(tmp_path), "--no-publish"])
+                   "--formxml", _write_formxml(tmp_path),
+                   "--solution", ephemeral_solution,
+                   "--no-publish"])
     assert created.returncode == 0, created.stderr
     dashboard_id = json.loads(created.stdout)["data"]["formid"]
 
     try:
         added = cli(["--json", "dashboard", "add-iframe", dashboard_id,
-                     "--url", iframe_url, "--security", "--border", "--publish"])
+                     "--url", iframe_url, "--security", "--border",
+                     "--solution", ephemeral_solution,
+                     "--publish"])
         assert added.returncode == 0, (
             f"add-iframe failed:\n{added.stderr}\nstdout: {added.stdout}")
         assert json.loads(added.stdout)["data"]["updated"] is True
 
         added2 = cli(["--json", "dashboard", "add-webresource", dashboard_id,
-                      "--webresource", wr_name, "--publish"])
+                      "--webresource", wr_name,
+                      "--solution", ephemeral_solution,
+                      "--publish"])
         assert added2.returncode == 0, (
             f"add-webresource failed:\n{added2.stderr}\nstdout: {added2.stdout}")
 
@@ -241,7 +257,9 @@ def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique):
         assert f"$webresource:{wr_name}" in formxml, formxml
 
         removed = cli(["--json", "dashboard", "remove-component", dashboard_id,
-                       "--url", iframe_url, "--publish"])
+                       "--url", iframe_url,
+                       "--solution", ephemeral_solution,
+                       "--publish"])
         assert removed.returncode == 0, (
             f"remove-component failed:\n{removed.stderr}\nstdout: {removed.stdout}")
 

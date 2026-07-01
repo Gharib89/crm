@@ -144,7 +144,7 @@ _KPI_SUCCESS = (
 @covers("sla create", "sla add-kpi")
 @pytest.mark.requires_cloud
 @pytest.mark.slow
-def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique):
+def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemeral_solution):
     """`sla create` then `sla add-kpi` against a CS-provisioned org.
 
     Ensures the target entity (`incident`) is SLA-enabled (a publish-requiring
@@ -211,7 +211,7 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique):
     sla_name = f"E2E SLA {unique}"
     created = cli(
         ["--json", "sla", "create", "--name", sla_name, "--entity", entity,
-         "--applicable-from", "createdon"],
+         "--applicable-from", "createdon", "--solution", ephemeral_solution],
         check=False,
     )
     # Check the exit code before parsing so a non-JSON failure surfaces stderr
@@ -234,7 +234,7 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique):
     added = cli(
         ["--json", "sla", "add-kpi", "--sla", sla_id, "--kpi", "resolvebykpiid",
          "--applicable-when", _KPI_APPLICABLE_WHEN,
-         "--success-criteria", _KPI_SUCCESS],
+         "--success-criteria", _KPI_SUCCESS, "--solution", ephemeral_solution],
         check=False,
     )
     assert added.returncode == 0, (

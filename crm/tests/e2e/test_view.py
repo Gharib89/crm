@@ -53,7 +53,7 @@ def test_view_list_contact(cli):
 
 @covers("view create")
 @pytest.mark.slow
-def test_view_create_on_contact(backend, cli, request, unique):
+def test_view_create_on_contact(backend, cli, request, unique, ephemeral_solution):
     """Create a public system view on 'contact', assert created, clean up."""
     view_name = f"E2E View {unique}"
     otc = _resolve_otc(backend, "contact")
@@ -77,6 +77,7 @@ def test_view_create_on_contact(backend, cli, request, unique):
         "--column", "firstname",
         "--column", "lastname",
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -102,7 +103,9 @@ def test_view_create_on_contact(backend, cli, request, unique):
 
 @covers("view create")
 @pytest.mark.slow
-def test_view_create_query_type_and_description(backend, cli, request, unique):
+def test_view_create_query_type_and_description(
+    backend, cli, request, unique, ephemeral_solution
+):
     """--query-type + --description persist on the created savedquery."""
     view_name = f"E2E QF {unique}"
     description = f"E2E description {unique}"
@@ -128,6 +131,7 @@ def test_view_create_query_type_and_description(backend, cli, request, unique):
         "--query-type", "quick-find",
         "--description", description,
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -155,7 +159,9 @@ def test_view_create_query_type_and_description(backend, cli, request, unique):
 
 @covers("view create")
 @pytest.mark.slow
-def test_view_filter_active_and_order_desc_round_trip(backend, cli, request, unique):
+def test_view_filter_active_and_order_desc_round_trip(
+    backend, cli, request, unique, ephemeral_solution
+):
     """Create a public view with --filter-active and a descending sort, then
     confirm export-spec emits filter_active/order_desc (#597) — the export half
     of a lossless round-trip. Cleans up."""
@@ -182,6 +188,7 @@ def test_view_filter_active_and_order_desc_round_trip(backend, cli, request, uni
         "--order", "createdon desc",
         "--filter-active",
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view create failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -208,7 +215,7 @@ def test_view_filter_active_and_order_desc_round_trip(backend, cli, request, uni
 # ── view edit-columns / set-order ───────────────────────────────────────────
 
 
-def _create_view(cli, backend, request, unique, *, name_prefix):
+def _create_view(cli, backend, request, unique, ephemeral_solution, *, name_prefix):
     """Create a public view on contact and register cleanup; return its id."""
     view_name = f"{name_prefix} {unique}"
     otc = _resolve_otc(backend, "contact")
@@ -227,6 +234,7 @@ def _create_view(cli, backend, request, unique, *, name_prefix):
         "--name", view_name, "--otc", str(otc),
         "--column", "contactid", "--column", "firstname",
         "--no-publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view create failed:\n{result.stderr}\nstdout: {result.stdout}")
@@ -244,16 +252,19 @@ def _cells(layoutxml: str) -> dict[str, str]:
 
 @covers("view edit-columns")
 @pytest.mark.slow
-def test_view_edit_columns_live(backend, cli, request, unique):
+def test_view_edit_columns_live(backend, cli, request, unique, ephemeral_solution):
     """Add + resize a column, publish, and verify the published layer landed."""
     from crm.utils.d365_backend import as_dict
 
-    sqid = _create_view(cli, backend, request, unique, name_prefix="E2E EditCols")
+    sqid = _create_view(
+        cli, backend, request, unique, ephemeral_solution, name_prefix="E2E EditCols"
+    )
 
     # --publish drives the T3 read-back (a GET returns the published layer).
     result = cli([
         "--json", "view", "edit-columns", "contact", sqid,
         "--add", "lastname:140", "--width", "firstname:160", "--publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view edit-columns failed:\n{result.stderr}\nstdout: {result.stdout}")
@@ -281,16 +292,19 @@ def _conditions(fetchxml: str) -> list[tuple[str, str, str]]:
 
 @covers("view add-filter", "view remove-filter")
 @pytest.mark.slow
-def test_view_add_and_remove_filter_live(backend, cli, request, unique):
+def test_view_add_and_remove_filter_live(backend, cli, request, unique, ephemeral_solution):
     """Add a filter condition, publish, verify it landed; then remove it."""
     from crm.utils.d365_backend import as_dict
 
-    sqid = _create_view(cli, backend, request, unique, name_prefix="E2E Filter")
+    sqid = _create_view(
+        cli, backend, request, unique, ephemeral_solution, name_prefix="E2E Filter"
+    )
 
     # Add a condition (--publish drives the T3 read-back).
     result = cli([
         "--json", "view", "add-filter", "contact", sqid,
         "--condition", "lastname eq Contoso", "--publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view add-filter failed:\n{result.stderr}\nstdout: {result.stdout}")
@@ -306,6 +320,7 @@ def test_view_add_and_remove_filter_live(backend, cli, request, unique):
     result = cli([
         "--json", "view", "remove-filter", "contact", sqid,
         "--condition", "lastname eq", "--publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view remove-filter failed:\n{result.stderr}\nstdout: {result.stdout}")
@@ -319,15 +334,18 @@ def test_view_add_and_remove_filter_live(backend, cli, request, unique):
 
 @covers("view set-order")
 @pytest.mark.slow
-def test_view_set_order_live(backend, cli, request, unique):
+def test_view_set_order_live(backend, cli, request, unique, ephemeral_solution):
     """Set a descending sort, publish, and verify the fetch <order> landed."""
     from crm.utils.d365_backend import as_dict
 
-    sqid = _create_view(cli, backend, request, unique, name_prefix="E2E SetOrder")
+    sqid = _create_view(
+        cli, backend, request, unique, ephemeral_solution, name_prefix="E2E SetOrder"
+    )
 
     result = cli([
         "--json", "view", "set-order", "contact", sqid,
         "--order", "createdon desc", "--publish",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"view set-order failed:\n{result.stderr}\nstdout: {result.stdout}")

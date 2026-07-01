@@ -77,7 +77,7 @@ def test_update_entity_description(cli, ephemeral_entity):
 
 @covers("metadata update-attribute", "metadata delete-attribute")
 @pytest.mark.slow
-def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique):
+def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephemeral_solution):
     """Full attribute lifecycle on ephemeral_entity:
       1. add-attribute (string) to get a test column
       2. update-attribute --display / --max-length; assert updated=True
@@ -94,6 +94,7 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique):
         "--schema-name", attr_schema,
         "--display", f"E2E Test {unique}",
         "--max-length", "150",
+        "--solution", ephemeral_solution,
         "--no-publish",
     ])
     assert r_add.returncode == 0, r_add.stderr
@@ -124,6 +125,7 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique):
         # Step 3: delete-attribute.
         r_del = cli([
             "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
+            "--solution", ephemeral_solution,
             "--yes",
         ])
         assert r_del.returncode == 0, r_del.stderr
@@ -135,6 +137,7 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique):
         # Best-effort: delete the attribute if something went wrong before step 3.
         cli([
             "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
+            "--solution", ephemeral_solution,
             "--yes",
         ], check=False)
         raise
@@ -146,7 +149,7 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique):
 
 @covers("metadata create-many-to-many", "metadata delete-relationship")
 @pytest.mark.slow
-def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique):
+def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral_solution):
     """Create an N:N between ephemeral_entity and account; delete it.
 
     The relationship schema must use the publisher prefix 'new_' on both orgs.
@@ -163,6 +166,7 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique):
         "--entity1", ephemeral_entity,
         "--entity2", "account",
         "--intersect-entity", intersect,
+        "--solution", ephemeral_solution,
         "--no-publish",
     ])
     assert r_create.returncode == 0, r_create.stderr
@@ -185,6 +189,7 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique):
         # delete-relationship.
         r_del = cli([
             "--json", "metadata", "delete-relationship", rel_schema,
+            "--solution", ephemeral_solution,
             "--yes",
         ])
         assert r_del.returncode == 0, r_del.stderr
@@ -194,7 +199,8 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique):
 
     except Exception:
         # Best-effort cleanup so we don't litter the org.
-        cli(["--json", "metadata", "delete-relationship", rel_schema, "--yes"],
+        cli(["--json", "metadata", "delete-relationship", rel_schema,
+             "--solution", ephemeral_solution, "--yes"],
             check=False)
         raise
 
@@ -205,7 +211,7 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique):
 
 @covers("metadata update-relationship")
 @pytest.mark.slow
-def test_update_relationship_cascade(cli, ephemeral_entity, unique):
+def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_solution):
     """Create a 1:N from account→ephemeral_entity, change ONE cascade key via
     update-relationship, then confirm from the server that the change applied
     and an untouched cascade key survived. Cleans up.
@@ -234,6 +240,7 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
         "--lookup-display", f"E2E Account {unique}",
         "--cascade-assign", "NoCascade",
         "--cascade-delete", "Restrict",
+        "--solution", ephemeral_solution,
         "--no-publish",
     ], check=False)
     created = r_create.returncode == 0
@@ -280,7 +287,8 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
     finally:
         if created:
             # Clean up the relationship (Dataverse deletes its lookup attribute too).
-            cli(["--json", "metadata", "delete-relationship", rel_schema, "--yes"],
+            cli(["--json", "metadata", "delete-relationship", rel_schema,
+                 "--solution", ephemeral_solution, "--yes"],
                 check=False)
 
 
@@ -290,7 +298,7 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique):
 
 @covers("metadata create-key", "metadata delete-key")
 @pytest.mark.slow
-def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique):
+def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique, ephemeral_solution):
     """Full alternate-key lifecycle on ephemeral_entity:
       1. add-attribute (string) to get a key-eligible column
       2. create-key on that column; assert created=True
@@ -308,6 +316,7 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique):
         "--kind", "string",
         "--schema-name", attr_schema,
         "--display", f"E2E Key Col {unique}",
+        "--solution", ephemeral_solution,
         "--no-publish",
     ])
     assert r_add.returncode == 0, r_add.stderr
@@ -320,6 +329,7 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique):
             "--name", key_schema,
             "--key-attributes", attr_logical,
             "--display", f"E2E AK {unique}",
+            "--solution", ephemeral_solution,
             "--no-publish",
         ])
         assert r_create.returncode == 0, r_create.stderr
@@ -339,6 +349,7 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique):
             # Step 4: delete the key.
             r_del = cli([
                 "--json", "metadata", "delete-key", ephemeral_entity, key_logical,
+                "--solution", ephemeral_solution,
                 "--yes",
             ])
             assert r_del.returncode == 0, r_del.stderr
@@ -347,11 +358,11 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique):
             assert env_del["data"].get("deleted") is True
         except Exception:
             cli(["--json", "metadata", "delete-key", ephemeral_entity, key_logical,
-                 "--yes"], check=False)
+                 "--solution", ephemeral_solution, "--yes"], check=False)
             raise
     finally:
         cli(["--json", "metadata", "delete-attribute", ephemeral_entity,
-             attr_logical, "--yes"], check=False)
+             attr_logical, "--solution", ephemeral_solution, "--yes"], check=False)
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +371,7 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique):
 
 @covers("metadata clone-entity")
 @pytest.mark.slow
-def test_clone_entity(cli, ephemeral_entity, unique):
+def test_clone_entity(cli, ephemeral_entity, unique, ephemeral_solution):
     """Clone ephemeral_entity into a uniquely-named entity; assert created;
     delete the clone in finally."""
     clone_schema = f"new_E2EClone{unique}"
@@ -370,6 +381,7 @@ def test_clone_entity(cli, ephemeral_entity, unique):
         "--json", "metadata", "clone-entity",
         ephemeral_entity, clone_schema,
         "--display", f"E2E Clone {unique}",
+        "--solution", ephemeral_solution,
         "--no-publish",
     ])
     assert r.returncode == 0, r.stderr
@@ -390,5 +402,6 @@ def test_clone_entity(cli, ephemeral_entity, unique):
     finally:
         # Delete the clone; use --yes to skip the interactive confirmation.
         cli([
-            "--json", "metadata", "delete-entity", clone_logical, "--yes",
+            "--json", "metadata", "delete-entity", clone_logical,
+            "--solution", ephemeral_solution, "--yes",
         ], check=False)

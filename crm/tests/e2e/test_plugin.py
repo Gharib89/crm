@@ -155,7 +155,7 @@ def test_plugin_list_types_returns_list(cli):
     "plugin unregister-assembly",
 )
 def test_assembly_register_step_unregister_lifecycle(
-        cli, plugin_assembly, backend, request):
+        cli, plugin_assembly, backend, request, ephemeral_solution):
     """register-assembly -> register-type -> register-step -> unregister-* lifecycle.
 
     The `plugin_assembly` fixture builds a signed no-op IPlugin from committed C#
@@ -178,7 +178,8 @@ def test_assembly_register_step_unregister_lifecycle(
          "--name", asm.assembly_name,
          "--public-key-token", asm.public_key_token,
          "--version", "1.0.0.0",
-         "--isolation-mode", "sandbox"],
+         "--isolation-mode", "sandbox",
+         "--solution", ephemeral_solution],
         check=False,
     )
     assert result.returncode == 0, (
@@ -216,7 +217,8 @@ def test_assembly_register_step_unregister_lifecycle(
     # teardown.
     type_result = cli(
         ["--json", "plugin", "register-type",
-         "--assembly", asm.assembly_name, "--type", asm.type_name],
+         "--assembly", asm.assembly_name, "--type", asm.type_name,
+         "--solution", ephemeral_solution],
         check=False,
     )
     assert type_result.returncode == 0, (
@@ -247,7 +249,8 @@ def test_assembly_register_step_unregister_lifecycle(
         ["--json", "plugin", "register-step",
          "--message", "Create", "--entity", "account",
          "--plugin-type", asm.type_name, "--assembly", asm.assembly_name,
-         "--name", f"{asm.assembly_name} create step"],
+         "--name", f"{asm.assembly_name} create step",
+         "--solution", ephemeral_solution],
         check=False,
     )
     assert step_result.returncode == 0, (
