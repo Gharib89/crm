@@ -37,9 +37,15 @@ against both targets.
 **Always pass `--json` from agent contexts.** It produces a stable envelope:
 
 ```json
-{ "ok": true,  "data": ..., "meta": {...} }
+{ "ok": true,  "data": ..., "meta": {"profile": "myprofile", "url": "https://host/org/api/data/v9.1/"} }
 { "ok": false, "error": "Record Not Found", "meta": {"status": 404, "code": "0x80040217", "category": "not_found", "retryable": false} }
 ```
+
+**`meta.profile` and `meta.url`** appear on every success envelope from a command
+that opened a backend connection — the serving profile name and Web API base URL,
+so the result is self-identifying without eyeball-matching GUIDs. They are absent
+on error envelopes and on local/meta verbs that never connect (`connection status`,
+`session`, `skill`, `profile list`, `self-update`, `repl`, `scaffold`).
 
 **`meta.warnings`** is the one structured channel to scan for non-fatal advisories —
 it is an array (multiple warnings never clobber). Scan it for staged-but-unpublished
@@ -128,8 +134,8 @@ For exact flags, choices, and defaults, **never guess** — interrogate the CLI:
 - `crm describe [group]` — machine-readable catalogue of every command, option, and
   choice (no connection needed).
 - `crm <group> --help` — per-command options.
-- `crm --json connection whoami` — confirm the live target (check the
-  `@odata.context`) before any mutation.
+- `crm --json connection whoami` — confirm the live target; `data.profile`,
+  `data.url`, and `data.org_name` identify the org without GUID-matching.
 
 The skill states only what those cannot: workflows, gotchas, and the JSON contract.
 

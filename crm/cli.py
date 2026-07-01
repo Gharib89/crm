@@ -71,6 +71,11 @@ class CLIContext:
         self.refresh_metadata: bool = False
         self.retry_on_ambiguous: bool = False
         self.session_name: str = "default"
+        # Set True by backend() whenever this command resolved a connection;
+        # reset per invocation in the root callback. Lets emit() stamp the
+        # serving profile/url only on envelopes that actually opened a backend
+        # (#624) — never on a later REPL line whose backend is merely cached.
+        self.connection_resolved: bool = False
         self._backend: D365Backend | None = None
         self._backend_key: tuple[str | None, str | None, bool, str | None, bool] | None = None
         self.skin: ReplSkin = ReplSkin("d365", version=__version__)
@@ -117,6 +122,18 @@ class CLIContext:
                 if not isinstance(existing, list):
                     existing = [existing]
                 meta = {**(meta or {}), "warnings": [*existing, *warnings]}
+            # Connection identity (#624): a success envelope from a command that
+            # resolved a backend self-identifies the serving profile + Web API
+            # base, so an agent can tell which org a result came from. Gated so
+            # error envelopes keep their reserved {status,code,category,retryable}
+            # meta, a backend resolved THIS command (connection_resolved) is
+            # required so a later REPL line over a stale cached backend stays
+            # clean, and _backend must still be live (profile add invalidates
+            # before emit). Fresh dict, so the caller's meta is not mutated.
+            if ok and self.connection_resolved and self._backend is not None:
+                meta = {**(meta or {}),
+                        "profile": self._backend.profile.name,
+                        "url": self._backend.profile.api_base}
             if meta:
                 envelope["meta"] = meta
             click.echo(json.dumps(envelope, indent=2, default=str))
@@ -200,6 +217,9 @@ class CLIContext:
                 retry_on_ambiguous=self.retry_on_ambiguous,
             )
             self._backend_key = key
+        # Mark that this command opened a connection (covers a freshly built or
+        # a cached backend) so emit() stamps meta.profile/url (#624).
+        self.connection_resolved = True
         return self._backend
 
     def invalidate_backend(self) -> None:
@@ -534,6 +554,10 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
     cli_ctx = ctx.ensure_object(CLIContext)
     cli_ctx.json_mode = json_mode
     cli_ctx.dry_run = dry_run
+    # Per-invocation, NOT sticky: each command (each REPL line) re-decides whether
+    # it opened a connection, so emit() never stamps identity onto a local verb
+    # that follows a connecting one in the same REPL session (#624).
+    cli_ctx.connection_resolved = False
     # Sticky options: in the REPL the same CLIContext is reused across lines, so only
     # overwrite when the user actually supplied the flag — otherwise prior values
     # (e.g., set by `crm profile add`) would be wiped on the next bare command.

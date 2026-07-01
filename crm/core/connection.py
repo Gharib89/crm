@@ -119,6 +119,39 @@ def whoami(backend: D365Backend) -> dict[str, Any]:
     return as_dict(backend.get("WhoAmI"))
 
 
+def _org_friendly_name(backend: D365Backend, org_id: str | None) -> str | None:
+    """Friendly name of the current org, or None when unavailable.
+
+    The Organization table's primary-name attribute is `name` (set at install).
+    Best-effort: any read failure yields None rather than masking the caller's
+    identity probe. Kept out of the lightweight `whoami()` so the reachability
+    probe (`connection test`/`doctor`) never pays this extra round-trip.
+    """
+    if not org_id:
+        return None
+    from crm.utils.d365_backend import as_dict
+    try:
+        rec = as_dict(backend.get(f"organizations({org_id})?$select=name"))
+    except D365Error:
+        return None
+    return rec.get("name")
+
+
+def whoami_identity(backend: D365Backend) -> dict[str, Any]:
+    """WhoAmI plus the connection identity that served it (#624).
+
+    Layers onto the raw WhoAmI GUIDs the resolved profile name and Web API base
+    (already on the backend) and the org friendly name (one extra read). For the
+    diagnostic `connection whoami` verb only — answers "which org am I hitting?"
+    from the output alone, without eyeball-matching OrganizationId GUIDs.
+    """
+    info = whoami(backend)
+    info["profile"] = backend.profile.name
+    info["url"] = backend.profile.api_base
+    info["org_name"] = _org_friendly_name(backend, info.get("OrganizationId"))
+    return info
+
+
 def test_connection(backend: D365Backend, *, negotiate: bool = False) -> dict[str, Any]:
     """Lightweight reachability test: WhoAmI + report API base.
 

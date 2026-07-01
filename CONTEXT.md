@@ -23,6 +23,25 @@ and paging links are stripped from `data` and, where useful, relocated to `meta`
 An agent learns one extraction rule, not one per command.
 _Avoid_: response body, raw OData.
 
+**Connection identity**:
+Two `meta` keys injected automatically by [`CLIContext.emit`](crm/cli.py) onto
+every **success** envelope from a command that resolved a backend connection —
+`meta.profile` (the resolved profile name, reflecting any per-run `--profile`
+override) and `meta.url` (the resolved Web API base URL,
+e.g. `http://host/org/api/data/v9.1/`). Injected once at the central emit
+chokepoint, not hand-set per command; where a command does pass its own
+`meta.profile` (`profile add`), the gate below excludes that envelope, so
+injection never overwrites it. Gating rules: (1) success envelopes only
+— error envelopes keep their reserved `{status, code, category, retryable}` meta
+shape unchanged; (2) a backend must have been resolved *this command* —
+`connection_resolved` is reset per invocation so a subsequent REPL line over a
+cached backend is not stamped; (3) `_backend` must still be live — `profile add`
+invalidates it before `emit`, so its envelope is not stamped. Purely-local verbs
+(`connection status`, `session`, `skill`, `profile list`, `self-update`, `repl`,
+`scaffold`) never open a connection and therefore carry no connection identity.
+Human output is unaffected.
+_Avoid_: envelope identity (the term is "connection identity").
+
 **Operational failure**:
 A command that ran but did not achieve its effect — a D365 server error, a
 client-side validation rejection, or a user-declined confirmation. Surfaces as
