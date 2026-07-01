@@ -468,9 +468,16 @@ def profile_rename(ctx: CLIContext, old_name: str, new_name: str):
     # meta.profile reflects the active profile after this command runs — mirrors
     # profile_add (which sets it because it unconditionally activates). A rename
     # of a non-active profile leaves the active pointer untouched, so report
-    # whatever it currently is rather than the just-renamed NEW_NAME.
-    active_profile = new_name if pointer_updated else \
-        session_mod.load_session(ctx.session_name).get("active_profile")
+    # whatever it currently is rather than the just-renamed NEW_NAME. Best-effort
+    # like steps 3/4 above: the rename itself already succeeded, so a corrupt or
+    # unreadable session file here must not crash the command post-mutation.
+    if pointer_updated:
+        active_profile = new_name
+    else:
+        try:
+            active_profile = session_mod.load_session(ctx.session_name).get("active_profile")
+        except (OSError, ValueError):
+            active_profile = None
     ctx.emit(True, data={"old": old_name, "new": new_name,
                          "active_updated": pointer_updated},
              meta={"profile": active_profile},
