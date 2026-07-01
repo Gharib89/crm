@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.46.0 (2026-07-01)
+
+### Features
+
+- Identify serving profile/org/URL in JSON envelopes and whoami
+  ([#630](https://github.com/Gharib89/crm/pull/630),
+  [`a37bc74`](https://github.com/Gharib89/crm/commit/a37bc740381b7d37a8e3a9bbffb5800eddd5616a))
+
+
 ## v1.45.2 (2026-07-01)
 
 ### Bug Fixes
