@@ -41,13 +41,14 @@ def test_report_list(cli):
 
 @covers("report create", "report get", "report set-category", "report delete")
 @pytest.mark.slow
-def test_report_lifecycle(cli, unique):
+def test_report_lifecycle(cli, unique, ephemeral_solution):
     """Create a link report, read it back, categorize it, then delete it."""
     name = f"E2E Report {unique}"
 
     result = cli([
         "--json", "report", "create",
-        "--name", name, "--url", "https://example.com/e2e-report"])
+        "--name", name, "--url", "https://example.com/e2e-report",
+        "--solution", ephemeral_solution])
     assert result.returncode == 0, (
         f"report create failed:\n{result.stderr}\nstdout: {result.stdout}")
     created = json.loads(result.stdout)
@@ -64,7 +65,8 @@ def test_report_lifecycle(cli, unique):
         assert env["data"]["bodyurl"] == "https://example.com/e2e-report"
 
         cat = cli([
-            "--json", "report", "set-category", report_id, "--category", "sales"])
+            "--json", "report", "set-category", report_id, "--category", "sales",
+            "--solution", ephemeral_solution])
         assert cat.returncode == 0, cat.stderr
         cat_env = json.loads(cat.stdout)
         assert cat_env["ok"], cat_env

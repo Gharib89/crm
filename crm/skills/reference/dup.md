@@ -5,8 +5,8 @@ and test a candidate record against the published rules. Group: `dup`.
 Flags/choices/operators: `crm dup --help` (and `crm dup add-condition --help`).
 
 ```bash
-crm --json dup create account --name "Accounts with the same name"
-crm --json dup add-condition "Accounts with the same name" --attr name --operator exact
+crm --json dup create account --name "Accounts with the same name" --solution cwx_crmworx
+crm --json dup add-condition "Accounts with the same name" --attr name --operator exact --solution cwx_crmworx
 crm --json dup publish "Accounts with the same name" --wait
 crm --json dup check account --data '{"name": "Contoso"}'
 crm --json dup unpublish "Accounts with the same name"
@@ -43,9 +43,11 @@ exist. Detection requires the entity to be duplicate-detection-enabled.
 `unpublish`, `get`) — a name is resolved by exact match, or pass the
 `duplicateruleid` GUID directly.
 
-**`--solution` / `--dry-run` on writes.** `create` and `add-condition` honor
-`--solution <unique_name>` and `--dry-run` (echoes the would-be POST,
-`meta.dry_run: true`; reads still run for real).
+**`--solution` is required, `--dry-run` also honored.** `create` and
+`add-condition` require `--solution <unique_name>` (no profile default, no
+opt-out — `--solution Default` for a deliberate Default-Solution-only write)
+and honor `--dry-run` (echoes the would-be POST, `meta.dry_run: true`; reads
+still run for real, `--solution` is validated before them).
 
 ## JSON contract for `check` and `get`
 

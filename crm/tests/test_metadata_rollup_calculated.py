@@ -150,7 +150,7 @@ class TestRollupCalculatedCli:
                 "--json", "metadata", "add-attribute", "account",
                 "--kind", "integer", "--schema-name", "new_Amount",
                 "--display", "Amount", "--type", "rollup",
-                "--formula-file", str(f), "--no-publish",
+                "--formula-file", str(f), "--solution", "TestSol", "--no-publish",
             ])
             body = _posts(m)[0].json()
         assert result.exit_code == 0, result.output
@@ -164,7 +164,8 @@ class TestRollupCalculatedCli:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", "integer", "--schema-name", "new_Amount",
-            "--display", "Amount", "--type", "rollup", "--no-publish",
+            "--display", "Amount", "--type", "rollup",
+            "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 2
         assert "formula-file is required" in result.output
@@ -179,7 +180,8 @@ class TestRollupCalculatedCli:
             "--json", "metadata", "add-attribute", "account",
             "--kind", "lookup", "--schema-name", "new_Ref",
             "--display", "Ref", "--target-entity", "contact",
-            "--type", "rollup", "--formula-file", str(f), "--no-publish",
+            "--type", "rollup", "--formula-file", str(f),
+            "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 2
         assert "not valid for kind 'lookup'" in result.output
@@ -191,7 +193,8 @@ class TestRollupCalculatedCli:
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
             "--kind", "integer", "--schema-name", "new_Amount",
-            "--display", "Amount", "--formula-file", str(f), "--no-publish",
+            "--display", "Amount", "--formula-file", str(f),
+            "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code == 2
         assert "only valid with --type" in result.output

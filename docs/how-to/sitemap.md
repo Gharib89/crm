@@ -23,8 +23,13 @@ The `sitemapid` in `data[]` is what you pass as `SITEMAP_ID`.
 
 ```bash
 crm --json sitemap add-area <SITEMAP_ID> \
-    --id cwx_sales --title "Sales" --publish
+    --id cwx_sales --title "Sales" --solution cwx_crmworx --publish
 ```
+
+`--solution` is required on every mutating sitemap verb — a component created
+without an explicit target solution would otherwise land only in the system
+Default Solution. Pass `--solution Default` for a deliberate
+Default-Solution-only write.
 
 `--id` must match `[a-zA-Z0-9_]+` and be **unique across all node ids** in the
 document (every Area / Group / SubArea Id — so `remove-node --id` is never
@@ -37,7 +42,7 @@ new Area.
 
 ```bash
 crm --json sitemap add-group <SITEMAP_ID> \
-    --area cwx_sales --id cwx_salesgrp --title "Customers" --publish
+    --area cwx_sales --id cwx_salesgrp --title "Customers" --solution cwx_crmworx --publish
 ```
 
 `--area` is the Id of the parent Area (must already exist). The new Group Id must be
@@ -52,22 +57,22 @@ A SubArea requires **exactly one** content binding: `--entity`, `--url`, or
 # Bind a table by logical name (validated to exist in the org)
 crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
-    --id cwx_accounts --entity account --title "Accounts" --publish
+    --id cwx_accounts --entity account --title "Accounts" --solution cwx_crmworx --publish
 
 # Link to a URL (including an HTML web resource)
 crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
-    --id cwx_dashboard --url "/WebResources/cwx_dashboard.html" --publish
+    --id cwx_dashboard --url "/WebResources/cwx_dashboard.html" --solution cwx_crmworx --publish
 
 # Link to a URL and append Dynamics context params (userid, orgname, orglcid, userlcid)
 crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
-    --id cwx_ext --url "https://portal.example.com/widget" --pass-params --publish
+    --id cwx_ext --url "https://portal.example.com/widget" --pass-params --solution cwx_crmworx --publish
 
 # Open a dashboard by GUID (sets DefaultDashboard)
 crm --json sitemap add-subarea <SITEMAP_ID> \
     --area cwx_sales --group cwx_salesgrp \
-    --id cwx_pipe --dashboard <dashboard-guid> --publish
+    --id cwx_pipe --dashboard <dashboard-guid> --solution cwx_crmworx --publish
 ```
 
 **`--entity` is validated live** — a logical name that does not exist in the org is
@@ -98,13 +103,13 @@ attributes or children. Exactly one destination mode is required:
 
 ```bash
 # Move directly before a sibling (same parent and node type)
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --before cwx_contacts --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --before cwx_contacts --solution cwx_crmworx --publish
 
 # Move directly after a sibling
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --after cwx_contacts --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --after cwx_contacts --solution cwx_crmworx --publish
 
 # Move to a 0-based position among same-type siblings
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --index 0 --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accounts --index 0 --solution cwx_crmworx --publish
 ```
 
 The anchor for `--before` / `--after` must share the moved node's **parent and node
@@ -118,10 +123,10 @@ children, and descendant structure are never modified.
 
 ```bash
 # Hard delete — removes the node and its descendants
-crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accounts --publish
+crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accounts --solution cwx_crmworx --publish
 
 # Soft delete — replaces the node with a well-formed XML comment
-crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accounts --comment-out --publish
+crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accounts --comment-out --solution cwx_crmworx --publish
 ```
 
 `remove-node` warns when the target is an Area or Group that has descendants
@@ -138,13 +143,14 @@ on).
 ```bash
 # Set a single English title on a node
 crm --json sitemap set-title <SITEMAP_ID> \
-    --id cwx_sales --lcid 1033 --title "Sales" --publish
+    --id cwx_sales --lcid 1033 --title "Sales" --solution cwx_crmworx --publish
 
 # Set titles for multiple languages in one call
 crm --json sitemap set-title <SITEMAP_ID> \
     --id cwx_sales \
     --lcid 1033 --title "Sales" \
     --lcid 1031 --title "Vertrieb" \
+    --solution cwx_crmworx \
     --publish
 ```
 
@@ -190,13 +196,14 @@ The JSON response echoes `action`, `node_id`, and `titles` as a list of
 ```bash
 # Set a single English description
 crm --json sitemap set-description <SITEMAP_ID> \
-    --id cwx_sales --lcid 1033 --description "Sales area" --publish
+    --id cwx_sales --lcid 1033 --description "Sales area" --solution cwx_crmworx --publish
 
 # Set descriptions for multiple languages
 crm --json sitemap set-description <SITEMAP_ID> \
     --id cwx_sales \
     --lcid 1033 --description "Sales area" \
     --lcid 1031 --description "Vertriebsbereich" \
+    --solution cwx_crmworx \
     --publish
 ```
 
@@ -241,11 +248,11 @@ Instead, let each edit publish before the next reads — `--publish` is the defa
 commands are safe:
 
 ```bash
-crm --json sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations"
+crm --json sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations" --solution cwx_crmworx
 crm --json sitemap add-group <SITEMAP_ID> --area cwx_ops --id cwx_opsgrp \
-    --title "Ops Group"
+    --title "Ops Group" --solution cwx_crmworx
 crm --json sitemap add-subarea <SITEMAP_ID> --area cwx_ops --group cwx_opsgrp \
-    --id cwx_contacts --entity contact
+    --id cwx_contacts --entity contact --solution cwx_crmworx
 ```
 
 Reserve `--no-publish` for a **single** staged edit you publish yourself (e.g.
@@ -259,8 +266,8 @@ crm --json sitemap add-area <SITEMAP_ID> \
     --solution cwx_crmworx --publish
 ```
 
-`--require-solution` fails the command if no solution name resolves from `--solution`
-or the profile default.
+`--solution` is mandatory — there is no profile default and no opt-out; pass
+`--solution Default` for a deliberate Default-Solution-only write.
 
 ## Preview without writing
 
@@ -268,5 +275,9 @@ The global `--dry-run` flag reads the live sitemap for real (to validate parent
 references, check uniqueness, and resolve entities) but issues no PATCH:
 
 ```bash
-crm --json --dry-run sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations"
+crm --json --dry-run sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations" \
+    --solution cwx_crmworx
 ```
+
+`--solution` is still required under `--dry-run` — it is validated before any
+backend call.

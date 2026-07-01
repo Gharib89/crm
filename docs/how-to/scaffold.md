@@ -75,12 +75,17 @@ A profile without a `publisher_prefix` causes exit 2 before any network call.
 
 ```bash
 crm --json scaffold table "Project" \
+  --solution ContosoCore \
   --column "Name:string:max_length=200,required=ApplicationRequired" \
   --column "Due Date:datetime" \
   --column "Budget:money" \
   --column "Owner:lookup:target_entity=systemuser" \
   --column "Priority:picklist:optionset_name=new_priority"
 ```
+
+`--solution` is required — a component created without an explicit target
+solution would otherwise land only in the system Default Solution. Pass
+`--solution Default` for a deliberate Default-Solution-only write.
 
 Output:
 
@@ -99,6 +104,7 @@ a `failed` entry also carries `error`. A second run moves everything to `skipped
 
 ```bash
 crm --dry-run --json scaffold table "Project" \
+  --solution ContosoCore \
   --column "Name:string" \
   --column "Due Date:datetime"
 ```
@@ -121,6 +127,7 @@ entity or option set is caught before the real write 400s.
 
 ```bash
 crm --stage-only --json scaffold table "Project" \
+  --solution ContosoCore \
   --column "Name:string" \
   --column "Due Date:datetime"
 ```
@@ -134,27 +141,18 @@ re-run stays `false`, since nothing is left unpublished). Publish later with
 
 ```bash
 crm --json scaffold table "Work Item" \
+  --solution ContosoCore \
   --schema-name new_WorkItem \
   --display-collection "Work Items" \
   --column "Title:string:max_length=500,required=ApplicationRequired" \
   --column "Assignee:lookup:target_entity=systemuser"
 ```
 
-### Target a specific solution
-
-```bash
-crm --json scaffold table "Project" \
-  --solution ContosoCore \
-  --column "Name:string"
-```
-
-Pass `--require-solution` to fail with exit 2 when no solution resolves instead
-of creating the entity without a solution context.
-
 ### OrganizationOwned entity
 
 ```bash
 crm --json scaffold table "Reference Data" \
+  --solution ContosoCore \
   --ownership OrganizationOwned \
   --column "Code:string:max_length=50,required=ApplicationRequired" \
   --column "Label:string:max_length=200"

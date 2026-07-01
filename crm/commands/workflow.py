@@ -13,6 +13,8 @@ from crm.commands._helpers import (
     _journal,
     d365_errors,
     _output_option,
+    _solution_option,
+    _resolve_solution,
 )
 
 _CATEGORY_NAMES = {
@@ -370,12 +372,13 @@ def workflow_run(ctx: CLIContext, workflow_id, target_record_id,
 @click.option("--name", default=None, help="Name for the clone. Default: '<source> (Clone)'.")
 @click.option("--activate/--no-activate", default=True,
               help="Activate the clone after creating it (compiles the xaml). Default: activate.")
-@click.option("--solution", default=None, help="Add the clone to this unmanaged solution.")
+@_solution_option
 @_admin_header_options
 @pass_ctx
 def workflow_clone(ctx: CLIContext, workflow_id, target_entity, name, activate, solution,
                    as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Clone a workflow definition onto another entity (xaml-retargeted)."""
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = workflow_mod.clone_workflow_to_entity(
             ctx.backend(), workflow_id, target_entity,

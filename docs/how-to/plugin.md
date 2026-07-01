@@ -20,14 +20,14 @@ The `.dll` bytes are base64-encoded and written to the `content` column of
 ## Re-upload assembly content after a rebuild
 
 ```bash
-crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update
+crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solution cwx_contoso
 ```
 
 `--update` resolves the existing assembly by name and patches only the `content`
 column — it does not touch `name`, `version`, `culture`, or `publickeytoken`.
 Identity flags (`--version`, `--culture`, `--public-key-token`, `--description`,
 `--isolation-mode`) are ignored under `--update` and produce a warning if passed.
-`--solution` is still honored.
+`--solution` is still required (and honored).
 
 ## Register a plug-in type
 
@@ -39,7 +39,8 @@ explicitly:
 ```bash
 crm --json plugin register-type \
     --assembly Contoso.Plugins \
-    --type Contoso.Plugins.PreCreateAccount
+    --type Contoso.Plugins.PreCreateAccount \
+    --solution cwx_contoso
 ```
 
 `--friendly-name` defaults to the type name. `version`/`culture`/`publickeytoken`
@@ -47,14 +48,17 @@ are read-only (server-derived from the bound assembly) and are never sent in the
 request body. After this, `list-types` shows the row and `register-step
 --plugin-type <typename>` resolves it.
 
-Dry-run preview (no write): `crm --dry-run --json plugin register-type ...`
-returns `{_dry_run, would_create: true}`. The assembly name-to-id resolution GET
-runs live even under `--dry-run` (reads-execute rule).
+Dry-run preview (no write): `crm --dry-run --json plugin register-type ...
+--solution cwx_contoso` returns `{_dry_run, would_create: true}`. The assembly
+name-to-id resolution GET runs live even under `--dry-run` (reads-execute rule);
+`--solution` is still required and validated before it.
 
 Unknown assembly name raises a `D365Error` (clean error, no server round-trip
 for the write).
 
-`--solution` / `--require-solution` land the type row in a target solution.
+`--solution` lands the type row in a target solution and is required —
+components must always target an explicit unmanaged solution. Pass
+`--solution Default` for a deliberate Default-Solution-only write.
 
 ## List plug-in types
 
@@ -79,7 +83,8 @@ crm --json plugin register-webhook \
     --name MyWebhook \
     --url https://func.azurewebsites.net/api/d365hook \
     --auth webhookkey \
-    --auth-value 'abc123secret'
+    --auth-value 'abc123secret' \
+    --solution cwx_contoso
 ```
 
 Auth scheme choices: `webhookkey` (appends `?code=<auth-value>` — the Azure
@@ -90,10 +95,10 @@ Functions default), `httpheader` (passes the value as an HTTP header),
 After registering the webhook, bind a step to it with `--service-endpoint`
 (see "Register a processing step" below).
 
-Dry-run preview (no write): `crm --dry-run --json plugin register-webhook ...`
-carries `meta.dry_run: true`.
+Dry-run preview (no write): `crm --dry-run --json plugin register-webhook ...
+--solution cwx_contoso` carries `meta.dry_run: true`.
 
-`--solution` / `--require-solution` land the endpoint row in a target solution.
+`--solution` lands the endpoint row in a target solution and is required.
 
 ## Register a processing step
 
@@ -110,7 +115,8 @@ crm --json plugin register-step \
     --stage postoperation \
     --mode sync \
     --filtering-attributes name,telephone1 \
-    --configuration '{"key": "value"}'
+    --configuration '{"key": "value"}' \
+    --solution cwx_contoso
 ```
 
 **Bind a step to a webhook (service endpoint):**
@@ -122,7 +128,8 @@ crm --json plugin register-step \
     --entity account \
     --stage postoperation \
     --mode async \
-    --async-auto-delete
+    --async-auto-delete \
+    --solution cwx_contoso
 ```
 
 Key points:
@@ -148,10 +155,9 @@ Key points:
   limit.
 - `--assembly` scopes the type lookup to a single assembly when multiple
   assemblies share a type name (relevant only with `--plugin-type`).
-- `--solution` / `--require-solution` land the step row in a target solution
-  (sets `MSCRM.SolutionUniqueName`); defaults to the profile's
-  `default_solution`. `--require-solution` (or `CRM_REQUIRE_SOLUTION`) fails
-  when no solution resolves.
+- `--solution` lands the step row in a target solution (sets
+  `MSCRM.SolutionUniqueName`) and is required — there is no profile default;
+  pass `--solution Default` for a deliberate Default-Solution-only write.
 
 ## Full registration workflow
 
@@ -212,7 +218,8 @@ crm --json plugin register-image \
     --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
     --type pre \
     --alias preimg \
-    --attributes name,telephone1
+    --attributes name,telephone1 \
+    --solution cwx_contoso
 ```
 
 Key points:
@@ -234,8 +241,8 @@ Key points:
 - Platform validity rules are enforced before any write: no pre-image on a
   `Create` step, no post-image on a `Delete` step, and post-images (or `both`) require a
   step registered in the **PostOperation** stage.
-- `--solution` / `--require-solution` land the image row in a target solution
-  (same semantics as on `register-step` and `register-assembly`).
+- `--solution` lands the image row in a target solution and is required (same
+  semantics as on `register-step` and `register-assembly`).
 
 ## Unregister a step image
 
@@ -279,18 +286,21 @@ skip confirmation. Accepts either the assembly name or its GUID.
 ```bash
 crm --dry-run --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
 crm --dry-run --json plugin register-type \
-    --assembly Contoso.Plugins --type Contoso.Plugins.AccountPostUpdate
+    --assembly Contoso.Plugins --type Contoso.Plugins.AccountPostUpdate --solution cwx_contoso
 crm --dry-run --json plugin register-webhook \
     --name MyWebhook --url https://func.azurewebsites.net/api/d365hook \
-    --auth webhookkey --auth-value 'abc123secret'
+    --auth webhookkey --auth-value 'abc123secret' --solution cwx_contoso
 crm --dry-run --json plugin register-step \
-    --message Create --plugin-type Contoso.Plugins.AccountPreCreate --entity account
+    --message Create --plugin-type Contoso.Plugins.AccountPreCreate --entity account \
+    --solution cwx_contoso
 crm --dry-run --json plugin register-step \
-    --message Create --service-endpoint MyWebhook --entity account
+    --message Create --service-endpoint MyWebhook --entity account --solution cwx_contoso
 ```
 
 Resolution GETs (e.g. assembly lookup under `--update`) fire for real; all
-writes are skipped. The `--json` envelope carries `meta.dry_run: true`.
+writes are skipped. `--solution` is still required and validated before any of
+this (including under `--dry-run`). The `--json` envelope carries
+`meta.dry_run: true`.
 
 For `register-step`, dry-run resolves the objects the step names — the SDK
 message, the plug-in type or service endpoint, and (when `--entity` is given)

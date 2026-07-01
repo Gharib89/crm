@@ -87,10 +87,11 @@ def clone_entity(
     validate_customization_prefix(prefix)
 
     spec = build_entity_spec(
-        backend, source, with_views=with_views, with_relationships=False)
+        backend, source, with_views=with_views, with_relationships=False,
+        solution=solution)
     retarget_spec(spec, new_schema=new_schema_name, display=display)
 
-    apply_result = apply_spec(backend, spec, solution=solution, stage_only=not publish)
+    apply_result = apply_spec(backend, spec, stage_only=not publish)
 
     applied = apply_result.get("applied", [])
     planned = apply_result.get("planned", [])

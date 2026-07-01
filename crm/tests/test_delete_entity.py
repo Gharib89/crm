@@ -219,7 +219,8 @@ class TestDeleteEntityCommand:
         runner = CliRunner()
         result = runner.invoke(
             metadata_group,
-            ["delete-entity", "new_widget", "--yes", "--check-dependencies"],
+            ["delete-entity", "new_widget", "--yes", "--check-dependencies",
+             "--solution", "DevSolution"],
             catch_exceptions=False,
         )
         assert result.exit_code == 0

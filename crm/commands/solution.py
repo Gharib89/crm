@@ -356,11 +356,9 @@ def solution_create_publisher(ctx: CLIContext, name, display, prefix,
 @click.option("--publisher-id", "publisher_id", default=None,
               help="Publisher GUID (mutually exclusive with --publisher).")
 @click.option("--if-exists", type=click.Choice(["error", "skip"]), default="error")
-@click.option("--set-default/--no-set-default", default=True,
-              help="Write default_solution back to the active named profile (default on).")
 @pass_ctx
 def solution_create(ctx: CLIContext, name, display, version, publisher,
-                    publisher_id, if_exists, set_default):
+                    publisher_id, if_exists):
     """Create an unmanaged solution bound to a publisher (solutions)."""
     if bool(publisher) == bool(publisher_id):
         ctx.emit(False, error="Provide exactly one of --publisher or --publisher-id.")
@@ -371,8 +369,6 @@ def solution_create(ctx: CLIContext, name, display, version, publisher,
             publisher_unique_name=publisher, publisher_id=publisher_id,
             if_exists=if_exists,
         )
-    if set_default:
-        _autowire_profile(ctx, "default_solution", name, info)
     ctx.emit(True, data=info)
     _journal(ctx, name, info)
 

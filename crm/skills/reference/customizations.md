@@ -7,9 +7,14 @@ themes, and custom reports. Groups: `app`, `sitemap`, `webresource`, `ribbon`, `
 
 ## Model-driven apps — `app` (appmodule)
 
+`app create`, `build-sitemap`, and `set-sitemap` require `--solution <unique_name>`
+(there is no profile default and no opt-out; `--solution Default` for a deliberate
+Default-Solution-only write). `add-components`/`remove-components` bind existing ids
+and take no `--solution`.
+
 ```bash
 # create: --unique-name is publisher-prefixed, e.g. 'cwx_crmworx'.
-crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
+crm --json app create --name CRMWorx --unique-name cwx_crmworx --solution CRMWorx --if-exists skip
 
 # add-components: APP_ID positional + repeatable --component 'kind:guid'.
 # 'entity' is NOT a valid kind — tables surface via sitemap Entity= subareas.
@@ -23,7 +28,8 @@ crm --json app remove-components <appmoduleid> --component view:<savedqueryid>
 # set-sitemap: SITEMAP_NAME positional is the sitemap's descriptive name
 # (stored as sitemapname); --unique-name is the app's uniquename and sets
 # sitemapnameunique to auto-associate the sitemap with that app.
-crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml --unique-name cwx_crmworx
+crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml \
+    --unique-name cwx_crmworx --solution CRMWorx
 
 # build-sitemap: generates the SiteMapXml for you, then creates it via the same
 # path as set-sitemap. Grammar: --area 'id[:Title]', --group 'areaId/groupId[:Title]',
@@ -33,7 +39,7 @@ crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml --uniqu
 crm --json app build-sitemap "CRMWorx Sitemap" \
     --area 'sales:Sales' --group 'sales/accounts:Customers' \
     --subarea 'sales/accounts:entity=account:Accounts' \
-    --subarea 'sales/accounts:entity=contact' --unique-name cwx_crmworx
+    --subarea 'sales/accounts:entity=contact' --unique-name cwx_crmworx --solution CRMWorx
 ```
 
 **On Unified Interface, tables are NOT added via `add-components`** — they surface
@@ -75,40 +81,41 @@ crm --json query odata sitemaps --select sitemapname,sitemapid
 # → data[].sitemapid is the SITEMAP_ID positional arg
 ```
 
-**The seven verbs:**
+**The seven verbs — all require `--solution <unique_name>`** (no profile default, no
+opt-out; `--solution Default` for a deliberate Default-Solution-only write):
 
 ```bash
 # Add an Area (id unique across all node ids; publisher-prefix recommended)
-crm --json sitemap add-area <SITEMAP_ID> --id cwx_sales --title "Sales" --publish
+crm --json sitemap add-area <SITEMAP_ID> --id cwx_sales --title "Sales" --solution CRMWorx --publish
 
 # Add a Group under an Area
 crm --json sitemap add-group <SITEMAP_ID> \
-    --area cwx_sales --id cwx_grp --title "Customers" --publish
+    --area cwx_sales --id cwx_grp --title "Customers" --solution CRMWorx --publish
 
 # Add a SubArea — exactly one of --entity / --url / --dashboard
 crm --json sitemap add-subarea <SITEMAP_ID> \
-    --area cwx_sales --group cwx_grp --id cwx_accts --entity account --publish
+    --area cwx_sales --group cwx_grp --id cwx_accts --entity account --solution CRMWorx --publish
 crm --json sitemap add-subarea <SITEMAP_ID> \
-    --area cwx_sales --group cwx_grp --id cwx_page --url "/WebResources/cwx_.html" --publish
+    --area cwx_sales --group cwx_grp --id cwx_page --url "/WebResources/cwx_.html" --solution CRMWorx --publish
 crm --json sitemap add-subarea <SITEMAP_ID> \
-    --area cwx_sales --group cwx_grp --id cwx_dash --dashboard <guid> --publish
+    --area cwx_sales --group cwx_grp --id cwx_dash --dashboard <guid> --solution CRMWorx --publish
 
 # Reorder a node within its parent — exactly one of --before / --after / --index
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --before cwx_dash --publish
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --after cwx_dash --publish
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --index 0 --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --before cwx_dash --solution CRMWorx --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --after cwx_dash --solution CRMWorx --publish
+crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --index 0 --solution CRMWorx --publish
 
 # Remove (or soft-delete with --comment-out)
-crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accts --publish
-crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --publish
+crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accts --solution CRMWorx --publish
+crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --solution CRMWorx --publish
 
 # Set localized titles — --lcid/--title paired positionally, repeatable
 crm --json sitemap set-title <SITEMAP_ID> \
-    --id cwx_sales --lcid 1033 --title "Sales" --lcid 1031 --title "Vertrieb" --publish
+    --id cwx_sales --lcid 1033 --title "Sales" --lcid 1031 --title "Vertrieb" --solution CRMWorx --publish
 
 # Set localized descriptions — same shape as set-title
 crm --json sitemap set-description <SITEMAP_ID> \
-    --id cwx_sales --lcid 1033 --description "Sales area" --publish
+    --id cwx_sales --lcid 1033 --description "Sales area" --solution CRMWorx --publish
 ```
 
 **Workflow-level gotchas the `--help` doesn't surface:**
@@ -189,9 +196,10 @@ you publish yourself.
 
 `data` carries the edit's identifying fields (`action`, plus `area_id` /
 `group_id` / `sub_id` / `node_id` per verb). `meta.warnings` carries the cascade
-advisory (Area/Group with descendants removed) and any solution advisory.
+advisory (Area/Group with descendants removed).
 `--dry-run` returns `{_dry_run: true, would_edit: true, sitemapxml: "<…>"}` — reads
-run for real (parent validation, entity existence), no PATCH is issued.
+run for real (parent validation, entity existence), no PATCH is issued; `--solution`
+is still required and validated before any of it.
 
 ## Web resources — `webresource` (HTML/JS/CSS/images)
 
@@ -203,20 +211,21 @@ crm --json webresource create --name cwx_/scripts/ribbon.js --file ./ribbon.js -
 
 # update <name>: plain PATCH of only the sent fields (content and/or display-name),
 # resolved by name — NOT retrieve-merge.
-crm --json webresource update cwx_/scripts/ribbon.js --file ./ribbon.js
+crm --json webresource update cwx_/scripts/ribbon.js --file ./ribbon.js --solution cwx_crmworx
 
 # inspect
 crm --json webresource get cwx_/scripts/ribbon.js
 crm --json webresource list --custom-only
 
 # use as a model-driven app icon
-crm --json webresource create --name cwx_/icons/app.svg --file ./app.svg
-crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresource cwx_/icons/app.svg
+crm --json webresource create --name cwx_/icons/app.svg --file ./app.svg --solution cwx_crmworx
+crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresource cwx_/icons/app.svg --solution cwx_crmworx
 ```
 
-Both `create` and `update` honor `--solution` (`MSCRM.SolutionUniqueName`) and publish
-after the write (`--no-publish` / global `--stage-only` suppress it; see
-`reference/authoring.md`).
+Both `create` and `update` **require** `--solution` (`MSCRM.SolutionUniqueName`) —
+there is no profile default and no opt-out (`--solution Default` for a deliberate
+Default-Solution-only write) — and publish after the write (`--no-publish` / global
+`--stage-only` suppress it; see `reference/authoring.md`).
 
 ### Bulk push — `webresource push <DIRECTORY> --prefix <p>`
 
@@ -349,9 +358,13 @@ under `--json`). Neither method touches the button's `classid`, `Command`, or
 ```bash
 crm --json form list cwx_ticket                                 # main forms only (the default)
 crm --json form list cwx_ticket --all                           # every form type, not just main
-crm --json form clone cwx_ticket "Information" --to cwx_ticketclone   # clone a named form to another table
+crm --json form clone cwx_ticket "Information" --to cwx_ticketclone --solution cwx_crmworx  # clone a named form to another table
 crm --json form export cwx_ticket "Information" --output form.xml     # export a form's formxml
 ```
+
+Every mutating form verb requires `--solution <unique_name>` — there is no profile
+default and no opt-out (`--solution Default` for a deliberate Default-Solution-only
+write). `list` and `export` are read-only and take no `--solution`.
 
 ### Add / remove / move a field — first-class verbs
 
@@ -360,10 +373,10 @@ FormXml editing required. The CLI resolves the control `classid` from live metad
 PATCHes the `systemform` record.
 
 ```bash
-crm --json form add-field cwx_ticket cwx_priority            # add to first section of first tab
-crm --json form remove-field cwx_ticket cwx_priority         # remove; errors if absent
+crm --json form add-field cwx_ticket cwx_priority --solution cwx_crmworx            # add to first section of first tab
+crm --json form remove-field cwx_ticket cwx_priority --solution cwx_crmworx         # remove; errors if absent
 crm --json form set-field cwx_ticket cwx_priority \
-    --tab "Details" --section "Status"                        # relocate; errors if not already present
+    --tab "Details" --section "Status" --solution cwx_crmworx                        # relocate; errors if not already present
 ```
 
 **Publish gotcha — GET returns the published snapshot.** A plain `GET /systemforms`
@@ -373,7 +386,7 @@ re-export *after* publishing; a malformed splice publishes silently but the cont
 absent from the exported XML.
 
 ```bash
-crm --json form add-field cwx_ticket cwx_priority --publish   # PATCH + PublishAllXml in one call
+crm --json form add-field cwx_ticket cwx_priority --solution cwx_crmworx --publish   # PATCH + PublishAllXml in one call
 ```
 
 **Unmapped types — fallback to hand-splice.** `add-field` maps the common
@@ -391,7 +404,7 @@ carries `would_add` / `would_remove` / `would_move: true`.
 
 ```bash
 crm --json form set-field-props cwx_ticket cwx_priority \
-    --disabled --hidden --locked --no-show-label --publish
+    --disabled --hidden --locked --no-show-label --solution cwx_crmworx --publish
 # → data: {updated: true, published: true, disabled: true, visible: false, locked: true, show_label: false}
 ```
 
@@ -419,16 +432,16 @@ with `webresource create` first, then wire.
 
 ```bash
 # 1. Register the library only (idempotent — safe to repeat)
-crm --json form add-library cwx_ticket --library cwx_/scripts/ticket.js
+crm --json form add-library cwx_ticket --library cwx_/scripts/ticket.js --solution cwx_crmworx
 
 # 2. Wire a handler (registers the library too — deduped)
 crm --json form add-handler cwx_ticket \
-    --event onload --library cwx_/scripts/ticket.js --function App.onLoad
+    --event onload --library cwx_/scripts/ticket.js --function App.onLoad --solution cwx_crmworx
 
 # onchange needs --field naming a field that is already on the form
 crm --json form add-handler cwx_ticket \
     --event onchange --field cwx_priority \
-    --library cwx_/scripts/ticket.js --function App.onPriorityChange
+    --library cwx_/scripts/ticket.js --function App.onPriorityChange --solution cwx_crmworx
 
 # 3. Inspect
 crm --json form list-handlers cwx_ticket
@@ -437,7 +450,7 @@ crm --json form list-handlers cwx_ticket
 
 # 4. Remove (event + function; add --field for onchange)
 crm --json form remove-handler cwx_ticket \
-    --event onload --function App.onLoad
+    --event onload --function App.onLoad --solution cwx_crmworx
 ```
 
 **`--field` is required for `onchange`, invalid for `onload`/`onsave`.** The command
@@ -464,10 +477,10 @@ pipeline as the field verbs; `--dry-run` returns `would_add` / `would_remove` /
 `would_rename` / `would_move`):
 
 ```bash
-crm --json form add-tab cwx_ticket cwx_details --label "Details"     # tab + starter section
-crm --json form add-section cwx_ticket cwx_status --tab cwx_details  # section into a tab
-crm --json form move-tab cwx_ticket cwx_details --after "General"    # reorder
-crm --json form remove-tab cwx_ticket cwx_details --force            # --force orphans bound fields
+crm --json form add-tab cwx_ticket cwx_details --label "Details" --solution cwx_crmworx     # tab + starter section
+crm --json form add-section cwx_ticket cwx_status --tab cwx_details --solution cwx_crmworx  # section into a tab
+crm --json form move-tab cwx_ticket cwx_details --after "General" --solution cwx_crmworx    # reorder
+crm --json form remove-tab cwx_ticket cwx_details --force --solution cwx_crmworx            # --force orphans bound fields
 ```
 
 Gotchas the flags don't tell you:
@@ -523,7 +536,7 @@ version a chart, capture both from `chart get` and recreate with `chart create`:
 crm --json chart get <id> | jq -r '.data.datadescription' > c.data.xml
 crm --json chart get <id> | jq -r '.data.presentationdescription' > c.pres.xml
 crm --json chart create contact --name "By Method" \
-    --data-description c.data.xml --presentation-description c.pres.xml
+    --data-description c.data.xml --presentation-description c.pres.xml --solution cwx_crmworx
 ```
 
 **Two mutually exclusive create modes.** XML mode needs **both**
@@ -537,32 +550,33 @@ data XML's category count, etc. — a malformed pair fails with a `400`
 doubt, start from a known-good chart captured via `chart get`.
 
 **Publish + solution + dry-run, same contract as the metadata verbs.** `create`
-runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
-`--require-solution` scope the write. Under `--dry-run`, `create` returns
-`{_dry_run, would_create: {entity_set, body}}` with the resolved body (a
-`--web-resource` name is resolved live first) and `delete` returns
+runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` is
+required (no profile default, no opt-out; `--solution Default` for a deliberate
+Default-Solution-only write) — `delete` takes no `--solution`. Under `--dry-run`,
+`create` returns `{_dry_run, would_create: {entity_set, body}}` with the resolved
+body (a `--web-resource` name is resolved live first) and `delete` returns
 `{_dry_run, would_delete: true, <id>}` — neither issues the write. To take a chart
 *out* of a solution without deleting it, use `solution remove-component`.
 
 ### Chart editors — `update`, `set-fetch`, `add-series`, `remove-series`, `set-groupby`
 
-Five in-place editor verbs mutate a chart without recreating it. All honor
-`--user`, `--solution`, `--require-solution`, and `--publish` / `--no-publish`.
+Five in-place editor verbs mutate a chart without recreating it. All require
+`--solution` and honor `--user` and `--publish` / `--no-publish`.
 
 ```bash
 # update: replace XML, name, description, or ChartType on every <Series>
-crm --json chart update <id> --data-description d.xml --presentation-description p.xml
-crm --json chart update <id> --name "New Name" --type Bar
+crm --json chart update <id> --data-description d.xml --presentation-description p.xml --solution cwx_crmworx
+crm --json chart update <id> --name "New Name" --type Bar --solution cwx_crmworx
 
 # set-fetch: swap the inner <fetch> element, keeping the categorycollection
-crm --json chart set-fetch <id> --fetch new_query.xml
+crm --json chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx
 
 # add-series / remove-series: add or drop one aggregate series
-crm --json chart add-series <id> --column estimatedvalue --aggregate sum --alias total
-crm --json chart remove-series <id> --alias total
+crm --json chart add-series <id> --column estimatedvalue --aggregate sum --alias total --solution cwx_crmworx
+crm --json chart remove-series <id> --alias total --solution cwx_crmworx
 
 # set-groupby: change the grouping (category) column
-crm --json chart set-groupby <id> --column createdon --dategrouping month
+crm --json chart set-groupby <id> --column createdon --dategrouping month --solution cwx_crmworx
 ```
 
 **Alias-coupling invariant.** A chart's three XML layers are tightly coupled:
@@ -600,7 +614,7 @@ every read to that type, so other form types never appear.
 ```bash
 crm --json dashboard list                              # org dashboards (no formxml)
 crm --json dashboard get <id>                          # single dashboard, with formxml
-crm --json dashboard create --name "Sales" --formxml dash.xml
+crm --json dashboard create --name "Sales" --formxml dash.xml --solution cwx_crmworx
 crm --json dashboard delete <id>
 ```
 
@@ -609,7 +623,7 @@ dashboard, capture its layout from `dashboard get` and recreate it:
 
 ```bash
 crm --json dashboard get <id> | jq -r '.data.formxml' > dash.xml
-crm --json dashboard create --name "Sales" --formxml dash.xml
+crm --json dashboard create --name "Sales" --formxml dash.xml --solution cwx_crmworx
 ```
 
 **Interactive (type-10) dashboards are not API-creatable.** Passing `--interactive`
@@ -617,8 +631,10 @@ fails fast with a clear error rather than silently creating a standard dashboard
 author interactive-experience dashboards in the designer.
 
 **Publish + solution + dry-run, same contract as the other customization verbs.**
-`create` runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` /
-`--require-solution` scope the write. Under `--dry-run`, `create` returns
+`create` runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` is
+required on `create` and every `add-*`/`remove-component` verb below (no profile
+default, no opt-out; `--solution Default` for a deliberate Default-Solution-only
+write) — `delete` takes no `--solution`. Under `--dry-run`, `create` returns
 `{_dry_run, would_create: {entity_set, body}}` and `delete` returns
 `{_dry_run, would_delete: true, formid}` — neither issues the write.
 
@@ -628,10 +644,10 @@ All four tile-add verbs PATCH the `formxml` column directly and run `PublishAllX
 by default.
 
 ```bash
-crm --json dashboard add-chart <dashboard-id> --view <savedqueryid> --chart <savedqueryvisualizationid>
-crm --json dashboard add-view  <dashboard-id> --view <savedqueryid>
-crm --json dashboard add-iframe <dashboard-id> --url https://example.com/embed
-crm --json dashboard add-webresource <dashboard-id> --webresource cwx_/pages/summary.html
+crm --json dashboard add-chart <dashboard-id> --view <savedqueryid> --chart <savedqueryvisualizationid> --solution cwx_crmworx
+crm --json dashboard add-view  <dashboard-id> --view <savedqueryid> --solution cwx_crmworx
+crm --json dashboard add-iframe <dashboard-id> --url https://example.com/embed --solution cwx_crmworx
+crm --json dashboard add-webresource <dashboard-id> --webresource cwx_/pages/summary.html --solution cwx_crmworx
 ```
 
 **`add-chart` live ref validation.** The chart (`savedqueryvisualization`) must be
@@ -664,11 +680,11 @@ publish first, then verify.
 ### Removing a tile — `remove-component`
 
 ```bash
-crm --json dashboard remove-component <dashboard-id> --index 0
-crm --json dashboard remove-component <dashboard-id> --cell-id <id>
-crm --json dashboard remove-component <dashboard-id> --view <savedqueryid>
-crm --json dashboard remove-component <dashboard-id> --chart <chart-id>
-crm --json dashboard remove-component <dashboard-id> --url https://example.com/embed
+crm --json dashboard remove-component <dashboard-id> --index 0 --solution cwx_crmworx
+crm --json dashboard remove-component <dashboard-id> --cell-id <id> --solution cwx_crmworx
+crm --json dashboard remove-component <dashboard-id> --view <savedqueryid> --solution cwx_crmworx
+crm --json dashboard remove-component <dashboard-id> --chart <chart-id> --solution cwx_crmworx
+crm --json dashboard remove-component <dashboard-id> --url https://example.com/embed --solution cwx_crmworx
 ```
 
 **Exactly one selector.** Passing more than one or none is a usage error. A value
@@ -742,9 +758,9 @@ external link report. Verbs: `list`, `get`, `create`, `set-category`, `delete`.
 ```bash
 crm --json report list                                 # all reports (summary cols)
 crm --json report get <id>                             # one report, body included
-crm --json report create --name "Pipeline" --body-file pipeline.rdl
-crm --json report create --name "Ext Dash" --url "https://example.com/dash"
-crm --json report set-category <id> --category sales
+crm --json report create --name "Pipeline" --body-file pipeline.rdl --solution cwx_crmworx
+crm --json report create --name "Ext Dash" --url "https://example.com/dash" --solution cwx_crmworx
+crm --json report set-category <id> --category sales --solution cwx_crmworx
 crm --json report delete <id>
 ```
 
@@ -757,20 +773,23 @@ used. Without `--org`, reports are personal (`ispersonal=true`).
 XML. Dataverse online only accepts RDLs using the fetch data provider; on-prem
 v9.x uses the standard D365 data source. RDL authoring is out of scope.
 
-**Reports are solution-aware.** `create` and `set-category` honor `--solution` /
-`--require-solution` to scope the write to an unmanaged solution.
+**`create` and `set-category` require `--solution`** to scope the write to an
+unmanaged solution — there is no profile default and no opt-out (`--solution
+Default` for a deliberate Default-Solution-only write). `delete` takes no
+`--solution`.
 
 **`set-category` creates a `reportcategory` record** (categorycode 1–4: sales,
 service, marketing, administrative). A report can belong to multiple areas.
 Capture the returned `reportcategoryid` to remove a category later:
 
 ```bash
-crm --json report set-category <id> --category sales   # → data.reportcategoryid
+crm --json report set-category <id> --category sales --solution cwx_crmworx  # → data.reportcategoryid
 crm entity delete reportcategories <reportcategoryid> --yes
 ```
 
 **`--dry-run`** previews `create` without writing — returns
-`{_dry_run, would_create: {entity_set, body}}`.
+`{_dry_run, would_create: {entity_set, body}}`; `--solution` is still required and
+validated before it.
 
 ## Decommission — deleting UI components
 

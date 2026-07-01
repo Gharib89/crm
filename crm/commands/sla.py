@@ -78,7 +78,7 @@ def _ui_required_error(result: dict) -> str:
 @_admin_header_options
 @pass_ctx
 def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
-               description, solution, require_solution,
+               description, solution,
                as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Create an SLA for a target entity and ensure that entity is SLA-enabled.
 
@@ -92,7 +92,7 @@ def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
     with d365_errors(ctx):
         if business_hours is not None and normalize_guid(business_hours) is None:
             raise D365Error(f"Invalid GUID for --business-hours: {business_hours!r}")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = sla_mod.create_sla(
             ctx.backend(), name=name, entity=entity,
@@ -101,7 +101,7 @@ def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection,
                             bypass_plugins),
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
@@ -128,7 +128,7 @@ def sla_create(ctx: CLIContext, name, entity, applicable_from, business_hours,
 @pass_ctx
 def sla_add_kpi(ctx: CLIContext, sla_id, kpi, name, applicable_when,
                 applicable_when_file, success_criteria, success_criteria_file,
-                solution, require_solution,
+                solution,
                 as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Attach a KPI / SLA-item to an existing SLA before activation.
 
@@ -143,7 +143,7 @@ def sla_add_kpi(ctx: CLIContext, sla_id, kpi, name, applicable_when,
     # `sla activate` — an invalid id fails fast without a session round-trip.
     with d365_errors(ctx):
         sla_id = sla_mod.validate_sla_id(sla_id)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = sla_mod.add_kpi(
             ctx.backend(), sla_id=sla_id, kpi=kpi, name=name,
@@ -152,7 +152,7 @@ def sla_add_kpi(ctx: CLIContext, sla_id, kpi, name, applicable_when,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection,
                             bypass_plugins),
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, kpi, info, solution=solution)
 
 

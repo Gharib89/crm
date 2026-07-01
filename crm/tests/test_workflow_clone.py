@@ -208,7 +208,7 @@ class TestCloneCommand:
         runner = CliRunner()
         result = runner.invoke(cli, [
             "--profile", "t", "workflow", "clone", _SRC_ID, "--to-entity", "cwx_ticketclone",
-            "--name", "My Clone", "--no-activate",
+            "--name", "My Clone", "--no-activate", "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert called["target_entity"] == "cwx_ticketclone"

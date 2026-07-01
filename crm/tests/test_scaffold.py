@@ -17,12 +17,11 @@ from crm.core import apply as apply_mod
 from crm.core.scaffold import build_table_spec
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
-# Isolate CRM_HOME: the dry-run scaffold path resolves the solution through
-# `_helpers.solutions._resolve_solution`, whose `_active_profile` lookup is *not*
-# the one `_monkeypatch_profile` patches (that patches `commands.scaffold`'s). On
-# a real CRM_HOME it reads the developer's active profile, and a profile with a
-# `default_solution` fires an unmocked `solutions?$filter=uniquename eq '…'` GET
-# → requests_mock.NoMockAddress. Isolation makes every test cache/profile-blind.
+# Isolate CRM_HOME: the dry-run scaffold path builds a spec and calls apply, which
+# probes the target solution's existence (`solutions?$filter=uniquename eq '…'` GET)
+# and reads the active profile's publisher_prefix. On a real CRM_HOME those read the
+# developer's live profile/session and fire an unmocked request →
+# requests_mock.NoMockAddress. Isolation makes every test cache/profile-blind.
 pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
@@ -346,6 +345,7 @@ def test_no_drift_validate_spec_accepts_multi_kind_output():
             "Status:picklist:optionset_name=contoso_status",
         ],
     )
+    spec["solution"] = {"unique_name": "contoso_sol"}
     # Must not raise — this is the drift guard.
     apply_mod.validate_spec(spec)
 
@@ -437,6 +437,21 @@ def _mock_one_to_many(m, backend, *, schema, exists=False):
           json={"SchemaName": schema, "ReferencingAttribute": "contoso_projectid"})
 
 
+def _mock_solution_exists(m, backend, *, exists=True):
+    """Mock the solution existence GET (collection $filter) apply_spec's solution
+    phase issues for a spec with no publisher block (scaffold never sets one)."""
+    rows = [{"solutionid": "88888888-8888-8888-8888-888888888888",
+             "uniquename": "contoso_sol"}] if exists else []
+    m.get(backend.url_for("solutions"), json={"value": rows})
+
+
+def _mock_no_prune_candidates(m, backend):
+    """Mock the solutioncomponents GET that apply's prune-detection phase always
+    reads under --dry-run (or --prune) once a target solution is known (#636 made
+    scaffold's spec always carry one). Empty membership: nothing to prune."""
+    m.get(backend.url_for("solutioncomponents"), json={"value": []})
+
+
 def _publish_hits(m, backend):
     target = backend.url_for("PublishAllXml")
     return [r for r in m.request_history if r.url == target]
@@ -460,6 +475,7 @@ def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
+        _mock_solution_exists(m, backend)
         _mock_entity_create(m, backend)
         _mock_attribute_create(m, backend, logical="contoso_code",
                                schema="contoso_Code", attr_type="String")
@@ -471,6 +487,7 @@ def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
             "--json", "scaffold", "table", "Project",
             "--column", "Code:string:max_length=100",
             "--column", "Owner:lookup:target_entity=systemuser",
+            "--solution", "contoso_sol",
         ])
 
     assert result.exit_code == 0, result.output
@@ -494,7 +511,10 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
 
     with requests_mock.Mocker() as m:
-        # The forced-real entity existence GET fires under dry-run...
+        # The forced-real solution existence GET fires under dry-run too...
+        _mock_solution_exists(m, dry_backend)
+        _mock_no_prune_candidates(m, dry_backend)
+        # ...as does the forced-real entity existence GET...
         m.get(
             dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
             status_code=404,
@@ -509,6 +529,7 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
             "--dry-run", "--json", "scaffold", "table", "Project",
             "--column", "Code:string:max_length=100",
             "--column", "Owner:lookup:target_entity=systemuser",
+            "--solution", "contoso_sol",
         ])
 
     assert result.exit_code == 0, result.output
@@ -520,9 +541,7 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
     # The lookup column's target entity is resolved and reported as existing.
     refs = env["data"]["references"]
     assert refs == [{"kind": "target_entity", "value": "systemuser", "_exists": True}]
-    # A resolvable reference adds no reference-not-found warning. (An unrelated
-    # solution-resolution advisory may or may not be present depending on the
-    # active profile's default_solution, so assert on the reference channel only.)
+    # A resolvable reference adds no reference-not-found warning.
     assert not any(
         "reference not found" in w for w in env["meta"].get("warnings", []))
 
@@ -533,6 +552,8 @@ def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch)
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
 
     with requests_mock.Mocker() as m:
+        _mock_solution_exists(m, dry_backend)
+        _mock_no_prune_candidates(m, dry_backend)
         m.get(
             dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
             status_code=404,
@@ -546,6 +567,7 @@ def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch)
         result = CliRunner().invoke(cli, [
             "--dry-run", "--json", "scaffold", "table", "Project",
             "--column", "Status:picklist:optionset_name=ghost_set",
+            "--solution", "contoso_sol",
         ])
 
     assert result.exit_code == 0, result.output
@@ -568,6 +590,7 @@ def test_e2e_scaffold_table_stage_only(backend, monkeypatch):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
+        _mock_solution_exists(m, backend)
         _mock_entity_create(m, backend)
         _mock_attribute_create(m, backend, logical="contoso_code",
                                schema="contoso_Code", attr_type="String")
@@ -578,6 +601,7 @@ def test_e2e_scaffold_table_stage_only(backend, monkeypatch):
             "--stage-only", "--json", "scaffold", "table", "Project",
             "--column", "Code:string:max_length=100",
             "--column", "Owner:lookup:target_entity=systemuser",
+            "--solution", "contoso_sol",
         ])
 
     assert result.exit_code == 0, result.output
@@ -598,6 +622,7 @@ def test_e2e_scaffold_table_malformed_column_fails_clean(backend, monkeypatch):
         result = CliRunner().invoke(cli, [
             "--json", "scaffold", "table", "Project",
             "--column", "Bad:notakind",
+            "--solution", "contoso_sol",
         ])
 
     assert result.exit_code != 0

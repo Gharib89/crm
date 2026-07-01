@@ -13,8 +13,7 @@ The build order is: **option sets → entities → attributes → relationships 
 
 - A reachable D365 CE on-prem server and NTLM credentials, saved as the active
   profile with `crm profile add` (see [How-to: profile](../how-to/profile.md)). The
-  `add` step below pins the api-version and wires in the `CRMWorx` solution and `cwx`
-  prefix.
+  `add` step below pins the api-version and wires in the `cwx` schema-name prefix.
 - **A `CRMWorx` *unmanaged* solution and a publisher with prefix `cwx`.** Create both
   from the CLI — no web UI ([#34](https://github.com/Gharib89/crm/issues/34)).
   `--if-exists skip` makes re-runs a no-op:
@@ -25,9 +24,10 @@ The build order is: **option sets → entities → attributes → relationships 
   crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
   ```
 
-  With a named profile active, these auto-wire `publisher_prefix=cwx` and
-  `default_solution=CRMWorx` into it, so the metadata commands below target the
-  `cwx` publisher and `CRMWorx` solution by default (pass `--no-set-default` to opt out).
+  With a named profile active, `create-publisher` auto-wires `publisher_prefix=cwx`
+  back onto it (pass `--no-set-default` to opt out). Every metadata-write command
+  below still needs its own explicit `--solution CRMWorx` — there is no profile
+  default and no opt-out (#636).
 
 ## 1. Pre-flight & connection
 
@@ -50,17 +50,16 @@ crm --json connection whoami
 }
 ```
 
-Save a **targeting profile** so every mutating metadata command lands in the `CRMWorx`
-solution and uses the `cwx` schema-name prefix by default. `crm profile add` infers the
-auth scheme from the URL (here NTLM), stores the secret, validates the credentials with
-a WhoAmI call, and activates the profile:
+Save a **targeting profile** so column schema names use the `cwx` prefix by default.
+`crm profile add` infers the auth scheme from the URL (here NTLM), stores the secret,
+validates the credentials with a WhoAmI call, and activates the profile:
 
 ```bash
 crm --json profile add \
   --url https://crm.contoso.local/Contoso \
   --username alice --domain CONTOSO --password "$SECRET" \
   --api-version v9.1 \
-  --default-solution CRMWorx --publisher-prefix cwx \
+  --publisher-prefix cwx \
   --name crmworx
 ```
 
@@ -78,7 +77,7 @@ crm --json profile add \
 }
 ```
 
-Verify the active profile resolves the solution and prefix:
+Verify the active profile resolves the prefix:
 
 ```bash
 crm --json profile list
@@ -91,16 +90,17 @@ crm --json connection status
   "data": [
     {
       "name": "crmworx", "active": true, "target": "on-prem",
-      "default_solution": "CRMWorx", "publisher_prefix": "cwx"
+      "publisher_prefix": "cwx"
     }
   ]
 }
 ```
 
-`connection status` confirms `active_profile: crmworx` with `default_solution: CRMWorx`
-and `publisher_prefix: cwx`. From here, `metadata create-*` commands target `CRMWorx`
-automatically (override per-command with `--solution`, or hard-fail when none resolves
-with `--require-solution` / `CRM_REQUIRE_SOLUTION`).
+`connection status` confirms `active_profile: crmworx` with `publisher_prefix: cwx`.
+There is no profile default for the target **solution** — every `metadata create-*`
+/ `add-attribute` / etc. command below passes its own explicit `--solution CRMWorx`
+(there is no opt-out; pass `--solution Default` for a deliberate
+Default-Solution-only write).
 
 ## 2. Metadata build (option sets → entities → attributes → relationships)
 
@@ -114,7 +114,7 @@ CRMWorx uses four global (reusable) option sets. Preview the request first with
 crm --json --dry-run metadata create-optionset \
   --name cwx_priority --display "CRMWorx Priority" \
   --option 1:Low --option 2:Normal --option 3:High --option 4:Critical \
-  --if-exists skip
+  --solution CRMWorx --if-exists skip
 ```
 
 ```json
@@ -138,13 +138,13 @@ Now create all four. `--if-exists skip` makes each create idempotent (proven in 
 
 ```bash
 crm --json metadata create-optionset --name cwx_priority --display "CRMWorx Priority" \
-  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical --if-exists skip
+  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical --solution CRMWorx --if-exists skip
 crm --json metadata create-optionset --name cwx_severity --display "CRMWorx Severity" \
-  --option 1:Minor --option 2:Major --option 3:Critical --if-exists skip
+  --option 1:Minor --option 2:Major --option 3:Critical --solution CRMWorx --if-exists skip
 crm --json metadata create-optionset --name cwx_ticketcategory --display "CRMWorx Category" \
-  --option 1:Hardware --option 2:Software --option 3:Network --option 4:Access --if-exists skip
+  --option 1:Hardware --option 2:Software --option 3:Network --option 4:Access --solution CRMWorx --if-exists skip
 crm --json metadata create-optionset --name cwx_slatier --display "CRMWorx SLA Tier" \
-  --option 1:Bronze --option 2:Silver --option 3:Gold --if-exists skip
+  --option 1:Bronze --option 2:Silver --option 3:Gold --solution CRMWorx --if-exists skip
 ```
 
 Each returns `created: true` with the new metadata id, the target solution, and
@@ -187,12 +187,12 @@ the `cwx_` prefix; the server derives the lowercase logical name and the entity-
 crm --json metadata create-entity \
   --schema-name cwx_SLA --display "SLA Policy" --display-collection "SLA Policies" \
   --primary-attr cwx_Name --primary-label "Policy Name" \
-  --ownership OrganizationOwned --has-notes --if-exists skip
+  --ownership OrganizationOwned --has-notes --solution CRMWorx --if-exists skip
 
 crm --json metadata create-entity \
   --schema-name cwx_Ticket --display "Support Ticket" --display-collection "Support Tickets" \
   --primary-attr cwx_Name --primary-label "Ticket Title" \
-  --ownership UserOwned --has-notes --has-activities --if-exists skip
+  --ownership UserOwned --has-notes --has-activities --solution CRMWorx --if-exists skip
 ```
 
 ```json
@@ -230,32 +230,32 @@ picklist, and a boolean:
 
 ```bash
 crm --json metadata add-attribute cwx_sla --kind integer \
-  --schema-name cwx_ResponseHours --display "Response Hours" --min 0 --max 720 --if-exists skip
+  --schema-name cwx_ResponseHours --display "Response Hours" --min 0 --max 720 --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_sla --kind integer \
-  --schema-name cwx_ResolutionHours --display "Resolution Hours" --min 0 --max 2160 --if-exists skip
+  --schema-name cwx_ResolutionHours --display "Resolution Hours" --min 0 --max 2160 --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_sla --kind picklist \
-  --schema-name cwx_Tier --display "Tier" --optionset-name cwx_slatier --if-exists skip
+  --schema-name cwx_Tier --display "Tier" --optionset-name cwx_slatier --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_sla --kind boolean \
-  --schema-name cwx_Active --display "Active" --true-label Yes --false-label No --if-exists skip
+  --schema-name cwx_Active --display "Active" --true-label Yes --false-label No --solution CRMWorx --if-exists skip
 ```
 
 The `cwx_ticket` table gets a memo, three global picklists, and three datetimes:
 
 ```bash
 crm --json metadata add-attribute cwx_ticket --kind memo \
-  --schema-name cwx_Description --display "Description" --max-length 4000 --if-exists skip
+  --schema-name cwx_Description --display "Description" --max-length 4000 --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_ticket --kind picklist \
-  --schema-name cwx_Priority --display "Priority" --optionset-name cwx_priority --if-exists skip
+  --schema-name cwx_Priority --display "Priority" --optionset-name cwx_priority --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_ticket --kind picklist \
-  --schema-name cwx_Severity --display "Severity" --optionset-name cwx_severity --if-exists skip
+  --schema-name cwx_Severity --display "Severity" --optionset-name cwx_severity --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_ticket --kind picklist \
-  --schema-name cwx_Category --display "Category" --optionset-name cwx_ticketcategory --if-exists skip
+  --schema-name cwx_Category --display "Category" --optionset-name cwx_ticketcategory --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_ticket --kind datetime \
-  --schema-name cwx_OpenedOn --display "Opened On" --if-exists skip
+  --schema-name cwx_OpenedOn --display "Opened On" --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_ticket --kind datetime \
-  --schema-name cwx_ResolvedOn --display "Resolved On" --if-exists skip
+  --schema-name cwx_ResolvedOn --display "Resolved On" --solution CRMWorx --if-exists skip
 crm --json metadata add-attribute cwx_ticket --kind datetime \
-  --schema-name cwx_DueBy --display "Due By" --if-exists skip
+  --schema-name cwx_DueBy --display "Due By" --solution CRMWorx --if-exists skip
 ```
 
 Each returns the created column with its resolved logical name and type:
@@ -307,19 +307,19 @@ Three relationships wire the model together: SLA→Ticket and Account→Ticket (
 crm --json metadata create-one-to-many \
   --schema-name cwx_sla_cwx_ticket \
   --referenced-entity cwx_sla --referencing-entity cwx_ticket \
-  --lookup-schema cwx_SLA --lookup-display "SLA Policy" --if-exists skip
+  --lookup-schema cwx_SLA --lookup-display "SLA Policy" --solution CRMWorx --if-exists skip
 
 # Account -> Ticket (creates the cwx_customerid lookup on the ticket)
 crm --json metadata create-one-to-many \
   --schema-name cwx_account_cwx_ticket \
   --referenced-entity account --referencing-entity cwx_ticket \
-  --lookup-schema cwx_CustomerId --lookup-display "Customer" --if-exists skip
+  --lookup-schema cwx_CustomerId --lookup-display "Customer" --solution CRMWorx --if-exists skip
 
 # Ticket <-> SystemUser (N:N watchers)
 crm --json metadata create-many-to-many \
   --schema-name cwx_ticket_systemuser \
   --entity1 cwx_ticket --entity2 systemuser \
-  --intersect-entity cwx_ticket_systemuser --if-exists skip
+  --intersect-entity cwx_ticket_systemuser --solution CRMWorx --if-exists skip
 ```
 
 A 1:N response reports the created relationship and the lookup column the server
@@ -499,8 +499,8 @@ no-op. Re-running any create reports a skip rather than erroring or duplicating:
 
 ```bash
 crm --json metadata create-optionset --name cwx_priority --display "CRMWorx Priority" \
-  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical --if-exists skip
-crm --json metadata create-entity --schema-name cwx_SLA --display "SLA Policy" ... --if-exists skip
+  --option 1:Low --option 2:Normal --option 3:High --option 4:Critical --solution CRMWorx --if-exists skip
+crm --json metadata create-entity --schema-name cwx_SLA --display "SLA Policy" ... --solution CRMWorx --if-exists skip
 ```
 
 ```json
@@ -1027,7 +1027,7 @@ name+entity, creates, and publishes:
 
 ```bash
 crm --json view create cwx_sla --name "Active SLAs (cmd)" --otc 10126 \
-  --column "cwx_name:240" --column "cwx_tier:140" --filter-active --if-exists skip
+  --column "cwx_name:240" --column "cwx_tier:140" --filter-active --solution CRMWorx --if-exists skip
 ```
 
 ```json
@@ -1039,7 +1039,7 @@ crm --json view create cwx_sla --name "Active SLAs (cmd)" --otc 10126 \
 same existence guard, no duplicate:
 
 ```bash
-crm --json app create --name CRMWorx --unique-name cwx_crmworx --if-exists skip
+crm --json app create --name CRMWorx --unique-name cwx_crmworx --solution CRMWorx --if-exists skip
 ```
 
 ```json
@@ -1092,12 +1092,12 @@ crm --json entity delete sitemaps   00000000-0000-0000-0000-000000000003 --yes  
 crm --json webresource delete 00000000-0000-0000-0000-000000000009 --yes  # the cwx_ app icon
 # (views/forms/chart/dashboard are deleted automatically with their owning entity below)
 
-crm --json metadata delete-entity cwx_ticket --yes   # drops the table + all rows + its relationships + its views/forms/chart/dashboard
-crm --json metadata delete-entity cwx_sla --yes
-crm --json metadata delete-optionset cwx_priority --yes
-crm --json metadata delete-optionset cwx_severity --yes
-crm --json metadata delete-optionset cwx_ticketcategory --yes
-crm --json metadata delete-optionset cwx_slatier --yes
+crm --json metadata delete-entity cwx_ticket --solution CRMWorx --yes   # drops the table + all rows + its relationships + its views/forms/chart/dashboard
+crm --json metadata delete-entity cwx_sla --solution CRMWorx --yes
+crm --json metadata delete-optionset cwx_priority --solution CRMWorx --yes
+crm --json metadata delete-optionset cwx_severity --solution CRMWorx --yes
+crm --json metadata delete-optionset cwx_ticketcategory --solution CRMWorx --yes
+crm --json metadata delete-optionset cwx_slatier --solution CRMWorx --yes
 ```
 
 After teardown, `crm --json metadata entities --custom-only | grep -c cwx_` returns `0`.

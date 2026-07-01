@@ -104,7 +104,6 @@ def chart_create(
     user_owned: bool,
     description: str | None,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Create a chart on ENTITY.
@@ -134,7 +133,7 @@ def chart_create(
     data_xml = _read_file(data_description_file)
     pres_xml = _read_file(presentation_description_file)
 
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
 
     with d365_errors(ctx):
@@ -150,7 +149,7 @@ def chart_create(
             publish=publish,
             description=description,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
@@ -186,7 +185,6 @@ def chart_update(
     chart_type: str | None,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Update a chart's XML, name/description, or series chart type.
@@ -198,7 +196,7 @@ def chart_update(
     """
     data_xml = _read_file(data_description_file)
     pres_xml = _read_file(presentation_description_file)
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.update_chart(
@@ -206,7 +204,7 @@ def chart_update(
             data_description=data_xml, presentation_description=pres_xml,
             name=name, description=description, chart_type=chart_type,
             user=user_owned, publish=publish, solution=solution)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
 
@@ -225,18 +223,17 @@ def chart_set_fetch(
     fetch_file: str,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Replace the inner <fetch> of a chart's datadescription (keeps its categories)."""
     fetch_xml = _read_file(fetch_file) or ""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_fetch(
             ctx.backend(), chart_id, fetch=fetch_xml,
             user=user_owned, publish=publish, solution=solution)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
 
@@ -259,17 +256,16 @@ def chart_add_series(
     alias: str,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Add an aggregate series to a chart (fetch attribute + measure + presentation series)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.add_chart_series(
             ctx.backend(), chart_id, column=column, aggregate=aggregate, alias=alias,
             user=user_owned, publish=publish, solution=solution)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
 
@@ -286,17 +282,16 @@ def chart_remove_series(
     alias: str,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Remove an aggregate series from a chart by its alias (refuses the last series)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.remove_chart_series(
             ctx.backend(), chart_id, alias=alias,
             user=user_owned, publish=publish, solution=solution)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)
 
 
@@ -319,15 +314,14 @@ def chart_set_groupby(
     dategrouping: str | None,
     user_owned: bool,
     solution: str | None,
-    require_solution: bool,
     publish: bool,
 ) -> None:
     """Set a chart's grouping (category) column, optionally with a date grouping."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = charts_mod.set_chart_groupby(
             ctx.backend(), chart_id, column=column, dategrouping=dategrouping,
             user=user_owned, publish=publish, solution=solution)
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, chart_id, info, solution=solution)

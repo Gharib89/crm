@@ -5,8 +5,8 @@ and assign profiles to users or teams. Group: `fieldsec`. Flags/choices:
 `crm fieldsec --help`.
 
 ```bash
-crm --json fieldsec create-profile "Compensation" --description "Salary access"
-crm --json fieldsec add-permission "Compensation" account creditlimit --read --update
+crm --json fieldsec create-profile "Compensation" --description "Salary access" --solution cwx_crmworx
+crm --json fieldsec add-permission "Compensation" account creditlimit --read --update --solution cwx_crmworx
 crm --json fieldsec assign "Compensation" --user <user-guid>     # or --team <team-guid>
 crm --json fieldsec list
 crm --json fieldsec get "Compensation"
@@ -36,9 +36,13 @@ GUID); both or neither exits 2. Assignment is the N:N association
 (`systemuserprofiles_association` / `teamprofiles_association`) — cumulative, like
 a team/role membership.
 
-**`--solution` / `--dry-run` on writes.** `create-profile` and `add-permission`
-honor `--solution <unique_name>` (sets `MSCRM.SolutionUniqueName`) and `--dry-run`
-(echoes the would-be POST, `meta.dry_run: true`; reads still run for real).
+**`--solution` is required, `--dry-run` also honored.** `create-profile` and
+`add-permission` require `--solution <unique_name>` (sets
+`MSCRM.SolutionUniqueName`; no profile default, no opt-out — `--solution Default`
+for a deliberate Default-Solution-only write) and honor `--dry-run` (echoes the
+would-be POST, `meta.dry_run: true`; reads still run for real, `--solution` is
+validated before them). `assign` takes no `--solution` (the N:N association isn't
+a solution component).
 
 ## JSON contract for `get`
 

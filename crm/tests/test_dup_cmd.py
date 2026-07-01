@@ -43,7 +43,8 @@ class TestDupCreate:
             m.post(backend.url_for("duplicaterules"), status_code=204,
                    headers=_entity_id_headers(backend, "duplicaterules", _RULE_ID))
             result = CliRunner().invoke(
-                cli, ["--json", "dup", "create", "account", "--name", "Accts"])
+                cli, ["--json", "dup", "create", "account", "--name", "Accts",
+                      "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -54,7 +55,8 @@ class TestDupCreate:
         _use_backend(monkeypatch, dry_backend)
         with rm_module.Mocker():
             result = CliRunner().invoke(
-                cli, ["--json", "--dry-run", "dup", "create", "account", "--name", "X"])
+                cli, ["--json", "--dry-run", "dup", "create", "account", "--name", "X",
+                      "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["_dry_run"] is True
@@ -68,7 +70,7 @@ class TestDupAddCondition:
                    headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID))
             result = CliRunner().invoke(cli, [
                 "--json", "dup", "add-condition", _RULE_ID,
-                "--attr", "name", "--operator", "exact"])
+                "--attr", "name", "--operator", "exact", "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["created"] is True
@@ -89,7 +91,8 @@ class TestDupAddCondition:
                    headers=_entity_id_headers(backend, "duplicateruleconditions", _COND_ID))
             result = CliRunner().invoke(cli, [
                 "--json", "dup", "add-condition", _RULE_ID,
-                "--attr", "name", "--operator", "same-first", "--operator-param", "5"])
+                "--attr", "name", "--operator", "same-first", "--operator-param", "5",
+                "--solution", "TestSol"])
         assert result.exit_code == 0, result.output
         assert m.last_request.json()["operatorparam"] == 5
 

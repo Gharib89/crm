@@ -344,20 +344,22 @@ def build_entity_spec(
     *,
     with_views: bool = False,
     with_relationships: bool = False,
+    solution: str | None = None,
     warnings: list[str] | None = None,
 ) -> dict[str, Any]:
     """Project a live entity into an apply-consumable desired-state spec dict.
 
     Reads `logical_name` over the Web API (pure GETs) and returns
     ``{"entities": [<entity>]}``, adding a top-level ``"optionsets": [...]`` key
-    when one or more attributes bind a global option set. The result passes
-    `crm.core.apply.validate_spec` and round-trips through `apply_spec`.
+    when one or more attributes bind a global option set.
 
     Only custom, apply-creatable attributes are emitted; the primary name
     attribute (carried as the entity's `primary_attr`) and system attributes are
-    excluded. Publisher / solution are NOT emitted — an existing entity does not
-    know its publisher; the operator supplies one via `crm apply --solution` or
-    by editing the file.
+    excluded. A publisher is never emitted — an existing entity does not know its
+    publisher. A top-level ``"solution": {"unique_name": …}`` block is emitted
+    only when `solution` is passed (via `metadata export-spec --solution`); `crm
+    apply` requires one, so a spec exported without it is a valid but
+    non-appliable document until a solution block is added.
 
     Args:
         with_views: When True, attach the entity's public views (via
@@ -490,7 +492,10 @@ def build_entity_spec(
         if ent_views:
             entity["views"] = ent_views
 
-    spec: dict[str, Any] = {"entities": [entity]}
+    spec: dict[str, Any] = {}
+    if solution:
+        spec["solution"] = {"unique_name": solution}
+    spec["entities"] = [entity]
     if optionset_acc:
         spec["optionsets"] = list(optionset_acc.values())
     return spec

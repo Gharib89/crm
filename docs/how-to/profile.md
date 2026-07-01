@@ -2,10 +2,16 @@
 
 Set up and switch connection targets. A **profile** holds the server URL, auth
 scheme, identity fields (NTLM username/domain or OAuth tenant/client id), and the
-optional `default_solution` / `publisher_prefix` used by metadata write commands.
-The secret (NTLM password or OAuth client secret) is stored alongside it. This is
+optional `publisher_prefix` used by scaffolding/schema-name derivation. The
+secret (NTLM password or OAuth client secret) is stored alongside it. This is
 the only place credentials come from — there is no `.env` and no credential
 environment variables. See the [CLI reference](../reference/cli.md) for every flag.
+
+Profiles do **not** carry a target solution — every customization-write command
+(`metadata create-*`, `plugin register-*`, `webresource`, `form`, `view`,
+`chart`, `dashboard`, `sitemap`, `apply`, …) requires its own explicit
+`--solution <name>` (or an `apply` spec's `solution:` block); there is no
+profile default and no opt-out (#636).
 
 ## Set up the first profile
 
@@ -48,11 +54,11 @@ label. Override the inferred scheme with `--auth-scheme` when the URL doesn't ma
 the heuristic — the interactive wizard offers the same choice as an inline arrow-key
 picker (↑/↓ then Enter, Esc to cancel) with the inferred scheme preselected. Omit `--api-version` to
 **auto-negotiate** — on-prem is capped at v9.1 (v9.2 returns HTTP 501), so the CLI
-steps down automatically. Attach a default solution and schema-name prefix so
-metadata commands target them without per-command flags:
+steps down automatically. Attach a schema-name prefix so scaffolding and
+column-name derivation don't need a per-command flag:
 
 ```bash
-crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
+crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
 
 ## Switch the active profile
@@ -79,12 +85,12 @@ where its secret lives (`cred=keyring`, `cred=plaintext`, or `cred=none`).
 ## Edit a profile's fields
 
 ```bash
-crm profile edit prod --default-solution CRMWorx --publisher-prefix cwx
+crm profile edit prod --publisher-prefix cwx
 crm profile edit online --url https://contoso.crm.dynamics.com --client-id <new-id>
 ```
 
-`edit` changes any non-secret field — URL, identity fields, api-version, default
-solution, publisher prefix. To change the secret, use `set-password` (below).
+`edit` changes any non-secret field — URL, identity fields, api-version,
+publisher prefix. To change the secret, use `set-password` (below).
 
 ## Delete a profile
 

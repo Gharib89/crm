@@ -180,8 +180,9 @@ solution members; pruning is strictly opt-in.
 - **`--json` / no-TTY** — for a **real** prune the interactive prompt is
   unavailable, so `--yes` is required or the run errors before doing anything. A
   `--dry-run` preview deletes nothing, so it needs no `--yes`.
-- **Requires a target solution** — spec `solution:` block or `--solution`. Without
-  one, `--prune` is rejected as a usage error.
+- **Scoped to the spec's mandatory `solution:` block.** Every spec must declare a
+  top-level `solution: {unique_name: ...}` (see the YAML block above) — `apply` has
+  no `--solution` flag; the target is always explicit.
 - **Suppressed on partial failure** — if the convergence phase produces any `failed`
   or `replace_blocked` entries, pruning is skipped entirely. Fix the spec, re-apply,
   then prune.
@@ -209,7 +210,7 @@ deleted carry `would_prune: true`. No write is issued.
 **Non-interactive (CI / agent) pattern:**
 
 ```bash
-crm --json apply -f project.yaml --prune --yes --solution ContosoCore
+crm --json apply -f project.yaml --prune --yes
 # Add --allow-data-loss only when entity/attribute deletion is intentional
 ```
 
@@ -219,15 +220,18 @@ Quick one-liner to create an entity + N columns in a single publish, through the
 `apply` engine. Each resource is `if_exists=skip` — re-running is a no-op.
 
 ```bash
-crm --json scaffold table "Project" \
+crm --json scaffold table "Project" --solution ContosoCore \
   --column "Name:string:max_length=200,required=ApplicationRequired" \
   --column "Due Date:datetime" \
   --column "Owner:lookup:target_entity=systemuser" \
   --column "Priority:picklist:optionset_name=new_priority"
 
-crm --dry-run --json scaffold table "Project" --column "Name:string"   # plan only
-crm --stage-only --json scaffold table "Project" --column "Name:string" # no publish
+crm --dry-run --json scaffold table "Project" --solution ContosoCore --column "Name:string"   # plan only
+crm --stage-only --json scaffold table "Project" --solution ContosoCore --column "Name:string" # no publish
 ```
+
+`--solution` is required (no profile default, no opt-out; `--solution Default` for a
+deliberate Default-Solution-only write).
 
 Emits the same `{applied, updated, skipped, replace_blocked, pruned, planned, failed}` envelope as `apply`.
 
@@ -262,8 +266,10 @@ profile's `publisher_prefix` (**required — a missing prefix is exit 2**).
 ```bash
 crm --json view create cwx_ticket --name "Active Tickets" --otc 10127 \
     --column "cwx_name:220" --column "cwx_priority:120" \
-    --filter-active --if-exists skip
+    --filter-active --solution cwx_crmworx --if-exists skip
 ```
+
+`--solution` is required (no profile default, no opt-out).
 
 The LayoutXml `object` attribute is the entity **ObjectTypeCode (OTC)** — get it from
 `metadata entity <name>` (see `reference/metadata.md`). `--column` is repeatable
@@ -287,10 +293,13 @@ non-public view you create this way will not appear there — capture its
 
 ```bash
 crm --json view edit-columns account "All Accounts" \
-    --add telephone1:120 --remove fax --width name:200
+    --add telephone1:120 --remove fax --width name:200 --solution cwx_crmworx
 crm --json view edit-columns account "All Accounts" \
-    --reorder name,telephone1,emailaddress1
+    --reorder name,telephone1,emailaddress1 --solution cwx_crmworx
 ```
+
+`--solution` is required on every `view` editor verb (`edit-columns`, `set-order`,
+`add-filter`, `remove-filter`) — no profile default, no opt-out.
 
 **Mismatch invariant.** `--add` writes both the layoutxml `<cell>` and the fetchxml
 `<attribute>` in one PATCH — a cell without a matching attribute leaves a column with
@@ -320,9 +329,9 @@ warning too; it's repeated here because it is the most common surprise.
 
 ```bash
 crm --json view set-order account "All Accounts" \
-    --order "name asc" --order "createdon desc"
-crm --json view set-order account "All Accounts" --add-order "modifiedon desc"
-crm --json view set-order account "All Accounts" --clear-order
+    --order "name asc" --order "createdon desc" --solution cwx_crmworx
+crm --json view set-order account "All Accounts" --add-order "modifiedon desc" --solution cwx_crmworx
+crm --json view set-order account "All Accounts" --clear-order --solution cwx_crmworx
 ```
 
 Only the entity's direct `<order>` children are touched — `<filter>`, `<condition>`,
@@ -334,11 +343,11 @@ publish-then-read-back notes as `edit-columns`.
 
 ```bash
 crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "statecode eq 0"
+    --condition "statecode eq 0" --solution cwx_crmworx
 crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_priority in 1 2 3" --condition "cwx_severity ne 3"
+    --condition "cwx_priority in 1 2 3" --condition "cwx_severity ne 3" --solution cwx_crmworx
 crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_resolvedon null"
+    --condition "cwx_resolvedon null" --solution cwx_crmworx
 ```
 
 Conditions are appended to the entity-level `<filter>` (created if absent).
@@ -359,10 +368,10 @@ Same ambiguous-name, managed-layer, and publish-then-read-back notes as
 
 ```bash
 crm --json view remove-filter cwx_ticket "Active Tickets" \
-    --condition "statecode eq 0"
+    --condition "statecode eq 0" --solution cwx_crmworx
 # disambiguate when attribute+operator match multiple conditions:
 crm --json view remove-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_priority in 1 2 3"
+    --condition "cwx_priority in 1 2 3" --solution cwx_crmworx
 ```
 
 Matched on attribute + operator; supply values to disambiguate. No match or
@@ -383,9 +392,9 @@ create/update command to `--no-publish`; in `--json` mode the envelope `meta` re
 
 ```bash
 crm --stage-only metadata add-attribute new_widget \
-    --kind string --schema-name new_Label --display Label --max-length 100
+    --kind string --schema-name new_Label --display Label --max-length 100 --solution ContosoCore
 crm --stage-only metadata create-optionset --name new_priority --display Priority \
-    --option 1:Low --option 2:High
+    --option 1:Low --option 2:High --solution ContosoCore
 # ... more staged changes ...
 crm solution publish-all   # single publish for all staged customizations
 ```

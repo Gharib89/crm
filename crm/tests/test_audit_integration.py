@@ -126,8 +126,7 @@ def test_entity_get_does_not_journal(monkeypatch, tmp_path):
 
 def test_metadata_create_entity_dry_run_journals(monkeypatch, tmp_path):
     """metadata create-entity --dry-run → one journal line with correct command."""
-    _save_profile(monkeypatch, tmp_path, publisher_prefix="new",
-                  default_solution="MySol")
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
 
     from crm.core import metadata as meta_mod
 
@@ -140,7 +139,7 @@ def test_metadata_create_entity_dry_run_journals(monkeypatch, tmp_path):
         cli,
         ["--json", "--profile", "p", "--dry-run",
          "metadata", "create-entity",
-         "--display", "Project", "--no-publish"],
+         "--display", "Project", "--solution", "MySol", "--no-publish"],
     )
     assert result.exit_code == 0, result.output
 

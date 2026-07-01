@@ -325,7 +325,7 @@ def test_workflow_run_dispatches_ondemand(backend, cli, unique, request):
 
 
 @covers("workflow clone", "workflow delete")
-def test_workflow_clone_then_delete(backend, cli, unique, request):
+def test_workflow_clone_then_delete(backend, cli, unique, ephemeral_solution, request):
     """Clone a custom classic workflow as a draft, GET-confirm it persisted, then
     delete it and GET-confirm it is gone.
 
@@ -345,6 +345,7 @@ def test_workflow_clone_then_delete(backend, cli, unique, request):
     result = cli([
         "--json", "workflow", "clone", src_id,
         "--to-entity", primary_entity, "--no-activate", "--name", new_name,
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
@@ -379,7 +380,7 @@ def test_workflow_clone_then_delete(backend, cli, unique, request):
 
 
 @covers("workflow update")
-def test_workflow_update_metadata(backend, cli, unique, request):
+def test_workflow_update_metadata(backend, cli, unique, ephemeral_solution, request):
     """Edit a workflow definition's metadata in place on both targets.
 
     Clones a custom classic workflow as a draft (proven path, #534), edits its
@@ -406,6 +407,7 @@ def test_workflow_update_metadata(backend, cli, unique, request):
         "--json", "workflow", "clone", src_id,
         "--to-entity", primary_entity, "--no-activate",
         "--name", f"E2E-Update-{unique}",
+        "--solution", ephemeral_solution,
     ])
     assert clone.returncode == 0, clone.stderr
     new_id = str(json.loads(clone.stdout)["data"]["workflow_id"])
@@ -438,7 +440,9 @@ def test_workflow_update_metadata(backend, cli, unique, request):
 
 @pytest.mark.requires_onprem
 @covers("workflow update")
-def test_workflow_update_xaml_onprem(backend, cli, unique, tmp_path, request):
+def test_workflow_update_xaml_onprem(
+    backend, cli, unique, tmp_path, ephemeral_solution, request
+):
     """On-prem: replace a draft clone's step XAML wholesale via --xaml-file.
 
     The XAML logic path is on-premises only and provenance-gated. We clone a
@@ -462,6 +466,7 @@ def test_workflow_update_xaml_onprem(backend, cli, unique, tmp_path, request):
         "--json", "workflow", "clone", src_id,
         "--to-entity", primary_entity, "--no-activate",
         "--name", f"E2E-XamlUpd-{unique}",
+        "--solution", ephemeral_solution,
     ])
     assert clone.returncode == 0, clone.stderr
     new_id = str(json.loads(clone.stdout)["data"]["workflow_id"])
@@ -506,7 +511,9 @@ def test_workflow_update_xaml_cloud_refuses(cli, tmp_path):
 
 
 @covers("workflow import")
-def test_workflow_import_recreates_draft(backend, cli, unique, tmp_path, request):
+def test_workflow_import_recreates_draft(
+    backend, cli, unique, tmp_path, ephemeral_solution, request
+):
     """Import (upsert) a workflow definition from an exported file, creating a
     draft, then delete it — proving the platform accepts the import upsert (#534).
 
@@ -525,6 +532,7 @@ def test_workflow_import_recreates_draft(backend, cli, unique, tmp_path, request
         "--json", "workflow", "clone", src_id,
         "--to-entity", primary_entity, "--no-activate",
         "--name", f"E2E-Import-{unique}",
+        "--solution", ephemeral_solution,
     ])
     assert clone.returncode == 0, clone.stderr
     clone_env = json.loads(clone.stdout)

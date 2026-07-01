@@ -1,7 +1,6 @@
 """Solution / publish / schema-name resolution helpers."""
 # pyright: basic
 from __future__ import annotations
-import os
 import re
 from typing import TYPE_CHECKING
 import click
@@ -71,60 +70,53 @@ def _active_profile(ctx: "CLIContext") -> ConnectionProfile | None:
         return None
 
 
-def _require_solution(require_flag: bool) -> bool:
-    """Strict mode active when the --require-solution flag OR CRM_REQUIRE_SOLUTION set."""
-    if require_flag:
-        return True
-    return os.environ.get("CRM_REQUIRE_SOLUTION", "").strip().lower() in (
-        "1", "true", "yes", "on",
-    )
-
-
 def _solution_option(f):
-    """Stack `--solution` / `--require-solution` on a mutating metadata command."""
-    f = click.option(
-        "--require-solution", is_flag=True, default=False,
-        help="Fail if no solution resolves (also via CRM_REQUIRE_SOLUTION).",
-    )(f)
-    f = click.option(
+    """Stack the mandatory `--solution` flag on a customization-write command.
+
+    Pairs with `_resolve_solution` in the verb body, which raises a UsageError
+    (exit 2) when it is omitted — there is no profile default and no opt-out
+    (#636). `--solution Default` is the explicit escape hatch for a deliberate
+    Default-Solution-only write.
+    """
+    return click.option(
         "--solution", default=None,
-        help="Target solution uniquename (MSCRM.SolutionUniqueName). "
-             "Defaults to the profile's default_solution.",
+        help="Target unmanaged solution uniquename (MSCRM.SolutionUniqueName). "
+             "Required for customization writes; pass --solution Default for a "
+             "deliberate Default-Solution-only write.",
     )(f)
-    return f
 
 
-def _resolve_solution(
-    ctx: "CLIContext", explicit: str | None, require_solution: bool,
-) -> tuple[str | None, str | None]:
-    """Resolve the effective solution for a mutating metadata command.
+def _optional_solution_option(f):
+    """Stack an OPTIONAL `--solution` on a hard-delete metadata verb (#636).
 
-    Precedence: explicit `--solution` > profile `default_solution` > None.
+    Unlike `_solution_option`, a hard metadata delete removes the component
+    globally — `MSCRM.SolutionUniqueName` cannot scope or orphan a deletion —
+    so `--solution` is *not* required here. Retained as an optional back-compat
+    passthrough, forwarded to the backend when given (no `_resolve_solution`).
+    """
+    return click.option(
+        "--solution", default=None,
+        help="Optional. Forwarded as MSCRM.SolutionUniqueName; a hard delete "
+             "removes the component globally, so this does not scope the delete.",
+    )(f)
 
-    `require_solution` is the raw `--require-solution` flag; the strict-mode
-    OR-with-`CRM_REQUIRE_SOLUTION` check is folded in here (it was a
-    `_require_solution(...)` wrapper at every call site). Always-strict callers
-    pass a literal `True`.
 
-    Returns `(solution, warning)`. When none resolves and strict mode is off,
-    `warning` is a non-empty string the caller stashes under the JSON `meta`
-    envelope (or prints via skin.warning in human mode). When none resolves and
-    strict mode is on, this routes a hard failure through `ctx.emit(False)`
-    (raising click.exceptions.Exit per ADR 0001) instead of returning.
+def _resolve_solution(ctx: "CLIContext", explicit: str | None) -> str:
+    """Resolve the target unmanaged solution for a customization write (#636).
+
+    An explicit `--solution` is mandatory: a component filed without a named
+    solution is silently orphaned into only the system Default Solution, so the
+    target must always be on the command line — there is no profile
+    `default_solution` fallback. Raises `click.UsageError` (exit 2) when none is
+    given, before any backend call (including under `--dry-run`). Deliberate
+    Default-Solution-only writes pass `--solution Default` explicitly.
     """
     if explicit:
-        return explicit, None
-    profile = _active_profile(ctx)
-    if profile and profile.default_solution:
-        return profile.default_solution, None
-    msg = (
-        "No solution resolved: pass --solution or set a profile default_solution. "
-        "The change targets the default (unmanaged) solution."
+        return explicit
+    raise click.UsageError(
+        "--solution is required for customization writes — components must "
+        "target an explicit unmanaged solution. Pass --solution <unique_name>."
     )
-    if _require_solution(require_solution):
-        ctx.emit(False, error=msg)
-        return None, None  # unreachable: emit(False) raises Exit
-    return None, msg
 
 
 def _resolve_schema_name(

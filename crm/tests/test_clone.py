@@ -75,15 +75,16 @@ def _applied(*kinds):
 
 class TestCloneEntitySkeleton:
     def _patch_common(self, monkeypatch, *, apply_result, captured):
-        def fake_build(backend, logical, *, with_views=False, with_relationships=False):
+        def fake_build(backend, logical, *, with_views=False, with_relationships=False,
+                       solution=None):
             captured["with_views"] = with_views
             captured["with_relationships"] = with_relationships
+            captured["solution"] = solution
             return {"entities": [{"schema_name": "new_Project", "display_name": "Project",
                                   "attributes": []}]}
 
-        def fake_apply(backend, spec, *, solution=None, stage_only=False):
+        def fake_apply(backend, spec, *, stage_only=False):
             captured["spec"] = spec
-            captured["solution"] = solution
             captured["stage_only"] = stage_only
             return apply_result
 
@@ -358,7 +359,7 @@ class TestCloneCommand:
         runner = CliRunner()
         result = runner.invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--display", "Ticket Clone", "--with-all",
+            "--display", "Ticket Clone", "--with-all", "--solution", "cwx_sol",
         ])
         assert result.exit_code == 0, result.output
         assert called["source"] == "new_project"
@@ -381,7 +382,7 @@ class TestCloneCommand:
         from crm.cli import cli
         result = CliRunner().invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-charts"])
+            "--with-charts", "--solution", "cwx_sol"])
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is False
@@ -400,7 +401,7 @@ class TestCloneCommand:
         from crm.cli import cli
         result = CliRunner().invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-all"])
+            "--with-all", "--solution", "cwx_sol"])
         assert result.exit_code == 0, result.output
         assert called["with_charts"] is True
         assert called["with_forms"] is True
@@ -421,6 +422,6 @@ class TestCloneCommand:
         from crm.cli import cli
         result = CliRunner().invoke(cli, [
             "--profile", "t", "metadata", "clone-entity", "new_project", "cwx_TicketClone",
-            "--with-workflows"])
+            "--with-workflows", "--solution", "cwx_sol"])
         assert result.exit_code == 0, result.output
         assert "BadAction" in result.output

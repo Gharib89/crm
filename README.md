@@ -229,12 +229,28 @@ bearer token is cached at `~/.crm/msal_token_cache.json` (mode `0600`) and reuse
 across invocations until it expires. Username/password/domain are not used in
 this mode.
 
-Attach a default solution and schema-name prefix so metadata write commands target
-them by default:
+Attach a schema-name prefix so scaffolding and column-name derivation don't need
+a per-command flag:
 
 ```bash
-crm profile add --url ... --default-solution CRMWorx --publisher-prefix cwx --name crmworx
+crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
+
+**BREAKING (#636):** every customization-write command (`metadata create-*` /
+`update-*`, `plugin create`/`register-*`/`update-step-*`,
+`webresource`, `form`, `view`, `chart`, `dashboard`, `sitemap`, `app`, `sla`,
+`report`, `connectionrole`, `dup`, `fieldsec`, `security create-role`,
+`scaffold`, `ribbon`, `workflow clone`) now **requires** an explicit
+`--solution <unique_name>` — there is no profile default and no opt-out
+(pass `--solution Default` for a deliberate Default-Solution-only write).
+Hard `metadata delete-*` verbs are exempt: a hard delete removes the component
+globally, so the header can't orphan it — `--solution` stays optional there.
+Removed: profile `default_solution` (and `--default-solution` on
+`profile add`/`edit`), `--require-solution`, `CRM_REQUIRE_SOLUTION`,
+`solution create --set-default`, and the `apply --solution` override flag —
+`crm apply` now requires a top-level `solution:` block in the spec itself
+(`metadata export-spec --solution <name>` bakes it in). See
+[ADR 0020](docs/adr/0020-require-explicit-solution-for-customization-writes.md).
 
 State lives under `~/.crm/` — `CRM_HOME` is the only env var involved in
 credential/connection resolution (it relocates that directory). No credentials

@@ -38,6 +38,7 @@ class TestAddAttributeBooleanDefaultParsing:
             "--kind", "boolean",
             "--schema-name", "new_isactive", "--display", "Active",
             "--default-value", "maybe",
+            "--solution", "TestSol",
         ])
         # Click UsageError → non-zero exit + message routed to stderr
         assert result.exit_code != 0

@@ -165,6 +165,21 @@ _Avoid_: partial failure (ambiguous about whether anything was written).
 
 ### Apply / desired state
 
+**Customization write**:
+Any command that creates or edits a solution component — a table, column,
+relationship, option set, form, view, chart, dashboard, sitemap, app, SLA, report,
+web resource, plug-in registration, security role, connection role,
+duplicate-detection rule, field-security profile, ribbon, a scaffolded table, a
+cloned workflow, or an `apply` run. Every one files its component via
+`MSCRM.SolutionUniqueName` and therefore **requires an explicit `--solution`**
+(exit 2 without it, including under `--dry-run`) — a component with no named
+solution is silently orphaned into only the system Default Solution
+([ADR 0020](docs/adr/0020-require-explicit-solution-for-customization-writes.md)).
+A deliberate Default-only write passes `--solution Default`. Distinct from a
+**data-record write** (`crm create/update/delete <entity>`) and any read, which
+have no solution target and are unaffected.
+_Avoid_: metadata change (too narrow — it also covers plug-ins, roles, apply).
+
 **Reconcile**:
 What `apply` does to a component that already exists — read its live definition,
 diff it against the spec entry, and converge: no-op if equal, update-in-place if

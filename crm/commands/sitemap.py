@@ -29,16 +29,15 @@ def sitemap_group() -> None:
     """Edit a live model-driven app SiteMap's navigation (areas/groups/subareas)."""
 
 
-def _emit(ctx: CLIContext, info: dict, warning: str | None) -> None:
-    """Fold any cascade advisory in with the solution warning, then emit.
+def _emit(ctx: CLIContext, info: dict) -> None:
+    """Move any cascade advisory onto the structured warnings channel, then emit.
 
     The cascade advisory is moved out of ``data`` and onto the structured
     warnings channel only — keeping the JSON ``data`` payload to identifying
     fields, like the other mutating verbs.
     """
     cascade = info.pop("cascade_warning", None)
-    merged = " ".join(w for w in (warning, cascade) if w) or None
-    _emit_with_warning(ctx, info, merged, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, cascade, meta=ctx.staged_meta())
 
 
 @sitemap_group.command("add-area")
@@ -53,15 +52,15 @@ def _emit(ctx: CLIContext, info: dict, warning: str | None) -> None:
 @_publish_option
 @pass_ctx
 def sitemap_add_area(ctx: CLIContext, sitemap_id, area_id, title, icon,
-                     show_groups, solution, require_solution, publish):
+                     show_groups, solution, publish):
     """Add an Area to the sitemap SITEMAP_ID."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_area(
             ctx.backend(), sitemap_id, area_id=area_id, title=title, icon=icon,
             show_groups=show_groups, publish=publish, solution=solution)
-    _emit(ctx, info, warning)
+    _emit(ctx, info)
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
@@ -74,15 +73,15 @@ def sitemap_add_area(ctx: CLIContext, sitemap_id, area_id, title, icon,
 @_publish_option
 @pass_ctx
 def sitemap_add_group(ctx: CLIContext, sitemap_id, area_id, group_id, title,
-                      solution, require_solution, publish):
+                      solution, publish):
     """Add a Group under an Area in the sitemap SITEMAP_ID."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_group(
             ctx.backend(), sitemap_id, area_id=area_id, group_id=group_id,
             title=title, publish=publish, solution=solution)
-    _emit(ctx, info, warning)
+    _emit(ctx, info)
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
@@ -107,7 +106,7 @@ def sitemap_add_group(ctx: CLIContext, sitemap_id, area_id, group_id, title,
 @pass_ctx
 def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
                         entity, url, dashboard, title, icon, pass_params,
-                        solution, require_solution, publish):
+                        solution, publish):
     """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard)."""
     # Strip first, so a blank-ish flag (--url '' or --url '   ') is treated as
     # missing and still yields a usage error (exit 2), not a confusing core error
@@ -120,7 +119,7 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
             "Provide exactly one of --entity, --url or --dashboard.")
     if pass_params and not url:
         raise click.UsageError("--pass-params is only valid with --url.")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.add_subarea(
@@ -128,7 +127,7 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
             sub_id=sub_id, entity=entity, url=url, dashboard=dashboard,
             title=title, icon=icon, pass_params=pass_params,
             publish=publish, solution=solution)
-    _emit(ctx, info, warning)
+    _emit(ctx, info)
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
@@ -146,7 +145,7 @@ def sitemap_add_subarea(ctx: CLIContext, sitemap_id, area_id, group_id, sub_id,
 @_publish_option
 @pass_ctx
 def sitemap_move_node(ctx: CLIContext, sitemap_id, node_id, before, after, index,
-                      solution, require_solution, publish):
+                      solution, publish):
     """Reorder a node within its parent in the sitemap SITEMAP_ID."""
     # Strip first, so a blank-ish anchor (--before '' / '   ') is treated as
     # missing and still yields a usage error (exit 2), not a confusing core error.
@@ -155,13 +154,13 @@ def sitemap_move_node(ctx: CLIContext, sitemap_id, node_id, before, after, index
     if sum(1 for v in (before, after, index) if v is not None) != 1:
         raise click.UsageError(
             "Provide exactly one of --before, --after or --index.")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.move_node(
             ctx.backend(), sitemap_id, node_id=node_id, before=before,
             after=after, index=index, publish=publish, solution=solution)
-    _emit(ctx, info, warning)
+    _emit(ctx, info)
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
@@ -212,16 +211,16 @@ def _localized_pairs(node_id, lcids, values, *, value_flag):
 @_publish_option
 @pass_ctx
 def sitemap_set_title(ctx: CLIContext, sitemap_id, node_id, lcids, titles,
-                      solution, require_solution, publish):
+                      solution, publish):
     """Set localized title(s) on a node in the sitemap SITEMAP_ID."""
     node_id, pairs = _localized_pairs(node_id, lcids, titles, value_flag="title")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.set_title(
             ctx.backend(), sitemap_id, node_id=node_id, titles=pairs,
             publish=publish, solution=solution)
-    _emit(ctx, info, warning)
+    _emit(ctx, info)
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
@@ -238,17 +237,17 @@ def sitemap_set_title(ctx: CLIContext, sitemap_id, node_id, lcids, titles,
 @_publish_option
 @pass_ctx
 def sitemap_set_description(ctx: CLIContext, sitemap_id, node_id, lcids,
-                            descriptions, solution, require_solution, publish):
+                            descriptions, solution, publish):
     """Set localized description(s) on a node in the sitemap SITEMAP_ID."""
     node_id, pairs = _localized_pairs(
         node_id, lcids, descriptions, value_flag="description")
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.set_description(
             ctx.backend(), sitemap_id, node_id=node_id, descriptions=pairs,
             publish=publish, solution=solution)
-    _emit(ctx, info, warning)
+    _emit(ctx, info)
     _journal(ctx, sitemap_id, info, solution=solution)
 
 
@@ -262,13 +261,13 @@ def sitemap_set_description(ctx: CLIContext, sitemap_id, node_id, lcids,
 @_publish_option
 @pass_ctx
 def sitemap_remove_node(ctx: CLIContext, sitemap_id, node_id, comment_out,
-                        solution, require_solution, publish):
+                        solution, publish):
     """Remove (or comment out) a node from the sitemap SITEMAP_ID."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.remove_node(
             ctx.backend(), sitemap_id, node_id=node_id, comment_out=comment_out,
             publish=publish, solution=solution)
-    _emit(ctx, info, warning)
+    _emit(ctx, info)
     _journal(ctx, sitemap_id, info, solution=solution)

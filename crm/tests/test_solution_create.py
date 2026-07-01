@@ -330,7 +330,10 @@ class TestSolutionCreateCommands:
         assert result.exit_code == 0, result.output
         assert saved["called"] is False
 
-    def test_create_solution_wires_core_and_autowires_default(self, monkeypatch):
+    def test_create_solution_wires_core_no_profile_autowire(self, monkeypatch):
+        # #636: `solution create` no longer writes default_solution back to the
+        # profile — that field and the --set-default wire are gone. Only the core
+        # create is invoked; the profile is never mutated.
         prof = _named_profile()
         captured = {}
         saved = {}
@@ -344,7 +347,7 @@ class TestSolutionCreateCommands:
         monkeypatch.setattr("crm.commands.solution._active_profile", lambda ctx: prof)
         monkeypatch.setattr(
             "crm.commands.solution.session_mod.save_profile",
-            lambda p: saved.update({"name": p.name, "default_solution": p.default_solution}))
+            lambda p: saved.update({"name": p.name}))
         result = CliRunner().invoke(cli, [
             "--json", "solution", "create",
             "--name", "CRMWorx", "--publisher", "crmworx",
@@ -352,9 +355,9 @@ class TestSolutionCreateCommands:
         assert result.exit_code == 0, result.output
         assert captured["publisher_unique_name"] == "crmworx"
         assert captured["publisher_id"] is None
-        assert saved == {"name": "crmworx", "default_solution": "CRMWorx"}
+        assert saved == {}  # profile untouched
         env = json.loads(result.output)
-        assert env["data"]["profile_updated"]["default_solution"] == "CRMWorx"
+        assert "profile_updated" not in env["data"]
 
     @pytest.mark.parametrize("extra", [
         ["--publisher", "crmworx", "--publisher-id", _PUB_ID],  # both

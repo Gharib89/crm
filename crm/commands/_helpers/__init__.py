@@ -42,8 +42,8 @@ from .errors import (
 )
 from .solutions import (
     _resolve_solution,
-    _require_solution,
     _solution_option,
+    _optional_solution_option,
     _publish_option,
     _resolve_publish,
     _active_profile,
@@ -93,7 +93,7 @@ __all__ = [
     # d365 errors
     "_handle_d365_error", "d365_errors", "usage_guard", "_auth_error_hint",
     # solution resolution
-    "_resolve_solution", "_require_solution", "_solution_option",
+    "_resolve_solution", "_solution_option", "_optional_solution_option",
     "_publish_option", "_resolve_publish", "_active_profile",
     "_resolve_schema_name", "_EXPORT_SETTING_KEYS",
     # confirm / secret UX

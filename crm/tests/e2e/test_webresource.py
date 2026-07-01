@@ -14,7 +14,7 @@ from crm.tests.e2e.coverage import covers
 
 @covers("webresource delete")
 @pytest.mark.slow
-def test_webresource_delete(cli, tmp_path, unique, request):
+def test_webresource_delete(cli, tmp_path, unique, request, ephemeral_solution):
     """Create a web resource then delete it via the first-class verb; assert gone.
 
     Deletes by unique name (the verb resolves it to the id). A subsequent get
@@ -30,6 +30,7 @@ def test_webresource_delete(cli, tmp_path, unique, request):
         "--name", name,
         "--file", str(src),
         "--display-name", f"E2E WR del {unique}",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"webresource create failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -76,7 +77,7 @@ def test_webresource_delete(cli, tmp_path, unique, request):
 
 @covers("webresource create", "webresource get", "webresource update", "webresource list")
 @pytest.mark.slow
-def test_webresource_lifecycle(cli, tmp_path, unique, request):
+def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solution):
     """Full lifecycle: create a JS web resource, get it, update its display name,
     confirm via list, then delete in a finalizer.
 
@@ -99,6 +100,7 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request):
         "--name", name,
         "--file", str(src),
         "--display-name", f"E2E WR {unique}",
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"webresource create failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -144,6 +146,7 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request):
         "--json", "webresource", "update", name,
         "--file", str(src_v2),
         "--display-name", display_v2,
+        "--solution", ephemeral_solution,
     ])
     assert result.returncode == 0, (
         f"webresource update failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -180,7 +183,7 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request):
 
 @covers("webresource push")
 @pytest.mark.slow
-def test_webresource_push_directory(cli, tmp_path, unique, request):
+def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_solution):
     """Walk a directory and upsert each file: create on first push, skip when
     byte-identical, update when changed, and preview under --dry-run.
 
@@ -210,7 +213,8 @@ def test_webresource_push_directory(cli, tmp_path, unique, request):
     request.addfinalizer(_cleanup)
 
     # ── FIRST PUSH: both files created, published once ──────────────────────────
-    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix])
+    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix,
+                  "--solution", ephemeral_solution])
     assert result.returncode == 0, (
         f"first push failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -226,7 +230,8 @@ def test_webresource_push_directory(cli, tmp_path, unique, request):
         assert got.returncode == 0 and json.loads(got.stdout)["ok"], got.stdout
 
     # ── RE-PUSH IDENTICAL: both skipped, no writes ──────────────────────────────
-    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix])
+    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix,
+                  "--solution", ephemeral_solution])
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)["data"]
     assert data["skipped"] == 2, f"expected 2 skipped: {data}"
@@ -235,7 +240,8 @@ def test_webresource_push_directory(cli, tmp_path, unique, request):
 
     # ── CHANGE ONE FILE: one updated, one skipped ───────────────────────────────
     (root / rel_js).write_bytes(b"// e2e push v2 changed")
-    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix])
+    result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix,
+                  "--solution", ephemeral_solution])
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)["data"]
     assert data["updated"] == 1, f"expected 1 updated: {data}"
@@ -245,7 +251,7 @@ def test_webresource_push_directory(cli, tmp_path, unique, request):
     # ── DRY-RUN A NEW FILE: previewed, not written ──────────────────────────────
     (root / rel_new).write_bytes(b"// added, dry-run only")
     result = cli(["--json", "--dry-run", "webresource", "push", str(root),
-                  "--prefix", prefix])
+                  "--prefix", prefix, "--solution", ephemeral_solution])
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
     data = env["data"]

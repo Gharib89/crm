@@ -450,6 +450,7 @@ class TestCreateRole:
         result = CliRunner().invoke(cli, [
             "--json", "security", "create-role", "Agent Read-Only",
             "--business-unit", "bu-1", "--if-exists", "skip", "--yes",
+            "--solution", "mysol",
         ])
         assert result.exit_code == 0, result.output
         assert calls == [("Agent Read-Only", "bu-1", "skip")]
@@ -473,20 +474,22 @@ class TestCreateRole:
         assert result.exit_code == 0, result.output
         assert seen["solution"] == "mysol"
 
-    def test_unresolved_solution_warning_in_meta(self, monkeypatch, backend):
-        # No --solution and no profile default (isolated_home) → advisory warning.
+    def test_missing_solution_is_usage_error(self, monkeypatch, backend):
+        # No --solution → click.UsageError (exit 2); create_role is never called.
         _stub_backend(monkeypatch, backend)
+        calls = []
         monkeypatch.setattr(
             "crm.commands.security.security_mod.create_role",
-            lambda *a, **k: {"roleid": "role-9", "name": "R", "businessunitid": "bu-1"},
+            lambda *a, **k: calls.append((a, k)) or {"roleid": "role-9", "name": "R"},
         )
         result = CliRunner().invoke(cli, [
             "--json", "security", "create-role", "R", "--yes",
         ])
-        assert result.exit_code == 0, result.output
+        assert result.exit_code == 2, result.output
         env = json.loads(result.stdout)
-        warnings = env["meta"]["warnings"]
-        assert any("solution" in w.lower() for w in warnings)
+        assert env["ok"] is False
+        assert "solution" in env["error"].lower()
+        assert calls == []
 
     def test_without_yes_non_interactive_aborts(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
@@ -510,6 +513,7 @@ class TestCreateRole:
         # no --yes, non-interactive: dry-run must NOT abort
         result = CliRunner().invoke(cli, [
             "--json", "--dry-run", "security", "create-role", "R",
+            "--solution", "mysol",
         ], input="")
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)

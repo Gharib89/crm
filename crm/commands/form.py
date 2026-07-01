@@ -121,10 +121,10 @@ def form_list(
 @pass_ctx
 def form_clone(
     ctx: CLIContext, entity: str, form_name: str, target_entity: str,
-    publish: bool, solution: str | None, require_solution: bool,
+    publish: bool, solution: str | None,
 ) -> None:
     """Clone a named form to another entity."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         forms = forms_mod.read_entity_forms(ctx.backend(), entity)
@@ -136,7 +136,7 @@ def form_clone(
             ctx.backend(), form, target_entity,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning,
+    _emit_with_warning(ctx, info, None,
                        meta=ctx.staged_meta())
     _journal(ctx, form_name, info, solution=solution)
 
@@ -153,17 +153,17 @@ def form_clone(
 def form_add_field(
     ctx: CLIContext, entity: str, attribute: str, form: str | None,
     tab: str | None, section: str | None, publish: bool,
-    solution: str | None, require_solution: bool,
+    solution: str | None,
 ) -> None:
     """Add a field to an entity form (resolves the control type from metadata)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_field(
             ctx.backend(), entity, attribute, form=form, tab=tab, section=section,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
 
 
@@ -176,17 +176,17 @@ def form_add_field(
 @pass_ctx
 def form_remove_field(
     ctx: CLIContext, entity: str, attribute: str, form: str | None,
-    publish: bool, solution: str | None, require_solution: bool,
+    publish: bool, solution: str | None,
 ) -> None:
     """Remove a field from an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_field(
             ctx.backend(), entity, attribute, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
 
 
@@ -202,17 +202,17 @@ def form_remove_field(
 def form_set_field(
     ctx: CLIContext, entity: str, attribute: str, form: str | None,
     tab: str | None, section: str | None, publish: bool,
-    solution: str | None, require_solution: bool,
+    solution: str | None,
 ) -> None:
     """Move an existing field to a different tab/section of an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.set_form_field(
             ctx.backend(), entity, attribute, form=form, tab=tab, section=section,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
 
 
@@ -240,10 +240,10 @@ def form_set_field_props(
     ctx: CLIContext, entity: str, attribute: str,
     locked: bool | None, disabled: bool | None, show_label: bool | None,
     visible: bool | None, required: str | None, form: str | None,
-    publish: bool, solution: str | None, require_solution: bool,
+    publish: bool, solution: str | None,
 ) -> None:
     """Toggle presentation properties of an existing field on an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.set_form_field_props(
@@ -252,7 +252,7 @@ def form_set_field_props(
             visible=visible, required=required,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, attribute, info, solution=solution)
 
 
@@ -277,17 +277,17 @@ _field_option = click.option(
 @pass_ctx
 def form_add_library(
     ctx: CLIContext, entity: str, library: str, form: str | None,
-    publish: bool, solution: str | None, require_solution: bool,
+    publish: bool, solution: str | None,
 ) -> None:
     """Register a JS script library on an entity form (idempotent)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_library(
             ctx.backend(), entity, library, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, library, info, solution=solution)
 
 
@@ -316,10 +316,9 @@ def form_add_handler(
     ctx: CLIContext, entity: str, event: str, library: str, function: str,
     field: str | None, params: tuple[str, ...], pass_context: bool,
     enabled: bool, form: str | None, publish: bool, solution: str | None,
-    require_solution: bool,
 ) -> None:
     """Wire a JS event handler on an entity form (registering its library)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_handler(
@@ -327,7 +326,7 @@ def form_add_handler(
             field=field, params=params, pass_context=pass_context, enabled=enabled,
             form=form, publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, function, info, solution=solution)
 
 
@@ -343,17 +342,17 @@ def form_add_handler(
 @pass_ctx
 def form_remove_handler(
     ctx: CLIContext, entity: str, event: str, function: str, field: str | None,
-    form: str | None, publish: bool, solution: str | None, require_solution: bool,
+    form: str | None, publish: bool, solution: str | None,
 ) -> None:
     """Remove a JS event handler from an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_handler(
             ctx.backend(), entity, event=event, function=function, field=field,
             form=form, publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, function, info, solution=solution)
 
 
@@ -395,17 +394,17 @@ def form_list_handlers(ctx: CLIContext, entity: str, form: str | None) -> None:
 def form_add_tab(
     ctx: CLIContext, entity: str, name: str, label: str | None, columns: int,
     after: str | None, form: str | None, publish: bool,
-    solution: str | None, require_solution: bool,
+    solution: str | None,
 ) -> None:
     """Add a tab (with a starter section) to an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_tab(
             ctx.backend(), entity, name, label=label, columns=columns, after=after,
             form=form, publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
@@ -419,18 +418,18 @@ def form_add_tab(
 @pass_ctx
 def form_remove_tab(
     ctx: CLIContext, entity: str, tab: str, force: bool, form: str | None,
-    publish: bool, solution: str | None, require_solution: bool,
+    publish: bool, solution: str | None,
 ) -> None:
     """Remove a tab from an entity form (refuses the only tab, or a tab holding
     bound fields without --force)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_tab(
             ctx.backend(), entity, tab, force=force, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, tab, info, solution=solution)
 
 
@@ -444,17 +443,17 @@ def form_remove_tab(
 @pass_ctx
 def form_rename_tab(
     ctx: CLIContext, entity: str, tab: str, label: str, form: str | None,
-    publish: bool, solution: str | None, require_solution: bool,
+    publish: bool, solution: str | None,
 ) -> None:
     """Set a tab's display label (its logical name is left intact)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.rename_form_tab(
             ctx.backend(), entity, tab, label=label, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, tab, info, solution=solution)
 
 
@@ -468,17 +467,17 @@ def form_rename_tab(
 @pass_ctx
 def form_move_tab(
     ctx: CLIContext, entity: str, tab: str, after: str | None, form: str | None,
-    publish: bool, solution: str | None, require_solution: bool,
+    publish: bool, solution: str | None,
 ) -> None:
     """Reorder a tab on an entity form (to the front, or after --after)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.move_form_tab(
             ctx.backend(), entity, tab, after=after, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, tab, info, solution=solution)
 
 
@@ -496,17 +495,17 @@ def form_move_tab(
 def form_add_section(
     ctx: CLIContext, entity: str, name: str, tab: str | None, label: str | None,
     columns: int, after: str | None, form: str | None, publish: bool,
-    solution: str | None, require_solution: bool,
+    solution: str | None,
 ) -> None:
     """Add a section to a tab of an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.add_form_section(
             ctx.backend(), entity, name, tab=tab, label=label, columns=columns,
             after=after, form=form, publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, name, info, solution=solution)
 
 
@@ -521,18 +520,18 @@ def form_add_section(
 @pass_ctx
 def form_remove_section(
     ctx: CLIContext, entity: str, section: str, tab: str | None, force: bool,
-    form: str | None, publish: bool, solution: str | None, require_solution: bool,
+    form: str | None, publish: bool, solution: str | None,
 ) -> None:
     """Remove a section from a tab of an entity form (refuses a section holding
     bound fields without --force)."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.remove_form_section(
             ctx.backend(), entity, section, tab=tab, force=force, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, section, info, solution=solution)
 
 
@@ -547,17 +546,17 @@ def form_remove_section(
 @pass_ctx
 def form_rename_section(
     ctx: CLIContext, entity: str, section: str, tab: str | None, label: str,
-    form: str | None, publish: bool, solution: str | None, require_solution: bool,
+    form: str | None, publish: bool, solution: str | None,
 ) -> None:
     """Set a section's display label on an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.rename_form_section(
             ctx.backend(), entity, section, label=label, tab=tab, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, section, info, solution=solution)
 
 
@@ -572,17 +571,17 @@ def form_rename_section(
 @pass_ctx
 def form_move_section(
     ctx: CLIContext, entity: str, section: str, tab: str | None, after: str | None,
-    form: str | None, publish: bool, solution: str | None, require_solution: bool,
+    form: str | None, publish: bool, solution: str | None,
 ) -> None:
     """Reorder a section within its tab on an entity form."""
-    solution, warning = _resolve_solution(ctx, solution, require_solution)
+    solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = forms_mod.move_form_section(
             ctx.backend(), entity, section, tab=tab, after=after, form=form,
             publish=publish, solution=solution,
         )
-    _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, section, info, solution=solution)
 
 

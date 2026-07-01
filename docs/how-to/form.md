@@ -32,7 +32,7 @@ crm form list cwx_ticket --all
 ## Clone a form to another entity
 
 ```bash
-crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog
+crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog --solution cwx_crmworx
 ```
 
 The source form's `formxml` is read from `cwx_ticket`, the entity reference is
@@ -43,25 +43,16 @@ source form repeatedly without collisions on on-premises (which — unlike
 Dataverse online — enforces those ids as unique); references to control types,
 security roles, and subgrid views are preserved.
 
+`--solution` is required — a component created without an explicit target
+solution would otherwise land only in the system Default Solution. Pass
+`--solution Default` for a deliberate Default-Solution-only write.
+
 By default the clone also runs `PublishAllXml`. To defer the publish (e.g.
 when doing multiple operations before a single publish at the end):
 
 ```bash
-crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog --no-publish
-```
-
-### Add the clone to a solution
-
-```bash
 crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog \
-    --solution cwx_crmworx
-```
-
-Use `--require-solution` to fail if no solution name is resolved:
-
-```bash
-crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog \
-    --require-solution
+    --solution cwx_crmworx --no-publish
 ```
 
 ### Ambiguous form names
@@ -86,8 +77,13 @@ entity without cloning the entity itself.
 ## Add a field to a form
 
 ```bash
-crm form add-field cwx_ticket cwx_priority
+crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx
 ```
+
+`--solution` is required on every mutating form verb — a component created
+without an explicit target solution would otherwise land only in the system
+Default Solution. Pass `--solution Default` for a deliberate
+Default-Solution-only write.
 
 Resolves the control `classid` from the attribute's live metadata (no manual
 lookup needed), then splices a `<cell>`/`<control>` into the target section and
@@ -99,7 +95,8 @@ By default the field lands in the first section of the first tab. Narrow the
 target with `--tab` and `--section` (by name or id):
 
 ```bash
-crm form add-field cwx_ticket cwx_priority --tab "General" --section "Details"
+crm form add-field cwx_ticket cwx_priority --tab "General" --section "Details" \
+    --solution cwx_crmworx
 ```
 
 Use `--form` when the entity has more than one main form; without it the command
@@ -116,7 +113,7 @@ Use `--no-publish` to **stage a single edit** and publish it later with
 `crm solution publish`:
 
 ```bash
-crm form add-field cwx_ticket cwx_priority --no-publish   # stage one edit
+crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx --no-publish   # stage one edit
 crm solution publish                                       # publish when ready
 ```
 
@@ -127,20 +124,15 @@ crm solution publish                                       # publish when ready
     default (publish each), or publish between edits — only the last
     `--no-publish` write survives otherwise.
 
-### Add to a solution
-
-```bash
-crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx
-```
-
 ### Preview without writing
 
 ```bash
-crm --dry-run form add-field cwx_ticket cwx_priority
+crm --dry-run form add-field cwx_ticket cwx_priority --solution cwx_crmworx
 ```
 
 Returns `would_add: true` with the resolved `classid` and target coordinates;
-no PATCH is issued.
+no PATCH is issued. `--solution` is still required under `--dry-run` — it is
+validated before any backend call.
 
 ### Unmapped attribute types
 
@@ -156,7 +148,7 @@ existed (see `crm form export`).
 ## Remove a field from a form
 
 ```bash
-crm form remove-field cwx_ticket cwx_priority
+crm form remove-field cwx_ticket cwx_priority --solution cwx_crmworx
 ```
 
 Removes the field's `<cell>` from the form layout (and tidies an emptied
@@ -164,14 +156,15 @@ Removes the field's `<cell>` from the form layout (and tidies an emptied
 the form.
 
 ```bash
-crm form remove-field cwx_ticket cwx_priority --no-publish   # stage only
-crm --dry-run form remove-field cwx_ticket cwx_priority      # would_remove: true
+crm form remove-field cwx_ticket cwx_priority --solution cwx_crmworx --no-publish   # stage only
+crm --dry-run form remove-field cwx_ticket cwx_priority --solution cwx_crmworx      # would_remove: true
 ```
 
 ## Move a field to a different tab or section
 
 ```bash
-crm form set-field cwx_ticket cwx_priority --tab "Details" --section "Status"
+crm form set-field cwx_ticket cwx_priority --tab "Details" --section "Status" \
+    --solution cwx_crmworx
 ```
 
 Relocates an existing field's `<cell>` to the target tab/section. The cell
@@ -179,15 +172,14 @@ Relocates an existing field's `<cell>` to the target tab/section. The cell
 Errors if the field is not already on the form (use `add-field` first).
 
 ```bash
-crm form set-field cwx_ticket cwx_priority \
-    --tab "Details" --section "Status" --solution cwx_crmworx
-crm --dry-run form set-field cwx_ticket cwx_priority --tab "Details"  # would_move: true
+crm --dry-run form set-field cwx_ticket cwx_priority --tab "Details" \
+    --solution cwx_crmworx  # would_move: true
 ```
 
 ## Toggle field presentation properties
 
 ```bash
-crm form set-field-props cwx_ticket cwx_priority --disabled --hidden
+crm form set-field-props cwx_ticket cwx_priority --disabled --hidden --solution cwx_crmworx
 ```
 
 Toggles one or more presentation properties of an existing field on the form —
@@ -199,7 +191,7 @@ At least one property flag is required; any omitted flag is left untouched.
 ```bash
 crm form set-field-props cwx_ticket cwx_priority \
     --locked --no-show-label --solution cwx_crmworx
-crm --dry-run form set-field-props cwx_ticket cwx_priority --visible
+crm --dry-run form set-field-props cwx_ticket cwx_priority --visible --solution cwx_crmworx
 ```
 
 Under `--dry-run` the response carries `would_update: true`; no PATCH is issued.
@@ -236,7 +228,7 @@ web resources — register them first with `crm webresource create`, then wire t
 ### Register a script library
 
 ```bash
-crm form add-library cwx_ticket --library cwx_/scripts/ticket.js
+crm form add-library cwx_ticket --library cwx_/scripts/ticket.js --solution cwx_crmworx
 ```
 
 Registers `cwx_/scripts/ticket.js` in the form's `<formLibraries>`. The
@@ -245,9 +237,8 @@ succeeds without adding a duplicate entry. Under `--dry-run` the response
 carries `would_add_library: true` and issues no PATCH.
 
 ```bash
-crm form add-library cwx_ticket --library cwx_/scripts/ticket.js \
+crm --dry-run form add-library cwx_ticket --library cwx_/scripts/ticket.js \
     --solution cwx_crmworx
-crm --dry-run form add-library cwx_ticket --library cwx_/scripts/ticket.js
 ```
 
 ### Wire an event handler
@@ -261,19 +252,22 @@ always appended last, so existing handler order is preserved.
 crm form add-handler cwx_ticket \
     --event onload \
     --library cwx_/scripts/ticket.js \
-    --function App.onLoad
+    --function App.onLoad \
+    --solution cwx_crmworx
 
 # onsave — fires when the record is saved
 crm form add-handler cwx_ticket \
     --event onsave \
     --library cwx_/scripts/ticket.js \
-    --function App.onSave
+    --function App.onSave \
+    --solution cwx_crmworx
 
 # onchange — fires when a specific field changes; --field is required
 crm form add-handler cwx_ticket \
     --event onchange --field cwx_priority \
     --library cwx_/scripts/ticket.js \
-    --function App.onPriorityChange
+    --function App.onPriorityChange \
+    --solution cwx_crmworx
 ```
 
 **`--field` is required for `onchange`, and invalid for `onload`/`onsave`.**
@@ -295,6 +289,7 @@ crm form add-handler cwx_ticket \
     --event onload \
     --library cwx_/scripts/ticket.js \
     --function App.onLoad \
+    --solution cwx_crmworx \
     --no-pass-context \
     --param "debug=false" \
     --param "verbose=true"
@@ -339,11 +334,12 @@ Only the customizer-wired `<Handlers>` are listed — the platform-internal
 
 ```bash
 crm form remove-handler cwx_ticket \
-    --event onload --function App.onLoad
+    --event onload --function App.onLoad --solution cwx_crmworx
 
 # onchange requires --field
 crm form remove-handler cwx_ticket \
-    --event onchange --field cwx_priority --function App.onPriorityChange
+    --event onchange --field cwx_priority --function App.onPriorityChange \
+    --solution cwx_crmworx
 ```
 
 Removes the handler identified by event + function (plus field for onchange).
@@ -352,7 +348,7 @@ invalid empty XML is left behind. Errors if the handler is not found.
 
 ```bash
 crm --dry-run form remove-handler cwx_ticket \
-    --event onload --function App.onLoad   # would_remove_handler: true, no PATCH
+    --event onload --function App.onLoad --solution cwx_crmworx  # would_remove_handler: true, no PATCH
 ```
 
 ### Publishing and the publish-then-read-back gotcha
@@ -371,7 +367,7 @@ invisible on re-export and in the UI — always publish before verifying with
 ```bash
 crm form add-handler cwx_ticket \
     --event onload --library cwx_/scripts/ticket.js \
-    --function App.onLoad --no-publish    # stage only
+    --function App.onLoad --solution cwx_crmworx --no-publish    # stage only
 crm solution publish                       # publish when ready
 ```
 
@@ -397,11 +393,11 @@ conventions and publish gotcha as the field verbs above.
 ### Tabs
 
 ```bash
-crm form add-tab cwx_ticket cwx_details --label "Details"           # append a tab
-crm form add-tab cwx_ticket cwx_details --after "General" --columns 2   # 2-column tab, after "General"
-crm form rename-tab cwx_ticket cwx_details --label "Ticket Details" # change its display label
-crm form move-tab cwx_ticket cwx_details --after "General"          # reorder (no --after ⇒ move to front)
-crm form remove-tab cwx_ticket cwx_details                         # remove
+crm form add-tab cwx_ticket cwx_details --label "Details" --solution cwx_crmworx           # append a tab
+crm form add-tab cwx_ticket cwx_details --after "General" --columns 2 --solution cwx_crmworx  # 2-column tab, after "General"
+crm form rename-tab cwx_ticket cwx_details --label "Ticket Details" --solution cwx_crmworx # change its display label
+crm form move-tab cwx_ticket cwx_details --after "General" --solution cwx_crmworx          # reorder (no --after ⇒ move to front)
+crm form remove-tab cwx_ticket cwx_details --solution cwx_crmworx                          # remove
 ```
 
 A new tab is created with a fresh internal id, `IsUserDefined="1"`, the requested
@@ -417,11 +413,11 @@ a tab that still **holds bound fields** (which would orphan them) unless you pas
 ### Sections
 
 ```bash
-crm form add-section cwx_ticket cwx_status --tab cwx_details --label "Status"
-crm form add-section cwx_ticket cwx_status --tab cwx_details --after "Summary" --columns 2
-crm form rename-section cwx_ticket cwx_status --tab cwx_details --label "Ticket Status"
-crm form move-section cwx_ticket cwx_status --tab cwx_details          # reorder within the tab
-crm form remove-section cwx_ticket cwx_status --tab cwx_details
+crm form add-section cwx_ticket cwx_status --tab cwx_details --label "Status" --solution cwx_crmworx
+crm form add-section cwx_ticket cwx_status --tab cwx_details --after "Summary" --columns 2 --solution cwx_crmworx
+crm form rename-section cwx_ticket cwx_status --tab cwx_details --label "Ticket Status" --solution cwx_crmworx
+crm form move-section cwx_ticket cwx_status --tab cwx_details --solution cwx_crmworx          # reorder within the tab
+crm form remove-section cwx_ticket cwx_status --tab cwx_details --solution cwx_crmworx
 ```
 
 Sections default to the **first tab** when `--tab` is omitted, mirroring

@@ -66,7 +66,6 @@ def _resolve_secret_flag(password_opt, client_secret_opt):
 @click.option("--api-version", default=None,
               help="Web API version. Omit to auto-negotiate (v9.2 → v9.1 on on-prem).")
 @click.option("--no-verify-ssl", is_flag=True, help="Skip SSL certificate verification.")
-@click.option("--default-solution", default=None, help="Default solution uniquename.")
 @click.option("--publisher-prefix", default=None, help="Default schema-name prefix, e.g. 'new'.")
 @click.option("--store-password-plaintext", is_flag=True,
               help="Force plaintext storage (skip the OS keyring).")
@@ -76,7 +75,7 @@ def _resolve_secret_flag(password_opt, client_secret_opt):
 @pass_ctx
 def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
                 tenant_id, client_id, password_opt, client_secret_opt, api_version,
-                no_verify_ssl, default_solution, publisher_prefix,
+                no_verify_ssl, publisher_prefix,
                 store_password_plaintext, yes):
     """Create a profile, save its secret, test the connection, and activate it.
 
@@ -140,7 +139,7 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
             api_version=api_version or conn_mod.DEFAULT_API_VERSION,
             verify_ssl=not no_verify_ssl, auth_scheme=auth_scheme,
             tenant_id=tenant_id, client_id=client_id,
-            default_solution=default_solution, publisher_prefix=publisher_prefix,
+            publisher_prefix=publisher_prefix,
         )
         session_mod.save_profile(profile)
     except D365Error as exc:
@@ -276,7 +275,6 @@ def profile_list(ctx: CLIContext):
                 "name": n, "active": n == active,
                 "target": "cloud" if p.auth_scheme == "oauth" else "on-prem",
                 "url": p.url, "credential_storage": _credential_storage(n),
-                "default_solution": p.default_solution,
                 "publisher_prefix": p.publisher_prefix,
             })
         except _PROFILE_LOAD_ERRORS:
@@ -303,11 +301,10 @@ def profile_list(ctx: CLIContext):
 @click.option("--tenant-id", default=None)
 @click.option("--client-id", default=None)
 @click.option("--api-version", default=None)
-@click.option("--default-solution", default=None)
 @click.option("--publisher-prefix", default=None)
 @pass_ctx
 def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
-                 client_id, api_version, default_solution, publisher_prefix):
+                 client_id, api_version, publisher_prefix):
     """Change a profile's fields (not its secret — use set-password)."""
     try:
         p = session_mod.load_profile(name)
@@ -323,7 +320,6 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     if tenant_id is not None: p.tenant_id = tenant_id
     if client_id is not None: p.client_id = client_id
     if api_version is not None: p.api_version = api_version
-    if default_solution is not None: p.default_solution = default_solution
     if publisher_prefix is not None: p.publisher_prefix = publisher_prefix
     # Fail fast on an edit that leaves the profile unusable, rather than letting
     # it surface later as a confusing backend-build error.

@@ -37,8 +37,12 @@ crm --json dashboard get <id> | jq -r '.data.formxml' > dashboard.xml
 ## Create a dashboard
 
 ```bash
-crm dashboard create --name "Sales Overview" --formxml dashboard.xml
+crm dashboard create --name "Sales Overview" --formxml dashboard.xml --solution cwx_crmworx
 ```
+
+`--solution` is required — a component created without an explicit target
+solution would otherwise land only in the system Default Solution. Pass
+`--solution Default` for a deliberate Default-Solution-only write.
 
 `--formxml` takes the path to a dashboard FormXml file. The created record is an
 organization-owned dashboard (`objecttypecode` `none`), not bound to a single
@@ -53,7 +57,7 @@ Passing `--interactive` fails fast with a clear error instead of silently creati
 a standard dashboard:
 
 ```bash
-crm dashboard create --name "X" --formxml d.xml --interactive
+crm dashboard create --name "X" --formxml d.xml --interactive --solution cwx_crmworx
 # error: Interactive-experience (type-10) dashboards are not programmatically
 # creatable over the Web API — author them in the dashboard designer.
 ```
@@ -66,27 +70,19 @@ immediately. Defer the publish with `--no-publish` to batch several operations
 before a single publish:
 
 ```bash
-crm dashboard create --name "Q" --formxml d.xml --no-publish
+crm dashboard create --name "Q" --formxml d.xml --solution cwx_crmworx --no-publish
 crm solution publish    # publish when ready
 ```
-
-### Add the dashboard to a solution
-
-```bash
-crm dashboard create --name "Q" --formxml d.xml --solution cwx_crmworx
-```
-
-Use `--require-solution` to fail if no solution name resolves (from `--solution`
-or the profile default).
 
 ### Preview without writing
 
 ```bash
-crm --dry-run dashboard create --name "Q" --formxml d.xml
+crm --dry-run dashboard create --name "Q" --formxml d.xml --solution cwx_crmworx
 ```
 
 Returns `{_dry_run: true, would_create: {entity_set, body}}` with the fully
-resolved request body; no dashboard is created.
+resolved request body; no dashboard is created. `--solution` is still required
+under `--dry-run` — it is validated before any backend call.
 
 ## Delete a dashboard
 
@@ -107,13 +103,16 @@ dashboard's FormXml without touching the dashboard designer:
 ```bash
 crm dashboard add-chart 1111aaaa-2222-bbbb-3333-cccccccccccc \
     --view  <savedquery-id> \
-    --chart <savedqueryvisualization-id>
+    --chart <savedqueryvisualization-id> \
+    --solution cwx_crmworx
 ```
 
 `--view` is the `savedqueryid` of the public view whose data the grid shows.
 `--chart` is the `savedqueryvisualizationid` of an org-owned chart; its primary
 entity must match the view's entity — the CLI validates both references live and
-rejects a mismatch before writing.
+rejects a mismatch before writing. `--solution` is required, as on every
+mutating dashboard verb (`add-*`, `remove-component`, `create`) — pass
+`--solution Default` for a deliberate Default-Solution-only write.
 
 ### Tile placement
 
@@ -125,7 +124,7 @@ while keeping the invariant; targeting an occupied section is refused:
 
 ```bash
 crm dashboard add-chart <dashboard-id> --view <v> --chart <c> \
-    --tab "Sales" --section "Pipeline"
+    --tab "Sales" --section "Pipeline" --solution cwx_crmworx
 ```
 
 `--rowspan` and `--colspan` control the cell size; the section is padded to
@@ -137,7 +136,7 @@ Dashboards have a default six-component cap. `add-chart` refuses to exceed it
 unless you pass `--force`:
 
 ```bash
-crm dashboard add-chart <dashboard-id> --view <v> --chart <c> --force
+crm dashboard add-chart <dashboard-id> --view <v> --chart <c> --force --solution cwx_crmworx
 ```
 
 ### Publishing
@@ -146,8 +145,8 @@ crm dashboard add-chart <dashboard-id> --view <v> --chart <c> --force
 several tile-add calls before a single publish:
 
 ```bash
-crm dashboard add-chart <id> --view <v> --chart <c> --no-publish
-crm dashboard add-view  <id> --view <v2>             --no-publish
+crm dashboard add-chart <id> --view <v> --chart <c> --solution cwx_crmworx --no-publish
+crm dashboard add-view  <id> --view <v2>             --solution cwx_crmworx --no-publish
 crm solution publish
 ```
 
@@ -161,7 +160,7 @@ Splices a view-only grid tile (no chart) into an existing dashboard:
 
 ```bash
 crm dashboard add-view 1111aaaa-2222-bbbb-3333-cccccccccccc \
-    --view <savedquery-id>
+    --view <savedquery-id> --solution cwx_crmworx
 ```
 
 `--mode list` (the default) renders the grid alone. `--mode all` renders the
@@ -169,7 +168,7 @@ grid with the chart-toggle control so the user can switch to a chart in the UI
 without a fixed chart selection:
 
 ```bash
-crm dashboard add-view <dashboard-id> --view <v> --mode all
+crm dashboard add-view <dashboard-id> --view <v> --mode all --solution cwx_crmworx
 ```
 
 `--records-per-page` sets the row count per page in the grid (default 10).
@@ -182,7 +181,7 @@ Splices an IFRAME tile into an existing dashboard's FormXml:
 
 ```bash
 crm dashboard add-iframe 1111aaaa-2222-bbbb-3333-cccccccccccc \
-    --url https://example.com/embed
+    --url https://example.com/embed --solution cwx_crmworx
 ```
 
 `--url` is **required and must be non-empty.** An IFRAME tile with an empty URL
@@ -199,7 +198,7 @@ All placement, cap, and publish options work identically to `add-chart`.
 ### Preview without writing
 
 ```bash
-crm --dry-run dashboard add-iframe <id> --url https://example.com/embed
+crm --dry-run dashboard add-iframe <id> --url https://example.com/embed --solution cwx_crmworx
 ```
 
 Returns `{_dry_run: true, would_add: true, url: "..."}` without patching the
@@ -211,7 +210,7 @@ Splices a web-resource tile into an existing dashboard's FormXml:
 
 ```bash
 crm dashboard add-webresource 1111aaaa-2222-bbbb-3333-cccccccccccc \
-    --webresource cwx_/pages/summary.html
+    --webresource cwx_/pages/summary.html --solution cwx_crmworx
 ```
 
 `--webresource` accepts either a GUID or the web resource's unique name. The CLI
@@ -228,7 +227,8 @@ All placement, cap, and publish options work identically to `add-chart`.
 ### Preview without writing
 
 ```bash
-crm --dry-run dashboard add-webresource <id> --webresource cwx_/pages/summary.html
+crm --dry-run dashboard add-webresource <id> --webresource cwx_/pages/summary.html \
+    --solution cwx_crmworx
 ```
 
 Returns `{_dry_run: true, would_add: true, webresource: "..."}` (the web resource
@@ -240,11 +240,11 @@ Removes exactly one tile from an existing dashboard's FormXml, selected by
 **exactly one** of five selectors:
 
 ```bash
-crm dashboard remove-component <dashboard-id> --index 0        # first tile (0-based)
-crm dashboard remove-component <dashboard-id> --cell-id <id>   # by cell id in FormXml
-crm dashboard remove-component <dashboard-id> --view <savedqueryid>
-crm dashboard remove-component <dashboard-id> --chart <savedqueryvisualizationid>
-crm dashboard remove-component <dashboard-id> --url https://example.com/embed
+crm dashboard remove-component <dashboard-id> --index 0 --solution cwx_crmworx        # first tile (0-based)
+crm dashboard remove-component <dashboard-id> --cell-id <id> --solution cwx_crmworx   # by cell id in FormXml
+crm dashboard remove-component <dashboard-id> --view <savedqueryid> --solution cwx_crmworx
+crm dashboard remove-component <dashboard-id> --chart <savedqueryvisualizationid> --solution cwx_crmworx
+crm dashboard remove-component <dashboard-id> --url https://example.com/embed --solution cwx_crmworx
 ```
 
 Passing more than one selector, or none, is a usage error. Passing a value
@@ -265,7 +265,7 @@ After removal the CLI reconciles the section's empty `<row>` padding so the
 ### Preview without writing
 
 ```bash
-crm --dry-run dashboard remove-component <id> --index 0
+crm --dry-run dashboard remove-component <id> --index 0 --solution cwx_crmworx
 ```
 
 Returns `{_dry_run: true, would_remove: true, cell_id: "...", control_id: "..."}`
