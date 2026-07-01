@@ -190,8 +190,9 @@ def _capped_page_warnings(result: Any) -> list[str]:
     if not (isinstance(result, dict) and result.get("@odata.nextLink")):
         return []
     warnings = [
-        "Returned one server page; more rows exist — follow meta.next_link, "
-        "or re-run with --all/--max-records to enumerate."
+        "Returned one server page; more rows exist — re-run with --all/--max-records "
+        "to enumerate, or follow meta.next_link (shown with --json; the only paging "
+        "option under --track-changes)."
     ]
     if result.get("@odata.count") == _COUNT_CLAMP_STANDARD:
         warnings.append(
