@@ -108,7 +108,15 @@ paging is relocated to `meta` — `meta.next_link` (from `@odata.nextLink`) and
 `--delta-token`) likewise relocates `meta.delta_link` (from `@odata.deltaLink`)
 and the bare `meta.delta_token` lifted out of it — and per-row protocol keys
 (`@odata.etag`, `@odata.*`) are stripped. No command returns the raw OData
-envelope in `data`.
+envelope in `data`. A query capped to one server page is
+self-describing: a cursor present ⇒ `meta.has_more: true` (the boolean form of
+"`meta.next_link` is present") plus a `meta.warnings` advisory to page via
+`meta.next_link` (or `--all`/`--max-records` on `query odata`), and a `--count`
+sitting on the 5000 server ceiling with a cursor gets a second warning flagging
+the count as a clamped lower bound. These cursor-driven signals reach `query
+odata`/`saved`/`user`; `query fetchxml` pages via a fetch cookie, not a cursor,
+so they never fire for it, and `--all`/`--max-records`/`--count` are `query
+odata`-only.
 _Avoid_: OData envelope, `data.value`, result wrapper.
 
 **Normalized entity id**:

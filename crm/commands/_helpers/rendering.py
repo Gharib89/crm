@@ -170,12 +170,51 @@ def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in record.items() if "@" not in k}
 
 
+# Dataverse caps `@odata.count` at 5000 for standard tables (500 for elastic ones,
+# out of scope here). A count that equals this ceiling *and* is accompanied by a
+# next-page cursor is *probably* clamped — but a set of exactly 5000 rows paged
+# below the ceiling trips the same tell, so the advisory is worded as a lower
+# bound (true total ≥ 5000), never a definitive clamp.
+_COUNT_CLAMP_STANDARD = 5000
+
+
+def _capped_page_warnings(result: Any) -> list[str]:
+    """Advisories for a default read the server capped to one page (#626, #625).
+
+    An `@odata.nextLink` cursor on a non-`--all` read is the ground truth that more
+    rows exist than were returned — so warn that the page is partial, and flag a
+    `--count` whose value hit the server ceiling as a lower bound rather than an
+    exact total. A `--all`/`--max-records` run has already followed and dropped the
+    cursor (setting its own `meta.truncated`), so this stays silent there.
+    """
+    if not (isinstance(result, dict) and result.get("@odata.nextLink")):
+        return []
+    warnings = [
+        "Returned one server page; more rows exist — follow meta.next_link "
+        "(in the --json envelope) to page through them, or use --all/--max-records "
+        "on query odata."
+    ]
+    if result.get("@odata.count") == _COUNT_CLAMP_STANDARD:
+        warnings.append(
+            f"$count reached the server's {_COUNT_CLAMP_STANDARD} ceiling; treat it "
+            "as a lower bound — the true total may be higher (Dataverse clamps "
+            "counts above this). Re-run with --all for an exact count of this query "
+            "(`query count` gives a whole-table total only, ignoring --filter)."
+        )
+    return warnings
+
+
 def _emit_query_result(
     ctx: "CLIContext", result: dict, entity_set: str, *, minimal: bool = False,
     extra_meta: dict[str, Any] | None = None,
 ) -> None:
     values = result.get("value", []) if isinstance(result, dict) else []
     meta: dict[str, Any] = {"entity_set": entity_set, **(extra_meta or {})}
+    # Make a server-capped single page self-describing (#626): a next-page cursor
+    # means more rows exist — set an explicit `has_more` and surface the advisories.
+    if isinstance(result, dict) and result.get("@odata.nextLink"):
+        meta["has_more"] = True
+    warnings = _capped_page_warnings(result) or None
     if ctx.json_mode:
         # Hand emit the raw OData envelope; the central normalizer unwraps it to a
         # bare array, relocates `@odata.nextLink`/`@odata.count` → `meta`, and
@@ -185,7 +224,7 @@ def _emit_query_result(
             result = {**result, "value": [
                 _prune_annotations(r) if isinstance(r, dict) else r for r in values
             ]}
-        ctx.emit(True, data=result, meta=meta)
+        ctx.emit(True, data=result, meta=meta, warnings=warnings)
         return
     if not values:
         ctx.skin.info("No results.")
@@ -197,7 +236,7 @@ def _emit_query_result(
     primary_name = cached_primary_name(ctx.backend(), entity_set)
     headers = _infer_columns(values, primary_name=primary_name)
     rows = [[_short_repr(rec.get(h, ""), 40) for h in headers] for rec in values[:50]]
-    ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
+    ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta, warnings=warnings)
     if len(values) > 50:
         ctx.skin.hint(f"... {len(values) - 50} more rows")
 
