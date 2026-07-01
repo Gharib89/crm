@@ -80,8 +80,9 @@ def test_query_odata_default_page_with_more_rows_is_self_describing(cli):
     sets `meta.has_more: true` and warns to use `--all`/`--max-records` (#626,
     #625). `--page-size 1` forces a cursor cheaply — no need for a huge table —
     as long as contacts has at least 2 rows on this org."""
-    count_env = json.loads(cli(["--json", "query", "count", "contact"]).stdout)
-    if count_env["data"]["count"] < 2:
+    cr = cli(["--json", "query", "count", "contact"])
+    assert cr.returncode == 0, cr.stderr  # a count failure must not masquerade as a skip
+    if json.loads(cr.stdout)["data"]["count"] < 2:
         pytest.skip("contacts has fewer than 2 rows on this org; cannot force a cursor")
 
     r = cli(["--json", "query", "odata", "contacts", "--select", "fullname",
@@ -100,8 +101,9 @@ def test_query_odata_count_clamped_at_server_ceiling_warns(cli):
     exact total (#626). Needs a table with >5000 rows reachable on this org;
     skips with instructions when none is known to qualify."""
     for entity_set, logical in (("contacts", "contact"), ("accounts", "account")):
-        count_env = json.loads(cli(["--json", "query", "count", logical]).stdout)
-        if count_env["data"]["count"] > 5000:
+        cr = cli(["--json", "query", "count", logical])
+        assert cr.returncode == 0, cr.stderr  # a count failure must not masquerade as a skip
+        if json.loads(cr.stdout)["data"]["count"] > 5000:
             # No `--top`: `$top` is a hard limit that suppresses `@odata.nextLink`,
             # which the clamp signal keys on. `--page-size 1` keeps the page cheap
             # while still leaving a live cursor.
@@ -111,7 +113,7 @@ def test_query_odata_count_clamped_at_server_ceiling_warns(cli):
             env = json.loads(r.stdout)
             assert env["ok"] is True
             if env["meta"].get("count") == 5000 and env["meta"].get("has_more"):
-                assert any("clamped at 5000" in w for w in env["meta"]["warnings"])
+                assert any("lower bound" in w for w in env["meta"]["warnings"])
                 return
     pytest.skip(
         "no reachable table with >5000 rows on this org to exercise the "

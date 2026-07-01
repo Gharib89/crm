@@ -50,7 +50,7 @@ def test_clamped_count_is_flagged_as_lower_bound(make_fake_backend, inject_backe
                "--count")
     assert env["meta"]["count"] == 5000
     assert env["meta"]["has_more"] is True
-    assert any("clamped at 5000" in w for w in env["meta"]["warnings"])
+    assert any("lower bound" in w for w in env["meta"]["warnings"])
 
 
 def test_honest_small_count_is_not_flagged(make_fake_backend, inject_backend):
@@ -74,7 +74,7 @@ def test_count_below_ceiling_with_more_pages_warns_truncation_only(
     assert env["meta"]["count"] == 42
     assert env["meta"]["has_more"] is True
     assert any("more rows exist" in w for w in env["meta"]["warnings"])
-    assert not any("clamped" in w for w in env["meta"]["warnings"])
+    assert not any("lower bound" in w for w in env["meta"]["warnings"])
 
 
 def test_all_run_has_no_has_more_or_warnings(make_fake_backend, inject_backend):

@@ -172,7 +172,9 @@ def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
 
 # Dataverse caps `@odata.count` at 5000 for standard tables (500 for elastic ones,
 # out of scope here). A count that equals this ceiling *and* is accompanied by a
-# next-page cursor is a clamped lower bound, not an exact total.
+# next-page cursor is *probably* clamped — but a set of exactly 5000 rows paged
+# below the ceiling trips the same tell, so the advisory is worded as a lower
+# bound (true total ≥ 5000), never a definitive clamp.
 _COUNT_CLAMP_STANDARD = 5000
 
 
@@ -193,8 +195,9 @@ def _capped_page_warnings(result: Any) -> list[str]:
     ]
     if result.get("@odata.count") == _COUNT_CLAMP_STANDARD:
         warnings.append(
-            f"$count is clamped at {_COUNT_CLAMP_STANDARD} by the server; the true "
-            "total may be higher — use `query count` or --all to enumerate."
+            f"$count reached the server's {_COUNT_CLAMP_STANDARD} ceiling; treat it "
+            "as a lower bound — the true total may be higher (Dataverse clamps "
+            "counts above this). Use `query count` or --all for an exact total."
         )
     return warnings
 
