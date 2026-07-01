@@ -78,9 +78,10 @@ crm --json query odata contacts --filter "statecode eq 0" --select fullname \
 # meta.truncated: true when more than 200 rows matched
 ```
 
-Default behaviour (neither flag) is **byte-identical** to pre-flag behaviour:
-one server page is returned, `meta.next_link` is present when more pages exist.
-Use `--page-size` to control how many rows the server puts on each page.
+Default behaviour (neither flag) still returns a single server page — the row
+`data` is unchanged from pre-flag behaviour — with `meta.next_link` present when
+more pages exist. Use `--page-size` to control how many rows the server puts on
+each page. That default page is now self-describing in `meta` (see below).
 
 **Self-describing single page.** When the default (non-`--all`) read comes back
 with a `meta.next_link` cursor, the envelope also sets `meta.has_more: true` and

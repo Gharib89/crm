@@ -89,7 +89,11 @@ paging is relocated to `meta` — `meta.next_link` (from `@odata.nextLink`) and
 `--delta-token`) likewise relocates `meta.delta_link` (from `@odata.deltaLink`)
 and the bare `meta.delta_token` lifted out of it — and per-row protocol keys
 (`@odata.etag`, `@odata.*`) are stripped. No command returns the raw OData
-envelope in `data`.
+envelope in `data`. A default (non-`--all`) query capped to one server page is
+self-describing: a cursor present ⇒ `meta.has_more: true` (the boolean form of
+"`meta.next_link` is present") plus a `meta.warnings` advisory to enumerate with
+`--all`/`--max-records`, and a `--count` sitting on the 5000 server ceiling with
+a cursor gets a second warning flagging the count as a clamped lower bound.
 _Avoid_: OData envelope, `data.value`, result wrapper.
 
 **Normalized entity id**:

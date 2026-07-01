@@ -91,6 +91,38 @@ def test_all_run_has_no_has_more_or_warnings(make_fake_backend, inject_backend):
     assert "warnings" not in env["meta"]
 
 
+def test_max_records_run_has_no_has_more_or_warnings(make_fake_backend, inject_backend):
+    # --max-records follows + drops the cursor and sets its own meta.truncated —
+    # so the capped-page signals stay silent (acceptance criterion names both flags).
+    from crm.tests.test_query_paging import _paged
+    inject_backend(make_fake_backend(responses={"get": _paged(
+        {"@odata.context": CTX, "value": [{"accountid": "1"}, {"accountid": "2"}],
+         "@odata.nextLink": NEXT},
+        {"@odata.context": CTX, "value": [{"accountid": "3"}]},
+    )}))
+    result = CliRunner().invoke(
+        cli, ["--json", "query", "odata", "accounts", "--max-records", "1"])
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["meta"]["truncated"] is True
+    assert "has_more" not in env["meta"]
+    assert "warnings" not in env["meta"]
+
+
+def test_shared_helper_signals_apply_to_fetchxml(make_fake_backend, inject_backend):
+    # The signals live in the shared query-emit helper, so a fetchxml page with a
+    # server cursor is self-describing too (docs claim all four verbs share this).
+    inject_backend(make_fake_backend(responses={"get":
+        {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT}}))
+    result = CliRunner().invoke(cli, [
+        "--json", "query", "fetchxml", "accounts",
+        "--xml", '<fetch><entity name="account"><attribute name="name"/></entity></fetch>'])
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["meta"]["has_more"] is True
+    assert any("more rows exist" in w for w in env["meta"]["warnings"])
+
+
 def test_human_mode_surfaces_warning_via_skin(make_fake_backend, inject_backend):
     # skin.warning writes to stderr (Click 8.2+ separates streams).
     inject_backend(make_fake_backend(responses={"get":
