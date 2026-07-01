@@ -86,6 +86,21 @@ def _solution_option(f):
     )(f)
 
 
+def _optional_solution_option(f):
+    """Stack an OPTIONAL `--solution` on a hard-delete metadata verb (#636).
+
+    Unlike `_solution_option`, a hard metadata delete removes the component
+    globally — `MSCRM.SolutionUniqueName` cannot scope or orphan a deletion —
+    so `--solution` is *not* required here. Retained as an optional back-compat
+    passthrough, forwarded to the backend when given (no `_resolve_solution`).
+    """
+    return click.option(
+        "--solution", default=None,
+        help="Optional. Forwarded as MSCRM.SolutionUniqueName; a hard delete "
+             "removes the component globally, so this does not scope the delete.",
+    )(f)
+
+
 def _resolve_solution(ctx: "CLIContext", explicit: str | None) -> str:
     """Resolve the target unmanaged solution for a customization write (#636).
 

@@ -30,6 +30,7 @@ from crm.commands._helpers import (
     _output_option,
     _resolve_publish,
     _solution_option,
+    _optional_solution_option,
     _resolve_solution,
     _resolve_schema_name,
     _emit_with_warning,
@@ -353,16 +354,18 @@ def metadata_describe(ctx: CLIContext, logical_name):
               help="Bake a top-level solution: block (unique_name) into the spec so "
                    "it applies directly (crm apply requires one). Omit to emit a "
                    "valid but non-appliable document.")
-@_output_option(help="Write the bare spec as YAML to FILE (directly consumable by crm apply -f).")
+@_output_option(help="Write the bare spec as YAML to FILE (appliable with crm apply -f when --solution is given).")
 @pass_ctx
 def metadata_export_spec(ctx: CLIContext, logical_name, with_views, with_relationships,
                          solution, output):
-    """Export a live entity as an apply-consumable desired-state spec.
+    """Export a live entity as a desired-state spec for `crm apply -f`.
 
-    Reads the entity's metadata over the Web API (pure GETs) and emits a spec
-    that round-trips through `crm apply -f`. Without -o, the spec is emitted
-    under the standard JSON envelope (pipeable). With -o, the bare YAML spec is
-    written to FILE so it is ready for `crm apply -f <file>`.
+    Reads the entity's metadata over the Web API (pure GETs) and emits a spec.
+    Pass --solution to bake in the top-level `solution:` block that `crm apply`
+    requires; without it the document is valid but not directly appliable (apply
+    exits 2 until a `solution:` block is added). Without -o, the spec is emitted
+    under the standard JSON envelope (pipeable); with -o, the bare YAML spec is
+    written to FILE.
     """
     warnings: list[str] = []
     with d365_errors(ctx):
@@ -781,14 +784,13 @@ def metadata_can_relate(ctx: CLIContext, entity, role, valid_partners):
 @metadata_group.command("delete-entity")
 @click.argument("logical_name")
 @_destructive_option
-@_solution_option
+@_optional_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
 def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_dependencies):
     """Permanently delete a custom entity (table) and ALL its rows."""
     _confirm_destructive(ctx, "entity", logical_name, yes)
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = meta_mod.delete_entity(
             ctx.backend(), logical_name, solution=solution,
@@ -932,14 +934,13 @@ def metadata_add_attribute(
 @click.argument("entity")
 @click.argument("attribute")
 @_destructive_option
-@_solution_option
+@_optional_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
 def metadata_delete_attribute(ctx: CLIContext, entity, attribute, yes, solution, check_dependencies):
     """Delete a custom attribute (column) from an entity."""
     _confirm_destructive(ctx, "attribute", f"{entity}.{attribute}", yes)
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = ma_mod.delete_attribute(
             ctx.backend(), entity, attribute, solution=solution,
@@ -988,7 +989,7 @@ def metadata_create_key(ctx: CLIContext, entity, schema_name, key_attributes,
 @click.argument("entity")
 @click.argument("key")
 @_destructive_option
-@_solution_option
+@_optional_solution_option
 @pass_ctx
 def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution):
     """Delete an alternate key from an entity."""
@@ -996,7 +997,6 @@ def metadata_delete_key(ctx: CLIContext, entity, key, yes, solution):
         ctx, "alternate key", f"{entity}.{key}", yes,
         message=f"This will delete alternate key {entity}.{key!r}. Continue?",
     )
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = meta_mod.delete_entity_key(ctx.backend(), entity, key, solution=solution)
     _emit_with_warning(ctx, info, None)
@@ -1120,14 +1120,13 @@ def metadata_create_many_to_many(
 @metadata_group.command("delete-relationship")
 @click.argument("schema_name")
 @_destructive_option
-@_solution_option
+@_optional_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
 def metadata_delete_relationship(ctx: CLIContext, schema_name, yes, solution, check_dependencies):
     """Delete a custom relationship (1:N or N:N) by schema name."""
     _confirm_destructive(ctx, "relationship", schema_name, yes)
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = rel_mod.delete_relationship(
             ctx.backend(), schema_name, solution=solution,
@@ -1244,14 +1243,13 @@ def metadata_update_optionset(ctx: CLIContext, name, insert_options, update_opti
 @metadata_group.command("delete-optionset")
 @click.argument("name")
 @_destructive_option
-@_solution_option
+@_optional_solution_option
 @click.option("--check-dependencies", "check_dependencies", is_flag=True, default=False,
               help="Preview blocking dependencies (RetrieveDependenciesForDelete) in the result; pairs with --dry-run.")
 @pass_ctx
 def metadata_delete_optionset(ctx: CLIContext, name, yes, solution, check_dependencies):
     """Delete a custom global option set."""
     _confirm_destructive(ctx, "option set", name, yes)
-    solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         info = os_mod.delete_optionset(ctx.backend(), name, solution=solution,
                                        check_dependencies=check_dependencies)

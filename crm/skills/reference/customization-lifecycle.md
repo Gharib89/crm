@@ -41,12 +41,14 @@ its assembly registered and its type confirmed first. The sibling files call out
 **1 — `--solution <unique_name>` is mandatory on every customization write.** There is no
 profile default and no opt-out: omit it and the command exits 2 before touching the
 backend (even under `--dry-run`) with "`--solution is required for customization writes`".
-This spans every domain in the shape above — `metadata create-*`/`update-*`/`delete-*`,
+This spans every domain in the shape above — `metadata create-*`/`update-*`,
 `apply` (a spec-level `solution:` block, not a flag — discipline 5), `scaffold table`,
 `webresource`, `form`, `view`, `chart`, `dashboard`, `sitemap`, `app`, `plugin
 register-*`/`update-step-*`, `sla`, `report`, `connectionrole`, `dup`, `fieldsec`,
 `security create-role`, `ribbon`, `workflow clone`. Pass `--solution Default` for a
-deliberate Default-Solution-only write. With a named profile active,
+deliberate Default-Solution-only write. Hard `metadata delete-*` verbs are the one
+exception — a hard delete removes the component globally, so the header can't orphan
+it and `--solution` stays optional there. With a named profile active,
 `solution create-publisher` still auto-wires `publisher_prefix` onto it (schema-name
 derivation only) — that does not cover the solution target.
 

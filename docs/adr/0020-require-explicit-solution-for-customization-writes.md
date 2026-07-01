@@ -30,6 +30,14 @@ The solution target is **explicit and mandatory** on every customization write.
   `metadata update-entity` / `update-attribute` / `update-relationship` and
   `workflow clone`, which now route through the shared helper for the first time —
   closing the old create-strict / update-silent asymmetry.
+- **Hard-delete metadata verbs are exempt.** `metadata delete-entity` /
+  `delete-attribute` / `delete-key` / `delete-relationship` / `delete-optionset`
+  do a hard delete that removes the component globally — `MSCRM.SolutionUniqueName`
+  cannot scope or orphan a deletion — so the orphan-prevention requirement does not
+  apply. `--solution` stays optional on those verbs (a back-compat passthrough,
+  forwarded when given); it never raises. `remove`-style verbs that *edit* a
+  surviving component (`form remove-field`, `ribbon remove`, `sitemap remove-node`,
+  `dup add-condition`) are updates, not deletes, and remain required.
 - The profile `default_solution` field is removed. A legacy profile JSON carrying the
   key loads fine and drops it on next save — **no migration**.
 - Removed knobs (error as unknown option): `profile add/edit --default-solution`, the

@@ -128,7 +128,7 @@ def _emit_with_warning(
 ) -> None:
     """Emit a successful result, surfacing advisories via the warnings channel.
 
-    Rolls the solution `warning` (if any), any `*_lookup_error` read-back keys,
+    Rolls the advisory `warning` (if any), any `*_lookup_error` read-back keys,
     and any dangling `data["references"]` entries (#281) into the structured
     `meta.warnings` array (#64) — appending, never clobbering. The
     `*_lookup_error` keys and the `references` array stay in `data`. In human

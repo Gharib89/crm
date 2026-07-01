@@ -88,7 +88,7 @@ crm --json metadata delete-key account new_accountcode --solution cwx_crmworx --
 ```
 
 Addresses the key by its logical name (lower-case; the schema name also works).
-`--solution` is required to scope the delete. Destructive: needs `--yes` (or an
+`--solution` is optional here — a hard delete removes the component globally, so the header can't scope or orphan it. Destructive: needs `--yes` (or an
 interactive confirmation).
 
 ## Read option set values (flattened)
@@ -399,7 +399,7 @@ Read-only — no changes are made.
 ```bash
 crm --json metadata delete-attribute cwx_ticket cwx_priority --solution cwx_crmworx --yes
 ```
-Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute targets before any DELETE. `--solution` is required to scope the delete to a solution. The server rejects with a 4xx if the column is still referenced (forms, views, workflows) — remove those dependencies first. Destructive: needs `--yes` (or an interactive confirmation). Add `--check-dependencies` (with `--dry-run` for a non-destructive preview) to fold blockers into the result:
+Pre-flight refuses managed, non-custom, primary (id/name), and sub-attribute targets before any DELETE. `--solution` is optional here — a hard delete removes the column globally, so the header can't scope or orphan it. The server rejects with a 4xx if the column is still referenced (forms, views, workflows) — remove those dependencies first. Destructive: needs `--yes` (or an interactive confirmation). Add `--check-dependencies` (with `--dry-run` for a non-destructive preview) to fold blockers into the result:
 
 ```bash
 crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --solution cwx_crmworx --yes --check-dependencies
@@ -479,7 +479,7 @@ on-disk cache.
 ```bash
 crm --json metadata delete-relationship cwx_sla_cwx_ticket --solution cwx_crmworx --yes
 ```
-Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. `--solution` is required to scope the delete. Destructive: needs `--yes` (or an interactive confirmation). Pass `--check-dependencies` (optionally with `--dry-run`) to preview blocking dependencies inline before the delete.
+Works for both 1:N and N:N. Refuses managed and non-custom relationships client-side; the server enforces remaining-dependency checks and returns a 4xx on conflict. `--solution` is optional here — a hard delete removes the component globally, so the header can't scope or orphan it. Destructive: needs `--yes` (or an interactive confirmation). Pass `--check-dependencies` (optionally with `--dry-run`) to preview blocking dependencies inline before the delete.
 
 ## Clone an entity
 

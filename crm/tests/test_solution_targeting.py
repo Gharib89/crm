@@ -7,6 +7,8 @@ the `default_solution` half of ADR 0002). Covers:
   - explicit --solution wins (returns the string)
   - no --solution -> UsageError (exit 2), before any backend call
   - publisher prefix still supplies the schema-name default for create commands
+  - hard metadata delete verbs are EXEMPT (a global delete can't orphan, so the
+    MSCRM.SolutionUniqueName header is inert and --solution stays optional)
 
 All HTTP is dry-run or mocked; no live D365 server needed.
 """
@@ -223,6 +225,51 @@ def test_add_attribute_no_solution_errors(monkeypatch, tmp_path):
     )
     assert result.exit_code == 2, result.output
     assert "solution" in result.output.lower()
+
+
+def test_delete_entity_exempt_no_solution_ok(monkeypatch, tmp_path):
+    """Hard metadata delete is EXEMPT (#636): no --solution -> proceeds (exit 0),
+    not exit-2. The header is inert on a global delete, so it stays optional."""
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
+    captured = {}
+
+    from crm.core import metadata as meta_mod
+
+    def fake_delete_entity(_backend, logical_name, **kwargs):
+        captured["logical_name"] = logical_name
+        captured.update(kwargs)
+        return {"deleted": logical_name, "_dry_run": True}
+
+    monkeypatch.setattr(meta_mod, "delete_entity", fake_delete_entity)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--profile", "p", "metadata", "delete-entity", "new_project",
+         "--yes"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["logical_name"] == "new_project"
+    assert captured["solution"] is None
+
+
+def test_delete_entity_solution_forwarded_when_given(monkeypatch, tmp_path):
+    """An explicit --solution on a delete is still forwarded (back-compat)."""
+    _save_profile(monkeypatch, tmp_path, publisher_prefix="new")
+    captured = {}
+
+    from crm.core import metadata as meta_mod
+
+    def fake_delete_entity(_backend, logical_name, **kwargs):
+        captured.update(kwargs)
+        return {"deleted": logical_name, "_dry_run": True}
+
+    monkeypatch.setattr(meta_mod, "delete_entity", fake_delete_entity)
+    result = CliRunner().invoke(
+        cli,
+        ["--json", "--profile", "p", "metadata", "delete-entity", "new_project",
+         "--solution", "MySol", "--yes"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["solution"] == "MySol"
 
 
 def test_default_solution_satisfies_requirement(monkeypatch, tmp_path):

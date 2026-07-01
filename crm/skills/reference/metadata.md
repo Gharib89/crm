@@ -38,8 +38,8 @@ Empty `data: []` means no alternate keys are defined — not an error.
 `index_status` values: `Active`, `Pending`, `Failed`, `InProgress`.
 
 Create/drop the key with `metadata create-key <entity>` /
-`metadata delete-key <entity> <key>` (a `metadata create-*`/`delete-*` write verb
-— see `reference/customization-lifecycle.md`). A freshly created key's index builds
+`metadata delete-key <entity> <key>` (`create-key` requires `--solution`; the hard
+`delete-key` does not — see `reference/customization-lifecycle.md`). A freshly created key's index builds
 asynchronously (`index_status` `Pending`), and `entity upsert --key` /
 `data import --mode upsert --key` 404 against it until it reaches `Active` — poll
 `metadata keys` to confirm before upserting (see `reference/records.md`).
