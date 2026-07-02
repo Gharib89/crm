@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.48.2 (2026-07-02)
+
+### Bug Fixes
+
+- Retry PublishAllXml on org-wide publish lock (0x80071151)
+  ([#642](https://github.com/Gharib89/crm/pull/642),
+  [`e2431ef`](https://github.com/Gharib89/crm/commit/e2431efb2b6e4a5d1645385fbef83d02f7c8c71c))
+
+
 ## v1.48.1 (2026-07-02)
 
 ### Bug Fixes
