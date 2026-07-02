@@ -156,7 +156,8 @@ For per-domain detail:
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |
 | bulk data: CSV/JSONL export/import, server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
-| metadata: browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`) | `reference/metadata.md` |
+| metadata (read): browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`), relationship eligibility (`can-relate`) | `reference/metadata.md` |
+| metadata write gotchas: datetime behavior, auto-number strings, rollup/calculated columns, status/state option writes, field mappings, hierarchical & virtual tables | `reference/metadata-writes.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
 | solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift, label translation export/import, `export-spec` (org-to-org drift recipe) | `reference/solutions.md` |
 | model-driven apps + sitemap: create an app, add components, generate or live-edit the navigation tree (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description) | `reference/apps-sitemap.md` |
@@ -172,7 +173,6 @@ For per-domain detail:
 | connection roles: create, scope to an entity type, match as reciprocal partners | `reference/connectionrole.md` |
 | server-side audit history (`audit history` / `audit detail`) — distinct from `session audit` | `reference/troubleshooting.md` |
 | errors, retries, connection diagnostics, session/audit, on-prem vs cloud | `reference/troubleshooting.md` |
-| reporting a bug / requesting a feature | `reference/feedback.md` |
 
 ## Found a bug or missing capability?
 
