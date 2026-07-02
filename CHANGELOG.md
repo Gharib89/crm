@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.49.1 (2026-07-02)
+
+### Bug Fixes
+
+- **repl**: Reset entity-name completion cache on profile switch
+  ([#661](https://github.com/Gharib89/crm/pull/661),
+  [`a696f57`](https://github.com/Gharib89/crm/commit/a696f57644aa48c7c959fe27ba744677e3195486))
+
+
 ## v1.49.0 (2026-07-02)
 
 ### Bug Fixes
