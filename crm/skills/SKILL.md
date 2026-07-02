@@ -102,8 +102,17 @@ accidental bare `crm`. Explicit `crm repl` always launches.
 Any verb carrying a `--yes` flag (visible in `crm describe`) permanently deletes,
 cancels, or overwrites server-side state. Omitting `--yes` in a non-TTY context
 aborts safely (`{"ok": false, "error": "aborted by user"}`, exit 1); on a TTY the
-verb prompts instead. Always pass `--yes` when invoking such a verb
-non-interactively — and only after confirming intent. The largest blast radii:
+verb prompts instead.
+
+**Inform first, back up first.** Never run a destructive verb without telling the
+user what will be destroyed and getting their explicit go-ahead — `--yes` asserts
+the *user's* confirmed intent, not the agent's. Before an irreversible operation,
+capture a restorable copy when one is possible; the matching export/read verb
+usually exists (`solution export` before `import`/`uninstall`/`apply-upgrade`,
+`data export` or `entity get` before record deletes, `metadata export-spec` before
+`delete-entity`/`delete-attribute`, `workflow export` before `workflow delete`,
+`translation export` before `translation import`). Report where the backup landed
+alongside the result. The largest blast radii:
 `solution import` (overwrites unmanaged customizations org-wide), `data delete`
 (server-side bulk delete of every record matching a FetchXML query),
 `metadata delete-entity` (drops a custom table and ALL its rows), and
