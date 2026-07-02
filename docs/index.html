@@ -478,7 +478,7 @@ $ crm entity delete contacts <span class="p">&lt;guid&gt;</span> --yes
     <div class="workflow">
       <div class="col">
         <h3><span class="stamp">A</span>Build a custom table, end to end</h3>
-        <pre class="code" data-label="schema"><span class="c"># 1. Create the table, primary attr, and auto-publish.</span>
+        <pre class="code" data-label="schema"><span class="c"># 1. Create the table and primary attr (stages by default; add --publish to publish now).</span>
 crm --json metadata create-entity \
   --schema-name new_Project \
   --display <span class="s">"Project"</span> \
@@ -661,11 +661,12 @@ crm action invoke ExecuteWorkflow \
         </p>
       </div>
       <div class="col">
-        <h3><span class="stamp">04</span>Auto-publish after metadata writes</h3>
+        <h3><span class="stamp">04</span>Stage by default, publish on your terms</h3>
         <p>
-          <code>metadata create-entity --publish</code> chains <code>PublishAllXml</code> so a new table is
-          immediately visible to UI consumers. Opt out with <code>--no-publish</code> when bundling several
-          changes.
+          Metadata writes stage by default — no <code>PublishAllXml</code> runs. Pass
+          <code>metadata create-entity --publish</code> (as shown) to chain <code>PublishAllXml</code> and make a
+          new table immediately visible to UI consumers, or bundle several changes and run
+          <code>solution publish-all</code> once at the end.
         </p>
         <h3 style="margin-top:24px"><span class="stamp">05</span>Dry-run for everything</h3>
         <p>

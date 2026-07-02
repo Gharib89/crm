@@ -66,7 +66,7 @@ Each line is a JSON object with these keys (in order):
 | `command` | string | CLI verb, e.g. `"entity create"` |
 | `target` | string \| null | Entity set / metadata name / solution, or null |
 | `solution` | string \| null | Target solution unique name, or null |
-| `staged` | bool | Whether `--stage-only` was active |
+| `staged` | bool | Whether the global `--stage-only` flag was active (see note below) |
 | `dry_run` | bool | Whether `--dry-run` was active |
 | `ok` | bool | Always `true` — only successful commands are journaled (a failing command raises before the journal write) |
 | `result_id` | string \| null | GUID of the created/affected record when derivable, else null |
@@ -78,6 +78,15 @@ Each line is a JSON object with these keys (in order):
 - **Only successes journaled** — a command that errors out raises before the journal write, so failures never appear.
 - **`--dry-run` previews are journaled** with `dry_run: true`, so a preview is never mistaken for a real change.
 - **Append-only with fsync** — a crash mid-write cannot corrupt earlier lines.
+
+**`staged` reflects only `--stage-only`, not an unpublished write.** The
+atomic metadata-write commands (`metadata`/`form`/`view`/`ribbon`/`sitemap`/
+`app`/`dashboard`/`chart`/`webresource`) now **stage by default** — no
+`PublishAllXml` unless `--publish` is passed — but a plain staged write still
+journals `staged: false` unless the *global* `--stage-only` flag was also on.
+To tell whether a given write actually published, check that command's own
+result envelope for `data.published` (absent/missing when staged, `true` once
+it publishes) rather than this journal column.
 
 ### Example
 

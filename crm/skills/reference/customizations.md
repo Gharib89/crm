@@ -47,9 +47,11 @@ through the sitemap's `Entity=` subareas. A newly created entity is invisible in
 app until a subarea references it.
 
 **Create→sitemap seam — carry the `appmoduleid`, don't re-create.** `app create`
-publishes the app and then reads it back; in the publish-before-read window that
-read-back can fail with a `meta.warnings` `app_lookup_error` **even though the app was
-created**. The created `appmoduleid` is still in `data` — capture it and feed it to
+**stages** by default (no publish) and then reads the new app back; on on-prem
+especially, an unpublished appmodule isn't query-visible yet, so that read-back
+commonly fails with a `meta.warnings` `app_lookup_error` **even though the app was
+created** — pass `--publish` to publish before the read-back and avoid it. The created
+`appmoduleid` is still in `data` either way — capture it and feed it to
 `add-components`, `build-sitemap`, and teardown. Do **not** re-run `app create`: the app
 already exists, a second create with a *new* `--unique-name` orphans a duplicate, and a
 retry with the *same* name can hit `0x80050135` (duplicate) because the existence
@@ -173,17 +175,17 @@ crm --json sitemap set-description <SITEMAP_ID> \
 **Publish-gated T3 read-back — the key gotcha:**
 
 A Web API GET for `sitemapxml` returns the **published** layer, not the staged edit.
-An edit written with `--no-publish` will not appear in a re-fetch until
-`PublishAllXml` runs — on on-prem v9.x especially, a read-back before publish
-false-negatives. `--publish` (the default) runs `PublishAllXml` + a T3 read-back
-inside the verb itself.
+Every `sitemap` verb **stages by default** (no publish) — a staged edit will not
+appear in a re-fetch until `PublishAllXml` runs, and on on-prem v9.x especially a
+read-back before publish false-negatives. Pass `--publish` to run `PublishAllXml`
++ a T3 read-back inside the verb itself.
 
-**Do NOT chain `--no-publish` edits to the same sitemap.** Each verb re-reads
-`sitemapxml` before mutating, so a second `--no-publish` edit reads the *published*
+**Do NOT chain staged (flagless) edits to the same sitemap.** Each verb re-reads
+`sitemapxml` before mutating, so a second staged edit reads the *published*
 layer (without the first edit) and PATCHes over it — silently discarding the first.
-For several edits, just run them sequentially with the default `--publish` (each
-publishes before the next reads); reserve `--no-publish` for a single staged edit
-you publish yourself.
+For several edits, either pass `--publish` on each one (each publishes before the
+next reads) or publish once with `solution publish-all` after the whole batch —
+never leave more than one edit staged at a time.
 
 **JSON contract — same envelope as all customization verbs:**
 
@@ -224,8 +226,9 @@ crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresourc
 
 Both `create` and `update` **require** `--solution` (`MSCRM.SolutionUniqueName`) —
 there is no profile default and no opt-out (`--solution Default` for a deliberate
-Default-Solution-only write) — and publish after the write (`--no-publish` / global
-`--stage-only` suppress it; see `reference/authoring.md`).
+Default-Solution-only write) — and **stage** by default (no publish). Pass
+`--publish` to publish immediately (global `--stage-only` also forces staging;
+see `reference/authoring.md`).
 
 ### Bulk push — `webresource push <DIRECTORY> --prefix <p>`
 
@@ -238,17 +241,18 @@ with `--prefix cwx` → `cwx_scripts/ribbon.js`. Type is inferred from the file 
 **Upsert semantics:**
 - Creates a missing resource, updates one whose content changed, skips byte-identical ones
   (no write, no publish for that file).
-- A single `PublishAllXml` fires at the end only when at least one file was created or
-  updated.
-- Per-file failures do not abort the run — the rest push and publish. Exit 1 if any file
-  failed, 0 otherwise.
+- `push` **stages** by default, same as `create`/`update`. A single `PublishAllXml`
+  fires at the end only when `--publish` is passed **and** at least one file was
+  created or updated; otherwise run `solution publish-all` afterward.
+- Per-file failures do not abort the run — the rest push (and publish, if `--publish`
+  was passed). Exit 1 if any file failed, 0 otherwise.
 
 **Dry-run** (global `--dry-run`) runs the live GETs, issues no writes, returns
 `would_create` / `would_update` name lists plus a `skipped` count.
 
 **JSON contract:**
 
-Real run `data`:
+Real run `data` (shown with `--publish`; omit it and `published` is `false`):
 ```json
 {"pushed": 3, "updated": 1, "skipped": 2, "published": true,
  "failed": [], "files": [{"name": "cwx_scripts/ribbon.js", "action": "created"}, ...]}
@@ -379,11 +383,14 @@ crm --json form set-field cwx_ticket cwx_priority \
     --tab "Details" --section "Status" --solution cwx_crmworx                        # relocate; errors if not already present
 ```
 
-**Publish gotcha — GET returns the published snapshot.** A plain `GET /systemforms`
-returns the *published* FormXml, not the pending PATCH. The field edit is only visible
-in the UI and on re-export **after `PublishAllXml` runs**. Always verify with a
-re-export *after* publishing; a malformed splice publishes silently but the control is
-absent from the exported XML.
+**Publish gotcha — GET returns the published snapshot, and these verbs stage by
+default.** A plain `GET /systemforms` returns the *published* FormXml, not the
+pending PATCH, and `add-field`/`remove-field`/`set-field` stage by default (no
+publish). The field edit is only visible in the UI and on re-export **after
+`PublishAllXml` runs** — pass `--publish` on the write, or run
+`solution publish-all` afterward. Always verify with a re-export *after*
+publishing; a malformed splice publishes silently but the control is absent
+from the exported XML.
 
 ```bash
 crm --json form add-field cwx_ticket cwx_priority --solution cwx_crmworx --publish   # PATCH + PublishAllXml in one call
@@ -466,9 +473,10 @@ add-handler → `would_add_handler`, remove-handler → `would_remove_handler`.
 hand-splice entries into `<InternalHandlers>`.
 
 **Publish gotcha — same as field editors.** `GET /systemforms` returns the *published*
-snapshot. Chain `--no-publish` edits on the same form and only the last write survives
-(each reads the published state). Publish each step, or batch the no-publish writes
-and publish once at the end with `crm solution publish`.
+snapshot and these verbs stage by default too. Chain staged (flagless) edits on the
+same form and only the last write survives (each reads the published state). Pass
+`--publish` on each step, or batch the staged writes and publish once at the end
+with `crm solution publish-all`.
 
 ### Edit the tab/section skeleton — `form {add,remove,rename,move}-{tab,section}`
 
@@ -550,7 +558,7 @@ data XML's category count, etc. — a malformed pair fails with a `400`
 doubt, start from a known-good chart captured via `chart get`.
 
 **Publish + solution + dry-run, same contract as the metadata verbs.** `create`
-runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` is
+**stages** by default (`--publish` to publish immediately); `--solution` is
 required (no profile default, no opt-out; `--solution Default` for a deliberate
 Default-Solution-only write) — `delete` takes no `--solution`. Under `--dry-run`,
 `create` returns `{_dry_run, would_create: {entity_set, body}}` with the resolved
@@ -600,10 +608,10 @@ different table. To move a chart, use `chart get` to export it and `chart create
 on the new entity.
 
 **Publish gating — system vs user.** System charts (`savedqueryvisualization`)
-only reflect an edit after `PublishAllXml`; chaining `--no-publish` edits means
-each verb reads the *published* snapshot and the last write wins. User charts
-(`--user`, `userqueryvisualization`) are never published — edits reflect
-immediately regardless of the `--publish` flag.
+**stage by default** and only reflect an edit after `PublishAllXml`; chaining
+staged (flagless) edits means each verb reads the *published* snapshot and the
+last write wins. User charts (`--user`, `userqueryvisualization`) are never
+published — edits reflect immediately regardless of the `--publish` flag.
 
 ## Dashboards — `dashboard` (systemform type=0)
 
@@ -631,7 +639,7 @@ fails fast with a clear error rather than silently creating a standard dashboard
 author interactive-experience dashboards in the designer.
 
 **Publish + solution + dry-run, same contract as the other customization verbs.**
-`create` runs `PublishAllXml` by default (`--no-publish` to stage); `--solution` is
+`create` **stages** by default (`--publish` to publish immediately); `--solution` is
 required on `create` and every `add-*`/`remove-component` verb below (no profile
 default, no opt-out; `--solution Default` for a deliberate Default-Solution-only
 write) — `delete` takes no `--solution`. Under `--dry-run`, `create` returns
@@ -640,8 +648,8 @@ write) — `delete` takes no `--solution`. Under `--dry-run`, `create` returns
 
 ### Splicing tiles — `add-chart`, `add-view`, `add-iframe`, `add-webresource`
 
-All four tile-add verbs PATCH the `formxml` column directly and run `PublishAllXml`
-by default.
+All four tile-add verbs PATCH the `formxml` column directly and **stage** by
+default (`--publish` to publish immediately).
 
 ```bash
 crm --json dashboard add-chart <dashboard-id> --view <savedqueryid> --chart <savedqueryvisualizationid> --solution cwx_crmworx

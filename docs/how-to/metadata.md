@@ -115,7 +115,7 @@ crm --json metadata create-optionset --name cwx_priority --display "CRMWorx Prio
 `delete-*`, `add-attribute`) — a component created without an explicit target
 solution would otherwise land only in the system Default Solution; pass
 `--solution Default` for a deliberate Default-Solution-only write.
-`--if-exists skip` makes re-runs a no-op; the response reports `created`, the metadata id, and `published: true`.
+`--if-exists skip` makes re-runs a no-op; the response reports `created` and the metadata id. Metadata writes stage by default (no `PublishAllXml`) — `published: true` appears only when `--publish` is passed (or `crm solution publish-all` is run afterward).
 
 ## List entities filtered by managed/custom
 
@@ -508,12 +508,14 @@ because there is no "is custom" filter it copies every matching definition
 retargeted to the clone entity via a whole-token name swap.
 
 **Views and the ObjectTypeCode timing caveat:** A brand-new entity's
-ObjectTypeCode (OTC) is sometimes unreadable until after the first apply's
-publish step. When this happens, `--with-views` puts views in the *planned*
-state rather than applying them immediately; the command surfaces this via a
-`views_note` warning. If you see that warning, re-run the clone with
-`--with-views` (and without `--with-forms` / `--with-workflows` so it is
-idempotent) after the initial publish to land the views.
+ObjectTypeCode (OTC) is sometimes unreadable until the clone is published —
+and `clone-entity` **stages by default** (no `PublishAllXml`), so pass
+`--publish` if you want `--with-views` to land in the same call. When the OTC
+isn't yet readable, `--with-views` puts views in the *planned* state rather
+than applying them immediately; the command surfaces this via a `views_note`
+warning. If you see that warning, publish (`crm solution publish-all`) and
+re-run the clone with `--with-views` (and without `--with-forms` /
+`--with-workflows` so it is idempotent) to land the views.
 
 **Not cloned (Web API limits):**
 
@@ -633,8 +635,11 @@ crm --dry-run --json metadata status-add cwx_ticket --state 0 --label "Pending" 
 `--state` is the `statecode` value the new option belongs to (e.g. `0` = Active on most
 entities; check `crm --json metadata picklist <entity> statecode` to confirm). When
 `--value` is omitted the server assigns the next available value with the publisher prefix.
-`--solution` is required. Pass `--publish` to publish immediately; without it the
-change is staged and `meta.warnings` will carry a "staged, not published" advisory.
+`--solution` is required. The change **stages** by default (no `PublishAllXml`) — pass
+`--publish` to publish it immediately, or run `crm solution publish-all` once your batch
+of staged changes is done. A staged write's `data` carries no `published` key at all
+(it appears, `true`, only once the write actually published) — there is no `meta.warnings`
+advisory for the staged case.
 
 ```json
 {
@@ -668,7 +673,9 @@ crm --dry-run --json metadata state-relabel cwx_ticket --value 1 --label "Closed
 (Inactive), but custom entities may vary — check `crm --json metadata picklist <entity>
 statecode` first. `--merge-labels` sets `MergeLabels: true` on the server call, which
 preserves the translated label text for languages you are not updating; without it the
-server replaces all language labels. `--solution` is required to scope the change.
+server replaces all language labels. `--solution` is required to scope the change. Like
+`status-add`, this stages by default — pass `--publish` to publish it immediately, or
+run `crm solution publish-all` once your batch is done.
 
 ```json
 {

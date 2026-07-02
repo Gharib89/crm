@@ -85,16 +85,17 @@ crm chart create contact --name "My View" \
 
 ### Publishing
 
-`chart create` runs `PublishAllXml` **by default** (the CLI-wide convention
-shared with `form clone`, `metadata create-entity`, etc.), so a new chart is
-visible immediately. Defer the publish with `--no-publish` to batch several
-operations before a single publish:
+`chart create` **stages** the change by default — no `PublishAllXml` runs (the
+CLI-wide convention shared with `form clone`, `metadata create-entity`, etc.).
+Pass `--publish` to make a new chart visible immediately, or batch several
+operations and publish once at the end:
 
 ```bash
 crm chart create contact --name "Q" \
     --data-description d.xml --presentation-description p.xml \
-    --solution cwx_crmworx --no-publish
-crm solution publish    # publish when ready
+    --solution cwx_crmworx --publish
+# ...more staged operations...
+crm solution publish-all    # publish everything once the batch is done
 ```
 
 ### Preview without writing
@@ -156,14 +157,15 @@ a chart to a different table is not supported.
 ### Publishing and solution
 
 `update` follows the same `--publish` / `--no-publish` / `--solution` contract
-as `create` (see above) — `--solution` is required. For system charts the
-change is only visible in the UI after `PublishAllXml` runs; user charts
-(`--user`) are never published and take effect immediately.
+as `create` (see above) — `--solution` is required, and it **stages** by
+default. For system charts the change is only visible in the UI after
+`PublishAllXml` runs; user charts (`--user`) are never published and take
+effect immediately.
 
 ```bash
-crm chart update <id> --type Line --solution cwx_crmworx
-crm chart update <id> --name "New Name" --solution cwx_crmworx --no-publish
-crm solution publish    # publish when ready
+crm chart update <id> --type Line --solution cwx_crmworx --publish
+crm chart update <id> --name "New Name" --solution cwx_crmworx   # staged
+crm solution publish-all    # publish when ready
 ```
 
 ## Replace the inner fetch query
@@ -172,9 +174,9 @@ crm solution publish    # publish when ready
 while leaving the `<categorycollection>` (grouping categories) intact:
 
 ```bash
-crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx
+crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx           # staged
 crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --user
-crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --no-publish
+crm chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx --publish # publish immediately
 ```
 
 Use this when you need to change the query (entity, filters, linked entities)
@@ -242,21 +244,21 @@ The `--column` is validated against live entity metadata.
 This applies to all editor verbs (`update`, `set-fetch`, `add-series`,
 `remove-series`, `set-groupby`):
 
-- **System charts** (`savedqueryvisualization`, the default) run
-  `PublishAllXml` by default. The change is only reflected in the UI after
-  publish. Use `--no-publish` to stage a batch of edits, then publish once with
-  `crm solution publish`.
+- **System charts** (`savedqueryvisualization`, the default) **stage** by
+  default — no `PublishAllXml` runs. The change is only reflected in the UI
+  after publish. Pass `--publish` per edit, or batch a run of staged edits and
+  publish once with `crm solution publish-all`.
 - **User charts** (`userqueryvisualization`, `--user`) are **never published**
   — edits reflect immediately and `--publish` / `--no-publish` is accepted but
   has no effect.
 
-!!! warning "Don't chain --no-publish edits on a *system* chart"
+!!! warning "Don't chain staged edits on a *system* chart"
     A system-chart editor reads the **published** snapshot before writing, so a
-    second `--no-publish` edit reads the chart without the first edit's pending
-    change and overwrites it. To make several system-chart edits safely: either
-    keep the default (publish each step), or publish between edits with
-    `crm solution publish`. User charts (`--user`) are unaffected — they aren't
-    published, so each edit reads the previous one's result.
+    second staged (flagless) edit reads the chart without the first edit's
+    pending change and overwrites it. To make several system-chart edits
+    safely: either pass `--publish` on each one, or publish between edits with
+    `crm solution publish-all`. User charts (`--user`) are unaffected — they
+    aren't published, so each edit reads the previous one's result.
 
 ## Relationship to `metadata clone-entity --with-charts`
 
