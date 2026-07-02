@@ -15,8 +15,8 @@ crm --json security list-team-roles <team-guid>              # roles on a team
 crm --json security user-privileges <user-guid>             # effective privileges on a user
 
 # role authoring: create-role then set-role-privileges (--solution is required)
-crm --json security create-role "My Role" --solution cwx_crmworx --yes              # defaults to caller's BU
-crm --json security create-role "My Role" --solution cwx_crmworx --if-exists skip --yes  # idempotent
+crm --json security create-role "My Role" --solution ContosoCore --yes              # defaults to caller's BU
+crm --json security create-role "My Role" --solution ContosoCore --if-exists skip --yes  # idempotent
 crm --json security set-role-privileges <role> --access read --all-entities --depth organization --replace --yes
 crm --json security set-role-privileges <role> --access read,write,create --entities account,contact --depth organization --add --yes
 crm --json security set-role-privileges <role> --privilege prvCreateEntity,prvPublishCustomization --depth global --add --yes
@@ -66,7 +66,7 @@ Role assignment is **cumulative and not cleanly reversible** — hence `--yes`-g
 **Agent discovery pattern — read-only access to everything:**
 
 ```bash
-crm security create-role "Agent Read-Only" --solution cwx_crmworx --yes
+crm security create-role "Agent Read-Only" --solution ContosoCore --yes
 crm security set-role-privileges <roleid> --access read --all-entities --depth organization --replace --yes
 ```
 

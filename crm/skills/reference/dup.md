@@ -5,8 +5,8 @@ and test a candidate record against the published rules. Group: `dup`.
 Flags/choices/operators: `crm dup --help` (and `crm dup add-condition --help`).
 
 ```bash
-crm --json dup create account --name "Accounts with the same name" --solution cwx_crmworx
-crm --json dup add-condition "Accounts with the same name" --attr name --operator exact --solution cwx_crmworx
+crm --json dup create account --name "Accounts with the same name" --solution ContosoCore
+crm --json dup add-condition "Accounts with the same name" --attr name --operator exact --solution ContosoCore
 crm --json dup publish "Accounts with the same name" --wait
 crm --json dup check account --data '{"name": "Contoso"}'
 crm --json dup unpublish "Accounts with the same name"

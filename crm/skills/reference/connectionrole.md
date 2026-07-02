@@ -5,8 +5,8 @@ reciprocal partners. Group: `connectionrole`. Flags/choices:
 `crm connectionrole --help`.
 
 ```bash
-crm --json connectionrole create --name "Stakeholder" --category stakeholder --solution cwx_crmworx
-crm --json connectionrole scope "Stakeholder" --entity account --solution cwx_crmworx
+crm --json connectionrole create --name "Stakeholder" --category stakeholder --solution ContosoCore
+crm --json connectionrole scope "Stakeholder" --entity account --solution ContosoCore
 crm --json connectionrole match "Stakeholder" "Vendor"
 ```
 

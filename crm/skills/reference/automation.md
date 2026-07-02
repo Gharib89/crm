@@ -16,17 +16,17 @@ then optionally attach entity images to the step:
 ```bash
 # register-assembly: .dll bytes are base64'd into `content`. --solution sends
 # MSCRM.SolutionUniqueName.
-crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution cwx_contoso
+crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution ContosoCore
 
 # --update: re-uploads content of an existing assembly (resolved by name); the
 # identity flags --version/--culture/--public-key-token/--description/--isolation-mode
 # are IGNORED under --update and produce a warning. --solution is still required.
-crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solution cwx_contoso
+crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solution ContosoCore
 
 # register-type: create one plugintypes row per IPlugin class. The CLI does NOT
 # reflect the assembly — plugintype rows are never auto-created via the Web API.
 crm --json plugin register-type --assembly Contoso.Plugins \
-    --type Contoso.Plugins.AccountPostUpdate --solution cwx_contoso
+    --type Contoso.Plugins.AccountPostUpdate --solution ContosoCore
 
 # list-types: shows explicitly registered rows; empty until register-type is run.
 crm --json plugin list-types --assembly Contoso.Plugins
@@ -39,7 +39,7 @@ crm --json plugin register-webhook \
     --name MyWebhook \
     --url https://func.azurewebsites.net/api/d365hook \
     --auth webhookkey --auth-value 'abc123secret' \
-    --solution cwx_contoso
+    --solution ContosoCore
 
 # register-step: --message is required; pass exactly ONE of --plugin-type or
 # --service-endpoint (the step's polymorphic event handler). --plugin-type binds
@@ -53,12 +53,12 @@ crm --json plugin register-step \
     --message Update \
     --plugin-type Contoso.Plugins.AccountPostUpdate \
     --entity account --stage postoperation --mode sync \
-    --filtering-attributes name,telephone1 --solution cwx_contoso
+    --filtering-attributes name,telephone1 --solution ContosoCore
 
 # Bind a step to a webhook instead of a plug-in type:
 crm --json plugin register-step \
     --message Create --service-endpoint MyWebhook \
-    --entity account --stage postoperation --mode async --solution cwx_contoso
+    --entity account --stage postoperation --mode async --solution ContosoCore
 ```
 
 ```bash
@@ -70,7 +70,7 @@ crm --json plugin register-step \
 # on a non-PostOperation step, messages that don't support images.
 crm --json plugin register-image \
     --step "Contoso.Plugins.AccountPostUpdate: Update of account" \
-    --type pre --alias preimg --attributes name,telephone1 --solution cwx_contoso
+    --type pre --alias preimg --attributes name,telephone1 --solution ContosoCore
 ```
 
 ```bash
@@ -183,7 +183,7 @@ outside the D365 web application"). The verbs below all operate on **existing**
 definitions.
 
 ```bash
-crm --json workflow list --entity cwx_ticket --category 0   # definitions on an entity
+crm --json workflow list --entity contoso_ticket --category 0   # definitions on an entity
 
 # Find duplicate definitions (same name, >1 row — e.g. after retried solution imports):
 # group `list` output by name client-side. `list` returns only type=1 definitions, so the
@@ -211,8 +211,8 @@ crm --json workflow run <workflow-guid> --target <record-guid>   # trigger on-de
 
 # Clone a classic workflow onto another entity (xaml-retargeted; activates by
 # default). clone is solution-scoped (--solution required).
-crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone --solution my_solution
-crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone \
+crm --json workflow clone <workflow-guid> --to-entity contoso_ticketclone --solution my_solution
+crm --json workflow clone <workflow-guid> --to-entity contoso_ticketclone \
     --name "My Clone" --solution my_solution --no-activate
 
 # Export / import a workflow definition (incl. xaml) as JSON

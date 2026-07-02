@@ -26,7 +26,7 @@ version a chart, capture both from `chart get` and recreate with `chart create`:
 crm --json chart get <id> | jq -r '.data.datadescription' > c.data.xml
 crm --json chart get <id> | jq -r '.data.presentationdescription' > c.pres.xml
 crm --json chart create contact --name "By Method" \
-    --data-description c.data.xml --presentation-description c.pres.xml --solution cwx_crmworx
+    --data-description c.data.xml --presentation-description c.pres.xml --solution ContosoCore
 ```
 
 **Two mutually exclusive create modes.** XML mode needs **both**
@@ -51,18 +51,18 @@ solution-scoped and honor `--user` and `--publish` / `--no-publish`.
 
 ```bash
 # update: replace XML, name, description, or ChartType on every <Series>
-crm --json chart update <id> --data-description d.xml --presentation-description p.xml --solution cwx_crmworx
-crm --json chart update <id> --name "New Name" --type Bar --solution cwx_crmworx
+crm --json chart update <id> --data-description d.xml --presentation-description p.xml --solution ContosoCore
+crm --json chart update <id> --name "New Name" --type Bar --solution ContosoCore
 
 # set-fetch: swap the inner <fetch> element, keeping the categorycollection
-crm --json chart set-fetch <id> --fetch new_query.xml --solution cwx_crmworx
+crm --json chart set-fetch <id> --fetch new_query.xml --solution ContosoCore
 
 # add-series / remove-series: add or drop one aggregate series
-crm --json chart add-series <id> --column estimatedvalue --aggregate sum --alias total --solution cwx_crmworx
-crm --json chart remove-series <id> --alias total --solution cwx_crmworx
+crm --json chart add-series <id> --column estimatedvalue --aggregate sum --alias total --solution ContosoCore
+crm --json chart remove-series <id> --alias total --solution ContosoCore
 
 # set-groupby: change the grouping (category) column
-crm --json chart set-groupby <id> --column createdon --dategrouping month --solution cwx_crmworx
+crm --json chart set-groupby <id> --column createdon --dategrouping month --solution ContosoCore
 ```
 
 **Alias-coupling invariant.** A chart's three XML layers are tightly coupled:
@@ -97,7 +97,7 @@ type, so other form types never appear.
 ```bash
 crm --json dashboard list                              # org dashboards (no formxml)
 crm --json dashboard get <id>                          # single dashboard, with formxml
-crm --json dashboard create --name "Sales" --formxml dash.xml --solution cwx_crmworx
+crm --json dashboard create --name "Sales" --formxml dash.xml --solution ContosoCore
 crm --json dashboard delete <id>
 ```
 
@@ -106,7 +106,7 @@ dashboard, capture its layout from `dashboard get` and recreate it:
 
 ```bash
 crm --json dashboard get <id> | jq -r '.data.formxml' > dash.xml
-crm --json dashboard create --name "Sales" --formxml dash.xml --solution cwx_crmworx
+crm --json dashboard create --name "Sales" --formxml dash.xml --solution ContosoCore
 ```
 
 **Interactive (type-10) dashboards are not API-creatable.** Passing `--interactive`
@@ -122,10 +122,10 @@ write.
 All four tile-add verbs PATCH the `formxml` column directly.
 
 ```bash
-crm --json dashboard add-chart <dashboard-id> --view <savedqueryid> --chart <savedqueryvisualizationid> --solution cwx_crmworx
-crm --json dashboard add-view  <dashboard-id> --view <savedqueryid> --solution cwx_crmworx
-crm --json dashboard add-iframe <dashboard-id> --url https://example.com/embed --solution cwx_crmworx
-crm --json dashboard add-webresource <dashboard-id> --webresource cwx_/pages/summary.html --solution cwx_crmworx
+crm --json dashboard add-chart <dashboard-id> --view <savedqueryid> --chart <savedqueryvisualizationid> --solution ContosoCore
+crm --json dashboard add-view  <dashboard-id> --view <savedqueryid> --solution ContosoCore
+crm --json dashboard add-iframe <dashboard-id> --url https://example.com/embed --solution ContosoCore
+crm --json dashboard add-webresource <dashboard-id> --webresource contoso_/pages/summary.html --solution ContosoCore
 ```
 
 **`add-chart` live ref validation.** The chart (`savedqueryvisualization`) must be
@@ -158,11 +158,11 @@ subsequent `dashboard get`.
 ### Removing a tile — `remove-component`
 
 ```bash
-crm --json dashboard remove-component <dashboard-id> --index 0 --solution cwx_crmworx
-crm --json dashboard remove-component <dashboard-id> --cell-id <id> --solution cwx_crmworx
-crm --json dashboard remove-component <dashboard-id> --view <savedqueryid> --solution cwx_crmworx
-crm --json dashboard remove-component <dashboard-id> --chart <chart-id> --solution cwx_crmworx
-crm --json dashboard remove-component <dashboard-id> --url https://example.com/embed --solution cwx_crmworx
+crm --json dashboard remove-component <dashboard-id> --index 0 --solution ContosoCore
+crm --json dashboard remove-component <dashboard-id> --cell-id <id> --solution ContosoCore
+crm --json dashboard remove-component <dashboard-id> --view <savedqueryid> --solution ContosoCore
+crm --json dashboard remove-component <dashboard-id> --chart <chart-id> --solution ContosoCore
+crm --json dashboard remove-component <dashboard-id> --url https://example.com/embed --solution ContosoCore
 ```
 
 **Exactly one selector.** Passing more than one or none is a usage error. A value

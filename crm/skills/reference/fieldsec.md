@@ -5,8 +5,8 @@ and assign profiles to users or teams. Group: `fieldsec`. Flags/choices:
 `crm fieldsec --help`.
 
 ```bash
-crm --json fieldsec create-profile "Compensation" --description "Salary access" --solution cwx_crmworx
-crm --json fieldsec add-permission "Compensation" account creditlimit --read --update --solution cwx_crmworx
+crm --json fieldsec create-profile "Compensation" --description "Salary access" --solution ContosoCore
+crm --json fieldsec add-permission "Compensation" account creditlimit --read --update --solution ContosoCore
 crm --json fieldsec assign "Compensation" --user <user-guid>     # or --team <team-guid>
 crm --json fieldsec list
 crm --json fieldsec get "Compensation"

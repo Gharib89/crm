@@ -271,7 +271,7 @@ When constructing `entity create`/`update` payloads, lookup fields require an
 `@odata.bind` suffix on the **single-valued navigation-property name**, **not** the
 logical attribute. That name is metadata-defined and **case-sensitive** — it is NOT a
 predictable transform of the attribute: custom lookups often surface a PascalCase
-relationship name (e.g. `cwx_CustomerId@odata.bind`) while system lookups commonly
+relationship name (e.g. `contoso_CustomerId@odata.bind`) while system lookups commonly
 match the lowercase attribute (e.g. `primarycontactid@odata.bind`). Never guess it —
 take it from `crm metadata describe <entity>` (`bind_key` per lookup) or
 `crm metadata relationships <entity>` (`ReferencingEntityNavigationPropertyName`). A picklist
@@ -399,10 +399,10 @@ crm data import contacts contacts.jsonl --mode upsert --id-column contactid
 crm data import accounts accounts.jsonl --mode upsert --key accountnumber
 
 # Composite alternate key
-crm data import cwx_slas slas.jsonl --mode upsert --key cwx_tier,cwx_region
+crm data import contoso_slas slas.jsonl --mode upsert --key contoso_tier,contoso_region
 
 # CSV import (best-effort coercion; prefer JSONL for IDs / postal codes / lookups)
-crm data import cwx_tickets tickets.csv
+crm data import contoso_tickets tickets.csv
 
 # Non-transactional + continue-on-error (requires --no-transaction)
 crm data import accounts large.jsonl \

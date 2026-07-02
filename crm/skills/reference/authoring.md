@@ -261,9 +261,9 @@ profile's `publisher_prefix` (**required — a missing prefix is exit 2**).
 ## Views — `view create` (savedquery)
 
 ```bash
-crm --json view create cwx_ticket --name "Active Tickets" --otc 10127 \
-    --column "cwx_name:220" --column "cwx_priority:120" \
-    --filter-active --solution cwx_crmworx --if-exists skip
+crm --json view create contoso_ticket --name "Active Tickets" --otc 10127 \
+    --column "contoso_name:220" --column "contoso_priority:120" \
+    --filter-active --solution ContosoCore --if-exists skip
 ```
 
 The LayoutXml `object` attribute is the entity **ObjectTypeCode (OTC)** — get it from
@@ -288,9 +288,9 @@ non-public view you create this way will not appear there — capture its
 
 ```bash
 crm --json view edit-columns account "All Accounts" \
-    --add telephone1:120 --remove fax --width name:200 --solution cwx_crmworx
+    --add telephone1:120 --remove fax --width name:200 --solution ContosoCore
 crm --json view edit-columns account "All Accounts" \
-    --reorder name,telephone1,emailaddress1 --solution cwx_crmworx
+    --reorder name,telephone1,emailaddress1 --solution ContosoCore
 ```
 
 Every `view` editor verb (`edit-columns`, `set-order`, `add-filter`,
@@ -324,9 +324,9 @@ warning too; it's repeated here because it is the most common surprise.
 
 ```bash
 crm --json view set-order account "All Accounts" \
-    --order "name asc" --order "createdon desc" --solution cwx_crmworx
-crm --json view set-order account "All Accounts" --add-order "modifiedon desc" --solution cwx_crmworx
-crm --json view set-order account "All Accounts" --clear-order --solution cwx_crmworx
+    --order "name asc" --order "createdon desc" --solution ContosoCore
+crm --json view set-order account "All Accounts" --add-order "modifiedon desc" --solution ContosoCore
+crm --json view set-order account "All Accounts" --clear-order --solution ContosoCore
 ```
 
 Only the entity's direct `<order>` children are touched — `<filter>`, `<condition>`,
@@ -337,12 +337,12 @@ publish-then-read-back notes as `edit-columns`.
 ### Add FetchXML filter conditions — `view add-filter`
 
 ```bash
-crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "statecode eq 0" --solution cwx_crmworx
-crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_priority in 1 2 3" --condition "cwx_severity ne 3" --solution cwx_crmworx
-crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_resolvedon null" --solution cwx_crmworx
+crm --json view add-filter contoso_ticket "Active Tickets" \
+    --condition "statecode eq 0" --solution ContosoCore
+crm --json view add-filter contoso_ticket "Active Tickets" \
+    --condition "contoso_priority in 1 2 3" --condition "contoso_severity ne 3" --solution ContosoCore
+crm --json view add-filter contoso_ticket "Active Tickets" \
+    --condition "contoso_resolvedon null" --solution ContosoCore
 ```
 
 Conditions are appended to the entity-level `<filter>` (created if absent).
@@ -362,11 +362,11 @@ Same ambiguous-name, managed-layer, and publish-then-read-back notes as
 ### Remove FetchXML filter conditions — `view remove-filter`
 
 ```bash
-crm --json view remove-filter cwx_ticket "Active Tickets" \
-    --condition "statecode eq 0" --solution cwx_crmworx
+crm --json view remove-filter contoso_ticket "Active Tickets" \
+    --condition "statecode eq 0" --solution ContosoCore
 # disambiguate when attribute+operator match multiple conditions:
-crm --json view remove-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_priority in 1 2 3" --solution cwx_crmworx
+crm --json view remove-filter contoso_ticket "Active Tickets" \
+    --condition "contoso_priority in 1 2 3" --solution ContosoCore
 ```
 
 Matched on attribute + operator; supply values to disambiguate. No match or

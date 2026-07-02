@@ -11,8 +11,8 @@ navigation tree. Groups: `app` (appmodule), `sitemap`. Flags/choices:
 `add-components`/`remove-components` bind existing ids and take no `--solution`.
 
 ```bash
-# create: --unique-name is publisher-prefixed, e.g. 'cwx_crmworx'.
-crm --json app create --name CRMWorx --unique-name cwx_crmworx --solution CRMWorx --if-exists skip
+# create: --unique-name is publisher-prefixed, e.g. 'contoso_salesapp'.
+crm --json app create --name "Contoso Sales" --unique-name contoso_salesapp --solution ContosoCore --if-exists skip
 
 # add-components: APP_ID positional + repeatable --component 'kind:guid'.
 # 'entity' is NOT a valid kind — tables surface via sitemap Entity= subareas.
@@ -26,18 +26,18 @@ crm --json app remove-components <appmoduleid> --component view:<savedqueryid>
 # set-sitemap: SITEMAP_NAME positional is the sitemap's descriptive name
 # (stored as sitemapname); --unique-name is the app's uniquename and sets
 # sitemapnameunique to auto-associate the sitemap with that app.
-crm --json app set-sitemap "CRMWorx Sitemap" --xml-file /tmp/sitemap.xml \
-    --unique-name cwx_crmworx --solution CRMWorx
+crm --json app set-sitemap "Contoso Sales Sitemap" --xml-file /tmp/sitemap.xml \
+    --unique-name contoso_salesapp --solution ContosoCore
 
 # build-sitemap: generates the SiteMapXml for you, then creates it via the same
 # path as set-sitemap. Grammar: --area 'id[:Title]', --group 'areaId/groupId[:Title]',
 # --subarea 'areaId/groupId:entity=<logical>[:Title]' (binds a table via Entity=).
 # SubArea Ids are auto-allocated; refs/dup Ids are validated.
 # crm --dry-run app build-sitemap ... prints the generated XML and does NOT POST.
-crm --json app build-sitemap "CRMWorx Sitemap" \
+crm --json app build-sitemap "Contoso Sales Sitemap" \
     --area 'sales:Sales' --group 'sales/accounts:Customers' \
     --subarea 'sales/accounts:entity=account:Accounts' \
-    --subarea 'sales/accounts:entity=contact' --unique-name cwx_crmworx --solution CRMWorx
+    --subarea 'sales/accounts:entity=contact' --unique-name contoso_salesapp --solution ContosoCore
 ```
 
 **On Unified Interface, tables are NOT added via `add-components`** — they surface
@@ -88,36 +88,36 @@ crm --json query odata sitemaps --select sitemapname,sitemapid
 
 ```bash
 # Add an Area (id unique across all node ids; publisher-prefix recommended)
-crm --json sitemap add-area <SITEMAP_ID> --id cwx_sales --title "Sales" --solution CRMWorx --publish
+crm --json sitemap add-area <SITEMAP_ID> --id contoso_sales --title "Sales" --solution ContosoCore --publish
 
 # Add a Group under an Area
 crm --json sitemap add-group <SITEMAP_ID> \
-    --area cwx_sales --id cwx_grp --title "Customers" --solution CRMWorx --publish
+    --area contoso_sales --id contoso_grp --title "Customers" --solution ContosoCore --publish
 
 # Add a SubArea — exactly one of --entity / --url / --dashboard
 crm --json sitemap add-subarea <SITEMAP_ID> \
-    --area cwx_sales --group cwx_grp --id cwx_accts --entity account --solution CRMWorx --publish
+    --area contoso_sales --group contoso_grp --id contoso_accts --entity account --solution ContosoCore --publish
 crm --json sitemap add-subarea <SITEMAP_ID> \
-    --area cwx_sales --group cwx_grp --id cwx_page --url "/WebResources/cwx_.html" --solution CRMWorx --publish
+    --area contoso_sales --group contoso_grp --id contoso_page --url "/WebResources/contoso_.html" --solution ContosoCore --publish
 crm --json sitemap add-subarea <SITEMAP_ID> \
-    --area cwx_sales --group cwx_grp --id cwx_dash --dashboard <guid> --solution CRMWorx --publish
+    --area contoso_sales --group contoso_grp --id contoso_dash --dashboard <guid> --solution ContosoCore --publish
 
 # Reorder a node within its parent — exactly one of --before / --after / --index
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --before cwx_dash --solution CRMWorx --publish
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --after cwx_dash --solution CRMWorx --publish
-crm --json sitemap move-node <SITEMAP_ID> --id cwx_accts --index 0 --solution CRMWorx --publish
+crm --json sitemap move-node <SITEMAP_ID> --id contoso_accts --before contoso_dash --solution ContosoCore --publish
+crm --json sitemap move-node <SITEMAP_ID> --id contoso_accts --after contoso_dash --solution ContosoCore --publish
+crm --json sitemap move-node <SITEMAP_ID> --id contoso_accts --index 0 --solution ContosoCore --publish
 
 # Remove (or soft-delete with --comment-out)
-crm --json sitemap remove-node <SITEMAP_ID> --id cwx_accts --solution CRMWorx --publish
-crm --json sitemap remove-node <SITEMAP_ID> --id cwx_sales --comment-out --solution CRMWorx --publish
+crm --json sitemap remove-node <SITEMAP_ID> --id contoso_accts --solution ContosoCore --publish
+crm --json sitemap remove-node <SITEMAP_ID> --id contoso_sales --comment-out --solution ContosoCore --publish
 
 # Set localized titles — --lcid/--title paired positionally, repeatable
 crm --json sitemap set-title <SITEMAP_ID> \
-    --id cwx_sales --lcid 1033 --title "Sales" --lcid 1031 --title "Vertrieb" --solution CRMWorx --publish
+    --id contoso_sales --lcid 1033 --title "Sales" --lcid 1031 --title "Vertrieb" --solution ContosoCore --publish
 
 # Set localized descriptions — same shape as set-title
 crm --json sitemap set-description <SITEMAP_ID> \
-    --id cwx_sales --lcid 1033 --description "Sales area" --solution CRMWorx --publish
+    --id contoso_sales --lcid 1033 --description "Sales area" --solution ContosoCore --publish
 ```
 
 **Workflow-level gotchas the `--help` doesn't surface:**
@@ -176,7 +176,7 @@ crm --json sitemap set-description <SITEMAP_ID> \
 
 ```json
 { "ok": true,
-  "data": {"sitemapid": "…", "action": "add-area", "area_id": "cwx_sales",
+  "data": {"sitemapid": "…", "action": "add-area", "area_id": "contoso_sales",
            "title": "Sales", "updated": true, "published": true},
   "meta": {} }
 ```

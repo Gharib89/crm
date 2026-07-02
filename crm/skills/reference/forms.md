@@ -7,10 +7,10 @@ SKILL.md agent contract); `list` and `export` are read-only and take no
 `--solution`.
 
 ```bash
-crm --json form list cwx_ticket                                 # main forms only (the default)
-crm --json form list cwx_ticket --all                           # every form type, not just main
-crm --json form clone cwx_ticket "Information" --to cwx_ticketclone --solution cwx_crmworx  # clone a named form to another table
-crm --json form export cwx_ticket "Information" --output form.xml     # export a form's formxml
+crm --json form list contoso_ticket                                 # main forms only (the default)
+crm --json form list contoso_ticket --all                           # every form type, not just main
+crm --json form clone contoso_ticket "Information" --to contoso_ticketclone --solution ContosoCore  # clone a named form to another table
+crm --json form export contoso_ticket "Information" --output form.xml     # export a form's formxml
 ```
 
 ## Add / remove / move a field — first-class verbs
@@ -20,10 +20,10 @@ FormXml editing required. The CLI resolves the control `classid` from live metad
 PATCHes the `systemform` record.
 
 ```bash
-crm --json form add-field cwx_ticket cwx_priority --solution cwx_crmworx            # add to first section of first tab
-crm --json form remove-field cwx_ticket cwx_priority --solution cwx_crmworx         # remove; errors if absent
-crm --json form set-field cwx_ticket cwx_priority \
-    --tab "Details" --section "Status" --solution cwx_crmworx                        # relocate; errors if not already present
+crm --json form add-field contoso_ticket contoso_priority --solution ContosoCore            # add to first section of first tab
+crm --json form remove-field contoso_ticket contoso_priority --solution ContosoCore         # remove; errors if absent
+crm --json form set-field contoso_ticket contoso_priority \
+    --tab "Details" --section "Status" --solution ContosoCore                        # relocate; errors if not already present
 ```
 
 **Verify after publish, not before.** `GET /systemforms` returns the *published*
@@ -33,7 +33,7 @@ A malformed splice publishes silently but the control is absent from the exporte
 XML, so the post-publish re-export is the real verification.
 
 ```bash
-crm --json form add-field cwx_ticket cwx_priority --solution cwx_crmworx --publish   # PATCH + PublishAllXml in one call
+crm --json form add-field contoso_ticket contoso_priority --solution ContosoCore --publish   # PATCH + PublishAllXml in one call
 ```
 
 **Unmapped types — fallback to hand-splice.** `add-field` maps the common
@@ -50,8 +50,8 @@ carries `would_add` / `would_remove` / `would_move: true`.
 ## Toggle field presentation properties — `set-field-props`
 
 ```bash
-crm --json form set-field-props cwx_ticket cwx_priority \
-    --disabled --hidden --locked --no-show-label --solution cwx_crmworx --publish
+crm --json form set-field-props contoso_ticket contoso_priority \
+    --disabled --hidden --locked --no-show-label --solution ContosoCore --publish
 # → data: {updated: true, published: true, disabled: true, visible: false, locked: true, show_label: false}
 ```
 
@@ -79,25 +79,25 @@ with `webresource create` first (see `reference/webresource-ribbon.md`), then wi
 
 ```bash
 # 1. Register the library only (idempotent — safe to repeat)
-crm --json form add-library cwx_ticket --library cwx_/scripts/ticket.js --solution cwx_crmworx
+crm --json form add-library contoso_ticket --library contoso_/scripts/ticket.js --solution ContosoCore
 
 # 2. Wire a handler (registers the library too — deduped)
-crm --json form add-handler cwx_ticket \
-    --event onload --library cwx_/scripts/ticket.js --function App.onLoad --solution cwx_crmworx
+crm --json form add-handler contoso_ticket \
+    --event onload --library contoso_/scripts/ticket.js --function App.onLoad --solution ContosoCore
 
 # onchange needs --field naming a field that is already on the form
-crm --json form add-handler cwx_ticket \
-    --event onchange --field cwx_priority \
-    --library cwx_/scripts/ticket.js --function App.onPriorityChange --solution cwx_crmworx
+crm --json form add-handler contoso_ticket \
+    --event onchange --field contoso_priority \
+    --library contoso_/scripts/ticket.js --function App.onPriorityChange --solution ContosoCore
 
 # 3. Inspect
-crm --json form list-handlers cwx_ticket
+crm --json form list-handlers contoso_ticket
 # → data: bare array [{event, field, function, library, enabled, pass_context, handler_unique_id}];
 #   meta: {formid, form}. Only <Handlers> (customizer-owned) — never <InternalHandlers>.
 
 # 4. Remove (event + function; add --field for onchange)
-crm --json form remove-handler cwx_ticket \
-    --event onload --function App.onLoad --solution cwx_crmworx
+crm --json form remove-handler contoso_ticket \
+    --event onload --function App.onLoad --solution ContosoCore
 ```
 
 **`--field` is required for `onchange`, invalid for `onload`/`onsave`.** The command
@@ -119,10 +119,10 @@ staged semantics as the field verbs; `--dry-run` returns `would_add` /
 `would_remove` / `would_rename` / `would_move`):
 
 ```bash
-crm --json form add-tab cwx_ticket cwx_details --label "Details" --solution cwx_crmworx     # tab + starter section
-crm --json form add-section cwx_ticket cwx_status --tab cwx_details --solution cwx_crmworx  # section into a tab
-crm --json form move-tab cwx_ticket cwx_details --after "General" --solution cwx_crmworx    # reorder
-crm --json form remove-tab cwx_ticket cwx_details --force --solution cwx_crmworx            # --force orphans bound fields
+crm --json form add-tab contoso_ticket contoso_details --label "Details" --solution ContosoCore     # tab + starter section
+crm --json form add-section contoso_ticket contoso_status --tab contoso_details --solution ContosoCore  # section into a tab
+crm --json form move-tab contoso_ticket contoso_details --after "General" --solution ContosoCore    # reorder
+crm --json form remove-tab contoso_ticket contoso_details --force --solution ContosoCore            # --force orphans bound fields
 ```
 
 Gotchas the flags don't tell you:
@@ -142,12 +142,12 @@ Gotchas the flags don't tell you:
 Only needed when the attribute type has no mapped `classid` (see above):
 
 ```bash
-crm --json form export cwx_ticket "Information" --output form.xml
+crm --json form export contoso_ticket "Information" --output form.xml
 # Copy the <control classid="…"> from a stock table that already carries that
 # control type (e.g. account), splice a <cell> into the target <section>, then:
 crm entity update systemforms <formid> --data-file form-update.json   # {"formxml":"…"}
 crm solution publish --xml \
-    '<importexportxml><entities><entity>cwx_ticket</entity></entities></importexportxml>'
+    '<importexportxml><entities><entity>contoso_ticket</entity></entities></importexportxml>'
 ```
 
 Use `--data-file`, **not** inline `--data` — FormXml is quote-heavy and must be

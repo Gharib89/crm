@@ -163,13 +163,13 @@ are opt-in.
 
 ```bash
 # skeleton only (entity + attributes + lookups + reused option sets)
-crm --json metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone" --solution MySolution
+crm --json metadata clone-entity new_project contoso_TicketClone --display "Ticket Clone" --solution MySolution
 
 # everything cloneable over the API
-crm --json metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
+crm --json metadata clone-entity new_project contoso_TicketClone --with-all --solution MySolution
 
 # opt-in flags
-crm --json metadata clone-entity new_project cwx_TicketClone \
+crm --json metadata clone-entity new_project contoso_TicketClone \
     --with-forms --with-views --with-workflows --with-charts --solution MySolution
 ```
 
@@ -193,16 +193,16 @@ model-driven app's form list to be visible.
 
 ```bash
 # What would block deleting an entity
-crm --json metadata dependencies cwx_ticket
+crm --json metadata dependencies contoso_ticket
 
 # What would block deleting a column (dotted entity.attribute)
-crm --json metadata dependencies cwx_ticket.cwx_priority --kind attribute
+crm --json metadata dependencies contoso_ticket.contoso_priority --kind attribute
 
 # What depends on a global option set
-crm --json metadata dependencies cwx_status --kind optionset --for dependents
+crm --json metadata dependencies contoso_status --kind optionset --for dependents
 
 # What components the target itself depends on (reverse direction)
-crm --json metadata dependencies cwx_ticket --kind entity --for required
+crm --json metadata dependencies contoso_ticket --kind entity --for required
 ```
 
 Returns `{can_delete, blockers[], metadata_id, component_type, kind, for}`; each
@@ -214,7 +214,7 @@ blocker carries `dependent_type`, `dependent_id`, `dependent_parent_id`,
 all three modes. Read-only. To fold dependency info into a delete result non-destructively:
 
 ```bash
-crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --solution cwx_crmworx --yes --check-dependencies
+crm --json --dry-run metadata delete-attribute contoso_ticket contoso_priority --solution ContosoCore --yes --check-dependencies
 ```
 
 `--check-dependencies` is available on `delete-entity`, `delete-attribute`,

@@ -48,9 +48,9 @@ an external link report. Verbs: `list`, `get`, `create`, `set-category`, `delete
 ```bash
 crm --json report list                                 # all reports (summary cols)
 crm --json report get <id>                             # one report, body included
-crm --json report create --name "Pipeline" --body-file pipeline.rdl --solution cwx_crmworx
-crm --json report create --name "Ext Dash" --url "https://example.com/dash" --solution cwx_crmworx
-crm --json report set-category <id> --category sales --solution cwx_crmworx
+crm --json report create --name "Pipeline" --body-file pipeline.rdl --solution ContosoCore
+crm --json report create --name "Ext Dash" --url "https://example.com/dash" --solution ContosoCore
+crm --json report set-category <id> --category sales --solution ContosoCore
 crm --json report delete <id>
 ```
 
@@ -71,7 +71,7 @@ service, marketing, administrative). A report can belong to multiple areas.
 Capture the returned `reportcategoryid` to remove a category later:
 
 ```bash
-crm --json report set-category <id> --category sales --solution cwx_crmworx  # → data.reportcategoryid
+crm --json report set-category <id> --category sales --solution ContosoCore  # → data.reportcategoryid
 crm entity delete reportcategories <reportcategoryid> --yes
 ```
 

@@ -10,21 +10,21 @@ that **web resource to already exist** — create it first.
 
 ```bash
 # create: --file bytes are base64'd into `content`; webresourcetype is inferred from
-# the extension (the real D365 option set, so .css=2 and 8 is Silverlight). An unknown
+# the extension (the real D365 option set: .css=2, .xap=8/Silverlight). An unknown
 # extension without an explicit --type is rejected.
-crm --json webresource create --name cwx_/scripts/ribbon.js --file ./ribbon.js --solution cwx_crmworx
+crm --json webresource create --name contoso_/scripts/ribbon.js --file ./ribbon.js --solution ContosoCore
 
 # update <name>: plain PATCH of only the sent fields (content and/or display-name),
 # resolved by name — NOT retrieve-merge.
-crm --json webresource update cwx_/scripts/ribbon.js --file ./ribbon.js --solution cwx_crmworx
+crm --json webresource update contoso_/scripts/ribbon.js --file ./ribbon.js --solution ContosoCore
 
 # inspect
-crm --json webresource get cwx_/scripts/ribbon.js
+crm --json webresource get contoso_/scripts/ribbon.js
 crm --json webresource list --custom-only
 
 # use as a model-driven app icon
-crm --json webresource create --name cwx_/icons/app.svg --file ./app.svg --solution cwx_crmworx
-crm --json app create --name CRMWorx --unique-name cwx_crmworx --icon-webresource cwx_/icons/app.svg --solution cwx_crmworx
+crm --json webresource create --name contoso_/icons/app.svg --file ./app.svg --solution ContosoCore
+crm --json app create --name "Contoso Sales" --unique-name contoso_salesapp --icon-webresource contoso_/icons/app.svg --solution ContosoCore
 ```
 
 ### Bulk push — `webresource push <DIRECTORY> --prefix <p>`
@@ -33,7 +33,7 @@ Upserts every file in a directory tree in one run.
 
 **Naming convention:** each file maps to `<prefix>_<relpath>` where `<relpath>` is the
 file's path relative to `DIRECTORY` using `/` separators. `webresources/scripts/ribbon.js`
-with `--prefix cwx` → `cwx_scripts/ribbon.js`. Type is inferred from the file extension.
+with `--prefix contoso` → `contoso_scripts/ribbon.js`. Type is inferred from the file extension.
 
 **Upsert semantics:**
 - Creates a missing resource, updates one whose content changed, skips byte-identical ones
@@ -52,13 +52,13 @@ with `--prefix cwx` → `cwx_scripts/ribbon.js`. Type is inferred from the file 
 Real run `data` (shown with `--publish`; omit it and `published` is `false`):
 ```json
 {"pushed": 3, "updated": 1, "skipped": 2, "published": true,
- "failed": [], "files": [{"name": "cwx_scripts/ribbon.js", "action": "created"}, ...]}
+ "failed": [], "files": [{"name": "contoso_scripts/ribbon.js", "action": "created"}, ...]}
 ```
 
 Dry-run `data`:
 ```json
-{"_dry_run": true, "would_create": ["cwx_scripts/ribbon.js"],
- "would_update": ["cwx_scripts/form.js"], "skipped": 2, "published": false, "failed": [], "files": [...]}
+{"_dry_run": true, "would_create": ["contoso_scripts/ribbon.js"],
+ "would_update": ["contoso_scripts/form.js"], "skipped": 2, "published": false, "failed": [], "files": [...]}
 ```
 
 **Continuous redeploy** — there is no `--watch` flag; use `entr` or `watchexec`:
@@ -66,8 +66,8 @@ Dry-run `data`:
 ```bash
 # find (not `ls **/*` — bash globstar is off by default and would match nothing)
 find webresources -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' \) | \
-  entr crm webresource push webresources --prefix cwx
-watchexec -e js,css,html -- crm webresource push webresources --prefix cwx
+  entr crm webresource push webresources --prefix contoso
+watchexec -e js,css,html -- crm webresource push webresources --prefix contoso
 ```
 
 ### Deleting a web resource
@@ -86,17 +86,17 @@ except `export` works through the solution-zip pipeline — all solution-scoped.
 ```bash
 crm --json ribbon export account                 # one table's composed RibbonDiffXml
 crm --json ribbon export --application           # application-wide ribbon (no ENTITY)
-crm --json ribbon list account --solution cwx_crmworx
-crm --json ribbon add-button account --solution cwx_crmworx ...
-crm --json ribbon set-label account --solution cwx_crmworx --button-id <CustomAction_Id> ...
-crm --json ribbon remove account --solution cwx_crmworx ...
-crm --json ribbon hide-button account --solution cwx_crmworx --target-id <OOB_Id>
-crm --json ribbon set-rules account --solution cwx_crmworx \
+crm --json ribbon list account --solution ContosoCore
+crm --json ribbon add-button account --solution ContosoCore ...
+crm --json ribbon set-label account --solution ContosoCore --button-id <CustomAction_Id> ...
+crm --json ribbon remove account --solution ContosoCore ...
+crm --json ribbon hide-button account --solution ContosoCore --target-id <OOB_Id>
+crm --json ribbon set-rules account --solution ContosoCore \
     --command-id account.form.MyBtn.Command \
     --enable-rule Mscrm.SelectionCountExactlyOne
-crm --json ribbon add-custom-rule account --solution cwx_crmworx \
+crm --json ribbon add-custom-rule account --solution ContosoCore \
     --command-id account.form.MyBtn.Command \
-    --webresource cwx_/scripts/ribbon.js --function ns.canRun
+    --webresource contoso_/scripts/ribbon.js --function ns.canRun
 ```
 
 **`ribbon export` — give exactly one target.** An `ENTITY` exports that one
