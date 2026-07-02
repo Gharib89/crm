@@ -286,4 +286,4 @@ The emitted spec includes a top-level `solution:` key so `apply --dry-run` auto-
 ```bash
 crm --json solution publish-all
 ```
-Calls `PublishAllXml` so newly created metadata, views, forms, charts and dashboards surface in the app.
+Calls `PublishAllXml` so newly created metadata, views, forms, charts and dashboards surface in the app. On-prem Dataverse serializes customization/publish operations org-wide, so a concurrent publish (another dev's UI publish, a second live run) can fail with the publish-lock error `0x80071151`; `publish-all` auto-retries this with bounded exponential backoff and surfaces it only if the lock never frees.

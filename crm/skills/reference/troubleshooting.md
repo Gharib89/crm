@@ -53,6 +53,13 @@ Two cases never auto-retry:
 
 `$batch` keeps its own independent retry loop and is unaffected by this gate.
 
+`solution publish-all` (and the auto-publish behind the write commands) is the one
+deliberate `POST` exception: `PublishAllXml` is idempotent, so it auto-retries the
+org-wide publish-lock error (`0x80071151`, "another … `PublishAll` operation is
+running") with bounded backoff. A concurrent publish (another dev, a second run)
+resolves itself, so don't hand-retry a lock collision — the original error surfaces
+only if the lock never frees.
+
 ## Connection diagnostics
 
 When a command can't reach the server or auth is failing, run the live diagnostic
