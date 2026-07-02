@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.49.2 (2026-07-02)
+
+### Bug Fixes
+
+- **ribbon**: Route core ribbon errors through the D365Error contract
+  ([#662](https://github.com/Gharib89/crm/pull/662),
+  [`b1fedb3`](https://github.com/Gharib89/crm/commit/b1fedb3a2722dc0837cb14d47a3b49fcdc021b7e))
+
+- **ribbon**: Translate malformed-response errors in the two core helpers
+  ([#662](https://github.com/Gharib89/crm/pull/662),
+  [`b1fedb3`](https://github.com/Gharib89/crm/commit/b1fedb3a2722dc0837cb14d47a3b49fcdc021b7e))
+
+
 ## v1.49.1 (2026-07-02)
 
 ### Bug Fixes
