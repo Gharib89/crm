@@ -53,7 +53,7 @@ crm profile add \
   --tenant-id "$D365_TENANT_ID" \
   --client-secret "$D365_CLIENT_SECRET" \
   --api-version v9.2 \
-  --publisher-prefix ag_ \
+  --publisher-prefix ag \
   --store-password-plaintext \
   --yes
 
