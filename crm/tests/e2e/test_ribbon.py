@@ -280,7 +280,7 @@ def test_ribbon_set_label_relabels_custom_button(
     new_desc = "Body & <desc> with 'apos'"
     set_result = cli([
         "--json", "ribbon", "set-label", ephemeral_entity,
-        "--solution", ephemeral_solution,
+        "--solution", ephemeral_solution, "--publish",
         "--button-id", button_id,
         "--label", new_label, "--tooltip-title", new_tip,
         "--tooltip-description", new_desc,
@@ -314,7 +314,7 @@ def test_ribbon_set_label_relabels_custom_button(
     lcid = provisioned[0]
     loc_label = f"Loc{unique}"
     langs = cli(["--json", "ribbon", "set-label", ephemeral_entity,
-                 "--solution", ephemeral_solution, "--button-id", button_id,
+                 "--solution", ephemeral_solution, "--publish", "--button-id", button_id,
                  "--label", loc_label, "--lcid", str(lcid)])
     assert langs.returncode == 0, (
         f"ribbon set-label --lcid failed:\n{langs.stderr}\n{langs.stdout}"
@@ -378,7 +378,7 @@ def test_ribbon_hide_button_display_rule(
 
     hide = cli([
         "--json", "ribbon", "hide-button", ephemeral_entity,
-        "--solution", ephemeral_solution,
+        "--solution", ephemeral_solution, "--publish",
         "--target-id", target_id,
     ])
     assert hide.returncode == 0, (
@@ -415,7 +415,7 @@ def test_ribbon_hide_button_hide_action_removes_element(
 
     hide = cli([
         "--json", "ribbon", "hide-button", ephemeral_entity,
-        "--solution", ephemeral_solution,
+        "--solution", ephemeral_solution, "--publish",
         "--target-id", target_id,
         "--method", "hide-action", "--yes",
     ])
@@ -494,7 +494,7 @@ def test_ribbon_set_rules_and_add_custom_rule(
     # ── SET-RULES ─────────────────────────────────────────────────────────────
     set_result = cli([
         "--json", "ribbon", "set-rules", ephemeral_entity,
-        "--solution", ephemeral_solution,
+        "--solution", ephemeral_solution, "--publish",
         "--command-id", command_id,
         "--enable-rule", "Mscrm.SelectionCountExactlyOne",
         "--display-rule", "Mscrm.HideOnModern",
@@ -509,7 +509,7 @@ def test_ribbon_set_rules_and_add_custom_rule(
     # ── ADD-CUSTOM-RULE ───────────────────────────────────────────────────────
     rule_result = cli([
         "--json", "ribbon", "add-custom-rule", ephemeral_entity,
-        "--solution", ephemeral_solution,
+        "--solution", ephemeral_solution, "--publish",
         "--command-id", command_id,
         "--webresource", wr_name, "--function", js_func,
     ])

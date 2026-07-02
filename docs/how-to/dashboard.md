@@ -64,14 +64,15 @@ crm dashboard create --name "X" --formxml d.xml --interactive --solution cwx_crm
 
 ### Publishing
 
-`dashboard create` runs `PublishAllXml` **by default** (the CLI-wide convention
-shared with `chart create`, `form clone`, etc.), so a new dashboard is visible
-immediately. Defer the publish with `--no-publish` to batch several operations
-before a single publish:
+`dashboard create` **stages** the change by default — no `PublishAllXml` runs
+(the CLI-wide convention shared with `chart create`, `form clone`, etc.). Pass
+`--publish` to make a new dashboard visible immediately, or batch several
+operations and publish once at the end:
 
 ```bash
-crm dashboard create --name "Q" --formxml d.xml --solution cwx_crmworx --no-publish
-crm solution publish    # publish when ready
+crm dashboard create --name "Q" --formxml d.xml --solution cwx_crmworx --publish
+# ...more staged operations...
+crm solution publish-all    # publish everything once the batch is done
 ```
 
 ### Preview without writing
@@ -141,18 +142,19 @@ crm dashboard add-chart <dashboard-id> --view <v> --chart <c> --force --solution
 
 ### Publishing
 
-`add-chart` runs `PublishAllXml` by default. Defer with `--no-publish` to batch
-several tile-add calls before a single publish:
+`add-chart` **stages** by default (no `PublishAllXml`). Batch several tile-add
+calls, then publish once:
 
 ```bash
-crm dashboard add-chart <id> --view <v> --chart <c> --solution cwx_crmworx --no-publish
-crm dashboard add-view  <id> --view <v2>             --solution cwx_crmworx --no-publish
-crm solution publish
+crm dashboard add-chart <id> --view <v> --chart <c> --solution cwx_crmworx
+crm dashboard add-view  <id> --view <v2>             --solution cwx_crmworx
+crm solution publish-all
 ```
 
-> **Gotcha — `dashboard get` returns the published layer.** Until you publish,
-> a `dashboard get` read-back will show the *old* FormXml. Always pass
-> `--publish` (or run `crm solution publish`) before verifying the edit.
+> **Gotcha — `dashboard get` returns the published layer.** A staged tile-add
+> will not show up in a `dashboard get` read-back. Pass `--publish` on the
+> write, or run `crm solution publish-all` afterward, before verifying the
+> edit.
 
 ## Add a view-only grid tile — `dashboard add-view`
 

@@ -138,13 +138,12 @@ crm ribbon set-rules cwx_ticket --solution MySolution \
     --command-id cwx_ticket.form.Validate.Command \
     --enable-rule Mscrm.SelectionCountExactlyOne
 
-# Combine a platform rule with a custom one; stage without publishing
-# (writes publish by default — pass --no-publish to batch several edits first)
+# Combine a platform rule with a custom one; stages by default (no publish)
+# (pass --publish to publish this edit immediately instead)
 crm ribbon set-rules cwx_ticket --solution MySolution \
     --command-id cwx_ticket.form.Validate.Command \
     --enable-rule Mscrm.SelectionCountExactlyOne \
-    --enable-rule cwx_ticket.form.Validate.myCustomRule.EnableRule \
-    --no-publish
+    --enable-rule cwx_ticket.form.Validate.myCustomRule.EnableRule
 
 # Suppress the button on modern UI only (display rule)
 crm ribbon set-rules cwx_ticket --solution MySolution \
