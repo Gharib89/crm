@@ -2,15 +2,26 @@
 
 A full ship touches many files across many turns. What bloats the window is raw
 tool output landing in the main thread, not the work itself — so spend tokens on
-decisions, not dumps. In rough order of impact:
+decisions, not dumps.
+
+**The delegation rule — delegate noise, not size.** A subagent earns its cost only
+when the raw output you'd otherwise ingest is much larger than the conclusion you
+need: a multi-file map, a full suite run, CI logs, a poll loop. When you can
+already point at the target — one or two known files, a single test node, one
+projected `gh` call — work inline; a subagent there costs more than it saves
+(spawn overhead, relay loss, re-reading). A small-lane run typically spawns none
+of its own (the `review` skill and the poll loop bring theirs); a large or
+unfamiliar change may spawn several. Every lever below is subject to this rule.
+In rough order of impact:
 
 - **Delegate reading, not just review.** Don't read N files into the main thread
   to build a mental model. Send the investigation to a subagent (at the cheap
   tier — see the model-tier table in SKILL.md) — "map how X, Y, Z connect; return
   signatures, call sites, and the data shapes" — and it returns a small
-  conclusion, then read only the exact lines you will edit. This is the single
-  biggest lever: a file body you only need to *understand* should never enter main
-  context, only the hunk you *change* should.
+  conclusion, then read only the exact lines you will edit. On a large or
+  unfamiliar change this is the single biggest lever: a file body you only need
+  to *understand* should never enter main context, only the hunk you *change*
+  should.
 - **Project every `gh` / CLI / API call.** Pipe `gh … --json <only-the-fields>
   --jq '…'`. A bare `gh pr view --json` serializes the entire PR object (repo
   metadata twice, every URL field) — kilobytes of noise from one call.
@@ -25,7 +36,8 @@ decisions, not dumps. In rough order of impact:
   (phase 5), live integration tests (phase 3), and CI polling (phase 8) each dump
   volumes of output. Run them in a cheap-tier subagent (model-tier table in
   SKILL.md) that returns a pass/fail summary plus only the failing lines — never
-  let raw suite / build / CI logs land in the main thread.
+  let raw suite / build / CI logs land in the main thread. (A single targeted
+  test node's output is already small — run it inline.)
 - **One scratch file for the design/plan** (it survives a mid-run context
   summary); don't restate the same summary across turns.
 
@@ -45,7 +57,9 @@ One item per phase, exactly one `in_progress` at a time, each marked `completed`
 only when its verification passed. This is the progress surface for an unattended
 run and the map back if context is summarized mid-run — without it, a mid-run
 summary leaves you unable to tell which phase you were in, so you skip or repeat
-one. Create exactly these ten items:
+one. A **small-lane** run keeps the same ten items — mark each collapsed phase
+`completed` with a note `skipped (small lane)` when you reach it, so the record
+shows a decision, not a gap. Create exactly these ten items:
 
 - [ ] 0 · Isolate — worktree on a fresh branch off default
 - [ ] 1 · Understand — fetch issue, derive success, claim it, apply spec precedence
