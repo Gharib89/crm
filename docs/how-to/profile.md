@@ -61,6 +61,12 @@ column-name derivation don't need a per-command flag:
 crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
 
+The interactive wizard also prompts for the prefix (blank skips — no default
+prefix is set). Either path validates it — 2-8 alphanumeric characters,
+starting with a letter, not starting `mscrm` — before saving: an invalid
+`--publisher-prefix` fails at parse time (exit 2), an invalid wizard entry just
+re-prompts.
+
 ## Switch the active profile
 
 ```bash
@@ -90,7 +96,32 @@ crm profile edit online --url https://contoso.crm.dynamics.com --client-id <new-
 ```
 
 `edit` changes any non-secret field — URL, identity fields, api-version,
-publisher prefix. To change the secret, use `set-password` (below).
+publisher prefix. To change the secret, use `set-password` (below). An invalid
+`--publisher-prefix` is rejected the same way as on `add` (exit 2).
+
+## Rename a profile
+
+```bash
+crm profile rename old-name new-name
+```
+
+All validation runs before anything on disk changes: `new-name` must be a
+valid profile name, `old-name` must exist, `new-name` must not already exist
+(rename refuses to clobber it), and the two names must differ. `old-name` and
+`new-name` being the same is a usage error (exit 2); a missing `old-name`, an
+already-taken `new-name`, or an invalid `new-name` are clean errors (exit 1).
+
+On success the profile file (including an inline plaintext secret, if any) and
+the per-profile metadata cache move to `new-name`, and `old-name` is deleted.
+A keyring-stored secret is moved on a best-effort basis — if the move fails,
+the rename still completes and the response carries a warning with a
+`crm profile set-password new-name` recovery hint instead of rolling back. If
+`old-name` was the active profile, the active pointer is updated too; a
+**concurrent session** that is still pointing at `old-name` breaks after the
+rename, exactly like `crm profile rm`.
+
+`rename` is the safe way to relabel a profile in place — unlike deleting it and
+re-running `add`, it carries the stored secret and cached metadata over.
 
 ## Delete a profile
 

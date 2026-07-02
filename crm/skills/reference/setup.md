@@ -61,7 +61,11 @@ env knob is `CRM_HOME` (state-directory override; default `~/.crm/`).
 
 Switch or inspect profiles with `crm profile use [name]` (no name → interactive
 picker; `--none` clears the active profile) and `crm profile list` (marks the
-active one); edit or delete one with `crm profile edit` / `crm profile rm`. On a
-fresh machine, any connection command with no profile drops
-into `crm profile add` automatically on a terminal (under `--json`/no-TTY it
-errors cleanly telling you to run `crm profile add`).
+active one); edit, rename, or delete one with `crm profile edit` /
+`crm profile rename OLD NEW` / `crm profile rm`. `rename` is the safe way to
+relabel a profile in place (its secret and cached metadata move with it)
+without re-running `add` — but like `rm`, it only repoints the *active*
+session pointer, so a concurrent session still holding the old name breaks. On
+a fresh machine, any connection command with no profile drops into
+`crm profile add` automatically on a terminal (under `--json`/no-TTY it errors
+cleanly telling you to run `crm profile add`).
