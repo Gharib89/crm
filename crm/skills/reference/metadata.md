@@ -159,7 +159,7 @@ definition, custom attributes (lookups recreated pointing at the same parent tab
 and reuses referenced global option sets by name. Forms, views, workflows, and charts
 are opt-in.
 
-`--solution` is required (no profile default, no opt-out).
+`clone-entity` is solution-scoped (`--solution` required).
 
 ```bash
 # skeleton only (entity + attributes + lookups + reused option sets)

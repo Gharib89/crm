@@ -11,9 +11,7 @@ no reflection, you name them) → register a step** against one of those types,
 then optionally attach entity images to the step:
 
 `register-assembly`, `register-type`, `register-webhook`, `register-step`, and
-`register-image` all **require** `--solution <unique_name>` — there is no profile
-default and no opt-out (`--solution Default` for a deliberate Default-Solution-only
-write).
+`register-image` are all solution-scoped (`--solution` required — SKILL.md).
 
 ```bash
 # register-assembly: .dll bytes are base64'd into `content`. --solution sends
@@ -27,7 +25,6 @@ crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --update --solutio
 
 # register-type: create one plugintypes row per IPlugin class. The CLI does NOT
 # reflect the assembly — plugintype rows are never auto-created via the Web API.
-# --friendly-name defaults to the type name.
 crm --json plugin register-type --assembly Contoso.Plugins \
     --type Contoso.Plugins.AccountPostUpdate --solution cwx_contoso
 
@@ -198,9 +195,9 @@ crm --json workflow list \
 
 crm --json workflow activate <workflow-guid>
 crm --json workflow deactivate <workflow-guid> --yes
-# deactivate is destructive — pass --yes non-interactively (omitting it aborts with
-# {"ok":false,"error":"aborted by user"}, exit 1); on a TTY it prompts instead.
-# A type=2 activation-record GUID is auto-resolved to its parent definition; the result carries meta.note naming both GUIDs (check it when looping on exact ids).
+# deactivate is destructive (--yes gated — SKILL.md). A type=2 activation-record
+# GUID is auto-resolved to its parent definition; the result carries meta.note
+# naming both GUIDs (check it when looping on exact ids).
 
 crm --json workflow delete <workflow-guid> --yes
 # Deactivates the definition first when active, then deletes it. A type=2
@@ -212,8 +209,8 @@ crm --json workflow delete <workflow-guid> --yes
 
 crm --json workflow run <workflow-guid> --target <record-guid>   # trigger on-demand
 
-# Clone a classic workflow onto another entity (xaml-retargeted; activates by default)
-# --solution is required — there is no profile default and no opt-out.
+# Clone a classic workflow onto another entity (xaml-retargeted; activates by
+# default). clone is solution-scoped (--solution required).
 crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone --solution my_solution
 crm --json workflow clone <workflow-guid> --to-entity cwx_ticketclone \
     --name "My Clone" --solution my_solution --no-activate

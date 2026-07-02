@@ -43,11 +43,8 @@ exist. Detection requires the entity to be duplicate-detection-enabled.
 `unpublish`, `get`) — a name is resolved by exact match, or pass the
 `duplicateruleid` GUID directly.
 
-**`--solution` is required, `--dry-run` also honored.** `create` and
-`add-condition` require `--solution <unique_name>` (no profile default, no
-opt-out — `--solution Default` for a deliberate Default-Solution-only write)
-and honor `--dry-run` (echoes the would-be POST, `meta.dry_run: true`; reads
-still run for real, `--solution` is validated before them).
+**Solution-scoped:** `create` and `add-condition` require `--solution` (SKILL.md).
+`--dry-run` echoes the would-be POST; `--solution` is validated before the reads.
 
 ## JSON contract for `check` and `get`
 

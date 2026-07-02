@@ -53,10 +53,8 @@ them as a list.
 team understates its true depth here. Full inherited depth needs the
 per-privilege messages, which this CLI does not wrap.
 
-Role assignment is **cumulative and not cleanly reversible** — omitting `--yes` in a
-non-interactive context aborts (exit 1). The command also carries the standard
-admin-header options (`--as-user`, `--as-user-object-id`, `--suppress-dup-detection`,
-`--bypass-plugins`).
+Role assignment is **cumulative and not cleanly reversible** — hence `--yes`-gated
+(SKILL.md).
 
 ## Role authoring: create-role + set-role-privileges
 
@@ -88,9 +86,8 @@ For "let the agent customize", prefer assigning the OOB `System Customizer` role
 
 ### Gotchas
 
-**`create-role` requires `--solution`** (no profile default, no opt-out; `--solution
-Default` for a deliberate Default-Solution-only write). **`--if-exists skip` does not
-add the role to it.** When an existing same-name role is returned via `--if-exists
+**`create-role` is solution-scoped** (`--solution` required — SKILL.md).
+**`--if-exists skip` does not add the role to it.** When an existing same-name role is returned via `--if-exists
 skip`, it is reused unchanged — solution membership is not applied retroactively. To
 guarantee placement in a solution, the role must be newly created in the same call.
 

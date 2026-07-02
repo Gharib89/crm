@@ -25,7 +25,8 @@ Canonical order; each step's detail lives in the linked file:
    → `reference/authoring.md`, `reference/metadata.md`
 3. **UI layer.** Views (`view create`), forms (`form`), web resources (`webresource`),
    ribbon buttons (`ribbon`), model-driven app + sitemap (`app`).
-   → `reference/authoring.md` (views), `reference/customizations.md` (the rest)
+   → `reference/authoring.md` (views), `reference/forms.md`,
+   `reference/webresource-ribbon.md`, `reference/apps-sitemap.md`
 4. **Automation.** Plug-in assembly + steps (`plugin`), workflows (`workflow`), SLAs
    (`sla`). → `reference/automation.md`
 5. **Publish once**, then **verify it landed** (disciplines 3–4 and 6 below).
@@ -38,17 +39,11 @@ its assembly registered and its type confirmed first. The sibling files call out
 
 ## Cross-cutting disciplines (the things that bite)
 
-**1 — `--solution <unique_name>` is mandatory on every customization write.** There is no
-profile default and no opt-out: omit it and the command exits 2 before touching the
-backend (even under `--dry-run`) with "`--solution is required for customization writes`".
-This spans every domain in the shape above — `metadata create-*`/`update-*`,
-`apply` (a spec-level `solution:` block, not a flag — discipline 5), `scaffold table`,
-`webresource`, `form`, `view`, `chart`, `dashboard`, `sitemap`, `app`, `plugin
-register-*`/`update-step-*`, `sla`, `report`, `connectionrole`, `dup`, `fieldsec`,
-`security create-role`, `ribbon`, `workflow clone`. Pass `--solution Default` for a
-deliberate Default-Solution-only write. Hard `metadata delete-*` verbs are the one
-exception — a hard delete removes the component globally, so the header can't orphan
-it and `--solution` stays optional there. With a named profile active,
+**1 — Every customization write is solution-scoped** (SKILL.md agent contract) — the
+refusal message is "`--solution is required for customization writes`". It spans every
+domain in the shape above. Hard `metadata delete-*` verbs are the one exception — a
+hard delete removes the component globally, so the header can't orphan it and
+`--solution` stays optional there. With a named profile active,
 `solution create-publisher` still auto-wires `publisher_prefix` onto it (schema-name
 derivation only) — that does not cover the solution target.
 
@@ -57,16 +52,9 @@ derivation only) — that does not cover the solution target.
 on every write in discipline 1. Skip this and there is nowhere valid to point `--solution`
 at.
 
-**3 — Stage many, publish once.** Every atomic `metadata`/`form`/`view`/`ribbon`/
-`sitemap`/`app`/`dashboard`/`chart`/`webresource` create/update command **stages by
-default** — no publish, which is slow and disruptive per call. Across a batch, just
-omit `--publish` on each write (the default already stages), then run
-`solution publish-all` **once** at the end. `--stage-only` (or `CRM_STAGE_ONLY=1`)
-is redundant for these atomic commands but still matters for the **batch** verbs
-(`apply`, `scaffold table`), which publish once at the end by default — it's the
-switch that forces those to stage too. This matters beyond speed: **only published
-customizations export** — an unpublished change silently drops out of the solution
-zip. → `reference/authoring.md`
+**3 — Stage many, publish once** (SKILL.md staged-writes contract). Omit `--publish`
+across a batch — each write stages, publishing per call is slow and disruptive — then
+run `solution publish-all` **once** at the end. → `reference/authoring.md`
 
 **4 — Publish-before-read, then poll.** A just-published metadata change takes a beat to
 propagate. Gate the read with `metadata ... --expect ATTR=VALUE` and retry on mismatch
@@ -105,13 +93,9 @@ watch. A failed import has a full post-mortem path (`solution import-result`,
 `stage-and-upgrade --promote`, `uninstall`) handle the patch / holding-solution dance.
 → `reference/solutions.md`
 
-**Version ceiling — promote down a same-or-lower version path.** A managed zip carries the
-*package version* of the org it was built in, and an org rejects any zip newer than itself
-— a cloud (v9.2) export will **not** import into on-prem v9.1 (`0x80048068`). `solution
-validate --against-org` now catches it pre-import (it compares the package's
-`SolutionPackageVersion` against the target org's version); the offline `validate` is still
-structural and does not. Build on the lowest version in your dev→test→prod chain, or keep
-every tier on one platform.
+**Version ceiling — promote down a same-or-lower version path.** An org rejects any
+managed zip whose package version is newer than itself (`0x80048068`); `solution
+validate --against-org` catches it pre-import. Details → `reference/solutions.md`.
 
 ## CI deploy spine — profile-per-tier, exit codes as gates
 
@@ -149,7 +133,8 @@ both on-prem and online) — use `app delete <name|id>`, which sweeps those FK-b
 dependents first (and refuses a managed app). The bulk shortcut: **delete the unmanaged
 solution** and let the server cascade most components, then drop the global option sets and
 publisher last; a custom table's `metadata delete-entity` cascades its own
-columns/relationships/views/forms in one shot. → `reference/customizations.md`
+columns/relationships/views/forms in one shot. → `reference/apps-sitemap.md`,
+`reference/webresource-ribbon.md`
 
 ## Don't reach past the API
 
@@ -157,4 +142,4 @@ Some customizations have **no Web API write path**, and the CLI says so rather t
 it: ribbon `RibbonDiffXml` (solution-zip pipeline only — that's why a cloned entity's
 ribbon doesn't come across), and early-bound class generation (external `CrmSvcUtil.exe` /
 `pac modelbuilder`, never a `crm` verb).
-→ `reference/customizations.md`, `reference/automation.md`
+→ `reference/webresource-ribbon.md`, `reference/automation.md`

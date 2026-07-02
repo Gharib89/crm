@@ -3,13 +3,6 @@
 Read, write, query, and relate records. Groups: `entity`, `query`, `data`, `action`.
 Flags/choices: `crm <group> --help`.
 
-## Identity check
-
-```bash
-crm --json connection whoami
-# -> {"ok": true, "data": {"UserId": "...", "BusinessUnitId": "...", "OrganizationId": "..."}}
-```
-
 ## Query — OData filter
 
 ```bash
@@ -187,9 +180,7 @@ crm entity disassociate accounts <account-guid> \
 crm entity clear-lookup contacts <contact-guid> parentcustomerid_account
 ```
 
-`disassociate` and `clear-lookup` are destructive: pass `--yes` when calling
-non-interactively (omitting it aborts with `{"ok":false,"error":"aborted by user"}`,
-exit 1). On a TTY the verb prompts for confirmation instead.
+`disassociate` and `clear-lookup` are destructive (`--yes`-gated — SKILL.md).
 
 ## Audit a record's related data — `entity children`
 
@@ -304,12 +295,10 @@ creates are intentional — but the warning flags the copy-a-record footgun wher
 {"ok": true, "data": {...}, "meta": {"warnings": ["payload contains primary id 'accountid' — remove it unless you intend to create with an explicit GUID"]}}
 ```
 
-**For unattended writes, validate-first is the recommended default.** Without
-`--validate`, an unknown field surfaces only as raw OData server noise (e.g.
-`Does not support untyped value in non-open type`) instead of the clean
-`unknown_fields`/`did_you_mean` envelope — so an agent gets a cryptic failure it
-cannot act on. Prefer validate-first (optionally with `--dry-run`) for any
-agent-driven create/update.
+Validate-first is the recommended default for unattended writes (SKILL.md); the
+raw server noise for an unknown field reads like `Does not support untyped value
+in non-open type` — the clean `unknown_fields`/`did_you_mean` envelope is what
+`--validate` buys.
 
 ### Round-tripping a READ-shape lookup (no hand-`@odata.bind`)
 
@@ -505,11 +494,10 @@ OData `$filter` directly is not possible.
 {"_dry_run": true, "would_submit": "BulkDelete", "entity_set": "contacts", "job_name": "...", "match_count": 42}
 ```
 
-**`--yes` is required for non-interactive use.** Omitting it on a non-TTY aborts with
-`{"ok": false, "error": "aborted by user"}`, exit 1.
+**`--yes` is required for non-interactive use** (SKILL.md destructive contract).
 
 **`--dry-run` is safe.** FetchXML is validated and the matched count is reported; no job
-is submitted. Reads always run for real under `--dry-run`.
+is submitted.
 
 **Gotcha — `match_count` is a snapshot.** It reflects the live row count when the job was
 submitted. The async job may encounter more or fewer rows as it runs (concurrent writes).

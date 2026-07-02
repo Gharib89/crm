@@ -85,9 +85,8 @@ plain network error — read the `meta.category` to tell auth from transport.
 
 ## On-prem vs cloud reminders
 
-The same commands hit both targets; only auth + API version differ. On-prem caps at
-API **v9.1** (`v9.2` → HTTP 501), and `CreateMultiple`/`UpdateMultiple`/`DeleteMultiple`
-are **cloud-only** — which is why bulk `data import` routes through `$batch` (see
+The divergence table is in SKILL.md. `CreateMultiple`/`UpdateMultiple`/`DeleteMultiple`
+being cloud-only is why bulk `data import` routes through `$batch` (see
 `reference/records.md`). The active profile selects the target; `crm profile list`
 shows it and `crm --json connection whoami` confirms the live host and org name.
 
