@@ -444,12 +444,16 @@ def profile_rename(ctx: CLIContext, old, new):
         ctx.profile_name = new
         ctx.invalidate_backend()
 
-    # Move the per-profile metadata cache dir (best-effort).
+    # Move the per-profile metadata cache dir (best-effort). Warn rather than
+    # swallow the failure, mirroring the keyring path — the cache is regenerable,
+    # so a failed move is not fatal, just a stale dir under the old name.
     try:
         from crm.core import metadata_cache
         metadata_cache.move_cache(old, new)
-    except OSError:
-        pass
+    except OSError as exc:
+        warnings.append(
+            f"Could not move the metadata cache to {new!r}: {exc} "
+            "It will be rebuilt on next use.")
 
     ctx.emit(True, data={"profile": new, "renamed": True, "from": old, "to": new},
              warnings=warnings or None)

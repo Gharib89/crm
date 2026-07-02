@@ -501,6 +501,21 @@ class TestRename:
         assert (crm_home / ".crm" / "cache" / "new" / "entitydefs.json").is_file()
         assert not cache_old.exists()
 
+    def test_rename_cache_move_failure_is_best_effort_with_warning(self, crm_home, monkeypatch):
+        # A failed cache move must not fail the rename — it warns instead (the
+        # cache is regenerable), mirroring the keyring best-effort path.
+        from crm.core import metadata_cache
+        self._seed("old")
+        def _boom(old, new):
+            raise OSError("cache locked")
+        monkeypatch.setattr(metadata_cache, "move_cache", _boom)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
+        assert result.exit_code == 0, result.output
+        assert "new" in session_mod.list_profiles()  # rename still happened
+        warnings = (json.loads(result.output).get("meta") or {}).get("warnings") or []
+        assert any("metadata cache" in w for w in warnings), warnings
+
 
 class TestAutoLaunch:
     def test_no_profile_json_mode_errors_no_hang(self, crm_home):
