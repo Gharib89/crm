@@ -82,6 +82,24 @@ def delete_profile(name: str) -> bool:
     return False
 
 
+def rename_profile(old: str, new: str) -> None:
+    """Move profile *old* → *new*: rewrite the file under *new* with its internal
+    ``name`` set to *new*, carrying any inline plaintext ``_secret``, then delete
+    *old*. Callers validate name / existence / no-clobber before calling.
+
+    ``profile_path(new)`` re-validates *new* as a safe path component (raising
+    ``D365Error`` on a bad name). The keyring entry, active-session pointer, and
+    cache dir are the caller's concern — this touches only the profile file.
+    """
+    data = _read_profile_raw(old)  # FileNotFoundError if old is missing
+    data["name"] = new
+    dest = profile_path(new)
+    _atomic_write_json(dest, data)
+    if "_secret" in data and os.name == "posix":
+        os.chmod(dest, 0o600)
+    delete_profile(old)
+
+
 # ── Plaintext profile secret (issue #130, explicit opt-in only) ─────────
 #
 # Stored as a `_secret` key in the SAME profile JSON file, written/read here

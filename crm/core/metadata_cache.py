@@ -58,6 +58,19 @@ def cache_file(profile: ConnectionProfile) -> Path:
     return _cache_home() / "cache" / profile.name / "entitydefs.json"
 
 
+def move_cache(old: str, new: str) -> bool:
+    """Move the per-profile cache dir ``cache/old`` → ``cache/new``. Returns True
+    iff a move happened. Best-effort: a no-op when the source is absent or the
+    destination already exists, so a rename never clobbers an unrelated cache."""
+    src = _cache_home() / "cache" / old
+    dst = _cache_home() / "cache" / new
+    if not src.is_dir() or dst.exists():
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Read / write
 # ---------------------------------------------------------------------------

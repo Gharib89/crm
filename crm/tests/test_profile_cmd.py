@@ -138,7 +138,7 @@ class TestAddWizard:
                 "--url", "https://crm.contoso.local/contoso",
                 "--tenant-id", "t1", "--client-id", "c1",
                 "--password", "pw", "--name", "wiz", "--yes",
-            ])
+            ], input="\n")  # blank publisher-prefix (wizard now prompts for it)
         assert result.exit_code == 0, result.output
         assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
         assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth"]
@@ -171,7 +171,7 @@ class TestAddWizard:
                 "profile", "add", "--auth-scheme", "ntlm",
                 "--url", "https://crm.contoso.local/c",
                 "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz3", "--yes"])
+                "--name", "wiz3", "--yes"], input="\n")  # blank publisher-prefix
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz3").auth_scheme == "ntlm"
 
@@ -342,6 +342,179 @@ class TestSetDeletePassword:
             "--json", "profile", "delete-password", "--profile", "a"])
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") is None
+
+
+class TestPublisherPrefix:
+    """The publisher prefix is validated on both the flag and wizard paths."""
+
+    def _seed(self, name="a"):
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name=name, url=f"https://{name}.contoso.local/o",
+            domain="C", username="u"))
+
+    def test_add_invalid_prefix_flag_errors_exit_2(self, crm_home):
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "add",
+            "--url", "https://crm.contoso.local/o",
+            "--username", "u", "--domain", "D", "--password", "pw",
+            "--name", "p", "--publisher-prefix", "bad!", "--yes"])
+        assert result.exit_code == 2, result.output
+        assert "prefix" in result.output.lower()
+        assert "p" not in session_mod.list_profiles()
+
+    def test_add_valid_prefix_flag_is_stored(self, crm_home):
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://crm.contoso.local/o",
+                "--username", "u", "--domain", "D", "--password", "pw",
+                "--name", "p", "--publisher-prefix", "new", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("p").publisher_prefix == "new"
+
+    def test_edit_invalid_prefix_flag_errors_exit_2(self, crm_home):
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "edit", "a", "--publisher-prefix", "bad!"])
+        assert result.exit_code == 2, result.output
+        assert session_mod.load_profile("a").publisher_prefix is None  # unchanged
+
+    def test_wizard_reprompts_on_invalid_then_stores(self, crm_home, monkeypatch):
+        # On a TTY with no --publisher-prefix, the wizard prompts; an invalid
+        # entry re-prompts, a valid one is stored.
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "profile", "add", "--auth-scheme", "ntlm",
+                "--url", "https://crm.contoso.local/o",
+                "--username", "u", "--domain", "D", "--password", "pw",
+                "--name", "wiz", "--yes"], input="bad!\ngood\n")
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("wiz").publisher_prefix == "good"
+
+    def test_wizard_blank_prefix_skips(self, crm_home, monkeypatch):
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "profile", "add", "--auth-scheme", "ntlm",
+                "--url", "https://crm.contoso.local/o",
+                "--username", "u", "--domain", "D", "--password", "pw",
+                "--name", "wiz", "--yes"], input="\n")
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("wiz").publisher_prefix is None
+
+
+class TestRename:
+    def _seed(self, name, secret=None):
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name=name, url=f"https://{name}.contoso.local/o",
+            domain="C", username="u", publisher_prefix="pfx"))
+        if secret is not None:
+            session_mod.save_profile_secret_plaintext(name, secret)
+
+    def test_rename_moves_file_name_and_inline_secret(self, crm_home):
+        self._seed("old", secret="pw")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
+        assert result.exit_code == 0, result.output
+        assert "old" not in session_mod.list_profiles()
+        assert "new" in session_mod.list_profiles()
+        p = session_mod.load_profile("new")
+        assert p.name == "new"
+        assert p.publisher_prefix == "pfx"  # other fields ride along
+        assert session_mod.load_profile_secret("new") == "pw"
+
+    def test_rename_refuses_to_clobber_existing_new(self, crm_home):
+        self._seed("old", secret="pw")
+        self._seed("keep", secret="other")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "old", "keep"])
+        assert result.exit_code == 1, result.output
+        assert "exists" in result.output.lower()
+        # both intact
+        assert set(session_mod.list_profiles()) >= {"old", "keep"}
+        assert session_mod.load_profile_secret("keep") == "other"
+
+    def test_rename_rejects_same_name(self, crm_home):
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "a", "a"])
+        assert result.exit_code == 2, result.output
+        assert "differ" in result.output.lower()
+
+    def test_rename_unknown_old_errors(self, crm_home):
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "ghost", "new"])
+        assert result.exit_code == 1, result.output
+        assert "not found" in result.output.lower()
+
+    def test_rename_rejects_bad_new_name(self, crm_home):
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "a", "b/c"])
+        assert result.exit_code == 1, result.output
+        assert "a" in session_mod.list_profiles()  # unchanged
+
+    def test_rename_repoints_active_session(self, crm_home):
+        self._seed("old")
+        runner = CliRunner()
+        runner.invoke(cli, ["--json", "profile", "use", "old"])
+        result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_session("default")["active_profile"] == "new"
+
+    def test_rename_keyring_failure_is_best_effort_with_hint(self, crm_home, monkeypatch):
+        # A keyring-stored secret that fails to move must warn (with a set-password
+        # recovery hint) rather than roll back the rename.
+        from crm.core import keyring_store as ks
+        from crm.utils.d365_backend import D365Error
+        self._seed("old")
+        monkeypatch.setattr(ks, "get_secret", lambda n: "krsec")
+        def _boom(name, secret):
+            raise D365Error("keyring locked")
+        monkeypatch.setattr(ks, "set_secret", _boom)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
+        assert result.exit_code == 0, result.output
+        assert "new" in session_mod.list_profiles()  # rename still happened
+        warnings = (json.loads(result.output).get("meta") or {}).get("warnings") or []
+        assert any("set-password new" in w for w in warnings), warnings
+
+    def test_rename_moves_cache_dir(self, crm_home):
+        self._seed("old")
+        cache_old = crm_home / ".crm" / "cache" / "old"
+        cache_old.mkdir(parents=True, exist_ok=True)
+        (cache_old / "entitydefs.json").write_text("{}", encoding="utf-8")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
+        assert result.exit_code == 0, result.output
+        assert (crm_home / ".crm" / "cache" / "new" / "entitydefs.json").is_file()
+        assert not cache_old.exists()
+
+    def test_rename_cache_move_failure_is_best_effort_with_warning(self, crm_home, monkeypatch):
+        # A failed cache move must not fail the rename — it warns instead (the
+        # cache is regenerable), mirroring the keyring best-effort path.
+        from crm.core import metadata_cache
+        self._seed("old")
+        def _boom(old, new):
+            raise OSError("cache locked")
+        monkeypatch.setattr(metadata_cache, "move_cache", _boom)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
+        assert result.exit_code == 0, result.output
+        assert "new" in session_mod.list_profiles()  # rename still happened
+        warnings = (json.loads(result.output).get("meta") or {}).get("warnings") or []
+        assert any("metadata cache" in w for w in warnings), warnings
 
 
 class TestAutoLaunch:
