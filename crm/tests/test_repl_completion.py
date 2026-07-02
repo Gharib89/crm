@@ -117,6 +117,19 @@ class TestReplCompleter:
         out = _completions(completer, "entity get --anno")
         assert out == ["--annotations"]
 
+    def test_command_chain_failure_does_not_crash_completion(self, monkeypatch):
+        # A lazy-import failure inside _resolve_command_chain (surfaced as a
+        # click.ClickException by _LazyJsonAwareGroup.get_command) must not
+        # escape get_completions — completion must never raise (PR #660 review).
+        import crm.commands.repl as repl_mod
+
+        def boom(line, logical, sets, profiles):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(repl_mod, "complete_repl_line", boom)
+        completer = _ReplCompleter(lambda: object(), MetadataCache())
+        assert _completions(completer, "entity") == []
+
     def test_entity_slot_completion_uses_backend_names(self):
         calls = {"n": 0}
 

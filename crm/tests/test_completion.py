@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import click
 import pytest
 from click.shell_completion import get_completion_class
 from click.testing import CliRunner
@@ -262,6 +263,20 @@ class TestProfileShellComplete:
 
     def test_no_profiles_yields_empty(self):
         assert self._complete(["--profile"], "") == []
+
+    def test_unreadable_profile_state_yields_empty_not_a_crash(self, monkeypatch):
+        # Shell completion is best-effort (PR #660 review): a broken/unwritable
+        # CRM_HOME must not crash the completion subprocess.
+        from crm import cli as cli_mod
+        import crm.core.session as session_mod
+
+        def boom():
+            raise OSError("CRM_HOME is not writable")
+
+        monkeypatch.setattr(session_mod, "list_profiles", boom)
+        ctx = click.Context(cli)
+        param = next(p for p in cli.params if "--profile" in p.opts)
+        assert cli_mod._complete_profile_names(ctx, param, "") == []
 
     def test_powershell_complete_forwards_param_level_shell_complete(self, monkeypatch):
         # Regression for issue #654 scope item 7: PowerShellComplete inherits

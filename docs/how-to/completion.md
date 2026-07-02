@@ -73,8 +73,10 @@ update — it's surfaced as a status line instead. If you set completion up manu
 Everything above is **OS-shell** completion — for typing `crm ...` at your
 bash/zsh/fish/PowerShell prompt. The interactive `crm repl` has its own,
 separate completer that needs no install step at all: Tab works the moment
-you launch it. It completes group/command names at any position, flags for
-the resolved command (including `--no-*` secondary forms), values for
+you launch it. It completes group/command names when the tokens typed so far
+are all subcommand names (a preceding flag, like `--profile foo`, stops
+command-name resolution there), flags for the resolved command (including
+`--no-*` secondary forms), values for
 `Choice`-typed flags, saved profile names after `--profile` (fires wherever
 the previous token is literally `--profile`, regardless of position), and
 entity names at their existing slot (see

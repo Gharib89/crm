@@ -496,7 +496,10 @@ def _complete_profile_names(ctx: click.Context, param: click.Parameter, incomple
     (deferred import) and no backend/connection is ever touched.
     """
     from crm.core.session import list_profiles
-    return [name for name in list_profiles() if name.startswith(incomplete)]
+    try:
+        return [name for name in list_profiles() if name.startswith(incomplete)]
+    except OSError:  # e.g. CRM_HOME unwritable/unreadable — best-effort, never crash
+        return []
 
 
 @click.group(cls=_LazyJsonAwareGroup, name="crm", invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})

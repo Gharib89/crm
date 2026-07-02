@@ -242,7 +242,12 @@ class _ReplCompleter(Completer):
             # Kept independent of the profile/command/flag paths above, none
             # of which need a backend at all.
             logical, sets = [], []
-        matches = complete_repl_line(line, logical, sets, profiles)
+        try:
+            # A lazy-import failure inside _resolve_command_chain surfaces as a
+            # click.ClickException; completion must never raise.
+            matches = complete_repl_line(line, logical, sets, profiles)
+        except Exception:
+            return
         if matches is None:
             return
         _, prefix = _tokens_and_prefix(line)
