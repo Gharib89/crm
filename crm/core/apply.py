@@ -2056,10 +2056,13 @@ def apply_spec(
             if backend.dry_run:
                 planned.append(entry)  # greenfield: role + privileges would be created
                 continue
-            # Freshly created: create_role seeds the role (if_exists='skip' still
-            # guards a create race), then ReplacePrivilegesRole drops the removable
-            # default privileges and applies the declared ones; the platform's
-            # immovable baseline (see _reconcile_security_role) stays.
+            # Absent at probe time: create the role (if_exists='skip' still guards a
+            # create race — a concurrent apply may have created it between the probe
+            # and this call). On that race create_role reports `existed`, so fall back
+            # to reconcile (subset-satisfaction) rather than authoritatively replacing
+            # its privileges, matching the present-branch semantics above. Otherwise
+            # ReplacePrivilegesRole drops the removable default privileges and applies
+            # the declared ones; the platform's immovable baseline stays.
             result = _call(entry, lambda role_spec=role_spec: sec_mod.create_role(
                 backend,
                 **REGISTRY["security-role"].to_kwargs(role_spec),
@@ -2067,6 +2070,12 @@ def apply_spec(
                 solution=solution_name,
             ), failed)
             role_id = result["roleid"]
+            if result.get("existed"):
+                _reconcile(entry, lambda role_spec=role_spec, role_id=role_id, ctx=ctx,
+                           entry=entry: _reconcile_security_role(
+                               backend, role_spec, role_id, ctx, entry),
+                           failed, routes)
+                continue
             desired = _call(entry, lambda role_spec=role_spec:
                             _desired_role_privileges(backend, role_spec)[0], failed)
             _call(entry, lambda role_id=role_id, desired=desired:
