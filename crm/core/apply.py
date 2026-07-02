@@ -886,8 +886,11 @@ def _reconcile_view(
 # ── per-kind cross-field validation (adapter.extra_validate) ─────────────────
 # Each function is the entity-subtree kind's cross-field block rule — the rules
 # that a data field (required_block_keys / schema_name_keys / …) cannot express.
-# adapter.validate runs them last, after the required-key and mc.* checks, so the
-# error order and messages match the old inline validate_spec pass exactly.
+# adapter.validate runs them last, after the required-key and mc.* checks. Every
+# error MESSAGE is preserved verbatim from the old inline validate_spec pass; the
+# only order change is entity ownership, which now validates after (not before)
+# the schema-name check — unobservable in practice, since each rule trips on its
+# own field and a block rarely violates two at once.
 def _validate_entity_block(ent: dict[str, Any]) -> None:
     """Ownership vocabulary + the nested primary-attribute schema name."""
     elabel = f"entity {ent['schema_name']!r}"
