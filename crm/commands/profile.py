@@ -280,13 +280,15 @@ def _use_label(name: str, active: str | None) -> str:
 
 def _pick_profile(ctx: CLIContext, title: str) -> str | None:
     """No-arg → interactive picker over saved profiles (#655), extending the
-    house pattern from `profile use`.
+    house pattern from `profile use`. Returns the chosen profile name.
 
     A missing argument with no interactive terminal (or under ``--json``) raises
-    a ``UsageError`` (exit 2), preserving the pre-#655 required-argument
-    behavior for scripts. On a TTY it emits a clean error envelope (via
-    ``ctx.emit(False)``, which raises) when there are no profiles or the user
-    cancels, so callers just ``return`` on a ``None`` result."""
+    a ``UsageError`` (exit 2), preserving the pre-#655 required-argument behavior
+    for scripts. On a TTY, when there are no profiles or the user cancels, it
+    emits a clean error envelope via ``ctx.emit(False)`` — which always raises
+    ``Exit`` — so it never actually returns ``None``. The ``str | None`` return
+    and the callers' ``if name is None`` guards are defensive belt-and-suspenders
+    (``emit`` is not typed ``NoReturn``), not a live code path."""
     if not (_stdin_is_tty() and not ctx.json_mode):
         raise click.UsageError(
             "a profile name is required (no interactive terminal to pick one).")
