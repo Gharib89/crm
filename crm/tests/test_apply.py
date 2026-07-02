@@ -3407,29 +3407,38 @@ def test_reconcile_d365error_goes_to_failed_and_aborts():
     assert failed[0]["error"] == "boom"
 
 
-# L426/428: _reconcile_entity "no changes → skipped" branch directly.
+# The entity adapter's "no changes → skipped" branch, driven through the
+# find_live + reconcile interface.
 def test_reconcile_entity_no_drift_returns_skipped(backend):
+    adapter = apply_mod.REGISTRY["entity"]
+    assert adapter.find_live is not None and adapter.reconcile is not None
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project")
     with requests_mock.Mocker() as m:
         _mock_entity_live(m, backend, display_name="Project", display_collection_name="Projects")
         ent = {"schema_name": "contoso_Project", "display_name": "Project",
                "display_collection_name": "Projects"}
-        from crm.core.apply import _reconcile_entity
-        verdict, payload = _reconcile_entity(backend, ent, "contoso_project", None,
-                                             {"kind": "entity", "name": "contoso_Project"})
+        live = adapter.find_live(backend, ent, ctx)
+        verdict, payload = adapter.reconcile(
+            backend, ent, live, ctx, {"kind": "entity", "name": "contoso_Project"})
     assert verdict == "skipped"
 
 
-# L466: _reconcile_attribute lookup kind → skipped immediately (no attribute_info GET).
+# The attribute adapter returns skipped for a lookup kind without any GET —
+# find_live returns None for relationship-backed kinds, so reconcile no-ops.
 def test_reconcile_attribute_lookup_kind_is_skipped(backend):
-    """_reconcile_attribute with kind='lookup' returns skipped without reading attribute_info."""
-    from crm.core.apply import _reconcile_attribute
+    adapter = apply_mod.REGISTRY["attribute"]
+    assert adapter.find_live is not None and adapter.reconcile is not None
     attr = {"kind": "lookup", "schema_name": "contoso_Owner", "display_name": "Owner",
             "target_entity": "systemuser"}
     entry = {"kind": "attribute", "name": "contoso_Owner"}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project")
     with requests_mock.Mocker() as m:
-        # No mocks needed — lookup returns skipped before any GET.
-        verdict, payload = _reconcile_attribute(backend, attr, "contoso_project", None, entry)
+        live = adapter.find_live(backend, attr, ctx)
+        verdict, payload = adapter.reconcile(backend, attr, live, ctx, entry)
     assert verdict == "skipped"
+    assert live is None
     assert m.call_count == 0  # no network calls for lookup kind
 
 
@@ -3810,17 +3819,21 @@ def test_apply_updates_attribute_display_name_on_drift(backend):
 # Already covered by test_apply_updates_attribute_required_level_on_drift but
 # that test does not explicitly assert the branch; call the function directly.
 def test_reconcile_attribute_required_drift_adds_to_changes(backend):
-    from crm.core.apply import _reconcile_attribute
+    adapter = apply_mod.REGISTRY["attribute"]
+    assert adapter.find_live is not None and adapter.reconcile is not None
     attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
             "required": "ApplicationRequired"}
     entry = {"kind": "attribute", "name": "contoso_Code"}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project")
     with requests_mock.Mocker() as m:
         _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
                              display_name="Code", required="None")
         m.put(backend.url_for(
             "EntityDefinitions(LogicalName='contoso_project')/Attributes(LogicalName='contoso_code')"
             "/Microsoft.Dynamics.CRM.StringAttributeMetadata"), status_code=204)
-        verdict, _ = _reconcile_attribute(backend, attr, "contoso_project", None, entry)
+        live = adapter.find_live(backend, attr, ctx)
+        verdict, _ = adapter.reconcile(backend, attr, live, ctx, entry)
     assert verdict == "updated"
 
 
@@ -3939,15 +3952,19 @@ def test_prune_delete_attribute_kind(backend):
 
 # L472->474 False branch: desired_required == live_required → no change needed.
 def test_reconcile_attribute_required_matches_no_drift(backend):
-    from crm.core.apply import _reconcile_attribute
+    adapter = apply_mod.REGISTRY["attribute"]
+    assert adapter.find_live is not None and adapter.reconcile is not None
     # Both spec and live have required="ApplicationRequired" → no change.
     attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",
             "required": "ApplicationRequired"}
     entry = {"kind": "attribute", "name": "contoso_Code"}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project")
     with requests_mock.Mocker() as m:
         _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
                              display_name="Code", required="ApplicationRequired")
-        verdict, _ = _reconcile_attribute(backend, attr, "contoso_project", None, entry)
+        live = adapter.find_live(backend, attr, ctx)
+        verdict, _ = adapter.reconcile(backend, attr, live, ctx, entry)
     assert verdict == "skipped"
 
 
@@ -4164,3 +4181,183 @@ def test_apply_rejects_unknown_query_type_before_http(backend):
         with pytest.raises(D365Error, match="unknown query_type"):
             apply_mod.apply_spec(backend, spec, stage_only=False)
         assert m.request_history == []
+
+
+# ── component-kind adapter interface (#645) ──────────────────────────────────
+# PR 1 of the apply-adapters PRD (#643): the entity subtree (entity, attribute,
+# relationship, view) is migrated to the full component-kind adapter interface —
+# validate / to_kwargs / find_live / reconcile. These tests drive that interface
+# directly (the interface IS the test surface): the slots are populated, the
+# required-key data field tracks the builder, a bad block is rejected by
+# adapter.validate up front, and a probe-hit routes to the ADR 0014 verdict.
+_ENTITY_SUBTREE = ["entity", "attribute", "relationship", "view"]
+
+
+@pytest.mark.parametrize("kind", _ENTITY_SUBTREE)
+def test_adapter_slots_populated(kind):
+    """Every migrated kind populates all four interface slots."""
+    adapter = apply_mod.REGISTRY[kind]
+    assert callable(adapter.find_live), f"{kind}: find_live not populated"
+    assert callable(adapter.reconcile), f"{kind}: reconcile not populated"
+    assert callable(adapter.extra_validate), f"{kind}: extra_validate not populated"
+    # to_kwargs / validate are always-present methods.
+    assert callable(adapter.to_kwargs)
+    assert callable(adapter.validate)
+
+
+@pytest.mark.parametrize("kind", _ENTITY_SUBTREE)
+def test_required_block_keys_match_builder_required_params(kind):
+    """required_block_keys equals the builder's own required (no-default) keyword-only
+    params, reverse-mapped to spec keys and minus the driver-injected ones — so a
+    builder that gains a required param without an adapter entry turns this red."""
+    adapter = apply_mod.REGISTRY[kind]
+    required = {
+        n for n, p in inspect.signature(_ADAPTER_BUILDERS[kind]).parameters.items()
+        if p.kind is inspect.Parameter.KEYWORD_ONLY and p.default is inspect.Parameter.empty
+    }
+    reverse = {param: key for key, param in adapter.map.items()}
+    spec_keys = {reverse.get(p, p) for p in (required - adapter.injected)}
+    assert spec_keys == set(adapter.required_block_keys)
+
+
+@pytest.mark.parametrize("kind,block,match", [
+    # required-key rejection (required_block_keys → _require)
+    ("entity", {"schema_name": "contoso_X"}, "missing required field 'display_name'"),
+    ("attribute", {"schema_name": "contoso_c", "display_name": "C"},
+     "missing required field 'kind'"),
+    ("relationship", {"schema_name": "contoso_r"}, "missing required field"),
+    ("view", {"name": "V"}, "missing required field 'columns'"),
+    # constrained-value rejection (mc.* via schema_name_keys / required_keys)
+    ("entity", {"schema_name": "X", "display_name": "X"}, "must include a publisher prefix"),
+    ("attribute", {"kind": "string", "schema_name": "X", "display_name": "C"},
+     "must include a publisher prefix"),
+    ("relationship", {"schema_name": "contoso_r", "referenced_entity": "a",
+                      "referencing_entity": "b", "lookup_schema": "contoso_l",
+                      "lookup_display": "L", "required": "Bogus"}, "required must be one of"),
+    # cross-field rejection (extra_validate)
+    ("entity", {"schema_name": "contoso_X", "display_name": "X", "ownership": "Nope"},
+     "ownership"),
+    ("attribute", {"kind": "lookup", "schema_name": "contoso_c", "display_name": "C"},
+     "requires target_entity"),
+    ("attribute", {"kind": "bogus", "schema_name": "contoso_c", "display_name": "C"},
+     "unknown kind"),
+    ("relationship", {"schema_name": "contoso_r", "referenced_entity": "a",
+                      "referencing_entity": "b", "lookup_schema": "contoso_l",
+                      "lookup_display": "L", "menu_behavior": "UseLabel"}, "UseLabel"),
+    ("view", {"name": "V", "columns": ["c"], "query_type": "nope"}, "unknown query_type"),
+    ("view", {"name": "V", "columns": "notalist"}, "non-empty list"),
+])
+def test_adapter_validate_rejects_bad_block(kind, block, match):
+    """adapter.validate is the complete up-front authority for one block — required
+    keys, constrained values, and cross-field rules all reject here, no HTTP."""
+    with pytest.raises(D365Error, match=match):
+        apply_mod.REGISTRY[kind].validate(block)
+
+
+def _reconcile_through_adapter(backend, kind, block, ctx, entry):
+    """Drive a kind's find_live + reconcile pair — the migrated walk's inner step."""
+    adapter = apply_mod.REGISTRY[kind]
+    assert adapter.find_live is not None and adapter.reconcile is not None
+    live = adapter.find_live(backend, block, ctx)
+    return adapter.reconcile(backend, block, live, ctx, entry)
+
+
+def test_adapter_reconcile_entity_updated(backend):
+    ent = {"schema_name": "contoso_Project", "display_name": "Project"}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project")
+    entry = {"kind": "entity", "name": "contoso_Project"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, display_name="Old Project")
+        verdict, _ = _reconcile_through_adapter(backend, "entity", ent, ctx, entry)
+    assert verdict == "updated"
+
+
+def test_adapter_reconcile_entity_replace_blocked(backend):
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "ownership": "OrganizationOwned"}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project")
+    entry = {"kind": "entity", "name": "contoso_Project"}
+    with requests_mock.Mocker() as m:
+        _mock_entity_live(m, backend, ownership="UserOwned")
+        verdict, payload = _reconcile_through_adapter(backend, "entity", ent, ctx, entry)
+    assert verdict == "replace_blocked"
+    assert "reason" in payload
+
+
+def test_adapter_reconcile_attribute_replace_blocked_on_type_change(backend):
+    # Spec says string; the live column is an Integer → data-type change is
+    # immutable → replace_blocked (no write).
+    attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code"}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project")
+    entry = {"kind": "attribute", "name": "contoso_Code"}
+    with requests_mock.Mocker() as m:
+        _mock_attribute_live(m, backend, logical="contoso_code", schema="contoso_Code",
+                             cast="Microsoft.Dynamics.CRM.IntegerAttributeMetadata",
+                             display_name="Code")
+        verdict, payload = _reconcile_through_adapter(backend, "attribute", attr, ctx, entry)
+    assert verdict == "replace_blocked"
+    assert "reason" in payload
+
+
+def test_adapter_reconcile_relationship_no_drift_skipped(backend):
+    rel = dict(_RELATIONSHIP)
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "relationship", "name": rel["schema_name"]}
+    with requests_mock.Mocker() as m:
+        _mock_relationship_live(m, backend, schema=rel["schema_name"])
+        verdict, _ = _reconcile_through_adapter(backend, "relationship", rel, ctx, entry)
+    assert verdict == "skipped"
+
+
+def test_adapter_reconcile_relationship_replace_blocked_on_type(backend):
+    rel = dict(_RELATIONSHIP)
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "relationship", "name": rel["schema_name"]}
+    with requests_mock.Mocker() as m:
+        _mock_relationship_live(m, backend, schema=rel["schema_name"],
+                                rel_type="ManyToManyRelationship")
+        verdict, payload = _reconcile_through_adapter(backend, "relationship", rel, ctx, entry)
+    assert verdict == "replace_blocked"
+    assert "reason" in payload
+
+
+def test_adapter_reconcile_view_updated(backend):
+    view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"],
+            "is_default": True}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project", object_type_code=10112)
+    entry = {"kind": "view", "name": view["name"]}
+    with requests_mock.Mocker() as m:
+        _mock_view_live(m, backend, is_default=False)
+        verdict, _ = _reconcile_through_adapter(backend, "view", view, ctx, entry)
+    assert verdict == "updated"
+
+
+def test_adapter_reconcile_view_no_drift_skipped(backend):
+    view = dict(_VIEW)
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project", object_type_code=10112)
+    entry = {"kind": "view", "name": view["name"]}
+    with requests_mock.Mocker() as m:
+        _mock_view_live(m, backend)
+        verdict, _ = _reconcile_through_adapter(backend, "view", view, ctx, entry)
+    assert verdict == "skipped"
+
+
+def test_adapter_reconcile_view_ambiguous_skipped(backend):
+    # Two live views share the (returnedtypecode, name, querytype) identity tuple →
+    # find_live returns both and reconcile refuses to patch an arbitrary one.
+    view = dict(_VIEW)
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None,
+                                 entity_logical="contoso_project", object_type_code=10112)
+    entry = {"kind": "view", "name": view["name"]}
+    two = [{"savedqueryid": _GUID, "name": view["name"]},
+           {"savedqueryid": _GUID2, "name": view["name"]}]
+    with requests_mock.Mocker() as m:
+        _mock_view_live(m, backend, rows=two)
+        verdict, payload = _reconcile_through_adapter(backend, "view", view, ctx, entry)
+    assert verdict == "skipped"
+    assert "reason" in payload

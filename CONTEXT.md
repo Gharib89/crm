@@ -189,6 +189,17 @@ the divergence is updatable, refuse if destructive
 the create path, which only seeds absent components.
 _Avoid_: sync, merge, upsert.
 
+**Component-kind adapter**:
+The single authority for one component kind inside the `apply` engine, behind a
+four-slot interface — `validate` (the complete up-front block check),
+`to_kwargs` (project the spec block onto its create builder), `find_live`
+(read the live component), `reconcile` (diff into an ADR 0014 verdict). The
+driver's walk owns only cross-kind sequencing (dependency order, planned-name
+propagation, abort-on-failure); per-kind knowledge lives in the adapter.
+Publisher and solution are **not** adapters — they are the target preamble a
+customization write files into, not reconciled components.
+_Avoid_: handler, plugin (means a D365 plug-in here), strategy.
+
 **Updatable drift**:
 A divergence between spec and live the platform allows editing in place; `apply`
 writes only the divergent fields and reports them in the `updated` bucket. A spec
