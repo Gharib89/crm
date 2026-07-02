@@ -2,8 +2,10 @@
 
 --stage-only forces every metadata-mutating command to behave as --no-publish:
 no PublishAllXml fires, the --json meta records staged: true, and combining an
-explicit --publish with --stage-only is rejected. Default behaviour (flag absent)
-is unchanged — --publish still defaults True and auto-publish still fires.
+explicit --publish with --stage-only is rejected. As of the stage-by-default
+flip (#633) the atomic write commands already stage when no flag is given, so
+--stage-only is redundant for them; it still matters as the one switch that also
+forces the batch verbs (apply/scaffold) to stage.
 """
 # pyright: basic
 from __future__ import annotations
@@ -88,12 +90,30 @@ def test_stage_only_meta_records_staged_true(use_backend):
     assert env["meta"]["staged"] is True
 
 
-def test_without_flag_auto_publish_still_fires_regression(use_backend):
+def test_without_flag_stages_by_default(use_backend):
+    """Post-#633 flip: an atomic write command with no publish flag stages —
+    no PublishAllXml fires and the envelope carries no `published: true`.
+
+    (`published` is only emitted when a publish actually runs; its absence is
+    the staged signal. meta.staged remains tied to the --stage-only flag.)"""
     backend = use_backend
     with requests_mock.Mocker() as m:
         _mock_add_attribute(m, backend)
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         result = CliRunner().invoke(cli, _add_attribute_args())
+    assert result.exit_code == 0, result.output
+    assert _publish_hits(m, backend) == []
+    env = json.loads(result.output)
+    assert env["data"].get("published") is not True
+
+
+def test_explicit_publish_fires(use_backend):
+    """The opt-in --publish still runs PublishAllXml once and reports published."""
+    backend = use_backend
+    with requests_mock.Mocker() as m:
+        _mock_add_attribute(m, backend)
+        m.post(backend.url_for("PublishAllXml"), status_code=204)
+        result = CliRunner().invoke(cli, _add_attribute_args(extra=["--publish"]))
     assert result.exit_code == 0, result.output
     assert len(_publish_hits(m, backend)) == 1
     env = json.loads(result.output)
