@@ -42,7 +42,8 @@ Create/drop the key with `metadata create-key <entity>` /
 `delete-key` does not — see `reference/customization-lifecycle.md`). A freshly created key's index builds
 asynchronously (`index_status` `Pending`), and `entity upsert --key` /
 `data import --mode upsert --key` 404 against it until it reaches `Active` — poll
-`metadata keys` to confirm before upserting (see `reference/records.md`).
+`metadata keys` to confirm before upserting (see `reference/records.md` /
+`reference/bulk.md`).
 
 When `entity create` or `entity update` hits an alternate-key collision (HTTP 412,
 code `0x80060892`), the error envelope gains `meta.alternate_keys` showing each key,

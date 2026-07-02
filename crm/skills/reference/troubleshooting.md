@@ -87,7 +87,7 @@ plain network error — read the `meta.category` to tell auth from transport.
 
 The divergence table is in SKILL.md. `CreateMultiple`/`UpdateMultiple`/`DeleteMultiple`
 being cloud-only is why bulk `data import` routes through `$batch` (see
-`reference/records.md`). The active profile selects the target; `crm profile list`
+`reference/bulk.md`). The active profile selects the target; `crm profile list`
 shows it and `crm --json connection whoami` confirms the live host and org name.
 
 ## Session & audit

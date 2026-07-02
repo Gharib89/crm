@@ -11,7 +11,7 @@ REFERENCE_DIR = SKILLS_DIR / "reference"
 
 EXPECTED_REFERENCES = {
     "setup.md", "customization-lifecycle.md",
-    "records.md", "metadata.md", "authoring.md", "solutions.md",
+    "records.md", "bulk.md", "metadata.md", "authoring.md", "solutions.md",
     "apps-sitemap.md", "forms.md", "webresource-ribbon.md",
     "charts-dashboards.md", "themes-reports.md",
     "automation.md", "workflow-xaml.md",
