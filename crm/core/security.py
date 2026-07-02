@@ -439,6 +439,30 @@ def _find_role_by_name(backend: D365Backend, name: str, business_unit: str) -> s
     return None
 
 
+def _resolve_business_unit(backend: D365Backend, business_unit: str | None) -> str:
+    """The target business unit GUID for a role: an explicit one (validated) or the
+    caller's own (WhoAmI). Shared by create_role and find_role so both scope a role
+    name to the same BU."""
+    if business_unit is None:
+        return _caller_business_unit(backend)
+    normalized = normalize_guid(business_unit)
+    if normalized is None:
+        raise D365Error(f"business_unit must be a GUID; got {business_unit!r}")
+    return normalized
+
+
+def find_role(
+    backend: D365Backend, name: str, *, business_unit: str | None = None,
+) -> str | None:
+    """The roleid of a role with this name in its business unit, or None.
+
+    Read-only existence probe. ``business_unit`` defaults to the caller's own BU
+    (WhoAmI), matching create_role's scope so the same name resolves to the same
+    role on both the create and reconcile paths.
+    """
+    return _find_role_by_name(backend, name, _resolve_business_unit(backend, business_unit))
+
+
 def create_role(
     backend: D365Backend,
     name: str,
@@ -461,13 +485,7 @@ def create_role(
     added to ``solution`` (adding an existing component would need a separate
     AddSolutionComponent call; the header only rides the create POST).
     """
-    if business_unit is None:
-        bu = _caller_business_unit(backend)
-    else:
-        normalized = normalize_guid(business_unit)
-        if normalized is None:
-            raise D365Error(f"business_unit must be a GUID; got {business_unit!r}")
-        bu = normalized
+    bu = _resolve_business_unit(backend, business_unit)
 
     existing = _find_role_by_name(backend, name, bu)
     if existing is not None:

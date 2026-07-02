@@ -288,68 +288,16 @@ def validate_spec(spec: Any) -> None:
             REGISTRY["relationship"].validate(rel)
         for view in _as_list(ent.get("views")):
             REGISTRY["view"].validate(view)
+    # optionset / web resource / security role each delegate their whole block to
+    # the component-kind adapter (required keys, constrained values, option/privilege
+    # shape) — the same up-front authority the entity subtree uses. A malformed block
+    # fails here, before any HTTP, instead of mid-apply.
     for os_spec in _as_list(sp.get("optionsets")):
-        _require(os_spec, ("name", "display_name"), "optionset")
-        _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
-        for opt in cast("list[Any]", os_spec.get("options") or []):
-            _validate_option(opt, f"optionset {os_spec['name']!r}")
+        REGISTRY["optionset"].validate(os_spec)
     for wr in _as_list(sp.get("webresources")):
-        _require(wr, ("name",), "web resource")
-        # A web resource's body comes from either a `file` on disk or an inline
-        # base64 `content` string (export-spec emits the latter so the spec is
-        # self-contained). Exactly one source is needed.
-        if wr.get("file") is None and wr.get("content") is None:
-            raise D365Error(
-                f"web resource {wr.get('name')!r}: needs 'file' or inline 'content'.")
-        # name/file/display_name/content reach os.path.join + base64 + the Web API
-        # as strings; a non-string (e.g. an unquoted YAML number) must fail here with
-        # a clean D365Error, not blow up later inside os.path.join / base64.
-        for key in ("name", "file", "display_name", "content"):
-            if wr.get(key) is not None and not isinstance(wr[key], str):
-                raise D365Error(f"web resource {wr.get('name')!r}: {key} must be a string.")
-        if wr.get("webresourcetype") is not None and not isinstance(wr["webresourcetype"], int):
-            raise D365Error(
-                f"web resource {wr['name']!r}: webresourcetype must be an integer.")
-        # Fail fast (before any HTTP) on a type that can't be resolved. With a `file`,
-        # an unknown extension and no explicit type is the error; with inline
-        # `content` there is no extension to infer from, so webresourcetype is
-        # required outright.
-        if wr.get("file") is not None:
-            wr_mod.resolve_webresourcetype(wr["file"], wr.get("webresourcetype"))
-        elif wr.get("webresourcetype") is None:
-            raise D365Error(
-                f"web resource {wr['name']!r}: webresourcetype is required when the "
-                "body is inline 'content' (no file extension to infer the type from).")
+        REGISTRY["webresource"].validate(wr)
     for role in _as_list(sp.get("security_roles")):
-        _require(role, ("name",), "security role")
-        if not isinstance(role["name"], str):
-            raise D365Error("security role: name must be a string.")
-        rlabel = f"security role {role['name']!r}"
-        if role.get("business_unit") is not None and not isinstance(role["business_unit"], str):
-            raise D365Error(f"{rlabel}: business_unit must be a string (GUID).")
-        _require_list(role, "privileges", rlabel)
-        # A role with no declared privileges would send an empty ReplacePrivilegesRole,
-        # wiping the role's removable privileges — almost certainly a spec mistake.
-        if not _as_list(role.get("privileges")):
-            raise D365Error(f"{rlabel}: at least one privilege row is required.")
-        for row in _as_list(role.get("privileges")):
-            _require(row, ("depth",), f"{rlabel} privilege")
-            if not isinstance(row["depth"], str):
-                raise D365Error(f"{rlabel}: privilege depth must be a string.")
-            # The selectors are passed straight to set-role-privileges, which expects
-            # lists of strings (each item is later .strip()/.lower()'d); validate the
-            # shape up front so a malformed spec fails with a clean D365Error here
-            # rather than an AttributeError mid-apply.
-            for key in ("access", "entities", "privilege_names"):
-                if key in row:
-                    if not isinstance(row[key], list):
-                        raise D365Error(f"{rlabel}: privilege {key!r} must be a list.")
-                    if not all(isinstance(item, str) for item in cast("list[Any]", row[key])):
-                        raise D365Error(f"{rlabel}: privilege {key!r} items must be strings.")
-            if not (row.get("access") or row.get("privilege_names")):
-                raise D365Error(
-                    f"{rlabel}: each privilege row needs 'access' (with 'entities' or "
-                    "'all_entities') or 'privilege_names'.")
+        REGISTRY["security-role"].validate(role)
     for plugin in _as_list(sp.get("plugins")):
         _require(plugin, ("file",), "plug-in")
         if not isinstance(plugin["file"], str):
@@ -1007,13 +955,201 @@ def _reconcile_via_adapter(
     _reconcile(entry, thunk, failed, routes)
 
 
+# ── optionset / web resource / security role adapter functions ───────────────
+# The find_live / reconcile / extra_validate slots for the three kinds migrated in
+# #646 (PRD slice 2/3). Defined above REGISTRY so the dict literal can reference
+# them; the helpers they call at run time (_webresource_content,
+# _desired_role_privileges, _privilege_diff) live further down, unchanged.
+def _find_live_optionset(
+    backend: D365Backend, os_spec: dict[str, Any], ctx: ReconcileCtx,
+) -> dict[str, Any]:
+    """Read the live global option set this block reconciles against."""
+    return os_mod.get_optionset(backend, os_spec["name"])
+
+
+def _validate_optionset_block(os_spec: dict[str, Any]) -> None:
+    """A non-empty, well-shaped options list (create_optionset's own option rules)."""
+    _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
+    for opt in cast("list[Any]", os_spec.get("options") or []):
+        _validate_option(opt, f"optionset {os_spec['name']!r}")
+
+
+def _reconcile_optionset(
+    backend: D365Backend, os_spec: dict[str, Any], live: dict[str, Any],
+    ctx: ReconcileCtx, entry: Entry,
+) -> _Verdict:
+    """Diff an existing global option set; insert spec-declared options it lacks.
+
+    Only options with an explicit value are reconciled — an auto-valued option
+    (value omitted) cannot be matched against the live set, so re-applying it would
+    insert a duplicate on every run; those are left to the create path. There is no
+    destructive divergence for option sets, so this never blocks.
+    """
+    live_options = cast("list[dict[str, Any]]", live.get("Options") or [])
+    live_values = {o.get("Value") for o in live_options if isinstance(o.get("Value"), int)}
+    inserts: list[tuple[int | None, str]] = [
+        (o["value"], o["label"]) for o in _as_list(os_spec.get("options"))
+        if isinstance(o.get("value"), int) and o["value"] not in live_values
+    ]
+    if not inserts:
+        return "skipped", entry
+    out = os_mod.update_optionset(
+        backend, os_spec["name"], insert=inserts, solution=ctx.solution)
+    return "updated", _with_diff(entry, out)
+
+
+def _find_live_webresource(
+    backend: D365Backend, wr: dict[str, Any], ctx: ReconcileCtx,
+) -> dict[str, Any] | None:
+    """Read the live web resource by name, or None when it must be created."""
+    return wr_mod.find_webresource(backend, wr["name"])
+
+
+def _validate_webresource_block(wr: dict[str, Any]) -> None:
+    """Body source (a `file` xor inline `content`), string-typed fields, and a
+    resolvable web-resource type — the up-front rules create_webresource assumes."""
+    # A web resource's body comes from either a `file` on disk or an inline
+    # base64 `content` string (export-spec emits the latter so the spec is
+    # self-contained). Exactly one source is needed.
+    if wr.get("file") is None and wr.get("content") is None:
+        raise D365Error(
+            f"web resource {wr.get('name')!r}: needs 'file' or inline 'content'.")
+    # name/file/display_name/content reach os.path.join + base64 + the Web API
+    # as strings; a non-string (e.g. an unquoted YAML number) must fail here with
+    # a clean D365Error, not blow up later inside os.path.join / base64.
+    for key in ("name", "file", "display_name", "content"):
+        if wr.get(key) is not None and not isinstance(wr[key], str):
+            raise D365Error(f"web resource {wr.get('name')!r}: {key} must be a string.")
+    if wr.get("webresourcetype") is not None and not isinstance(wr["webresourcetype"], int):
+        raise D365Error(
+            f"web resource {wr['name']!r}: webresourcetype must be an integer.")
+    # Fail fast (before any HTTP) on a type that can't be resolved. With a `file`,
+    # an unknown extension and no explicit type is the error; with inline
+    # `content` there is no extension to infer from, so webresourcetype is
+    # required outright.
+    if wr.get("file") is not None:
+        wr_mod.resolve_webresourcetype(wr["file"], wr.get("webresourcetype"))
+    elif wr.get("webresourcetype") is None:
+        raise D365Error(
+            f"web resource {wr['name']!r}: webresourcetype is required when the "
+            "body is inline 'content' (no file extension to infer the type from).")
+
+
+def _reconcile_webresource(
+    backend: D365Backend, wr: dict[str, Any], live: dict[str, Any],
+    ctx: ReconcileCtx, entry: Entry,
+) -> _Verdict:
+    """Diff an existing web resource against the spec; update content/display or skip.
+
+    The spec's body bytes — read here from the block + ``ctx.base_dir`` — are
+    base64-compared against the live `content` column; a declared `display_name`
+    is compared too. There is no destructive divergence for a web resource, so this
+    never blocks. The update defers publishing (publish=False) — apply publishes
+    once at the end.
+    """
+    content = _webresource_content(ctx.base_dir, wr)
+    desired_b64 = base64.b64encode(content).decode("ascii")
+    changes: dict[str, Any] = {}
+    if live.get("content") != desired_b64:
+        changes["content"] = content
+    desired_display = wr.get("display_name")
+    if desired_display is not None and desired_display != live.get("displayname"):
+        changes["display_name"] = desired_display
+    if not changes:
+        return "skipped", entry
+    wr_mod.update_webresource(
+        backend, wr["name"], content=changes.get("content"),
+        display_name=changes.get("display_name"), solution=ctx.solution, publish=False)
+    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
+
+
+def _find_live_security_role(
+    backend: D365Backend, role_spec: dict[str, Any], ctx: ReconcileCtx,
+) -> str | None:
+    """The existing role's id (scoped to its business unit), or None to create."""
+    return sec_mod.find_role(
+        backend, role_spec["name"], business_unit=role_spec.get("business_unit"))
+
+
+def _validate_security_role_block(role: dict[str, Any]) -> None:
+    """String-typed name / business_unit and the privilege-matrix shape (≥1 row,
+    each row a well-formed set-role-privileges selector group)."""
+    rlabel = f"security role {role['name']!r}"
+    if not isinstance(role["name"], str):
+        raise D365Error("security role: name must be a string.")
+    if role.get("business_unit") is not None and not isinstance(role["business_unit"], str):
+        raise D365Error(f"{rlabel}: business_unit must be a string (GUID).")
+    _require_list(role, "privileges", rlabel)
+    # A role with no declared privileges would send an empty ReplacePrivilegesRole,
+    # wiping the role's removable privileges — almost certainly a spec mistake.
+    if not _as_list(role.get("privileges")):
+        raise D365Error(f"{rlabel}: at least one privilege row is required.")
+    for row in _as_list(role.get("privileges")):
+        _require(row, ("depth",), f"{rlabel} privilege")
+        if not isinstance(row["depth"], str):
+            raise D365Error(f"{rlabel}: privilege depth must be a string.")
+        # The selectors are passed straight to set-role-privileges, which expects
+        # lists of strings (each item is later .strip()/.lower()'d); validate the
+        # shape up front so a malformed spec fails with a clean D365Error here
+        # rather than an AttributeError mid-apply.
+        for key in ("access", "entities", "privilege_names"):
+            if key in row:
+                if not isinstance(row[key], list):
+                    raise D365Error(f"{rlabel}: privilege {key!r} must be a list.")
+                if not all(isinstance(item, str) for item in cast("list[Any]", row[key])):
+                    raise D365Error(f"{rlabel}: privilege {key!r} items must be strings.")
+        if not (row.get("access") or row.get("privilege_names")):
+            raise D365Error(
+                f"{rlabel}: each privilege row needs 'access' (with 'entities' or "
+                "'all_entities') or 'privilege_names'.")
+
+
+def _reconcile_security_role(
+    backend: D365Backend, role_spec: dict[str, Any], role_id: str,
+    ctx: ReconcileCtx, entry: Entry,
+) -> _Verdict:
+    """Reconcile an existing role's privileges to the declared set.
+
+    ``role_id`` is the ``find_live`` slot's value (the live role id). The role's
+    live privileges (RetrieveRolePrivilegesRole) are compared to the declared
+    matrix by (privilege id -> depth). When every declared privilege is already
+    present at its declared depth it is a no-op; otherwise ReplacePrivilegesRole
+    sets the role to the declared set — authoritative within the declared role, so
+    unlisted *removable* privileges are dropped (distinct from `--prune`, which is
+    about whole components). There is no destructive divergence, so this never
+    blocks; the replace write is suppressed under dry-run (reads-execute rule), so
+    the same path yields a drift report.
+
+    Convergence note: Dataverse auto-grants every role a small set of immovable
+    baseline privileges (e.g. SharePoint document management) that
+    ReplacePrivilegesRole cannot remove (verified live). A strict set-equality check
+    would therefore never converge — it would re-report the role as drifted every
+    run. So the skip test is "are all declared privileges present at the declared
+    depth?" (a satisfied lower bound), not "is the live set exactly the declared
+    set?". A re-applied unchanged spec is a true no-op.
+
+    Consequence: a removal-only spec change — dropping a privilege while every
+    remaining declared privilege is still satisfied at its depth — does NOT
+    reconcile (the skip test passes). Unlisted privileges are dropped only when the
+    replace fires because some declared privilege is missing or at the wrong depth.
+    """
+    desired, _ = _desired_role_privileges(backend, role_spec)
+    live = sec_mod.get_role_privileges(backend, role_id)
+    live_map = {p["privilegeid"]: p["depth"] for p in live}
+    if all(live_map.get(p["privilegeid"]) == p["depth"] for p in desired):
+        return "skipped", entry
+    diff = _privilege_diff(live, desired)
+    sec_mod.replace_role_privileges(backend, role_id, desired)
+    return "updated", {**entry, "diff": diff}
+
+
 # One component-kind adapter per migrated kind — the complete authority for its
 # kind (validate / to_kwargs / find_live / reconcile). The entity subtree (entity,
-# attribute, relationship, view) is fully migrated. The remaining kinds still on a
-# mixed driver — optionset, webresource, security role, and the compound plugin
-# (assembly + step) — migrate in the next PRD slices; publisher and solution stay
-# out of the registry permanently (they are the target preamble, not reconciled
-# components).
+# attribute, relationship, view) plus optionset, web resource, and security role
+# are fully migrated. The only kind still on the mixed driver is the compound
+# plug-in (assembly + step), which migrates in the final PRD slice; publisher and
+# solution stay out of the registry permanently (they are the target preamble, not
+# reconciled components).
 REGISTRY: dict[str, Adapter] = {
     "attribute": Adapter(
         map={
@@ -1145,30 +1281,59 @@ REGISTRY: dict[str, Adapter] = {
         find_live=_find_live_view,
         reconcile=_reconcile_view,
     ),
+    "optionset": Adapter(
+        map={
+            "name": "name",
+            "display_name": "display_name",
+            "description": "description",
+        },
+        transforms={
+            "options": lambda b: (
+                [(o.get("value"), o["label"]) for o in _as_list(b.get("options"))] or None
+            ),
+        },
+        injected=frozenset({"backend", "is_global", "publish", "solution", "if_exists"}),
+        defaults={},
+        schema_name_keys=("name",),
+        required_block_keys=("name", "display_name"),
+        block_label="optionset",
+        extra_validate=_validate_optionset_block,
+        find_live=_find_live_optionset,
+        reconcile=_reconcile_optionset,
+    ),
+    "webresource": Adapter(
+        map={
+            "name": "name",
+            "display_name": "display_name",
+        },
+        transforms={},
+        # content (read from file/base64 against base_dir) and webresourcetype
+        # (resolved from the extension or an override) are computed by the driver
+        # and passed in, so both are injected rather than mapped/transformed.
+        injected=frozenset(
+            {"backend", "content", "webresourcetype", "solution", "publish"}),
+        defaults={},
+        required_block_keys=("name",),
+        block_label="web resource",
+        extra_validate=_validate_webresource_block,
+        find_live=_find_live_webresource,
+        reconcile=_reconcile_webresource,
+    ),
+    "security-role": Adapter(
+        map={
+            "name": "name",
+            "business_unit": "business_unit",
+        },
+        transforms={},
+        injected=frozenset({"backend", "if_exists", "solution"}),
+        defaults={},
+        required_block_keys=("name",),
+        block_label="security role",
+        extra_validate=_validate_security_role_block,
+        find_live=_find_live_security_role,
+        reconcile=_reconcile_security_role,
+    ),
 }
-
-
-def _reconcile_optionset(
-    backend: D365Backend, os_spec: dict[str, Any], solution: str | None, entry: Entry,
-) -> _Verdict:
-    """Diff an existing global option set; insert spec-declared options it lacks.
-
-    Only options with an explicit value are reconciled — an auto-valued option
-    (value omitted) cannot be matched against the live set, so re-applying it would
-    insert a duplicate on every run; those are left to the create path. There is no
-    destructive divergence for option sets, so this never blocks.
-    """
-    live = os_mod.get_optionset(backend, os_spec["name"])
-    live_options = cast("list[dict[str, Any]]", live.get("Options") or [])
-    live_values = {o.get("Value") for o in live_options if isinstance(o.get("Value"), int)}
-    inserts: list[tuple[int | None, str]] = [
-        (o["value"], o["label"]) for o in _as_list(os_spec.get("options"))
-        if isinstance(o.get("value"), int) and o["value"] not in live_values
-    ]
-    if not inserts:
-        return "skipped", entry
-    out = os_mod.update_optionset(backend, os_spec["name"], insert=inserts, solution=solution)
-    return "updated", _with_diff(entry, out)
 
 
 def _read_file_bytes(base_dir: str | None, file: str) -> bytes:
@@ -1203,32 +1368,6 @@ def _webresource_content(base_dir: str | None, wr: dict[str, Any]) -> bytes:
                 f"web resource {wr['name']!r}: content is not valid base64: {exc}"
             ) from exc
     return _read_file_bytes(base_dir, wr["file"])
-
-
-def _reconcile_webresource(
-    backend: D365Backend, wr: dict[str, Any], content: bytes, live: dict[str, Any],
-    solution: str | None, entry: Entry,
-) -> _Verdict:
-    """Diff an existing web resource against the spec; update content/display or skip.
-
-    The spec's file bytes are base64-compared against the live `content` column;
-    a declared `display_name` is compared too. There is no destructive divergence
-    for a web resource, so this never blocks. The update defers publishing
-    (publish=False) — apply publishes once at the end.
-    """
-    desired_b64 = base64.b64encode(content).decode("ascii")
-    changes: dict[str, Any] = {}
-    if live.get("content") != desired_b64:
-        changes["content"] = content
-    desired_display = wr.get("display_name")
-    if desired_display is not None and desired_display != live.get("displayname"):
-        changes["display_name"] = desired_display
-    if not changes:
-        return "skipped", entry
-    wr_mod.update_webresource(
-        backend, wr["name"], content=changes.get("content"),
-        display_name=changes.get("display_name"), solution=solution, publish=False)
-    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
 
 
 def _desired_role_privileges(
@@ -1267,43 +1406,6 @@ def _privilege_diff(
     changed = [f"{d['name']}: {lmap[pid]['depth']} -> {d['depth']}"
                for pid, d in dmap.items() if pid in lmap and lmap[pid]["depth"] != d["depth"]]
     return {"added": sorted(added), "removed": sorted(removed), "changed": sorted(changed)}
-
-
-def _reconcile_security_role(
-    backend: D365Backend, role_spec: dict[str, Any], role_id: str, entry: Entry,
-) -> _Verdict:
-    """Reconcile an existing role's privileges to the declared set.
-
-    The role's live privileges (RetrieveRolePrivilegesRole) are compared to the
-    declared matrix by (privilege id -> depth). When every declared privilege is
-    already present at its declared depth it is a no-op; otherwise
-    ReplacePrivilegesRole sets the role to the declared set — authoritative within
-    the declared role, so unlisted *removable* privileges are dropped (distinct
-    from `--prune`, which is about whole components). There is no destructive
-    divergence, so this never blocks; the replace write is suppressed under dry-run
-    (reads-execute rule), so the same path yields a drift report.
-
-    Convergence note: Dataverse auto-grants every role a small set of immovable
-    baseline privileges (e.g. SharePoint document management) that
-    ReplacePrivilegesRole cannot remove (verified live). A strict set-equality check
-    would therefore never converge — it would re-report the role as drifted every
-    run. So the skip test is "are all declared privileges present at the declared
-    depth?" (a satisfied lower bound), not "is the live set exactly the declared
-    set?". A re-applied unchanged spec is a true no-op.
-
-    Consequence: a removal-only spec change — dropping a privilege while every
-    remaining declared privilege is still satisfied at its depth — does NOT
-    reconcile (the skip test passes). Unlisted privileges are dropped only when the
-    replace fires because some declared privilege is missing or at the wrong depth.
-    """
-    desired, _ = _desired_role_privileges(backend, role_spec)
-    live = sec_mod.get_role_privileges(backend, role_id)
-    live_map = {p["privilegeid"]: p["depth"] for p in live}
-    if all(live_map.get(p["privilegeid"]) == p["depth"] for p in desired):
-        return "skipped", entry
-    diff = _privilege_diff(live, desired)
-    sec_mod.replace_role_privileges(backend, role_id, desired)
-    return "updated", {**entry, "diff": diff}
 
 
 # Kinds whose create/update needs no PublishAllXml: security roles are not
@@ -1752,13 +1854,10 @@ def apply_spec(
         # the solution-component phase below (they already carry the solution header).
         os_created: set[str] = set()
         for os_spec in _as_list(spec.get("optionsets")):
-            options = [(o.get("value"), o["label"]) for o in _as_list(os_spec.get("options"))]
             entry = {"kind": "optionset", "name": os_spec["name"]}
-            result = _call(entry, lambda os_spec=os_spec, options=options: os_mod.create_optionset(
+            result = _call(entry, lambda os_spec=os_spec: os_mod.create_optionset(
                 backend,
-                name=os_spec["name"],
-                display_name=os_spec["display_name"],
-                options=options or None,
+                **REGISTRY["optionset"].to_kwargs(os_spec),
                 is_global=True,
                 solution=solution_name,
                 if_exists="skip",
@@ -1766,9 +1865,9 @@ def apply_spec(
             if _present(result):
                 # Pre-existing: reconcile (insert missing options). Left out of
                 # os_created so the solution-component phase still ensures membership.
-                _reconcile(entry, lambda os_spec=os_spec, entry=entry:
-                           _reconcile_optionset(backend, os_spec, solution_name, entry),
-                           failed, routes)
+                ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
+                _reconcile_via_adapter(REGISTRY["optionset"], backend, os_spec, ctx,
+                                       entry, routes, failed)
                 continue
             bucket = _classify(result, entry, applied, skipped, planned)
             if bucket == "planned":
@@ -1902,32 +2001,34 @@ def apply_spec(
                 else:
                     _classify(result, entry, applied, skipped, planned)
 
-        # Phase: web resources. No if_exists on the core, so probe existence
-        # directly (forced-real, dry-run safe); created/updated with publish
-        # deferred — the end-of-run PublishAllXml publishes them once.
+        # Phase: web resources. No if_exists on the core, so the adapter's find_live
+        # probes existence directly (forced-real, dry-run safe): absent ⇒ create,
+        # present ⇒ reconcile the already-probed live (a single read — unlike the
+        # if_exists='skip' kinds, whose create probes and reconcile re-reads). Create
+        # and update defer publishing — the end-of-run PublishAllXml publishes once.
         for wr in _as_list(spec.get("webresources")):
             name: str = wr["name"]
             entry = {"kind": "webresource", "name": name}
-            content = _call(entry, lambda wr=wr: _webresource_content(base_dir, wr),
-                            failed)
-            live_wr = wr_mod.find_webresource(backend, name)
+            ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
+            live_wr = _call(entry, lambda wr=wr, ctx=ctx:
+                            _find_live_webresource(backend, wr, ctx), failed)
             if live_wr is None:
-                result = _call(entry, lambda wr=wr, name=name, content=content:
+                content = _call(entry, lambda wr=wr: _webresource_content(base_dir, wr),
+                                failed)
+                result = _call(entry, lambda wr=wr, content=content:
                                wr_mod.create_webresource(
                                    backend,
-                                   name=name,
+                                   **REGISTRY["webresource"].to_kwargs(wr),
                                    content=content,
                                    webresourcetype=wr_mod.resolve_webresourcetype(
                                        wr.get("file") or "", wr.get("webresourcetype")),
-                                   display_name=wr.get("display_name"),
                                    solution=solution_name,
                                    publish=False,
                                ), failed)
                 _classify(result, entry, applied, skipped, planned)
             else:
-                _reconcile(entry, lambda wr=wr, content=content, live_wr=live_wr, entry=entry:
-                           _reconcile_webresource(backend, wr, content, live_wr,
-                                                  solution_name, entry),
+                _reconcile(entry, lambda wr=wr, live_wr=live_wr, ctx=ctx, entry=entry:
+                           _reconcile_webresource(backend, wr, live_wr, ctx, entry),
                            failed, routes)
 
         # Phase: security roles. Create (if_exists=skip) then reconcile privileges
@@ -1938,30 +2039,39 @@ def apply_spec(
         # end-of-run publish.
         for role_spec in _as_list(spec.get("security_roles")):
             entry = {"kind": "security-role", "name": role_spec["name"]}
+            ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
+            # Uniform probe→create/reconcile: find_live reads the live role id.
+            # Present ⇒ reconcile its privileges to the declared set; absent ⇒ create
+            # the role (create_role only seeds it — it has no reconcile of its own)
+            # and apply the declared set. The probe is a read, so it runs under
+            # dry-run too; a greenfield role is then reported planned.
+            role_id = _call(entry, lambda role_spec=role_spec, ctx=ctx:
+                            _find_live_security_role(backend, role_spec, ctx), failed)
+            if role_id is not None:
+                _reconcile(entry, lambda role_spec=role_spec, role_id=role_id, ctx=ctx,
+                           entry=entry: _reconcile_security_role(
+                               backend, role_spec, role_id, ctx, entry),
+                           failed, routes)
+                continue
+            if backend.dry_run:
+                planned.append(entry)  # greenfield: role + privileges would be created
+                continue
+            # Freshly created: create_role seeds the role (if_exists='skip' still
+            # guards a create race), then ReplacePrivilegesRole drops the removable
+            # default privileges and applies the declared ones; the platform's
+            # immovable baseline (see _reconcile_security_role) stays.
             result = _call(entry, lambda role_spec=role_spec: sec_mod.create_role(
                 backend,
-                role_spec["name"],
-                business_unit=role_spec.get("business_unit"),
+                **REGISTRY["security-role"].to_kwargs(role_spec),
                 if_exists="skip",
                 solution=solution_name,
             ), failed)
-            if result.get("_dry_run"):
-                planned.append(entry)  # greenfield: role + privileges would be created
-                continue
-            role_id: str = result["roleid"]
-            if result.get("existed"):
-                _reconcile(entry, lambda role_spec=role_spec, role_id=role_id, entry=entry:
-                           _reconcile_security_role(backend, role_spec, role_id, entry),
-                           failed, routes)
-            else:
-                # Freshly created: apply the declared set. ReplacePrivilegesRole drops
-                # the removable default privileges and applies the declared ones; the
-                # platform's immovable baseline (see _reconcile_security_role) stays.
-                desired = _call(entry, lambda role_spec=role_spec:
-                                _desired_role_privileges(backend, role_spec)[0], failed)
-                _call(entry, lambda role_id=role_id, desired=desired:
-                      sec_mod.replace_role_privileges(backend, role_id, desired), failed)
-                applied.append(entry)
+            role_id = result["roleid"]
+            desired = _call(entry, lambda role_spec=role_spec:
+                            _desired_role_privileges(backend, role_spec)[0], failed)
+            _call(entry, lambda role_id=role_id, desired=desired:
+                  sec_mod.replace_role_privileges(backend, role_id, desired), failed)
+            applied.append(entry)
 
         # Phase: plug-ins (assembly + types + steps + images). On-prem
         # extensibility is provisioned from the spec (#552); reuses the plugin
