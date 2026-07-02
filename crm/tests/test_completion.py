@@ -237,6 +237,47 @@ class TestEntryWiring:
         assert b"Register-ArgumentCompleter -Native -CommandName crm" in out
 
 
+class TestProfileShellComplete:
+    """Dynamic `--profile` value completion (issue #654): local file read only,
+    no network call — shell completion spawns a fresh `crm` process per Tab."""
+
+    def _complete(self, args, incomplete):
+        from click.shell_completion import ShellComplete
+        sc = ShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
+        return [item.value for item in sc.get_completions(args, incomplete)]
+
+    def _save_profile(self, name: str) -> None:
+        from crm.core.session import save_profile
+        from crm.utils.d365_backend import ConnectionProfile
+        save_profile(ConnectionProfile(
+            name=name, url=f"https://{name}.example.com",
+            domain="example", username="agent", auth_scheme="oauth",
+        ))
+
+    def test_completes_saved_profile_names(self):
+        self._save_profile("dev")
+        self._save_profile("prod")
+        assert sorted(self._complete(["--profile"], "")) == ["dev", "prod"]
+        assert self._complete(["--profile"], "pr") == ["prod"]
+
+    def test_no_profiles_yields_empty(self):
+        assert self._complete(["--profile"], "") == []
+
+    def test_powershell_complete_forwards_param_level_shell_complete(self, monkeypatch):
+        # Regression for issue #654 scope item 7: PowerShellComplete inherits
+        # ShellComplete.get_completions/shell_complete unchanged (only
+        # get_completion_args/format_completion are shell-specific), so a
+        # param-level shell_complete callback (e.g. --profile) already works —
+        # verified here rather than "fixed", since no override was needed.
+        from crm.commands.completion_registry import PowerShellComplete
+        self._save_profile("agent-cloud")
+        monkeypatch.setenv("COMP_WORDS", "crm --profile ")
+        monkeypatch.setenv("COMP_CWORD", "")
+        comp = PowerShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
+        out = comp.complete()
+        assert "\tagent-cloud\t" in out
+
+
 class TestMarker:
     def test_roundtrip(self):
         reg.write_marker("zsh", "/abs/crm.zsh", "1.2.3")

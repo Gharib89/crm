@@ -120,8 +120,109 @@ def complete_entity_token(
     return [n for n in names if n.startswith(prefix)]
 
 
-class _EntityCompleter(Completer):
-    """prompt_toolkit completer for entity-name slots."""
+def _tokens_and_prefix(line: str) -> tuple[list[str], str]:
+    """Split a REPL line into (completed tokens, in-progress prefix).
+
+    A trailing space means the cursor sits on a fresh empty token; otherwise
+    the last whitespace-separated token is the one being typed.
+    """
+    parts = line.split()
+    if line.endswith(" ") or not parts:
+        return parts, ""
+    return parts[:-1], parts[-1]
+
+
+def _resolve_command_chain(tokens: list[str]) -> click.Command | None:
+    """Resolve ``tokens`` as a chain of subcommand names from the root ``cli``
+    group. Returns the deepest resolved Group/Command only if every token was
+    consumed as a subcommand name; ``None`` if a token is flag-shaped, doesn't
+    resolve, or there's nothing left to descend into (imports the specific
+    command module for each resolved token, same cost as running it)."""
+    from crm.cli import cli
+    current: click.Command = cli
+    for tok in tokens:
+        if tok.startswith("-") or not isinstance(current, click.Group):
+            return None
+        ctx = click.Context(current)
+        nxt = current.get_command(ctx, tok)
+        if nxt is None:
+            return None
+        current = nxt
+    return current
+
+
+def _option_strings(cmd: click.Command) -> list[str]:
+    """All option flags (primary + ``--no-*`` secondary) declared on ``cmd``."""
+    opts: list[str] = []
+    for param in cmd.params:
+        if isinstance(param, click.Option):
+            opts.extend(param.opts)
+            opts.extend(param.secondary_opts)
+    return sorted(opts)
+
+
+def _choice_values(cmd: click.Command, opt_token: str) -> list[str] | None:
+    """Choice values for the option named ``opt_token`` on ``cmd``, or ``None``
+    if ``opt_token`` isn't a recognized Choice-typed option of ``cmd``."""
+    for param in cmd.params:
+        if isinstance(param, click.Option) and opt_token in (*param.opts, *param.secondary_opts):
+            if isinstance(param.type, click.Choice):
+                return list(param.type.choices)
+            return None
+    return None
+
+
+def complete_repl_line(
+    line: str,
+    logical_names: list[str],
+    set_names: list[str],
+    profile_names: list[str],
+) -> list[str] | None:
+    """Top-level REPL completion: command/group names, flags (incl. ``--no-*``
+    forms), Choice flag values, profile names after ``--profile``, and
+    (unchanged) entity names at their existing slots. ``None`` means nothing
+    applies at the cursor position.
+
+    ``--profile`` value-completion is deliberately position-blind (fires
+    whenever the previous token is literally ``--profile``, regardless of
+    what precedes it) — the REPL never validates the full Click option graph,
+    unlike OS-shell completion which is scoped to wherever the option is
+    actually declared.
+    """
+    completed, prefix = _tokens_and_prefix(line)
+    prev = completed[-1] if completed else None
+
+    if prev == "--profile":
+        return [p for p in profile_names if p.startswith(prefix)]
+
+    if prev is not None and prev.startswith("-"):
+        cmd = _resolve_command_chain(completed[:-1])
+        if cmd is None:
+            return None
+        choices = _choice_values(cmd, prev)
+        return [c for c in choices if c.startswith(prefix)] if choices is not None else None
+
+    if prefix.startswith("-"):
+        cmd = _resolve_command_chain(completed)
+        if cmd is None:
+            return None
+        return [o for o in _option_strings(cmd) if o.startswith(prefix)]
+
+    entity_matches = complete_entity_token(line, logical_names, set_names)
+    if entity_matches is not None:
+        return entity_matches
+
+    cmd = _resolve_command_chain(completed)
+    if cmd is not None and isinstance(cmd, click.Group):
+        ctx = click.Context(cmd)
+        return [n for n in cmd.list_commands(ctx) if n.startswith(prefix)]
+    return None
+
+
+class _ReplCompleter(Completer):
+    """prompt_toolkit completer for the REPL: command/group names, flags (incl.
+    ``--no-*`` forms), Choice flag values, profile names after ``--profile``,
+    and entity names at their existing slots (``complete_entity_token``)."""
 
     def __init__(self, backend_getter, cache: MetadataCache):
         self._get_backend = backend_getter
@@ -130,20 +231,23 @@ class _EntityCompleter(Completer):
     def get_completions(self, document, complete_event):
         line = document.text_before_cursor
         try:
+            profiles = session_mod.list_profiles()
+        except Exception:  # completion must never raise
+            profiles = []
+        try:
             backend = self._get_backend()
             logical = self._cache.logical_names(backend)
             sets = self._cache.set_names(backend)
         except Exception:  # completion must never raise
-            return
-        matches = complete_entity_token(line, logical, sets)
+            # Kept independent of the profile/command/flag paths above, none
+            # of which need a backend at all.
+            logical, sets = [], []
+        matches = complete_repl_line(line, logical, sets, profiles)
         if matches is None:
             return
-        if line.endswith(" "):
-            prefix_len = 0
-        else:
-            prefix_len = len(line.split()[-1]) if line.split() else 0
+        _, prefix = _tokens_and_prefix(line)
         for name in matches:
-            yield Completion(name, start_position=-prefix_len)
+            yield Completion(name, start_position=-len(prefix))
 
 
 @click.command("repl")
@@ -155,7 +259,7 @@ def repl(click_ctx: click.Context):
     ctx.skin.print_banner()
     ctx.skin.info(f"Session: {ctx.session_name}  |  Type 'help' for commands, 'quit' to exit.")
     cache = MetadataCache(use_cache=ctx.cache_metadata or ctx.refresh_metadata, refresh=ctx.refresh_metadata)
-    completer = _EntityCompleter(ctx.backend, cache)
+    completer = _ReplCompleter(ctx.backend, cache)
     pt_session = ctx.skin.create_prompt_session(completer=completer)
     state = session_mod.load_session(ctx.session_name)
 
