@@ -36,7 +36,12 @@ setup(
         "keyring>=24",
     ],
     extras_require={
-        "dev": ["pytest>=7.0", "requests_mock>=1.10", "pyinstaller>=6.0", "pyright>=1.1.380"],
+        # pyright is pinned EXACT, not floored: the pip wrapper's bundled node
+        # pyright tracks the package version, so an open `>=` floor let different
+        # machines install different binaries — a regressed 1.1.409 flagged
+        # phantom `reportUnknownMemberType` errors CI's 1.1.411 did not (#632).
+        # Keep this in lockstep with the version CI resolves; bump both together.
+        "dev": ["pytest>=7.0", "requests_mock>=1.10", "pyinstaller>=6.0", "pyright==1.1.411"],
         "kerberos": ["requests_negotiate_sspi"],
         # Back-compat no-op: keyring is now a core dependency (above). Kept so
         # any existing `crm[keyring]` install command still resolves.
