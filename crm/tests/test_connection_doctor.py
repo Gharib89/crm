@@ -493,6 +493,62 @@ def test_profile_url_invalid_port_fails_dns_tcp():
     assert result["ok"] is False
 
 
+# ── shared offline structural checks (#631) ──────────────────────────────────
+# url_structural_problem is the single validation the doctor's dns_tcp gate and
+# profile add's pre-save plausibility check both route through.
+
+
+class TestUrlStructuralProblem:
+    def test_valid_url_is_none(self):
+        assert conn.url_structural_problem("https://host.contoso.local/org") is None
+
+    def test_no_hostname_returns_detail_and_hint(self):
+        problem = conn.url_structural_problem("not-a-url")
+        assert problem is not None
+        detail, hint = problem
+        assert "no hostname" in detail
+        assert hint
+
+    def test_invalid_port_returns_detail_and_hint(self):
+        problem = conn.url_structural_problem("https://host:bad/org")
+        assert problem is not None
+        detail, hint = problem
+        assert "invalid port" in detail
+        assert hint
+
+
+class TestProfileStructuralProblem:
+    def _ntlm(self, url="https://host.contoso.local/org", username="u"):
+        return ConnectionProfile(name="t", url=url, domain="D", username=username)
+
+    def _oauth(self, tenant_id="tid", client_id: "str | None" = "cid"):
+        return ConnectionProfile(name="t", url="https://org.crm.dynamics.com",
+                                 domain="", username="", auth_scheme="oauth",
+                                 tenant_id=tenant_id, client_id=client_id)
+
+    def test_plausible_ntlm_is_none(self):
+        assert conn.profile_structural_problem(self._ntlm(), has_secret=True) is None
+
+    def test_plausible_oauth_is_none(self):
+        assert conn.profile_structural_problem(self._oauth(), has_secret=True) is None
+
+    def test_malformed_url_propagates(self):
+        problem = conn.profile_structural_problem(self._ntlm(url="not-a-url"), has_secret=True)
+        assert problem is not None and "no hostname" in problem
+
+    def test_ntlm_missing_username(self):
+        problem = conn.profile_structural_problem(self._ntlm(username=""), has_secret=True)
+        assert problem is not None and "username" in problem
+
+    def test_oauth_missing_client_id(self):
+        problem = conn.profile_structural_problem(self._oauth(client_id=None), has_secret=True)
+        assert problem is not None and ("client_id" in problem or "tenant_id" in problem)
+
+    def test_missing_secret(self):
+        problem = conn.profile_structural_problem(self._ntlm(), has_secret=False)
+        assert problem is not None and "secret" in problem
+
+
 # ── auth-handler D365Error (OAuth token acquisition) is non-fatal ──────────
 # An OAuth profile acquires its bearer token inside the requests auth handler
 # *during* the GET, which raises D365Error (not a requests exception) on a

@@ -172,7 +172,25 @@ class ConnectionProfile:
     async_poll_max: float = 30.0
     async_timeout: int = 1800
 
+    @staticmethod
+    def normalize_url(url: str) -> str:
+        """Strip surrounding whitespace and trailing slashes from a profile URL.
+
+        Whitespace pasted from a chat window or clipboard into ``--url`` survives
+        ``rstrip('/')`` (there is no slash to strip) and lands as a literal
+        ``%20`` inside the API path once concatenated into ``api_base`` — 404-ing
+        every request with no hint as to the cause (#631). Stripping here is the
+        single seam every entry point routes through: construction, ``from_dict``
+        (so an already-saved profile self-heals on load), and ``profile edit``.
+
+        The trailing ``.strip()`` matters: a space *before* the final slash
+        (``".../org /"``) would otherwise re-surface as trailing whitespace once
+        ``rstrip('/')`` removes the slash, reintroducing the ``%20`` bug.
+        """
+        return url.strip().rstrip("/").strip()
+
     def __post_init__(self) -> None:
+        self.url = self.normalize_url(self.url)
         validate_profile_name(self.name)
         if self.auth_scheme not in ("ntlm", "kerberos", "negotiate", "oauth"):
             raise D365Error(
@@ -206,7 +224,7 @@ class ConnectionProfile:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "url": self.url.rstrip("/"),
+            "url": self.url,  # normalized in __post_init__
             "domain": self.domain,
             "username": self.username,
             "api_version": self.api_version,
@@ -230,7 +248,7 @@ class ConnectionProfile:
     def from_dict(cls, d: dict[str, Any]) -> "ConnectionProfile":
         return cls(
             name=d["name"],
-            url=d["url"].rstrip("/"),
+            url=d["url"],  # normalized by __post_init__ → self-heals a stored URL
             domain=d.get("domain", ""),
             username=d["username"],
             api_version=d.get("api_version", "v9.2"),
@@ -253,7 +271,7 @@ class ConnectionProfile:
     @property
     def api_base(self) -> str:
         """Full Web API base URL, e.g. https://host/org/api/data/v9.2/."""
-        return f"{self.url.rstrip('/')}/api/data/{self.api_version}/"
+        return f"{self.url}/api/data/{self.api_version}/"  # url normalized in __post_init__
 
 
 # ── Read-only guardrail ─────────────────────────────────────────────────

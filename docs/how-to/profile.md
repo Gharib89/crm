@@ -21,13 +21,29 @@ crm profile add
 
 On a terminal, `add` with no flags runs an **interactive wizard**: it asks for the
 server URL, infers the auth scheme from it (`*.dynamics.*` → OAuth, anything else →
-NTLM), prompts for the identity fields and the secret, then saves the profile,
-stores the secret, runs a `WhoAmI` against the server to confirm it works, and
-activates it. Zero-to-working in one command. The secret prompt echoes `*` per
-keystroke — feedback that the typing registered, not a security control (it
-reveals the secret's length). Off a TTY (piped input, `--json`) nothing is
-prompted at all: pass the secret with `--password` / `--client-secret`, exactly
-as before.
+NTLM), prompts for the identity fields and the secret, then runs a `WhoAmI`
+against the server **before** saving anything. On success it saves the profile,
+stores the secret, and activates it — zero-to-working in one command, no extra
+prompts. The secret prompt echoes `*` per keystroke — feedback that the typing
+registered, not a security control (it reveals the secret's length). Off a TTY
+(piped input, `--json`) nothing is prompted at all: pass the secret with
+`--password` / `--client-secret`.
+
+If that live test fails, `add` doesn't just save blindly: a URL/identity that's
+structurally implausible (no hostname, missing tenant/client id, no secret) is
+rejected outright — nothing is saved. A structurally plausible profile whose test
+still failed (VPN down, server unreachable, app user not yet provisioned) gets a
+`Save the profile anyway?` prompt on a TTY; declining leaves nothing saved.
+Non-interactively (`--json` / no TTY / CI), pass `--save-on-test-failure` to save
+it anyway — otherwise the command errors without saving. When it does save this
+way, the command prints a warning that the connection was never verified (nothing
+is flagged on the stored profile itself).
+
+Leading/trailing whitespace in the URL — a stray space copied from chat or a
+clipboard into `--url` or the wizard — is stripped automatically (as is a trailing
+slash), so it no longer slips into the request path and breaks every call silently.
+The same trimming self-heals on load, so a profile already saved with a stray space
+is corrected the next time it is used. `profile edit --url` trims the same way.
 
 The first time you run any connection command with no profile configured, the CLI
 launches this wizard for you automatically (TTY only). Under `--json` or a

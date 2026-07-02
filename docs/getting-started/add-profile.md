@@ -10,8 +10,12 @@ crm profile add
 On a terminal, `add` with no flags runs an interactive wizard: it asks for the
 server URL, infers the auth scheme from it (`*.dynamics.*` → OAuth, anything else →
 NTLM), collects the identity fields (NTLM username/domain or OAuth tenant/client id)
-and the secret, then saves the profile, stores the secret, runs a `WhoAmI` to
-confirm, and activates it.
+and the secret, then runs a `WhoAmI` against the server **before** saving. On
+success it saves the profile, stores the secret, and activates it — no extra
+prompts. If the live test fails but the profile still looks structurally valid
+(likely a transient outage), it asks "Save the profile anyway?" before giving up;
+declining saves nothing. A clearly malformed profile (bad URL, missing
+tenant/client id, no secret) is rejected outright, live test or not.
 
 You don't even have to run it first: the **first time you run any connection command
 with no profile configured**, the CLI launches this wizard for you automatically (on
@@ -41,6 +45,10 @@ crm profile add \
     --password "$CLIENT_SECRET" \
     --name online
 ```
+
+Non-interactively (`--json`, CI, scripts), a failed-but-plausible live test errors
+without saving unless you pass `--save-on-test-failure` — for spinning up a profile
+before its target is reachable (VPN not yet up, app user not yet provisioned).
 
 See [Configure & switch](configure.md) for the full NTLM vs OAuth field reference and
 day-to-day profile management, and [how-to: profile](../how-to/profile.md) for every
