@@ -323,7 +323,14 @@ def retrieve_provisioned_languages(backend: "D365Backend") -> list[int]:
     if not isinstance(resp, dict) or "RetrieveProvisionedLanguages" not in resp:
         raise D365Error(
             "RetrieveProvisionedLanguages returned no RetrieveProvisionedLanguages list")
-    return [int(x) for x in resp["RetrieveProvisionedLanguages"]]
+    try:
+        return [int(x) for x in resp["RetrieveProvisionedLanguages"]]
+    except (TypeError, ValueError) as exc:
+        # A non-list / non-numeric payload must surface through the error contract
+        # (d365_errors catches only D365Error), not as a raw ValueError/TypeError.
+        raise D365Error(
+            f"RetrieveProvisionedLanguages returned a malformed language list: {exc}"
+        ) from exc
 
 
 # Button text attributes a `set-label` may write, in the order they are reported.
@@ -682,7 +689,14 @@ def load_solution_ribbon_diff(
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "export.zip"
         export_solution(backend, solution, src, export_customizations=True)
-        with zipfile.ZipFile(src) as z:
-            cust_root = ET.fromstring(z.read("customizations.xml"))
+        try:
+            with zipfile.ZipFile(src) as z:
+                cust_root = ET.fromstring(z.read("customizations.xml"))
+        except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
+            # Keep zip/parse failures behind the error seam rather than letting a
+            # corrupt export escape as an unhandled traceback (d365_errors catches
+            # only D365Error).
+            raise D365Error(
+                f"could not parse exported solution {solution!r}: {exc}") from exc
     node = find_entity_node(cust_root, entity)
     return get_or_create_ribbon_diff(node)

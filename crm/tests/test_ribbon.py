@@ -513,6 +513,16 @@ def test_retrieve_provisioned_languages_missing_key_raises(make_fake_backend, in
         ribbon.retrieve_provisioned_languages(be)  # type: ignore[arg-type]
 
 
+def test_retrieve_provisioned_languages_non_numeric_raises_d365error(
+        make_fake_backend, inject_backend):
+    # A non-numeric language id must surface through the D365Error contract, not as
+    # a raw ValueError that would bypass the CLI's d365_errors seam.
+    be = inject_backend(make_fake_backend(
+        responses={"get": {"RetrieveProvisionedLanguages": ["en-US"]}}))
+    with pytest.raises(D365Error, match="malformed language list"):
+        ribbon.retrieve_provisioned_languages(be)  # type: ignore[arg-type]
+
+
 # ── set_button_label ──────────────────────────────────────────────────────────
 
 
@@ -638,3 +648,26 @@ def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
             object(), solution="MySol", entity="cwx_ticket",  # type: ignore[arg-type]
             mutate=lambda r: None)
     assert imported == []  # never imported a failing package
+
+
+def test_load_solution_ribbon_diff_returns_diff(monkeypatch):
+    def fake_export(backend, name, output_path, **kw):
+        _make_solution_zip(output_path, CUST_XML)
+        return {"output": str(output_path)}
+
+    monkeypatch.setattr(ribbon, "export_solution", fake_export)
+    diff = ribbon.load_solution_ribbon_diff(object(), "MySol", "cwx_ticket")  # type: ignore[arg-type]
+    assert diff.tag == "RibbonDiffXml"
+    assert diff.find("CustomActions") is not None
+
+
+def test_load_solution_ribbon_diff_bad_zip_raises_d365error(monkeypatch):
+    # A corrupt export must surface through the D365Error contract, not as a raw
+    # zipfile/ElementTree traceback that bypasses the CLI's d365_errors seam.
+    def fake_export_bad(backend, name, output_path, **kw):
+        Path(output_path).write_text("this is not a zip archive")
+        return {"output": str(output_path)}
+
+    monkeypatch.setattr(ribbon, "export_solution", fake_export_bad)
+    with pytest.raises(D365Error, match="could not parse exported solution"):
+        ribbon.load_solution_ribbon_diff(object(), "MySol", "cwx_ticket")  # type: ignore[arg-type]
