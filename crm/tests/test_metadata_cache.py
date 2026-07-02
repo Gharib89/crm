@@ -10,6 +10,22 @@ _ENTITY_LIST = {"value": [
     {"LogicalName": "new_project", "EntitySetName": "new_projects"},
 ]}
 
+_OTHER_ORG_LIST = {"value": [
+    {"LogicalName": "widget", "EntitySetName": "widgets"},
+]}
+
+
+def _profile(name: str):
+    from crm.utils.d365_backend import ConnectionProfile
+    return ConnectionProfile(
+        name=name,
+        url=f"https://{name}.contoso.local/{name}",
+        domain="CONTOSO",
+        username="alice",
+        api_version="v9.2",
+        verify_ssl=False,
+    )
+
 
 class TestMetadataCache:
     def test_first_call_fetches_entity_names(self, make_fake_backend):
@@ -39,6 +55,28 @@ class TestMetadataCache:
         b = make_fake_backend(responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
         assert cache.entities(b) == ["account", "contact", "new_project"]
+
+    def test_profile_switch_reloads_entity_names(self, make_fake_backend):
+        """Switching the active profile mid-REPL must re-fetch: completion
+        candidates are org-specific, so a cached list from the previous profile
+        is wrong."""
+        a = make_fake_backend(profile=_profile("orga"), responses={"get": _ENTITY_LIST})
+        b = make_fake_backend(profile=_profile("orgb"), responses={"get": _OTHER_ORG_LIST})
+        cache = MetadataCache()
+        assert cache.logical_names(a) == ["account", "contact", "new_project"]
+        # Profile switched to orgb — completer must now serve orgb's entities.
+        assert cache.logical_names(b) == ["widget"]
+        assert cache.set_names(b) == ["widgets"]
+
+    def test_same_profile_still_cached_after_reload_support(self, make_fake_backend):
+        """Repeat calls on the SAME profile must not refetch (regression guard
+        that the profile-keying didn't defeat the session cache)."""
+        b = make_fake_backend(profile=_profile("orga"), responses={"get": _ENTITY_LIST})
+        cache = MetadataCache()
+        cache.logical_names(b)
+        cache.set_names(b)
+        cache.logical_names(b)
+        assert b.count() == 1
 
 
 class TestCompleteEntityToken:
