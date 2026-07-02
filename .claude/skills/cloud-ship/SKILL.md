@@ -1,11 +1,11 @@
 ---
 name: cloud-ship
 description: >-
-  Run one scheduled cloud-routine fire: bootstrap the sandbox, pick the oldest
-  open `ready-for-agent` issue, ship it to a merge-ready PR via the `ship` skill,
-  and STOP at the merge gate without merging. Composes `ship`. Use only when
-  running the scheduled cloud ship routine for Gharib89/crm (the routine prompt
-  invokes this skill by name); not for an interactive `/ship`.
+  Run one scheduled cloud-routine fire: pick the oldest open `ready-for-agent`
+  issue, drive it to a merge-ready PR, and STOP at the merge gate without merging.
+  Composes `ship`. Use only when running the scheduled cloud ship routine for
+  Gharib89/crm (the routine prompt invokes this skill by name); not for an
+  interactive `/ship`.
 ---
 
 # cloud-ship
@@ -22,10 +22,8 @@ merge-gate override**.
 There is **no in-session human** during a fire. That single fact drives the two
 things this skill exists to enforce on top of `ship`:
 
-- `ship`'s phase 9 is a merge gate that **waits for a human to type "merge."**
-  That instruction is written for an interactive CLI session. **You never reach a
-  human here.** Do not wait, do not poll, do not merge — when the PR is
-  merge-ready, post it and **end the fire** (step 5).
+- `ship`'s phase-9 merge gate waits for a human "merge" — a human you never
+  reach. The override is step 5.
 - A fire that can't finish must not strand the issue. Either `ship` reaches
   merge-ready (step 5) or you hand it to a human (step 4). Never leave it spinning.
 
@@ -68,6 +66,9 @@ git switch -c fix/<slug>-$NUM   # or feat/<slug>-$NUM
 
 Then **invoke the `ship` skill on issue $NUM**. While it runs:
 
+- **This branch in the sandbox clone IS `ship`'s phase-0 isolation** — don't
+  create a worktree inside it; treat phase 0 as satisfied (its pre-flight
+  already-in-flight check still applies).
 - **Pin `--profile agent-cloud` on every crm command** — this is a cloud
   Dataverse org **only**. An issue that can only be verified on-prem counts as
   **blocked** (step 4); never touch on-prem.
@@ -89,21 +90,23 @@ gh issue comment "$NUM" --repo Gharib89/crm --body "<one-line reason it is block
 ```
 
 **5 · End at the merge gate — do not merge.** On success `ship` reaches its merge
-gate and will try to **wait** for a human "merge." **Override it:** there is no
-in-session human. The moment the PR is merge-ready — CI green, Copilot review
-addressed within the ≤3-round ceiling, `mergeable` — **post the PR link + a
-disposition summary and END the fire.** Do not wait, poll, or merge. A human
-merges out of band later; the squash `Closes #$NUM` closes the issue then. **Leave
-the issue `agent-working`** — it carries the open PR, so later fires skip it until
-the merge closes it.
+gate and will try to **wait** for a human "merge." **Override it.** The moment the
+PR is merge-ready — CI green, Copilot review addressed within its round budget,
+`mergeable` — **post the PR link + a disposition summary and END the fire.** Do
+not wait, poll, or merge. A human merges out of band later; the squash
+`Closes #$NUM` closes the issue then. **Leave the issue `agent-working`** — it
+carries the open PR, so later fires skip it until the merge closes it.
 
 ## Cloud sandbox quirks
 
-- **Task tools may be absent — even via `ToolSearch`.** `ship`'s first action is
-  to create its phase task list. If `TaskCreate`/`TaskUpdate`/`TaskList` aren't
-  loaded, try `ToolSearch` (`select:TaskCreate,TaskUpdate,TaskList`) once; if that
-  returns nothing, track the phases in a **markdown checklist** instead and keep
-  going. The list is a progress / resume aid, **not a gate**.
+- **Task-list tools (`TaskCreate`/`TaskUpdate`/`TaskList`) are absent — even via
+  `ToolSearch`.** Go straight to `ship`'s markdown-checklist fallback for the
+  phase list; don't burn a search. The list is a progress / resume aid, **not a
+  gate**.
+- **Subagent tools are absent too.** `ship`'s delegation rule and model-tier
+  table are inert in a fire — run everything inline in the main thread (the
+  `review` skill's two axes included), and compensate by projecting every `gh` /
+  CLI call harder, since nothing can be offloaded.
 - **`gh` and `git push` hit GitHub directly** (the GitHub MCP connector is
   brokered separately). The claim state machine and `ship`'s PR/CI steps are all
   `gh`-native and depend on the env's allowed-domains + `GH_TOKEN` — assume `gh`
@@ -117,10 +120,3 @@ The operator's global coding philosophy does **not** live in the repo's own
 implements and hold it through the whole fire — `ship`, `tdd`, and the repo
 `CLAUDE.md` cover tests / gates / merge flow; this fills the judgment layer they
 assume.
-
-## Reference files
-
-- `reference/working-standards.md` — the operator's engineering standards
-  (reproduced here from their global `CLAUDE.md`, which the clone doesn't carry):
-  build the right thing, simplicity, surgical changes, root cause, comments,
-  concise PRs.
