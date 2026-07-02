@@ -1,8 +1,8 @@
 ---
 name: cloud-ship
 description: >-
-  Run one scheduled cloud-routine fire: pick the next `ready-for-agent` issue,
-  drive it to a merge-ready PR, and STOP at the merge gate without merging.
+  Run one scheduled cloud-routine fire: pick the oldest open `ready-for-agent`
+  issue, drive it to a merge-ready PR, and STOP at the merge gate without merging.
   Composes `ship`. Use only when running the scheduled cloud ship routine for
   Gharib89/crm (the routine prompt invokes this skill by name); not for an
   interactive `/ship`.
