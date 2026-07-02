@@ -19,11 +19,9 @@ conversation.
    actionable). Tell the subagent explicitly: poll in a bounded loop, return only
    when the review has landed (or the cap is hit), and report review state +
    comments + final check conclusions in one message.
-3. **Auto-triage every comment with the same triage as phase 4** (harden rather
-   than rip out capability, verify nits against the **pinned** versions, reject
-   documented non-issues, fix the valid ones, record a one-line disposition for the
-   merge summary) — run it on the **judgment tier**; the poll loop in step 2 stays
-   on the **cheap tier** (model-tier table in SKILL.md). Two phase-7 specifics:
+3. **Auto-triage every comment** — the canonical phase-4 definition in SKILL.md —
+   on the **judgment tier**; the poll loop in step 2 stays on the **cheap tier**
+   (model-tier table in SKILL.md). Two phase-7 specifics:
    - **Batch the fixes into one push per round** — each round costs review credits.
    - If the bot **re-raises** a known non-issue, confirm the project's
      known-non-issues note wasn't trimmed before re-arguing.
@@ -57,18 +55,12 @@ and nits, not new signal. Match the budget to the change:
 | Change | Round budget |
 |--------|--------------|
 | `docs`-class | **1** (hard cap — often zero actionable comments; clean read + green CI is the green light) |
-| **small** — passes the small-lane test (below) | **1** — round 1 (automatic) is the review gate; address it, then straight to the merge gate; don't re-request |
+| **small lane** (the three-key test in SKILL.md → *The lanes*) | **1** — round 1 (automatic) is the review gate; address it, then straight to the merge gate; don't re-request |
 | everything else (full lane) | **up to 3** |
 
-**"Small" is the small-lane test, not a vibe.** Spend the **1**-round budget only
-when a change passes *all three* keys of *The small lane* (SKILL.md): **no
-public-surface change**, **provable without a live call**, **single-concern**.
-Miss any one — or you're unsure — and it's **not** small: take the full **3**.
-(A bugfix still qualifies; small means narrow + locally provable + invisible to
-the documented surface, not zero-behavior — the full keys are in SKILL.md.) The
-budget is **revocable**: if a "small" PR turns out to touch public surface, or
-round 1 surfaces a real bug, it has downgraded to the full lane and its budget is
-now **3**.
+**"Small" is the three-key lane test, not a vibe.** Miss any key — or you're
+unsure — and it's **not** small: take the full **3**. The budget is **revocable**:
+a lane downgrade (reference/small-lane.md) restores the full **3**.
 
 When the budget is spent, **triage any remaining items and proceed** to CI + the
 merge gate — do not re-request.

@@ -1,12 +1,10 @@
 ---
 name: ship
 description: >-
-  Take a tracker issue all the way to a merge-ready PR in one run: isolate a
-  worktree, implement test-first, run integrated tests, self-review, open the PR,
-  drive the automated code review to a ceiling, gate on green CI, then stop at a
-  human merge gate. Composes the `tdd` and `review` skills. Use when the user
-  wants to ship an issue or take an issue through to a PR; also invoked by the
-  cloud ship routine.
+  Take a tracker issue to a merge-ready PR in one unattended run, stopping only
+  at a human merge gate. Composes the `tdd` and `review` skills. Use when the
+  user wants to ship an issue or take an issue through to a PR; also invoked by
+  the cloud ship routine.
 argument-hint: "[issue-number]"
 ---
 
@@ -80,52 +78,31 @@ on the strong tier burns budget for nothing. The `review` skill sets its own
 per-axis models (Standards = opus, Spec = sonnet). Fall back to the nearest
 available tier rather than running everything on one model.
 
-## The small lane
+## The lanes
 
-Most issues run the full pipeline. A genuinely **small** change runs a reduced
-spine — skip the ceremony that can't matter, keep the safety that always does.
+Every run is **full lane** until the change proves it's **small** — all three keys
+hold (assert at phase 2, announced like the class; when unsure, it's *not* small):
 
-**Small ⟺ all three hold** (assert at phase 2, announced like the class; when
-unsure, it's *not* small):
-
-1. **No public-surface change** — adds/removes/renames no command, flag, option, or
-   choice; changes no default, output format, or API/output contract.
+1. **No public-surface change.** The **public surface** is the documented,
+   user-visible contract: commands, flags, options, choices, defaults, output
+   formats, API/output shapes, documented behavior. A small change adds, removes,
+   renames, and changes none of it.
 2. **Provable without a live call** — a unit/regression test fully proves it; no
    need to hit the live target.
 3. **Single-concern** — no new dependency, no new logic branch beyond the fix itself.
 
 Behavior change is allowed — a bugfix *is* one. Small means narrow + locally
-provable + invisible to the documented surface, not zero-behavior.
-
-**What collapses.** Items 1–2 already make the docs-sync gate and the phase-3
-integrated test no-ops by construction (nothing user-visible changed; nothing live
-to test). On top of that, two explicit cuts:
-
-- **Skip phase 4 self-review *iff* the repo has an auto-review bot** — its automatic
-  round-1 (phase 7) is the review gate. No bot → keep the phase-4 self-review pass,
-  else the change gets no review. (Phase-4 docs-sync is a no-op here either way —
-  items 1–2 hold.)
-- **Local gate = the secret/security scan + the one regression test node** (run
-  that node locally for red→green proof). Lean on CI for the rest of the suite,
-  lint, and type-check — CI re-runs them, and a red CI on a small change is a cheap
-  round-trip.
-
-**The floor — never collapses, even for small:** the worktree (phase 0), **one
-regression test** proving any behavior change, the **local secret scan** (the repo
-may be public — a leaked cred is irreversible), the PR, CI, and the **merge gate**.
-
-**Revocable.** The lane is falsifiable: any later contradiction — CI red on
-behavior, the bot flags a real bug, the secret scan hits, or you find it touches
-public surface — **downgrades to the full lane** for the remaining phases (run the
-skipped integrated test / self-review, add the test). Downgrading once is cheap;
-shipping a non-small change as small is the failure.
+provable + invisible to the public surface, not zero-behavior. Small → read
+**[reference/small-lane.md](reference/small-lane.md)** — the reduced spine: what
+collapses, the floor that never does, when the lane revokes — before continuing.
 
 ## The pipeline
 
 Work the phases in order; keep the main thread on orchestration and decisions,
 delegating noisy work to subagents. **First**, read
-[reference/context-discipline.md](reference/context-discipline.md) — it covers how
-to keep this long run from bloating the window **and your required first action:
+[reference/context-discipline.md](reference/context-discipline.md) — it opens
+with the **delegation rule** (when a subagent earns its cost), covers how to keep
+this long run from bloating the window, **and names your required first action:
 creating the run's ten-item task list** (one per phase below). Don't start phase 0
 until that list exists.
 
@@ -160,28 +137,32 @@ there's no issue or no documented convention). Don't claim if you stopped on the
 ambiguity rail; if you claim then stop blocked, hand the issue back.
 
 **2 · Implement.** Classify the change as `docs` / `code` / `infra`, announce the
-class and the skip path it implies — **and whether it meets the small-lane
-checklist** (if so, announce that and take the reduced spine) — then implement
+class and the skip path it implies — **and whether it passes the three lane keys**
+(if so, announce that and follow
+[reference/small-lane.md](reference/small-lane.md)) — then implement
 test-first per class —
 **full detail (classes, TDD override, external-claim verification) in
 [reference/implement.md](reference/implement.md).** **Stay surgical** — implement
 only what the issue asks; every changed line should trace to it. An adjacent bug or
 cleanup you spot is **out of scope**: file a `needs-triage` issue for it and move
-on, don't fix it inline.
+on, don't fix it inline. If the core work itself balloons mid-flight — the diff
+outgrows what one PR can carry, or the fix demands a redesign the issue never
+scoped — **stop and report** with a split proposal instead of pushing through (the
+ambiguity rail applies mid-run too).
 
 **3 · Integrated test.** Live-test **only what you touched**, on the environment
 the bug was reported against — **detail in
-[reference/implement.md](reference/implement.md).** A `docs` change has nothing to
-integration-test — skip to the local gate.
+[reference/implement.md](reference/implement.md).** A `docs` change — or a
+**small-lane** one (key 2) — has nothing to integration-test; skip to the local
+gate.
 
 **4 · Sync docs, then self-review.** Sync docs **before** reviewing, so the review
 reads the docs edits as part of the diff (the whole point of this ordering: a review
 run on a docs-less diff never checks the docs).
 
-**Docs-sync (conditional) — do this first.** Fire **only if this change altered the
-documented surface or observable behavior** — added/removed/renamed a command,
-flag, option, or choice; changed a default, an output format, or an API/output
-contract; or changed a documented behavior. Then bring the project's documented
+**Docs-sync (conditional) — do this first.** Fire **only if this change altered
+the public surface** (*The lanes*, key 1) **or observable behavior**. Then bring
+the project's documented
 artifacts (README, `docs/`, any shipped skill, tests/coverage) back in line **per
 the project's docs-sync rules** — using the project's docs-sync subagent at the
 mechanical tier if it has one, else by hand — and fold the edits into this change.
@@ -191,7 +172,8 @@ changes, or pure comments; when you skip, say so in one line at the merge gate.
 
 **Self-review.** Invoke the `review` skill against the diff — now including the
 docs-sync edits — (it runs its two axes on their own tiers — opus for code, sonnet
-for spec). **Auto-triage** each finding: harden rather than rip out capability,
+for spec). **Auto-triage** each finding (this is the canonical definition — phase 7
+reuses it): harden rather than rip out capability,
 verify nits against the **pinned** dependency versions, reject known non-issues; fix
 the valid ones; record a one-line disposition per finding for the merge summary.
 
@@ -203,8 +185,8 @@ checks CI actually runs** (per project instructions) — not a fixed triad: test
 lint, type-check, docs build (which now covers the phase-4 docs-sync edits), **and
 any secret/security scan the repo gates on** (cheap to pre-empt locally, expensive
 to discover after the PR is open). If you can't run a check locally, at least
-*anticipate* it. **Small lane:** this gate is the secret scan + the proving test
-only (suite via CI) — see *The small lane*.
+*anticipate* it. **Small lane:** reduced gate per
+[reference/small-lane.md](reference/small-lane.md).
 
 **6 · Open PR.** Open a **ready** (non-draft) PR — drafts may not trigger the
 project's automated review. Title it as a Conventional-Commit subject derived from
@@ -222,12 +204,10 @@ convention.
 **7 · Review-bot loop.** **Only if the repo has an automated reviewer configured**
 (per project instructions — never an assumption). If not, skip: phase-4 self-review
 plus green CI is the review gate. Otherwise drive it to a ceiling — poll,
-auto-triage and fix valid comments (same auto-triage as phase 4, on the judgment tier),
-re-request later rounds via the project's mechanism, **3-round hard ceiling**.
-Scale to the change: a **small-lane** change (the three-key test in *The small
-lane*) needs **one** round, a `docs` change is capped at **one**, everything else
-is **up to 3**. Mechanics and traps:
-**[reference/copilot-loop.md](reference/copilot-loop.md).**
+auto-triage and fix valid comments (phase 4's auto-triage, on the judgment tier),
+re-request later rounds via the project's mechanism, **3-round hard ceiling**,
+budget scaled by class and lane. Mechanics, the budget table (canonical), and
+traps: **[reference/copilot-loop.md](reference/copilot-loop.md).**
 
 **8 · CI.** CI usually runs concurrently from PR-open, so phases 7 and 8 overlap.
 **First confirm the PR isn't conflicted with the base branch** — `gh pr view <n>
@@ -247,8 +227,10 @@ worktree. Summary format and merge mechanics:
 
 ## Reference files
 
-- `reference/context-discipline.md` — keeping the long run from bloating context;
-  the required first-action task list.
+- `reference/context-discipline.md` — the delegation rule; keeping the long run
+  from bloating context; the required first-action task list.
+- `reference/small-lane.md` — the reduced spine for small changes: what collapses,
+  the floor, revocation.
 - `reference/implement.md` — phases 1–3: spec precedence, change classification,
   external-claim verification, run-where-it-failed.
 - `reference/copilot-loop.md` — phase 7: poll mechanics, re-requesting rounds, the
