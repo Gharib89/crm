@@ -49,10 +49,18 @@ class TestPromptSecret:
     """`prompt_secret` masks with `*` via questionary.password (#655)."""
 
     def _stub(self, monkeypatch, value):
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         class _FakePw:
             def ask(self):
                 return value
         monkeypatch.setattr("questionary.password", lambda *a, **kw: _FakePw())
+
+    def test_non_tty_raises_runtime_error(self, monkeypatch):
+        # Like select_one, refuse non-TTY stdin itself so a caller that forgets
+        # to gate fails loudly rather than hitting a raw prompt_toolkit error.
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: False)
+        with pytest.raises(RuntimeError, match="no interactive terminal"):
+            prompt_secret("Password")
 
     def test_returns_entered_secret(self, monkeypatch):
         self._stub(monkeypatch, "hunter2")

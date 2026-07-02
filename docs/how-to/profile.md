@@ -25,7 +25,9 @@ NTLM), prompts for the identity fields and the secret, then saves the profile,
 stores the secret, runs a `WhoAmI` against the server to confirm it works, and
 activates it. Zero-to-working in one command. The secret prompt echoes `*` per
 keystroke — feedback that the typing registered, not a security control (it
-reveals the secret's length; piped/non-TTY input stays fully hidden as before).
+reveals the secret's length). Off a TTY (piped input, `--json`) nothing is
+prompted at all: pass the secret with `--password` / `--client-secret`, exactly
+as before.
 
 The first time you run any connection command with no profile configured, the CLI
 launches this wizard for you automatically (TTY only). Under `--json` or a

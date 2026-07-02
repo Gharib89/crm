@@ -103,8 +103,15 @@ def prompt_secret(prompt: str) -> str | None:
     (#655): asterisks reveal the secret's length — the industry norm (ssh/gh/aws)
     is no echo at all — chosen here for feedback, not as a security control.
 
-    Callers MUST gate this on a TTY (questionary needs one); the non-TTY paths
-    keep their existing fully-hidden getpass/click behavior. Like `select_one`,
-    questionary is imported lazily to stay off the `crm --version` fast path."""
+    Callers gate this on a TTY (the non-TTY paths keep their existing
+    fully-hidden getpass/click behavior); like `select_one`, it also refuses
+    non-TTY stdin itself with a clear ``RuntimeError`` so a caller that forgets
+    the guard fails loudly instead of hitting a raw prompt_toolkit error. Like
+    `select_one`, questionary is imported lazily to stay off the `crm --version`
+    fast path."""
+    if not _stdin_is_tty():
+        raise RuntimeError(
+            "prompt_secret: no interactive terminal — pass the secret explicitly instead"
+        )
     import questionary
     return questionary.password(prompt).ask() or None
