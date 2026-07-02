@@ -23,7 +23,9 @@ On a terminal, `add` with no flags runs an **interactive wizard**: it asks for t
 server URL, infers the auth scheme from it (`*.dynamics.*` → OAuth, anything else →
 NTLM), prompts for the identity fields and the secret, then saves the profile,
 stores the secret, runs a `WhoAmI` against the server to confirm it works, and
-activates it. Zero-to-working in one command.
+activates it. Zero-to-working in one command. The secret prompt echoes `*` per
+keystroke — feedback that the typing registered, not a security control (it
+reveals the secret's length; piped/non-TTY input stays fully hidden as before).
 
 The first time you run any connection command with no profile configured, the CLI
 launches this wizard for you automatically (TTY only). Under `--json` or a
@@ -91,19 +93,28 @@ where its secret lives (`cred=keyring`, `cred=plaintext`, or `cred=none`).
 ## Edit a profile's fields
 
 ```bash
+crm profile edit                # interactive picker (no argument)
 crm profile edit prod --publisher-prefix cwx
 crm profile edit online --url https://contoso.crm.dynamics.com --client-id <new-id>
 ```
 
 `edit` changes any non-secret field — URL, identity fields, api-version,
 publisher prefix. To change the secret, use `set-password` (below). An invalid
-`--publisher-prefix` is rejected the same way as on `add` (exit 2).
+`--publisher-prefix` is rejected the same way as on `add` (exit 2). Omitting
+`NAME` on a TTY shows the same arrow-key picker as `profile use`; under
+`--json` or with no TTY a missing `NAME` is still a usage error (exit 2).
 
 ## Rename a profile
 
 ```bash
+crm profile rename                  # interactive picker for OLD, then prompts for NEW
+crm profile rename old-name         # picker skipped; prompts for NEW
 crm profile rename old-name new-name
 ```
+
+Omitting `OLD` on a TTY shows the same arrow-key picker as `profile use`; a
+missing `NEW` is then prompted for. Under `--json` or with no TTY, either
+missing name is still a usage error (exit 2).
 
 All validation runs before anything on disk changes: `new-name` must be a
 valid profile name, `old-name` must exist, `new-name` must not already exist
@@ -126,12 +137,15 @@ re-running `add`, it carries the stored secret and cached metadata over.
 ## Delete a profile
 
 ```bash
+crm profile rm                      # interactive picker (no argument), then prompts for confirmation
 crm profile rm old-profile          # prompts for confirmation
 crm profile rm old-profile --yes    # skip the prompt
 ```
 
 Removes the profile and its stored secret. If it was the active profile, the active
-pointer is cleared.
+pointer is cleared. Omitting `NAME` on a TTY shows the same arrow-key picker as
+`profile use`; under `--json` or with no TTY a missing `NAME` is still a usage
+error (exit 2).
 
 ## Manage the stored secret
 
@@ -147,6 +161,8 @@ crm profile delete-password --profile prod
 ```
 
 `set-password` works the same for an NTLM password and an OAuth client secret.
+Its TTY prompt echoes `*` per keystroke, same as the `add` wizard's secret
+prompt above.
 
 ### Where the secret is stored
 
@@ -166,7 +182,8 @@ When a command needs the secret it checks, in order:
 
 1. `--password` on the command line (a per-run override)
 2. The stored secret — plaintext entry first, then the OS keyring
-3. An interactive TTY prompt (skipped in `--json` / non-interactive contexts)
+3. An interactive TTY prompt (skipped in `--json` / non-interactive contexts),
+   also echoing `*` per keystroke
 
 There is no environment-variable step — `.env`, `D365_*`, and `CRM_*` credential
 variables are not read. `CRM_HOME` is the only env var involved in
