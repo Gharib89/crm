@@ -5,8 +5,8 @@ reciprocal partners. Group: `connectionrole`. Flags/choices:
 `crm connectionrole --help`.
 
 ```bash
-crm --json connectionrole create --name "Stakeholder" --category stakeholder --solution cwx_crmworx
-crm --json connectionrole scope "Stakeholder" --entity account --solution cwx_crmworx
+crm --json connectionrole create --name "Stakeholder" --category stakeholder --solution ContosoCore
+crm --json connectionrole scope "Stakeholder" --entity account --solution ContosoCore
 crm --json connectionrole match "Stakeholder" "Vendor"
 ```
 
@@ -22,15 +22,11 @@ exact match; or pass the `connectionroleid` GUID directly.
 
 **No `--solution` on `match`.** The `connectionroleassociation_association`
 intersect table is not a solution component, so there is no solution-scoping
-header. This is the same precedent as `fieldsec assign`. `create` and `scope`
-**require** `--solution` (no profile default, no opt-out; `--solution Default`
-for a deliberate Default-Solution-only write) to land those components in an
-unmanaged solution.
+header — the same precedent as `fieldsec assign`. `create` and `scope` are
+solution-scoped (SKILL.md).
 
-**`--dry-run` on writes.** `create` and `scope` honor it (and still require
-`--solution`, validated before any backend call). `match` honors `--dry-run`
-(the previewed write returns `data._dry_run: true` with a `would_*` flag; name
-lookups still run live) but takes no `--solution`.
+**`--dry-run` on writes.** The previewed write returns `data._dry_run: true`
+with a `would_*` flag; name lookups still run live.
 
 ## JSON contract
 

@@ -42,7 +42,8 @@ Create/drop the key with `metadata create-key <entity>` /
 `delete-key` does not — see `reference/customization-lifecycle.md`). A freshly created key's index builds
 asynchronously (`index_status` `Pending`), and `entity upsert --key` /
 `data import --mode upsert --key` 404 against it until it reaches `Active` — poll
-`metadata keys` to confirm before upserting (see `reference/records.md`).
+`metadata keys` to confirm before upserting (see `reference/records.md` /
+`reference/bulk.md`).
 
 When `entity create` or `entity update` hits an alternate-key collision (HTTP 412,
 code `0x80060892`), the error envelope gains `meta.alternate_keys` showing each key,
@@ -159,17 +160,17 @@ definition, custom attributes (lookups recreated pointing at the same parent tab
 and reuses referenced global option sets by name. Forms, views, workflows, and charts
 are opt-in.
 
-`--solution` is required (no profile default, no opt-out).
+`clone-entity` is solution-scoped (`--solution` required).
 
 ```bash
 # skeleton only (entity + attributes + lookups + reused option sets)
-crm --json metadata clone-entity new_project cwx_TicketClone --display "Ticket Clone" --solution MySolution
+crm --json metadata clone-entity new_project contoso_TicketClone --display "Ticket Clone" --solution MySolution
 
 # everything cloneable over the API
-crm --json metadata clone-entity new_project cwx_TicketClone --with-all --solution MySolution
+crm --json metadata clone-entity new_project contoso_TicketClone --with-all --solution MySolution
 
 # opt-in flags
-crm --json metadata clone-entity new_project cwx_TicketClone \
+crm --json metadata clone-entity new_project contoso_TicketClone \
     --with-forms --with-views --with-workflows --with-charts --solution MySolution
 ```
 
@@ -193,16 +194,16 @@ model-driven app's form list to be visible.
 
 ```bash
 # What would block deleting an entity
-crm --json metadata dependencies cwx_ticket
+crm --json metadata dependencies contoso_ticket
 
 # What would block deleting a column (dotted entity.attribute)
-crm --json metadata dependencies cwx_ticket.cwx_priority --kind attribute
+crm --json metadata dependencies contoso_ticket.contoso_priority --kind attribute
 
 # What depends on a global option set
-crm --json metadata dependencies cwx_status --kind optionset --for dependents
+crm --json metadata dependencies contoso_status --kind optionset --for dependents
 
 # What components the target itself depends on (reverse direction)
-crm --json metadata dependencies cwx_ticket --kind entity --for required
+crm --json metadata dependencies contoso_ticket --kind entity --for required
 ```
 
 Returns `{can_delete, blockers[], metadata_id, component_type, kind, for}`; each
@@ -214,7 +215,7 @@ blocker carries `dependent_type`, `dependent_id`, `dependent_parent_id`,
 all three modes. Read-only. To fold dependency info into a delete result non-destructively:
 
 ```bash
-crm --json --dry-run metadata delete-attribute cwx_ticket cwx_priority --solution cwx_crmworx --yes --check-dependencies
+crm --json --dry-run metadata delete-attribute contoso_ticket contoso_priority --solution ContosoCore --yes --check-dependencies
 ```
 
 `--check-dependencies` is available on `delete-entity`, `delete-attribute`,

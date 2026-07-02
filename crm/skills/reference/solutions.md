@@ -7,26 +7,24 @@ Flags/choices: `crm solution --help`.
 ## Solution scaffolding — publisher + solution
 
 ```bash
-crm --json solution create-publisher --name crmworx --display CRMWorx \
-    --prefix cwx --option-value-prefix 30000 --if-exists skip
+crm --json solution create-publisher --name contosopub --display Contoso \
+    --prefix contoso --option-value-prefix 30000 --if-exists skip
 
-crm --json solution create --name CRMWorx --publisher crmworx --if-exists skip
+crm --json solution create --name ContosoCore --publisher contosopub --if-exists skip
 ```
 
 With a named profile active, `create-publisher` auto-wires `publisher_prefix` back into
 it (pass `--no-set-default` to opt out), which only sets the schema-name prefix used to
 derive column names. It does **not** set a target solution: every customization write
-(`metadata create-*`, `apply`, `webresource`, `form`, …) requires its own explicit
-`--solution <unique_name>` — there is no profile default and no opt-out (`--solution
-Default` for a deliberate Default-Solution-only write).
+stays solution-scoped (SKILL.md) and needs its own explicit `--solution <unique_name>`.
 
 Bump the version (or friendly name / description) of an **unmanaged** solution before
 exporting — at least one field is required, `--version` is validated as 4-part dotted
 numeric pre-HTTP, and managed solutions / patches are rejected client-side:
 
 ```bash
-crm --json solution set-version CRMWorx --version 1.0.1.0
-crm --json solution set-version CRMWorx --friendly-name "CRM Worx" --description "RC build"
+crm --json solution set-version ContosoCore --version 1.0.1.0
+crm --json solution set-version ContosoCore --friendly-name "Contoso Core" --description "RC build"
 ```
 
 Add or remove an existing component to/from an **unmanaged** solution
@@ -39,8 +37,8 @@ for anything else). Both refuse managed targets. `remove-component` is destructi
 you asked for — the server does not report them (the CLI emits a `meta.note` reminder):
 
 ```bash
-crm --json solution add-component --solution CRMWorx --type webresource --id <guid>
-crm --json solution remove-component --solution CRMWorx --type 61 --id <guid> --yes
+crm --json solution add-component --solution ContosoCore --type webresource --id <guid>
+crm --json solution remove-component --solution ContosoCore --type 61 --id <guid> --yes
 ```
 
 ## Export a solution
@@ -102,18 +100,18 @@ work on **both** on-prem v9.x and Dataverse online.
 
 ```bash
 # Small hotfix on top of a parent: clone a patch (version revision auto-bumps from the parent)
-crm --json solution clone-as-patch --solution CRMWorx
+crm --json solution clone-as-patch --solution ContosoCore
 # → {cloned, parent_solution, version, patch_solutionid}
 
 # Major upgrade: stage the new managed zip as a HOLDING solution (not yet live)…
-crm solution stage-and-upgrade /tmp/crmworx_2_0.zip --yes
+crm solution stage-and-upgrade /tmp/contoso_2_0.zip --yes
 # …then apply it (DeleteAndPromote replaces the base + its patches) — one-shot:
-crm solution stage-and-upgrade /tmp/crmworx_2_0.zip --promote --solution CRMWorx --yes
+crm solution stage-and-upgrade /tmp/contoso_2_0.zip --promote --solution ContosoCore --yes
 # …or promote a separately-staged holding solution later (after verifying it):
-crm solution apply-upgrade CRMWorx --yes
+crm solution apply-upgrade ContosoCore --yes
 
 # Remove a solution (managed base also removes its patches, server-side)
-crm solution uninstall --solution CRMWorx --yes
+crm solution uninstall --solution ContosoCore --yes
 ```
 
 **Workflow:** a holding import alone does **not** make the upgrade live — it stages
@@ -141,7 +139,7 @@ actions take a solution, not an entity) — to translate one entity, put it in a
 solution. Dual-target: on-prem v9.x and Dataverse online.
 
 ```bash
-crm --json translation export --solution CRMWorx -o labels.zip
+crm --json translation export --solution ContosoCore -o labels.zip
 # labels.zip = CrmTranslations.xml (Excel-openable spreadsheet) + [Content_Types].xml;
 # translator adds a column per language code (e.g. 1034) and fills it in
 
@@ -278,7 +276,7 @@ offline with `solution validate` and split the solution if it is genuinely too l
 ## Preview what blocks uninstalling a managed solution
 
 ```bash
-crm --json solution dependencies CRMWorx
+crm --json solution dependencies ContosoCore
 ```
 
 The solution-scoped counterpart to `metadata dependencies` (see
@@ -313,9 +311,9 @@ count; there is no `meta`.
   "ok": true,
   "data": {
     "solution": "MyCustomSolution",
-    "entities": ["cwx_Ticket", "cwx_Project"],
+    "entities": ["contoso_Ticket", "contoso_Project"],
     "attributes": 12,
-    "optionsets": ["cwx_priority"],
+    "optionsets": ["contoso_priority"],
     "security_roles": ["Contoso Project Manager"],
     "webresources": ["contoso_/scripts/project.js"],
     "skipped": [
@@ -358,11 +356,11 @@ Snapshot and compare solution contents for CI gates or agent branching:
 
 ```bash
 # Capture the expected inventory (normalized bare JSON list)
-crm --json solution components CRMWorx --save components.json
+crm --json solution components ContosoCore --save components.json
 # -> {"ok": true, "data": {"saved": "components.json", "count": 42}}
 
 # Compare live against the snapshot — exit 0 = matches, exit 1 = drift
-crm --json solution components CRMWorx --diff components.json
+crm --json solution components ContosoCore --diff components.json
 # on match:  {"ok": true,  "data": {"matches": true, "missing": [], "unexpected": []}, "meta": {"matches": true}}
 # on drift:  {"ok": false, "data": {"matches": false, "missing": [...], "unexpected": [...]},
 #             "error": "Drift detected: 1 missing, 0 unexpected component(s)."}

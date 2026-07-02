@@ -230,9 +230,6 @@ crm --dry-run --json scaffold table "Project" --solution ContosoCore --column "N
 crm --stage-only --json scaffold table "Project" --solution ContosoCore --column "Name:string" # no publish
 ```
 
-`--solution` is required (no profile default, no opt-out; `--solution Default` for a
-deliberate Default-Solution-only write).
-
 Emits the same `{applied, updated, skipped, replace_blocked, pruned, planned, failed}` envelope as `apply`.
 
 **Column shorthand:** `DISPLAY:KIND[:key=value,...]`.
@@ -264,12 +261,10 @@ profile's `publisher_prefix` (**required — a missing prefix is exit 2**).
 ## Views — `view create` (savedquery)
 
 ```bash
-crm --json view create cwx_ticket --name "Active Tickets" --otc 10127 \
-    --column "cwx_name:220" --column "cwx_priority:120" \
-    --filter-active --solution cwx_crmworx --if-exists skip
+crm --json view create contoso_ticket --name "Active Tickets" --otc 10127 \
+    --column "contoso_name:220" --column "contoso_priority:120" \
+    --filter-active --solution ContosoCore --if-exists skip
 ```
-
-`--solution` is required (no profile default, no opt-out).
 
 The LayoutXml `object` attribute is the entity **ObjectTypeCode (OTC)** — get it from
 `metadata entity <name>` (see `reference/metadata.md`). `--column` is repeatable
@@ -293,13 +288,13 @@ non-public view you create this way will not appear there — capture its
 
 ```bash
 crm --json view edit-columns account "All Accounts" \
-    --add telephone1:120 --remove fax --width name:200 --solution cwx_crmworx
+    --add telephone1:120 --remove fax --width name:200 --solution ContosoCore
 crm --json view edit-columns account "All Accounts" \
-    --reorder name,telephone1,emailaddress1 --solution cwx_crmworx
+    --reorder name,telephone1,emailaddress1 --solution ContosoCore
 ```
 
-`--solution` is required on every `view` editor verb (`edit-columns`, `set-order`,
-`add-filter`, `remove-filter`) — no profile default, no opt-out.
+Every `view` editor verb (`edit-columns`, `set-order`, `add-filter`,
+`remove-filter`) is solution-scoped.
 
 **Mismatch invariant.** `--add` writes both the layoutxml `<cell>` and the fetchxml
 `<attribute>` in one PATCH — a cell without a matching attribute leaves a column with
@@ -329,9 +324,9 @@ warning too; it's repeated here because it is the most common surprise.
 
 ```bash
 crm --json view set-order account "All Accounts" \
-    --order "name asc" --order "createdon desc" --solution cwx_crmworx
-crm --json view set-order account "All Accounts" --add-order "modifiedon desc" --solution cwx_crmworx
-crm --json view set-order account "All Accounts" --clear-order --solution cwx_crmworx
+    --order "name asc" --order "createdon desc" --solution ContosoCore
+crm --json view set-order account "All Accounts" --add-order "modifiedon desc" --solution ContosoCore
+crm --json view set-order account "All Accounts" --clear-order --solution ContosoCore
 ```
 
 Only the entity's direct `<order>` children are touched — `<filter>`, `<condition>`,
@@ -342,12 +337,12 @@ publish-then-read-back notes as `edit-columns`.
 ### Add FetchXML filter conditions — `view add-filter`
 
 ```bash
-crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "statecode eq 0" --solution cwx_crmworx
-crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_priority in 1 2 3" --condition "cwx_severity ne 3" --solution cwx_crmworx
-crm --json view add-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_resolvedon null" --solution cwx_crmworx
+crm --json view add-filter contoso_ticket "Active Tickets" \
+    --condition "statecode eq 0" --solution ContosoCore
+crm --json view add-filter contoso_ticket "Active Tickets" \
+    --condition "contoso_priority in 1 2 3" --condition "contoso_severity ne 3" --solution ContosoCore
+crm --json view add-filter contoso_ticket "Active Tickets" \
+    --condition "contoso_resolvedon null" --solution ContosoCore
 ```
 
 Conditions are appended to the entity-level `<filter>` (created if absent).
@@ -367,11 +362,11 @@ Same ambiguous-name, managed-layer, and publish-then-read-back notes as
 ### Remove FetchXML filter conditions — `view remove-filter`
 
 ```bash
-crm --json view remove-filter cwx_ticket "Active Tickets" \
-    --condition "statecode eq 0" --solution cwx_crmworx
+crm --json view remove-filter contoso_ticket "Active Tickets" \
+    --condition "statecode eq 0" --solution ContosoCore
 # disambiguate when attribute+operator match multiple conditions:
-crm --json view remove-filter cwx_ticket "Active Tickets" \
-    --condition "cwx_priority in 1 2 3" --solution cwx_crmworx
+crm --json view remove-filter contoso_ticket "Active Tickets" \
+    --condition "contoso_priority in 1 2 3" --solution ContosoCore
 ```
 
 Matched on attribute + operator; supply values to disambiguate. No match or
@@ -384,9 +379,8 @@ Same ambiguous-name, managed-layer, and publish-then-read-back notes as
 
 ## Stage many changes, then publish once
 
-Each atomic `metadata`/`form`/`view`/`ribbon`/`sitemap`/`app`/`dashboard`/`chart`/
-`webresource` create/update command now **stages by default** — no `PublishAllXml`
-runs. Batch a run of these flagless writes, then run `publish-all` once at the end:
+Batch flagless customization writes, then publish once at the end (the
+staged-writes contract in SKILL.md):
 
 ```bash
 crm metadata add-attribute new_widget \
@@ -396,16 +390,6 @@ crm metadata create-optionset --name new_priority --display Priority \
 # ... more staged changes ...
 crm solution publish-all   # single publish for all staged customizations
 ```
-
-Pass `--publish` on a given command instead to publish that one write immediately.
-
-**`--stage-only`'s narrowed role.** The global `--stage-only` flag (or
-`CRM_STAGE_ONLY=1`) is now redundant on the atomic commands above — they already
-stage by default. It still earns its keep on the **batch** verbs, `apply` and
-`scaffold table`, which publish once at the end **by default**; `--stage-only`
-is the switch that forces those to stage too. It also still rejects an explicit
-`--publish` passed alongside it, and in `--json` mode the envelope `meta` records
-`staged: true`.
 
 Publish selectively instead of all-at-once:
 

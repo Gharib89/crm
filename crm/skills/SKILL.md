@@ -1,6 +1,6 @@
 ---
 name: crm
-description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Wraps the real Dataverse Web API (OData v4) over HTTPS. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, plug-in assembly and step registration, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
+description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, UI customization (forms, sitemaps, dashboards, ribbons), plug-in and workflow automation, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM.
 ---
 
 # crm
@@ -9,16 +9,6 @@ A stateful CLI for **Microsoft Dynamics 365 Customer Engagement — on-premises
 9.x (NTLM) or Dataverse online (OAuth)**. Every command issues a real HTTP request
 to the Dataverse Web API at `<url>/api/data/v9.x/`. There is no local mocking — the
 live D365 server is a hard runtime dependency.
-
-## When to use
-
-- Issue ad-hoc record CRUD (accounts, contacts, opportunities, custom entities).
-- Run OData v4 (`$filter`/`$select`/`$top`) or FetchXML queries.
-- Browse schema metadata (entity / attribute / relationship definitions).
-- Author schema declaratively, export/import D365 solutions (`.zip`).
-- Manage web resources, ribbons, forms, model-driven apps, plug-ins, workflows, SLAs, roles.
-- Pull bulk datasets to CSV/JSON, or import CSV/JSONL records in bulk.
-- Anything you'd otherwise script against the SOAP Organization Service.
 
 ## On-prem vs cloud
 
@@ -63,12 +53,12 @@ carries `meta.completed_steps` and `meta.failed_stage`.
 
 Non-zero = the operation did not take effect.
 
-**`--dry-run`** previews mutations without issuing them — the safe way to validate a
-write before commit. Reads (GET) always run for real under `--dry-run` ("no writes",
-not "no traffic"), so a mutation's preview reports live facts (`_exists`,
-`would_skip`) rather than guesses, and read verbs (`query`, `entity get`, …) return
-real data. In `--json` mode every dry-run carries `meta.dry_run: true`, the canonical
-signal for detecting a preview.
+**`--dry-run` — the reads-execute rule.** Previews mutations without issuing them —
+the safe way to validate a write before commit. Reads (GET) always run for real
+under `--dry-run` ("no writes", not "no traffic"), so a mutation's preview reports
+live facts (`_exists`, `would_skip`) rather than guesses, and read verbs (`query`,
+`entity get`, …) return real data. In `--json` mode every dry-run carries
+`meta.dry_run: true`, the canonical signal for detecting a preview.
 
 ```bash
 crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
@@ -80,8 +70,25 @@ cannot act on; validating first turns that into a clean `unknown_fields` envelop
 (see `reference/records.md`). `--validate` applies to **record writes only** — `metadata`,
 `solution`, and component writes have no `--validate`, so use `--dry-run` for those.
 
-**`--yes`** skips interactive confirmations; always pass it when invoking
-destructive verbs non-interactively (and only after confirming intent).
+**Solution-scoped writes.** Every customization write — any verb that authors or
+edits a solution component, in any group — requires an explicit
+`--solution <unique_name>`: there is no profile default and no opt-out, and
+omitting it exits 2 before any backend call (even under `--dry-run`). Pass
+`--solution Default` for a deliberate Default-Solution-only write. `apply` takes
+the target as the spec's mandatory top-level `solution:` block instead of a flag.
+The few exceptions (hard `metadata delete-*` verbs, N:N assign/match verbs) are
+named in their reference files.
+
+**Staged writes & publishing.** Atomic customization writes **stage** by default —
+no `PublishAllXml` runs. A staged edit is invisible to reads: a GET returns the
+*published* layer, so a pre-publish read-back false-negatives, and a second staged
+edit on the same document reads the published layer and **silently discards the
+first**. Never leave more than one edit staged per document — pass `--publish` per
+write, or batch flagless writes and run `solution publish-all` once at the end.
+Only published customizations export into a solution zip. The batch verbs (`apply`,
+`scaffold table`) instead publish once at the end by default; global `--stage-only`
+(or `CRM_STAGE_ONLY=1`) forces those to stage too, rejects an explicit `--publish`
+alongside it, and records `meta.staged: true` in the envelope.
 
 **REPL fail-fast.** REPL is the default only on an interactive terminal. A
 non-interactive caller (`--json`, `CRM_NO_REPL=1`, or non-TTY stdin — how agents and
@@ -90,30 +97,27 @@ commands` instead of a hung prompt (under `--json`, the standard `{ok:false,erro
 envelope). Always pass a subcommand; set `CRM_NO_REPL=1` to harden against an
 accidental bare `crm`. Explicit `crm repl` always launches.
 
-### Destructive operations — `--yes` required
+### Destructive verbs — `--yes` required
 
-These verbs permanently delete or cancel server-side state. Omitting `--yes` in a
-non-TTY context aborts safely (`{"ok": false, "error": "aborted by user"}`, exit 1).
+Any verb carrying a `--yes` flag (visible in `crm describe`) permanently deletes,
+cancels, or overwrites server-side state. Omitting `--yes` in a non-TTY context
+aborts safely (`{"ok": false, "error": "aborted by user"}`, exit 1); on a TTY the
+verb prompts instead.
 
-| Command | What it destroys |
-| --- | --- |
-| `crm metadata delete-entity <logical>` | A custom entity (table) and ALL its rows |
-| `crm metadata delete-optionset <name>` | A custom global option set |
-| `crm metadata delete-attribute <entity> <attribute>` | A custom column |
-| `crm metadata delete-relationship <schema-name>` | A custom relationship (1:N or N:N) |
-| `crm entity delete <set> <guid>` | A single record |
-| `crm data delete <entity_set> (--fetchxml\|--fetchxml-file)` | Submits a server-side BulkDelete async job — permanently deletes ALL records matching the FetchXML query |
-| `crm solution job-cancel <id>` | A running async job |
-| `crm solution import <zip>` | OVERWRITES unmanaged customizations in the target org |
-| `crm solution remove-component --solution <name> --type <int\|name> --id <guid>` | Removes a component from an unmanaged solution |
-| `crm solution stage-and-upgrade <zip> [--promote --solution <name>]` | Stages a holding-solution upgrade; `--promote` replaces the base solution + its patches |
-| `crm solution apply-upgrade <name>` | Promotes a separately-staged holding solution (replaces the base solution + deletes its patches) |
-| `crm solution uninstall --solution <name>` | Uninstalls a solution (managed base also removes its patches) |
-| `crm translation import <zip>` | OVERWRITES localized labels in the target org |
-| `crm async cancel <id>` | A pending/suspended async operation |
-| `crm entity disassociate <set> <id> <nav> --related-set <s> --related-id <id>` | Removes a collection relationship link |
-| `crm entity clear-lookup <set> <id> <nav>` | Clears a single-valued lookup (sets it to null) |
-| `crm workflow deactivate <id>` | Deactivates a workflow definition (statecode=0) |
+**Inform first, back up first.** Never run a destructive verb without telling the
+user what will be destroyed and getting their explicit go-ahead — `--yes` asserts
+the *user's* confirmed intent, not the agent's. Before an irreversible operation,
+capture a restorable copy when one is possible; the matching export/read verb
+usually exists (`solution export` before `import`/`uninstall`/`apply-upgrade`,
+`data export` or `entity get` before record deletes, `metadata export-spec` before
+`delete-entity`/`delete-attribute`, `workflow export` before `workflow delete`,
+`translation export` before `translation import`). Report where the backup landed
+alongside the result. The largest blast radii:
+`solution import` (overwrites unmanaged customizations org-wide), `data delete`
+(server-side bulk delete of every record matching a FetchXML query),
+`metadata delete-entity` (drops a custom table and ALL its rows), and
+`solution apply-upgrade` / `solution stage-and-upgrade --promote` (replaces the
+base solution and deletes its patches).
 
 ## Hard constraints
 
@@ -150,11 +154,16 @@ For per-domain detail:
 |---|---|
 | first-time setup: install the `crm` binary, create/switch a connection profile (NTLM or OAuth, secret storage), `--json`/no-TTY behavior | `reference/setup.md` |
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
-| records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, bulk import/export, ad-hoc `action` | `reference/records.md` |
+| records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |
+| bulk data: CSV/JSONL export/import, server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
 | metadata: browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`) | `reference/metadata.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
 | solutions: create/export/import, investigate a failed import, packager extract/pack, validate, component drift, label translation export/import, `export-spec` (org-to-org drift recipe) | `reference/solutions.md` |
-| customizations: model-driven apps, sitemap live-edit (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description), web resources, ribbon, forms, charts, dashboards, themes, reports | `reference/customizations.md` |
+| model-driven apps + sitemap: create an app, add components, generate or live-edit the navigation tree (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description) | `reference/apps-sitemap.md` |
+| forms: add/remove/move fields, presentation props, JS event handlers, tab/section skeleton, manual FormXml splice | `reference/forms.md` |
+| web resources (upload, bulk push, continuous redeploy) and ribbon / command-bar buttons | `reference/webresource-ribbon.md` |
+| charts and dashboards: author headlessly, edit XML layers, splice/remove tiles | `reference/charts-dashboards.md` |
+| themes (org branding) and reports (SSRS RDL upload / link registration) | `reference/themes-reports.md` |
 | automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA lifecycle (create / add-kpi / activate) | `reference/automation.md` |
 | composing classic-workflow **step XAML** to hand `workflow update --xaml-file` (on-prem logic path): the provenance wall, the direct-PATCH routine, the snippet library | `reference/workflow-xaml.md` |
 | security: roles & assignment | `reference/security.md` |

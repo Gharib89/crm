@@ -2,7 +2,7 @@
 name: docs-sync
 description: Audit and update the docs/skill/e2e artifacts that must ship in the SAME change as a CLI behavior change, then update the shipped crm skill itself. Use after adding or changing a crm command, flag, choice, default, or behavior — and before opening a PR — to keep README, docs/, crm/skills/, and e2e coverage in sync with the code. Read CLAUDE.md "Keep docs in sync with code" for the canonical gates.
 tools: Read, Grep, Glob, Bash, Edit, Write, Skill
-model: sonnet
+model: opus
 ---
 
 # docs-sync
@@ -43,6 +43,17 @@ Then layer these **crm-specific constraints** on top of that generic guidance (t
 - **Shape:** a thin `SKILL.md` router + `reference/*.md` loaded on demand. Keep `SKILL.md` lean.
 - Verify the skill matches current CLI behavior: cross-check against `crm describe` / `--help` output for the changed command before writing.
 
+### Anti-drift gates (report as 3a–3f)
+
+The skill decays by accretion, not by error: per-feature runs add a paragraph, copy the nearest existing sentence as a template, and never delete. These checks bind every `crm/skills/` edit; report each in the output table whenever gate 3 was touched.
+
+- **3a — Grep before you write.** Before adding any rule, gotcha, or invariant, grep `crm/skills/` for it. If it — or the SKILL.md leading word that covers it (*solution-scoped*, *staged*, the *reads-execute rule*, `--yes` gating, the JSON envelope) — already exists, reference it; never restate it. Universal invariants live ONLY in `SKILL.md`; a reference file states only its verb's **exception** to them or its verb-specific preview/result shapes.
+- **3b — Delete with the same change.** A behavior change makes old prose wrong. Grep the whole skill tree for the old flag/verb/error-code/behavior strings and update or delete every hit — a stale sentence is a bug you own, same severity as a missing one.
+- **3c — No CLI-surface enumerations.** Never add a table or list that mirrors what `crm describe` can enumerate (destructive verbs, flags, choices, groups). It goes stale on the next feature. State the invariant plus the discovery path instead.
+- **3d — Size budgets.** After editing, run `wc -l crm/skills/SKILL.md crm/skills/reference/*.md`. `SKILL.md` over 180 lines, or any reference file over 450 lines → report a GAP proposing a split; do **not** perform the split yourself (it changes the routing table — a human decision).
+- **3e — One home per domain.** New content lands in the file the SKILL.md routing table already points at for that domain. A new reference file requires a routing-table row in the same edit, and cross-file pointers must name files that exist (`crm/tests/test_skill_bundle.py` gates the file set).
+- **3f — Description stability.** Edit the SKILL.md `description` only when the change opens a genuinely new branch (a domain a user would name in a request), never per-verb — it is the always-loaded surface.
+
 ## Output
 
-Report a table: gate | PASS / GAP / FIXED | note. For each FIXED, list the file(s) you edited. For each GAP you could not own (e.g. a missing e2e test that needs a live target, or a judgment call on README wording), state exactly what the human must do. Do **not** claim a gate PASS without checking the actual file.
+Report a table: gate | PASS / GAP / FIXED | note — include rows 3a–3f whenever you edited `crm/skills/`. For each FIXED, list the file(s) you edited. For each GAP you could not own (e.g. a missing e2e test that needs a live target, or a judgment call on README wording), state exactly what the human must do. Do **not** claim a gate PASS without checking the actual file.

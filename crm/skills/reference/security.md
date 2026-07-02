@@ -15,8 +15,8 @@ crm --json security list-team-roles <team-guid>              # roles on a team
 crm --json security user-privileges <user-guid>             # effective privileges on a user
 
 # role authoring: create-role then set-role-privileges (--solution is required)
-crm --json security create-role "My Role" --solution cwx_crmworx --yes              # defaults to caller's BU
-crm --json security create-role "My Role" --solution cwx_crmworx --if-exists skip --yes  # idempotent
+crm --json security create-role "My Role" --solution ContosoCore --yes              # defaults to caller's BU
+crm --json security create-role "My Role" --solution ContosoCore --if-exists skip --yes  # idempotent
 crm --json security set-role-privileges <role> --access read --all-entities --depth organization --replace --yes
 crm --json security set-role-privileges <role> --access read,write,create --entities account,contact --depth organization --add --yes
 crm --json security set-role-privileges <role> --privilege prvCreateEntity,prvPublishCustomization --depth global --add --yes
@@ -53,10 +53,8 @@ them as a list.
 team understates its true depth here. Full inherited depth needs the
 per-privilege messages, which this CLI does not wrap.
 
-Role assignment is **cumulative and not cleanly reversible** — omitting `--yes` in a
-non-interactive context aborts (exit 1). The command also carries the standard
-admin-header options (`--as-user`, `--as-user-object-id`, `--suppress-dup-detection`,
-`--bypass-plugins`).
+Role assignment is **cumulative and not cleanly reversible** — hence `--yes`-gated
+(SKILL.md).
 
 ## Role authoring: create-role + set-role-privileges
 
@@ -68,7 +66,7 @@ admin-header options (`--as-user`, `--as-user-object-id`, `--suppress-dup-detect
 **Agent discovery pattern — read-only access to everything:**
 
 ```bash
-crm security create-role "Agent Read-Only" --solution cwx_crmworx --yes
+crm security create-role "Agent Read-Only" --solution ContosoCore --yes
 crm security set-role-privileges <roleid> --access read --all-entities --depth organization --replace --yes
 ```
 
@@ -88,9 +86,8 @@ For "let the agent customize", prefer assigning the OOB `System Customizer` role
 
 ### Gotchas
 
-**`create-role` requires `--solution`** (no profile default, no opt-out; `--solution
-Default` for a deliberate Default-Solution-only write). **`--if-exists skip` does not
-add the role to it.** When an existing same-name role is returned via `--if-exists
+**`create-role` is solution-scoped** (`--solution` required — SKILL.md).
+**`--if-exists skip` does not add the role to it.** When an existing same-name role is returned via `--if-exists
 skip`, it is reused unchanged — solution membership is not applied retroactively. To
 guarantee placement in a solution, the role must be newly created in the same call.
 
