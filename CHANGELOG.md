@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.48.0 (2026-07-02)
+
+### Features
+
+- **profile**: Add rename command; validate publisher-prefix on add/edit
+  ([#639](https://github.com/Gharib89/crm/pull/639),
+  [`0fd2b53`](https://github.com/Gharib89/crm/commit/0fd2b53ae337f4d94e75da16f6d4f3f206ad7a55))
+
+
 ## v1.47.0 (2026-07-01)
 
 ### Features
