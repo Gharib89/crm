@@ -37,7 +37,7 @@ _PUBLIC_SURFACE = [
     "_resolve_schema_name", "_EXPORT_SETTING_KEYS",
     # confirm / secret UX
     "_confirm_destructive", "_destructive_option", "_plaintext_secret_warning",
-    "select_one",
+    "select_one", "prompt_secret",
     # admin headers
     "_admin_header_options", "_admin_kwargs",
     # input parsing / expectations

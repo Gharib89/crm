@@ -42,7 +42,40 @@ class TestAuthErrorHint:
 
 
 import pytest
-from crm.commands._helpers import select_one
+from crm.commands._helpers import select_one, prompt_secret
+
+
+class TestPromptSecret:
+    """`prompt_secret` masks with `*` via questionary.password (#655)."""
+
+    def _stub(self, monkeypatch, value):
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
+        class _FakePw:
+            def ask(self):
+                return value
+        monkeypatch.setattr("questionary.password", lambda *a, **kw: _FakePw())
+
+    def test_non_tty_raises_runtime_error(self, monkeypatch):
+        # Like select_one, refuse non-TTY stdin itself so a caller that forgets
+        # to gate fails loudly rather than hitting a raw prompt_toolkit error.
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: False)
+        with pytest.raises(RuntimeError, match="no interactive terminal"):
+            prompt_secret("Password")
+
+    def test_returns_entered_secret(self, monkeypatch):
+        self._stub(monkeypatch, "hunter2")
+        assert prompt_secret("Password") == "hunter2"
+
+    def test_empty_returns_none(self, monkeypatch):
+        # Enter on an empty prompt collapses to None (keeps the `or None` seam
+        # every call site relies on).
+        self._stub(monkeypatch, "")
+        assert prompt_secret("Password") is None
+
+    def test_cancel_returns_none(self, monkeypatch):
+        # questionary.password().ask() returns None on Esc / Ctrl-C.
+        self._stub(monkeypatch, None)
+        assert prompt_secret("Password") is None
 
 
 class TestSelectOne:
