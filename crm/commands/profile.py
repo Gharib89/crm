@@ -16,6 +16,7 @@ from crm.commands._helpers import (
     _confirm_destructive,
     infer_auth_scheme,
     default_profile_name,
+    prompt_secret,
     select_one,
 )
 from crm.utils.d365_backend import ConnectionProfile, D365Error, validate_profile_name
@@ -155,7 +156,7 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     secret = password_opt
     if not secret and interactive:
         label = "Client secret" if auth_scheme == "oauth" else "Password"
-        secret = click.prompt(label, hide_input=True, default="", show_default=False) or None
+        secret = prompt_secret(label)
     if not secret:
         raise click.UsageError(
             "--password (or --client-secret) is required (no TTY to prompt for it).")
@@ -277,6 +278,31 @@ def _use_label(name: str, active: str | None) -> str:
         return name
 
 
+def _pick_profile(ctx: CLIContext, title: str) -> str | None:
+    """No-arg → interactive picker over saved profiles (#655), extending the
+    house pattern from `profile use`.
+
+    A missing argument with no interactive terminal (or under ``--json``) raises
+    a ``UsageError`` (exit 2), preserving the pre-#655 required-argument
+    behavior for scripts. On a TTY it emits a clean error envelope (via
+    ``ctx.emit(False)``, which raises) when there are no profiles or the user
+    cancels, so callers just ``return`` on a ``None`` result."""
+    if not (_stdin_is_tty() and not ctx.json_mode):
+        raise click.UsageError(
+            "a profile name is required (no interactive terminal to pick one).")
+    names = session_mod.list_profiles()
+    if not names:
+        ctx.emit(False, error="No profiles. Run `crm profile add`.")
+        return None
+    active = session_mod.load_session(ctx.session_name).get("active_profile")
+    items = [(n, _use_label(n, active)) for n in names]
+    name = select_one(title, items)
+    if not name:
+        ctx.emit(False, error="no profile selected")
+        return None
+    return name
+
+
 def _credential_storage(name: str) -> str:
     """Report where a profile's secret lives ('plaintext'|'keyring'|'none').
 
@@ -326,7 +352,7 @@ def profile_list(ctx: CLIContext):
 
 
 @profile_group.command("edit")
-@click.argument("name")
+@click.argument("name", required=False)
 @click.option("--url", default=None)
 @click.option("--username", default=None)
 @click.option("--domain", default=None)
@@ -337,7 +363,13 @@ def profile_list(ctx: CLIContext):
 @pass_ctx
 def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
                  client_id, api_version, publisher_prefix):
-    """Change a profile's fields (not its secret — use set-password)."""
+    """Change a profile's fields (not its secret — use set-password).
+
+    No NAME argument shows a picker."""
+    if not name:
+        name = _pick_profile(ctx, "Select profile to edit")
+        if name is None:
+            return
     try:
         p = session_mod.load_profile(name)
     except FileNotFoundError:
@@ -369,13 +401,17 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
 
 
 @profile_group.command("rm")
-@click.argument("name")
+@click.argument("name", required=False)
 # Deliberate inline option (not _destructive_option): keeps a `-y` short alias the
 # shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @pass_ctx
 def profile_rm(ctx: CLIContext, name, yes):
-    """Delete a profile and its stored secret."""
+    """Delete a profile and its stored secret. No argument shows a picker."""
+    if not name:
+        name = _pick_profile(ctx, "Select profile to delete")
+        if name is None:
+            return
     if name not in session_mod.list_profiles():
         _handle_d365_error(ctx, D365Error(f"Profile {name!r} not found."))
         return
@@ -393,15 +429,24 @@ def profile_rm(ctx: CLIContext, name, yes):
 
 
 @profile_group.command("rename")
-@click.argument("old")
-@click.argument("new")
+@click.argument("old", required=False)
+@click.argument("new", required=False)
 @pass_ctx
 def profile_rename(ctx: CLIContext, old, new):
     """Rename profile OLD to NEW, cascading its secret, active pointer, and cache.
 
-    All validation runs before any mutation; a keyring failure warns (with a
-    `profile set-password NEW` recovery hint) rather than rolling back.
+    No OLD shows a picker; a missing NEW is prompted for. All validation runs
+    before any mutation; a keyring failure warns (with a `profile set-password
+    NEW` recovery hint) rather than rolling back.
     """
+    if not old:
+        old = _pick_profile(ctx, "Select profile to rename")
+        if old is None:
+            return
+    if not new:
+        if not (_stdin_is_tty() and not ctx.json_mode):
+            raise click.UsageError("a NEW profile name is required.")
+        new = click.prompt("New profile name")
     # Validate everything before touching disk.
     try:
         validate_profile_name(new)
@@ -477,9 +522,8 @@ def profile_set_password(ctx: CLIContext, profile_name, password_opt,
         return
     secret = password_opt
     if not secret and _stdin_is_tty() and not ctx.json_mode:
-        import getpass
         label = "client secret" if profile.auth_scheme == "oauth" else "password"
-        secret = getpass.getpass(f"D365 {label} for profile {profile_name!r}: ") or None
+        secret = prompt_secret(f"D365 {label} for profile {profile_name!r}: ")
     if not secret:
         ctx.emit(False, error="No secret supplied. Pass --password (or --client-secret).")
         return

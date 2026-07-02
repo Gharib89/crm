@@ -92,3 +92,19 @@ def select_one(title: str, items: list[tuple[str, str]],
     import questionary
     choices = [questionary.Choice(title=label, value=value) for value, label in items]
     return questionary.select(title, choices=choices, default=default).ask()
+
+
+def prompt_secret(prompt: str) -> str | None:
+    """Prompt for a secret on a TTY, echoing ``*`` per keystroke; return the
+    entered value or None (empty entry or Esc/Ctrl-C cancel).
+
+    Uses ``questionary.password()`` rather than a fully-hidden prompt so new
+    users get visual feedback that their typing registered. Deliberate tradeoff
+    (#655): asterisks reveal the secret's length — the industry norm (ssh/gh/aws)
+    is no echo at all — chosen here for feedback, not as a security control.
+
+    Callers MUST gate this on a TTY (questionary needs one); the non-TTY paths
+    keep their existing fully-hidden getpass/click behavior. Like `select_one`,
+    questionary is imported lazily to stay off the `crm --version` fast path."""
+    import questionary
+    return questionary.password(prompt).ask() or None

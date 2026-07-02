@@ -51,6 +51,18 @@ class TestResolveCredentials:
         with pytest.raises(D365Error, match="set-password"):
             conn_mod.resolve_credentials("contoso", allow_prompt=False)
 
+    def test_prompt_uses_masked_input_when_allowed(self, crm_home, monkeypatch):
+        # allow_prompt (== TTY and not --json, set by cli.py) reads the secret
+        # via the masked questionary prompt (echoes '*'), not fully-hidden
+        # getpass (#655).
+        _save()
+        class _FakePw:
+            def ask(self):
+                return "prompted-secret"
+        monkeypatch.setattr("questionary.password", lambda *a, **kw: _FakePw())
+        r = conn_mod.resolve_credentials("contoso", allow_prompt=True)
+        assert r.password == "prompted-secret"
+
 
 class TestSaveSecret:
     def test_keyring_unavailable_falls_back_to_plaintext(self, crm_home, monkeypatch):

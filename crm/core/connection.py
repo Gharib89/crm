@@ -70,12 +70,18 @@ def resolve_credentials(
     if not secret:
         secret = keyring_store.get_secret(profile_name)
     if not secret and allow_prompt:
-        import getpass
+        # `allow_prompt` already implies a TTY and non-JSON mode (set in cli.py).
+        # questionary.password echoes '*' per keystroke — visual feedback that the
+        # typing registered — rather than the fully-hidden getpass (#655). Imported
+        # lazily to stay off the import-light credential path. `answer: object`
+        # keeps this pyright-strict module clean over the untyped questionary API.
+        import questionary
         is_oauth = profile.auth_scheme == "oauth"
         label = "client secret" if is_oauth else "password"
-        secret = getpass.getpass(
+        answer: object = questionary.password(
             f"D365 {label} for profile {profile.name!r}: "
-        ) or None
+        ).ask()
+        secret = str(answer) if answer else None
     if not secret:
         is_oauth = profile.auth_scheme == "oauth"
         label = "client secret" if is_oauth else "password"

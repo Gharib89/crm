@@ -286,6 +286,41 @@ class TestListEditRm:
         runner.invoke(cli, ["--json", "profile", "rm", "a", "--yes"])
         assert session_mod.load_session("default")["active_profile"] is None
 
+    def test_rm_no_arg_picks_from_picker(self, crm_home, monkeypatch):
+        self._seed("a"); self._seed("b")
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: "a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["profile", "rm", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert "a" not in session_mod.list_profiles()
+        assert "b" in session_mod.list_profiles()
+
+    def test_rm_no_arg_no_tty_errors_exit_2(self, crm_home):
+        # No arg + no interactive terminal (or --json) keeps the pre-#655
+        # required-argument behavior: a usage error, exit 2.
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rm"])
+        assert result.exit_code == 2, result.output
+        assert "a" in session_mod.list_profiles()  # untouched
+
+    def test_edit_no_arg_picks_from_picker(self, crm_home, monkeypatch):
+        self._seed("a")
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: "a")
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "profile", "edit", "--url", "https://picked.contoso.local/o2"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("a").url == "https://picked.contoso.local/o2"
+
+    def test_edit_no_arg_no_tty_errors_exit_2(self, crm_home):
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "edit"])
+        assert result.exit_code == 2, result.output
+
 
 class TestSetDeletePassword:
     def _seed(self, name="a"):
@@ -342,6 +377,32 @@ class TestSetDeletePassword:
             "--json", "profile", "delete-password", "--profile", "a"])
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("a") is None
+
+    def test_set_password_tty_prompts_masked(self, crm_home, monkeypatch):
+        # No --password on a TTY: read the secret via the masked prompt
+        # (questionary.password, echoes '*'), not the old fully-hidden getpass.
+        self._seed()
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.prompt_secret",
+                            lambda prompt: "typed-pw")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["profile", "set-password", "--profile", "a"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile_secret("a") == "typed-pw"
+
+    def test_set_password_non_tty_never_prompts(self, crm_home, monkeypatch):
+        # Non-TTY with no secret: unchanged — clean error, never blocks on a
+        # prompt (piped/scripted input must keep working).
+        self._seed()
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: False)
+        called = []
+        monkeypatch.setattr("crm.commands.profile.prompt_secret",
+                            lambda prompt: called.append(prompt) or "x")
+        runner = CliRunner()
+        result = runner.invoke(cli, [
+            "--json", "profile", "set-password", "--profile", "a"])
+        assert result.exit_code == 1, result.output
+        assert not called  # masked prompt never reached off a TTY
 
 
 class TestPublisherPrefix:
@@ -412,6 +473,23 @@ class TestPublisherPrefix:
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz").publisher_prefix is None
 
+    def test_wizard_secret_prompt_is_masked(self, crm_home, monkeypatch):
+        # No --password on a TTY: the wizard reads the secret via the masked
+        # prompt (questionary.password) and stores it.
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.prompt_secret",
+                            lambda prompt: "wiz-secret")
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "profile", "add", "--auth-scheme", "ntlm",
+                "--url", "https://crm.contoso.local/o",
+                "--username", "u", "--domain", "D",
+                "--name", "wiz", "--yes"], input="\n")  # blank publisher-prefix
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile_secret("wiz") == "wiz-secret"
+
 
 class TestRename:
     def _seed(self, name, secret=None):
@@ -421,6 +499,39 @@ class TestRename:
             domain="C", username="u", publisher_prefix="pfx"))
         if secret is not None:
             session_mod.save_profile_secret_plaintext(name, secret)
+
+    def test_rename_no_arg_picks_old_and_prompts_new(self, crm_home, monkeypatch):
+        self._seed("old", secret="pw")
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: "old")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["profile", "rename"], input="fresh\n")
+        assert result.exit_code == 0, result.output
+        assert "fresh" in session_mod.list_profiles()
+        assert "old" not in session_mod.list_profiles()
+
+    def test_rename_only_old_prompts_new(self, crm_home, monkeypatch):
+        # OLD given, NEW missing on a TTY: prompt for NEW (not the picker).
+        self._seed("old", secret="pw")
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["profile", "rename", "old"], input="fresh\n")
+        assert result.exit_code == 0, result.output
+        assert "fresh" in session_mod.list_profiles()
+
+    def test_rename_no_arg_no_tty_errors_exit_2(self, crm_home):
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename"])
+        assert result.exit_code == 2, result.output
+        assert "a" in session_mod.list_profiles()  # untouched
+
+    def test_rename_only_old_no_tty_errors_exit_2(self, crm_home):
+        # OLD given, NEW missing, no TTY: usage error (exit 2), as pre-#655.
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "rename", "a"])
+        assert result.exit_code == 2, result.output
 
     def test_rename_moves_file_name_and_inline_secret(self, crm_home):
         self._seed("old", secret="pw")
