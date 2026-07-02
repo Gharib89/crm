@@ -18,7 +18,7 @@ from crm.commands._helpers import (
     default_profile_name,
     select_one,
 )
-from crm.utils.d365_backend import ConnectionProfile, D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Error, validate_profile_name
 
 # A profile file can be missing (FileNotFoundError), unreadable (OSError),
 # non-JSON (ValueError → json.JSONDecodeError), or JSON-valid but malformed —
@@ -48,6 +48,20 @@ def _resolve_secret_flag(password_opt, client_secret_opt):
     return password_opt if password_opt is not None else client_secret_opt
 
 
+def _validate_prefix_opt(_ctx, _param, value):
+    """Validate --publisher-prefix at parse time so a bad value fails as a usage
+    error (exit 2). An empty/omitted prefix is allowed (skip = no default prefix);
+    the wizard re-prompts on invalid instead of erroring."""
+    if not value:
+        return value
+    from crm.core.solution import validate_customization_prefix
+    try:
+        validate_customization_prefix(value)
+    except D365Error as exc:
+        raise click.BadParameter(str(exc))
+    return value
+
+
 @profile_group.command("add")
 @click.option("--url", default=None, help="Server URL, e.g. https://crm.contoso.local/org "
               "or https://org.crm.dynamics.com")
@@ -66,7 +80,8 @@ def _resolve_secret_flag(password_opt, client_secret_opt):
 @click.option("--api-version", default=None,
               help="Web API version. Omit to auto-negotiate (v9.2 → v9.1 on on-prem).")
 @click.option("--no-verify-ssl", is_flag=True, help="Skip SSL certificate verification.")
-@click.option("--publisher-prefix", default=None, help="Default schema-name prefix, e.g. 'new'.")
+@click.option("--publisher-prefix", default=None, callback=_validate_prefix_opt,
+              help="Default schema-name prefix, e.g. 'new'.")
 @click.option("--store-password-plaintext", is_flag=True,
               help="Force plaintext storage (skip the OS keyring).")
 # Deliberate inline option (not _destructive_option): the profile setup verbs
@@ -120,6 +135,23 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     name = name_opt or (
         click.prompt("Profile name", default=default_profile_name(url))
         if interactive else default_profile_name(url))
+    # Optional publisher prefix. The --publisher-prefix flag path is validated by
+    # _validate_prefix_opt at parse time; here the wizard prompts (blank = skip)
+    # and re-prompts on an invalid entry rather than aborting.
+    if publisher_prefix is None and interactive:
+        from crm.core.solution import validate_customization_prefix
+        while True:
+            entered = click.prompt("Publisher prefix (blank to skip)",
+                                   default="", show_default=False).strip()
+            if not entered:
+                break
+            try:
+                validate_customization_prefix(entered)
+            except D365Error as exc:
+                click.echo(str(exc), err=True)
+                continue
+            publisher_prefix = entered
+            break
     secret = password_opt
     if not secret and interactive:
         label = "Client secret" if auth_scheme == "oauth" else "Password"
@@ -301,7 +333,7 @@ def profile_list(ctx: CLIContext):
 @click.option("--tenant-id", default=None)
 @click.option("--client-id", default=None)
 @click.option("--api-version", default=None)
-@click.option("--publisher-prefix", default=None)
+@click.option("--publisher-prefix", default=None, callback=_validate_prefix_opt)
 @pass_ctx
 def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
                  client_id, api_version, publisher_prefix):
@@ -358,6 +390,69 @@ def profile_rm(ctx: CLIContext, name, yes):
         ctx.profile_name = None
         ctx.invalidate_backend()
     ctx.emit(True, data={"profile": name, "removed": True})
+
+
+@profile_group.command("rename")
+@click.argument("old")
+@click.argument("new")
+@pass_ctx
+def profile_rename(ctx: CLIContext, old, new):
+    """Rename profile OLD to NEW, cascading its secret, active pointer, and cache.
+
+    All validation runs before any mutation; a keyring failure warns (with a
+    `profile set-password NEW` recovery hint) rather than rolling back.
+    """
+    # Validate everything before touching disk.
+    try:
+        validate_profile_name(new)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
+    if old not in session_mod.list_profiles():
+        _handle_d365_error(ctx, D365Error(f"Profile {old!r} not found."))
+        return
+    if old == new:
+        raise click.UsageError("OLD and NEW must differ.")
+    if new in session_mod.list_profiles():
+        _handle_d365_error(
+            ctx, D365Error(f"Profile {new!r} already exists; refusing to clobber it."))
+        return
+
+    # Capture any keyring-stored secret before the file move (inline plaintext
+    # `_secret` rides along inside the file itself).
+    kr_secret = keyring_store.get_secret(old)
+    session_mod.rename_profile(old, new)
+
+    warnings = []
+    if kr_secret is not None:
+        try:
+            keyring_store.set_secret(new, kr_secret)
+            keyring_store.delete_secret(old)
+        except D365Error as exc:
+            warnings.append(
+                f"Could not move the keyring secret to {new!r}: {exc} "
+                f"Run `crm profile set-password {new}` to re-store it.")
+    else:
+        keyring_store.delete_secret(old)  # best-effort cleanup; no-op if absent
+
+    # Repoint the active session only (concurrent sessions still on OLD break,
+    # matching `profile rm`).
+    state = session_mod.load_session(ctx.session_name)
+    if state.get("active_profile") == old:
+        state["active_profile"] = new
+        session_mod.save_session(state, ctx.session_name)
+        ctx.profile_name = new
+        ctx.invalidate_backend()
+
+    # Move the per-profile metadata cache dir (best-effort).
+    try:
+        from crm.core import metadata_cache
+        metadata_cache.move_cache(old, new)
+    except OSError:
+        pass
+
+    ctx.emit(True, data={"profile": new, "renamed": True, "from": old, "to": new},
+             warnings=warnings or None)
 
 
 @profile_group.command("set-password")
