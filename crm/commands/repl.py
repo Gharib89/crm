@@ -56,8 +56,15 @@ class MetadataCache:
     def __init__(self, *, use_cache: bool = False, refresh: bool = False) -> None:
         self._logical: list[str] | None = None
         self._set_names: list[str] | None = None
+        # Profile the in-memory lists were loaded for; entity names are
+        # org-specific, so a `profile use` mid-REPL must force a reload.
+        self._loaded_profile: str | None = None
         self._use_cache = use_cache
         self._refresh = refresh
+
+    def _ensure(self, backend) -> None:
+        if self._logical is None or self._loaded_profile != backend.profile.name:
+            self._load(backend)
 
     def _load(self, backend) -> None:
         if self._use_cache:
@@ -75,15 +82,14 @@ class MetadataCache:
             defs = list_entity_definitions(backend)
         self._logical = [d["logical"] for d in defs]
         self._set_names = [d["set_name"] for d in defs]
+        self._loaded_profile = backend.profile.name
 
     def logical_names(self, backend) -> list[str]:
-        if self._logical is None:
-            self._load(backend)
+        self._ensure(backend)
         return self._logical  # type: ignore[return-value]
 
     def set_names(self, backend) -> list[str]:
-        if self._set_names is None:
-            self._load(backend)
+        self._ensure(backend)
         return self._set_names  # type: ignore[return-value]
 
     def entities(self, backend) -> list[str]:

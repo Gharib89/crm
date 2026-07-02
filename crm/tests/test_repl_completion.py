@@ -131,15 +131,17 @@ class TestReplCompleter:
         assert _completions(completer, "entity") == []
 
     def test_entity_slot_completion_uses_backend_names(self):
+        import types
         calls = {"n": 0}
 
         def backend():
             calls["n"] += 1
-            return object()
+            return types.SimpleNamespace(profile=types.SimpleNamespace(name="orga"))
 
         cache = MetadataCache()
         cache._logical = ["account"]
         cache._set_names = ["accounts"]
+        cache._loaded_profile = "orga"  # match seeded lists so _ensure() skips a refetch
         completer = _ReplCompleter(backend, cache)
         assert _completions(completer, "entity get acc") == ["accounts"]
         assert calls["n"] == 1
