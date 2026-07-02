@@ -85,8 +85,8 @@ hold (assert at phase 2, announced like the class; when unsure, it's *not* small
 
 1. **No public-surface change.** The **public surface** is the documented,
    user-visible contract: commands, flags, options, choices, defaults, output
-   formats, API/output shapes, documented behavior. Small adds, removes, renames,
-   and changes none of it.
+   formats, API/output shapes, documented behavior. A small change adds, removes,
+   renames, and changes none of it.
 2. **Provable without a live call** — a unit/regression test fully proves it; no
    need to hit the live target.
 3. **Single-concern** — no new dependency, no new logic branch beyond the fix itself.
@@ -99,10 +99,10 @@ collapses, the floor that never does, when the lane revokes — before continuin
 ## The pipeline
 
 Work the phases in order; keep the main thread on orchestration and decisions,
-delegating noisy work to subagents — the **delegation rule** in
-context-discipline decides when a subagent earns its cost. **First**, read
-[reference/context-discipline.md](reference/context-discipline.md) — it covers how
-to keep this long run from bloating the window **and your required first action:
+delegating noisy work to subagents. **First**, read
+[reference/context-discipline.md](reference/context-discipline.md) — it opens
+with the **delegation rule** (when a subagent earns its cost), covers how to keep
+this long run from bloating the window, **and names your required first action:
 creating the run's ten-item task list** (one per phase below). Don't start phase 0
 until that list exists.
 
