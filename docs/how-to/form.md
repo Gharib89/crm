@@ -47,12 +47,12 @@ security roles, and subgrid views are preserved.
 solution would otherwise land only in the system Default Solution. Pass
 `--solution Default` for a deliberate Default-Solution-only write.
 
-By default the clone also runs `PublishAllXml`. To defer the publish (e.g.
-when doing multiple operations before a single publish at the end):
+By default the clone **stages** the change — no `PublishAllXml` runs. Pass
+`--publish` to publish it immediately:
 
 ```bash
 crm form clone cwx_ticket "Ticket Main Form" --to new_incidentlog \
-    --solution cwx_crmworx --no-publish
+    --solution cwx_crmworx --publish
 ```
 
 ### Ambiguous form names
@@ -104,25 +104,26 @@ errors if the choice is ambiguous.
 
 ### Publishing
 
-These verbs run `PublishAllXml` **by default** (the CLI-wide convention shared with
-`form clone`, `metadata create-entity`, etc.), so a field edit takes effect right
-away. This matters here: `GET /systemforms` returns the **published** FormXml, so an
-unpublished PATCH is invisible in the UI and on re-export.
+These verbs **stage** the change by default — no `PublishAllXml` runs (the
+CLI-wide convention shared with `form clone`, `metadata create-entity`, etc.).
+This matters here: `GET /systemforms` returns the **published** FormXml, so a
+staged (unpublished) PATCH is invisible in the UI and on re-export until you
+publish.
 
-Use `--no-publish` to **stage a single edit** and publish it later with
-`crm solution publish`:
+Pass `--publish` to publish a single edit immediately, or batch several staged
+edits and publish once at the end with `crm solution publish-all`:
 
 ```bash
-crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx --no-publish   # stage one edit
-crm solution publish                                       # publish when ready
+crm form add-field cwx_ticket cwx_priority --solution cwx_crmworx --publish   # publish this edit now
+crm solution publish-all                                    # or: publish everything once the batch is done
 ```
 
-!!! warning "Don't chain `--no-publish` edits to one form"
+!!! warning "Don't chain staged edits to one form"
     Each verb recomputes the FormXml from the form's **published** snapshot. A
-    second `--no-publish` edit therefore reads the form *without* the first
-    edit's pending change and overwrites it. To make several edits, keep the
-    default (publish each), or publish between edits — only the last
-    `--no-publish` write survives otherwise.
+    second staged (flagless) edit therefore reads the form *without* the first
+    edit's pending change and overwrites it. To make several edits safely,
+    either pass `--publish` on each one, or publish between edits — chaining
+    staged writes loses all but the last.
 
 ### Preview without writing
 
@@ -156,7 +157,6 @@ Removes the field's `<cell>` from the form layout (and tidies an emptied
 the form.
 
 ```bash
-crm form remove-field cwx_ticket cwx_priority --solution cwx_crmworx --no-publish   # stage only
 crm --dry-run form remove-field cwx_ticket cwx_priority --solution cwx_crmworx      # would_remove: true
 ```
 
@@ -353,22 +353,22 @@ crm --dry-run form remove-handler cwx_ticket \
 
 ### Publishing and the publish-then-read-back gotcha
 
-These verbs run `PublishAllXml` by default (same as the field editors). Because
-`GET /systemforms` returns the **published** FormXml, an unpublished PATCH is
-invisible on re-export and in the UI — always publish before verifying with
-`form list-handlers` or `form export`.
+These verbs **stage** the change by default (same as the field editors). Because
+`GET /systemforms` returns the **published** FormXml, a staged PATCH is
+invisible on re-export and in the UI — always publish (`--publish`, or
+`crm solution publish-all` afterward) before verifying with `form list-handlers`
+or `form export`.
 
-!!! warning "Don't chain `--no-publish` edits to one form"
+!!! warning "Don't chain staged edits to one form"
     Each verb recomputes the FormXml from the **published** snapshot. A second
-    `--no-publish` edit overwrites any pending unpublished change from the first.
-    Keep the default (publish each), or publish between edits — only the last
-    `--no-publish` write survives otherwise.
+    staged (flagless) edit overwrites any pending unpublished change from the
+    first. Either pass `--publish` on each edit, or publish between edits —
+    only the last staged write survives otherwise.
 
 ```bash
 crm form add-handler cwx_ticket \
     --event onload --library cwx_/scripts/ticket.js \
-    --function App.onLoad --solution cwx_crmworx --no-publish    # stage only
-crm solution publish                       # publish when ready
+    --function App.onLoad --solution cwx_crmworx --publish    # publish this edit now
 ```
 
 ### Handlers vs InternalHandlers

@@ -314,12 +314,12 @@ row matches, the command errors. Run `crm --json view list <entity>` to get the
 **Non-public views.** Pass `--query-type` (advanced-find, associated, quick-find,
 lookup) to target a non-public view. `view list` shows only public views.
 
-**Publish-then-read-back.** Under `--publish` (the default) the command publishes
-and then GETs the view back to confirm the edit landed. Under `--no-publish` the
-read-back is skipped — a subsequent GET returns the *published* (pre-edit) snapshot
-until you publish. `layoutjson` is cleared on every column edit so the platform
-rebuilds it from the new layoutxml (a stale layoutjson drives the modern grid with
-the old columns).
+**Publish-then-read-back.** `edit-columns` **stages** by default (no publish).
+Pass `--publish` to also publish and GET the view back to confirm the edit
+landed; without it the read-back is skipped and a subsequent GET returns the
+*published* (pre-edit) snapshot until you publish. `layoutjson` is cleared on
+every column edit so the platform rebuilds it from the new layoutxml (a stale
+layoutjson drives the modern grid with the old columns).
 
 **Managed-layer warning.** Editing an out-of-box or managed view creates an
 unmanaged layer that a solution upgrade may revert. The `--help` text carries this
@@ -384,20 +384,28 @@ Same ambiguous-name, managed-layer, and publish-then-read-back notes as
 
 ## Stage many changes, then publish once
 
-By default each create/update metadata command auto-publishes. The global
-`--stage-only` flag (or `CRM_STAGE_ONLY=1`) suppresses publishing across a batch of
-changes — then run `publish-all` once at the end. `--stage-only` forces every
-create/update command to `--no-publish`; in `--json` mode the envelope `meta` records
-`staged: true`. Combining `--stage-only` with an explicit `--publish` is rejected.
+Each atomic `metadata`/`form`/`view`/`ribbon`/`sitemap`/`app`/`dashboard`/`chart`/
+`webresource` create/update command now **stages by default** — no `PublishAllXml`
+runs. Batch a run of these flagless writes, then run `publish-all` once at the end:
 
 ```bash
-crm --stage-only metadata add-attribute new_widget \
+crm metadata add-attribute new_widget \
     --kind string --schema-name new_Label --display Label --max-length 100 --solution ContosoCore
-crm --stage-only metadata create-optionset --name new_priority --display Priority \
+crm metadata create-optionset --name new_priority --display Priority \
     --option 1:Low --option 2:High --solution ContosoCore
 # ... more staged changes ...
 crm solution publish-all   # single publish for all staged customizations
 ```
+
+Pass `--publish` on a given command instead to publish that one write immediately.
+
+**`--stage-only`'s narrowed role.** The global `--stage-only` flag (or
+`CRM_STAGE_ONLY=1`) is now redundant on the atomic commands above — they already
+stage by default. It still earns its keep on the **batch** verbs, `apply` and
+`scaffold table`, which publish once at the end **by default**; `--stage-only`
+is the switch that forces those to stage too. It also still rejects an explicit
+`--publish` passed alongside it, and in `--json` mode the envelope `meta` records
+`staged: true`.
 
 Publish selectively instead of all-at-once:
 

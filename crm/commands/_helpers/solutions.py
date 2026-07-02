@@ -51,8 +51,9 @@ def _publish_option(f):
     across all sites (it was inconsistent / absent before #294).
     """
     return click.option(
-        "--publish/--no-publish", default=True,
-        help="Run PublishAllXml after the change. Default: publish.",
+        "--publish/--no-publish", default=False,
+        help="Run PublishAllXml after the change. Default: stage (no publish); "
+             "run `solution publish-all` when your set is done.",
     )(f)
 
 

@@ -230,33 +230,36 @@ The JSON response echoes `action`, `node_id`, and `descriptions` as a list of
 > `add-subarea` still write the legacy `Title` attribute — that is unchanged. Use
 > `set-title` / `set-description` when you need true per-LCID localisation.
 
-## Publish-gated read-back — and why not to chain `--no-publish` edits
+## Publish-gated read-back — and why not to chain staged edits
 
 > **Gotcha — `sitemapxml` reads/writes go through the published layer.** A Web
 > API GET for `sitemapxml` returns the *last published* snapshot, not a staged
-> edit (on on-prem v9.x especially). An edit written with `--no-publish` does not
-> appear in a re-fetch until `PublishAllXml` runs.
+> edit (on on-prem v9.x especially). Every `sitemap` verb **stages** by default
+> (no `PublishAllXml`), so a staged edit does not appear in a re-fetch until you
+> publish.
 
 This has a sharp consequence for **multiple edits to the same sitemap**: because
-each verb reads `sitemapxml` fresh before mutating, a second `--no-publish` edit
-re-reads the *published* layer (without the first edit) and PATCHes over it —
-**silently discarding the first unpublished edit.** So do **not** chain
-`--no-publish` edits against one sitemap.
+each verb reads `sitemapxml` fresh before mutating, a second staged (flagless)
+edit re-reads the *published* layer (without the first edit) and PATCHes over
+it — **silently discarding the first unpublished edit.** So do **not** chain
+staged edits against one sitemap.
 
-Instead, let each edit publish before the next reads — `--publish` is the default
-(it runs `PublishAllXml` and a T3 read-back inside the verb), so plain sequential
-commands are safe:
+Instead, let each edit publish before the next reads — pass `--publish` on
+every edit (it runs `PublishAllXml` and a T3 read-back inside the verb) so
+sequential commands are safe:
 
 ```bash
-crm --json sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations" --solution cwx_crmworx
+crm --json sitemap add-area <SITEMAP_ID> --id cwx_ops --title "Operations" --solution cwx_crmworx --publish
 crm --json sitemap add-group <SITEMAP_ID> --area cwx_ops --id cwx_opsgrp \
-    --title "Ops Group" --solution cwx_crmworx
+    --title "Ops Group" --solution cwx_crmworx --publish
 crm --json sitemap add-subarea <SITEMAP_ID> --area cwx_ops --group cwx_opsgrp \
-    --id cwx_contacts --entity contact --solution cwx_crmworx
+    --id cwx_contacts --entity contact --solution cwx_crmworx --publish
 ```
 
-Reserve `--no-publish` for a **single** staged edit you publish yourself (e.g.
-`crm solution publish-all`) — not for batching several edits to the same sitemap.
+By default every edit **stages** (no `--publish` needed to write it — just to
+see it in a re-fetch). Reserve a plain flagless (staged) edit for a **single**
+change you publish yourself afterward (e.g. `crm solution publish-all`) — not
+for batching several edits to the same sitemap.
 
 ## Solution scoping
 

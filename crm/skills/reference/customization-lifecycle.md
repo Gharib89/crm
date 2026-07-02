@@ -57,11 +57,16 @@ derivation only) — that does not cover the solution target.
 on every write in discipline 1. Skip this and there is nowhere valid to point `--solution`
 at.
 
-**3 — Stage many, publish once.** Each `metadata create/update` auto-publishes, and a
-publish is slow and disruptive. Across a batch, set `--stage-only` (or `CRM_STAGE_ONLY=1`)
-on every write, then run `solution publish-all` **once** at the end. This matters beyond
-speed: **only published customizations export** — an unpublished change silently drops out
-of the solution zip. → `reference/authoring.md`
+**3 — Stage many, publish once.** Every atomic `metadata`/`form`/`view`/`ribbon`/
+`sitemap`/`app`/`dashboard`/`chart`/`webresource` create/update command **stages by
+default** — no publish, which is slow and disruptive per call. Across a batch, just
+omit `--publish` on each write (the default already stages), then run
+`solution publish-all` **once** at the end. `--stage-only` (or `CRM_STAGE_ONLY=1`)
+is redundant for these atomic commands but still matters for the **batch** verbs
+(`apply`, `scaffold table`), which publish once at the end by default — it's the
+switch that forces those to stage too. This matters beyond speed: **only published
+customizations export** — an unpublished change silently drops out of the solution
+zip. → `reference/authoring.md`
 
 **4 — Publish-before-read, then poll.** A just-published metadata change takes a beat to
 propagate. Gate the read with `metadata ... --expect ATTR=VALUE` and retry on mismatch

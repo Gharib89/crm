@@ -19,7 +19,7 @@ deleting it.
 crm --json view create cwx_sla --name "Active SLAs (cmd)" --otc 10126 \
   --column "cwx_name:240" --column "cwx_tier:140" --filter-active --if-exists skip
 ```
-Get `<otc>` (ObjectTypeCode) from `crm --json metadata entity cwx_sla`. `--filter-active` restricts to `statecode=0`; `--if-exists skip` makes re-runs a no-op. Generates the LayoutXml + FetchXml, creates, and publishes.
+Get `<otc>` (ObjectTypeCode) from `crm --json metadata entity cwx_sla`. `--filter-active` restricts to `statecode=0`; `--if-exists skip` makes re-runs a no-op. Generates the LayoutXml + FetchXml, creates, and stages by default (pass `--publish` to publish it immediately).
 
 ## Create a sorted view with several columns
 
@@ -101,10 +101,11 @@ column missing from the list or any unknown column name is an error.
 **Refused cases:** the primary-key column cannot be removed; a view whose
 `IsCustomizable.Value` is false is refused with a clear error.
 
-**Publish-then-read-back.** The command publishes by default (`--publish`). The
-T3 read-back verification only runs when publish is enabled — under `--no-publish`
-the response reflects the staged state, and a subsequent `view list` GET will still
-return the *published* (pre-edit) columns until you publish.
+**Publish-then-read-back.** The command **stages** the change by default (no
+publish). The T3 read-back verification only runs when `--publish` is passed —
+without it the response reflects the staged state, and a subsequent `view list`
+GET will still return the *published* (pre-edit) columns until you publish
+(`--publish`, or `crm solution publish-all` afterward).
 
 **Managed-layer warning.** Editing an out-of-box or managed view creates an
 unmanaged layer. A later solution upgrade may revert the change.

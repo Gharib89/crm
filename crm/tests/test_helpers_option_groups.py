@@ -74,9 +74,12 @@ class TestPublishOption:
             pass
 
         opt = _option_named(cmd, "publish")
-        assert opt.default is True
+        assert opt.default is False
         assert "--publish" in opt.opts and "--no-publish" in opt.secondary_opts
-        assert opt.help == "Run PublishAllXml after the change. Default: publish."
+        assert opt.help == (
+            "Run PublishAllXml after the change. Default: stage (no publish); "
+            "run `solution publish-all` when your set is done."
+        )
 
 
 class TestDestructiveOption:

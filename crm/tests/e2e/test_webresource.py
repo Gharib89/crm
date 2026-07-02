@@ -82,8 +82,9 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
     confirm via list, then delete in a finalizer.
 
     Uses a minimal JS content (a comment) so there is no script-engine
-    interference. `--publish` is left at default (True) which makes the command
-    slow on on-prem but keeps the create verifiable by a subsequent get.
+    interference. `--publish` is omitted, so the create stages (the default
+    post-#633); the web-resource record is still verifiable by a subsequent get
+    without publishing.
     """
     name = f"new_e2e_{unique}.js"
     content_v1 = b"// e2e test v1"
@@ -212,9 +213,9 @@ def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_so
                 pass
     request.addfinalizer(_cleanup)
 
-    # ── FIRST PUSH: both files created, published once ──────────────────────────
+    # ── FIRST PUSH: both files created, published once (--publish opt-in) ────────
     result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix,
-                  "--solution", ephemeral_solution])
+                  "--publish", "--solution", ephemeral_solution])
     assert result.returncode == 0, (
         f"first push failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
@@ -241,7 +242,7 @@ def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_so
     # ── CHANGE ONE FILE: one updated, one skipped ───────────────────────────────
     (root / rel_js).write_bytes(b"// e2e push v2 changed")
     result = cli(["--json", "webresource", "push", str(root), "--prefix", prefix,
-                  "--solution", ephemeral_solution])
+                  "--publish", "--solution", ephemeral_solution])
     assert result.returncode == 0, result.stderr
     data = json.loads(result.stdout)["data"]
     assert data["updated"] == 1, f"expected 1 updated: {data}"

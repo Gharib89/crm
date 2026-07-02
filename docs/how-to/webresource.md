@@ -8,7 +8,7 @@ Create and manage web resources (HTML/JS/CSS/images) and set them as model-drive
 ```bash
 crm --json webresource create --name cwx_/scripts/ribbon.js --file ./ribbon.js --solution cwx_crmworx
 ```
-The file's bytes from `--file` are base64-encoded into the `content` column. The D365 `webresourcetype` is inferred from the file extension (`.js` → 3 / JScript above), so you don't pass a type for a known extension. `--display-name` defaults to the `--name` value when omitted, and `--solution` sends the `MSCRM.SolutionUniqueName` header so the resource lands in that solution. `create` publishes by default — pass `--no-publish` (or the global `--stage-only`) to suppress the publish.
+The file's bytes from `--file` are base64-encoded into the `content` column. The D365 `webresourcetype` is inferred from the file extension (`.js` → 3 / JScript above), so you don't pass a type for a known extension. `--display-name` defaults to the `--name` value when omitted, and `--solution` sends the `MSCRM.SolutionUniqueName` header so the resource lands in that solution. `create` **stages** by default (no publish) — pass `--publish` to publish it immediately.
 
 ## Supported file types
 
@@ -73,7 +73,7 @@ Each file's web resource name is derived deterministically:
 
 where `<relpath>` is the file's path relative to the `DIRECTORY` argument, with `/` separators regardless of OS. A file at `webresources/scripts/ribbon.js` pushed with `--prefix cwx` becomes `cwx_scripts/ribbon.js`. The prefix must be 2–8 alphanumeric characters, start with a letter, and not start with `mscrm` (reserved); an invalid prefix is rejected as a usage error before any call.
 
-### Upsert + skip + publish-once
+### Upsert + skip + optional publish-once
 
 For each file the command:
 
@@ -82,11 +82,15 @@ For each file the command:
 3. **Updates** it (PATCH of `content`) when the base64 content has changed.
 4. **Skips** it (no write) when the stored content is byte-identical — cheap no-op.
 
-A single `PublishAllXml` is issued at the end **only when at least one file was created or updated**. If every file was skipped, no publish occurs.
+`push` **stages** by default (no publish), same as `create`/`update`. Pass
+`--publish` to publish once at the end — a single `PublishAllXml` fires **only
+when `--publish` is passed and** at least one file was created or updated
+(skipping all files skips the publish too). Without `--publish`, run
+`crm solution publish-all` afterward once your batch of pushes is done.
 
 ### Partial-failure behavior
 
-A failing file does not abort the run. Errors are collected in `failed` and reported at the end. The files that succeeded are still published. **Exit code is 1 if any file failed, 0 if all succeeded.**
+A failing file does not abort the run. Errors are collected in `failed` and reported at the end. The files that succeeded are still committed (and published, if `--publish` was passed). **Exit code is 1 if any file failed, 0 if all succeeded.**
 
 ### Dry-run preview
 
@@ -100,7 +104,7 @@ Output shows `would_create` (names that would be created), `would_update` (names
 
 ### JSON envelope
 
-Real run:
+Real run (with `--publish`; omit it and `published` reports `false` instead):
 
 ```json
 {
