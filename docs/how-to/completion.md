@@ -62,3 +62,17 @@ update — it's surfaced as a status line instead. If you set completion up manu
     `install` always caches the script to a file and tells you to `source` it.
     Avoid the inline `eval "$(_CRM_COMPLETE=zsh_source crm)"` form in your rc — it
     spawns Python on every shell start, slowing down each new terminal.
+
+## REPL tab-completion (built-in, nothing to install)
+
+Everything above is **OS-shell** completion — for typing `crm ...` at your
+bash/zsh/fish/PowerShell prompt. The interactive `crm repl` has its own,
+separate completer that needs no install step at all: Tab works the moment
+you launch it. It completes group/command names at any position, flags for
+the resolved command (including `--no-*` secondary forms), values for
+`Choice`-typed flags, saved profile names after `--profile` (fires wherever
+the previous token is literally `--profile`, regardless of position), and
+entity names at their existing slot (see
+[how-to: metadata](metadata.md#scope) for the on-disk cache backing that
+last one). It shares no code or cache with the OS-shell completion above and
+works even if you've never run `crm completion install`.
