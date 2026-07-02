@@ -2,7 +2,6 @@
 # pyright: basic
 from __future__ import annotations
 import tempfile
-import zipfile
 import xml.dom.minidom as minidom
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -12,7 +11,7 @@ from crm.utils.d365_backend import D365Error, odata_literal
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
     _destructive_option,
-    _handle_d365_error, _journal, _confirm_destructive,
+    _journal, _confirm_destructive,
     _solution_option, _resolve_solution, d365_errors,
     _output_option, _publish_option, _resolve_publish,
 )
@@ -57,15 +56,9 @@ def ribbon_export(ctx: CLIContext, entity, application, output):
                      "RibbonLocationFilter='All')")
         ctx.emit(True, data=ctx.backend().get(path))
         return
-    try:
+    with d365_errors(ctx):
         root = (ribbon_mod.retrieve_application_ribbon(ctx.backend()) if application
                 else ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity))
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     pretty = minidom.parseString(ET.tostring(root)).toprettyxml(indent="  ")
     if output:
         try:
@@ -78,19 +71,6 @@ def ribbon_export(ctx: CLIContext, entity, application, output):
         ctx.emit(True, data={**label, "ribbonxml": pretty})
     else:
         click.echo(pretty)
-
-
-def _load_solution_ribbon_diff(ctx: CLIContext, solution: str, entity: str):
-    """Export the solution and return (cust_root, entity_node, ribbon_diff)."""
-    with tempfile.TemporaryDirectory() as td:
-        src = Path(td) / "export.zip"
-        ribbon_mod.export_solution(ctx.backend(), solution, src,
-                                   export_customizations=True)
-        with zipfile.ZipFile(src) as z:
-            cust_root = ET.fromstring(z.read("customizations.xml"))
-    entity_node = ribbon_mod.find_entity_node(cust_root, entity)
-    diff = ribbon_mod.get_or_create_ribbon_diff(entity_node)
-    return cust_root, entity_node, diff
 
 
 @ribbon_group.command("list")
@@ -108,14 +88,8 @@ def ribbon_list(ctx: CLIContext, entity, solution):
                     export_customizations=True)
         ctx.emit(True, data=preview, warnings=None)
         return
-    try:
-        _, _, diff = _load_solution_ribbon_diff(ctx, solution, entity)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
+    with d365_errors(ctx):
+        diff = ribbon_mod.load_solution_ribbon_diff(ctx.backend(), solution, entity)
     buttons = ribbon_mod.list_custom_buttons(diff)
     rows = [[b.button_id, b.label, b.location, b.command, b.function, b.library]
             for b in buttons]
@@ -150,34 +124,18 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
                       function, param, sequence, id_base, solution):
     """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
     solution = _resolve_solution(ctx, solution)
-    try:
+    with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
-    except (D365Error, ValueError) as exc:
-        if isinstance(exc, D365Error):
-            _handle_d365_error(ctx, exc)
-        else:
-            ctx.emit(False, error=str(exc))
-        return
+        group = ribbon_mod.resolve_group(location, entity, group_override)
+        ids = ribbon_mod.build_button_ids(entity, location, label, id_base)
 
-    group = ribbon_mod.resolve_group(location, entity, group_override)
-    ids = ribbon_mod.build_button_ids(entity, location, label, id_base)
+        def mutate(diff):
+            ribbon_mod.add_custom_action(
+                diff, ids=ids, group=group, label=label, webresource=webresource,
+                function=function, param=param, sequence=sequence)
 
-    def mutate(cust_root):
-        node = ribbon_mod.find_entity_node(cust_root, entity)
-        diff = ribbon_mod.get_or_create_ribbon_diff(node)
-        ribbon_mod.add_custom_action(
-            diff, ids=ids, group=group, label=label, webresource=webresource,
-            function=function, param=param, sequence=sequence)
-
-    try:
         result = ribbon_mod.apply_ribbon_change(
             ctx.backend(), solution=solution, entity=entity, mutate=mutate)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     ctx.emit(True, data={"button_id": ids.custom_action, "group": group,
                          "result": result},
              warnings=None)
@@ -196,24 +154,16 @@ def ribbon_remove(ctx, entity, button_id, yes, solution):
     solution = _resolve_solution(ctx, solution)
     _confirm_destructive(ctx, "ribbon button", button_id, yes)
 
-    def mutate(cust_root):
-        node = ribbon_mod.find_entity_node(cust_root, entity)
-        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+    def mutate(diff):
         if not ribbon_mod.remove_custom_action(diff, button_id):
             available = [b.button_id
                          for b in ribbon_mod.list_custom_buttons(diff)]
-            raise ValueError(
+            raise D365Error(
                 f"button-id {button_id!r} not found; available: {available}")
 
-    try:
+    with d365_errors(ctx):
         result = ribbon_mod.apply_ribbon_change(
             ctx.backend(), solution=solution, entity=entity, mutate=mutate)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     ctx.emit(True, data={"removed": button_id, "result": result},
              warnings=None)
     _journal(ctx, button_id, result, solution=solution)
@@ -253,37 +203,23 @@ def ribbon_set_label(ctx, entity, button_id, label, tooltip_title,
             "pass at least one of --label / --tooltip-title / --tooltip-description")
 
     if lcid is not None:
-        try:
+        with d365_errors(ctx):
             provisioned = ribbon_mod.retrieve_provisioned_languages(ctx.backend())
-        except D365Error as exc:
-            _handle_d365_error(ctx, exc)
-            return
-        except ValueError as exc:
-            ctx.emit(False, error=str(exc))
-            return
         if lcid not in provisioned:
             ctx.emit(False, error=(
                 f"--lcid {lcid} is not provisioned on this org; "
                 f"provisioned languages: {sorted(provisioned)}"))
             return
 
-    def mutate(cust_root):
-        node = ribbon_mod.find_entity_node(cust_root, entity)
-        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+    def mutate(diff):
         ribbon_mod.set_button_label(
             diff, button_id=button_id, label=label, tooltip_title=tooltip_title,
             tooltip_description=tooltip_description, lcid=lcid)
 
-    try:
+    with d365_errors(ctx):
         result = ribbon_mod.apply_ribbon_change(
             ctx.backend(), solution=solution, entity=entity, mutate=mutate,
             publish=publish)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     ctx.emit(True, data={"button_id": button_id, "label": label,
                          "tooltip_title": tooltip_title,
                          "tooltip_description": tooltip_description,
@@ -321,14 +257,8 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
 
     # T2: resolve --target-id in the live composed ribbon; a typo must error here,
     # not silently no-op after a full export/import round-trip (#1 ribbon defect).
-    try:
+    with d365_errors(ctx):
         composed = ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     element = ribbon_mod.find_composed_element(composed, target_id)
     if element is None:
         ctx.emit(False, error=(
@@ -348,25 +278,17 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish,
             message=(f"HideCustomAction on {target_id!r} is IRREVERSIBLE without a "
                      "new solution version. Continue?"))
 
-    def mutate(cust_root):
-        node = ribbon_mod.find_entity_node(cust_root, entity)
-        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+    def mutate(diff):
         if method == "display-rule":
             assert command_id is not None  # guarded above
             ribbon_mod.hide_button_display_rule(diff, command_id)
         else:
             ribbon_mod.hide_button_hide_action(diff, target_id)
 
-    try:
+    with d365_errors(ctx):
         result = ribbon_mod.apply_ribbon_change(
             ctx.backend(), solution=solution, entity=entity, mutate=mutate,
             publish=publish)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     warnings = [_OOB_REUSE_WARNING]
     ctx.emit(True, data={"hidden": target_id, "method": method,
                          "command": command_id, "result": result},
@@ -399,34 +321,23 @@ def ribbon_set_rules(ctx, entity, command_id, enable_rules, display_rules,
         raise click.UsageError("pass at least one --enable-rule or --display-rule")
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         ribbon_mod.validate_rule_ids(enable_rules, kind="enable")
         ribbon_mod.validate_rule_ids(display_rules, kind="display")
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
 
     warnings = []
     if ribbon_mod.is_oob_command(command_id):
         warnings.append(_OOB_REUSE_WARNING)
 
-    def mutate(cust_root):
-        node = ribbon_mod.find_entity_node(cust_root, entity)
-        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+    def mutate(diff):
         ribbon_mod.set_command_rules(
             diff, command_id=command_id,
             enable_rules=enable_rules, display_rules=display_rules)
 
-    try:
+    with d365_errors(ctx):
         result = ribbon_mod.apply_ribbon_change(
             ctx.backend(), solution=solution, entity=entity, mutate=mutate,
             publish=publish)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     ctx.emit(True, data={"command_id": command_id,
                          "enable_rules": list(enable_rules),
                          "display_rules": list(display_rules),
@@ -456,37 +367,23 @@ def ribbon_add_custom_rule(ctx, entity, command_id, webresource, function,
     """
     solution = _resolve_solution(ctx, solution)
     publish = _resolve_publish(ctx, publish)
-    try:
+    with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
         rule_id = ribbon_mod.build_custom_rule_id(command_id, function)
-    except (D365Error, ValueError) as exc:
-        if isinstance(exc, D365Error):
-            _handle_d365_error(ctx, exc)
-        else:
-            ctx.emit(False, error=str(exc))
-        return
 
     warnings = []
     if ribbon_mod.is_oob_command(command_id):
         warnings.append(_OOB_REUSE_WARNING)
 
-    def mutate(cust_root):
-        node = ribbon_mod.find_entity_node(cust_root, entity)
-        diff = ribbon_mod.get_or_create_ribbon_diff(node)
+    def mutate(diff):
         ribbon_mod.add_custom_rule(
             diff, command_id=command_id, rule_id=rule_id,
             webresource=webresource, function=function)
 
-    try:
+    with d365_errors(ctx):
         result = ribbon_mod.apply_ribbon_change(
             ctx.backend(), solution=solution, entity=entity, mutate=mutate,
             publish=publish)
-    except D365Error as exc:
-        _handle_d365_error(ctx, exc)
-        return
-    except ValueError as exc:
-        ctx.emit(False, error=str(exc))
-        return
     ctx.emit(True, data={"command_id": command_id, "rule_id": rule_id,
                          "result": result},
              warnings=warnings or None)
