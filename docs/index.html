@@ -663,8 +663,8 @@ crm action invoke ExecuteWorkflow \
       <div class="col">
         <h3><span class="stamp">04</span>Stage by default, publish on your terms</h3>
         <p>
-          Metadata writes stage by default — no <code>PublishAllXml</code> runs. Pass
-          <code>metadata create-entity --publish</code> (as shown) to chain <code>PublishAllXml</code> and make a
+          Metadata writes stage by default — no <code>PublishAllXml</code> runs. Add
+          <code>--publish</code> to a write to chain <code>PublishAllXml</code> and make a
           new table immediately visible to UI consumers, or bundle several changes and run
           <code>solution publish-all</code> once at the end.
         </p>
