@@ -846,6 +846,57 @@ class TestPublish:
         assert result["published"] is True
         assert m.request_history[0].method == "POST"
 
+    def test_publish_all_retries_on_lock_then_succeeds(self, backend, no_sleep):
+        """0x80071151 (org-wide publish lock) is retried; succeeds once it frees."""
+        from crm.core import solution as sol_mod_local
+        lock_err = {"error": {"code": "0x80071151",
+                              "message": "another [PublishAll] operation is running."}}
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("PublishAllXml"), [
+                {"status_code": 400, "json": lock_err},
+                {"status_code": 204},
+            ])
+            result = sol_mod_local.publish_all(backend)
+        assert result["published"] is True
+        assert m.call_count == 2
+
+    def test_publish_all_surfaces_original_error_after_exhausting_retries(
+        self, backend, monkeypatch,
+    ):
+        """Once the retry budget is spent the original 0x80071151 is surfaced
+        (not swallowed), and the waits are a bounded exponential sequence."""
+        import time as _t
+        from crm.core import solution as sol_mod_local
+        sleeps: list[float] = []
+        monkeypatch.setattr(_t, "sleep", lambda s: sleeps.append(s))
+        lock_err = {"error": {"code": "0x80071151", "message": "locked"}}
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("PublishAllXml"),
+                   [{"status_code": 400, "json": lock_err}] * 6)
+            with pytest.raises(D365Error) as exc_info:
+                sol_mod_local.publish_all(backend)
+        assert exc_info.value.code == "0x80071151"
+        assert m.call_count == 5                     # 5 attempts, no more
+        assert sleeps == [2.0, 4.0, 8.0, 16.0]       # bounded exponential backoff
+
+    def test_publish_all_does_not_retry_other_errors(self, backend, monkeypatch):
+        """The retry is code-specific: a non-lock D365 error raises immediately."""
+        import time as _t
+        from crm.core import solution as sol_mod_local
+        sleeps: list[float] = []
+        monkeypatch.setattr(_t, "sleep", lambda s: sleeps.append(s))
+        other_err = {"error": {"code": "0x80040217", "message": "does not exist"}}
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("PublishAllXml"), [
+                {"status_code": 404, "json": other_err},
+                {"status_code": 204},  # a wrongful retry would land here and pass
+            ])
+            with pytest.raises(D365Error) as exc_info:
+                sol_mod_local.publish_all(backend)
+        assert exc_info.value.code == "0x80040217"
+        assert m.call_count == 1                      # no retry
+        assert sleeps == []
+
     def test_publish_xml_sends_parameterxml(self, backend):
         from crm.core import solution as sol_mod_local
         xml = "<importexportxml><entities><entity>account</entity></entities></importexportxml>"
