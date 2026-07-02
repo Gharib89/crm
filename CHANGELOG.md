@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.48.1 (2026-07-02)
+
+### Bug Fixes
+
+- Stage metadata writes by default; --publish becomes opt-in
+  ([#641](https://github.com/Gharib89/crm/pull/641),
+  [`7c7654c`](https://github.com/Gharib89/crm/commit/7c7654c4691e7fdee61b6d6b3319b03ff65eec91))
+
+### Chores
+
+- Drop stale --default-solution flag from cloud-ship bootstrap
+  ([#640](https://github.com/Gharib89/crm/pull/640),
+  [`f2f43f8`](https://github.com/Gharib89/crm/commit/f2f43f87bf04882d49d7233b8493dc9f997ac95b))
+
+- Pin pyright to exact 1.1.411 so local lint matches CI
+  ([#640](https://github.com/Gharib89/crm/pull/640),
+  [`f2f43f8`](https://github.com/Gharib89/crm/commit/f2f43f87bf04882d49d7233b8493dc9f997ac95b))
+
+
 ## v1.48.0 (2026-07-02)
 
 ### Features
