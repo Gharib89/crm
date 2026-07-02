@@ -4,6 +4,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import pytest
 from crm.core import ribbon
+from crm.utils.d365_backend import D365Error
 
 FIXTURE = Path(__file__).parent / "fixtures" / "ribbon_account.b64"
 
@@ -18,7 +19,7 @@ def test_decode_compressed_ribbon_returns_ribbondiff_root():
 def test_decode_compressed_ribbon_rejects_non_zip():
     import base64
     not_a_zip = base64.b64encode(b"plain text, not PK").decode("ascii")
-    with pytest.raises(ValueError, match="not a ZIP"):
+    with pytest.raises(D365Error, match="not a ZIP"):
         ribbon.decode_compressed_ribbon(not_a_zip)
 
 
@@ -45,7 +46,7 @@ def test_retrieve_application_ribbon_calls_parameterless_function(make_fake_back
 
 def test_retrieve_application_ribbon_missing_key_raises(make_fake_backend, inject_backend):
     be = inject_backend(make_fake_backend(responses={"get": {}}))
-    with pytest.raises(ValueError, match="CompressedApplicationRibbonXml"):
+    with pytest.raises(D365Error, match="CompressedApplicationRibbonXml"):
         ribbon.retrieve_application_ribbon(be)  # type: ignore[arg-type]
 
 
@@ -124,7 +125,7 @@ def test_build_button_ids_with_override_base():
 
 
 def test_build_button_ids_empty_slug_raises():
-    with pytest.raises(ValueError, match="empty slug"):
+    with pytest.raises(D365Error, match="empty slug"):
         ribbon.build_button_ids("cwx_ticket", "form", "!!!", None)
 
 
@@ -145,7 +146,7 @@ def test_find_entity_node_case_insensitive():
 
 def test_find_entity_node_missing_raises():
     root = ET.fromstring(CUST_XML)
-    with pytest.raises(ValueError, match="not found in solution"):
+    with pytest.raises(D365Error, match="not found in solution"):
         ribbon.find_entity_node(root, "cwx_missing")
 
 
@@ -207,7 +208,7 @@ def test_add_custom_action_rejects_id_collision():
         diff, ids=ids, group="G", label="Validate",
         webresource="cwx_/scripts/x.js", function="ns.fn",
         param="PrimaryControl", sequence=50)
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(D365Error, match="already exists"):
         ribbon.add_custom_action(
             diff, ids=ids, group="G", label="Validate",
             webresource="cwx_/scripts/x.js", function="ns.fn",
@@ -285,7 +286,7 @@ def test_hide_button_display_rule_emits_two_false_rules():
 def test_hide_button_display_rule_rejects_duplicate_override():
     diff = _empty_diff()
     ribbon.hide_button_display_rule(diff, "Mscrm.HomepageGrid.Deactivate")
-    with pytest.raises(ValueError, match="already overridden"):
+    with pytest.raises(D365Error, match="already overridden"):
         ribbon.hide_button_display_rule(diff, "Mscrm.HomepageGrid.Deactivate")
 
 
@@ -303,7 +304,7 @@ def test_hide_button_hide_action_emits_hidecustomaction():
 def test_hide_button_hide_action_rejects_duplicate():
     diff = _empty_diff()
     ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
-    with pytest.raises(ValueError, match="already hidden"):
+    with pytest.raises(D365Error, match="already hidden"):
         ribbon.hide_button_hide_action(diff, "Mscrm.HomepageGrid.account.Deactivate")
 def _diff_with_command() -> ET.Element:
     """A RibbonDiffXml carrying one custom CommandDefinition with empty rule sets."""
@@ -369,7 +370,7 @@ def test_set_command_rules_never_touches_command_id():
 
 def test_set_command_rules_unknown_command_raises():
     diff = _diff_with_command()
-    with pytest.raises(ValueError, match="command-id .* not found"):
+    with pytest.raises(D365Error, match="command-id .* not found"):
         ribbon.set_command_rules(diff, command_id="nope.Command",
                                  enable_rules=["Mscrm.ShowOnGrid"], display_rules=[])
 
@@ -380,25 +381,25 @@ def test_validate_rule_ids_accepts_known_platform_and_custom():
 
 
 def test_validate_rule_ids_rejects_bad_kind():
-    with pytest.raises(ValueError, match="kind must be"):
+    with pytest.raises(D365Error, match="kind must be"):
         ribbon.validate_rule_ids(["custom.Rule"], kind="bogus")
 
 
 def test_validate_rule_ids_rejects_unknown_platform_id():
-    with pytest.raises(ValueError, match="not a recognized platform rule"):
+    with pytest.raises(D365Error, match="not a recognized platform rule"):
         ribbon.validate_rule_ids(["Mscrm.Typooo"], kind="enable")
 
 
 def test_validate_rule_ids_rejects_miscased_platform_prefix():
     # A case typo on the prefix must not slip through as if it were a custom id
     # (the server silently ignores the mis-cased platform rule otherwise).
-    with pytest.raises(ValueError, match="not a recognized platform rule"):
+    with pytest.raises(D365Error, match="not a recognized platform rule"):
         ribbon.validate_rule_ids(["mscrm.ShowOnGrid"], kind="enable")
 
 
 def test_validate_rule_ids_rejects_enable_id_used_as_display():
     # Mscrm.ShowOnGrid is an enable rule; using it as a display rule is rejected.
-    with pytest.raises(ValueError, match="not a recognized platform rule"):
+    with pytest.raises(D365Error, match="not a recognized platform rule"):
         ribbon.validate_rule_ids(["Mscrm.ShowOnGrid"], kind="display")
 
 
@@ -437,7 +438,7 @@ def test_add_custom_rule_rejects_duplicate():
     rid = ribbon.build_custom_rule_id(cmd, "ns.canRun")
     ribbon.add_custom_rule(diff, command_id=cmd, rule_id=rid,
                            webresource="cwx_/scripts/x.js", function="ns.canRun")
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(D365Error, match="already exists"):
         ribbon.add_custom_rule(diff, command_id=cmd, rule_id=rid,
                                webresource="cwx_/scripts/x.js", function="ns.canRun")
 
@@ -478,9 +479,9 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
     monkeypatch.setattr(ribbon, "import_solution", fake_import)
     monkeypatch.setattr(ribbon, "publish_all", fake_publish)
 
-    def mutate(cust_root: ET.Element) -> None:
-        entity = ribbon.find_entity_node(cust_root, "cwx_ticket")
-        diff = ribbon.get_or_create_ribbon_diff(entity)
+    def mutate(diff: ET.Element) -> None:
+        # apply_ribbon_change now hands the callback the entity's RibbonDiffXml
+        # element directly — the find/get-or-create scoping is done inside.
         ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
         ribbon.add_custom_action(
             diff, ids=ids, group="Mscrm.Form.cwx_ticket.MainTab.Save",
@@ -508,7 +509,7 @@ def test_retrieve_provisioned_languages_parses_lcids(make_fake_backend, inject_b
 
 def test_retrieve_provisioned_languages_missing_key_raises(make_fake_backend, inject_backend):
     be = inject_backend(make_fake_backend(responses={"get": {}}))
-    with pytest.raises(ValueError, match="RetrieveProvisionedLanguages"):
+    with pytest.raises(D365Error, match="RetrieveProvisionedLanguages"):
         ribbon.retrieve_provisioned_languages(be)  # type: ignore[arg-type]
 
 
@@ -557,13 +558,13 @@ def test_set_button_label_protects_command_alias_sequence_id():
 
 def test_set_button_label_unknown_button_raises():
     diff = _diff_with_button()
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(D365Error, match="not found"):
         ribbon.set_button_label(diff, button_id="nope.CustomAction", label="x")
 
 
 def test_set_button_label_requires_a_field():
     diff = _diff_with_button()
-    with pytest.raises(ValueError, match="at least one"):
+    with pytest.raises(D365Error, match="at least one"):
         ribbon.set_button_label(
             diff, button_id="cwx_ticket.form.Validate.CustomAction")
 
@@ -632,7 +633,7 @@ def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
                         lambda *a, **k: imported.append("x"))
     monkeypatch.setattr(ribbon, "publish_all", lambda *a, **k: None)
 
-    with pytest.raises(ValueError, match="validation failed"):
+    with pytest.raises(D365Error, match="validation failed"):
         ribbon.apply_ribbon_change(
             object(), solution="MySol", entity="cwx_ticket",  # type: ignore[arg-type]
             mutate=lambda r: None)
