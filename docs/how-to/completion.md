@@ -20,6 +20,11 @@ autodetected).
 
 Re-running is idempotent: it rewrites the same script and marker, no duplication.
 
+Once installed, `--profile <TAB>` dynamically completes your saved connection
+profile names (a local read of `${CRM_HOME:-~/.crm}/profiles/`, never a network
+call) — like any global option, place it before the subcommand:
+`crm --profile <TAB> entity get ...`.
+
 ### Per-shell setup
 
 After `crm completion install`, add the printed line to the matching startup file
