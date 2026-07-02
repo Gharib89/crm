@@ -9,6 +9,62 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.49.0 (2026-07-02)
+
+### Bug Fixes
+
+- **repl**: Extend tab-completion to commands, flags, choices, profiles
+  ([`e7a85e3`](https://github.com/Gharib89/crm/commit/e7a85e34610eda2a51cdc7dca4b9f34980b35984))
+
+- **repl**: Harden completion against internal errors, tighten docs
+  ([`e7a85e3`](https://github.com/Gharib89/crm/commit/e7a85e34610eda2a51cdc7dca4b9f34980b35984))
+
+- **session**: Make list_profiles() read-only, no mkdir side effect
+  ([`e7a85e3`](https://github.com/Gharib89/crm/commit/e7a85e34610eda2a51cdc7dca4b9f34980b35984))
+
+### Chores
+
+- **cloud-ship**: Fix invalid --publisher-prefix in bootstrap script
+  ([#653](https://github.com/Gharib89/crm/pull/653),
+  [`906a924`](https://github.com/Gharib89/crm/commit/906a924bb913112e3947fa4de63291cdd527a9e0))
+
+### Documentation
+
+- Address Copilot round-1 nits (link style, key-1 grammar)
+  ([#648](https://github.com/Gharib89/crm/pull/648),
+  [`5173bbe`](https://github.com/Gharib89/crm/commit/5173bbea1392772a7ff0adf6a8191d6b35d4515f))
+
+- Align frontmatter with step 2 (oldest open issue)
+  ([#649](https://github.com/Gharib89/crm/pull/649),
+  [`632c2c5`](https://github.com/Gharib89/crm/commit/632c2c51065a0aeb2fe638a51429dae45d278e01))
+
+- Dedup crm skill invariants, split customizations ref, docs-sync anti-drift gates
+  ([#650](https://github.com/Gharib89/crm/pull/650),
+  [`2d7877c`](https://github.com/Gharib89/crm/commit/2d7877cd7d09f9f15ade9b5b5b4bb49d424c6dd3))
+
+- Tighten cloud-ship skill; document sandbox subagent absence
+  ([#649](https://github.com/Gharib89/crm/pull/649),
+  [`632c2c5`](https://github.com/Gharib89/crm/commit/632c2c51065a0aeb2fe638a51429dae45d278e01))
+
+- Tighten ship skill lanes + delegation rule ([#648](https://github.com/Gharib89/crm/pull/648),
+  [`5173bbe`](https://github.com/Gharib89/crm/commit/5173bbea1392772a7ff0adf6a8191d6b35d4515f))
+
+- **completion**: Document REPL's built-in tab-completion
+  ([`e7a85e3`](https://github.com/Gharib89/crm/commit/e7a85e34610eda2a51cdc7dca4b9f34980b35984))
+
+- **completion**: Mention OS-shell --profile dynamic completion
+  ([`e7a85e3`](https://github.com/Gharib89/crm/commit/e7a85e34610eda2a51cdc7dca4b9f34980b35984))
+
+- **skill**: Split metadata reference into read + write-gotchas files
+  ([#651](https://github.com/Gharib89/crm/pull/651),
+  [`5b93abb`](https://github.com/Gharib89/crm/commit/5b93abbda941f1cce36016bbbb9d1dd554f8c817))
+
+### Features
+
+- **repl**: Extend tab-completion to commands, flags, choices, profiles
+  ([`e7a85e3`](https://github.com/Gharib89/crm/commit/e7a85e34610eda2a51cdc7dca4b9f34980b35984))
+
+
 ## v1.48.2 (2026-07-02)
 
 ### Bug Fixes
