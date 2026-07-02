@@ -9,6 +9,26 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.49.3 (2026-07-02)
+
+### Bug Fixes
+
+- Mask secret prompts with asterisks and add no-arg profile pickers
+  ([`cd5a717`](https://github.com/Gharib89/crm/commit/cd5a7176bfe337ff5af075001de7617e60d0f1e7))
+
+### Documentation
+
+- **apply**: Correct extra_validate ordering comment
+  ([#664](https://github.com/Gharib89/crm/pull/664),
+  [`1d62c51`](https://github.com/Gharib89/crm/commit/1d62c513610923a34a7cf60e5682eed1a95f1605))
+
+### Refactoring
+
+- **apply**: Component-kind adapter interface + entity subtree migration
+  ([#664](https://github.com/Gharib89/crm/pull/664),
+  [`1d62c51`](https://github.com/Gharib89/crm/commit/1d62c513610923a34a7cf60e5682eed1a95f1605))
+
+
 ## v1.49.2 (2026-07-02)
 
 ### Bug Fixes
