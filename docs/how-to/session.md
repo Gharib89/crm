@@ -85,8 +85,9 @@ atomic metadata-write commands (`metadata`/`form`/`view`/`ribbon`/`sitemap`/
 `PublishAllXml` unless `--publish` is passed — but a plain staged write still
 journals `staged: false` unless the *global* `--stage-only` flag was also on.
 To tell whether a given write actually published, check that command's own
-result envelope for `data.published` (absent/missing when staged, `true` once
-it publishes) rather than this journal column.
+result envelope for `data.published` (either `false` or absent when staged —
+the atomic metadata verbs omit it, `webresource push` emits `false`; only
+`true` reliably means a publish ran) rather than this journal column.
 
 ### Example
 

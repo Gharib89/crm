@@ -104,7 +104,9 @@ def test_without_flag_stages_by_default(use_backend):
     assert result.exit_code == 0, result.output
     assert _publish_hits(m, backend) == []
     env = json.loads(result.output)
-    assert env["data"].get("published") is not True
+    # add-attribute omits `published` entirely when staged (maybe_publish only
+    # sets it on an actual publish); its absence is the staged signal.
+    assert "published" not in env["data"]
 
 
 def test_explicit_publish_fires(use_backend):
