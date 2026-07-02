@@ -479,6 +479,15 @@ class TestSessionStore:
             session_mod.save_profile(p)
         assert session_mod.list_profiles() == ["alpha", "beta", "gamma"]
 
+    def test_list_profiles_is_read_only(self, isolated_home):
+        # Regression (PR #660 review): list_profiles() is on the shell-completion
+        # hot path (a fresh `crm` process per Tab) and must never create
+        # directories as a side effect of a read — especially not before any
+        # profile has ever been saved.
+        assert session_mod.list_profiles() == []
+        assert not (isolated_home / ".crm" / "profiles").exists()
+        assert not (isolated_home / ".crm" / "sessions").exists()
+
     def test_session_history_trims_to_max_length(self, isolated_home):
         state = session_mod.load_session("trim")
         for i in range(20):

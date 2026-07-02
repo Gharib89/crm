@@ -2,6 +2,12 @@
 
 Tab-completion for `crm` in bash, zsh, fish, or PowerShell.
 
+!!! note "The REPL already tab-completes — nothing to install"
+    This page is about completing `crm ...` at your **OS shell** prompt. The
+    interactive `crm repl` has its own built-in Tab-completion (commands, flags,
+    profile names, entity names) that needs no setup — see
+    [how-to: completion](../how-to/completion.md#repl-tab-completion-built-in-nothing-to-install).
+
 ```bash
 crm completion install --shell zsh
 ```

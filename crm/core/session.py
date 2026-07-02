@@ -70,7 +70,10 @@ def load_profile(name: str) -> ConnectionProfile:
 
 
 def list_profiles() -> list[str]:
-    root = _state_root() / "profiles"
+    """Saved profile names, read-only — no directory is created as a side
+    effect (unlike `_state_root()`). On the shell-completion hot path (a fresh
+    `crm` process per Tab keystroke), a read must never mutate the filesystem."""
+    root = Path(os.environ.get("CRM_HOME", str(DEFAULT_HOME))).expanduser() / "profiles"
     return sorted(p.stem for p in root.glob("*.json"))
 
 

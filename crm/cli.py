@@ -488,11 +488,26 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 # ── Root group ──────────────────────────────────────────────────────────
 
 
+def _complete_profile_names(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Dynamic ``--profile`` value completion: saved profile names.
+
+    Local file read only, never a network call — shell completion spawns a
+    fresh ``crm`` process per Tab, so cold-start/import cost is kept minimal
+    (deferred import) and no backend/connection is ever touched.
+    """
+    from crm.core.session import list_profiles
+    try:
+        return [name for name in list_profiles() if name.startswith(incomplete)]
+    except OSError:  # e.g. CRM_HOME unwritable/unreadable — best-effort, never crash
+        return []
+
+
 @click.group(cls=_LazyJsonAwareGroup, name="crm", invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True,
               help="Preview writes without issuing them; reads run normally.")
-@click.option("--profile", "profile_name", help="Connection profile name (from the profiles/ dir under CRM_HOME; default ~/.crm).")
+@click.option("--profile", "profile_name", shell_complete=_complete_profile_names,
+              help="Connection profile name (from the profiles/ dir under CRM_HOME; default ~/.crm).")
 @click.option("--password", help="Secret for this run (overrides the profile's stored secret).")
 @click.option("--log-level",
               type=click.Choice(["debug", "info", "warning", "error"]),
