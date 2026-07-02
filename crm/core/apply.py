@@ -121,20 +121,49 @@ def _validate_column(col: Any, view_name: str) -> None:
     raise D365Error(f"view {view_name!r}: column must be a string or a mapping.")
 
 
-# ── spec → builder adapters ──────────────────────────────────────────────────
+# ── component-kind adapters ──────────────────────────────────────────────────
+@dataclass(frozen=True)
+class ReconcileCtx:
+    """The capped context a component-kind adapter's ``find_live`` / ``reconcile``
+    receive — deliberately small so per-kind knowledge is derived from the block,
+    not smuggled through a grab-bag.
+
+    Carries exactly the four cross-kind values the driver owns: the target
+    ``solution``, the spec file's ``base_dir`` (for the file-content reads a
+    reconcile may need), and the entity-scope pair — the owning entity's
+    ``entity_logical`` name and its ``object_type_code`` — for the nested kinds
+    (attribute, view). Anything else a reconcile needs is read from its own block.
+    """
+
+    solution: str | None
+    base_dir: str | None
+    entity_logical: str | None = None
+    object_type_code: int | None = None
+
+
 @dataclass(frozen=True)
 class Adapter:
-    """Maps a desired-state spec block to one create builder's keyword arguments.
+    """The complete authority for one component kind behind a single interface.
 
-    A spec block (a dict from the parsed spec) reaches a builder through exactly
-    this object, so the set of spec keys a kind accepts *is* the adapter's
-    ``map`` / ``transforms``. ``to_kwargs`` is the single generic projection;
-    ``validate`` routes the block's constrained values through the same
-    :mod:`metadata_constraints` primitives the builder itself calls, so a malformed
-    block fails in the up-front pass instead of mid-apply (closing validate/apply
-    drift by construction). Adapters are *data*: the contract test reads the same
-    ``map``/``transforms`` the runtime uses, so a builder kwarg added without an
-    adapter entry turns the test red.
+    A spec block (a dict from the parsed spec) reaches its create builder through
+    exactly this object, so the set of spec keys a kind accepts *is* the adapter's
+    ``map`` / ``transforms``. The four-slot interface a kind implements:
+
+      * ``validate(block)`` — the complete up-front authority for one block:
+        required keys (``required_block_keys``), constrained values routed through
+        the same :mod:`metadata_constraints` primitives the builder itself calls,
+        and any cross-field rule via ``extra_validate``. A malformed block fails in
+        the up-front pass instead of mid-apply (closing validate/apply drift).
+      * ``to_kwargs(block)`` — the single generic projection onto the builder's
+        keyword arguments.
+      * ``find_live(backend, block, ctx)`` — read the live component this block
+        reconciles against (``None`` when there is nothing to reconcile).
+      * ``reconcile(backend, block, live, ctx, entry)`` — diff the block against
+        ``live`` into an ADR 0014 verdict (bucket + payload).
+
+    Adapters are *data*: the contract test reads the same ``map`` / ``transforms``
+    / ``required_block_keys`` the runtime uses, so a builder kwarg (or a required
+    param) added without an adapter entry turns the test red.
 
     Fields:
       map        spec_key → builder_param (an entry whose key differs from its
@@ -149,6 +178,11 @@ class Adapter:
                  ``block.get(key, default)`` calls).
       schema_name_keys / required_keys / cascade_keys / menu_keys
                  spec keys whose value ``validate`` checks through ``mc.*``.
+      required_block_keys / block_label
+                 keys ``validate`` requires present on the block (via ``_require``,
+                 reported under ``block_label``).
+      extra_validate   optional cross-field block rule ``validate`` runs last.
+      find_live / reconcile   the probe/diff callables (see the interface above).
     """
 
     map: dict[str, str]
@@ -159,6 +193,13 @@ class Adapter:
     required_keys: tuple[str, ...] = ()
     cascade_keys: tuple[str, ...] = ()
     menu_keys: tuple[str, ...] = ()
+    required_block_keys: tuple[str, ...] = ()
+    block_label: str = ""
+    extra_validate: Callable[[dict[str, Any]], None] | None = None
+    find_live: Callable[[D365Backend, dict[str, Any], ReconcileCtx], Any] | None = None
+    reconcile: Callable[
+        [D365Backend, dict[str, Any], Any, ReconcileCtx, Entry], "_Verdict"
+    ] | None = None
 
     @property
     def transform_targets(self) -> frozenset[str]:
@@ -182,7 +223,15 @@ class Adapter:
         return out
 
     def validate(self, block: dict[str, Any]) -> None:
-        """Reject constrained values up front via the builders' own ``mc.*`` rules."""
+        """The complete up-front authority for one block.
+
+        Required keys first (matching the old ``_require`` call order), then the
+        constrained values routed through the builders' own ``mc.*`` rules, then
+        the kind's cross-field rule. A malformed block fails here rather than
+        mid-apply.
+        """
+        if self.required_block_keys:
+            _require(block, self.required_block_keys, self.block_label)
         for key in self.schema_name_keys:
             if key in block:
                 mc.validate_schema_name(block[key], subject=key)
@@ -195,120 +244,8 @@ class Adapter:
         for key in self.menu_keys:
             if key in block:
                 mc.validate_menu_behavior(block[key], subject=key)
-
-
-# One adapter per gap kind. The other six phases (publisher, solution, optionset,
-# webresource, role, plugin) already forward their full builder surface and stay
-# on inline lambdas — a mixed driver is fine during the transition.
-REGISTRY: dict[str, Adapter] = {
-    "attribute": Adapter(
-        map={
-            "kind": "kind",
-            "schema_name": "schema_name",
-            "display_name": "display_name",
-            "description": "description",
-            "required": "required",
-            "max_length": "max_length",
-            "format_name": "format_name",
-            "auto_number_format": "auto_number_format",
-            "behavior_name": "behavior_name",
-            "min_value": "min_value",
-            "max_value": "max_value",
-            "precision": "precision",
-            "default_value": "default_value",
-            "true_label": "true_label",
-            "false_label": "false_label",
-            "optionset_name": "optionset_name",
-            "target_entity": "target_entity",
-            "relationship_schema": "relationship_schema",
-            "max_size_kb": "max_size_kb",
-            "source_type": "source_type",
-            "formula_definition": "formula_definition",
-        },
-        transforms={
-            "options": lambda b: (
-                [(o.get("value"), o["label"]) for o in _as_list(b.get("options"))] or None
-            ),
-        },
-        injected=frozenset({"backend", "entity", "solution", "if_exists", "publish"}),
-        defaults={"required": "None", "source_type": "simple"},
-        schema_name_keys=("schema_name",),
-        required_keys=("required",),
-    ),
-    "relationship": Adapter(
-        map={
-            "schema_name": "schema_name",
-            "referenced_entity": "referenced_entity",
-            "referencing_entity": "referencing_entity",
-            "lookup_schema": "lookup_schema",
-            "lookup_display": "lookup_display",
-            "required": "lookup_required",
-            "lookup_description": "lookup_description",
-            "cascade_assign": "cascade_assign",
-            "cascade_delete": "cascade_delete",
-            "cascade_reparent": "cascade_reparent",
-            "cascade_share": "cascade_share",
-            "cascade_unshare": "cascade_unshare",
-            "cascade_merge": "cascade_merge",
-            "menu_label": "menu_label",
-            "menu_behavior": "menu_behavior",
-            "menu_order": "menu_order",
-            "is_hierarchical": "is_hierarchical",
-        },
-        transforms={},
-        injected=frozenset({"backend", "solution", "if_exists", "publish"}),
-        defaults={"required": "None"},
-        schema_name_keys=("schema_name", "lookup_schema"),
-        required_keys=("required",),
-        cascade_keys=(
-            "cascade_assign", "cascade_delete", "cascade_reparent",
-            "cascade_share", "cascade_unshare", "cascade_merge",
-        ),
-        menu_keys=("menu_behavior",),
-    ),
-    "entity": Adapter(
-        map={
-            "schema_name": "schema_name",
-            "display_name": "display_name",
-            "display_collection_name": "display_collection_name",
-            "primary_attr_max_length": "primary_attr_max_length",
-            "description": "description",
-            "ownership": "ownership",
-            "has_activities": "has_activities",
-            "has_notes": "has_notes",
-            "is_activity": "is_activity",
-            "data_provider_id": "data_provider_id",
-            "data_source_id": "data_source_id",
-            "external_name": "external_name",
-            "external_collection_name": "external_collection_name",
-        },
-        transforms={
-            "primary_attr_schema": lambda b: cast(
-                "dict[str, Any]", b.get("primary_attr") or {}).get("schema_name"),
-            "primary_attr_label": lambda b: cast(
-                "dict[str, Any]", b.get("primary_attr") or {}).get("label"),
-        },
-        injected=frozenset({"backend", "solution", "if_exists"}),
-        defaults={"ownership": "UserOwned"},
-        schema_name_keys=("schema_name",),
-    ),
-    "view": Adapter(
-        map={
-            "name": "name",
-            "order_by": "order_by",
-            "order_desc": "order_desc",
-            "filter_active": "filter_active",
-            "is_default": "is_default",
-            "query_type": "query_type",
-            "description": "description",
-        },
-        transforms={"columns": lambda b: _columns(b.get("columns"))},
-        defaults={"is_default": False},
-        injected=frozenset(
-            {"backend", "entity", "object_type_code", "solution", "if_exists", "publish"}
-        ),
-    ),
-}
+        if self.extra_validate is not None:
+            self.extra_validate(block)
 
 
 def validate_spec(spec: Any) -> None:
@@ -336,102 +273,21 @@ def validate_spec(spec: Any) -> None:
         if key in sp and not isinstance(sp[key], list):
             raise D365Error(f"{key} must be a list.")
     for ent in _as_list(sp.get("entities")):
-        _require(ent, ("schema_name", "display_name"), "entity")
-        elabel = f"entity {ent['schema_name']!r}"
-        # Validate ownership up front so a typo fails cleanly here rather than being
-        # misclassified as a destructive ownership change during reconciliation.
-        if ent.get("ownership") is not None:
-            mc.validate_ownership(ent["ownership"], subject=f"{elabel} ownership")
-        # Route the constrained values the adapter forwards (schema-name prefix, …)
-        # through the SAME mc.* primitives the builder calls, so a malformed block
-        # fails here rather than mid-apply (closes validate/apply drift, #596).
+        # Each entity-subtree block's own rules (required keys, constrained values,
+        # cross-field rules) are its component-kind adapter's complete authority
+        # now — validate delegates the block to the adapter. Only document-structure
+        # rules (top-level shape, the mandatory solution block, sub-collections-are-
+        # lists) stay in this up-front pass.
         REGISTRY["entity"].validate(ent)
-        # The primary attribute's schema_name is nested under primary_attr (the
-        # adapter forwards it via a transform), so it isn't a top-level schema-name
-        # key — validate it here too, matching create_entity's own check.
-        primary = ent.get("primary_attr")
-        if isinstance(primary, dict):
-            pa = cast("dict[str, Any]", primary)
-            if pa.get("schema_name"):
-                mc.validate_schema_name(pa["schema_name"], subject="primary_attr_schema")
+        elabel = f"entity {ent['schema_name']!r}"
         for sub in ("attributes", "relationships", "views"):
             _require_list(ent, sub, elabel)
         for attr in _as_list(ent.get("attributes")):
-            _require(attr, ("kind", "schema_name", "display_name"), "attribute")
             REGISTRY["attribute"].validate(attr)
-            kind, name = attr["kind"], attr["schema_name"]
-            if kind not in ATTRIBUTE_KINDS:
-                raise D365Error(f"attribute {name!r}: unknown kind {kind!r}.")
-            if kind == "lookup" and not attr.get("target_entity"):
-                raise D365Error(f"lookup attribute {name!r} requires target_entity.")
-            if kind in ("picklist", "multiselect") and not (
-                    attr.get("optionset_name") or attr.get("options")):
-                raise D365Error(
-                    f"{kind} attribute {name!r} requires optionset_name or options.")
-            if "options" in attr:
-                _require_list(attr, "options", f"attribute {name!r}")
-                for opt in cast("list[Any]", attr["options"] or []):
-                    _validate_option(opt, f"attribute {name!r}")
-            # max_length is compared numerically during reconciliation (grow check);
-            # a quoted/non-int value from the spec must fail here, not blow up later.
-            if attr.get("max_length") is not None and not isinstance(attr["max_length"], int):
-                raise D365Error(
-                    f"attribute {name!r}: max_length must be an integer "
-                    "(unquoted in YAML).")
-            # source_type / formula_definition (calculated & rollup columns, #554):
-            # mirror add_attribute's contract — a non-simple source needs a formula
-            # and is invalid for the relationship-backed kinds; a formula is invalid
-            # on a simple column. Gate on key PRESENCE, not truthiness, so an
-            # explicit null source_type or an empty formula fails HERE rather than
-            # slipping through to a mid-apply add_attribute raise.
-            source_type = attr.get("source_type")
-            if "source_type" in attr and source_type not in mc.SOURCE_TYPES:
-                raise D365Error(
-                    f"attribute {name!r}: source_type must be one of "
-                    f"{sorted(mc.SOURCE_TYPES)}.")
-            formula = attr.get("formula_definition")
-            if formula is not None and not isinstance(formula, str):
-                raise D365Error(
-                    f"attribute {name!r}: formula_definition must be a string.")
-            if source_type in ("calculated", "rollup"):
-                if kind in ("lookup", "customer"):
-                    raise D365Error(
-                        f"attribute {name!r}: source_type {source_type!r} is not "
-                        f"valid for kind {kind!r}.")
-                if not formula:
-                    raise D365Error(
-                        f"attribute {name!r}: source_type {source_type!r} requires "
-                        "formula_definition.")
-            elif "formula_definition" in attr:
-                raise D365Error(
-                    f"attribute {name!r}: formula_definition is only valid with "
-                    "source_type 'calculated' or 'rollup'.")
         for rel in _as_list(ent.get("relationships")):
-            _require(rel, ("schema_name", "referenced_entity", "referencing_entity",
-                           "lookup_schema", "lookup_display"), "relationship")
             REGISTRY["relationship"].validate(rel)
-            # Cross-field rule create_one_to_many enforces: an associated-menu label
-            # is mandatory under UseLabel. Mirror it up front so a malformed menu
-            # config fails before the relationship phase writes (it runs after the
-            # entity/attribute phases have already landed).
-            if rel.get("menu_behavior") == "UseLabel" and not rel.get("menu_label"):
-                raise D365Error(
-                    f"relationship {rel['schema_name']!r}: menu_behavior 'UseLabel' "
-                    "requires menu_label.")
         for view in _as_list(ent.get("views")):
-            _require(view, ("name", "columns"), "view")
             REGISTRY["view"].validate(view)
-            # query_type is now spec-expressible; validate it against the same
-            # vocabulary create_view checks so an unknown value fails up front
-            # rather than in the views phase (the last phase to write).
-            if view.get("query_type") is not None and view["query_type"] not in views_mod.QUERY_TYPES:
-                raise D365Error(
-                    f"view {view['name']!r}: unknown query_type {view['query_type']!r}; "
-                    f"choose from {sorted(views_mod.QUERY_TYPES)}.")
-            if not isinstance(view["columns"], list) or not view["columns"]:
-                raise D365Error(f"view {view['name']!r}: columns must be a non-empty list.")
-            for col in cast("list[Any]", view["columns"]):
-                _validate_column(col, view["name"])
     for os_spec in _as_list(sp.get("optionsets")):
         _require(os_spec, ("name", "display_name"), "optionset")
         _require_list(os_spec, "options", f"optionset {os_spec['name']!r}")
@@ -637,9 +493,17 @@ def _reconcile(
     routes[bucket].append(payload)
 
 
+def _find_live_entity(
+    backend: D365Backend, ent: dict[str, Any], ctx: ReconcileCtx,
+) -> dict[str, Any]:
+    """Read the live entity definition this block reconciles against."""
+    return meta_mod.entity_info(
+        backend, ctx.entity_logical or ent["schema_name"].lower())
+
+
 def _reconcile_entity(
-    backend: D365Backend, ent: dict[str, Any], logical: str,
-    solution: str | None, entry: Entry,
+    backend: D365Backend, ent: dict[str, Any], live: dict[str, Any],
+    ctx: ReconcileCtx, entry: Entry,
 ) -> _Verdict:
     """Diff an existing entity against the spec; update, skip, or block.
 
@@ -652,7 +516,8 @@ def _reconcile_entity(
     description, and ENABLING `has_notes`/`has_activities` (`false -> true`, which
     the platform applies additively). Only spec-declared fields drift. See ADR 0018.
     """
-    live = meta_mod.entity_info(backend, logical)
+    solution = ctx.solution
+    logical = ctx.entity_logical or ent["schema_name"].lower()
     desired_ownership = ent.get("ownership")
     live_ownership = live.get("OwnershipType")
     if desired_ownership and live_ownership and desired_ownership != live_ownership:
@@ -699,27 +564,46 @@ def _reconcile_entity(
     return "updated", _with_diff(entry, out)
 
 
+def _find_live_attribute(
+    backend: D365Backend, attr: dict[str, Any], ctx: ReconcileCtx,
+) -> dict[str, Any] | None:
+    """Read the live attribute's base projection, or None when there is nothing to
+    reconcile here — a lookup/customer kind is relationship-backed (apply's create
+    path delegates it to the relationship builder), so reading it would add a probe
+    for a component this slice does not reconcile.
+
+    The un-cast projection carries @odata.type and base properties
+    (DisplayName/Description/RequiredLevel) but NOT type-specific ones (MaxLength).
+    """
+    kind = attr["kind"]
+    info = mc.KINDS.get(kind)
+    if info is None or kind in ("lookup", "customer"):
+        return None
+    attr_logical = attr["schema_name"].lower()
+    return meta_mod.attribute_info(
+        backend, ctx.entity_logical or "", attr_logical)
+
+
 def _reconcile_attribute(
-    backend: D365Backend, attr: dict[str, Any], entity_logical: str,
-    solution: str | None, entry: Entry,
+    backend: D365Backend, attr: dict[str, Any], live: dict[str, Any] | None,
+    ctx: ReconcileCtx, entry: Entry,
 ) -> _Verdict:
     """Diff an existing attribute against the spec; update, skip, or block.
 
     Replace-blocked: a data-type change (Dataverse cannot retype a column in place;
     a drop-and-recreate is destructive, so apply refuses and writes nothing).
     Updatable: display name, description, required level, and string max-length
-    GROWTH. Lookup/customer kinds are relationship-backed and not reconciled here.
+    GROWTH. Lookup/customer kinds are relationship-backed and not reconciled here
+    (``find_live`` returns None for them).
     """
     kind = attr["kind"]
     info = mc.KINDS.get(kind)
-    # lookup/customer are relationship-backed (apply's create path delegates them to
-    # the relationship builder); reconciling them belongs with the relationship slice.
-    if info is None or kind in ("lookup", "customer"):
+    if info is None or kind in ("lookup", "customer") or live is None:
         return "skipped", entry
+    solution = ctx.solution
+    entity_logical = ctx.entity_logical or ""
     attr_logical = attr["schema_name"].lower()
-    # The un-cast attribute projection carries @odata.type and base properties
-    # (DisplayName/Description/RequiredLevel) but NOT type-specific ones (MaxLength).
-    base = meta_mod.attribute_info(backend, entity_logical, attr_logical)
+    base = live
     live_type = base.get("@odata.type")
     live_cast = live_type.lstrip("#") if isinstance(live_type, str) else ""
     if live_cast and live_cast != info.cast:
@@ -769,8 +653,24 @@ _CASCADE_SPEC_TO_DIM: dict[str, str] = {
 _ONE_TO_MANY_CAST = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
 
 
+def _find_live_relationship(
+    backend: D365Backend, rel: dict[str, Any], ctx: ReconcileCtx,
+) -> dict[str, Any]:
+    """Read the relationship's base (un-cast) projection carrying RelationshipType.
+
+    RelationshipType is a base-type property; the un-cast projection carries it
+    without a cast segment. The 1:N cast (Cascade / AssociatedMenu / referenced-
+    referencing entities) is read inside ``reconcile`` only when the type matches.
+    """
+    schema = rel["schema_name"]
+    return as_dict(backend.get(
+        f"RelationshipDefinitions(SchemaName='{schema}')",
+        params={"$select": "RelationshipType"}))
+
+
 def _reconcile_relationship(
-    backend: D365Backend, rel: dict[str, Any], solution: str | None, entry: Entry,
+    backend: D365Backend, rel: dict[str, Any], base: dict[str, Any],
+    ctx: ReconcileCtx, entry: Entry,
 ) -> _Verdict:
     """Diff an existing 1:N relationship against the spec; update, skip, or block.
 
@@ -785,12 +685,8 @@ def _reconcile_relationship(
     invalid is_hierarchical toggle is rejected by the platform as a D365Error,
     surfacing as `failed` (not replace_blocked). See ADR 0018.
     """
+    solution = ctx.solution
     schema = rel["schema_name"]
-    # RelationshipType is a base-type property; the un-cast projection carries it
-    # without a cast segment. A non-1:N live match is a type divergence.
-    base = as_dict(backend.get(
-        f"RelationshipDefinitions(SchemaName='{schema}')",
-        params={"$select": "RelationshipType"}))
     if base.get("RelationshipType") != "OneToManyRelationship":
         return "replace_blocked", {
             **entry,
@@ -869,17 +765,38 @@ def _reconcile_relationship(
     return "updated", ({**entry, "diff": diff} if diff else entry)
 
 
+def _find_live_view(
+    backend: D365Backend, view: dict[str, Any], ctx: ReconcileCtx,
+) -> list[dict[str, Any]]:
+    """Read the saved view(s) sharing this block's identity tuple.
+
+    A view is matched by ``(returnedtypecode, name, querytype)`` — savedquery has no
+    alternate key, so that tuple is its identity. Returns every row sharing the
+    tuple (``reconcile`` treats 0 as no-live and >1 as an ambiguous skip).
+    """
+    name = view["name"]
+    query_type = view.get("query_type") or "public"
+    querytype = views_mod.QUERY_TYPES[query_type]
+    return backend.get_collection(
+        "savedqueries",
+        params={
+            "$filter": (f"name eq {odata_literal(name)} "
+                        f"and returnedtypecode eq {odata_literal(ctx.entity_logical or '')} "
+                        f"and querytype eq {querytype}"),
+            "$select": "savedqueryid,name,fetchxml,layoutxml,isdefault,description",
+        })
+
+
 def _reconcile_view(
-    backend: D365Backend, view: dict[str, Any], entity_logical: str, otc: int,
-    solution: str | None, entry: Entry,
+    backend: D365Backend, view: dict[str, Any], rows: list[dict[str, Any]],
+    ctx: ReconcileCtx, entry: Entry,
 ) -> _Verdict:
     """Diff an existing saved view against the spec; update in place or skip.
 
-    A view is matched by ``(returnedtypecode, name, querytype)`` — savedquery has no
-    alternate key, so that tuple is its identity. A drifted description / default /
-    columns / sort / active-filter is reconciled by a record PATCH of the
-    regenerated fetchxml + layoutxml (and the scalar isdefault / description), per
-    ADR 0018's reads-execute rule (the write is suppressed under --dry-run).
+    A drifted description / default / columns / sort / active-filter is reconciled
+    by a record PATCH of the regenerated fetchxml + layoutxml (and the scalar
+    isdefault / description), per ADR 0018's reads-execute rule (the write is
+    suppressed under --dry-run).
 
     Never blocks: there is no destructive divergence on the in-place PATCH path. A
     changed ``name`` or ``query_type`` does NOT reach here — it has no live match,
@@ -888,17 +805,11 @@ def _reconcile_view(
     view sharing the identity tuple) is skipped with a reason rather than patching
     an arbitrary row. An omitted spec field never drifts.
     """
+    solution = ctx.solution
+    entity_logical = ctx.entity_logical or ""
+    otc = ctx.object_type_code or 0
     name = view["name"]
     query_type = view.get("query_type") or "public"
-    querytype = views_mod.QUERY_TYPES[query_type]
-    rows = backend.get_collection(
-        "savedqueries",
-        params={
-            "$filter": (f"name eq {odata_literal(name)} "
-                        f"and returnedtypecode eq {odata_literal(entity_logical)} "
-                        f"and querytype eq {querytype}"),
-            "$select": "savedqueryid,name,fetchxml,layoutxml,isdefault,description",
-        })
     if len(rows) > 1:
         return "skipped", {
             **entry,
@@ -970,6 +881,271 @@ def _reconcile_view(
         return "skipped", entry
     views_mod.update_view(backend, savedqueryid=sqid, changes=changes, solution=solution)
     return "updated", ({**entry, "diff": diff} if backend.dry_run else entry)
+
+
+# ── per-kind cross-field validation (adapter.extra_validate) ─────────────────
+# Each function is the entity-subtree kind's cross-field block rule — the rules
+# that a data field (required_block_keys / schema_name_keys / …) cannot express.
+# adapter.validate runs them last, after the required-key and mc.* checks. Every
+# error MESSAGE is preserved verbatim from the old inline validate_spec pass; the
+# only order change is entity ownership, which now validates after (not before)
+# the schema-name check — unobservable in practice, since each rule trips on its
+# own field and a block rarely violates two at once.
+def _validate_entity_block(ent: dict[str, Any]) -> None:
+    """Ownership vocabulary + the nested primary-attribute schema name."""
+    elabel = f"entity {ent['schema_name']!r}"
+    # Validate ownership up front so a typo fails cleanly here rather than being
+    # misclassified as a destructive ownership change during reconciliation.
+    if ent.get("ownership") is not None:
+        mc.validate_ownership(ent["ownership"], subject=f"{elabel} ownership")
+    # The primary attribute's schema_name is nested under primary_attr (the adapter
+    # forwards it via a transform), so it isn't a top-level schema-name key —
+    # validate it here too, matching create_entity's own check.
+    primary = ent.get("primary_attr")
+    if isinstance(primary, dict):
+        pa = cast("dict[str, Any]", primary)
+        if pa.get("schema_name"):
+            mc.validate_schema_name(pa["schema_name"], subject="primary_attr_schema")
+
+
+def _validate_attribute_block(attr: dict[str, Any]) -> None:
+    """Kind vocabulary, kind-specific requirements, option shape, and the
+    calculated/rollup source_type ↔ formula_definition cross-rules (#554)."""
+    kind, name = attr["kind"], attr["schema_name"]
+    if kind not in ATTRIBUTE_KINDS:
+        raise D365Error(f"attribute {name!r}: unknown kind {kind!r}.")
+    if kind == "lookup" and not attr.get("target_entity"):
+        raise D365Error(f"lookup attribute {name!r} requires target_entity.")
+    if kind in ("picklist", "multiselect") and not (
+            attr.get("optionset_name") or attr.get("options")):
+        raise D365Error(
+            f"{kind} attribute {name!r} requires optionset_name or options.")
+    if "options" in attr:
+        _require_list(attr, "options", f"attribute {name!r}")
+        for opt in cast("list[Any]", attr["options"] or []):
+            _validate_option(opt, f"attribute {name!r}")
+    # max_length is compared numerically during reconciliation (grow check);
+    # a quoted/non-int value from the spec must fail here, not blow up later.
+    if attr.get("max_length") is not None and not isinstance(attr["max_length"], int):
+        raise D365Error(
+            f"attribute {name!r}: max_length must be an integer (unquoted in YAML).")
+    # source_type / formula_definition (calculated & rollup columns, #554):
+    # mirror add_attribute's contract — a non-simple source needs a formula and is
+    # invalid for the relationship-backed kinds; a formula is invalid on a simple
+    # column. Gate on key PRESENCE, not truthiness, so an explicit null source_type
+    # or an empty formula fails HERE rather than slipping through to a mid-apply
+    # add_attribute raise.
+    source_type = attr.get("source_type")
+    if "source_type" in attr and source_type not in mc.SOURCE_TYPES:
+        raise D365Error(
+            f"attribute {name!r}: source_type must be one of "
+            f"{sorted(mc.SOURCE_TYPES)}.")
+    formula = attr.get("formula_definition")
+    if formula is not None and not isinstance(formula, str):
+        raise D365Error(
+            f"attribute {name!r}: formula_definition must be a string.")
+    if source_type in ("calculated", "rollup"):
+        if kind in ("lookup", "customer"):
+            raise D365Error(
+                f"attribute {name!r}: source_type {source_type!r} is not "
+                f"valid for kind {kind!r}.")
+        if not formula:
+            raise D365Error(
+                f"attribute {name!r}: source_type {source_type!r} requires "
+                "formula_definition.")
+    elif "formula_definition" in attr:
+        raise D365Error(
+            f"attribute {name!r}: formula_definition is only valid with "
+            "source_type 'calculated' or 'rollup'.")
+
+
+def _validate_relationship_block(rel: dict[str, Any]) -> None:
+    """The associated-menu UseLabel cross-field rule create_one_to_many enforces."""
+    # An associated-menu label is mandatory under UseLabel. Mirror it up front so a
+    # malformed menu config fails before the relationship phase writes (it runs
+    # after the entity/attribute phases have already landed).
+    if rel.get("menu_behavior") == "UseLabel" and not rel.get("menu_label"):
+        raise D365Error(
+            f"relationship {rel['schema_name']!r}: menu_behavior 'UseLabel' "
+            "requires menu_label.")
+
+
+def _validate_view_block(view: dict[str, Any]) -> None:
+    """query_type vocabulary and the non-empty, well-shaped columns list."""
+    # query_type is spec-expressible; validate it against the same vocabulary
+    # create_view checks so an unknown value fails up front rather than in the
+    # views phase (the last phase to write).
+    if view.get("query_type") is not None and view["query_type"] not in views_mod.QUERY_TYPES:
+        raise D365Error(
+            f"view {view['name']!r}: unknown query_type {view['query_type']!r}; "
+            f"choose from {sorted(views_mod.QUERY_TYPES)}.")
+    if not isinstance(view["columns"], list) or not view["columns"]:
+        raise D365Error(f"view {view['name']!r}: columns must be a non-empty list.")
+    for col in cast("list[Any]", view["columns"]):
+        _validate_column(col, view["name"])
+
+
+def _reconcile_via_adapter(
+    adapter: "Adapter", backend: D365Backend, block: dict[str, Any],
+    ctx: ReconcileCtx, entry: Entry,
+    routes: dict[str, list[Entry]], failed: list[Entry],
+) -> None:
+    """Present-branch reconcile through a component-kind adapter.
+
+    ``find_live`` and ``reconcile`` run inside the abort-guarded thunk, so a
+    D365Error in the live read or the diff routes to ``failed`` and aborts —
+    exactly as when the read lived inside the free reconcile function.
+    """
+    find_live = adapter.find_live
+    reconcile = adapter.reconcile
+    assert find_live is not None and reconcile is not None  # populated for these kinds
+
+    def thunk() -> _Verdict:
+        live = find_live(backend, block, ctx)
+        return reconcile(backend, block, live, ctx, entry)
+
+    _reconcile(entry, thunk, failed, routes)
+
+
+# One component-kind adapter per migrated kind — the complete authority for its
+# kind (validate / to_kwargs / find_live / reconcile). The entity subtree (entity,
+# attribute, relationship, view) is fully migrated. The remaining kinds still on a
+# mixed driver — optionset, webresource, security role, and the compound plugin
+# (assembly + step) — migrate in the next PRD slices; publisher and solution stay
+# out of the registry permanently (they are the target preamble, not reconciled
+# components).
+REGISTRY: dict[str, Adapter] = {
+    "attribute": Adapter(
+        map={
+            "kind": "kind",
+            "schema_name": "schema_name",
+            "display_name": "display_name",
+            "description": "description",
+            "required": "required",
+            "max_length": "max_length",
+            "format_name": "format_name",
+            "auto_number_format": "auto_number_format",
+            "behavior_name": "behavior_name",
+            "min_value": "min_value",
+            "max_value": "max_value",
+            "precision": "precision",
+            "default_value": "default_value",
+            "true_label": "true_label",
+            "false_label": "false_label",
+            "optionset_name": "optionset_name",
+            "target_entity": "target_entity",
+            "relationship_schema": "relationship_schema",
+            "max_size_kb": "max_size_kb",
+            "source_type": "source_type",
+            "formula_definition": "formula_definition",
+        },
+        transforms={
+            "options": lambda b: (
+                [(o.get("value"), o["label"]) for o in _as_list(b.get("options"))] or None
+            ),
+        },
+        injected=frozenset({"backend", "entity", "solution", "if_exists", "publish"}),
+        defaults={"required": "None", "source_type": "simple"},
+        schema_name_keys=("schema_name",),
+        required_keys=("required",),
+        required_block_keys=("kind", "schema_name", "display_name"),
+        block_label="attribute",
+        extra_validate=_validate_attribute_block,
+        find_live=_find_live_attribute,
+        reconcile=_reconcile_attribute,
+    ),
+    "relationship": Adapter(
+        map={
+            "schema_name": "schema_name",
+            "referenced_entity": "referenced_entity",
+            "referencing_entity": "referencing_entity",
+            "lookup_schema": "lookup_schema",
+            "lookup_display": "lookup_display",
+            "required": "lookup_required",
+            "lookup_description": "lookup_description",
+            "cascade_assign": "cascade_assign",
+            "cascade_delete": "cascade_delete",
+            "cascade_reparent": "cascade_reparent",
+            "cascade_share": "cascade_share",
+            "cascade_unshare": "cascade_unshare",
+            "cascade_merge": "cascade_merge",
+            "menu_label": "menu_label",
+            "menu_behavior": "menu_behavior",
+            "menu_order": "menu_order",
+            "is_hierarchical": "is_hierarchical",
+        },
+        transforms={},
+        injected=frozenset({"backend", "solution", "if_exists", "publish"}),
+        defaults={"required": "None"},
+        schema_name_keys=("schema_name", "lookup_schema"),
+        required_keys=("required",),
+        cascade_keys=(
+            "cascade_assign", "cascade_delete", "cascade_reparent",
+            "cascade_share", "cascade_unshare", "cascade_merge",
+        ),
+        menu_keys=("menu_behavior",),
+        required_block_keys=(
+            "schema_name", "referenced_entity", "referencing_entity",
+            "lookup_schema", "lookup_display",
+        ),
+        block_label="relationship",
+        extra_validate=_validate_relationship_block,
+        find_live=_find_live_relationship,
+        reconcile=_reconcile_relationship,
+    ),
+    "entity": Adapter(
+        map={
+            "schema_name": "schema_name",
+            "display_name": "display_name",
+            "display_collection_name": "display_collection_name",
+            "primary_attr_max_length": "primary_attr_max_length",
+            "description": "description",
+            "ownership": "ownership",
+            "has_activities": "has_activities",
+            "has_notes": "has_notes",
+            "is_activity": "is_activity",
+            "data_provider_id": "data_provider_id",
+            "data_source_id": "data_source_id",
+            "external_name": "external_name",
+            "external_collection_name": "external_collection_name",
+        },
+        transforms={
+            "primary_attr_schema": lambda b: cast(
+                "dict[str, Any]", b.get("primary_attr") or {}).get("schema_name"),
+            "primary_attr_label": lambda b: cast(
+                "dict[str, Any]", b.get("primary_attr") or {}).get("label"),
+        },
+        injected=frozenset({"backend", "solution", "if_exists"}),
+        defaults={"ownership": "UserOwned"},
+        schema_name_keys=("schema_name",),
+        required_block_keys=("schema_name", "display_name"),
+        block_label="entity",
+        extra_validate=_validate_entity_block,
+        find_live=_find_live_entity,
+        reconcile=_reconcile_entity,
+    ),
+    "view": Adapter(
+        map={
+            "name": "name",
+            "order_by": "order_by",
+            "order_desc": "order_desc",
+            "filter_active": "filter_active",
+            "is_default": "is_default",
+            "query_type": "query_type",
+            "description": "description",
+        },
+        transforms={"columns": lambda b: _columns(b.get("columns"))},
+        defaults={"is_default": False},
+        injected=frozenset(
+            {"backend", "entity", "object_type_code", "solution", "if_exists", "publish"}
+        ),
+        required_block_keys=("name", "columns"),
+        block_label="view",
+        extra_validate=_validate_view_block,
+        find_live=_find_live_view,
+        reconcile=_reconcile_view,
+    ),
+}
 
 
 def _reconcile_optionset(
@@ -1564,9 +1740,10 @@ def apply_spec(
             logical_name: str = result.get("logical_name") or ent["schema_name"].lower()
             entity_logicals[ent["schema_name"]] = logical_name
             if _present(result):
-                _reconcile(entry, lambda ent=ent, logical_name=logical_name:
-                           _reconcile_entity(backend, ent, logical_name, solution_name, entry),
-                           failed, routes)
+                ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir,
+                                   entity_logical=logical_name)
+                _reconcile_via_adapter(REGISTRY["entity"], backend, ent, ctx,
+                                       entry, routes, failed)
             elif _classify(result, entry, applied, skipped, planned) == "planned":
                 planned_names.add(logical_name)
 
@@ -1662,9 +1839,10 @@ def apply_spec(
                         if_exists="skip",
                     ), failed)
                 if _present(result):
-                    _reconcile(entry, lambda attr=attr, logical=logical, entry=entry:
-                               _reconcile_attribute(backend, attr, logical, solution_name, entry),
-                               failed, routes)
+                    ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir,
+                                       entity_logical=logical)
+                    _reconcile_via_adapter(REGISTRY["attribute"], backend, attr, ctx,
+                                           entry, routes, failed)
                 else:
                     _classify(result, entry, applied, skipped, planned)
 
@@ -1682,9 +1860,9 @@ def apply_spec(
                     if_exists="skip",
                 ), failed)
                 if _present(result):
-                    _reconcile(entry, lambda rel=rel, entry=entry:
-                               _reconcile_relationship(backend, rel, solution_name, entry),
-                               failed, routes)
+                    ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
+                    _reconcile_via_adapter(REGISTRY["relationship"], backend, rel, ctx,
+                                           entry, routes, failed)
                 else:
                     _classify(result, entry, applied, skipped, planned)
 
@@ -1717,10 +1895,10 @@ def apply_spec(
                         if_exists="skip",
                     ), failed)
                 if _present(result):
-                    _reconcile(entry, lambda view=view, logical_v=logical_v, otc=otc,
-                               entry=entry: _reconcile_view(
-                                   backend, view, logical_v, otc, solution_name, entry),
-                               failed, routes)
+                    ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir,
+                                       entity_logical=logical_v, object_type_code=otc)
+                    _reconcile_via_adapter(REGISTRY["view"], backend, view, ctx,
+                                           entry, routes, failed)
                 else:
                     _classify(result, entry, applied, skipped, planned)
 
