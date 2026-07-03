@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.50.0 (2026-07-03)
+
+### Bug Fixes
+
+- Gate examples picker on stdout TTY and relax gallery floor
+  ([#669](https://github.com/Gharib89/crm/pull/669),
+  [`d8b180b`](https://github.com/Gharib89/crm/commit/d8b180be6ed0c209b68d6dbabbd0cc0ab3f2627b))
+
+- Generic placeholders in examples + resolver handles leading globals
+  ([#669](https://github.com/Gharib89/crm/pull/669),
+  [`d8b180b`](https://github.com/Gharib89/crm/commit/d8b180be6ed0c209b68d6dbabbd0cc0ab3f2627b))
+
+### Features
+
+- Add crm examples curated gallery with anti-drift parse gate
+  ([#669](https://github.com/Gharib89/crm/pull/669),
+  [`d8b180b`](https://github.com/Gharib89/crm/commit/d8b180be6ed0c209b68d6dbabbd0cc0ab3f2627b))
+
+
 ## v1.49.5 (2026-07-03)
 
 ### Bug Fixes
