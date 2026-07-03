@@ -4309,6 +4309,13 @@ def test_required_block_keys_match_builder_required_params(kind):
     ("plugin-assembly", {}, "missing required field 'file'"),
     ("plugin-assembly", {"file": "p.dll", "isolation_mode": "nope"},
      "unknown isolation_mode"),
+    # An explicit YAML null is invalid (register_* rejects None), so it must fail
+    # up front too, not slip through to_kwargs into a mid-apply raise.
+    ("plugin-assembly", {"file": "p.dll", "isolation_mode": None}, "unknown isolation_mode"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "stage": None},
+     "unknown stage"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "mode": None},
+     "unknown mode"),
     ("plugin-step", {"name": "S", "plugin_type": "My.T"}, "missing required field 'message'"),
     ("plugin-step", {"message": "Create", "plugin_type": "My.T"},
      "missing required field 'name'"),

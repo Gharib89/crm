@@ -1171,10 +1171,14 @@ def _validate_plugin_assembly_block(plugin: dict[str, Any]) -> None:
         raise D365Error("plug-in: file must be a string.")
     if plugin.get("assembly") is not None and not isinstance(plugin["assembly"], str):
         raise D365Error("plug-in: assembly must be a string.")
-    iso = plugin.get("isolation_mode")
-    if iso is not None and iso not in plugin_mod.ISOLATION_MODE_VALUES:
+    # Gate on key PRESENCE, not truthiness: an explicit `isolation_mode: null` is
+    # invalid (register_assembly rejects None — it is not in the map) and must fail
+    # here, not slip through to_kwargs and blow up mid-apply. An omitted key falls
+    # to the builder's own default.
+    if "isolation_mode" in plugin and plugin["isolation_mode"] not in plugin_mod.ISOLATION_MODE_VALUES:
         raise D365Error(
-            f"plug-in {_assembly_name(plugin)!r}: unknown isolation_mode {iso!r}; "
+            f"plug-in {_assembly_name(plugin)!r}: unknown isolation_mode "
+            f"{plugin['isolation_mode']!r}; "
             f"choose from {sorted(plugin_mod.ISOLATION_MODE_VALUES)}.")
 
 
@@ -1231,15 +1235,17 @@ def _validate_plugin_step_block(step: dict[str, Any]) -> None:
             raise D365Error(f"{slabel}: {key!r} must be a string.")
     if step.get("rank") is not None and not isinstance(step["rank"], int):
         raise D365Error(f"{slabel}: rank must be an integer (unquoted in YAML).")
-    stage = step.get("stage")
-    if stage is not None and stage not in plugin_mod.STAGE_VALUES:
-        raise D365Error(f"{slabel}: unknown stage {stage!r}; "
+    # Gate the vocabularies on key PRESENCE, not truthiness: an explicit
+    # `stage: null` / `mode: null` is invalid (register_step rejects None — it is
+    # not in the map) and must fail here rather than slip through to_kwargs and
+    # blow up mid-apply. An omitted key falls to the builder's own default.
+    if "stage" in step and step["stage"] not in plugin_mod.STAGE_VALUES:
+        raise D365Error(f"{slabel}: unknown stage {step['stage']!r}; "
                         f"choose from {sorted(plugin_mod.STAGE_VALUES)}.")
-    mode = step.get("mode")
-    if mode is not None and mode not in plugin_mod.MODE_VALUES:
-        raise D365Error(f"{slabel}: unknown mode {mode!r}; "
+    if "mode" in step and step["mode"] not in plugin_mod.MODE_VALUES:
+        raise D365Error(f"{slabel}: unknown mode {step['mode']!r}; "
                         f"choose from {sorted(plugin_mod.MODE_VALUES)}.")
-    if mode == "async" and step.get("stage", "postoperation") != "postoperation":
+    if step.get("mode") == "async" and step.get("stage", "postoperation") != "postoperation":
         raise D365Error(f"{slabel}: asynchronous mode requires the postoperation "
                         f"stage (got {step['stage']!r}).")
 
