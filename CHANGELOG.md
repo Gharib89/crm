@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.0 (2026-07-03)
+
+### Bug Fixes
+
+- **profile**: Address Copilot review — report enforced flag, clearer clear-refusal
+  ([#672](https://github.com/Gharib89/crm/pull/672),
+  [`2f6b43f`](https://github.com/Gharib89/crm/commit/2f6b43fa2a343e1bdafdb7e1c2a6be1ad13f9872))
+
+- **profile**: Scope read-safe exemption to POST (Copilot round 2)
+  ([#672](https://github.com/Gharib89/crm/pull/672),
+  [`2f6b43f`](https://github.com/Gharib89/crm/commit/2f6b43fa2a343e1bdafdb7e1c2a6be1ad13f9872))
+
+### Documentation
+
+- Add crm prefix to read-only example comment (Copilot round 3)
+  ([#672](https://github.com/Gharib89/crm/pull/672),
+  [`2f6b43f`](https://github.com/Gharib89/crm/commit/2f6b43fa2a343e1bdafdb7e1c2a6be1ad13f9872))
+
+### Features
+
+- **profile**: Add read-only guardrail flag blocking org mutations
+  ([#672](https://github.com/Gharib89/crm/pull/672),
+  [`2f6b43f`](https://github.com/Gharib89/crm/commit/2f6b43fa2a343e1bdafdb7e1c2a6be1ad13f9872))
+
+### Testing
+
+- **profile**: Fix pyright types in read-only seam tests
+  ([#672](https://github.com/Gharib89/crm/pull/672),
+  [`2f6b43f`](https://github.com/Gharib89/crm/commit/2f6b43fa2a343e1bdafdb7e1c2a6be1ad13f9872))
+
+
 ## v1.50.2 (2026-07-03)
 
 ### Bug Fixes
