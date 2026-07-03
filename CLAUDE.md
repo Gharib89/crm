@@ -47,35 +47,9 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 - **E2E coverage gate** — every new/changed D365-touching command must ship a live e2e test under `crm/tests/e2e/` stamped `@covers("<group> <verb>")`, **or** an `E2E_SKIP` entry with a reason in `crm/tests/e2e/coverage.py`. The offline gate (`crm/tests/test_e2e_coverage_gate.py`) fails CI otherwise. Local/meta groups (`profile`, `session`, `skill`, `self-update`, `repl`, `scaffold`) are out of scope (`LOCAL_GROUPS`). See `crm/tests/TEST.md`.
 - **Test classification docs** — a capability-gate change (`@requires_cloud` / `@requires_onprem` added or removed on an e2e test) must update the live-run table in `crm/tests/TEST.md`; fixing or reclassifying a defect tracked in `crm/tests/e2e/DISCOVERED_BUGS.md` must update that entry in the same change.
 
-### Running the live e2e suite (target + creds)
+### Running the live e2e suite
 
-**Project live targets — two standing profiles for general live/e2e work** (a third, ephemeral CS-only profile is described in the next paragraph): **`agent-on-prem`** (NTLM on-prem v9.1 test org) and **`agent-cloud`** (OAuth / Dataverse online). Pin `--profile <name>` on any live command and confirm the org via `crm connection whoami` before reporting target-specific facts. Prefer **`agent-cloud`** for general verification (always reachable, no VPN); use **`agent-on-prem`** for `requires_onprem` and target-divergent checks. (These supersede the older `crmworx` / `cloud` profiles.)
-
-**Ephemeral CS target — `agent-cs-trial` (ADR 0012).** A third OAuth profile, **`agent-cs-trial`**, may exist pointing at a **Customer-Service-provisioned Dataverse trial** stood up for the CS-dependent e2e verbs that the general `agent-cloud` org can't host (`sla create`/`add-kpi`, `audit detail`, `workflow run`). It is **not** a durable target: a self-service CS trial expires (≤60 days), so **`agent-cloud` stays *the* cloud target and CI stays pointed at it** — never re-point `agent-cloud` or the CI cloud secret at the trial. The CS-verb tests **skip-with-instructions** when the trial is absent (auditing off, no seeded workflow, etc.), so they run only on local, opportunistic `--profile agent-cs-trial` runs while the trial lives, and skip everywhere else. The trial's `*.dynamics.com` host changes each time one is provisioned (kept in local memory, not committed) — set `D365_E2E_ALLOW_HOST` to that host for a local run.
-
-Two ways to give the opt-in suite (`D365_E2E=1`) a live target; pick one:
-
-- **A named profile (preferred for local runs)** — `D365_E2E_PROFILE=<name>` where `<name>` is a profile you already created with `crm profile add`. Its creds + secret are read **read-only** from your real `CRM_HOME` and re-seeded into a throwaway, isolated `CRM_HOME` (your real profiles/session are never mutated). The **target is inferred from the profile's auth scheme**: an OAuth/Dataverse profile → **cloud**, an NTLM profile → **on-prem**. No `D365_*` cred env needed. Prefer a **cloud** profile for general local verification — it's always reachable (no VPN); reserve on-prem for `requires_onprem` and target-divergent tests.
-- **Flat `D365_*` env** — set `D365_URL` + creds directly (NTLM: `D365_USERNAME`/`D365_PASSWORD`; OAuth: `D365_AUTH=oauth` + `D365_CLIENT_ID`/`D365_TENANT_ID`/`D365_CLIENT_SECRET`). This is how **CI** runs (secrets → env). Used automatically when `D365_E2E_PROFILE` is unset.
-
-**Both targets** = run the suite once per profile (`D365_E2E_PROFILE=<cloud>` then `=<onprem>`); coverage is the union. There is no single-process "both". **On-prem needs VPN** — if the selected target is unreachable the session **skips** with a "VPN down?" message (any HTTP response, incl 401/403, counts as reachable). Then: `pytest -m e2e`.
-
-**Running WORKTREE code through the e2e `cli` fixture.** The fixture resolves `shutil.which("crm")` → the installed **PyInstaller binary** (`~/.local/bin/crm`), which **ignores `PYTHONPATH`** (it bundles its own code), so an e2e run silently exercises the OLD installed code, not your worktree fix. The venv console-script `.venv/bin/crm` is *also* on PATH and *does* honor `PYTHONPATH`, so stripping only `~/.local/bin` isn't enough. Strip **both** crm dirs so `which` returns nothing and the fixture falls back to `[sys.executable, "-m", "crm"]` (absolute venv python + `PYTHONPATH=$WT` = worktree code **only when cwd is `$WT`**, see the cwd caveat below):
-
-```bash
-NEWPATH=$(echo "$PATH"|tr ':' '\n'|grep -vE '/\.local/bin|/crm/\.venv/bin'|paste -sd:)
-cd $WT && D365_E2E=1 D365_E2E_PROFILE=<p> PATH=$NEWPATH PYTHONPATH=$WT <main-venv>/bin/python -m pytest -m e2e <node>
-```
-
-**cwd beats `PYTHONPATH` — `PYTHONPATH=$WT` is NOT sufficient on its own.** `python -m crm` (the fixture fallback, spawned as a subprocess) and any `-m`/`-c` invocation put cwd as `''` at `sys.path[0]`, *ahead* of `PYTHONPATH` (`sys.path[1]`). So if the process cwd is the main checkout (which holds a `crm/` package — and the agent shell's default cwd is the main checkout), `import crm` resolves to MAIN and the worktree fix silently never runs. Run from `$WT` (the `cd $WT` above), or front-load it explicitly (`sys.path.insert(0, $WT)`); the editable-install meta-path finder is *appended* (last in `sys.meta_path`), so it is **not** the cause — cwd is. `pytest` collecting test modules is immune (rootdir insertion), but the `cli`-fixture subprocess it spawns is not.
-
-Tripwire: an e2e that *should* pass with your fix fails **identically to pre-fix** → you're running the frozen binary, OR `import crm` resolved to the main checkout because cwd ≠ `$WT`.
-
-**Cloud target needs a host-guard override.** The suite refuses destructive runs against a `*.dynamics.com` host (prod-host guard); pass `D365_E2E_ALLOW_HOST=<exact host>` to opt the designated cloud test org in.
-
-**A bug reported on a specific target must be verified on THAT target — cloud-green ≠ fixed.** Cloud (Dataverse online) silently reassigns server-side ids and quietly rewrites/accepts inputs that on-prem v9.x rejects, so a cloud-green run can mask an on-prem-only failure. For an on-prem-reported bug, run the on-prem leg (`D365_E2E_PROFILE=<onprem>`), not just cloud.
-
-**Test fixtures: never embed real-org identifiers** (public repo). Don't copy GUIDs from a live export into test constants — a captured form/record/role GUID can carry the org's machine fingerprint (e.g. a `…00155d467b90` suffix). Use obvious placeholders (`1111…`, `cccc…`).
+Live e2e runs (`D365_E2E=1 pytest -m e2e`) and any live-org verification follow the **`live-e2e`** skill (`.claude/skills/live-e2e/SKILL.md`): live targets (`agent-cloud` preferred, `agent-on-prem` VPN-gated, ephemeral `agent-cs-trial`), creds wiring (`D365_E2E_PROFILE` vs flat `D365_*`), the worktree-code recipe and its tripwires, the cloud host guard, the verify-on-the-reported-target rule, and the fixture-placeholder rule. Pin `--profile <name>` on any live command and confirm the org via `crm connection whoami` before reporting target-specific facts.
 
 `.github/workflows/docs.yml` runs `mkdocs build --strict` on any `crm/**`, `setup.py`, `docs/**`, or `mkdocs.yml` change — **stale refs / broken links fail CI.**
 

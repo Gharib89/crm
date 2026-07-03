@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse gate: block destructive `crm` verbs without --yes.
+"""Claude Code PreToolUse gate: block destructive `crm` verbs and git-discipline breaches.
 
 Deterministic, model-independent guardrail. Reads the PreToolUse JSON payload on
-stdin, and if the Bash command is a `crm` invocation of a destructive verb,
-exits 2 (block) with a human-readable reason on stderr UNLESS an explicit
-`--yes` confirm flag is present. Everything else exits 0 (pass through).
+stdin and exits 2 (block) with a human-readable reason on stderr when the Bash
+command matches a gated class; everything else exits 0 (pass through).
+
+Gated classes:
+  * Destructive `crm` verbs without an explicit `--yes` confirm flag.
+  * `git add -A` / `--all` / `.` — CLAUDE.md branch discipline: stage with
+    explicit paths, never blanket-stage.
+  * Non-docs `git commit` on `main` in the MAIN checkout of this repo (linked
+    worktrees pass): development happens in a worktree on a fresh branch; the
+    shared checkout takes only small docs-only commits.
 
 Pure stdlib: no network, no crm/D365 import — runs fast and offline on every
-Bash call. Contract: PreToolUse exit code 2 blocks the tool call and feeds
-stderr back to the agent (Claude Code hooks docs).
+Bash call. Git subprocesses run only for `git commit` segments and fail OPEN
+(a guardrail must never wedge normal work when resolution fails). Contract:
+PreToolUse exit code 2 blocks the tool call and feeds stderr back to the agent
+(Claude Code hooks docs).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
+import subprocess
 import sys
 
 BLOCK = 2
@@ -183,6 +194,135 @@ def _destructive_match(tokens: list[str]) -> str | None:
     return None
 
 
+# --- git discipline gates (CLAUDE.md "Branch & worktree discipline") ---------
+
+# `git add` arguments that blanket-stage instead of naming explicit paths.
+BLANKET_ADD: set[str] = {"-A", "--all", ".", "./", ":/", ":/."}
+
+# Paths allowed in a direct-to-main commit in the shared checkout.
+_DOCS_PREFIXES = ("docs/",)
+
+
+def _is_docs_path(path: str) -> bool:
+    return path.endswith(".md") or path.startswith(_DOCS_PREFIXES) or path == "mkdocs.yml"
+
+
+def _strip_assignments(tokens: list[str]) -> list[str]:
+    i = 0
+    while i < len(tokens) and _ASSIGNMENT.match(tokens[i]):
+        i += 1
+    return tokens[i:]
+
+
+def _is_git(token: str) -> bool:
+    return token == "git" or token.endswith("/git")
+
+
+def _git_parts(tokens: list[str]) -> tuple[str | None, str | None, list[str]]:
+    """Given tokens after `git`, return (repo_override, subcommand, rest).
+
+    Handles the global options that matter here: `-C <path>` (repo override)
+    and `-c <name=val>` (skip its value). Other `--flag` globals are skipped;
+    the first non-option token is the subcommand.
+    """
+    repo_override: str | None = None
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok == "-C" and i + 1 < len(tokens):
+            repo_override = tokens[i + 1]
+            i += 2
+            continue
+        if tok == "-c" and i + 1 < len(tokens):
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        return repo_override, tok, tokens[i + 1 :]
+    return repo_override, None, []
+
+
+def _resolve_dir(base: str, candidate: str) -> str | None:
+    """Resolve `candidate` against `base`; None when it cannot be resolved
+    statically (unexpanded shell variables)."""
+    if "$" in candidate:
+        return None
+    candidate = os.path.expanduser(candidate)
+    if not os.path.isabs(candidate):
+        candidate = os.path.join(base, candidate)
+    return os.path.normpath(candidate)
+
+
+def _git_run(repo_dir: str, args: list[str]) -> str | None:
+    """Run git in `repo_dir`; return stdout or None on any failure (fail open)."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo_dir] + args,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def _git_add_reason(sub: str | None, rest: list[str]) -> str | None:
+    if sub != "add":
+        return None
+    flagged = sorted({tok for tok in rest if tok in BLANKET_ADD})
+    if not flagged:
+        return None
+    return (
+        f"BLOCKED: `git add {' '.join(flagged)}` blanket-stages everything. "
+        "CLAUDE.md branch discipline: stage with explicit paths "
+        "(`git add <path> ...`) so unrelated worktree content never rides along."
+    )
+
+
+def _main_commit_reason(rest: list[str], repo_dir: str) -> str | None:
+    """Block a non-docs commit on `main` in the MAIN checkout of this repo.
+
+    Linked worktrees are identified by `--git-dir` differing from
+    `--git-common-dir` and always pass. Any lookup failure -> None (fail open).
+    """
+    git_dir = _git_run(repo_dir, ["rev-parse", "--git-dir"])
+    common_dir = _git_run(repo_dir, ["rev-parse", "--git-common-dir"])
+    if git_dir is None or common_dir is None:
+        return None
+    if os.path.realpath(os.path.join(repo_dir, git_dir.strip())) != os.path.realpath(
+        os.path.join(repo_dir, common_dir.strip())
+    ):
+        return None  # linked worktree — feature-branch work lives here
+    origin = _git_run(repo_dir, ["remote", "get-url", "origin"])
+    if origin is None or "gharib89/crm" not in origin.strip().lower():
+        return None  # some other repo — not ours to police
+    branch = _git_run(repo_dir, ["branch", "--show-current"])
+    if branch is None or branch.strip() != "main":
+        return None
+    staged = _git_run(repo_dir, ["diff", "--cached", "--name-only"])
+    if staged is None:
+        return None
+    paths = [p for p in staged.splitlines() if p.strip()]
+    if "-a" in rest or "--all" in rest:
+        unstaged = _git_run(repo_dir, ["diff", "--name-only"])
+        if unstaged is not None:
+            paths += [p for p in unstaged.splitlines() if p.strip()]
+    non_docs = [p for p in paths if not _is_docs_path(p)]
+    if not non_docs:
+        return None
+    shown = ", ".join(non_docs[:5]) + (", ..." if len(non_docs) > 5 else "")
+    return (
+        f"BLOCKED: non-docs `git commit` on `main` in the shared MAIN checkout ({shown}). "
+        "CLAUDE.md worktree discipline: develop in a git worktree on a fresh branch "
+        "(EnterWorktree) and PR from there; the shared checkout takes only small "
+        "docs-only commits (*.md, docs/, mkdocs.yml)."
+    )
+
+
 def main() -> int:
     raw = sys.stdin.read()
     try:
@@ -198,22 +338,48 @@ def main() -> int:
     if not isinstance(command, str) or not command.strip():
         return 0
 
+    # Track the effective working directory across segments (`cd x && git ...`)
+    # so repo-dependent git checks inspect the right repository. An
+    # unresolvable `cd` (`cd $WT`) makes it None -> those checks skip.
+    cwd = payload.get("cwd")
+    effective: str | None = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+
     # Inspect every sub-command so a destructive crm call inside a compound
     # command (`true && crm ...`, `a|crm ...`, `$(crm ...)`) or with a path
     # prefix (`/usr/bin/crm ...`) is still caught. --yes is scoped to its own
     # segment.
     for segment in _split_segments(command):
         label = _destructive_match(segment)
-        if label is None:
+        if label is not None and not _confirm_present(segment):
+            sys.stderr.write(
+                f"BLOCKED: `crm {label}` is a destructive operation and was prevented by "
+                f"the destructive-op gate. It permanently deletes or cancels server state. "
+                f"To confirm intentionally, re-run with the `--yes` flag.\n"
+            )
+            return BLOCK
+
+        tokens = _strip_assignments(segment)
+        if not tokens:
             continue
-        if _confirm_present(segment):
+        if tokens[0] == "cd":
+            if len(tokens) == 1:
+                effective = os.path.expanduser("~")
+            elif effective is not None:
+                effective = _resolve_dir(effective, tokens[1])
             continue
-        sys.stderr.write(
-            f"BLOCKED: `crm {label}` is a destructive operation and was prevented by "
-            f"the destructive-op gate. It permanently deletes or cancels server state. "
-            f"To confirm intentionally, re-run with the `--yes` flag.\n"
-        )
-        return BLOCK
+        if not _is_git(tokens[0]):
+            continue
+        repo_override, sub, rest = _git_parts(tokens[1:])
+        reason = _git_add_reason(sub, rest)
+        if reason is None and sub == "commit":
+            repo_dir = effective
+            if repo_override is not None and effective is not None:
+                repo_dir = _resolve_dir(effective, repo_override)
+            if repo_dir is not None:
+                reason = _main_commit_reason(rest, repo_dir)
+        if reason is not None:
+            sys.stderr.write(reason + "\n")
+            return BLOCK
     return 0
 
 
