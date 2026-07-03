@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.50.1 (2026-07-03)
+
+### Bug Fixes
+
+- **completion**: Also complete target_set/related_set positionals
+  ([#670](https://github.com/Gharib89/crm/pull/670),
+  [`87bc38e`](https://github.com/Gharib89/crm/commit/87bc38e955ff611310c29bdade58799580b0e225))
+
+- **completion**: Honor --session in shell entity-set profile resolution
+  ([#670](https://github.com/Gharib89/crm/pull/670),
+  [`87bc38e`](https://github.com/Gharib89/crm/commit/87bc38e955ff611310c29bdade58799580b0e225))
+
+- **completion**: REPL attribute-name + OS-shell entity-set completion
+  ([#670](https://github.com/Gharib89/crm/pull/670),
+  [`87bc38e`](https://github.com/Gharib89/crm/commit/87bc38e955ff611310c29bdade58799580b0e225))
+
+### Documentation
+
+- **completion**: Use entity-set name in REPL --select example
+  ([#670](https://github.com/Gharib89/crm/pull/670),
+  [`87bc38e`](https://github.com/Gharib89/crm/commit/87bc38e955ff611310c29bdade58799580b0e225))
+
+
 ## v1.50.0 (2026-07-03)
 
 ### Bug Fixes
