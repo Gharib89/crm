@@ -537,10 +537,10 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
 
 
 @entity_group.command("associate")
-@click.argument("target_set")
+@click.argument("target_set", shell_complete=_complete_entity_set_names)
 @click.argument("target_id")
 @click.argument("nav")
-@click.argument("related_set")
+@click.argument("related_set", shell_complete=_complete_entity_set_names)
 @click.argument("related_id")
 @_admin_header_options
 @pass_ctx
@@ -557,7 +557,7 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
 
 
 @entity_group.command("disassociate")
-@click.argument("target_set")
+@click.argument("target_set", shell_complete=_complete_entity_set_names)
 @click.argument("target_id")
 @click.argument("nav")
 @click.option("--related-set", help="Required for collection-valued nav properties.")
@@ -586,7 +586,7 @@ def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.argument("nav")
-@click.argument("related_set")
+@click.argument("related_set", shell_complete=_complete_entity_set_names)
 @click.argument("related_id")
 @_admin_header_options
 @pass_ctx
