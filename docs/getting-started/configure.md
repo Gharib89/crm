@@ -90,10 +90,10 @@ See [how-to: profile](../how-to/profile.md) for every flag.
 
 ## Next-step hints
 
-The first time you run a few common commands (`profile add`, `profile use`,
-`solution export`, `query odata`) the CLI prints a dim one-line **next-step hint**
-suggesting a natural follow-up — for example, `crm connection whoami` after adding a
-profile. Each hint appears only once (tracked under `CRM_HOME`) and only in
+The first time you run a few common commands (`crm profile add`, `crm profile use`,
+`crm solution export`, `crm query odata`) the CLI prints a dim one-line **next-step
+hint** suggesting a natural follow-up — for example, `crm connection whoami` after
+adding a profile. Each hint appears only once (tracked under `CRM_HOME`) and only in
 human/REPL output on a terminal; it is never emitted under `--json`, in a pipe, or to
 agents. To turn hints off completely, set `CRM_NO_HINTS` to any value:
 
