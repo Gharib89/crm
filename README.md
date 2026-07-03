@@ -378,6 +378,11 @@ crm --dry-run data delete contacts --fetchxml-file ./stale-contacts.xml  # previ
 
 # Discover the CLI surface (no connection needed) — for agents and scripts
 crm --json describe
+
+# Browse a curated gallery of runnable examples (no connection needed)
+crm examples              # TTY: pick a group, then an example — prints it to copy/edit
+crm examples solution     # jump straight to one group
+crm --json examples       # plain listing for scripts/agents
 ```
 
 ### Output modes

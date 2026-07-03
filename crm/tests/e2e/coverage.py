@@ -33,7 +33,8 @@ def covers(*paths: str):
 # ── Out-of-scope verbs ─────────────────────────────────────────────────────
 # Top-level groups that touch no Web API — unit-tested elsewhere.
 LOCAL_GROUPS = frozenset(
-    {"profile", "session", "skill", "self-update", "repl", "scaffold", "completion"}
+    {"profile", "session", "skill", "self-update", "repl", "scaffold", "completion",
+     "examples"}
 )
 
 # D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a

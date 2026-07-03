@@ -428,6 +428,7 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "doctor": "crm.commands.connection:doctor_command",
         "dup": "crm.commands.dup:dup_group",
         "entity": "crm.commands.entity:entity_group",
+        "examples": "crm.commands.examples:examples_cmd",
         "fieldsec": "crm.commands.fieldsec:fieldsec_group",
         "form": "crm.commands.form:form_group",
         "metadata": "crm.commands.metadata:metadata_group",

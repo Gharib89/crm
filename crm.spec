@@ -51,6 +51,7 @@ a = Analysis(
         'crm.commands.describe',
         'crm.commands.dup',
         'crm.commands.entity',
+        'crm.commands.examples',
         'crm.commands.fieldsec',
         'crm.commands.form',
         'crm.commands.metadata',
