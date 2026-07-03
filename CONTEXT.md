@@ -72,6 +72,20 @@ extra metadata reads (the *when-to-pay* gate stays at the caller, not in core).
 Self-contained: it swallows its own errors and never masks the original failure.
 _Avoid_: duplicate error, key error detail.
 
+**Next-step hint**:
+Show-once *success*-path guidance ("what to try next") printed after a command's
+normal output — e.g. `crm connection whoami` after `profile add`. Unlike
+**failure enrichment**'s fix-it `hint`, it is **never** part of the emit envelope:
+it renders only in human/REPL mode on a stdout TTY (`not json_mode`), delivered via
+[`skin.hint`](crm/utils/repl_skin.py) through [`CLIContext.hint`](crm/cli.py) — never
+`emit(meta=…)`. Each hint id fires at most once per `CRM_HOME` (seen ids persisted in
+`hints_seen.json`); `CRM_NO_HINTS` (any value) disables the subsystem and touches no
+store. Owned by [`crm/core/hints.py`](crm/core/hints.py). Agents never see it — they
+have the skill and `crm describe` — so it adds no contract obligation (ADR 0008
+untouched).
+_Avoid_: tip, next-step guidance in JSON; do not conflate with the failure-path fix-it
+`hint`.
+
 **Usage error**:
 A caller mistake that exits `2`. Classically one Click rejects before the command
 body runs — unknown flag, bad parameter value, missing required argument (Click's

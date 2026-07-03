@@ -297,6 +297,12 @@ Inside the REPL, commands are typed without the `crm` prefix
 (`connection whoami`, not `crm connection whoami`), but a single leading `crm`
 is tolerated and ignored so a copy-paste from the docs still works.
 
+After a few commands (`profile add`, `profile use`, `solution export`,
+`query odata`) the CLI prints a dim **next-step hint** suggesting a natural
+follow-up. Each hint shows only once (per `CRM_HOME`) and only in human/REPL
+output on a terminal — never under `--json`, in a pipe, or for agents. Set
+`CRM_NO_HINTS` to any value to turn them off entirely.
+
 ### One-shot subcommands
 
 ```bash

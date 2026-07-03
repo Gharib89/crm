@@ -172,6 +172,25 @@ class CLIContext:
             for k, v in meta.items():
                 self.skin.status(k, str(v))
 
+    def hint(self, hint_id: str) -> None:
+        """Show a one-time next-step hint (#657) after a command's normal output.
+
+        Human/REPL only: suppressed under `--json` and when stdout is not a TTY, so
+        the hint never pollutes output an agent or script is capturing. The env
+        kill-switch and show-once bookkeeping live in `crm.core.hints`; the gate
+        here is what keeps `take_hint` (and its seen-store) off the machine path
+        entirely — under `--json`/no-TTY the store is never even read.
+        """
+        if self.json_mode:
+            return
+        from crm.commands import _tty
+        if not _tty._stdout_is_tty():
+            return
+        from crm.core import hints as hints_mod
+        text = hints_mod.take_hint(hint_id)
+        if text is not None:
+            self.skin.hint(text)
+
     def backend(self) -> "D365Backend":
         from crm.core import connection as conn_mod
         from crm.core import session as session_mod

@@ -221,6 +221,7 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         "user_id": info.get("user_id"), "api_version": info["api_version"],
     }
     ctx.emit(True, data=data, meta={"profile": name}, warnings=warnings or None)
+    ctx.hint("profile_add")
 
 
 @profile_group.command("use")
@@ -265,6 +266,7 @@ def profile_use(ctx: CLIContext, name, clear):
     ctx.password = None
     ctx.invalidate_backend()
     ctx.emit(True, data={"active_profile": name})
+    ctx.hint("profile_use")
 
 
 def _use_label(name: str, active: str | None) -> str:
