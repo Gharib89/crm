@@ -143,6 +143,8 @@ crm solution export CRMWorx -o docs/artifacts/crmworx.zip
 ```
 Reports the output path, byte count, `managed: False`, and the `action` that ran (falls back to synchronous `ExportSolution` when `ExportSolutionAsync` is disabled on-prem). On success the zip is written to `-o/--output`; adding `--json` only changes the printed result envelope.
 
+Omit the solution name on an interactive terminal and `crm solution export -o <path>` lists the org's solutions (unmanaged first) and lets you pick one with the arrow keys. Under `--json` or with no TTY (scripts, agents, CI) the name stays a required argument — a missing one is a usage error (exit 2), unchanged.
+
 ## Source-control a solution (extract / pack)
 
 ```bash

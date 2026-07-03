@@ -12,6 +12,7 @@ from crm.core import solution_validate as sv_mod
 from crm.core import solutionpackager as sp_mod
 from crm.core import session as session_mod
 from crm.cli import CLIContext, pass_ctx
+from crm.commands._tty import _stdin_is_tty
 from crm.commands._helpers import (
     _destructive_option,
     d365_errors,
@@ -21,6 +22,7 @@ from crm.commands._helpers import (
     _active_profile,
     _EXPORT_SETTING_KEYS,
     _output_option,
+    select_one,
 )
 
 
@@ -571,8 +573,54 @@ def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, yes):
     _journal(ctx, unique_name, info)
 
 
+def _solution_pick_label(s: dict) -> str:
+    """One-line picker label for a solution: unique name + friendly name + version.
+
+    A ``(managed)`` marker disambiguates managed solutions, since unmanaged and
+    managed are interleaved by name in the org but shown unmanaged-first here."""
+    name = s.get("uniquename", "")
+    friendly = s.get("friendlyname") or ""
+    version = s.get("version") or ""
+    parts = [p for p in (name, friendly, f"v{version}" if version else "") if p]
+    if s.get("ismanaged"):
+        parts.append("(managed)")
+    return "  ".join(parts)
+
+
+def _pick_solution(ctx: CLIContext, title: str) -> str | None:
+    """No-arg `solution export` → interactive picker over the org's solutions (#656).
+
+    Network-backed pilot sibling of `profile use`'s local picker: fetches the
+    org's solutions (same source as `solution list`) and shows an arrow-key
+    select, returning the chosen unique name. Unmanaged solutions sort first —
+    the common export target is your own unmanaged work.
+
+    Gated to a real TTY in human mode: under ``--json`` or a non-TTY (scripts /
+    CI) it raises ``UsageError`` (exit 2), preserving the pre-#656
+    required-argument behavior. A failed fetch (auth/network) is left to the
+    caller's ``d365_errors`` scope, which turns it into the normal
+    operational-failure envelope rather than a picker crash. On an empty list or
+    a user cancel it emits a clean error envelope via ``ctx.emit(False)`` (which
+    always raises ``Exit``), so it never actually returns ``None`` — the
+    ``str | None`` return and the caller's guard are defensive."""
+    if not (_stdin_is_tty() and not ctx.json_mode):
+        raise click.UsageError(
+            "a solution unique name is required (no interactive terminal to pick one).")
+    items = sol_mod.list_solutions(ctx.backend())
+    items.sort(key=lambda s: (bool(s.get("ismanaged")), s.get("uniquename", "")))
+    if not items:
+        ctx.emit(False, error="No solutions found in this org.")
+        return None
+    choices = [(s["uniquename"], _solution_pick_label(s)) for s in items]
+    name = select_one(title, choices)
+    if not name:
+        ctx.emit(False, error="no solution selected")
+        return None
+    return name
+
+
 @solution_group.command("export")
-@click.argument("unique_name")
+@click.argument("unique_name", required=False)
 @_output_option(required=True)
 @click.option("--managed", is_flag=True)
 @click.option(
@@ -588,9 +636,21 @@ def solution_apply_upgrade_cmd(ctx: CLIContext, unique_name, yes):
               help="Disable the 429/5xx retry loop for this invocation.")
 @pass_ctx
 def solution_export_cmd(ctx: CLIContext, unique_name, output, managed, export_settings, timeout, no_retry):
+    """Export a solution to a zip.
+
+    With no UNIQUE_NAME on an interactive terminal, lists the org's solutions
+    (unmanaged first) and prompts you to pick one. Under --json or with no TTY
+    the name is required (a missing one is a usage error, exit 2)."""
     kwargs = {_EXPORT_SETTING_KEYS[name]: True for name in export_settings}
     with _no_retry_scope(ctx, no_retry):
         with d365_errors(ctx):
+            if not unique_name:
+                # No solution named: on a TTY (human mode) pick one interactively;
+                # otherwise this raises a UsageError (exit 2). The fetch inside is
+                # covered by this d365_errors scope.
+                unique_name = _pick_solution(ctx, "Select a solution to export")
+                if unique_name is None:
+                    return
             info = sol_mod.export_solution(
                 ctx.backend(), unique_name, output, managed=managed,
                 timeout=timeout, **kwargs,
