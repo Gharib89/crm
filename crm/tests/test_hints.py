@@ -17,10 +17,12 @@ _WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001",
 
 
 @pytest.fixture
-def crm_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
+def crm_home(isolated_home, monkeypatch):
+    """Isolated CRM_HOME (via the suite's ``isolated_home``, which also disables
+    .env autoload and snapshots the environment) with CRM_NO_HINTS cleared so a
+    stray outer-env value can't skew the show-once assertions."""
     monkeypatch.delenv("CRM_NO_HINTS", raising=False)
-    return tmp_path
+    return isolated_home
 
 
 class TestTakeHint:
@@ -36,10 +38,13 @@ class TestTakeHint:
 
         assert hints.take_hint("not_a_real_hint") is None
 
-    def test_disabled_env_suppresses_and_touches_no_store(self, crm_home, monkeypatch):
+    @pytest.mark.parametrize("value", ["1", "", "0", "false"])
+    def test_disabled_env_suppresses_and_touches_no_store(self, crm_home, monkeypatch, value):
         from crm.core import hints
 
-        monkeypatch.setenv("CRM_NO_HINTS", "1")
+        # Any value — including an empty string a shell can set (CRM_NO_HINTS=) —
+        # disables hints and writes nothing to the seen-store (issue #657).
+        monkeypatch.setenv("CRM_NO_HINTS", value)
         assert hints.take_hint("profile_add") is None
         assert not hints._seen_path().exists()
 
@@ -51,6 +56,17 @@ class TestTakeHint:
         p.write_text("{not valid json", encoding="utf-8")
         # Neither reading the store nor firing a hint may raise.
         assert hints.load_seen() == set()
+        assert hints.take_hint("profile_add") == hints.HINTS["profile_add"]
+
+    def test_unwritable_store_does_not_crash(self, crm_home, monkeypatch, tmp_path):
+        from crm.core import hints
+
+        # A file where CRM_HOME's parent dir is expected → mkdir/write raises
+        # OSError. A hint is optional UX and must never fail the command; the
+        # text still returns, the failure is swallowed.
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x", encoding="utf-8")
+        monkeypatch.setenv("CRM_HOME", str(blocker / "nested"))
         assert hints.take_hint("profile_add") == hints.HINTS["profile_add"]
 
 

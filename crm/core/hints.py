@@ -32,8 +32,11 @@ HINTS: dict[str, str] = {
 
 
 def hints_disabled() -> bool:
-    """True when the user has opted out via `CRM_NO_HINTS` (any non-empty value)."""
-    return bool(os.environ.get("CRM_NO_HINTS"))
+    """True when the user has opted out via `CRM_NO_HINTS`. Presence in the
+    environment disables hints regardless of value — including an empty string
+    (`CRM_NO_HINTS=`), which a shell can set — matching the documented "any
+    value" contract."""
+    return "CRM_NO_HINTS" in os.environ
 
 
 def _seen_path() -> Path:
@@ -63,17 +66,23 @@ def mark_seen(hint_id: str) -> None:
 
     Atomic tmp+rename (mirrors ``session._atomic_write_json``, replicated to keep
     this leaf module free of a cross-module private import). No advisory lock: a
-    lost race merely re-shows a hint once — harmless, unlike session state."""
+    lost race merely re-shows a hint once — harmless, unlike session state. Any
+    write failure (unwritable ``CRM_HOME``, fsync/rename error) is swallowed: a
+    hint is optional UX and must never turn a successful command into a crash —
+    at worst the hint re-shows next time because it wasn't recorded."""
     seen = load_seen()
     seen.add(hint_id)
     path = _seen_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        json.dump({"seen": sorted(seen)}, f, indent=2, sort_keys=True)
-        f.flush()
-        os.fsync(f.fileno())
-    tmp.replace(path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump({"seen": sorted(seen)}, f, indent=2, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
+        tmp.replace(path)
+    except OSError:
+        pass
 
 
 def take_hint(hint_id: str) -> str | None:
