@@ -331,7 +331,7 @@ crm --json metadata attribute account industrycode --expect AttributeType=Pickli
 # FetchXML
 crm query fetchxml accounts --file ./reports/by_industry.xml
 
-# Solution export
+# Solution export — name it explicitly, or omit the name on a TTY to pick interactively
 crm solution export MyCustomSolution -o /tmp/snap.zip
 
 # Org-to-org drift recipe: project a whole solution into one apply-consumable spec on dev,
