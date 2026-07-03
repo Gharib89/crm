@@ -17,16 +17,17 @@ from __future__ import annotations
 import pytest
 import requests_mock
 
-from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
+from crm.utils.d365_backend import (
+    BatchOperation, ConnectionProfile, D365Backend, D365Error,
+)
 
 
-def _profile(**over) -> ConnectionProfile:
-    base = dict(
+def _profile(read_only: bool = True) -> ConnectionProfile:
+    return ConnectionProfile(
         name="ro", url="https://crm.contoso.local/contoso",
-        domain="CONTOSO", username="alice", api_version="v9.2", verify_ssl=False,
+        domain="CONTOSO", username="alice", api_version="v9.2",
+        verify_ssl=False, read_only=read_only,
     )
-    base.update(over)
-    return ConnectionProfile(**base)
 
 
 @pytest.fixture
@@ -62,7 +63,7 @@ class TestMutationsRefused:
 
     def test_batch_blocked_unconditionally(self, ro_backend: D365Backend):
         """$batch is a bulk-write path — refused under read_only even if all GETs."""
-        ops = [{"method": "GET", "url": "accounts"}]
+        ops: list[BatchOperation] = [{"method": "GET", "url": "accounts"}]
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error) as exc:
                 ro_backend.batch(ops)
@@ -99,8 +100,9 @@ class TestDryRunWins:
     def test_batch_dry_run_previews_under_read_only(self):
         """Dry-run batch under read_only returns the dry-run echo, never raises."""
         backend = D365Backend(_profile(read_only=True), password="pw", dry_run=True)
+        ops: list[BatchOperation] = [{"method": "POST", "url": "accounts", "body": {}}]
         with requests_mock.Mocker() as m:
-            results = backend.batch([{"method": "POST", "url": "accounts", "body": {}}])
+            results = backend.batch(ops)
         assert results[0]["error"] == "dry-run"
         assert m.request_history == []
 
