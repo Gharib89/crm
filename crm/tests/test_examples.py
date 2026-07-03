@@ -108,22 +108,51 @@ _CUSTOMIZATION_WRITE_VERBS = frozenset({
 })
 
 
+def _command_path(command: str) -> list[str]:
+    """Tokens of ``command`` with the leading ``crm`` and any leading root/global
+    options stripped, so ``path[0]`` is the top-level group and ``path[1]`` the
+    verb. Mirrors the leading-global skip in :func:`_resolve` so a curated example
+    like ``crm --profile NAME metadata ...`` is still checked at its verb position,
+    not silently skipped."""
+    toks = shlex.split(command)
+    if toks and toks[0] == "crm":
+        toks = toks[1:]
+    root_flags: set[str] = set()
+    root_value_opts: set[str] = set()
+    for p in cli.params:
+        if isinstance(p, click.Option):
+            (root_flags if p.is_flag else root_value_opts).update(p.opts, p.secondary_opts)
+    i = 0
+    while i < len(toks) and toks[i].startswith("-"):
+        name = toks[i].split("=", 1)[0]
+        if name in root_flags:
+            i += 1
+        elif name in root_value_opts:
+            i += 1 if "=" in toks[i] else 2
+        else:
+            break
+    return toks[i:]
+
+
 def test_customization_write_examples_target_a_solution():
     for group, ex in reg.listing(None):
-        toks = shlex.split(ex.command)
-        if toks[:2] == ["crm", "metadata"] and any(v in toks for v in _CUSTOMIZATION_WRITE_VERBS):
+        path = _command_path(ex.command)
+        # Check the verb *position* (metadata <verb>), tolerating a leading global
+        # option before the group, rather than mere token membership.
+        if path[:1] == ["metadata"] and len(path) > 1 and path[1] in _CUSTOMIZATION_WRITE_VERBS:
             # Accept both the space form (--solution X) and Click's equals form
             # (--solution=X), so a valid equals-form example isn't misflagged.
-            has_solution = any(t == "--solution" or t.startswith("--solution=") for t in toks)
+            has_solution = any(t == "--solution" or t.startswith("--solution=") for t in path)
             assert has_solution, (
                 f"customization-write example must pass --solution: {ex.command!r}"
             )
 
 
 def test_optionset_examples_use_colon_option_syntax():
-    # `--option` wants 'value:label' (or ':label'); an '=' separator is rejected
-    # as a BadParameter at runtime, so an example using it never runs. Check both
-    # token shapes Click accepts: `--option VALUE` and `--option=VALUE`.
+    # `--option` wants 'value:label' (or ':label'); the metadata option-set parser
+    # (`_parse_value_labels`) raises a click.UsageError when the ':' is missing, so
+    # an example using '=' never runs. Check both token shapes Click accepts:
+    # `--option VALUE` and `--option=VALUE`.
     for group, ex in reg.listing(None):
         toks = shlex.split(ex.command)
         for i, tok in enumerate(toks):
