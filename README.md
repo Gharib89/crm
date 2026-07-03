@@ -236,6 +236,21 @@ a per-command flag:
 crm profile add --url ... --publisher-prefix cwx --name crmworx
 ```
 
+Mark a profile **read-only** to block accidental writes — the backend refuses
+every org mutation (non-GET, minus solution/translation *export* actions) with a
+loud operational failure (exit 1), while reads run normally:
+
+```bash
+crm profile add --url ... --name prod-ro --read-only   # or: profile edit prod-ro --read-only
+```
+
+Setting it is unrestricted (tighten from anywhere, including CI); **clearing** it
+(`crm profile edit prod-ro --no-read-only`) needs an interactive terminal to
+confirm, so an agent with no TTY can't flip it off. It's a **guardrail, not a
+security boundary** — the same OS user can hand-edit the profile file; real
+enforcement is a server-side read-only security role. See
+[ADR 0021](docs/adr/0021-read-only-profile-tty-gated-guardrail.md).
+
 **BREAKING (#636):** every customization-write command (`metadata create-*` /
 `update-*`, `plugin create`/`register-*`/`update-step-*`,
 `webresource`, `form`, `view`, `chart`, `dashboard`, `sitemap`, `app`, `sla`,

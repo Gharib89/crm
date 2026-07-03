@@ -183,6 +183,7 @@ class TestWhoamiEnriched:
         assert data["profile"] == "t"
         assert data["url"] == _API_BASE
         assert data["org_name"] == "Contoso Dev"
+        assert data["read_only"] is False  # surfaced for the read-only guardrail (#665)
 
     def test_whoami_org_name_best_effort_on_lookup_failure(
         self, tmp_path, monkeypatch

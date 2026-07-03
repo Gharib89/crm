@@ -89,8 +89,9 @@ crm profile list
 crm --json profile list
 ```
 
-Marks the active profile and shows each one's target (on-prem / cloud), URL, and
-where its secret lives (`cred=keyring`, `cred=plaintext`, or `cred=none`).
+Marks the active profile and shows each one's target (on-prem / cloud), URL,
+where its secret lives (`cred=keyring`, `cred=plaintext`, or `cred=none`), and a
+`read-only` marker on any read-only profile (JSON rows carry a `read_only` field).
 
 ## Edit a profile's fields
 
@@ -101,10 +102,47 @@ crm profile edit online --url https://contoso.crm.dynamics.com --client-id <new-
 ```
 
 `edit` changes any non-secret field — URL, identity fields, api-version,
-publisher prefix. To change the secret, use `set-password` (below). An invalid
+publisher prefix, and the read-only guardrail (see [Mark a profile
+read-only](#mark-a-profile-read-only)). To change the secret, use `set-password`
+(below). An invalid
 `--publisher-prefix` is rejected the same way as on `add` (exit 2). Omitting
 `NAME` on a TTY shows the same arrow-key picker as `profile use`; under
 `--json` or with no TTY a missing `NAME` is still a usage error (exit 2).
+
+## Mark a profile read-only
+
+A **read-only** profile blocks accidental writes: the backend refuses every org
+**mutation** (any non-GET Web API call, minus the solution/translation *export*
+actions, which extract rather than mutate) with a loud operational failure
+(`ok:false`, exit 1); reads run normally.
+
+```bash
+crm profile add --url ... --name prod-ro --read-only   # set at creation
+crm profile edit prod-ro --read-only                    # or tighten an existing one
+```
+
+The flip is **asymmetric**: setting it on is unrestricted — the `--read-only`
+flag works everywhere (including `--json` / CI), and the interactive `add` wizard
+offers a read-only y/N step (default N). **Clearing** it requires an interactive
+terminal:
+
+```bash
+crm profile edit prod-ro --no-read-only   # prompts y/N to confirm on a TTY
+```
+
+Under `--json` or with no TTY, `--no-read-only` errors cleanly (exit 1) and tells
+you to run it from your shell — so a coding agent with no TTY can't flip the
+guardrail off via the CLI.
+
+This is a **guardrail, not a security boundary.** The CLI runs as your OS user,
+which can hand-edit the profile file, clone it into a fresh `CRM_HOME`, or (WSL
+plaintext fallback) read the secret and mint a new writable profile. It stops
+accidents, not a determined same-user process — for real enforcement, use a
+dedicated app registration / user with a **read-only security role** server-side.
+A read-only refusal is never a `--dry-run` preview: `--dry-run` is checked first,
+so a read-only + dry-run mutation still previews (`ok:true`), while a real
+mutation is refused (`ok:false`, exit 1). See
+[ADR 0021](../adr/0021-read-only-profile-tty-gated-guardrail.md).
 
 ## Rename a profile
 

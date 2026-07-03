@@ -177,6 +177,30 @@ re-running the whole verb is usually wrong once a stage has written
 ([ADR 0007](docs/adr/0007-record-clone-no-rollback-continue-and-report.md)).
 _Avoid_: partial failure (ambiguous about whether anything was written).
 
+### Read-only profile
+
+**Read-only profile**:
+A profile with `read_only` set — the backend refuses every org **mutation**
+(non-GET Web API call, minus the read-safe action allowlist) with an operational
+failure, while reads execute normally. A **guardrail, not a security boundary**:
+the same-OS-user agent can hand-edit the profile JSON or mint a fresh writable
+one — the real boundary is a server-side read-only security role
+([ADR 0021](docs/adr/0021-read-only-profile-tty-gated-guardrail.md)). Setting it
+is unrestricted (tighten anywhere); clearing it (`profile edit --no-read-only`)
+requires an interactive TTY confirmation, so an agent with no TTY can't flip it
+off via the CLI. A read-only refusal is an **operational failure** (`ok:false`,
+exit 1) — never a **dry-run preview** (`ok:true`, exit 0); `--dry-run` is checked
+first, so a read-only + dry-run mutation previews rather than refuses.
+_Avoid_: locked profile, safe mode.
+
+**Read-safe action**:
+A named POST action exempt from the read-only refusal because it **extracts**
+rather than mutates — the solution/translation export actions (`ExportSolution`,
+`ExportSolutionAsync`, `DownloadSolutionExportData`, `ExportTranslation`). The
+async export variants create a transient server-side `asyncoperation` row —
+accepted, conceptually a read.
+_Avoid_: whitelisted write.
+
 ### Apply / desired state
 
 **Customization write**:

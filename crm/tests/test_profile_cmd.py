@@ -138,7 +138,7 @@ class TestAddWizard:
                 "--url", "https://crm.contoso.local/contoso",
                 "--tenant-id", "t1", "--client-id", "c1",
                 "--password", "pw", "--name", "wiz", "--yes",
-            ], input="\n")  # blank publisher-prefix (wizard now prompts for it)
+            ], input="\n\n")  # blank publisher-prefix, read-only N (both prompted)
         assert result.exit_code == 0, result.output
         assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
         assert captured["values"] == ["ntlm", "kerberos", "negotiate", "oauth"]
@@ -171,7 +171,8 @@ class TestAddWizard:
                 "profile", "add", "--auth-scheme", "ntlm",
                 "--url", "https://crm.contoso.local/c",
                 "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz3", "--yes"], input="\n")  # blank publisher-prefix
+                "--name", "wiz3", "--yes"],
+                input="\n\n")  # blank publisher-prefix, read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz3").auth_scheme == "ntlm"
 
@@ -322,6 +323,85 @@ class TestListEditRm:
         assert result.exit_code == 2, result.output
 
 
+class TestReadOnlyFlag:
+    """The per-profile read-only guardrail: tighten anywhere, clear TTY-only (#665)."""
+
+    def _seed(self, name, read_only=False):
+        from crm.utils.d365_backend import ConnectionProfile
+        session_mod.save_profile(ConnectionProfile(
+            name=name, url=f"https://{name}.contoso.local/o",
+            domain="C", username="u", read_only=read_only))
+
+    def test_add_read_only_flag_sets_it(self, crm_home):
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://crm.contoso.local/c",
+                "--username", "u", "--domain", "D", "--password", "pw",
+                "--name", "ro", "--read-only", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"]["read_only"] is True
+        assert session_mod.load_profile("ro").read_only is True
+
+    def test_add_defaults_writable(self, crm_home):
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, json=_WHOAMI)
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://crm.contoso.local/c",
+                "--username", "u", "--domain", "D", "--password", "pw",
+                "--name", "rw", "--yes"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("rw").read_only is False
+
+    def test_edit_read_only_sets_it_ungated(self, crm_home):
+        # Tightening is unrestricted — works under --json / no TTY.
+        self._seed("a")
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--read-only"])
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["data"]["read_only"] is True
+        assert session_mod.load_profile("a").read_only is True
+
+    def test_edit_clear_no_tty_errors_and_leaves_flag_set(self, crm_home):
+        # Clearing under --json (no TTY) is refused cleanly; the flag stays on.
+        self._seed("a", read_only=True)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--no-read-only"])
+        assert result.exit_code == 1, result.output
+        assert "interactive terminal" in result.output
+        assert session_mod.load_profile("a").read_only is True  # unchanged
+
+    def test_edit_clear_on_tty_confirmed_clears(self, crm_home, monkeypatch):
+        self._seed("a", read_only=True)
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.click.confirm", lambda *a, **k: True)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["profile", "edit", "a", "--no-read-only"])
+        assert result.exit_code == 0, result.output
+        assert session_mod.load_profile("a").read_only is False
+
+    def test_edit_clear_on_tty_declined_keeps_flag(self, crm_home, monkeypatch):
+        self._seed("a", read_only=True)
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        monkeypatch.setattr("crm.commands.profile.click.confirm", lambda *a, **k: False)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["profile", "edit", "a", "--no-read-only"])
+        assert result.exit_code == 1, result.output
+        assert session_mod.load_profile("a").read_only is True
+
+    def test_list_json_surfaces_read_only(self, crm_home):
+        self._seed("a", read_only=True)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--json", "profile", "list"])
+        assert result.exit_code == 0, result.output
+        row = next(r for r in json.loads(result.output)["data"] if r["name"] == "a")
+        assert row["read_only"] is True
+
+
 class TestSetDeletePassword:
     def _seed(self, name="a"):
         from crm.utils.d365_backend import ConnectionProfile
@@ -456,7 +536,7 @@ class TestPublisherPrefix:
                 "profile", "add", "--auth-scheme", "ntlm",
                 "--url", "https://crm.contoso.local/o",
                 "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz", "--yes"], input="bad!\ngood\n")
+                "--name", "wiz", "--yes"], input="bad!\ngood\n\n")  # +read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz").publisher_prefix == "good"
 
@@ -469,7 +549,7 @@ class TestPublisherPrefix:
                 "profile", "add", "--auth-scheme", "ntlm",
                 "--url", "https://crm.contoso.local/o",
                 "--username", "u", "--domain", "D", "--password", "pw",
-                "--name", "wiz", "--yes"], input="\n")
+                "--name", "wiz", "--yes"], input="\n\n")  # blank prefix, read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz").publisher_prefix is None
 
@@ -486,7 +566,8 @@ class TestPublisherPrefix:
                 "profile", "add", "--auth-scheme", "ntlm",
                 "--url", "https://crm.contoso.local/o",
                 "--username", "u", "--domain", "D",
-                "--name", "wiz", "--yes"], input="\n")  # blank publisher-prefix
+                "--name", "wiz", "--yes"],
+                input="\n\n")  # blank publisher-prefix, read-only N
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("wiz") == "wiz-secret"
 
