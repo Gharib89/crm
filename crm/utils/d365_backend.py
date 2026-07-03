@@ -162,6 +162,7 @@ class ConnectionProfile:
     tenant_id: str | None = None   # oauth: AAD tenant (non-secret)
     client_id: str | None = None   # oauth: app-registration id (non-secret)
     publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
+    read_only: bool = False        # guardrail: backend refuses org mutations
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -214,6 +215,7 @@ class ConnectionProfile:
             "tenant_id": self.tenant_id,
             "client_id": self.client_id,
             "publisher_prefix": self.publisher_prefix,
+            "read_only": self.read_only,
             "timeout": self.timeout,
             "retry_max": self.retry_max,
             "retry_base_delay": self.retry_base_delay,
@@ -237,6 +239,7 @@ class ConnectionProfile:
             tenant_id=d.get("tenant_id"),
             client_id=d.get("client_id"),
             publisher_prefix=d.get("publisher_prefix"),
+            read_only=d.get("read_only", False),
             timeout=d.get("timeout", 120),
             retry_max=d.get("retry_max", 5),
             retry_base_delay=d.get("retry_base_delay", 1.0),
@@ -251,6 +254,34 @@ class ConnectionProfile:
     def api_base(self) -> str:
         """Full Web API base URL, e.g. https://host/org/api/data/v9.2/."""
         return f"{self.url.rstrip('/')}/api/data/{self.api_version}/"
+
+
+# ── Read-only guardrail ─────────────────────────────────────────────────
+
+# POST actions exempt from the read-only refusal because they *extract* rather
+# than mutate (solution / translation export). The async export variants create
+# a transient server-side asyncoperation row — accepted, conceptually a read.
+# Enumerated from the call sites in crm/core/solution_transfer.py and
+# crm/core/translation.py.
+READ_SAFE_ACTIONS: frozenset[str] = frozenset({
+    "ExportSolution",
+    "ExportSolutionAsync",
+    "DownloadSolutionExportData",
+    "ExportTranslation",
+})
+
+
+def _action_name(path: str) -> str:
+    """The bare action name from a Web API path, for the read-safe check.
+
+    Strips any query string, takes the last path segment, then the last dotted
+    segment — so both an unbound action (``ExportSolution``) and a bound one
+    (``solutions/Microsoft.Dynamics.CRM.ExportTranslation``) resolve to the
+    action name alone.
+    """
+    base = path.split("?", 1)[0].rstrip("/")
+    segment = base.rsplit("/", 1)[-1]
+    return segment.rsplit(".", 1)[-1]
 
 
 # ── Default headers per Web API spec ────────────────────────────────────
@@ -416,6 +447,7 @@ class D365Backend:
 
         self.profile = profile
         self._dry_run = dry_run
+        self._read_only = profile.read_only
         self._session: requests.Session = requests.Session()
         self._session.auth = self._make_auth(password)
         self._session.verify = profile.verify_ssl
@@ -436,6 +468,15 @@ class D365Backend:
         so callers never need to suspend dry-run.
         """
         return self._dry_run
+
+    @property
+    def read_only(self) -> bool:
+        """Whether this profile refuses org mutations (constructor-only).
+
+        Sourced from the profile; there is no setter, so a run can't quietly
+        flip it off. A guardrail, not a security boundary — see request().
+        """
+        return self._read_only
 
     # ── Auth helpers ─────────────────────────────────────────────────────
 
@@ -670,6 +711,20 @@ class D365Backend:
                 "body": json_body,
             }
 
+        # Read-only guardrail: refuse mutations as an operational failure (never
+        # a dry-run preview — the dry-run gate above ran first, so a read-only +
+        # --dry-run backend previews rather than reaches here). GETs execute; the
+        # read-safe export actions are exempt, but only as POSTs (their sole verb)
+        # so a PATCH/DELETE to an allowlisted action name can't bypass the gate.
+        method_upper = method.upper()
+        is_read_safe = method_upper == "POST" and _action_name(path) in READ_SAFE_ACTIONS
+        if self.read_only and method_upper != "GET" and not is_read_safe:
+            raise D365Error(
+                f"Profile {self.profile.name!r} is read-only; writes are blocked. "
+                f"Clear it interactively: crm profile edit {self.profile.name} "
+                f"--no-read-only"
+            )
+
         max_retries = self._effective_retry_max
         attempt = 0
         while True:
@@ -876,6 +931,16 @@ class D365Backend:
                 }
                 for op in validated
             ])
+
+        # $batch is the bulk-write path (no GET-only batch use exists today), so
+        # read-only refuses it unconditionally. Ordered after the dry-run echo so
+        # a read-only + --dry-run batch still previews (strictly safer).
+        if self.read_only:
+            raise D365Error(
+                f"Profile {self.profile.name!r} is read-only; writes are blocked "
+                f"($batch is a bulk-write path). Clear it interactively: "
+                f"crm profile edit {self.profile.name} --no-read-only"
+            )
 
         body_text, content_type = _assemble_batch_body(
             validated, transactional=transactional,

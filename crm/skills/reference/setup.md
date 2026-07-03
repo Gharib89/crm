@@ -59,6 +59,17 @@ config ONLY from a saved profile (or a per-run `--password`). There is no `.env`
 autoload and no `D365_*` / `CRM_*` environment-variable reading. The one retained
 env knob is `CRM_HOME` (state-directory override; default `~/.crm/`).
 
+**Read-only profiles (guardrail).** A profile can be marked read-only to block
+accidental writes: the backend refuses every org mutation as an operational
+failure (`ok:false`, exit 1, error naming the profile) while reads run normally.
+Gotcha for JSON callers: a read-only refusal is **not** a `--dry-run` preview —
+`--dry-run` is checked first, so a read-only *and* dry-run mutation still previews
+(`ok:true`, `data._dry_run:true`), but a real mutation on a read-only profile
+returns `ok:false` exit 1. If writes are being refused, that's the guardrail
+working as intended — clearing it requires an interactive terminal, so don't try
+to disable it non-interactively; it's a guardrail against accidents, not a
+security boundary (the real boundary is a server-side read-only role).
+
 Switch or inspect profiles with `crm profile use [name]` (no name → interactive
 picker; `--none` clears the active profile) and `crm profile list` (marks the
 active one); edit, rename, or delete one with `crm profile edit` /

@@ -85,6 +85,9 @@ def _validate_prefix_opt(_ctx, _param, value):
               help="Default schema-name prefix, e.g. 'new'.")
 @click.option("--store-password-plaintext", is_flag=True,
               help="Force plaintext storage (skip the OS keyring).")
+@click.option("--read-only", is_flag=True,
+              help="Mark the profile read-only: the backend refuses org mutations. "
+                   "Clearing it later requires an interactive terminal.")
 # Deliberate inline option (not _destructive_option): the profile setup verbs
 # keep a `-y` short alias the shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip the overwrite-confirm prompt.")
@@ -92,7 +95,7 @@ def _validate_prefix_opt(_ctx, _param, value):
 def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
                 tenant_id, client_id, password_opt, client_secret_opt, api_version,
                 no_verify_ssl, publisher_prefix,
-                store_password_plaintext, yes):
+                store_password_plaintext, read_only, yes):
     """Create a profile, save its secret, test the connection, and activate it.
 
     Run with no flags for an interactive wizard; pass flags for scripting/CI.
@@ -153,6 +156,11 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
                 continue
             publisher_prefix = entered
             break
+    # Read-only is a tighten-anywhere guardrail: offer it in the wizard (default
+    # N) when the flag wasn't already passed. Clearing it later is the gated step.
+    if interactive and not read_only:
+        read_only = click.confirm(
+            "Make this profile read-only (block org mutations)?", default=False)
     secret = password_opt
     if not secret and interactive:
         label = "Client secret" if auth_scheme == "oauth" else "Password"
@@ -172,7 +180,7 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
             api_version=api_version or conn_mod.DEFAULT_API_VERSION,
             verify_ssl=not no_verify_ssl, auth_scheme=auth_scheme,
             tenant_id=tenant_id, client_id=client_id,
-            publisher_prefix=publisher_prefix,
+            publisher_prefix=publisher_prefix, read_only=read_only,
         )
         session_mod.save_profile(profile)
     except D365Error as exc:
@@ -218,6 +226,7 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
     data = {
         "profile": name, "auth_scheme": auth_scheme,
         "credential_storage": where, "active": True,
+        "read_only": read_only,
         "user_id": info.get("user_id"), "api_version": info["api_version"],
     }
     ctx.emit(True, data=data, meta={"profile": name}, warnings=warnings or None)
@@ -338,6 +347,7 @@ def profile_list(ctx: CLIContext):
                 "target": "cloud" if p.auth_scheme == "oauth" else "on-prem",
                 "url": p.url, "credential_storage": _credential_storage(n),
                 "publisher_prefix": p.publisher_prefix,
+                "read_only": p.read_only,
             })
         except _PROFILE_LOAD_ERRORS:
             rows.append({"name": n, "active": n == active,
@@ -350,9 +360,10 @@ def profile_list(ctx: CLIContext):
         ctx.skin.hint("(none) — run `crm profile add`")
     for r in rows:
         mark = "● " if r.get("active") else "○ "
+        ro = "  read-only" if r.get("read_only") else ""
         ctx.skin.status(mark + r["name"],
                         f"{r.get('target','?')}  {r.get('url','?')}  "
-                        f"cred={r['credential_storage']}")
+                        f"cred={r['credential_storage']}{ro}")
 
 
 @profile_group.command("edit")
@@ -364,9 +375,12 @@ def profile_list(ctx: CLIContext):
 @click.option("--client-id", default=None)
 @click.option("--api-version", default=None)
 @click.option("--publisher-prefix", default=None, callback=_validate_prefix_opt)
+@click.option("--read-only/--no-read-only", "read_only", default=None,
+              help="Set or clear the read-only guardrail. Clearing (--no-read-only) "
+                   "requires an interactive terminal to confirm.")
 @pass_ctx
 def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
-                 client_id, api_version, publisher_prefix):
+                 client_id, api_version, publisher_prefix, read_only):
     """Change a profile's fields (not its secret — use set-password).
 
     No NAME argument shows a picker."""
@@ -389,6 +403,25 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     if client_id is not None: p.client_id = client_id
     if api_version is not None: p.api_version = api_version
     if publisher_prefix is not None: p.publisher_prefix = publisher_prefix
+    # Read-only is asymmetric: tighten (--read-only) anywhere, but clearing it
+    # (--no-read-only) is gated behind a real TTY + confirmation so a
+    # non-interactive run (agent/CI/--json) can't flip the guardrail off. Same
+    # no-TTY → clean-error pattern as the no-profile → `profile add` fallback.
+    if read_only is True:
+        p.read_only = True
+    elif read_only is False and p.read_only:
+        if not (_stdin_is_tty() and not ctx.json_mode):
+            ctx.emit(False, error=(
+                f"Clearing read-only on {name!r} requires an interactive terminal "
+                f"(a TTY, and not under --json) to confirm. Re-run "
+                f"`crm profile edit {name} --no-read-only` from an interactive shell "
+                f"without --json."))
+            return
+        if not click.confirm(
+                f"Clear the read-only guardrail on profile {name!r}?", default=False):
+            ctx.emit(False, error="aborted by user")
+            return
+        p.read_only = False
     # Fail fast on an edit that leaves the profile unusable, rather than letting
     # it surface later as a confusing backend-build error.
     if not p.url:
@@ -401,7 +434,7 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
         raise click.UsageError("an on-prem profile needs a username.")
     session_mod.save_profile(p)
     ctx.invalidate_backend()
-    ctx.emit(True, data={"profile": name, "updated": True})
+    ctx.emit(True, data={"profile": name, "updated": True, "read_only": p.read_only})
 
 
 @profile_group.command("rm")
