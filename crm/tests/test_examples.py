@@ -97,15 +97,26 @@ def test_every_curated_example_resolves_against_live_cli():
         assert resolved is not None, (group, ex.command)
 
 
-# Metadata verbs that write customizations — the backend refuses them without an
-# explicit target solution (`--solution is required for customization writes`).
-# The static resolver above can't see this runtime requirement, so a curated
-# example that omits --solution parses fine yet fails for every user (verified
-# live against the cloud org). Guard the gallery against that class of drift.
-_CUSTOMIZATION_WRITE_VERBS = frozenset({
-    "add-attribute", "create-optionset", "update-optionset",
-    "create-entity", "create-one-to-many", "create-many-to-many",
-})
+def _metadata_solution_verbs() -> frozenset[str]:
+    """Metadata subcommands that declare a ``--solution`` option, derived from the
+    live Click tree so the set can't drift as commands are added or removed.
+
+    These are the customization-write verbs (``@_solution_option``): the backend
+    refuses them without an explicit target solution
+    (``--solution is required for customization writes``), a runtime requirement
+    the static ``_resolve`` gate can't see — so a curated example that omits
+    ``--solution`` parses fine yet fails for every user (verified live against the
+    cloud org). Deriving the set keeps the guard exhaustive automatically."""
+    ctx = click.Context(cli)
+    metadata = cli.get_command(ctx, "metadata")
+    verbs: set[str] = set()
+    if isinstance(metadata, click.Group):
+        for name in metadata.list_commands(ctx):
+            cmd = metadata.get_command(ctx, name)
+            if cmd and any(isinstance(p, click.Option) and "--solution" in p.opts
+                           for p in cmd.params):
+                verbs.add(name)
+    return frozenset(verbs)
 
 
 def _command_path(command: str) -> list[str]:
@@ -135,11 +146,13 @@ def _command_path(command: str) -> list[str]:
 
 
 def test_customization_write_examples_target_a_solution():
+    solution_verbs = _metadata_solution_verbs()
+    assert solution_verbs, "expected some metadata verbs to declare --solution"
     for group, ex in reg.listing(None):
         path = _command_path(ex.command)
         # Check the verb *position* (metadata <verb>), tolerating a leading global
         # option before the group, rather than mere token membership.
-        if path[:1] == ["metadata"] and len(path) > 1 and path[1] in _CUSTOMIZATION_WRITE_VERBS:
+        if path[:1] == ["metadata"] and len(path) > 1 and path[1] in solution_verbs:
             # Accept both the space form (--solution X) and Click's equals form
             # (--solution=X), so a valid equals-form example isn't misflagged.
             has_solution = any(t == "--solution" or t.startswith("--solution=") for t in path)
