@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.49.4 (2026-07-03)
+
+### Bug Fixes
+
+- Address Copilot review — clearer picker-disabled message, test cleanups
+  ([#667](https://github.com/Gharib89/crm/pull/667),
+  [`0bc09a6`](https://github.com/Gharib89/crm/commit/0bc09a6307779abb4552834bf01579fa909b0450))
+
+- Interactive solution picker for no-arg solution export
+  ([#667](https://github.com/Gharib89/crm/pull/667),
+  [`0bc09a6`](https://github.com/Gharib89/crm/commit/0bc09a6307779abb4552834bf01579fa909b0450))
+
+### Refactoring
+
+- **apply**: Migrate optionset, web resource, security role onto the component-kind adapter
+  ([#666](https://github.com/Gharib89/crm/pull/666),
+  [`6fb59cc`](https://github.com/Gharib89/crm/commit/6fb59ccd69cea18bff9e6e36170d7abfa03e17e7))
+
+- **apply**: Reconcile on a security-role create race instead of replacing
+  ([#666](https://github.com/Gharib89/crm/pull/666),
+  [`6fb59cc`](https://github.com/Gharib89/crm/commit/6fb59ccd69cea18bff9e6e36170d7abfa03e17e7))
+
+
 ## v1.49.3 (2026-07-02)
 
 ### Bug Fixes
