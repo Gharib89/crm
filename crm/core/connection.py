@@ -154,7 +154,7 @@ def whoami_identity(backend: D365Backend) -> dict[str, Any]:
     info = whoami(backend)
     info["profile"] = backend.profile.name
     info["url"] = backend.profile.api_base
-    info["read_only"] = backend.profile.read_only
+    info["read_only"] = backend.read_only  # the enforced snapshot, not the mutable profile field
     info["org_name"] = _org_friendly_name(backend, info.get("OrganizationId"))
     return info
 

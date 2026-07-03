@@ -412,8 +412,10 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     elif read_only is False and p.read_only:
         if not (_stdin_is_tty() and not ctx.json_mode):
             ctx.emit(False, error=(
-                f"Clearing read-only on {name!r} requires an interactive terminal. "
-                f"Run `crm profile edit {name} --no-read-only` from your shell."))
+                f"Clearing read-only on {name!r} requires an interactive terminal "
+                f"(a TTY, and not under --json) to confirm. Re-run "
+                f"`crm profile edit {name} --no-read-only` from an interactive shell "
+                f"without --json."))
             return
         if not click.confirm(
                 f"Clear the read-only guardrail on profile {name!r}?", default=False):
