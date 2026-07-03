@@ -117,6 +117,7 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
     extra_meta = {"truncated": True} if result.pop("@crm.truncated", False) else None
     _emit_query_result(ctx, result, entity_set, minimal=minimal, extra_meta=extra_meta)
     _touch_session(ctx, entity_set, last_query={"type": "odata", "filter": filter_})
+    ctx.hint("query_odata")
 
 
 @query_group.command("fetchxml")

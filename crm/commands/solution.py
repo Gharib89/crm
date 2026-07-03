@@ -657,6 +657,7 @@ def solution_export_cmd(ctx: CLIContext, unique_name, output, managed, export_se
                 timeout=timeout, **kwargs,
             )
         ctx.emit(True, data=info)
+    ctx.hint("solution_export")
 
 
 @solution_group.command("publish-all")
