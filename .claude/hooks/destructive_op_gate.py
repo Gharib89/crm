@@ -254,22 +254,36 @@ def _is_git(token: str) -> bool:
     return token == "git" or token.endswith("/git")
 
 
+# Git global options that consume the FOLLOWING token as their value in the
+# separated form (`--git-dir <path>`). Without skipping the value too, it would
+# be misread as the subcommand and a `git ... commit` would go undetected.
+# `--flag=value` forms carry their own value and are dropped by the generic
+# `-` filter. Kept aligned with secret_scan_gate.py.
+_GIT_VALUE_GLOBALS: set[str] = {
+    "-C",
+    "-c",
+    "--git-dir",
+    "--work-tree",
+    "--namespace",
+    "--super-prefix",
+    "--config-env",
+}
+
+
 def _git_parts(tokens: list[str]) -> tuple[str | None, str | None, list[str]]:
     """Given tokens after `git`, return (repo_override, subcommand, rest).
 
-    Handles the global options that matter here: `-C <path>` (repo override)
-    and `-c <name=val>` (skip its value). Other `--flag` globals are skipped;
-    the first non-option token is the subcommand.
+    `-C <path>` is captured as the repo override; other value-taking globals
+    (`_GIT_VALUE_GLOBALS`) skip their value token. Remaining `--flag` globals
+    are skipped; the first non-option token is the subcommand.
     """
     repo_override: str | None = None
     i = 0
     while i < len(tokens):
         tok = tokens[i]
-        if tok == "-C" and i + 1 < len(tokens):
-            repo_override = tokens[i + 1]
-            i += 2
-            continue
-        if tok == "-c" and i + 1 < len(tokens):
+        if tok in _GIT_VALUE_GLOBALS and i + 1 < len(tokens):
+            if tok == "-C":
+                repo_override = tokens[i + 1]
             i += 2
             continue
         if tok.startswith("-"):

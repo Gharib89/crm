@@ -109,6 +109,15 @@ class TestGitParts:
     def test_c_config_value_skipped(self):
         assert _gate._git_parts(["-c", "core.editor=true", "commit"]) == (None, "commit", [])
 
+    @pytest.mark.parametrize("flag", ["--git-dir", "--work-tree", "--namespace"])
+    def test_separated_value_globals_skip_their_value(self, flag):
+        for fn in (_gate._git_parts, _scan._git_subcommand):
+            assert fn([flag, "/some/value", "commit", "-m", "x"]) == (
+                None,
+                "commit",
+                ["-m", "x"],
+            )
+
 
 class TestDocsPath:
     @pytest.mark.parametrize("path", ["README.md", "docs/how-to/query.md", "mkdocs.yml", "CLAUDE.md"])
