@@ -524,17 +524,22 @@ def _complete_profile_names(ctx: click.Context, param: click.Parameter, incomple
 
 def _completion_profile(ctx: click.Context):
     """Resolve the profile whose metadata cache OS-shell completion should read:
-    the ``--profile`` on the line if present, else the session's active profile.
+    the ``--profile`` on the line if present, else the active profile of the
+    session named on the line (``--session``), else the default session.
 
     Local reads only (profile file + session pointer) — shell completion spawns
     a fresh ``crm`` per Tab, so this never touches the network. Returns a loaded
     ``ConnectionProfile`` or ``None`` (no profile / unreadable / missing)."""
     from crm.core import session as session_mod
 
-    name = ctx.find_root().params.get("profile_name")
+    root_params = ctx.find_root().params
+    name = root_params.get("profile_name")
     if not name:
         try:
-            state = session_mod.load_session()
+            # Honor an explicit --session on the line; the active profile is
+            # per-session, so the default session would resolve the wrong org.
+            session_name = root_params.get("session_name") or "default"
+            state = session_mod.load_session(session_name)
             candidate = state.get("active_profile")
             if candidate and session_mod.profile_path(candidate).is_file():
                 name = candidate

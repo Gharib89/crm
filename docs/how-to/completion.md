@@ -92,7 +92,7 @@ the previous token is literally `--profile`, regardless of position),
 entity names at their existing slot (see
 [how-to: metadata](metadata.md#scope) for the on-disk cache backing that
 last one), and attribute logical names after `--select` once an entity is on
-the line — e.g. `entity get accounts --select <TAB>` (the REPL holds a live
+the line — e.g. `entity get accounts RECORD_ID --select <TAB>` (the REPL holds a live
 connection, so it fetches an entity's columns once, then memoizes them for the
 session). It shares no code or cache with the OS-shell completion above and
 works even if you've never run `crm completion install`.

@@ -347,6 +347,17 @@ class TestEntitySetShellComplete:
         session_mod.save_session({"active_profile": "prod"})
         assert self._complete(["entity", "get"], "") == ["accounts", "contacts", "tasks"]
 
+    def test_named_session_resolves_that_sessions_active_profile(self):
+        # `--session <name>` on the line: completion must read that session's
+        # active profile, not the default session's (the active profile is
+        # per-session). Seed only a non-default session's pointer.
+        self._seed("scoped")
+        from crm.core import session as session_mod
+        session_mod.save_session({"active_profile": "scoped"}, "work")
+        assert self._complete(["--session", "work", "entity", "get"], "") == [
+            "accounts", "contacts", "tasks",
+        ]
+
     def test_cache_miss_yields_empty(self):
         # Profile exists but its metadata cache was never populated.
         from crm.core.session import save_profile
