@@ -198,6 +198,39 @@ class TestSegmentSplitting:
         segments = _scan._split_segments("x&&git commit")
         assert ["git", "commit"] in segments
 
+    @pytest.mark.parametrize("splitter", ["scan", "gate"])
+    def test_newline_separates_segments(self, splitter):
+        fn = _scan._split_segments if splitter == "scan" else _gate._split_segments_lex
+        assert fn("cd /x\ngit commit") == [["cd", "/x"], ["git", "commit"]]
+
+
+class TestDestructiveSegmentUnion:
+    """#675: a destructive crm verb must not slip past the gate when a quoted
+    argument contains a shell operator, and backtick coverage must survive."""
+
+    def test_quoted_operator_argument_still_blocked(self, tmp_path):
+        code, err = _run_hook(
+            _GATE_PATH, 'crm entity delete account 123 --filter "a|b"', str(tmp_path)
+        )
+        assert code == 2
+        assert "entity delete" in err
+
+    def test_backtick_substitution_still_blocked(self, tmp_path):
+        code, _ = _run_hook(_GATE_PATH, "echo `crm entity delete account 1`", str(tmp_path))
+        assert code == 2
+
+    def test_yes_flag_still_confirms(self, tmp_path):
+        code, _ = _run_hook(
+            _GATE_PATH, 'crm entity delete account 123 --filter "a|b" --yes', str(tmp_path)
+        )
+        assert code == 0
+
+    def test_quoted_mention_in_commit_message_not_blocked(self, tmp_path):
+        code, _ = _run_hook(
+            _GATE_PATH, 'git commit -m "docs: covers crm entity delete verb"', str(tmp_path)
+        )
+        assert code == 0
+
 
 class TestDiffParsing:
     def test_added_lines_carry_file_origin(self):

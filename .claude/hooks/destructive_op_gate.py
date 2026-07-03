@@ -194,6 +194,42 @@ def _destructive_match(tokens: list[str]) -> str | None:
     return None
 
 
+# Operator tokens emitted by shlex punctuation_chars mode that separate one
+# command from the next (kept aligned with secret_scan_gate.py).
+_OPERATOR_CHARS = set("|&;()<>")
+
+
+def _split_segments_lex(command: str) -> list[list[str]]:
+    """Quote-aware counterpart of `_split_segments` (#675).
+
+    The raw regex split above fires on operators inside QUOTED arguments
+    (`--filter "a|b"`), leaving unbalanced-quote pieces that shlex rejects —
+    silently dropping the segment and any destructive verb in it. This lexer
+    respects quotes, so such a segment survives intact. The raw split still
+    runs alongside it (union): it covers backtick substitution, which posix
+    shlex treats as ordinary characters. Newlines separate segments like `;`
+    (line-wise lexing); an unbalanced quote keeps whatever parsed before it.
+    """
+    segments: list[list[str]] = []
+    for line in command.splitlines():
+        lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        current: list[str] = []
+        try:
+            for tok in lex:
+                if tok and set(tok) <= _OPERATOR_CHARS:
+                    if current:
+                        segments.append(current)
+                        current = []
+                else:
+                    current.append(tok)
+        except ValueError:
+            pass  # unbalanced quote — fall through with what we have
+        if current:
+            segments.append(current)
+    return segments
+
+
 # --- git discipline gates (CLAUDE.md "Branch & worktree discipline") ---------
 
 # `git add` arguments that blanket-stage instead of naming explicit paths.
@@ -347,8 +383,11 @@ def main() -> int:
     # Inspect every sub-command so a destructive crm call inside a compound
     # command (`true && crm ...`, `a|crm ...`, `$(crm ...)`) or with a path
     # prefix (`/usr/bin/crm ...`) is still caught. --yes is scoped to its own
-    # segment.
-    for segment in _split_segments(command):
+    # segment. Both segmentations are checked (#675): the raw split covers
+    # backtick substitution, the quote-aware split covers operators inside
+    # quoted arguments that shred the raw pieces.
+    lex_segments = _split_segments_lex(command)
+    for segment in _split_segments(command) + lex_segments:
         label = _destructive_match(segment)
         if label is not None and not _confirm_present(segment):
             sys.stderr.write(
@@ -358,6 +397,9 @@ def main() -> int:
             )
             return BLOCK
 
+    # git-discipline checks walk the quote-aware view only — accurate `cd`
+    # tracking and intact quoted arguments matter here.
+    for segment in lex_segments:
         tokens = _strip_assignments(segment)
         if not tokens:
             continue

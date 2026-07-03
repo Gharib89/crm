@@ -70,22 +70,27 @@ def _split_segments(command: str) -> list[list[str]]:
     (`x&&git commit`) still split. An unbalanced quote keeps whatever parsed
     cleanly before it.
     """
-    lex = shlex.shlex(command, posix=True, punctuation_chars=True)
-    lex.whitespace_split = True
     segments: list[list[str]] = []
-    current: list[str] = []
-    try:
-        for tok in lex:
-            if tok and set(tok) <= _OPERATOR_CHARS:
-                if current:
-                    segments.append(current)
-                    current = []
-            else:
-                current.append(tok)
-    except ValueError:
-        pass  # unbalanced quote — fall through with what we have
-    if current:
-        segments.append(current)
+    # A newline separates commands like `;` — lex line-wise so `cd x\ngit ...`
+    # cannot fold into one segment. A quoted multiline -m message shreds at the
+    # line break (unbalanced quote), but the tokens parsed before it — the
+    # `git commit` invocation itself — are kept, so the diff is still scanned.
+    for line in command.splitlines():
+        lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        current: list[str] = []
+        try:
+            for tok in lex:
+                if tok and set(tok) <= _OPERATOR_CHARS:
+                    if current:
+                        segments.append(current)
+                        current = []
+                else:
+                    current.append(tok)
+        except ValueError:
+            pass  # unbalanced quote — fall through with what we have
+        if current:
+            segments.append(current)
     return segments
 
 
