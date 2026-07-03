@@ -8,7 +8,7 @@ import click
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Error
-from crm.cli import CLIContext, pass_ctx
+from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
 from crm.commands._helpers import (
     _concise_record,
     _destructive_option,
@@ -147,7 +147,7 @@ def _validate_or_emit(
 
 
 @entity_group.command("get")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--select", multiple=True, help="Repeatable; column names.")
 @click.option("--expand", multiple=True, help="Repeatable; navigation properties.")
@@ -198,7 +198,7 @@ def entity_get(ctx: CLIContext, entity_set, record_id, select, expand, annotatio
 
 
 @entity_group.command("children")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--non-empty", is_flag=True, default=False,
               help="Drop relationships whose related-record count is 0.")
@@ -248,7 +248,7 @@ def _rebind_payload_lookups(
 
 
 @entity_group.command("create")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.option("--data", "data_json", help="JSON object as string.")
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a JSON file with the record body.")
@@ -300,7 +300,7 @@ def entity_create(ctx: CLIContext, entity_set, data_json, data_file, no_return, 
 
 
 @entity_group.command("clone")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--override", "overrides", multiple=True, metavar="FIELD=VALUE",
               help="Repeatable. Set/replace a field on the clone. VALUE is parsed as "
@@ -391,7 +391,7 @@ def entity_clone(ctx: CLIContext, entity_set, record_id, overrides, unset_fields
 
 
 @entity_group.command("update")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--data", "data_json", help="JSON object as string.")
 @click.option("--data-file", type=click.Path(exists=True, dir_okay=False),
@@ -441,7 +441,7 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
 
 
 @entity_group.command("upsert")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id", required=False)
 @click.option("--key", "alt_key", metavar="ATTR[,ATTR...]", default=None,
               help="Upsert by an alternate key instead of the primary GUID: one "
@@ -503,7 +503,7 @@ def entity_upsert(ctx: CLIContext, entity_set, record_id, alt_key, data_json, da
 
 
 @entity_group.command("delete")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--if-match", "if_match", metavar="ETAG", default=None,
               help='Optimistic concurrency etag.')
@@ -537,10 +537,10 @@ def entity_delete(ctx: CLIContext, entity_set, record_id, if_match, yes,
 
 
 @entity_group.command("associate")
-@click.argument("target_set")
+@click.argument("target_set", shell_complete=_complete_entity_set_names)
 @click.argument("target_id")
 @click.argument("nav")
-@click.argument("related_set")
+@click.argument("related_set", shell_complete=_complete_entity_set_names)
 @click.argument("related_id")
 @_admin_header_options
 @pass_ctx
@@ -557,7 +557,7 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
 
 
 @entity_group.command("disassociate")
-@click.argument("target_set")
+@click.argument("target_set", shell_complete=_complete_entity_set_names)
 @click.argument("target_id")
 @click.argument("nav")
 @click.option("--related-set", help="Required for collection-valued nav properties.")
@@ -583,10 +583,10 @@ def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set
 
 
 @entity_group.command("set-lookup")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.argument("nav")
-@click.argument("related_set")
+@click.argument("related_set", shell_complete=_complete_entity_set_names)
 @click.argument("related_id")
 @_admin_header_options
 @pass_ctx
@@ -604,7 +604,7 @@ def entity_set_lookup(ctx: CLIContext, entity_set, record_id, nav, related_set, 
 
 
 @entity_group.command("clear-lookup")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.argument("nav")
 @_destructive_option

@@ -79,6 +79,59 @@ class TestMetadataCache:
         assert b.count() == 1
 
 
+_ATTRS_ACCOUNT = {"value": [
+    {"LogicalName": "name"},
+    {"LogicalName": "accountnumber"},
+    {"LogicalName": "telephone1"},
+]}
+
+
+def _defs_or_attrs(attrs):
+    """Fake-backend GET responder: entity defs for the ``EntityDefinitions``
+    collection, ``attrs`` for the ``.../Attributes`` sub-path."""
+    def _respond(path):
+        if "/Attributes" in str(path):
+            return attrs
+        return _ENTITY_LIST
+    return _respond
+
+
+class TestAttributeNames:
+    def test_fetches_and_memoizes_per_entity(self, make_fake_backend):
+        b = make_fake_backend(responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
+        cache = MetadataCache()
+        assert cache.attribute_names(b, "account") == ["name", "accountnumber", "telephone1"]
+        # One EntityDefinitions GET (the def lists) + one Attributes GET.
+        assert b.count("get") == 2
+        cache.attribute_names(b, "account")  # memoized — no further fetch
+        assert b.count("get") == 2
+
+    def test_resolves_set_name_to_logical(self, make_fake_backend):
+        b = make_fake_backend(responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
+        cache = MetadataCache()
+        # "accounts" (entity-set name) resolves to the "account" logical name.
+        assert cache.attribute_names(b, "accounts") == ["name", "accountnumber", "telephone1"]
+
+    def test_unknown_token_treated_as_logical(self, make_fake_backend):
+        # A token in neither list (e.g. a just-created entity) is fetched as a
+        # logical name directly rather than yielding nothing.
+        b = make_fake_backend(responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
+        cache = MetadataCache()
+        assert cache.attribute_names(b, "new_widget") == ["name", "accountnumber", "telephone1"]
+
+    def test_profile_switch_clears_attribute_memo(self, make_fake_backend):
+        other = {"value": [{"LogicalName": "widgetname"}]}
+        a = make_fake_backend(profile=_profile("orga"),
+                              responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
+        b = make_fake_backend(profile=_profile("orgb"),
+                              responses={"get": _defs_or_attrs(other)})
+        cache = MetadataCache()
+        assert cache.attribute_names(a, "account") == ["name", "accountnumber", "telephone1"]
+        # Profile switched: the def lists reload and the attribute memo is cleared,
+        # so the previous org's columns are never served for the new profile.
+        assert cache.attribute_names(b, "account") == ["widgetname"]
+
+
 class TestCompleteEntityToken:
     _LOGICAL = ["account", "contact", "new_project"]
     _SETS = ["accounts", "contacts", "new_projects"]

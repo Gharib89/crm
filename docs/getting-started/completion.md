@@ -5,7 +5,8 @@ Tab-completion for `crm` in bash, zsh, fish, or PowerShell.
 !!! note "The REPL already tab-completes — nothing to install"
     This page is about completing `crm ...` at your **OS shell** prompt. The
     interactive `crm repl` has its own built-in Tab-completion (commands, flags,
-    profile names, entity names) that needs no setup — see
+    profile names, entity names, and attribute names after `--select`) that needs
+    no setup — see
     [how-to: completion](../how-to/completion.md#repl-tab-completion-built-in-nothing-to-install).
 
 ```bash
@@ -26,3 +27,12 @@ line yourself, then restart your shell:
 the cached script automatically. See
 [how-to: completion](../how-to/completion.md) for `--path`, `show`, and the
 "why a cached file, not `eval`" note.
+
+!!! tip "Entity-set names complete from the metadata cache"
+    Positional entity-set arguments — `crm entity get <TAB>`, `crm query odata <TAB>`,
+    etc. — complete from the **on-disk metadata cache**. This is a local read with
+    **no network call** (completion must stay instant), so the names appear only once
+    that cache is warm. It fills the first time `crm` resolves entity names against a
+    profile; to populate it up front, run any command once with `--cache-metadata`
+    (e.g. `crm --cache-metadata metadata entities`). Until then, entity-set completion
+    returns nothing rather than going to the server.

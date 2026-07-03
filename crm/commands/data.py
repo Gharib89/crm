@@ -6,7 +6,7 @@ from crm.core import export as export_mod
 from crm.core import data_import as import_mod
 from crm.core import entity as entity_mod
 from crm.core import bulk_delete as bulk_delete_mod
-from crm.cli import CLIContext, pass_ctx
+from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
 from crm.commands._helpers import (
     d365_errors, _journal, _output_option, _confirm_destructive, _destructive_option,
 )
@@ -18,7 +18,7 @@ def data_group():
 
 
 @data_group.command("export")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @_output_option(required=True)
 @click.option("--select", multiple=True)
 @click.option("--filter", "filter_", help="OData $filter.")
@@ -43,7 +43,7 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
 
 
 @data_group.command("import")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("input_file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--format", "fmt", type=click.Choice(["jsonl", "csv"]), default=None,
               help="Input format; inferred from suffix when omitted (.csv→csv, else jsonl).")
@@ -131,7 +131,7 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
 
 
 @data_group.command("delete")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.option("--fetchxml", "fetch_xml", default=None,
               help="FetchXML <fetch> document selecting the records to delete.")
 @click.option("--fetchxml-file", type=click.File("r"), default=None,

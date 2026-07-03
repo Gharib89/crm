@@ -293,6 +293,95 @@ class TestProfileShellComplete:
         assert "\tagent-cloud\t" in out
 
 
+class TestEntitySetShellComplete:
+    """Disk-cache-only entity-set-name completion for OS-shell positional args
+    (issue #659): reads the on-disk metadata cache for the resolved profile,
+    never a network call — completion runs a fresh `crm` process per Tab."""
+
+    _DEFS = [
+        {"logical": "account", "set_name": "accounts"},
+        {"logical": "contact", "set_name": "contacts"},
+        {"logical": "task", "set_name": "tasks"},
+    ]
+
+    def _complete(self, args, incomplete):
+        from click.shell_completion import ShellComplete
+        sc = ShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
+        return [item.value for item in sc.get_completions(args, incomplete)]
+
+    def _profile(self, name="dev"):
+        from crm.utils.d365_backend import ConnectionProfile
+        return ConnectionProfile(
+            name=name, url=f"https://{name}.example.com",
+            domain="example", username="agent", auth_scheme="oauth",
+        )
+
+    def _seed(self, name="dev", defs=None):
+        import time
+        from crm.core import metadata_cache
+        from crm.core.session import save_profile
+        profile = self._profile(name)
+        save_profile(profile)
+        metadata_cache.write_definitions(profile, defs or self._DEFS, now=time.time())
+        return profile
+
+    def test_completes_set_names_from_disk_cache(self):
+        self._seed()
+        assert self._complete(["--profile", "dev", "entity", "get"], "") == [
+            "accounts", "contacts", "tasks",
+        ]
+
+    def test_prefix_filters_set_names(self):
+        self._seed()
+        assert self._complete(["--profile", "dev", "entity", "get"], "c") == ["contacts"]
+
+    def test_query_odata_positional_completes(self):
+        # The callback is shared across the entity + query groups.
+        self._seed()
+        assert self._complete(["--profile", "dev", "query", "odata"], "ac") == ["accounts"]
+
+    def test_active_profile_session_fallback(self):
+        # No --profile on the line → resolve the session's active profile.
+        self._seed("prod")
+        from crm.core import session as session_mod
+        session_mod.save_session({"active_profile": "prod"})
+        assert self._complete(["entity", "get"], "") == ["accounts", "contacts", "tasks"]
+
+    def test_named_session_resolves_that_sessions_active_profile(self):
+        # `--session <name>` on the line: completion must read that session's
+        # active profile, not the default session's (the active profile is
+        # per-session). Seed only a non-default session's pointer.
+        self._seed("scoped")
+        from crm.core import session as session_mod
+        session_mod.save_session({"active_profile": "scoped"}, "work")
+        assert self._complete(["--session", "work", "entity", "get"], "") == [
+            "accounts", "contacts", "tasks",
+        ]
+
+    def test_cache_miss_yields_empty(self):
+        # Profile exists but its metadata cache was never populated.
+        from crm.core.session import save_profile
+        save_profile(self._profile())
+        assert self._complete(["--profile", "dev", "entity", "get"], "") == []
+
+    def test_no_resolvable_profile_yields_empty(self):
+        assert self._complete(["entity", "get"], "") == []
+
+    def test_no_network_during_completion(self, monkeypatch):
+        # The heart of the disk-cache-only contract: with the requests transport
+        # rigged to fail, completion must still serve names from disk.
+        import requests
+
+        def _boom(*a, **k):
+            raise AssertionError("completion must not touch the network")
+
+        monkeypatch.setattr(requests.sessions.Session, "request", _boom)
+        self._seed()
+        assert self._complete(["--profile", "dev", "entity", "get"], "") == [
+            "accounts", "contacts", "tasks",
+        ]
+
+
 class TestMarker:
     def test_roundtrip(self):
         reg.write_marker("zsh", "/abs/crm.zsh", "1.2.3")

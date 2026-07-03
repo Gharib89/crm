@@ -522,6 +522,61 @@ def _complete_profile_names(ctx: click.Context, param: click.Parameter, incomple
         return []
 
 
+def _completion_profile(ctx: click.Context):
+    """Resolve the profile whose metadata cache OS-shell completion should read:
+    the ``--profile`` on the line if present, else the active profile of the
+    session named on the line (``--session``), else the default session.
+
+    Local reads only (profile file + session pointer) — shell completion spawns
+    a fresh ``crm`` per Tab, so this never touches the network. Returns a loaded
+    ``ConnectionProfile`` or ``None`` (no profile / unreadable / missing)."""
+    from crm.core import session as session_mod
+
+    root_params = ctx.find_root().params
+    name = root_params.get("profile_name")
+    if not name:
+        try:
+            # Honor an explicit --session on the line; the active profile is
+            # per-session, so the default session would resolve the wrong org.
+            session_name = root_params.get("session_name") or "default"
+            state = session_mod.load_session(session_name)
+            candidate = state.get("active_profile")
+            if candidate and session_mod.profile_path(candidate).is_file():
+                name = candidate
+        except (OSError, ValueError):
+            return None
+    if not name:
+        return None
+    try:
+        return session_mod.load_profile(name)
+    except (OSError, ValueError, FileNotFoundError):
+        return None
+
+
+def _complete_entity_set_names(ctx: click.Context, param: click.Parameter, incomplete: str) -> list[str]:
+    """Dynamic entity-set-name completion for OS-shell positional args.
+
+    **Disk-cache only, never a network call** — shell completion runs a fresh
+    ``crm`` process per Tab, so a per-keystroke round-trip is unacceptable and
+    cold-start must stay cheap. Reads the on-disk metadata cache for the
+    resolved profile (populated by earlier live runs / ``--cache-metadata``);
+    a cache miss returns no completions silently. Best-effort — never raises."""
+    import time
+
+    from crm.core import metadata_cache
+    try:
+        profile = _completion_profile(ctx)
+        if profile is None:
+            return []
+        definitions = metadata_cache.read_definitions(profile, now=time.time())
+        if definitions is None:
+            return []
+        return [d["set_name"] for d in definitions
+                if d["set_name"] and d["set_name"].startswith(incomplete)]
+    except Exception:  # noqa: BLE001 — completion must never crash the shell subprocess
+        return []
+
+
 @click.group(cls=_LazyJsonAwareGroup, name="crm", invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("--json", "json_mode", is_flag=True, help="Emit machine-readable JSON output.")
 @click.option("--dry-run", is_flag=True,

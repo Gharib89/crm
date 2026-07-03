@@ -8,7 +8,7 @@ from crm.core import query as query_mod
 from crm.core.query import total_record_count
 from crm.core.entity_names import resolve_logical_name
 from crm.core.metadata import resolve_entity_set_name
-from crm.cli import CLIContext, pass_ctx
+from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
 from crm.commands._helpers import (
     d365_errors,
     _emit_query_result,
@@ -51,7 +51,8 @@ def query_group():
 
 
 @query_group.command("odata")
-@click.argument("entity_set", metavar="ENTITY_SET|BOUND_FUNC|METADATA_PATH")
+@click.argument("entity_set", metavar="ENTITY_SET|BOUND_FUNC|METADATA_PATH",
+                shell_complete=_complete_entity_set_names)
 @click.option("--select", multiple=True)
 @click.option("--filter", "filter_", help="OData $filter expression.")
 @click.option("--top", type=int)
@@ -121,7 +122,8 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, orderby, expa
 
 
 @query_group.command("fetchxml")
-@click.argument("entity_set", required=False, default=None)
+@click.argument("entity_set", required=False, default=None,
+                shell_complete=_complete_entity_set_names)
 @click.option("--xml", "xml_inline", help="Inline FetchXML string.")
 @click.option("--file", "xml_file", type=click.Path(exists=True, dir_okay=False),
               help="Path to a FetchXML file.")
@@ -170,7 +172,7 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
 
 
 @query_group.command("saved")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("savedquery_id")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--page-size", type=int)
@@ -190,7 +192,7 @@ def query_saved(ctx: CLIContext, entity_set, savedquery_id, annotations, page_si
 
 
 @query_group.command("user")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("userquery_id")
 @click.option("--annotations/--no-annotations", default=True, help="Include formatted values.")
 @click.option("--page-size", type=int)

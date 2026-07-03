@@ -85,6 +85,51 @@ class TestProfileNames:
         ) == ["dev", "prod"]
 
 
+class TestAttributeValues:
+    """`--select <TAB>` after a resolvable entity completes attribute names."""
+
+    def _getter(self):
+        return lambda entity: {
+            "accounts": ["name", "accountnumber", "telephone1"],
+        }.get(entity, [])
+
+    def test_select_completes_entity_attributes(self):
+        assert complete_repl_line(
+            "entity get accounts --select ", ["account"], ["accounts"], [], self._getter()
+        ) == ["name", "accountnumber", "telephone1"]
+
+    def test_select_prefix_filters_attributes(self):
+        assert complete_repl_line(
+            "entity get accounts --select tele", ["account"], ["accounts"], [], self._getter()
+        ) == ["telephone1"]
+
+    def test_query_odata_select_completes_attributes(self):
+        # The entity slot is shared with query odata (token index 2, set name).
+        assert complete_repl_line(
+            "query odata accounts --select ", ["account"], ["accounts"], [], self._getter()
+        ) == ["name", "accountnumber", "telephone1"]
+
+    def test_no_entity_on_line_is_noop(self):
+        # `--select` before any entity token → nothing to complete against.
+        assert complete_repl_line(
+            "entity get --select ", ["account"], ["accounts"], [], self._getter()
+        ) is None
+
+    def test_without_getter_is_noop(self):
+        # No attribute_getter (the default) leaves `--select` as a bare TEXT
+        # option with no values — unchanged pre-#659 behavior.
+        assert complete_repl_line(
+            "entity get accounts --select ", ["account"], ["accounts"], []
+        ) is None
+
+    def test_expand_is_not_an_attribute_option(self):
+        # --expand takes navigation properties, not columns, so it is not wired
+        # to attribute completion.
+        assert complete_repl_line(
+            "entity get accounts --expand ", ["account"], ["accounts"], [], self._getter()
+        ) is None
+
+
 class TestEntitySlotUnchanged:
     def test_entity_slot_completion_still_applies(self):
         assert complete_repl_line(
@@ -145,3 +190,35 @@ class TestReplCompleter:
         completer = _ReplCompleter(backend, cache)
         assert _completions(completer, "entity get acc") == ["accounts"]
         assert calls["n"] == 1
+
+    def test_select_completion_uses_cached_attributes(self):
+        import types
+
+        def backend():
+            return types.SimpleNamespace(profile=types.SimpleNamespace(name="orga"))
+
+        cache = MetadataCache()
+        cache._logical = ["account"]
+        cache._set_names = ["accounts"]
+        cache._loaded_profile = "orga"
+        cache._attributes = {"account": ["name", "accountnumber"]}  # pre-memoized
+        completer = _ReplCompleter(backend, cache)
+        assert _completions(completer, "entity get accounts --select acc") == ["accountnumber"]
+
+    def test_attribute_fetch_failure_is_silent(self, monkeypatch):
+        # A backend error while fetching attributes for --select must be a no-op,
+        # never a crash (completion must never raise).
+        import crm.commands.repl as repl_mod
+
+        def boom(backend, logical):
+            raise RuntimeError("network down")
+
+        monkeypatch.setattr(repl_mod, "list_attributes", boom)
+        cache = MetadataCache()
+        cache._logical = ["account"]
+        cache._set_names = ["accounts"]
+        cache._loaded_profile = "orga"
+        completer = _ReplCompleter(
+            lambda: __import__("types").SimpleNamespace(
+                profile=__import__("types").SimpleNamespace(name="orga")), cache)
+        assert _completions(completer, "entity get accounts --select ") == []
