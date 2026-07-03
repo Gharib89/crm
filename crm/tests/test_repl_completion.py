@@ -85,6 +85,25 @@ class TestProfileNames:
         ) == ["dev", "prod"]
 
 
+class TestCrmPrefixTolerance:
+    """A leading literal `crm ` is stripped before completing, mirroring
+    `_strip_repl_prefix` on execution, so both forms behave identically."""
+
+    def test_crm_prefix_completes_command_names(self):
+        assert complete_repl_line("crm ent", [], [], []) == ["entity"]
+
+    def test_crm_prefix_completes_entity_slot(self):
+        assert complete_repl_line(
+            "crm entity get acc", ["account"], ["accounts"], []
+        ) == ["accounts"]
+
+    def test_crm_prefix_completes_select_attributes(self):
+        getter = lambda entity: ["name", "telephone1"] if entity == "accounts" else []
+        assert complete_repl_line(
+            "crm entity get accounts --select ", ["account"], ["accounts"], [], getter
+        ) == ["name", "telephone1"]
+
+
 class TestAttributeValues:
     """`--select <TAB>` after a resolvable entity completes attribute names."""
 

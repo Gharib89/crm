@@ -266,6 +266,12 @@ def complete_repl_line(
     unlike OS-shell completion which is scoped to wherever the option is
     actually declared.
     """
+    # The REPL tolerates a leading literal ``crm`` on execution (see
+    # ``_strip_repl_prefix``); mirror that here so ``crm entity get …`` typed in
+    # the REPL completes the same as the prefix-less form, instead of failing to
+    # resolve because ``crm`` isn't a subcommand.
+    if line[:4] == "crm ":
+        line = line[4:]
     completed, prefix = _tokens_and_prefix(line)
     prev = completed[-1] if completed else None
 
