@@ -9,6 +9,24 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.49.5 (2026-07-03)
+
+### Bug Fixes
+
+- Harden next-step hints per review — presence-based CRM_NO_HINTS, non-fatal store write
+  ([#668](https://github.com/Gharib89/crm/pull/668),
+  [`4d46e97`](https://github.com/Gharib89/crm/commit/4d46e97c78253459af4f6203f3cfdc75625dd114))
+
+- Show-once next-step hints for new human users ([#668](https://github.com/Gharib89/crm/pull/668),
+  [`4d46e97`](https://github.com/Gharib89/crm/commit/4d46e97c78253459af4f6203f3cfdc75625dd114))
+
+### Documentation
+
+- Use full crm-prefixed command names in next-step-hints section
+  ([#668](https://github.com/Gharib89/crm/pull/668),
+  [`4d46e97`](https://github.com/Gharib89/crm/commit/4d46e97c78253459af4f6203f3cfdc75625dd114))
+
+
 ## v1.49.4 (2026-07-03)
 
 ### Bug Fixes
