@@ -9,13 +9,13 @@ tests pin the command seam (gating, ordering, envelopes), not the transport.
 # pyright: basic
 from __future__ import annotations
 
-import json
-
 import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.utils.d365_backend import D365Error
+
+pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 _SOLUTIONS = [
@@ -25,7 +25,7 @@ _SOLUTIONS = [
 ]
 
 
-def _stub(monkeypatch, backend, *, solutions=None, exported=None):
+def _stub(monkeypatch, backend, *, solutions=None):
     """Wire a fake backend + a canned solution list + a no-op export."""
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
     monkeypatch.setattr(
@@ -93,9 +93,7 @@ def test_picker_cancel_emits_clean_error(monkeypatch, backend, tmp_path):
     monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
     monkeypatch.setattr("crm.commands.solution.select_one", lambda *a, **k: None)
     out = tmp_path / "out.zip"
-    res = CliRunner().invoke(cli, ["--json", "solution", "export", "-o", str(out)])
-    # --json + no name is exit 2 before the picker; force the picker path via a
-    # human-mode run instead.
+    # Human mode reaches the picker; cancel yields a clean error envelope (exit 1).
     res = CliRunner().invoke(cli, ["solution", "export", "-o", str(out)])
     assert res.exit_code == 1, res.output
     assert "unique_name" not in calls
@@ -123,8 +121,8 @@ def test_fetch_failure_is_operational_envelope(monkeypatch, backend, tmp_path):
     monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
     monkeypatch.setattr("crm.commands.solution.select_one", lambda *a, **k: "x")
     out = tmp_path / "out.zip"
-    res = CliRunner().invoke(cli, ["--json", "solution", "export", "-o", str(out)])
-    # --json is exit 2 pre-picker; the operational-failure path is human mode.
+    # Human mode reaches the fetch; the backend failure becomes the standard
+    # operational-failure envelope (exit 1), not a traceback.
     res = CliRunner().invoke(cli, ["solution", "export", "-o", str(out)])
     assert res.exit_code == 1, res.output
 

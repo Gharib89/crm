@@ -605,7 +605,8 @@ def _pick_solution(ctx: CLIContext, title: str) -> str | None:
     ``str | None`` return and the caller's guard are defensive."""
     if not (_stdin_is_tty() and not ctx.json_mode):
         raise click.UsageError(
-            "a solution unique name is required (no interactive terminal to pick one).")
+            "a solution unique name is required here — the interactive picker "
+            "needs a human terminal and is disabled under --json.")
     items = sol_mod.list_solutions(ctx.backend())
     items.sort(key=lambda s: (bool(s.get("ismanaged")), s.get("uniquename", "")))
     if not items:
