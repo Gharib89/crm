@@ -68,7 +68,7 @@ def crm_repo(tmp_path: Path) -> Path:
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "config", "user.name", "Test")
     _git(repo, "remote", "add", "origin", "https://github.com/Gharib89/crm.git")
-    (repo / "README.md").write_text("hello\n")
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "init")
     return repo
@@ -122,21 +122,21 @@ class TestDocsPath:
 
 class TestMainCheckoutCommitGate:
     def test_non_docs_commit_on_main_blocked(self, crm_repo):
-        (crm_repo / "code.py").write_text("x = 1\n")
+        (crm_repo / "code.py").write_text("x = 1\n", encoding="utf-8")
         _git(crm_repo, "add", "code.py")
         code, err = _run_hook(_GATE_PATH, "git commit -m 'change'", str(crm_repo))
         assert code == 2
         assert "worktree" in err
 
     def test_docs_only_commit_on_main_allowed(self, crm_repo):
-        (crm_repo / "NOTES.md").write_text("notes\n")
+        (crm_repo / "NOTES.md").write_text("notes\n", encoding="utf-8")
         _git(crm_repo, "add", "NOTES.md")
         code, _ = _run_hook(_GATE_PATH, "git commit -m 'docs'", str(crm_repo))
         assert code == 0
 
     def test_feature_branch_allowed(self, crm_repo):
         _git(crm_repo, "checkout", "-b", "feat/x")
-        (crm_repo / "code.py").write_text("x = 1\n")
+        (crm_repo / "code.py").write_text("x = 1\n", encoding="utf-8")
         _git(crm_repo, "add", "code.py")
         code, _ = _run_hook(_GATE_PATH, "git commit -m 'change'", str(crm_repo))
         assert code == 0
@@ -144,20 +144,20 @@ class TestMainCheckoutCommitGate:
     def test_linked_worktree_allowed(self, crm_repo, tmp_path):
         wt = tmp_path / "wt"
         _git(crm_repo, "worktree", "add", "-b", "feat/wt", str(wt))
-        (wt / "code.py").write_text("x = 1\n")
+        (wt / "code.py").write_text("x = 1\n", encoding="utf-8")
         _git(wt, "add", "code.py")
         code, _ = _run_hook(_GATE_PATH, "git commit -m 'change'", str(wt))
         assert code == 0
 
     def test_other_repo_allowed(self, crm_repo):
         _git(crm_repo, "remote", "set-url", "origin", "https://github.com/other/project.git")
-        (crm_repo / "code.py").write_text("x = 1\n")
+        (crm_repo / "code.py").write_text("x = 1\n", encoding="utf-8")
         _git(crm_repo, "add", "code.py")
         code, _ = _run_hook(_GATE_PATH, "git commit -m 'change'", str(crm_repo))
         assert code == 0
 
     def test_unresolvable_cd_fails_open(self, crm_repo):
-        (crm_repo / "code.py").write_text("x = 1\n")
+        (crm_repo / "code.py").write_text("x = 1\n", encoding="utf-8")
         _git(crm_repo, "add", "code.py")
         code, _ = _run_hook(_GATE_PATH, "cd $WT && git commit -m 'change'", str(crm_repo))
         assert code == 0
@@ -189,6 +189,16 @@ class TestSecretPatterns:
         assert self._findings(benign) == []
 
 
+class TestSegmentSplitting:
+    def test_operators_inside_quotes_do_not_shred_the_segment(self):
+        segments = _scan._split_segments('true && git commit -m "fix (a|b) thing"')
+        assert ["git", "commit", "-m", "fix (a|b) thing"] in segments
+
+    def test_glued_operator_still_splits(self):
+        segments = _scan._split_segments("x&&git commit")
+        assert ["git", "commit"] in segments
+
+
 class TestDiffParsing:
     def test_added_lines_carry_file_origin(self):
         diff = (
@@ -212,7 +222,7 @@ class TestMessageValues:
 class TestLocalTokens:
     def test_tokens_load_and_match_case_insensitively(self, tmp_path, monkeypatch):
         token_file = tmp_path / "tokens.txt"
-        token_file.write_text("# comment\n\nsampletoken\n")
+        token_file.write_text("# comment\n\nsampletoken\n", encoding="utf-8")
         monkeypatch.setattr(_scan, "TOKEN_FILE", str(token_file))
         checks = _scan._load_local_tokens()
         assert len(checks) == 1
@@ -237,7 +247,7 @@ class TestSecretScanEndToEnd:
         return env
 
     def test_staged_secret_blocks_commit(self, crm_repo, tmp_path):
-        (crm_repo / "config.py").write_text(f"secret = '{FAKE_AZURE_SECRET}'\n")
+        (crm_repo / "config.py").write_text(f"secret = '{FAKE_AZURE_SECRET}'\n", encoding="utf-8")
         _git(crm_repo, "add", "config.py")
         code, err = _run_hook(
             _SCAN_PATH, "git commit -m 'add config'", str(crm_repo), env=self._isolated_env(tmp_path)
@@ -246,7 +256,7 @@ class TestSecretScanEndToEnd:
         assert "config.py" in err
 
     def test_clean_staged_diff_passes(self, crm_repo, tmp_path):
-        (crm_repo / "clean.py").write_text("x = 1\n")
+        (crm_repo / "clean.py").write_text("x = 1\n", encoding="utf-8")
         _git(crm_repo, "add", "clean.py")
         code, _ = _run_hook(
             _SCAN_PATH, "git commit -m 'clean'", str(crm_repo), env=self._isolated_env(tmp_path)
@@ -254,7 +264,7 @@ class TestSecretScanEndToEnd:
         assert code == 0
 
     def test_secret_in_commit_message_blocks(self, crm_repo, tmp_path):
-        (crm_repo / "clean.py").write_text("x = 1\n")
+        (crm_repo / "clean.py").write_text("x = 1\n", encoding="utf-8")
         _git(crm_repo, "add", "clean.py")
         code, err = _run_hook(
             _SCAN_PATH,
@@ -270,3 +280,24 @@ class TestSecretScanEndToEnd:
             _SCAN_PATH, "git status", str(tmp_path), env=self._isolated_env(tmp_path)
         )
         assert code == 0
+
+    def test_message_with_quoted_operators_still_scanned(self, crm_repo, tmp_path):
+        (crm_repo / "clean.py").write_text("x = 1\n", encoding="utf-8")
+        _git(crm_repo, "add", "clean.py")
+        code, err = _run_hook(
+            _SCAN_PATH,
+            f'true && git commit -m "creds (a|b) {FAKE_URL_CRED}"',
+            str(crm_repo),
+            env=self._isolated_env(tmp_path),
+        )
+        assert code == 2
+        assert "commit message" in err
+
+    def test_env_var_tokens_used_when_no_token_file(self, crm_repo, tmp_path):
+        (crm_repo / "cfg.py").write_text("org = 'EnvToken'\n", encoding="utf-8")
+        _git(crm_repo, "add", "cfg.py")
+        env = self._isolated_env(tmp_path)
+        env["CRM_SECRET_SCAN_TOKENS"] = "envtoken, otherorg"
+        code, err = _run_hook(_SCAN_PATH, "git commit -m 'cfg'", str(crm_repo), env=env)
+        assert code == 2
+        assert "org identifier" in err

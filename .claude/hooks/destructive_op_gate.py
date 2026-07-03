@@ -277,8 +277,8 @@ def _git_add_reason(sub: str | None, rest: list[str]) -> str | None:
     if not flagged:
         return None
     return (
-        f"BLOCKED: `git add {' '.join(flagged)}` blanket-stages everything. "
-        "CLAUDE.md branch discipline: stage with explicit paths "
+        f"BLOCKED: `git add` with {' / '.join(flagged)} is disallowed (blanket-staging "
+        "argument). CLAUDE.md branch discipline: stage with explicit paths "
         "(`git add <path> ...`) so unrelated worktree content never rides along."
     )
 

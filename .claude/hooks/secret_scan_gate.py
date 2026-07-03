@@ -10,12 +10,14 @@ file/pattern on stderr if anything matches. Everything else exits 0.
 Two pattern sources:
   * PATTERNS below — generic, public-safe secret shapes (private key blocks,
     Azure client secrets, credentials embedded in URLs).
-  * A machine-local token file (`~/.claude/crm-secret-scan-tokens.txt`) — one
-    case-insensitive regex per line, `#` comments allowed. Org-identifying
-    tokens (internal org names, GUID machine-fingerprint suffixes) MUST live
-    there, never in this tracked file: naming them here would itself publish
-    them. Absent file -> only the generic patterns run. Each machine keeps its
-    own copy (it is never committed).
+  * Org-identifying tokens (internal org names, GUID machine-fingerprint
+    suffixes) — these MUST NOT live in this tracked file (naming them here
+    would itself publish them). They load from a machine-local token file
+    (`~/.claude/crm-secret-scan-tokens.txt`, one case-insensitive regex per
+    line, `#` comments allowed) and/or the `CRM_SECRET_SCAN_TOKENS` env var
+    (comma/whitespace-separated regexes — the channel for cloud/CI sandboxes
+    that have no home-dir token file). Neither source present -> only the
+    generic patterns run.
 
 Pure stdlib. Git subprocess calls run only for commands that contain a commit
 segment, against the repo resolved from the payload cwd (following `cd` and
@@ -51,24 +53,39 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 TOKEN_FILE = os.path.expanduser("~/.claude/crm-secret-scan-tokens.txt")
 
-# Same segment-splitting contract as destructive_op_gate.py: split the RAW
-# command string on shell operators so a commit inside a compound command is
-# still seen, then shlex-tokenize each piece.
-_SEGMENT_SPLIT = re.compile(r"\|\||&&|\$\(|[;|&()\n\r`]")
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+# Operator tokens emitted by shlex punctuation_chars mode that separate one
+# command from the next.
+_OPERATOR_CHARS = set("|&;()<>")
 
 
 def _split_segments(command: str) -> list[list[str]]:
+    """Split the command into quote-aware tokenized segments on shell operators.
+
+    Unlike destructive_op_gate.py's raw regex split, this uses shlex's
+    punctuation_chars mode so operators inside QUOTED arguments (a commit
+    message like `-m "fix (a|b)"`) do not shred the commit segment — that
+    would silently skip the scan (false negative). Operators glued to words
+    (`x&&git commit`) still split. An unbalanced quote keeps whatever parsed
+    cleanly before it.
+    """
+    lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lex.whitespace_split = True
     segments: list[list[str]] = []
-    for piece in _SEGMENT_SPLIT.split(command):
-        if not piece.strip():
-            continue
-        try:
-            tokens = shlex.split(piece)
-        except ValueError:
-            continue
-        if tokens:
-            segments.append(tokens)
+    current: list[str] = []
+    try:
+        for tok in lex:
+            if tok and set(tok) <= _OPERATOR_CHARS:
+                if current:
+                    segments.append(current)
+                    current = []
+            else:
+                current.append(tok)
+    except ValueError:
+        pass  # unbalanced quote — fall through with what we have
+    if current:
+        segments.append(current)
     return segments
 
 
@@ -127,13 +144,19 @@ def _message_values(rest: list[str]) -> list[str]:
 
 
 def _load_local_tokens() -> list[tuple[str, re.Pattern[str]]]:
+    """Org-identifier regexes from the machine-local file plus the
+    `CRM_SECRET_SCAN_TOKENS` env var (cloud/CI sandboxes have no home dir
+    token file — a routine/CI environment variable is their channel)."""
+    raw: list[str] = []
     try:
         with open(TOKEN_FILE, encoding="utf-8") as fh:
-            lines = fh.read().splitlines()
+            raw.extend(fh.read().splitlines())
     except OSError:
-        return []
+        pass
+    env_tokens = os.environ.get("CRM_SECRET_SCAN_TOKENS", "")
+    raw.extend(re.split(r"[,\s]+", env_tokens))
     tokens: list[tuple[str, re.Pattern[str]]] = []
-    for line in lines:
+    for line in raw:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
