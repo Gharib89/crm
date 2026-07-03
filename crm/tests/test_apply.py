@@ -3997,32 +3997,40 @@ import inspect
 
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
+from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
+from crm.core import security as sec_mod
 from crm.core import views as views_mod
+from crm.core import webresource as wr_mod
 
 _ADAPTER_BUILDERS = {
     "attribute": attrs_mod.add_attribute,
     "relationship": rel_mod.create_one_to_many,
     "entity": meta_mod.create_entity,
     "view": views_mod.create_view,
+    "optionset": os_mod.create_optionset,
+    "webresource": wr_mod.create_webresource,
+    "security-role": sec_mod.create_role,
 }
 
 
-def _kwonly(fn):
-    """The keyword-only parameter names of a builder (the part after ``*``)."""
+def _builder_params(fn):
+    """A builder's callable parameter names — both keyword-only (after ``*``) and
+    the leading positional-or-keyword ones (``backend``; ``create_role`` also takes
+    ``name`` positionally). VAR_POSITIONAL / VAR_KEYWORD are excluded."""
     return {
         n for n, p in inspect.signature(fn).parameters.items()
-        if p.kind is inspect.Parameter.KEYWORD_ONLY
+        if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
 
 
 @pytest.mark.parametrize("kind", sorted(_ADAPTER_BUILDERS))
 def test_adapter_covers_full_builder_surface(kind):
-    """Every builder keyword arg is reachable from a spec (mapped, transformed, or
+    """Every builder param is reachable from a spec (mapped, transformed, or
     driver-injected) — add a builder kwarg without an adapter entry and this fails."""
     adapter = apply_mod.REGISTRY[kind]
     covered = set(adapter.map.values()) | adapter.transform_targets | adapter.injected
-    uncovered = _kwonly(_ADAPTER_BUILDERS[kind]) - covered
+    uncovered = _builder_params(_ADAPTER_BUILDERS[kind]) - covered
     assert not uncovered, f"{kind}: adapter does not reach builder kwargs {sorted(uncovered)}"
 
 
@@ -4032,7 +4040,7 @@ def test_adapter_targets_are_real_builder_params(kind):
     would otherwise raise TypeError only at apply time)."""
     adapter = apply_mod.REGISTRY[kind]
     produced = set(adapter.map.values()) | adapter.transform_targets
-    real = _kwonly(_ADAPTER_BUILDERS[kind])
+    real = _builder_params(_ADAPTER_BUILDERS[kind])
     bogus = produced - real
     assert not bogus, f"{kind}: adapter targets non-existent builder kwargs {sorted(bogus)}"
 
@@ -4183,6 +4191,20 @@ def test_apply_rejects_unknown_query_type_before_http(backend):
         assert m.request_history == []
 
 
+def test_apply_rejects_optionset_schema_name_without_prefix_before_http(backend):
+    # #646 enumerated behavior change: an option set's name is routed through
+    # adapter.validate (schema_name_keys) now, so a no-prefix name fails in the
+    # up-front pass — before any publisher/solution/entity write — where it used to
+    # fail mid-apply inside create_optionset (partial-applied + failed debris).
+    spec = {"publisher": _PUBLISHER, "solution": _SOLUTION,
+            "optionsets": [{"name": "Priority", "display_name": "Priority",
+                            "options": [{"value": 1, "label": "Low"}]}]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="must include a publisher prefix"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
 # ── component-kind adapter interface (#645) ──────────────────────────────────
 # PR 1 of the apply-adapters PRD (#643): the entity subtree (entity, attribute,
 # relationship, view) is migrated to the full component-kind adapter interface —
@@ -4191,9 +4213,12 @@ def test_apply_rejects_unknown_query_type_before_http(backend):
 # required-key data field tracks the builder, a bad block is rejected by
 # adapter.validate up front, and a probe-hit routes to the ADR 0014 verdict.
 _ENTITY_SUBTREE = ["entity", "attribute", "relationship", "view"]
+# Every migrated kind — the entity subtree (#645) plus optionset / webresource /
+# security role (#646). The interface contract below holds for all of them.
+_MIGRATED_KINDS = sorted(_ADAPTER_BUILDERS)
 
 
-@pytest.mark.parametrize("kind", _ENTITY_SUBTREE)
+@pytest.mark.parametrize("kind", _MIGRATED_KINDS)
 def test_adapter_slots_populated(kind):
     """Every migrated kind populates all four interface slots."""
     adapter = apply_mod.REGISTRY[kind]
@@ -4205,15 +4230,18 @@ def test_adapter_slots_populated(kind):
     assert callable(adapter.validate)
 
 
-@pytest.mark.parametrize("kind", _ENTITY_SUBTREE)
+@pytest.mark.parametrize("kind", _MIGRATED_KINDS)
 def test_required_block_keys_match_builder_required_params(kind):
-    """required_block_keys equals the builder's own required (no-default) keyword-only
-    params, reverse-mapped to spec keys and minus the driver-injected ones — so a
-    builder that gains a required param without an adapter entry turns this red."""
+    """required_block_keys equals the builder's own required (no-default) params,
+    reverse-mapped to spec keys and minus the driver-injected ones — so a builder
+    that gains a required param without an adapter entry turns this red. Both
+    keyword-only and positional-or-keyword params count (create_role's ``name`` is
+    positional); ``backend`` drops out as an injected param."""
     adapter = apply_mod.REGISTRY[kind]
     required = {
         n for n, p in inspect.signature(_ADAPTER_BUILDERS[kind]).parameters.items()
-        if p.kind is inspect.Parameter.KEYWORD_ONLY and p.default is inspect.Parameter.empty
+        if p.default is inspect.Parameter.empty
+        and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
     }
     reverse = {param: key for key, param in adapter.map.items()}
     spec_keys = {reverse.get(p, p) for p in (required - adapter.injected)}
@@ -4246,6 +4274,18 @@ def test_required_block_keys_match_builder_required_params(kind):
                       "lookup_display": "L", "menu_behavior": "UseLabel"}, "UseLabel"),
     ("view", {"name": "V", "columns": ["c"], "query_type": "nope"}, "unknown query_type"),
     ("view", {"name": "V", "columns": "notalist"}, "non-empty list"),
+    # optionset / webresource / security role (#646)
+    ("optionset", {"name": "contoso_p"}, "missing required field 'display_name'"),
+    ("optionset", {"name": "Priority", "display_name": "P"}, "must include a publisher prefix"),
+    ("optionset", {"name": "contoso_p", "display_name": "P", "options": [{"value": 1}]},
+     "each option needs a label"),
+    ("webresource", {}, "missing required field 'name'"),
+    ("webresource", {"name": "foo"}, "needs 'file' or inline 'content'"),
+    ("webresource", {"name": "foo", "content": "abc"}, "webresourcetype is required"),
+    ("security-role", {}, "missing required field 'name'"),
+    ("security-role", {"name": "R"}, "at least one privilege row is required"),
+    ("security-role", {"name": "R", "privileges": [{"depth": "Basic"}]},
+     "each privilege row needs"),
 ])
 def test_adapter_validate_rejects_bad_block(kind, block, match):
     """adapter.validate is the complete up-front authority for one block — required
@@ -4361,3 +4401,85 @@ def test_adapter_reconcile_view_ambiguous_skipped(backend):
         verdict, payload = _reconcile_through_adapter(backend, "view", view, ctx, entry)
     assert verdict == "skipped"
     assert "reason" in payload
+
+
+# ── optionset / web resource / security role reconcile through the interface (#646) ─
+# The three kinds migrated in slice 2/3, driven through find_live + reconcile.
+# None of them has a destructive divergence, so none ever returns replace_blocked
+# (optionset/webresource/security-role never block — only skip or update).
+def test_adapter_reconcile_optionset_updated(backend):
+    # A spec option the live set lacks (by value) → InsertOptionValue → updated.
+    os_spec = {"name": "contoso_priority", "display_name": "Priority",
+               "options": [{"value": 100000000, "label": "Low"},
+                           {"value": 100000001, "label": "High"}]}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "optionset", "name": "contoso_priority"}
+    with requests_mock.Mocker() as m:
+        _mock_optionset_live(m, backend, options=[(100000000, "Low")])
+        verdict, _ = _reconcile_through_adapter(backend, "optionset", os_spec, ctx, entry)
+    assert verdict == "updated"
+
+
+def test_adapter_reconcile_optionset_no_drift_skipped(backend):
+    # Every spec option (by value) is already live → no insert → skipped.
+    os_spec = {"name": "contoso_priority", "display_name": "Priority",
+               "options": [{"value": 100000000, "label": "Low"}]}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "optionset", "name": "contoso_priority"}
+    with requests_mock.Mocker() as m:
+        _mock_optionset_live(m, backend, options=[(100000000, "Low")])
+        verdict, _ = _reconcile_through_adapter(backend, "optionset", os_spec, ctx, entry)
+    assert verdict == "skipped"
+
+
+def test_adapter_reconcile_webresource_updated(backend, tmp_path):
+    # The spec file's bytes (read via the block + ctx.base_dir) differ from live → updated.
+    wr = _wr_spec(tmp_path, body=b"NEW BODY")
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "webresource", "name": "new_app.js"}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_live(m, backend, content=b"OLD BODY")
+        verdict, _ = _reconcile_through_adapter(backend, "webresource", wr, ctx, entry)
+    assert verdict == "updated"
+
+
+def test_adapter_reconcile_webresource_no_drift_skipped(backend, tmp_path):
+    # Content matches and no display_name is declared → skipped.
+    wr = _wr_spec(tmp_path, body=b"SAME")
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "webresource", "name": "new_app.js"}
+    with requests_mock.Mocker() as m:
+        _mock_webresource_live(m, backend, content=b"SAME")
+        verdict, _ = _reconcile_through_adapter(backend, "webresource", wr, ctx, entry)
+    assert verdict == "skipped"
+
+
+def test_adapter_reconcile_security_role_updated(backend):
+    # A declared privilege the live role lacks → ReplacePrivilegesRole → updated.
+    role_spec = _role_spec()
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "security-role", "name": "Contoso Sales"}
+    with requests_mock.Mocker() as m:
+        _mock_role_exists(m, backend)
+        _mock_named_privileges(m, backend, [_named_priv_row("prvReadAccount", _PRV_READ)])
+        _mock_role_privileges_live(m, backend, [(_PRV_WRITE, "Global", "prvWriteAccount")])
+        _mock_role_replace(m, backend)
+        verdict, _ = _reconcile_through_adapter(backend, "security-role", role_spec, ctx, entry)
+    assert verdict == "updated"
+
+
+def test_adapter_reconcile_security_role_subset_satisfied_skipped(backend):
+    # Every declared privilege is already present at its declared depth (a satisfied
+    # lower bound, not set-equality) → no replace → skipped (subset-satisfaction).
+    role_spec = _role_spec()
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "security-role", "name": "Contoso Sales"}
+    with requests_mock.Mocker() as m:
+        _mock_role_exists(m, backend)
+        _mock_named_privileges(m, backend, [_named_priv_row("prvReadAccount", _PRV_READ)])
+        # An unlisted extra privilege is present too; subset-satisfaction leaves it.
+        _mock_role_privileges_live(m, backend, [
+            (_PRV_READ, "Global", "prvReadAccount"),
+            (_PRV_WRITE, "Global", "prvWriteAccount")])
+        verdict, _ = _reconcile_through_adapter(backend, "security-role", role_spec, ctx, entry)
+    assert verdict == "skipped"
