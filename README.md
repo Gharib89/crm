@@ -241,7 +241,7 @@ every org mutation (non-GET, minus solution/translation *export* actions) with a
 loud operational failure (exit 1), while reads run normally:
 
 ```bash
-crm profile add --url ... --name prod-ro --read-only   # or: profile edit prod-ro --read-only
+crm profile add --url ... --name prod-ro --read-only   # or: crm profile edit prod-ro --read-only
 ```
 
 Setting it is unrestricted (tighten from anywhere, including CI); **clearing** it
