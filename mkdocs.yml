@@ -136,6 +136,7 @@ nav:
       - apply: how-to/apply.md
       - scaffold: how-to/scaffold.md
       - describe: how-to/describe.md
+      - examples: how-to/examples.md
       - app: how-to/app.md
       - sitemap: how-to/sitemap.md
       - webresource: how-to/webresource.md
