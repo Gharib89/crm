@@ -1,0 +1,32 @@
+Migration inventory:
+  active: instruction files - 2 found
+    - CLAUDE.md
+    - AGENTS.md
+  active: skills - 7 found
+    - cloud-ship
+    - codebase-design
+    - live-e2e
+    - review
+    - ship
+    - tdd
+    - writing-great-skills
+  inactive: command sources - none found
+  active: subagents - 1 found
+    - docs-sync
+Migration surfaces:
+  active: AGENTS.md - Symlinked to tracked CLAUDE.md.
+  active: skills - 7 skill directories symlinked to tracked .claude/skills targets.
+  active: hooks - .codex/hooks.json points at existing .claude/hooks scripts.
+  active: subagents - docs-sync converted to a Codex custom agent.
+Migration report:
+  symlinked: AGENTS.md - Linked to tracked CLAUDE.md.
+  symlinked: .agents/skills/cloud-ship - Linked to tracked .claude/skills/cloud-ship.
+  symlinked: .agents/skills/codebase-design - Linked to tracked .claude/skills/codebase-design.
+  symlinked: .agents/skills/live-e2e - Linked to tracked .claude/skills/live-e2e.
+  symlinked: .agents/skills/review - Linked to tracked .claude/skills/review.
+  symlinked: .agents/skills/ship - Linked to tracked .claude/skills/ship.
+  symlinked: .agents/skills/tdd - Linked to tracked .claude/skills/tdd.
+  symlinked: .agents/skills/writing-great-skills - Linked to tracked .claude/skills/writing-great-skills.
+  rewritten: .codex/config.toml - Enables Codex hooks for this trusted project.
+  rewritten: .codex/hooks.json - Converts project Claude hooks to Codex hook config while reusing .claude/hooks scripts.
+  rewritten: .codex/agents/docs-sync.toml - Converted docs-sync to a Codex custom agent and removed Claude-only model/tool metadata.

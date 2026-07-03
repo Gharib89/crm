@@ -1,0 +1,39 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/destructive_op_gate.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/secret_scan_gate.py\""
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/block_protected_files.py\""
+          }
+        ],
+        "matcher": "Edit|Write"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CLAUDE_PROJECT_DIR=\"$(git rev-parse --show-toplevel)\" python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/pyright_strict_check.py\""
+          }
+        ],
+        "matcher": "Edit|Write"
+      }
+    ]
+  }
+}
