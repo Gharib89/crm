@@ -4321,6 +4321,8 @@ def test_required_block_keys_match_builder_required_params(kind):
      "missing required field 'name'"),
     ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "rank": "1"},
      "rank must be an integer"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "rank": None},
+     "rank must be an integer"),
     ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "stage": "nope"},
      "unknown stage"),
     ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "mode": "nope"},

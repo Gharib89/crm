@@ -1233,7 +1233,10 @@ def _validate_plugin_step_block(step: dict[str, Any]) -> None:
     for key in _STEP_STRING_KEYS:
         if step.get(key) is not None and not isinstance(step[key], str):
             raise D365Error(f"{slabel}: {key!r} must be a string.")
-    if step.get("rank") is not None and not isinstance(step["rank"], int):
+    # Presence-gated like the vocabularies below: an explicit `rank: null` is
+    # invalid (to_kwargs would forward rank=None into register_step's POST body),
+    # so reject a present non-int here; an omitted key falls to the builder default.
+    if "rank" in step and not isinstance(step["rank"], int):
         raise D365Error(f"{slabel}: rank must be an integer (unquoted in YAML).")
     # Gate the vocabularies on key PRESENCE, not truthiness: an explicit
     # `stage: null` / `mode: null` is invalid (register_step rejects None — it is
