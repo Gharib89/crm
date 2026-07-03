@@ -10,7 +10,7 @@ journal, which records only this CLI's own mutations.
 from __future__ import annotations
 import json
 import click
-from crm.cli import CLIContext, pass_ctx
+from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
 from crm.commands._helpers import d365_errors
 
 _CRM_NS = "#Microsoft.Dynamics.CRM."
@@ -43,7 +43,7 @@ def audit_group():
 
 
 @audit_group.command("history")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--page", type=int, default=1, show_default=True,
               help="1-based page number to retrieve.")

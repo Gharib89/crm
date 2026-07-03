@@ -178,7 +178,9 @@ crm completion show --shell zsh   # or just print the script to stdout
 prints the single line to add to your shell startup file — `source <path>` for
 bash/zsh/fish, `. <path>` for PowerShell — and never edits the file for you.
 `--shell` defaults to autodetecting `$SHELL`; PowerShell sets no `$SHELL`, so pass
-`--shell powershell` explicitly. See the
+`--shell powershell` explicitly. Once installed, `--profile` and positional
+entity-set arguments (`crm entity get <TAB>`) complete dynamically from local state
+and the on-disk metadata cache — never a network call. See the
 [completion how-to](docs/how-to/completion.md) for per-shell setup.
 
 ## Configure

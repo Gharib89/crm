@@ -3,7 +3,7 @@
 from __future__ import annotations
 import click
 from crm.core import security as security_mod
-from crm.cli import CLIContext, pass_ctx
+from crm.cli import CLIContext, pass_ctx, _complete_entity_set_names
 from crm.commands._helpers import (
     _destructive_option,
     d365_errors,
@@ -254,7 +254,7 @@ def assign_role(ctx: CLIContext, role_id, to_user, to_team, yes,
 
 
 @security_group.command("grant")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--to", "to", metavar="TYPE:GUID", required=True,
               help="Principal to share with, as <user|team|org>:<guid>.")
@@ -285,7 +285,7 @@ def grant(ctx: CLIContext, entity_set, record_id, to, rights, yes):
 
 
 @security_group.command("revoke")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @click.option("--from", "from_", metavar="TYPE:GUID", required=True,
               help="Principal to unshare, as <user|team|org>:<guid>.")
@@ -313,7 +313,7 @@ def revoke(ctx: CLIContext, entity_set, record_id, from_, yes):
 
 
 @security_group.command("list-access")
-@click.argument("entity_set")
+@click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.argument("record_id")
 @pass_ctx
 def list_access(ctx: CLIContext, entity_set, record_id):

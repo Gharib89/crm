@@ -3,10 +3,11 @@
 from __future__ import annotations
 import shlex
 import time
+from collections.abc import Callable
 import click
 from crm.core import session as session_mod
 from crm.core import metadata_cache as mc_mod
-from crm.core.metadata import list_entity_definitions
+from crm.core.metadata import list_attributes, list_entity_definitions
 from crm.utils.d365_backend import D365Error
 from prompt_toolkit.completion import Completer, Completion
 
@@ -26,6 +27,12 @@ _ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
     ("metadata", "entity"):     (2, "logical"),
     ("metadata", "attributes"): (2, "logical"),
 }
+
+# Options whose value is a column (attribute logical name), so a trailing
+# ``--select <TAB>`` after a known entity completes that entity's attributes.
+# Only ``--select`` qualifies: ``--expand`` takes navigation properties, not
+# columns.
+_ATTRIBUTE_OPTIONS: frozenset[str] = frozenset({"--select"})
 
 
 def _strip_repl_prefix(argv: list[str]) -> list[str] | None:
@@ -56,6 +63,11 @@ class MetadataCache:
     def __init__(self, *, use_cache: bool = False, refresh: bool = False) -> None:
         self._logical: list[str] | None = None
         self._set_names: list[str] | None = None
+        # Attribute logical names fetched per entity, keyed by entity logical
+        # name. Populated lazily on first `--select` Tab (one metadata GET per
+        # entity) and memoized for the session; cleared with the def lists on a
+        # profile switch / refresh so it never serves another org's columns.
+        self._attributes: dict[str, list[str]] = {}
         # Profile the in-memory lists were loaded for; entity names are
         # org-specific, so a `profile use` mid-REPL must force a reload.
         self._loaded_profile: str | None = None
@@ -82,6 +94,9 @@ class MetadataCache:
             defs = list_entity_definitions(backend)
         self._logical = [d["logical"] for d in defs]
         self._set_names = [d["set_name"] for d in defs]
+        # A profile switch / refresh invalidates any memoized attribute lists —
+        # they are org-specific just like the entity names above.
+        self._attributes = {}
         self._loaded_profile = backend.profile.name
 
     def logical_names(self, backend) -> list[str]:
@@ -95,6 +110,35 @@ class MetadataCache:
     def entities(self, backend) -> list[str]:
         """Backward-compat: returns logical names."""
         return self.logical_names(backend)
+
+    def _resolve_logical(self, entity_token: str) -> str | None:
+        """Map an on-line entity token (set *or* logical name) to its logical
+        name using the loaded definition lists, or ``None`` if unknown."""
+        if self._logical and entity_token in self._logical:
+            return entity_token
+        if self._set_names and entity_token in self._set_names:
+            return self._logical[self._set_names.index(entity_token)]  # type: ignore[index]
+        return None
+
+    def attribute_names(self, backend, entity_token: str) -> list[str]:
+        """Attribute logical names for ``entity_token`` (a set or logical name).
+
+        Resolves the token to a logical name via the cached definition lists,
+        then fetches the entity's attributes with one metadata GET, memoizing
+        the result for the session. An unresolvable token is treated as a
+        logical name directly (best effort) so a freshly-created entity not yet
+        in the def lists still completes."""
+        self._ensure(backend)
+        logical = self._resolve_logical(entity_token) or entity_token
+        cached = self._attributes.get(logical)
+        if cached is None:
+            cached = [
+                row["LogicalName"]
+                for row in list_attributes(backend, logical)
+                if row.get("LogicalName")
+            ]
+            self._attributes[logical] = cached
+        return cached
 
 
 def complete_entity_token(
@@ -124,6 +168,26 @@ def complete_entity_token(
         return None
     names = set_names if name_type == "set" else logical_names
     return [n for n in names if n.startswith(prefix)]
+
+
+def _entity_token_on_line(completed: list[str]) -> str | None:
+    """Return the entity token (set or logical name) already present at its
+    slot for the ``group verb`` on the line, or ``None`` if the line isn't a
+    recognized entity-slot command or the slot isn't filled with a name yet.
+
+    Reuses ``_ENTITY_SLOTS`` so attribute completion keys off exactly the same
+    entity positions the entity-name completion already understands."""
+    if len(completed) < 2:
+        return None
+    slot = _ENTITY_SLOTS.get((completed[0], completed[1]))
+    if slot is None:
+        return None
+    idx, _name_type = slot
+    if idx < len(completed):
+        tok = completed[idx]
+        if tok and not tok.startswith("-"):
+            return tok
+    return None
 
 
 def _tokens_and_prefix(line: str) -> tuple[list[str], str]:
@@ -183,11 +247,18 @@ def complete_repl_line(
     logical_names: list[str],
     set_names: list[str],
     profile_names: list[str],
+    attribute_getter: Callable[[str], list[str]] | None = None,
 ) -> list[str] | None:
     """Top-level REPL completion: command/group names, flags (incl. ``--no-*``
-    forms), Choice flag values, profile names after ``--profile``, and
-    (unchanged) entity names at their existing slots. ``None`` means nothing
-    applies at the cursor position.
+    forms), Choice flag values, profile names after ``--profile``, attribute
+    logical names after ``--select`` for a known entity, and (unchanged) entity
+    names at their existing slots. ``None`` means nothing applies at the cursor
+    position.
+
+    ``attribute_getter`` maps an on-line entity token (set or logical name) to
+    that entity's attribute logical names; it is called only for a
+    ``--select`` value once an entity is resolvable on the line. Left ``None``
+    (or returning ``[]``) makes attribute completion a graceful no-op.
 
     ``--profile`` value-completion is deliberately position-blind (fires
     whenever the previous token is literally ``--profile``, regardless of
@@ -202,6 +273,15 @@ def complete_repl_line(
         return [p for p in profile_names if p.startswith(prefix)]
 
     if prev is not None and prev.startswith("-"):
+        # A column-valued option (``--select``) completes the on-line entity's
+        # attribute logical names. Resolve the entity from its slot; a missing
+        # entity or getter is a no-op (``--select`` carries no Choice values to
+        # fall back to anyway).
+        if prev in _ATTRIBUTE_OPTIONS and attribute_getter is not None:
+            entity = _entity_token_on_line(completed)
+            if entity is None:
+                return None
+            return [a for a in attribute_getter(entity) if a.startswith(prefix)]
         cmd = _resolve_command_chain(completed[:-1])
         if cmd is None:
             return None
@@ -248,10 +328,20 @@ class _ReplCompleter(Completer):
             # Kept independent of the profile/command/flag paths above, none
             # of which need a backend at all.
             logical, sets = [], []
+
+        def attribute_getter(entity_token: str) -> list[str]:
+            # Deferred: only a `--select <TAB>` on a resolvable entity reaches
+            # this, so the (possibly network) attribute fetch never runs for
+            # command/flag/profile completion. Any failure is a silent no-op.
+            try:
+                return self._cache.attribute_names(self._get_backend(), entity_token)
+            except Exception:  # completion must never raise
+                return []
+
         try:
             # A lazy-import failure inside _resolve_command_chain surfaces as a
             # click.ClickException; completion must never raise.
-            matches = complete_repl_line(line, logical, sets, profiles)
+            matches = complete_repl_line(line, logical, sets, profiles, attribute_getter)
         except Exception:
             return
         if matches is None:
