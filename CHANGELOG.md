@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.50.2 (2026-07-03)
+
+### Bug Fixes
+
+- **examples**: Metadata write examples need --solution + colon option syntax
+  ([#671](https://github.com/Gharib89/crm/pull/671),
+  [`fd58531`](https://github.com/Gharib89/crm/commit/fd585316dea3c75ec781d47c9fb5a1c04dd32690))
+
+### Testing
+
+- **examples**: Guards accept Click's --flag=value form too
+  ([#671](https://github.com/Gharib89/crm/pull/671),
+  [`fd58531`](https://github.com/Gharib89/crm/commit/fd585316dea3c75ec781d47c9fb5a1c04dd32690))
+
+- **examples**: Robust metadata-write guard + accurate failure-mode comment
+  ([#671](https://github.com/Gharib89/crm/pull/671),
+  [`fd58531`](https://github.com/Gharib89/crm/commit/fd585316dea3c75ec781d47c9fb5a1c04dd32690))
+
+
 ## v1.50.1 (2026-07-03)
 
 ### Bug Fixes
