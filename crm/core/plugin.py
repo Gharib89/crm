@@ -970,11 +970,13 @@ def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
 # force a real GET even under dry-run (the reads-execute rule), so a dry-run
 # previews accurate drift.
 
-# Read-only views of the stage/mode option-set maps so apply's plug-in reconcile
-# can compare a live step's stored ints against a desired stage/mode NAME without
-# duplicating the mapping (single source of truth: _STAGE / _MODE).
+# Read-only views of the stage/mode/isolation option-set maps so apply's plug-in
+# adapter can compare a live step's stored ints against a desired stage/mode NAME
+# and validate an assembly's isolation_mode up front without duplicating the
+# mapping (single source of truth: _STAGE / _MODE / _ISOLATION_MODE).
 STAGE_VALUES: dict[str, int] = dict(_STAGE)
 MODE_VALUES: dict[str, int] = dict(_MODE)
+ISOLATION_MODE_VALUES: dict[str, int] = dict(_ISOLATION_MODE)
 
 
 def find_assembly(backend: D365Backend, name: str) -> dict[str, Any] | None:

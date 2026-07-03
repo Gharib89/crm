@@ -298,12 +298,13 @@ def validate_spec(spec: Any) -> None:
         REGISTRY["webresource"].validate(wr)
     for role in _as_list(sp.get("security_roles")):
         REGISTRY["security-role"].validate(role)
+    # A plug-in is compound: the assembly block and each step block delegate their
+    # whole rules to the component-kind adapter (required keys, field types, the
+    # isolation/stage/mode vocabularies) — the same up-front authority the entity
+    # subtree uses. Its plug-in types and a step's images are create-only
+    # sub-collections with no adapter, so their document shape stays here.
     for plugin in _as_list(sp.get("plugins")):
-        _require(plugin, ("file",), "plug-in")
-        if not isinstance(plugin["file"], str):
-            raise D365Error("plug-in: file must be a string.")
-        if plugin.get("assembly") is not None and not isinstance(plugin["assembly"], str):
-            raise D365Error("plug-in: assembly must be a string.")
+        REGISTRY["plugin-assembly"].validate(plugin)
         plabel = f"plug-in {plugin.get('assembly') or plugin['file']!r}"
         for sub in ("types", "steps"):
             _require_list(plugin, sub, plabel)
@@ -312,15 +313,7 @@ def validate_spec(spec: Any) -> None:
             if not isinstance(typ["type_name"], str):
                 raise D365Error(f"{plabel}: type type_name must be a string.")
         for step in _as_list(plugin.get("steps")):
-            _require(step, ("name", "message", "plugin_type"), f"{plabel} step")
-            # Every string-typed step field reaches the Web API as a string; an
-            # unquoted YAML scalar must fail here, not blow up mid-apply.
-            for key in ("name", "message", "plugin_type", "entity", "stage", "mode",
-                        "filtering_attributes", "configuration"):
-                if step.get(key) is not None and not isinstance(step[key], str):
-                    raise D365Error(f"{plabel}: step {key!r} must be a string.")
-            if step.get("rank") is not None and not isinstance(step["rank"], int):
-                raise D365Error(f"{plabel}: step rank must be an integer (unquoted in YAML).")
+            REGISTRY["plugin-step"].validate(step)
             slabel = f"{plabel} step {step['name']!r}"
             _require_list(step, "images", slabel)
             for img in _as_list(step.get("images")):
@@ -1143,13 +1136,175 @@ def _reconcile_security_role(
     return "updated", {**entry, "diff": diff}
 
 
-# One component-kind adapter per migrated kind — the complete authority for its
-# kind (validate / to_kwargs / find_live / reconcile). The entity subtree (entity,
-# attribute, relationship, view) plus optionset, web resource, and security role
-# are fully migrated. The only kind still on the mixed driver is the compound
-# plug-in (assembly + step), which migrates in the final PRD slice; publisher and
-# solution stay out of the registry permanently (they are the target preamble, not
-# reconciled components).
+# ── plug-in assembly / plug-in step adapter functions ────────────────────────
+# The find_live / reconcile / extra_validate slots for the compound plug-in
+# migrated in #647 (PRD slice 3/3). The assembly is the top-level block and its
+# steps nest under it (same shape as entity/attribute in the walk); a plug-in's
+# types and a step's images are create-only sub-collections with no reconcile, so
+# they are not registry kinds. Defined above REGISTRY so the dict literal can
+# reference them; the helpers they call at run time (_read_file_bytes, _expanded)
+# live further down, unchanged.
+def _assembly_name(plugin: dict[str, Any]) -> str:
+    """The assembly's registration name: explicit ``assembly`` or the DLL basename."""
+    return plugin.get("assembly") or os.path.splitext(
+        os.path.basename(plugin["file"]))[0]
+
+
+def _find_live_plugin_assembly(
+    backend: D365Backend, plugin: dict[str, Any], ctx: ReconcileCtx,
+) -> dict[str, Any] | None:
+    """Probe the live plug-in assembly this block reconciles against (or None)."""
+    return plugin_mod.find_assembly(backend, _assembly_name(plugin))
+
+
+def _validate_plugin_assembly_block(plugin: dict[str, Any]) -> None:
+    """Assembly file/name rules plus the isolation_mode vocabulary.
+
+    ``file`` is required (the DLL to register) but is not a builder param — the
+    driver derives ``path`` / ``name`` from it — so it lives here rather than in
+    ``required_block_keys``. isolation_mode is routed through the same
+    ``ISOLATION_MODE_VALUES`` map register_assembly checks, so an unknown value
+    fails up front instead of mid-apply.
+    """
+    _require(plugin, ("file",), "plug-in")
+    if not isinstance(plugin["file"], str):
+        raise D365Error("plug-in: file must be a string.")
+    if plugin.get("assembly") is not None and not isinstance(plugin["assembly"], str):
+        raise D365Error("plug-in: assembly must be a string.")
+    # Gate on key PRESENCE, not truthiness: an explicit `isolation_mode: null` is
+    # invalid (register_assembly rejects None — it is not in the map) and must fail
+    # here, not slip through to_kwargs and blow up mid-apply. An omitted key falls
+    # to the builder's own default.
+    if "isolation_mode" in plugin and plugin["isolation_mode"] not in plugin_mod.ISOLATION_MODE_VALUES:
+        raise D365Error(
+            f"plug-in {_assembly_name(plugin)!r}: unknown isolation_mode "
+            f"{plugin['isolation_mode']!r}; "
+            f"choose from {sorted(plugin_mod.ISOLATION_MODE_VALUES)}.")
+
+
+def _reconcile_plugin_assembly(
+    backend: D365Backend, plugin: dict[str, Any], live: dict[str, Any],
+    ctx: ReconcileCtx, entry: Entry,
+) -> _Verdict:
+    """Diff an existing plug-in assembly against the rebuilt DLL; update or skip.
+
+    The spec file's bytes — read here from the block's ``file`` against
+    ``ctx.base_dir`` — are base64-compared against the live ``content`` column; on
+    drift the content is PATCHed in place (register_assembly's update path). There
+    is no destructive divergence for an assembly, so this never blocks. The update
+    is suppressed under dry-run (reads-execute rule).
+    """
+    name = _assembly_name(plugin)
+    content = _read_file_bytes(ctx.base_dir, plugin["file"])
+    desired_b64 = base64.b64encode(content).decode("ascii")
+    if live.get("content") == desired_b64:
+        return "skipped", entry
+    asm_path = os.path.join(ctx.base_dir or "", plugin["file"])
+    plugin_mod.register_assembly(
+        backend, path=asm_path, name=name, update=True, solution=ctx.solution)
+    return "updated", {**entry, "diff": {"fields": ["content"]}}
+
+
+# Step string-typed fields: every one reaches the Web API as a string, so an
+# unquoted YAML scalar must fail up front, not blow up mid-apply.
+_STEP_STRING_KEYS = ("name", "message", "plugin_type", "entity", "stage", "mode",
+                     "filtering_attributes", "configuration")
+
+
+def _find_live_plugin_step(
+    backend: D365Backend, step: dict[str, Any], ctx: ReconcileCtx,
+) -> dict[str, Any] | None:
+    """Probe the live plug-in step (by unique name) this block reconciles against."""
+    return plugin_mod.find_step(backend, step["name"])
+
+
+def _validate_plugin_step_block(step: dict[str, Any]) -> None:
+    """Step binding requirements, field types, and the stage/mode vocabulary.
+
+    ``name`` and ``plugin_type`` are required by apply (a step is keyed by its
+    unique name and binds to a plug-in type) though register_step defaults them, so
+    they live here rather than in ``required_block_keys`` — which mirrors the
+    builder's own required params (only ``message``). stage/mode are routed through
+    the same STAGE_VALUES / MODE_VALUES maps register_step checks, and the
+    async⇒postoperation rule mirrors its cross-field guard; all fail up front.
+    """
+    _require(step, ("name", "plugin_type"), "plug-in step")
+    slabel = f"plug-in step {step['name']!r}"
+    for key in _STEP_STRING_KEYS:
+        if step.get(key) is not None and not isinstance(step[key], str):
+            raise D365Error(f"{slabel}: {key!r} must be a string.")
+    # Presence-gated like the vocabularies below: an explicit `rank: null` is
+    # invalid (to_kwargs would forward rank=None into register_step's POST body),
+    # so reject a present non-int here; an omitted key falls to the builder default.
+    if "rank" in step and not isinstance(step["rank"], int):
+        raise D365Error(f"{slabel}: rank must be an integer (unquoted in YAML).")
+    # Gate the vocabularies on key PRESENCE, not truthiness: an explicit
+    # `stage: null` / `mode: null` is invalid (register_step rejects None — it is
+    # not in the map) and must fail here rather than slip through to_kwargs and
+    # blow up mid-apply. An omitted key falls to the builder's own default.
+    if "stage" in step and step["stage"] not in plugin_mod.STAGE_VALUES:
+        raise D365Error(f"{slabel}: unknown stage {step['stage']!r}; "
+                        f"choose from {sorted(plugin_mod.STAGE_VALUES)}.")
+    if "mode" in step and step["mode"] not in plugin_mod.MODE_VALUES:
+        raise D365Error(f"{slabel}: unknown mode {step['mode']!r}; "
+                        f"choose from {sorted(plugin_mod.MODE_VALUES)}.")
+    if step.get("mode") == "async" and step.get("stage", "postoperation") != "postoperation":
+        raise D365Error(f"{slabel}: asynchronous mode requires the postoperation "
+                        f"stage (got {step['stage']!r}).")
+
+
+def _reconcile_plugin_step(
+    backend: D365Backend, step: dict[str, Any], live: dict[str, Any],
+    ctx: ReconcileCtx, entry: Entry,
+) -> _Verdict:
+    """Diff an existing plug-in step against the spec; update, skip, or block.
+
+    Replace-blocked: a binding change — the SDK message, the primary entity, or
+    the plug-in type the step handles. The platform fixes those at creation, so
+    changing one needs a destructive delete-and-recreate; apply refuses (no
+    write) so the operator makes it deliberately. Updatable in place: the runtime
+    config (stage, mode, rank, filtering attributes, unsecure configuration) —
+    only the fields the spec explicitly declares are reconciled, so an omitted
+    field is left as-is. MS Learn recommends updating a step over delete-recreate.
+    """
+    if (step["message"] != _expanded(live, "sdkmessageid", "name")
+            or step.get("entity") != _expanded(live, "sdkmessagefilterid",
+                                                "primaryobjecttypecode")
+            or step["plugin_type"] != _expanded(live, "plugintypeid", "typename")):
+        return "replace_blocked", {
+            **entry,
+            "reason": "step binding change (message / entity / plug-in type) "
+                      "requires a destructive delete-and-recreate; refusing (no write).",
+        }
+    changes: dict[str, Any] = {}
+    if "stage" in step and plugin_mod.STAGE_VALUES.get(step["stage"]) != live.get("stage"):
+        changes["stage"] = step["stage"]
+    if "mode" in step and plugin_mod.MODE_VALUES.get(step["mode"]) != live.get("mode"):
+        changes["mode"] = step["mode"]
+    if "rank" in step and step["rank"] != live.get("rank"):
+        changes["rank"] = step["rank"]
+    # filteringattributes is only meaningful on Update (register_step ignores it
+    # otherwise), so only reconcile it there — else a declared filter on a
+    # non-Update step would re-update on every run.
+    if ("filtering_attributes" in step and step["message"].lower() == "update"
+            and step["filtering_attributes"] != live.get("filteringattributes")):
+        changes["filtering_attributes"] = step["filtering_attributes"]
+    if "configuration" in step and step["configuration"] != live.get("configuration"):
+        changes["configuration"] = step["configuration"]
+    if not changes:
+        return "skipped", entry
+    plugin_mod.update_step(
+        backend, step_id=str(live["sdkmessageprocessingstepid"]),
+        solution=ctx.solution, **changes)
+    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
+
+
+# One component-kind adapter per component kind — the complete authority for its
+# kind (validate / to_kwargs / find_live / reconcile). All nine reconciled kinds
+# are registry-driven: the entity subtree (entity, attribute, relationship, view),
+# optionset, web resource, security role, and the compound plug-in (assembly +
+# step). Publisher and solution stay out of the registry permanently — they are
+# the target preamble a customization write files into, not reconciled components.
 REGISTRY: dict[str, Adapter] = {
     "attribute": Adapter(
         map={
@@ -1333,6 +1488,55 @@ REGISTRY: dict[str, Adapter] = {
         find_live=_find_live_security_role,
         reconcile=_reconcile_security_role,
     ),
+    "plugin-assembly": Adapter(
+        map={
+            "isolation_mode": "isolation_mode",
+            "version": "version",
+            "culture": "culture",
+            "public_key_token": "public_key_token",
+            "description": "description",
+        },
+        transforms={},
+        # path and name are derived by the driver from the block's `file`, so both
+        # are injected; update is the driver's create-vs-reconcile flag.
+        injected=frozenset({"backend", "path", "name", "solution", "update"}),
+        defaults={},
+        # `file` is required but is not a builder param (path/name derive from it),
+        # so the requirement lives in extra_validate, not required_block_keys —
+        # which mirrors register_assembly's own required params (only path/backend,
+        # both injected).
+        required_block_keys=(),
+        block_label="plug-in",
+        extra_validate=_validate_plugin_assembly_block,
+        find_live=_find_live_plugin_assembly,
+        reconcile=_reconcile_plugin_assembly,
+    ),
+    "plugin-step": Adapter(
+        map={
+            "name": "name",
+            "message": "message",
+            "plugin_type": "plugin_type",
+            "entity": "entity",
+            "stage": "stage",
+            "mode": "mode",
+            "rank": "rank",
+            "filtering_attributes": "filtering_attributes",
+            "configuration": "configuration",
+        },
+        transforms={},
+        # assembly (the parent's name) is supplied by the driver; asyncautodelete
+        # and service_endpoint are register_step params the apply spec does not
+        # expose, so the driver leaves them at their builder defaults — injected
+        # (driver-owned, never spec-sourced), exactly as `publish` is for attribute.
+        injected=frozenset(
+            {"backend", "assembly", "solution", "asyncautodelete", "service_endpoint"}),
+        defaults={},
+        required_block_keys=("message",),
+        block_label="plug-in step",
+        extra_validate=_validate_plugin_step_block,
+        find_live=_find_live_plugin_step,
+        reconcile=_reconcile_plugin_step,
+    ),
 }
 
 
@@ -1425,193 +1629,6 @@ def _expanded(row: dict[str, Any], nav: str, field: str) -> Any:
     """
     obj = row.get(nav)
     return cast("dict[str, Any]", obj).get(field) if isinstance(obj, dict) else None
-
-
-def _reconcile_plugin_assembly(
-    backend: D365Backend, name: str, content: bytes, asm_path: str,
-    live: dict[str, Any], solution: str | None, entry: Entry,
-) -> _Verdict:
-    """Diff an existing plug-in assembly against the rebuilt DLL; update or skip.
-
-    The spec file's bytes are base64-compared against the live `content` column;
-    on drift the assembly content is PATCHed in place (register_assembly's update
-    path). There is no destructive divergence for an assembly, so this never
-    blocks. The update is suppressed under dry-run (reads-execute rule).
-    """
-    desired_b64 = base64.b64encode(content).decode("ascii")
-    if live.get("content") == desired_b64:
-        return "skipped", entry
-    plugin_mod.register_assembly(
-        backend, path=asm_path, name=name, update=True, solution=solution)
-    return "updated", {**entry, "diff": {"fields": ["content"]}}
-
-
-def _reconcile_plugin_step(
-    backend: D365Backend, step: dict[str, Any], live: dict[str, Any],
-    solution: str | None, entry: Entry,
-) -> _Verdict:
-    """Diff an existing plug-in step against the spec; update, skip, or block.
-
-    Replace-blocked: a binding change — the SDK message, the primary entity, or
-    the plug-in type the step handles. The platform fixes those at creation, so
-    changing one needs a destructive delete-and-recreate; apply refuses (no
-    write) so the operator makes it deliberately. Updatable in place: the runtime
-    config (stage, mode, rank, filtering attributes, unsecure configuration) —
-    only the fields the spec explicitly declares are reconciled, so an omitted
-    field is left as-is. MS Learn recommends updating a step over delete-recreate.
-    """
-    if (step["message"] != _expanded(live, "sdkmessageid", "name")
-            or step.get("entity") != _expanded(live, "sdkmessagefilterid",
-                                                "primaryobjecttypecode")
-            or step["plugin_type"] != _expanded(live, "plugintypeid", "typename")):
-        return "replace_blocked", {
-            **entry,
-            "reason": "step binding change (message / entity / plug-in type) "
-                      "requires a destructive delete-and-recreate; refusing (no write).",
-        }
-    changes: dict[str, Any] = {}
-    if "stage" in step and plugin_mod.STAGE_VALUES.get(step["stage"]) != live.get("stage"):
-        changes["stage"] = step["stage"]
-    if "mode" in step and plugin_mod.MODE_VALUES.get(step["mode"]) != live.get("mode"):
-        changes["mode"] = step["mode"]
-    if "rank" in step and step["rank"] != live.get("rank"):
-        changes["rank"] = step["rank"]
-    # filteringattributes is only meaningful on Update (register_step ignores it
-    # otherwise), so only reconcile it there — else a declared filter on a
-    # non-Update step would re-update on every run.
-    if ("filtering_attributes" in step and step["message"].lower() == "update"
-            and step["filtering_attributes"] != live.get("filteringattributes")):
-        changes["filtering_attributes"] = step["filtering_attributes"]
-    if "configuration" in step and step["configuration"] != live.get("configuration"):
-        changes["configuration"] = step["configuration"]
-    if not changes:
-        return "skipped", entry
-    plugin_mod.update_step(
-        backend, step_id=str(live["sdkmessageprocessingstepid"]),
-        solution=solution, **changes)
-    return "updated", {**entry, "diff": {"fields": sorted(changes)}}
-
-
-def _apply_plugin(
-    backend: D365Backend, plugin: dict[str, Any], *,
-    solution: str | None, base_dir: str | None,
-    applied: list[Entry], skipped: list[Entry], planned: list[Entry],
-    failed: list[Entry], routes: dict[str, list[Entry]],
-) -> None:
-    """Apply one declared plug-in: assembly, then its types, steps, and images.
-
-    Reuses the plugin core (register_assembly with content PATCH on update,
-    register_type / register_step / register_image) and diffs each component
-    convergently. A fresh content-only assembly carries zero plug-in types, so
-    when this run just created the assembly every declared type is registered
-    without a per-type existence probe; a pre-existing assembly is listed once to
-    skip the types it already has. Under dry-run a greenfield assembly does not
-    resolve, so its whole subtree is reported `planned` without calling a core
-    that would network-resolve the missing assembly and raise. D365Error in any
-    core call aborts the whole apply (the _Aborted contract).
-    """
-    name: str = plugin.get("assembly") or os.path.splitext(
-        os.path.basename(plugin["file"]))[0]
-    asm_path = os.path.join(base_dir or "", plugin["file"])
-    asm_entry: Entry = {"kind": "plugin-assembly", "name": name}
-
-    live_asm = _call(asm_entry, lambda: plugin_mod.find_assembly(backend, name), failed)
-    assembly_planned = False
-    assembly_created = False
-    if live_asm is None:
-        result = _call(asm_entry, lambda: plugin_mod.register_assembly(
-            backend, path=asm_path, name=name,
-            isolation_mode=plugin.get("isolation_mode", "sandbox"),
-            version=plugin.get("version"), culture=plugin.get("culture"),
-            public_key_token=plugin.get("public_key_token"),
-            description=plugin.get("description"),
-            solution=solution, update=False), failed)
-        bucket = _classify(result, asm_entry, applied, skipped, planned)
-        assembly_planned = bucket == "planned"
-        assembly_created = bucket == "applied"
-    else:
-        content = _call(asm_entry, lambda: _read_file_bytes(base_dir, plugin["file"]),
-                        failed)
-        _reconcile(asm_entry, lambda: _reconcile_plugin_assembly(
-            backend, name, content, asm_path, live_asm, solution, asm_entry),
-            failed, routes)
-
-    # Types. A just-created assembly has none, so register each declared type
-    # directly; a pre-existing one is listed once to skip what it already has.
-    live_typenames: set[str] | None = None
-    for typ in _as_list(plugin.get("types")):
-        t_entry: Entry = {"kind": "plugin-type", "name": typ["type_name"]}
-        if assembly_planned:
-            planned.append(t_entry)
-            continue
-        if not assembly_created:
-            if live_typenames is None:
-                listing = _call(
-                    t_entry, lambda: plugin_mod.list_types(backend, assembly=name), failed)
-                live_typenames = {str(r.get("typename"))
-                                  for r in listing.get("value", [])}
-            if typ["type_name"] in live_typenames:
-                skipped.append(t_entry)
-                continue
-        result = _call(t_entry, lambda typ=typ: plugin_mod.register_type(
-            backend, assembly=name, type_name=typ["type_name"],
-            friendly_name=typ.get("friendly_name"), solution=solution), failed)
-        _classify(result, t_entry, applied, skipped, planned)
-
-    # Steps (with their images). Each step is keyed by its (unique) name.
-    for step in _as_list(plugin.get("steps")):
-        s_entry: Entry = {"kind": "plugin-step", "name": step["name"]}
-        if assembly_planned:
-            planned.append(s_entry)
-            for img in _as_list(step.get("images")):
-                planned.append({"kind": "plugin-image", "name": img["alias"]})
-            continue
-        live_step = _call(
-            s_entry, lambda step=step: plugin_mod.find_step(backend, step["name"]), failed)
-        step_id: str | None = None
-        step_blocked = False
-        if live_step is None:
-            result = _call(s_entry, lambda step=step: plugin_mod.register_step(
-                backend, message=step["message"], plugin_type=step["plugin_type"],
-                entity=step.get("entity"), stage=step.get("stage", "postoperation"),
-                mode=step.get("mode", "sync"), rank=step.get("rank", 1),
-                filtering_attributes=step.get("filtering_attributes"),
-                name=step["name"], configuration=step.get("configuration"),
-                assembly=name, solution=solution), failed)
-            _classify(result, s_entry, applied, skipped, planned)
-            step_id = result.get("sdkmessageprocessingstepid")  # None under dry-run
-        else:
-            try:
-                verdict, payload = _reconcile_plugin_step(
-                    backend, step, live_step, solution, s_entry)
-            except D365Error as exc:
-                failed.append({**s_entry, "error": str(exc)})
-                raise _Aborted from exc
-            routes[verdict].append(payload)
-            step_id = str(live_step["sdkmessageprocessingstepid"])
-            step_blocked = verdict == "replace_blocked"
-
-        for img in _as_list(step.get("images")):
-            img_entry: Entry = {"kind": "plugin-image", "name": img["alias"]}
-            if step_blocked:
-                continue  # blocked step: leave its image subtree until it is recreated
-            if step_id is None:
-                planned.append(img_entry)  # dry-run: step would be created → image too
-                continue
-            existing_img = _call(
-                img_entry, lambda img=img, step_id=step_id:
-                plugin_mod.find_step_image(backend, step_id, img["alias"]), failed)
-            if existing_img is not None:
-                skipped.append(img_entry)
-                continue
-            result = _call(img_entry, lambda img=img, step_id=step_id:
-                           plugin_mod.register_image(
-                               backend, step=step_id, image_type=img["image_type"],
-                               alias=img["alias"], attributes=img.get("attributes"),
-                               name=img.get("name"),
-                               message_property_name=img.get("message_property_name"),
-                               solution=solution), failed)
-            _classify(result, img_entry, applied, skipped, planned)
 
 
 # ── Prune (#553): solution-bounded detection + gated deletion ────────────────
@@ -2082,14 +2099,118 @@ def apply_spec(
                   sec_mod.replace_role_privileges(backend, role_id, desired), failed)
             applied.append(entry)
 
-        # Phase: plug-ins (assembly + types + steps + images). On-prem
-        # extensibility is provisioned from the spec (#552); reuses the plugin
-        # core — apply orchestrates and diffs, it does not reimplement
-        # registration. Plug-in components are not publishable (see below).
+        # Phase: plug-ins. A declared plug-in is compound: the assembly is the
+        # top-level block (registry-driven, probe→create/reconcile like a web
+        # resource — no if_exists on the core) and its steps nest under it
+        # (registry-driven, like attributes under an entity). Its plug-in types and
+        # a step's entity images are create-only sub-collections with no reconcile,
+        # so they stay inline sequencing rather than registry kinds. On-prem
+        # extensibility is provisioned from the spec (#552); apply orchestrates and
+        # diffs through the plugin core, it does not reimplement registration.
+        # Plug-in components are not publishable (see _NON_PUBLISHABLE below).
         for plugin in _as_list(spec.get("plugins")):
-            _apply_plugin(backend, plugin, solution=solution_name, base_dir=base_dir,
-                          applied=applied, skipped=skipped, planned=planned,
-                          failed=failed, routes=routes)
+            name = _assembly_name(plugin)
+            asm_path = os.path.join(base_dir or "", plugin["file"])
+            asm_entry = {"kind": "plugin-assembly", "name": name}
+            ctx = ReconcileCtx(solution=solution_name, base_dir=base_dir)
+
+            # Assembly: probe → absent ⇒ register, present ⇒ reconcile content drift.
+            live_asm = _call(asm_entry, lambda plugin=plugin, ctx=ctx:
+                             _find_live_plugin_assembly(backend, plugin, ctx), failed)
+            assembly_planned = False
+            assembly_created = False
+            if live_asm is None:
+                result = _call(asm_entry, lambda plugin=plugin:
+                               plugin_mod.register_assembly(
+                                   backend,
+                                   **REGISTRY["plugin-assembly"].to_kwargs(plugin),
+                                   path=asm_path, name=name, solution=solution_name,
+                                   update=False), failed)
+                bucket = _classify(result, asm_entry, applied, skipped, planned)
+                assembly_planned = bucket == "planned"
+                assembly_created = bucket == "applied"
+            else:
+                _reconcile(asm_entry, lambda plugin=plugin, live_asm=live_asm, ctx=ctx:
+                           _reconcile_plugin_assembly(
+                               backend, plugin, live_asm, ctx, asm_entry),
+                           failed, routes)
+
+            # Types (create-only, nested). A just-created assembly has none, so
+            # register each declared type directly; a pre-existing one is listed
+            # once to skip what it already has.
+            live_typenames: set[str] | None = None
+            for typ in _as_list(plugin.get("types")):
+                t_entry: Entry = {"kind": "plugin-type", "name": typ["type_name"]}
+                if assembly_planned:
+                    planned.append(t_entry)
+                    continue
+                if not assembly_created:
+                    if live_typenames is None:
+                        listing = _call(t_entry, lambda: plugin_mod.list_types(
+                            backend, assembly=name), failed)
+                        live_typenames = {str(r.get("typename"))
+                                          for r in listing.get("value", [])}
+                    if typ["type_name"] in live_typenames:
+                        skipped.append(t_entry)
+                        continue
+                result = _call(t_entry, lambda typ=typ: plugin_mod.register_type(
+                    backend, assembly=name, type_name=typ["type_name"],
+                    friendly_name=typ.get("friendly_name"), solution=solution_name), failed)
+                _classify(result, t_entry, applied, skipped, planned)
+
+            # Steps (registry-driven, nested) with their images (create-only).
+            for step in _as_list(plugin.get("steps")):
+                s_entry: Entry = {"kind": "plugin-step", "name": step["name"]}
+                if assembly_planned:
+                    planned.append(s_entry)
+                    for img in _as_list(step.get("images")):
+                        planned.append({"kind": "plugin-image", "name": img["alias"]})
+                    continue
+                live_step = _call(s_entry, lambda step=step, ctx=ctx:
+                                  _find_live_plugin_step(backend, step, ctx), failed)
+                step_id: str | None = None
+                step_blocked = False
+                if live_step is None:
+                    result = _call(s_entry, lambda step=step: plugin_mod.register_step(
+                        backend, **REGISTRY["plugin-step"].to_kwargs(step),
+                        assembly=name, solution=solution_name), failed)
+                    _classify(result, s_entry, applied, skipped, planned)
+                    step_id = result.get("sdkmessageprocessingstepid")  # None under dry-run
+                else:
+                    # A step reconcile needs its verdict here (a replace-blocked step
+                    # leaves its image subtree untouched), so drive the adapter's
+                    # reconcile directly rather than through the routing wrapper.
+                    try:
+                        verdict, payload = _reconcile_plugin_step(
+                            backend, step, live_step, ctx, s_entry)
+                    except D365Error as exc:
+                        failed.append({**s_entry, "error": str(exc)})
+                        raise _Aborted from exc
+                    routes[verdict].append(payload)
+                    step_id = str(live_step["sdkmessageprocessingstepid"])
+                    step_blocked = verdict == "replace_blocked"
+
+                for img in _as_list(step.get("images")):
+                    img_entry: Entry = {"kind": "plugin-image", "name": img["alias"]}
+                    if step_blocked:
+                        continue  # blocked step: leave its images until it is recreated
+                    if step_id is None:
+                        planned.append(img_entry)  # dry-run: step would be created → image too
+                        continue
+                    existing_img = _call(
+                        img_entry, lambda img=img, step_id=step_id:
+                        plugin_mod.find_step_image(backend, step_id, img["alias"]), failed)
+                    if existing_img is not None:
+                        skipped.append(img_entry)
+                        continue
+                    result = _call(img_entry, lambda img=img, step_id=step_id:
+                                   plugin_mod.register_image(
+                                       backend, step=step_id, image_type=img["image_type"],
+                                       alias=img["alias"], attributes=img.get("attributes"),
+                                       name=img.get("name"),
+                                       message_property_name=img.get("message_property_name"),
+                                       solution=solution_name), failed)
+                    _classify(result, img_entry, applied, skipped, planned)
     except _Aborted:
         pass
 

@@ -3492,7 +3492,8 @@ def test_reconcile_plugin_step_unchanged_returns_skipped(backend):
     from crm.core.apply import _reconcile_plugin_step
     live = _step_row(message="Create", entity="account", stage=40, mode=0, rank=1)
     step = {"name": "S", "message": "Create", "plugin_type": _TYPE_NAME, "entity": "account"}
-    verdict, _ = _reconcile_plugin_step(backend, step, live, None,
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    verdict, _ = _reconcile_plugin_step(backend, step, live, ctx,
                                         {"kind": "plugin-step", "name": "S"})
     assert verdict == "skipped"
 
@@ -3998,6 +3999,7 @@ import inspect
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
 from crm.core import optionsets as os_mod
+from crm.core import plugin as plugin_mod
 from crm.core import relationships as rel_mod
 from crm.core import security as sec_mod
 from crm.core import views as views_mod
@@ -4011,6 +4013,8 @@ _ADAPTER_BUILDERS = {
     "optionset": os_mod.create_optionset,
     "webresource": wr_mod.create_webresource,
     "security-role": sec_mod.create_role,
+    "plugin-assembly": plugin_mod.register_assembly,
+    "plugin-step": plugin_mod.register_step,
 }
 
 
@@ -4205,6 +4209,18 @@ def test_apply_rejects_optionset_schema_name_without_prefix_before_http(backend)
         assert m.request_history == []
 
 
+def test_apply_rejects_plugin_step_bad_stage_before_http(backend, tmp_path):
+    # #647 enumerated behavior change: a step's stage/mode vocabulary is routed
+    # through adapter.validate now, so an unknown stage fails in the up-front pass —
+    # before any write — where it used to fail mid-apply inside register_step.
+    spec = {"solution": _SOLUTION,
+            "plugins": [_plugin_spec(tmp_path, steps=[_step_spec(stage="wherever")])]}
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="unknown stage"):
+            apply_mod.apply_spec(backend, spec, stage_only=False)
+        assert m.request_history == []
+
+
 # ── component-kind adapter interface (#645) ──────────────────────────────────
 # PR 1 of the apply-adapters PRD (#643): the entity subtree (entity, attribute,
 # relationship, view) is migrated to the full component-kind adapter interface —
@@ -4286,6 +4302,33 @@ def test_required_block_keys_match_builder_required_params(kind):
     ("security-role", {"name": "R"}, "at least one privilege row is required"),
     ("security-role", {"name": "R", "privileges": [{"depth": "Basic"}]},
      "each privilege row needs"),
+    # plug-in assembly / plug-in step (#647). `file` (assembly) and name/plugin_type
+    # (step) are apply-required though not required builder params, so they reject in
+    # extra_validate; the isolation/stage/mode vocabularies and async⇒postoperation
+    # rule fold in from the builder — up front, not mid-apply.
+    ("plugin-assembly", {}, "missing required field 'file'"),
+    ("plugin-assembly", {"file": "p.dll", "isolation_mode": "nope"},
+     "unknown isolation_mode"),
+    # An explicit YAML null is invalid (register_* rejects None), so it must fail
+    # up front too, not slip through to_kwargs into a mid-apply raise.
+    ("plugin-assembly", {"file": "p.dll", "isolation_mode": None}, "unknown isolation_mode"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "stage": None},
+     "unknown stage"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "mode": None},
+     "unknown mode"),
+    ("plugin-step", {"name": "S", "plugin_type": "My.T"}, "missing required field 'message'"),
+    ("plugin-step", {"message": "Create", "plugin_type": "My.T"},
+     "missing required field 'name'"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "rank": "1"},
+     "rank must be an integer"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "rank": None},
+     "rank must be an integer"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "stage": "nope"},
+     "unknown stage"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T", "mode": "nope"},
+     "unknown mode"),
+    ("plugin-step", {"name": "S", "message": "Create", "plugin_type": "My.T",
+                     "mode": "async", "stage": "preoperation"}, "postoperation"),
 ])
 def test_adapter_validate_rejects_bad_block(kind, block, match):
     """adapter.validate is the complete up-front authority for one block — required
@@ -4483,3 +4526,54 @@ def test_adapter_reconcile_security_role_subset_satisfied_skipped(backend):
             (_PRV_WRITE, "Global", "prvWriteAccount")])
         verdict, _ = _reconcile_through_adapter(backend, "security-role", role_spec, ctx, entry)
     assert verdict == "skipped"
+
+
+# ── plug-in assembly / plug-in step reconcile through the interface (#647) ───
+def test_adapter_reconcile_plugin_assembly_updated(backend, tmp_path):
+    # The rebuilt DLL bytes (read via the block's file + ctx.base_dir) differ from
+    # the live assembly's base64 content → PATCH content in place → updated.
+    plugin = _plugin_spec(tmp_path, body=b"NEW DLL")
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "plugin-assembly", "name": _ASM_NAME}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend, content=b"OLD DLL")
+        verdict, payload = _reconcile_through_adapter(backend, "plugin-assembly", plugin, ctx, entry)
+    assert verdict == "updated"
+    assert payload["diff"]["fields"] == ["content"]
+
+
+def test_adapter_reconcile_plugin_assembly_no_drift_skipped(backend, tmp_path):
+    # Identical bytes → no write → skipped (an assembly never blocks).
+    plugin = _plugin_spec(tmp_path, body=b"SAME DLL")
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "plugin-assembly", "name": _ASM_NAME}
+    with requests_mock.Mocker() as m:
+        _mock_assembly_live(m, backend, content=b"SAME DLL")
+        verdict, _ = _reconcile_through_adapter(backend, "plugin-assembly", plugin, ctx, entry)
+    assert verdict == "skipped"
+
+
+def test_adapter_reconcile_plugin_step_replace_blocked_on_binding(backend):
+    # A binding change (the SDK message the step handles) needs a destructive
+    # delete-and-recreate → replace_blocked, no write.
+    step = {"name": "S", "message": "Update", "plugin_type": _TYPE_NAME, "entity": "account"}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "plugin-step", "name": "S"}
+    with requests_mock.Mocker() as m:
+        _mock_step_live(m, backend, _step_row(message="Create", entity="account"))
+        verdict, payload = _reconcile_through_adapter(backend, "plugin-step", step, ctx, entry)
+    assert verdict == "replace_blocked"
+    assert "reason" in payload
+
+
+def test_adapter_reconcile_plugin_step_config_drift_updated(backend):
+    # Binding unchanged, runtime config drifts (rank) → update in place → updated.
+    step = {"name": "S", "message": "Create", "plugin_type": _TYPE_NAME,
+            "entity": "account", "rank": 5}
+    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
+    entry = {"kind": "plugin-step", "name": "S"}
+    with requests_mock.Mocker() as m:
+        _mock_step_live(m, backend, _step_row(message="Create", entity="account", rank=1))
+        verdict, payload = _reconcile_through_adapter(backend, "plugin-step", step, ctx, entry)
+    assert verdict == "updated"
+    assert payload["diff"]["fields"] == ["rank"]
