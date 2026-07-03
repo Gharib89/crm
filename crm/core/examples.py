@@ -116,11 +116,11 @@ EXAMPLES: dict[str, list[Example]] = {
             "Show saved profiles and which one is active.",
         ),
         Example(
-            "crm profile add --url https://org.crm.dynamics.com --name prod",
+            "crm profile add --url https://contoso.crm.dynamics.com --name PROFILE_NAME",
             "Add a profile (auth scheme inferred from the URL).",
         ),
         Example(
-            "crm profile use prod",
+            "crm profile use PROFILE_NAME",
             "Switch the active profile.",
         ),
     ],

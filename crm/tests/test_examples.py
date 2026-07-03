@@ -23,9 +23,12 @@ def _resolve(command: str) -> click.Command:
 
     Returns the resolved leaf command. Raises ``AssertionError`` if the command
     path does not exist or any flag is not a real option of a command on the
-    resolved path (or a root global option). Drives the lazy root group via
-    ``get_command``/``list_commands`` — its naive ``.commands`` set is empty until
-    a subcommand loads, so a walker that read that directly would see nothing.
+    resolved path (or a root global option). Root global options are accepted
+    both in their leading position (``crm --json entity ...``) and trailing;
+    leading ones are skipped before the command-path walk. Drives the lazy root
+    group via ``get_command``/``list_commands`` — its naive ``.commands`` set is
+    empty until a subcommand loads, so a walker that read that directly would see
+    nothing.
     """
     tokens = shlex.split(command)
     assert tokens and tokens[0] == "crm", f"example must start with 'crm': {command!r}"
@@ -35,7 +38,24 @@ def _resolve(command: str) -> click.Command:
     current: click.Command = cli
     path_cmds: list[click.Command] = [cli]
 
+    # Root global options may lead the invocation, before the subcommand token
+    # (`crm --json ...`). Skip that leading run so the path walk starts at the
+    # command; a value-taking global (`--profile NAME`) also consumes its value.
+    root_flags: set[str] = set()
+    root_value_opts: set[str] = set()
+    for p in cli.params:
+        if isinstance(p, click.Option):
+            (root_flags if p.is_flag else root_value_opts).update(p.opts, p.secondary_opts)
     i = 0
+    while i < len(tokens) and tokens[i].startswith("-"):
+        name = tokens[i].split("=", 1)[0]
+        if name in root_flags:
+            i += 1
+        elif name in root_value_opts:
+            i += 1 if "=" in tokens[i] else 2
+        else:
+            break  # unrecognized leading option — let the flag check below flag it
+
     while i < len(tokens):
         tok = tokens[i]
         if tok.startswith("-"):
@@ -85,6 +105,14 @@ def test_gallery_is_non_empty_and_resolver_descends():
     assert reg.listing(None)
     leaf = _resolve("crm entity get accounts ID --select name")
     assert leaf.name == "get"
+
+
+def test_resolver_accepts_leading_and_trailing_global_options():
+    # A leading global option (before the subcommand) is skipped, incl. its value;
+    # a trailing one validates against the root option set.
+    assert _resolve("crm --json query count accounts").name == "count"
+    assert _resolve("crm --profile NAME entity get accounts ID").name == "get"
+    assert _resolve("crm entity get accounts ID --json").name == "get"
 
 
 def test_resolver_rejects_unknown_command():
