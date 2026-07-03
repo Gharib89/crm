@@ -112,19 +112,27 @@ def test_customization_write_examples_target_a_solution():
     for group, ex in reg.listing(None):
         toks = shlex.split(ex.command)
         if toks[:2] == ["crm", "metadata"] and any(v in toks for v in _CUSTOMIZATION_WRITE_VERBS):
-            assert "--solution" in toks, (
+            # Accept both the space form (--solution X) and Click's equals form
+            # (--solution=X), so a valid equals-form example isn't misflagged.
+            has_solution = any(t == "--solution" or t.startswith("--solution=") for t in toks)
+            assert has_solution, (
                 f"customization-write example must pass --solution: {ex.command!r}"
             )
 
 
 def test_optionset_examples_use_colon_option_syntax():
     # `--option` wants 'value:label' (or ':label'); an '=' separator is rejected
-    # as a BadParameter at runtime, so an example using it never runs.
+    # as a BadParameter at runtime, so an example using it never runs. Check both
+    # token shapes Click accepts: `--option VALUE` and `--option=VALUE`.
     for group, ex in reg.listing(None):
         toks = shlex.split(ex.command)
         for i, tok in enumerate(toks):
+            value = None
             if tok == "--option" and i + 1 < len(toks):
                 value = toks[i + 1]
+            elif tok.startswith("--option="):
+                value = tok.split("=", 1)[1]
+            if value is not None:
                 assert ":" in value, f"--option must be 'value:label', not '=': {ex.command!r}"
 
 
