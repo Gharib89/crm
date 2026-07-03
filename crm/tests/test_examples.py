@@ -97,6 +97,37 @@ def test_every_curated_example_resolves_against_live_cli():
         assert resolved is not None, (group, ex.command)
 
 
+# Metadata verbs that write customizations — the backend refuses them without an
+# explicit target solution (`--solution is required for customization writes`).
+# The static resolver above can't see this runtime requirement, so a curated
+# example that omits --solution parses fine yet fails for every user (verified
+# live against the cloud org). Guard the gallery against that class of drift.
+_CUSTOMIZATION_WRITE_VERBS = frozenset({
+    "add-attribute", "create-optionset", "update-optionset",
+    "create-entity", "create-one-to-many", "create-many-to-many",
+})
+
+
+def test_customization_write_examples_target_a_solution():
+    for group, ex in reg.listing(None):
+        toks = shlex.split(ex.command)
+        if toks[:2] == ["crm", "metadata"] and any(v in toks for v in _CUSTOMIZATION_WRITE_VERBS):
+            assert "--solution" in toks, (
+                f"customization-write example must pass --solution: {ex.command!r}"
+            )
+
+
+def test_optionset_examples_use_colon_option_syntax():
+    # `--option` wants 'value:label' (or ':label'); an '=' separator is rejected
+    # as a BadParameter at runtime, so an example using it never runs.
+    for group, ex in reg.listing(None):
+        toks = shlex.split(ex.command)
+        for i, tok in enumerate(toks):
+            if tok == "--option" and i + 1 < len(toks):
+                value = toks[i + 1]
+                assert ":" in value, f"--option must be 'value:label', not '=': {ex.command!r}"
+
+
 def test_gallery_is_non_empty_and_resolver_descends():
     # Two distinct guards, no brittle count: (1) a non-empty gallery so the
     # resolve test above can't pass vacuously over an empty loop; (2) proof the
