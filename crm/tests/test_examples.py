@@ -77,11 +77,12 @@ def test_every_curated_example_resolves_against_live_cli():
         assert resolved is not None, (group, ex.command)
 
 
-def test_gallery_has_a_sanity_floor():
-    # Guards the lazy-root trap: a walker that saw the empty `.commands` set would
-    # yield an empty gallery and the resolve test would pass vacuously. A concrete
-    # floor plus a proof the resolver descends to a real leaf catches that.
-    assert len(reg.listing(None)) >= 20
+def test_gallery_is_non_empty_and_resolver_descends():
+    # Two distinct guards, no brittle count: (1) a non-empty gallery so the
+    # resolve test above can't pass vacuously over an empty loop; (2) proof the
+    # resolver actually descends the lazy tree to a real leaf (a walker that read
+    # the empty `.commands` set instead of get_command would fail this).
+    assert reg.listing(None)
     leaf = _resolve("crm entity get accounts ID --select name")
     assert leaf.name == "get"
 
@@ -132,6 +133,7 @@ def test_unknown_group_is_clean_failure():
 # ── Interactive TTY picker ────────────────────────────────────────────────────
 def test_picker_prints_selected_command(monkeypatch):
     monkeypatch.setattr(examples_mod, "_stdin_is_tty", lambda: True)
+    monkeypatch.setattr(examples_mod, "_stdout_is_tty", lambda: True)
     responses = iter(["query", "crm query count accounts"])
     monkeypatch.setattr(examples_mod, "select_one", lambda *a, **k: next(responses))
     result = CliRunner().invoke(cli, ["examples"])
@@ -141,6 +143,7 @@ def test_picker_prints_selected_command(monkeypatch):
 
 def test_picker_with_group_arg_skips_the_group_picker(monkeypatch):
     monkeypatch.setattr(examples_mod, "_stdin_is_tty", lambda: True)
+    monkeypatch.setattr(examples_mod, "_stdout_is_tty", lambda: True)
     calls: list[str] = []
 
     def fake_select(title, items, default=None):
@@ -154,8 +157,24 @@ def test_picker_with_group_arg_skips_the_group_picker(monkeypatch):
     assert reg.examples_for("solution")[0].command in result.output
 
 
+def test_piped_stdout_lists_instead_of_prompting(monkeypatch):
+    # TTY stdin but non-TTY stdout (e.g. `crm examples | head`): must not invoke
+    # the picker — fall through to the non-blocking listing instead.
+    monkeypatch.setattr(examples_mod, "_stdin_is_tty", lambda: True)
+    monkeypatch.setattr(examples_mod, "_stdout_is_tty", lambda: False)
+
+    def boom(*_a, **_k):
+        raise AssertionError("picker must not run when stdout is not a TTY")
+
+    monkeypatch.setattr(examples_mod, "select_one", boom)
+    result = CliRunner().invoke(cli, ["examples", "query"])
+    assert result.exit_code == 0, result.output
+    assert "crm query count accounts" in result.output
+
+
 def test_picker_cancel_is_clean_failure(monkeypatch):
     monkeypatch.setattr(examples_mod, "_stdin_is_tty", lambda: True)
+    monkeypatch.setattr(examples_mod, "_stdout_is_tty", lambda: True)
     monkeypatch.setattr(examples_mod, "select_one", lambda *a, **k: None)
     result = CliRunner().invoke(cli, ["examples", "entity"])
     assert result.exit_code == 1

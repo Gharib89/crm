@@ -13,7 +13,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers.confirm import select_one
-from crm.commands._tty import _stdin_is_tty
+from crm.commands._tty import _stdin_is_tty, _stdout_is_tty
 from crm.core import examples as reg
 
 
@@ -42,9 +42,11 @@ def examples_cmd(ctx: CLIContext, group: str | None):
         )
         return
 
-    # Interactive picker only on a real human TTY. Everything else (agents, CI,
-    # pipes, --json) gets a non-blocking listing.
-    if not ctx.json_mode and _stdin_is_tty():
+    # Interactive picker only when both stdin and stdout are real terminals.
+    # Everything else (agents, CI, --json, or a piped/redirected stdout such as
+    # `crm examples | head`) gets a non-blocking listing — a prompt whose UI
+    # would be swallowed by the pipe must never block.
+    if not ctx.json_mode and _stdin_is_tty() and _stdout_is_tty():
         _run_picker(ctx, group)
         return
 
