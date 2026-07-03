@@ -86,6 +86,19 @@ class TestReadSafeActions:
         assert result == {"ok": True}
         assert [r.method for r in m.request_history] == ["POST"]
 
+    @pytest.mark.parametrize("verb", ["patch", "delete"])
+    def test_allowlisted_action_name_not_exempt_for_non_post(
+        self, ro_backend: D365Backend, verb: str
+    ):
+        """The export exemption is POST-only: a PATCH/DELETE to a path whose
+        action name matches the allowlist is still refused, not bypassed."""
+        call = getattr(ro_backend, verb)
+        args = ("ExportSolution",) if verb == "delete" else ("ExportSolution", {})
+        with requests_mock.Mocker() as m:
+            with pytest.raises(D365Error):
+                call(*args)
+        assert m.request_history == []
+
 
 class TestDryRunWins:
     def test_read_only_plus_dry_run_previews_not_refuses(self):

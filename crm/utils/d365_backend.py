@@ -714,9 +714,11 @@ class D365Backend:
         # Read-only guardrail: refuse mutations as an operational failure (never
         # a dry-run preview — the dry-run gate above ran first, so a read-only +
         # --dry-run backend previews rather than reaches here). GETs execute; the
-        # read-safe export actions are exempt.
-        if (self.read_only and method.upper() != "GET"
-                and _action_name(path) not in READ_SAFE_ACTIONS):
+        # read-safe export actions are exempt, but only as POSTs (their sole verb)
+        # so a PATCH/DELETE to an allowlisted action name can't bypass the gate.
+        method_upper = method.upper()
+        is_read_safe = method_upper == "POST" and _action_name(path) in READ_SAFE_ACTIONS
+        if self.read_only and method_upper != "GET" and not is_read_safe:
             raise D365Error(
                 f"Profile {self.profile.name!r} is read-only; writes are blocked. "
                 f"Clear it interactively: crm profile edit {self.profile.name} "
