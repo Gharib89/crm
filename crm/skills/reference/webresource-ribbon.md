@@ -89,6 +89,7 @@ crm --json ribbon export --application           # application-wide ribbon (no E
 crm --json ribbon list account --solution ContosoCore
 crm --json ribbon add-button account --solution ContosoCore ...
 crm --json ribbon set-label account --solution ContosoCore --button-id <CustomAction_Id> ...
+crm --json ribbon set-icon account --solution ContosoCore --button-id <CustomAction_Id> ...
 crm --json ribbon remove account --solution ContosoCore ...
 crm --json ribbon hide-button account --solution ContosoCore --target-id <OOB_Id>
 crm --json ribbon set-rules account --solution ContosoCore \
@@ -110,8 +111,8 @@ This is why a cloned entity's ribbon does not come across (see the clone caveats
 `reference/metadata.md`) — there is no API write path to copy it.
 
 **Ribbon writes are slow and synchronous.** Because every write rides the solution-zip
-pipeline, `add-button` / `set-label` / `remove` / `hide-button` / `set-rules` /
-`add-custom-rule` run a **full solution import per call** — 60–120s with no progress
+pipeline, `add-button` / `set-label` / `set-icon` / `remove` / `hide-button` /
+`set-rules` / `add-custom-rule` run a **full solution import per call** — 60–120s with no progress
 ticks. The command has not hung; **do not retry** a slow call (a second, parallel
 attempt races the first import). Confirm the outcome afterward with `ribbon list`.
 
@@ -143,6 +144,17 @@ misspell the id's casing, the label silently falls back to the raw directive str
 in the UI. `--lcid` is validated against the org's provisioned languages and errors
 if not provisioned. Re-running for a second LCID adds a sibling `<Title>` (does not
 overwrite).
+
+**Button icons (`add-button` / `set-icon`) — reference forms differ; the web
+resource must exist and match its slot type.** `--modern-image` (the Unified
+Interface SVG icon) lands as the **bare web-resource name**; `--image16` /
+`--image32` (the classic rasters) land as `$webresource:<name>` directives — the
+CLI writes the correct form, so pass the plain name to every flag and never
+pre-prefix. Beyond the group-wide "web resource must already exist" rule, each icon
+resource must also **match its slot's type** — an SVG for `--modern-image`, a
+PNG/JPG/GIF/ICO raster for `--image16`/`--image32`; a missing or wrong-type
+resource errors up front, before the slow import round-trip. `set-icon` re-icons an
+existing button in place (no recreate); `add-button` sets the icon while creating.
 
 **`hide-button` — validate the target-id first.** `--target-id` is the OOB control Id
 from `crm ribbon export ENTITY`. The command validates it against the live composed

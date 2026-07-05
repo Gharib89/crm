@@ -343,6 +343,108 @@ def test_ribbon_set_label_relabels_custom_button(
     )
 
 
+# ── ribbon set-icon (set a custom button's icon) ──────────────────────────────
+
+
+@covers("ribbon set-icon")
+@pytest.mark.slow
+def test_ribbon_set_icon_sets_modern_image(
+    cli, backend, ephemeral_entity, ephemeral_solution, unique, request, tmp_path
+):
+    """Add a custom button with a --modern-image icon, then change it via set-icon,
+    re-reading the composed ribbon each time to assert the Button's ModernImage
+    attribute by parsed value (T3 — the write survives the export→import→publish
+    round-trip). Covers both the add-button icon flags and the new set-icon verb.
+    """
+    _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
+
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"></svg>'
+    wr_ids: list[str] = []
+
+    def _make_svg(tag: str) -> str:
+        name = f"new_e2eicon_{tag}_{unique}.svg"
+        src = tmp_path / f"{tag}_{unique}.svg"
+        src.write_bytes(svg)
+        r = cli([
+            "--json", "webresource", "create", "--name", name,
+            "--file", str(src), "--display-name", f"E2E Icon {tag} {unique}",
+            "--solution", ephemeral_solution,
+        ])
+        assert r.returncode == 0, f"webresource create failed:\n{r.stderr}\n{r.stdout}"
+        env = json.loads(r.stdout)
+        assert env["ok"], env
+        wid = env["data"].get("webresourceid")
+        assert wid, f"webresourceid missing: {env['data']}"
+        wr_ids.append(wid)
+        return name
+
+    # also needs a JS web resource for the button's command
+    js_name = f"new_e2eicon_js_{unique}.js"
+    js_src = tmp_path / f"{unique}.js"
+    js_src.write_bytes(b"// e2e set-icon test")
+    js_r = cli([
+        "--json", "webresource", "create", "--name", js_name,
+        "--file", str(js_src), "--display-name", f"E2E Icon JS {unique}",
+        "--solution", ephemeral_solution,
+    ])
+    assert js_r.returncode == 0, f"webresource create failed:\n{js_r.stderr}\n{js_r.stdout}"
+    wr_ids.append(json.loads(js_r.stdout)["data"]["webresourceid"])
+
+    icon_a = _make_svg("a")
+    icon_b = _make_svg("b")
+
+    def _cleanup():
+        for wid in wr_ids:
+            try:
+                backend.delete(f"webresourceset({wid})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    # ── ADD-BUTTON with --modern-image (icon A) ───────────────────────────────
+    add = cli([
+        "--json", "ribbon", "add-button", ephemeral_entity,
+        "--solution", ephemeral_solution,
+        "--label", f"Icon{unique}", "--location", "form",
+        "--webresource", js_name, "--function", "ns.e2eSetIcon",
+        "--param", "PrimaryControl", "--modern-image", icon_a,
+    ])
+    assert add.returncode == 0, f"ribbon add-button failed:\n{add.stderr}\n{add.stdout}"
+    add_env = json.loads(add.stdout)
+    assert add_env["ok"], add_env
+    button_id = add_env["data"]["button_id"]
+
+    composed = _composed_ribbon(cli, ephemeral_entity)
+    btn = next((b for b in composed.iter("Button")
+                if b.get("LabelText") == f"Icon{unique}"), None)
+    assert btn is not None, "custom button missing from composed ribbon after add"
+    composed_btn_id = btn.get("Id")
+    assert btn.get("ModernImage") == icon_a, (
+        f"expected ModernImage={icon_a!r} after add-button, got {btn.get('ModernImage')!r}"
+    )
+
+    # ── SET-ICON to icon B (change the existing button's icon) ────────────────
+    seti = cli([
+        "--json", "ribbon", "set-icon", ephemeral_entity,
+        "--solution", ephemeral_solution, "--publish",
+        "--button-id", button_id, "--modern-image", icon_b,
+    ])
+    assert seti.returncode == 0, f"ribbon set-icon failed:\n{seti.stderr}\n{seti.stdout}"
+    seti_env = json.loads(seti.stdout)
+    assert seti_env["ok"], seti_env
+    assert seti_env["data"].get("modern_image") == icon_b, seti_env["data"]
+
+    # T3: the composed ribbon's button now carries the updated ModernImage.
+    after = _composed_ribbon(cli, ephemeral_entity)
+    upd = next((b for b in after.iter("Button")
+                if b.get("Id") == composed_btn_id), None)
+    assert upd is not None, "custom button missing after set-icon"
+    assert upd.get("ModernImage") == icon_b, (
+        f"expected ModernImage={icon_b!r} after set-icon, got {upd.get('ModernImage')!r}"
+    )
+
+
 # ── ribbon hide-button (hide an OOB button reversibly) ────────────────────────
 
 

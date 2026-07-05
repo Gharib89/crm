@@ -89,6 +89,52 @@ name; do not hand-edit the directive.
 Out-of-box buttons have no CustomAction entry and will not be found; use
 `hide-button` to suppress OOB buttons instead.
 
+## Set a button's icon
+
+A custom button can carry a Unified Interface SVG icon (`ModernImage`) and/or the
+classic 16×16 and 32×32 rasters (`Image16by16` / `Image32by32`). Set them while
+creating the button with `add-button`, or change them on an existing button with
+`set-icon` — no recreate needed. Each flag takes a **web resource name**:
+
+- `--modern-image` — an **SVG** web resource; used by the Unified Interface. Written
+  as the bare web-resource name (the platform resolves it; no `$webresource:` prefix).
+- `--image16` / `--image32` — a **raster** (PNG/JPG/GIF/ICO) web resource for the
+  classic 16×16 / 32×32 slots. Written as a `$webresource:<name>` directive.
+
+You pass the plain web-resource name to every flag; the CLI writes the correct form
+for each slot, so never pre-prefix with `$webresource:`.
+
+```bash
+# Give a modern (Unified Interface) SVG icon while adding the button
+crm ribbon add-button cwx_ticket --solution MySolution \
+    --label Validate --location form \
+    --webresource cwx_/scripts/x.js --function ns.fn --param PrimaryControl \
+    --modern-image cwx_/icons/validate.svg
+
+# Change an existing button's icon in place (set both modern and classic slots)
+crm ribbon set-icon cwx_ticket --solution MySolution \
+    --button-id cwx_ticket.form.Validate.CustomAction \
+    --modern-image cwx_/icons/validate.svg \
+    --image16 cwx_/icons/validate16.png \
+    --image32 cwx_/icons/validate32.png
+
+# Preview without importing
+crm --dry-run ribbon set-icon cwx_ticket --solution MySolution \
+    --button-id cwx_ticket.form.Validate.CustomAction \
+    --modern-image cwx_/icons/validate.svg
+```
+
+`set-icon` requires at least one icon flag, and touches only the image attributes
+you pass — the button's Command, LabelText, and Id are protected. `--button-id` is
+the CustomAction Id from `crm ribbon list`.
+
+**Web resources are validated up front — existence *and* type.** Each referenced
+web resource must already exist in the org, and must match its slot's type:
+`--modern-image` must point at an **SVG**, and `--image16` / `--image32` must point
+at a **raster image** (PNG/JPG/GIF/ICO). A missing or wrong-type resource errors
+immediately — before the slow solution export/import round-trip — so create and
+publish the icon web resource (see [web resources](webresource.md)) first.
+
 ## Hide an out-of-box button
 
 Use `hide-button` to suppress an OOB command-bar button you cannot delete. Two
