@@ -30,8 +30,19 @@ default; `kerberos` / `negotiate` also supported), or **OAuth 2.0
 client-credentials** for Dataverse online. Run **`crm profile add`** once to create
 a connection profile — it infers the scheme from the URL (any `.dynamics.` host →
 OAuth — `*.dynamics.com` plus regional clouds like `.dynamics.cn` / `.dynamics.de`;
-anything else → `ntlm`), prompts for what that scheme needs, stores the secret,
-verifies with WhoAmI, and activates the profile.
+anything else → `ntlm`), prompts for what that scheme needs, and verifies with
+WhoAmI **before saving anything**. Only on success does it store the secret and
+activate the profile.
+
+If that live test fails, `add` doesn't save blindly: a clearly malformed profile
+(bad URL, missing tenant/client id, no secret) is rejected outright, nothing
+saved. A structurally plausible profile whose test still failed — likely a
+transient outage (VPN down, app user not yet provisioned) — prompts `Save the
+profile anyway?` on a terminal; declining leaves nothing saved. Non-interactively
+(`--json`/CI), pass `--save-on-test-failure` to save it anyway, otherwise the
+command errors without saving. Saving despite a failed test prints a one-time
+warning that the connection was never verified — nothing is flagged on the stored
+profile itself.
 
 ```bash
 crm profile add          # interactive wizard (on a terminal)

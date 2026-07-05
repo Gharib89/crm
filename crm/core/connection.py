@@ -247,6 +247,52 @@ def _abort(completed: list[dict[str, Any]], reason: str) -> dict[str, Any]:
     return {"ok": False, "checks": checks}
 
 
+# Hints reused by the doctor's dns_tcp gate and profile add's pre-save check, so
+# the two describe a malformed URL identically.
+_NO_HOSTNAME_HINT = "set a valid profile URL with `crm profile edit`, e.g. https://host/org"
+_BAD_PORT_HINT = "fix the :port in the profile URL with `crm profile edit`"
+
+
+def url_structural_problem(url: str) -> tuple[str, str] | None:
+    """Offline structural check of a profile URL — no network.
+
+    Returns ``(detail, hint)`` describing why the URL is unusable (no hostname,
+    or a non-numeric ``:port``), or ``None`` when it parses to something
+    plausible. Shared by ``connection_doctor``'s dns_tcp gate and ``profile
+    add``'s pre-save plausibility check so the two never drift (#631).
+    """
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.hostname:
+        return (f"profile URL has no hostname: {url!r}", _NO_HOSTNAME_HINT)
+    try:
+        _ = parsed.port  # raises ValueError on a non-numeric :port
+    except ValueError:
+        return (f"invalid port in profile URL: {url!r}", _BAD_PORT_HINT)
+    return None
+
+
+def profile_structural_problem(profile: ConnectionProfile, *, has_secret: bool) -> str | None:
+    """Offline plausibility check across a profile's URL and auth-scheme fields.
+
+    Returns a human-readable reason the profile is clearly malformed, or ``None``
+    when it looks plausible enough that a failed live test is more likely
+    transient (VPN down, server unreachable, app user not yet provisioned) than a
+    typo. ``profile add`` uses this to decide whether a live-test failure is worth
+    a save-anyway prompt/flag or a hard error (#631).
+    """
+    url_problem = url_structural_problem(profile.url)
+    if url_problem is not None:
+        return url_problem[0]
+    if profile.auth_scheme == "oauth":
+        if not profile.tenant_id or not profile.client_id:
+            return "OAuth profile is missing tenant_id or client_id"
+    elif not profile.username:
+        return "on-prem profile is missing a username"
+    if not has_secret:
+        return "no secret (password / client secret) provided"
+    return None
+
+
 def connection_doctor(backend: D365Backend) -> dict[str, Any]:
     """Run an ordered, non-fatal probe chain and return a structured checklist.
 
@@ -266,35 +312,20 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
     import requests  # deferred transport import (#247)
 
     profile = backend.profile
-    parsed = urllib.parse.urlparse(profile.url)
-    host = parsed.hostname or ""
-    is_https = parsed.scheme == "https"
 
     # Validate the URL up front so a malformed profile yields a structured
     # dns_tcp failure instead of probing localhost (host == "") or crashing on
-    # urlparse(...).port (raises ValueError on a non-numeric :port).
-    if not host:
-        return _abort(
-            [
-                _check(
-                    "dns_tcp", False, f"profile URL has no hostname: {profile.url!r}",
-                    "set a valid profile URL with `crm profile edit`, e.g. https://host/org",
-                )
-            ],
-            "invalid profile URL",
-        )
-    try:
-        port = parsed.port or (443 if is_https else 80)
-    except ValueError:
-        return _abort(
-            [
-                _check(
-                    "dns_tcp", False, f"invalid port in profile URL: {profile.url!r}",
-                    "fix the :port in the profile URL with `crm profile edit`",
-                )
-            ],
-            "invalid profile URL",
-        )
+    # urlparse(...).port (raises ValueError on a non-numeric :port). Shares the
+    # offline check with profile add's pre-save gate (#631).
+    url_problem = url_structural_problem(profile.url)
+    if url_problem is not None:
+        detail, hint = url_problem
+        return _abort([_check("dns_tcp", False, detail, hint)], "invalid profile URL")
+
+    parsed = urllib.parse.urlparse(profile.url)
+    host = parsed.hostname or ""
+    is_https = parsed.scheme == "https"
+    port = parsed.port or (443 if is_https else 80)
 
     # collected so the rate_limit step can inspect them
     seen_headers: list[Any] = []

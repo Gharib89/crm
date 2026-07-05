@@ -11,8 +11,11 @@ crm profile add
 
 On a terminal this runs an interactive wizard: it asks for the server URL, infers
 the auth scheme from it (`*.dynamics.*` → OAuth, anything else → NTLM), collects the
-identity fields and the secret, saves the profile, stores the secret, runs a
-`WhoAmI` to confirm, and activates it.
+identity fields and the secret, then runs a `WhoAmI` against the server **before**
+saving anything. On success it saves the profile, stores the secret, and activates
+it. If the test fails but the profile still looks structurally plausible, it asks
+before saving anyway (non-interactively, pass `--save-on-test-failure`); a clearly
+malformed profile is rejected outright, with nothing saved.
 
 For scripting, pass flags instead:
 

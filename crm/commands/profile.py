@@ -19,7 +19,9 @@ from crm.commands._helpers import (
     prompt_secret,
     select_one,
 )
-from crm.utils.d365_backend import ConnectionProfile, D365Error, validate_profile_name
+from crm.utils.d365_backend import (
+    ConnectionProfile, D365Backend, D365Error, validate_profile_name,
+)
 
 # A profile file can be missing (FileNotFoundError), unreadable (OSError),
 # non-JSON (ValueError → json.JSONDecodeError), or JSON-valid but malformed —
@@ -91,11 +93,15 @@ def _validate_prefix_opt(_ctx, _param, value):
 # Deliberate inline option (not _destructive_option): the profile setup verbs
 # keep a `-y` short alias the shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip the overwrite-confirm prompt.")
+@click.option("--save-on-test-failure", is_flag=True,
+              help="Save the profile even if the live connection test fails, as long "
+                   "as it is structurally valid (for CI / no-TTY runs; a malformed URL "
+                   "still errors). Distinct from --yes.")
 @pass_ctx
 def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
                 tenant_id, client_id, password_opt, client_secret_opt, api_version,
                 no_verify_ssl, publisher_prefix,
-                store_password_plaintext, read_only, yes):
+                store_password_plaintext, read_only, yes, save_on_test_failure):
     """Create a profile, save its secret, test the connection, and activate it.
 
     Run with no flags for an interactive wizard; pass flags for scripting/CI.
@@ -106,6 +112,10 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         if not interactive:
             raise click.UsageError("--url is required (no TTY for the wizard).")
         url = click.prompt("Server URL (e.g. https://crm.corp/org or https://org.crm.dynamics.com)")
+    # Normalize before anything reads the URL: a leading space otherwise makes
+    # urlparse().hostname empty, mis-inferring the auth scheme and defaulting the
+    # profile name (#631). ConnectionProfile re-normalizes idempotently later.
+    url = ConnectionProfile.normalize_url(url)
     auth_scheme = auth_opt or infer_auth_scheme(url)
     if interactive and auth_opt is None:
         schemes = ["ntlm", "kerberos", "negotiate", "oauth"]
@@ -182,9 +192,56 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
             tenant_id=tenant_id, client_id=client_id,
             publisher_prefix=publisher_prefix, read_only=read_only,
         )
-        session_mod.save_profile(profile)
     except D365Error as exc:
         # Invalid name / auth scheme — emit the clean envelope, not a traceback.
+        _handle_d365_error(ctx, exc)
+        return
+
+    # Test the live connection with the normalized URL BEFORE persisting anything,
+    # so a malformed or unreachable profile is never silently saved (#631). The
+    # backend is built straight from the in-memory profile + secret (no disk
+    # write); test_connection mutates profile.api_version in place on a successful
+    # negotiation, so the value we save below is already the negotiated one.
+    info = None
+    try:
+        # Construction can itself raise D365Error (e.g. OAuth auth-handler setup),
+        # so it stays inside the try — a construction failure is handled like a
+        # failed test, never a leaked traceback.
+        test_backend = D365Backend(profile, secret, dry_run=ctx.dry_run,
+                                   retry_on_ambiguous=ctx.retry_on_ambiguous)
+        info = conn_mod.test_connection(test_backend, negotiate=negotiate)
+    except D365Error as exc:
+        malformed = conn_mod.profile_structural_problem(profile, has_secret=bool(secret))
+        if malformed is not None:
+            # Structurally implausible — the live failure is the typo, not a
+            # transient outage. Hard error, no save, no prompt, even with the flag.
+            _handle_d365_error(
+                ctx, exc,
+                hint=f"{malformed}; profile not saved — fix it and re-run `crm profile add`")
+            return
+        # Structurally plausible: the failure is likely transient (VPN down,
+        # server unreachable, app user not yet provisioned). Save only on an
+        # explicit opt-in — never silently.
+        if not save_on_test_failure:
+            if not interactive:
+                _handle_d365_error(
+                    ctx, exc,
+                    hint="profile not saved; re-run with --save-on-test-failure to "
+                         "save despite the failed live test")
+                return
+            click.echo(f"Connection test failed: {exc}", err=True)
+            click.echo("The profile looks structurally valid, so this is likely "
+                       "transient (VPN down, server unreachable, or the app user "
+                       "isn't provisioned yet).", err=True)
+            if not click.confirm("Save the profile anyway?", default=False):
+                ctx.emit(False, error="aborted — profile not saved")
+                return
+        # --save-on-test-failure set, or the user confirmed → fall through to save.
+
+    # Live test passed, or the user/flag opted to save despite its failure.
+    try:
+        session_mod.save_profile(profile)
+    except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
     except OSError as exc:
@@ -198,36 +255,25 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
         warnings.append("OS keyring unavailable — " + _plaintext_secret_warning())
     elif where == "plaintext":
         warnings.append(_plaintext_secret_warning())
-
-    ctx.profile_name = name
-    ctx.password = secret
-    ctx.invalidate_backend()
-    try:
-        info = conn_mod.test_connection(ctx.backend(), negotiate=negotiate)
-    except D365Error as exc:
-        # The secret is already saved; don't leave it lingering in-memory as a
-        # sticky REPL root option after a failed connection.
-        ctx.password = None
-        ctx.invalidate_backend()
-        _handle_d365_error(ctx, exc, hint="profile saved; fix creds then re-run `crm profile add`")
-        return
-    if info["api_version"] != profile.api_version:
-        profile.api_version = info["api_version"]
-        session_mod.save_profile(profile)
+    if info is None:
+        warnings.append("saved without a verified connection — the live test failed")
 
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = name
     session_mod.save_session(state, ctx.session_name)
-    # Clear the in-memory secret now that it's persisted: later commands resolve
-    # from the saved store, and in the REPL (sticky root options) a lingering
-    # ctx.password would otherwise override the stored secret on every command.
+    # Point the running context at the new profile and clear the in-memory secret
+    # now that it's persisted: later commands resolve from the saved store, and in
+    # the REPL (sticky root options) a lingering ctx.password would otherwise
+    # override the stored secret on every command.
+    ctx.profile_name = name
     ctx.password = None
     ctx.invalidate_backend()
     data = {
         "profile": name, "auth_scheme": auth_scheme,
         "credential_storage": where, "active": True,
         "read_only": read_only,
-        "user_id": info.get("user_id"), "api_version": info["api_version"],
+        "user_id": info.get("user_id") if info else None,
+        "api_version": profile.api_version,
     }
     ctx.emit(True, data=data, meta={"profile": name}, warnings=warnings or None)
     ctx.hint("profile_add")
@@ -396,7 +442,7 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     except _PROFILE_LOAD_ERRORS as exc:
         ctx.emit(False, error=f"Profile {name!r} is unreadable: {exc}")
         return
-    if url is not None: p.url = url.rstrip("/")
+    if url is not None: p.url = ConnectionProfile.normalize_url(url)
     if username is not None: p.username = username
     if domain is not None: p.domain = domain
     if tenant_id is not None: p.tenant_id = tenant_id

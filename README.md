@@ -193,10 +193,15 @@ crm profile add
 ```
 
 On a terminal this runs an interactive wizard (URL → inferred auth scheme →
-identity → secret), saves the profile, stores the secret, runs a `WhoAmI` to
-confirm, and activates it. The first connection command run with no profile
-configured launches this wizard automatically; under `--json` / no TTY it errors
-cleanly and tells you to run `crm profile add`.
+identity → secret), then runs a `WhoAmI` against the server **before** saving
+anything. On success it saves the profile, stores the secret, and activates it —
+no extra prompts. If that live test fails, a structurally malformed profile (bad
+URL, missing tenant/client id, no secret) is rejected outright with nothing saved;
+a plausible one (likely a transient outage — VPN down, app user not yet
+provisioned) prompts "Save the profile anyway?" on a TTY, or errors without saving
+non-interactively unless you pass `--save-on-test-failure`. The first connection
+command run with no profile configured launches this wizard automatically; under
+`--json` / no TTY it errors cleanly and tells you to run `crm profile add`.
 
 For scripting, pass flags instead. The auth scheme is inferred from the URL
 (`*.dynamics.*` → OAuth, anything else → NTLM); override with `--auth-scheme`.

@@ -117,6 +117,93 @@ class TestAddScriptable:
         assert "exclusive" in result.output.lower()
 
 
+class TestAddTestBeforeSave:
+    """profile add tests the live connection BEFORE persisting anything (#631)."""
+
+    def test_failed_test_not_saved_json_mode(self, crm_home):
+        # A structurally-valid profile whose live test fails must NOT be saved in
+        # non-interactive/--json mode without the opt-in flag (pre-#631 the
+        # profile was persisted before the test ever ran).
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://crm.contoso.local/contoso",
+                "--username", "alice", "--domain", "CONTOSO",
+                "--password", "pw", "--name", "failc", "--yes",
+            ])
+        assert result.exit_code == 1, result.output
+        assert "failc" not in session_mod.list_profiles()
+
+    def test_failed_test_saved_with_flag(self, crm_home):
+        # --save-on-test-failure persists a structurally-valid profile despite the
+        # failed live test (the CI / no-TTY escape hatch, distinct from --yes).
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
+            result = runner.invoke(cli, [
+                "--json", "profile", "add",
+                "--url", "https://crm.contoso.local/contoso",
+                "--username", "alice", "--domain", "CONTOSO",
+                "--password", "pw", "--name", "forcec", "--yes",
+                "--save-on-test-failure",
+            ])
+        assert result.exit_code == 0, result.output
+        assert "forcec" in session_mod.list_profiles()
+        assert session_mod.load_profile_secret("forcec") == "pw"
+        payload = json.loads(result.output)
+        assert any("verified" in w for w in payload.get("meta", {}).get("warnings", []))
+
+    def test_structurally_implausible_hard_errors_even_with_flag(self, crm_home):
+        # A URL with no hostname is malformed, not transient — hard error, no
+        # save, no prompt, even with --save-on-test-failure.
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
+            result = runner.invoke(cli, [
+                "--json", "profile", "add", "--auth-scheme", "ntlm",
+                "--url", "http:///contoso",
+                "--username", "alice", "--domain", "CONTOSO",
+                "--password", "pw", "--name", "badc", "--yes",
+                "--save-on-test-failure",
+            ])
+        assert result.exit_code == 1, result.output
+        assert "badc" not in session_mod.list_profiles()
+
+    # On a TTY the wizard also prompts for read-only (blank/N); --publisher-prefix ""
+    # suppresses the prefix prompt, so input is: read-only "n", then the save-anyway
+    # answer.
+    def test_tty_prompt_declined_leaves_no_profile(self, crm_home, monkeypatch):
+        # On a TTY, a failed-but-plausible test prompts; declining saves nothing.
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
+            result = runner.invoke(cli, [
+                "profile", "add", "--auth-scheme", "ntlm",
+                "--url", "https://crm.contoso.local/contoso",
+                "--username", "alice", "--domain", "CONTOSO",
+                "--password", "pw", "--name", "declc", "--publisher-prefix", "", "--yes",
+            ], input="n\nn\n")
+        assert result.exit_code == 1, result.output
+        assert "declc" not in session_mod.list_profiles()
+
+    def test_tty_prompt_accepted_saves(self, crm_home, monkeypatch):
+        monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
+        runner = CliRunner()
+        with requests_mock.Mocker() as m:
+            m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
+            result = runner.invoke(cli, [
+                "profile", "add", "--auth-scheme", "ntlm",
+                "--url", "https://crm.contoso.local/contoso",
+                "--username", "alice", "--domain", "CONTOSO",
+                "--password", "pw", "--name", "acptc", "--publisher-prefix", "", "--yes",
+            ], input="n\ny\n")
+        assert result.exit_code == 0, result.output
+        assert "acptc" in session_mod.list_profiles()
+
+
 class TestAddWizard:
     """Interactive (TTY) wizard: the auth-scheme step is an inline picker."""
 
