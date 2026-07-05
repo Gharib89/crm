@@ -24,6 +24,25 @@ _OOB_REUSE_WARNING = (
     "and may change across platform updates.")
 
 
+def _icon_options(fn):
+    """Shared --modern-image / --image16 / --image32 button-icon options.
+
+    Each takes a web resource name. --modern-image is the Unified Interface SVG
+    (SVG web resource); --image16 / --image32 are the classic 16×16 / 32×32
+    rasters (PNG/JPG/GIF/ICO). Applied to both `add-button` and `set-icon`.
+    """
+    fn = click.option(
+        "--image32", "image32", default=None,
+        help="32×32 classic icon (Image32by32); a PNG/JPG/GIF/ICO web resource.")(fn)
+    fn = click.option(
+        "--image16", "image16", default=None,
+        help="16×16 classic icon (Image16by16); a PNG/JPG/GIF/ICO web resource.")(fn)
+    fn = click.option(
+        "--modern-image", "modern_image", default=None,
+        help="Unified Interface icon (ModernImage); an SVG web resource name.")(fn)
+    return fn
+
+
 @click.group("ribbon")
 def ribbon_group():
     """Read and edit entity command-bar (ribbon) buttons."""
@@ -118,21 +137,31 @@ def ribbon_list(ctx: CLIContext, entity, solution):
 @click.option("--sequence", type=int, default=50, show_default=True)
 @click.option("--id", "id_base", default=None,
               help="Override the generated id base ({entity}.{location}.{label}).")
+@_icon_options
 @_solution_option
 @pass_ctx
 def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
-                      function, param, sequence, id_base, solution):
-    """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
+                      function, param, sequence, id_base, modern_image, image16,
+                      image32, solution):
+    """Add a JavaScript command-bar button to an entity (no manual XML editing).
+
+    Optional --modern-image / --image16 / --image32 set the button icon; each
+    web resource must already exist and be the right type (SVG for --modern-image;
+    PNG/JPG/GIF/ICO for --image16/--image32).
+    """
     solution = _resolve_solution(ctx, solution)
+    icon = ribbon_mod.ButtonIcon(
+        modern_image=modern_image, image16=image16, image32=image32)
     with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
+        ribbon_mod.validate_icon_webresources(ctx.backend(), icon)
         group = ribbon_mod.resolve_group(location, entity, group_override)
         ids = ribbon_mod.build_button_ids(entity, location, label, id_base)
 
         def mutate(diff):
             ribbon_mod.add_custom_action(
                 diff, ids=ids, group=group, label=label, webresource=webresource,
-                function=function, param=param, sequence=sequence)
+                function=function, param=param, sequence=sequence, icon=icon)
 
         result = ribbon_mod.apply_ribbon_change(
             ctx.backend(), solution=solution, entity=entity, mutate=mutate)
@@ -224,6 +253,49 @@ def ribbon_set_label(ctx, entity, button_id, label, tooltip_title,
                          "tooltip_title": tooltip_title,
                          "tooltip_description": tooltip_description,
                          "lcid": lcid, "result": result},
+             warnings=None)
+    _journal(ctx, button_id, result, solution=solution)
+
+
+@ribbon_group.command("set-icon")
+@click.argument("entity")
+@click.option("--button-id", "button_id", required=True,
+              help="The custom button's CustomAction Id (see `crm ribbon list`).")
+@_icon_options
+@_publish_option
+@_solution_option
+@pass_ctx
+def ribbon_set_icon(ctx, entity, button_id, modern_image, image16, image32,
+                    publish, solution):
+    """Set or change a custom command-bar button's icon.
+
+    Writes the button image attributes into RibbonDiffXml without recreating the
+    button: --modern-image -> ModernImage (Unified Interface SVG), --image16 ->
+    Image16by16, --image32 -> Image32by32 (classic rasters). Only the flags you
+    pass are touched; the button's Command / LabelText / Id are protected. Pass at
+    least one flag. Each web resource must already exist and be the right type
+    (SVG for --modern-image; PNG/JPG/GIF/ICO for --image16/--image32).
+    """
+    solution = _resolve_solution(ctx, solution)
+    publish = _resolve_publish(ctx, publish)
+    icon = ribbon_mod.ButtonIcon(
+        modern_image=modern_image, image16=image16, image32=image32)
+    if icon.is_empty():
+        raise click.UsageError(
+            "pass at least one of --modern-image / --image16 / --image32")
+
+    with d365_errors(ctx):
+        ribbon_mod.validate_icon_webresources(ctx.backend(), icon)
+
+        def mutate(diff):
+            ribbon_mod.set_button_icon(diff, button_id=button_id, icon=icon)
+
+        result = ribbon_mod.apply_ribbon_change(
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate,
+            publish=publish)
+    ctx.emit(True, data={"button_id": button_id, "modern_image": modern_image,
+                         "image16": image16, "image32": image32,
+                         "result": result},
              warnings=None)
     _journal(ctx, button_id, result, solution=solution)
 

@@ -18,7 +18,10 @@ from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from crm.core.solution import export_solution, import_solution, publish_all
 from crm.core.solution_validate import validate_solution
-from crm.core.webresource import resolve_webresource_id  # pyright: ignore[reportUnusedImport]; re-exported for the command layer
+from crm.core.webresource import (  # resolve_webresource_id re-exported for the command layer
+    get_webresource,
+    resolve_webresource_id,  # pyright: ignore[reportUnusedImport]
+)
 from crm.utils.d365_backend import D365Error, odata_literal
 
 if TYPE_CHECKING:
@@ -169,6 +172,78 @@ def build_button_ids(
     )
 
 
+# ── Button icons (issue #679) ───────────────────────────────────────────────
+# webresourcetype ids from the `webresource_webresourcetype` option set (see
+# crm.core.webresource / MS Learn's webresource entity reference): 11 = Vector
+# (SVG), the modern/Unified-Interface icon; 5/6/7/10 = PNG/JPG/GIF/ICO, the
+# classic raster images Image16by16/Image32by32 take.
+_MODERN_IMAGE_TYPES: frozenset[int] = frozenset({11})            # SVG
+_CLASSIC_IMAGE_TYPES: frozenset[int] = frozenset({5, 6, 7, 10})  # PNG/JPG/GIF/ICO
+
+
+@dataclass(frozen=True)
+class ButtonIcon:
+    """The icon web resources to write onto a ribbon ``<Button>``.
+
+    ``modern_image`` is the Unified Interface SVG — the ``ModernImage`` attribute,
+    which takes the web resource NAME directly. ``image16`` / ``image32`` are the
+    classic 16×16 / 32×32 rasters — the ``Image16by16`` / ``Image32by32``
+    attributes, which take a ``$webresource:`` directive (verified against MS
+    Learn's image-web-resources reference). All optional; ``None`` means "leave
+    that attribute unchanged".
+    """
+    modern_image: str | None = None
+    image16: str | None = None
+    image32: str | None = None
+
+    def is_empty(self) -> bool:
+        """True when no icon web resource was given (nothing to write)."""
+        return not (self.modern_image or self.image16 or self.image32)
+
+
+def _apply_icon_attrs(button: ET.Element, icon: ButtonIcon) -> None:
+    """Set the image attributes given on ``icon`` onto ``button`` (leave others).
+
+    Only attributes for the non-None fields are touched, so setting one icon slot
+    never clears another. ModernImage takes the web resource name directly;
+    Image16by16/Image32by32 take a ``$webresource:`` directive.
+    """
+    if icon.modern_image:
+        button.set("ModernImage", icon.modern_image)
+    if icon.image16:
+        button.set("Image16by16", f"$webresource:{icon.image16}")
+    if icon.image32:
+        button.set("Image32by32", f"$webresource:{icon.image32}")
+
+
+def validate_icon_webresources(backend: "D365Backend", icon: ButtonIcon) -> None:
+    """Confirm each given icon web resource exists and is the expected type.
+
+    ``--modern-image`` must be an SVG (webresourcetype 11); ``--image16`` /
+    ``--image32`` must be a raster image (PNG/JPG/GIF/ICO). Mirrors the up-front
+    web-resource check ``add-button`` already does for ``--webresource`` so a typo
+    or wrong-type reference fails before the export/import round-trip. Raises
+    D365Error on a missing resource (via ``get_webresource``) or a type mismatch.
+    A ``None`` slot is skipped, so an empty ``ButtonIcon`` is a no-op (no HTTP).
+    """
+    checks = (
+        (icon.modern_image, _MODERN_IMAGE_TYPES, "--modern-image",
+         "an SVG (Vector format) web resource"),
+        (icon.image16, _CLASSIC_IMAGE_TYPES, "--image16",
+         "a PNG/JPG/GIF/ICO image web resource"),
+        (icon.image32, _CLASSIC_IMAGE_TYPES, "--image32",
+         "a PNG/JPG/GIF/ICO image web resource"),
+    )
+    for name, allowed, flag, human in checks:
+        if not name:
+            continue
+        wtype = get_webresource(backend, name).get("webresourcetype")
+        if wtype not in allowed:
+            raise D365Error(
+                f"{flag} web resource {name!r} is webresourcetype {wtype}, "
+                f"but must be {human}")
+
+
 # The two platform DisplayRules that, required together, can never both be true
 # (a command cannot be legacy-web-only AND modern-only) — so a CommandDefinition
 # carrying both is always hidden. MS-documented reversible hide; reuse verbatim as
@@ -228,10 +303,13 @@ def add_custom_action(
     function: str,
     param: str,
     sequence: int,
+    icon: "ButtonIcon | None" = None,
 ) -> None:
     """Inject a CustomAction + CommandDefinition for a JS button into RibbonDiffXml.
 
-    Raises D365Error if any of the three IDs already exists in the diff.
+    When ``icon`` is given, its image attributes (ModernImage / Image16by16 /
+    Image32by32) are written onto the ``<Button>``. Raises D365Error if any of
+    the three IDs already exists in the diff.
     """
     existing = {el.get("Id") for el in ribbon_diff.iter()
                 if el.tag in ("CustomAction", "Button", "CommandDefinition")}
@@ -251,10 +329,12 @@ def add_custom_action(
         "Sequence": str(sequence),
     })
     uidef = ET.SubElement(action, "CommandUIDefinition")
-    ET.SubElement(uidef, "Button", {
+    button = ET.SubElement(uidef, "Button", {
         "Id": ids.button, "Command": ids.command, "LabelText": label,
         "ToolTipTitle": label, "TemplateAlias": "o1", "Sequence": str(sequence),
     })
+    if icon is not None:
+        _apply_icon_attrs(button, icon)
 
     cdef = ET.SubElement(cmds, "CommandDefinition", {"Id": ids.command})
     ET.SubElement(cdef, "EnableRules")
@@ -370,6 +450,43 @@ def _upsert_loclabel_title(
     title.set("description", text)
 
 
+def _find_custom_button(ribbon_diff: ET.Element, button_id: str) -> ET.Element:
+    """Return the ``<Button>`` of the CustomAction with ``button_id``.
+
+    ``button_id`` is the CustomAction Id (what `ribbon list` / `remove` report).
+    Raises D365Error listing the available ids when no such custom button exists.
+    """
+    actions = ribbon_diff.find("CustomActions")
+    action = (next((a for a in actions.findall("CustomAction")
+                    if a.get("Id") == button_id), None)
+              if actions is not None else None)
+    button = action.find(".//Button") if action is not None else None
+    if button is None:
+        available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
+        raise D365Error(
+            f"button-id {button_id!r} not found as a custom Button; "
+            f"available: {available}")
+    return button
+
+
+def set_button_icon(
+    ribbon_diff: ET.Element, *, button_id: str, icon: ButtonIcon
+) -> None:
+    """Set or change a custom button's icon attributes without recreating it.
+
+    ``button_id`` is the CustomAction Id (what `ribbon list` / `remove` report).
+    Only the image attributes given on ``icon`` are touched — Command, LabelText,
+    TemplateAlias, Sequence and Id are protected, and an attribute not given is
+    left as-is (so setting only ``modern_image`` keeps an existing Image16by16).
+    Raises D365Error if the button isn't found or ``icon`` carries nothing.
+    """
+    if icon.is_empty():
+        raise D365Error(
+            "set_button_icon needs at least one of modern_image / image16 / image32")
+    button = _find_custom_button(ribbon_diff, button_id)
+    _apply_icon_attrs(button, icon)
+
+
 def set_button_label(
     ribbon_diff: ET.Element,
     *,
@@ -399,16 +516,7 @@ def set_button_label(
         raise D365Error(
             "set_button_label needs at least one of label / tooltip_title / "
             "tooltip_description")
-    actions = ribbon_diff.find("CustomActions")
-    action = (next((a for a in actions.findall("CustomAction")
-                    if a.get("Id") == button_id), None)
-              if actions is not None else None)
-    button = action.find(".//Button") if action is not None else None
-    if button is None:
-        available = [b.button_id for b in list_custom_buttons(ribbon_diff)]
-        raise D365Error(
-            f"button-id {button_id!r} not found as a custom Button; "
-            f"available: {available}")
+    button = _find_custom_button(ribbon_diff, button_id)
     btn_id = button.get("Id") or button_id
     for key, text in fields.items():
         if text is None:
