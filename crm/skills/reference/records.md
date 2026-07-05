@@ -304,17 +304,21 @@ in non-open type` — the clean `unknown_fields`/`did_you_mean` envelope is what
 ### Round-tripping a READ-shape lookup (no hand-`@odata.bind`)
 
 You don't have to hand-write the `<nav>@odata.bind` above when the lookup value
-already came from a read. `data import`, `entity create`, and `entity upsert`
-auto-rewrite any lookup that arrives in the server's **READ shape**
-`_<attr>_value` (the raw-GUID form that `data export` / `query odata` emit) into
-the WRITE shape `<nav>@odata.bind: "/<set>(<guid>)"`, resolving the nav property
-and target set from relationship metadata. So an exported row imports unedited —
-no manual `@odata.bind` surgery. Details:
+already came from a read. `data import`, `entity create`, `entity update`, and
+`entity upsert` auto-rewrite any lookup that arrives in the server's **READ shape**
+`_<attr>_value` (the raw-GUID form that `entity get` / `data export` / `query
+odata` emit) into the WRITE shape `<nav>@odata.bind: "/<set>(<guid>)"`,
+resolving the nav property and target set from relationship metadata. So an
+exported or retrieved row writes back unedited — no manual `@odata.bind` surgery.
+Details:
 
 - A read-only lookup value (e.g. `_createdby_value`) is **dropped** — it can't be
   written. Read-only OData annotation keys (`@odata.etag`, `@odata.context`,
   `@OData.Community.Display.V1.FormattedValue`, per-value annotations) are
   stripped; a hand-written `<nav>@odata.bind` you supply is preserved as-is.
+- crm's synthetic `_entity_id` and `_entity_id_url` keys are **dropped** on
+  create/update/upsert, so an `entity get --json` payload can be edited and
+  passed to `entity update` directly.
 - A `null` `_<attr>_value` **clears** the lookup (`<nav>@odata.bind: null`).
 - A payload already in write shape (plain columns + your own `@odata.bind`, no
   `_value`/annotation keys) is left untouched — no metadata fetch happens.
@@ -329,9 +333,9 @@ every record, so by default polymorphic lookups won't round-trip: **export with
 annotations** (`query odata` with annotations, or an annotated retrieve) if you
 need them rebound.
 
-This is lookup-only: non-lookup read-only / unique scalar fields are **not**
-stripped, so a whole-record export may still be rejected on those (a separate
-concern). There is no export-side "import-ready" flag.
+This is lookup/envelope-only: non-lookup read-only / unique scalar fields are
+**not** stripped, so a whole-record export may still be rejected on those (a
+separate concern). There is no export-side "import-ready" flag.
 
 ## Upsert by alternate key (`entity upsert --key`)
 

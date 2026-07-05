@@ -111,7 +111,7 @@ def _common_numeric(opts: dict[str, Any], odata_type: str) -> dict[str, Any]:
     return body
 
 
-def _coerce_int_bounds(body: dict[str, Any]) -> None:
+def coerce_int_bounds(body: dict[str, Any]) -> None:
     """Force MinValue/MaxValue to Edm.Int32 integers.
 
     The CLI parses ``--min``/``--max`` as floats, so a bound of ``0`` arrives as
@@ -127,7 +127,7 @@ def _coerce_int_bounds(body: dict[str, Any]) -> None:
             continue
         if isinstance(val, float) and not val.is_integer():
             raise D365Error(
-                f"{key} for an integer attribute must be a whole number, got {val}."
+                f"{key} for an integer or bigint attribute must be a whole number, got {val}."
             )
         body[key] = int(val)
 
@@ -135,14 +135,14 @@ def _coerce_int_bounds(body: dict[str, Any]) -> None:
 def _int_attr(opts: dict[str, Any]) -> dict[str, Any]:
     _forbid(opts, "precision")
     body = _common_numeric(opts, "Microsoft.Dynamics.CRM.IntegerAttributeMetadata")
-    _coerce_int_bounds(body)
+    coerce_int_bounds(body)
     return body
 
 
 def _bigint_attr(opts: dict[str, Any]) -> dict[str, Any]:
     _forbid(opts, "precision")
     body = _common_numeric(opts, "Microsoft.Dynamics.CRM.BigIntAttributeMetadata")
-    _coerce_int_bounds(body)
+    coerce_int_bounds(body)
     return body
 
 

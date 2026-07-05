@@ -6,6 +6,10 @@ mappings, hierarchical relationships, and virtual tables. The verbs live under
 group `metadata`; browse/introspect the schema first via `reference/metadata.md`.
 Flags/choices: `crm metadata --help`.
 
+Integer and bigint `--min` / `--max` bounds are whole-number fields on both
+`metadata add-attribute` and `metadata update-attribute`; fractional input is
+rejected before the request is sent.
+
 ## Datetime column behavior gotchas (`--behavior`)
 
 `DateTimeBehavior` controls whether a datetime column stores time-zone-offset data

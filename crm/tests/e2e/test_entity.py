@@ -77,6 +77,61 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
             assert "id" not in ddata
 
 
+@covers("entity create", "entity get", "entity update", "entity delete")
+def test_entity_update_round_trips_get_payload_with_lookup(backend, cli, tmp_path, unique):
+    """A get payload with _entity_id* and READ-format lookup keys updates cleanly."""
+    created_contacts: list[str] = []
+    created_accounts: list[str] = []
+
+    def _cleanup():
+        for aid in created_accounts:
+            _safe(backend, f"accounts({aid})")
+        for cid in created_contacts:
+            _safe(backend, f"contacts({cid})")
+
+    try:
+        r_contact = cli(["--json", "entity", "create", "contacts",
+                         "--data", json.dumps({"lastname": f"RoundTrip{unique[:6]}"})])
+        assert r_contact.returncode == 0, r_contact.stderr
+        contact_id = str(json.loads(r_contact.stdout)["data"]["_entity_id"])
+        created_contacts.append(contact_id)
+
+        r_account = cli(["--json", "entity", "create", "accounts", "--data", json.dumps({
+            "name": f"E2E RoundTrip {unique[:6]} source",
+            "primarycontactid@odata.bind": f"/contacts({contact_id})",
+        })])
+        assert r_account.returncode == 0, r_account.stderr
+        account_id = str(json.loads(r_account.stdout)["data"]["_entity_id"])
+        created_accounts.append(account_id)
+
+        r_get = cli([
+            "--json", "entity", "get", "accounts", account_id,
+            "--select", "name,_primarycontactid_value",
+        ])
+        assert r_get.returncode == 0, r_get.stderr
+        payload = json.loads(r_get.stdout)["data"]
+        assert payload["_entity_id"] == account_id
+        assert payload["_primarycontactid_value"] == contact_id
+        payload["name"] = f"E2E RoundTrip {unique[:6]} updated"
+
+        body_path = tmp_path / "account_update.json"
+        body_path.write_text(json.dumps(payload), encoding="utf-8")
+        r_update = cli([
+            "--json", "entity", "update", "accounts", account_id,
+            "--data-file", str(body_path),
+        ])
+        assert r_update.returncode == 0, r_update.stderr
+
+        row = backend.get(
+            f"accounts({account_id})",
+            params={"$select": "name,_primarycontactid_value"},
+        )
+        assert row["name"] == payload["name"]
+        assert row["_primarycontactid_value"] == contact_id
+    finally:
+        _cleanup()
+
+
 @covers("entity upsert")
 def test_entity_upsert_if_none_match_is_create_only(backend, cli, unique):
     import uuid

@@ -134,6 +134,45 @@ class TestUpdateAttribute:
         assert body["Description"] == _FULL_STRING_ATTR["Description"]
         assert put_req.headers.get("MSCRM.MergeLabels") == "true"
 
+    def test_integer_min_max_serialize_as_ints(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_count')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_INTEGER_ATTR)
+            m.get(cast, json=_FULL_INTEGER_ATTR)
+            m.put(cast, status_code=204)
+            mu.update_attribute(
+                backend, "new_project", "new_count",
+                min_value=0.0, max_value=100.0,
+            )
+        body = m.request_history[-1].json()
+        assert isinstance(body["MinValue"], int)
+        assert isinstance(body["MaxValue"], int)
+        assert body["MinValue"] == 0
+        assert body["MaxValue"] == 100
+
+    def test_integer_fractional_bound_rejected_before_put(self, backend):
+        from crm.core import metadata_update as mu
+        base = backend.url_for(
+            "EntityDefinitions(LogicalName='new_project')"
+            "/Attributes(LogicalName='new_count')"
+        )
+        cast = base + "/Microsoft.Dynamics.CRM.IntegerAttributeMetadata"
+        with requests_mock.Mocker() as m:
+            m.get(base, json=_FULL_INTEGER_ATTR)
+            m.get(cast, json=_FULL_INTEGER_ATTR)
+            put = m.put(cast, status_code=204)
+            with pytest.raises(D365Error, match="whole number"):
+                mu.update_attribute(
+                    backend, "new_project", "new_count",
+                    min_value=0.0, max_value=100.5,
+                )
+        assert put.call_count == 0
+
 
 # The un-cast (base AttributeMetadata projection) GET: Dataverse returns ONLY
 # base properties here — type-specific props (MaxLength, FormatName, …) are
@@ -834,6 +873,21 @@ class TestBuildAttributeChanges:
             **{**self._base("Microsoft.Dynamics.CRM.DecimalAttributeMetadata"),
                "max_value": 100.0})
         assert out["MaxValue"] == 100.0
+
+    def test_bigint_bounds_coerced_to_int(self):
+        out = self._call(
+            **{**self._base("Microsoft.Dynamics.CRM.BigIntAttributeMetadata"),
+               "min_value": 1.0, "max_value": 100.0})
+        assert isinstance(out["MinValue"], int)
+        assert isinstance(out["MaxValue"], int)
+        assert out["MinValue"] == 1
+        assert out["MaxValue"] == 100
+
+    def test_bigint_fractional_bound_rejected(self):
+        with pytest.raises(D365Error, match="integer or bigint"):
+            self._call(
+                **{**self._base("Microsoft.Dynamics.CRM.BigIntAttributeMetadata"),
+                   "max_value": 100.5})
 
     def test_max_value_on_non_numeric_raises(self):
         with pytest.raises(D365Error, match="--max"):

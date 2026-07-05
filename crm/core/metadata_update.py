@@ -20,6 +20,7 @@ from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 from crm.core.metadata import label, maybe_publish
+from crm.core.metadata_attrs import coerce_int_bounds
 from crm.core import metadata_cache
 from crm.core import metadata_constraints as mc
 
@@ -31,6 +32,7 @@ _LENGTH_TYPES = frozenset(mc.KINDS[k].cast for k in ("string", "memo"))
 _NUMERIC_TYPES = frozenset(
     mc.KINDS[k].cast for k in ("integer", "bigint", "decimal", "double", "money")
 )
+_INT_BOUND_TYPES = frozenset(mc.KINDS[k].cast for k in ("integer", "bigint"))
 _PRECISION_TYPES = frozenset(mc.KINDS[k].cast for k in ("decimal", "double", "money"))
 
 # Relationship @odata.type cast for many-to-many (not an attribute kind).
@@ -275,6 +277,8 @@ def _build_attribute_changes(
         if odata_type not in _NUMERIC_TYPES:
             raise D365Error("--max is only valid for numeric attributes.")
         changes["MaxValue"] = max_value
+    if odata_type in _INT_BOUND_TYPES:
+        coerce_int_bounds(changes)
     if format_name is not None:
         if odata_type == _DATETIME_TYPE:
             mc.validate_format("datetime", format_name, subject="--format")

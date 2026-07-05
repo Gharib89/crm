@@ -236,11 +236,13 @@ def _rebind_payload_lookups(
 ) -> dict[str, Any]:
     """Rewrite READ-format ``_<attr>_value`` lookups in a write payload (#333).
 
-    Lets ``entity create`` / ``upsert`` accept a record straight from
-    ``data export`` / ``query odata``: any ``_<attr>_value`` lookup becomes
-    ``<nav>@odata.bind`` and read-only annotations are dropped. A no-op (no
+    Lets ``entity create`` / ``update`` / ``upsert`` accept a record straight
+    from ``entity get`` / ``data export`` / ``query odata``: any
+    ``_<attr>_value`` lookup becomes ``<nav>@odata.bind``, read-only annotations
+    are dropped, and crm's synthetic envelope id keys are stripped. A no-op (no
     metadata read) for a hand-written payload with no such keys.
     """
+    payload = {k: v for k, v in payload.items() if k not in ("_entity_id", "_entity_id_url")}
     if not lookup_bind.needs_binding(payload):
         return payload
     resolver = lookup_bind.build_resolver(ctx.backend(), entity_set)
@@ -417,9 +419,14 @@ def entity_update(ctx: CLIContext, entity_set, record_id, data_json, data_file, 
         raise click.UsageError(
             "--allow-create and --if-match are mutually exclusive: --allow-create permits "
             "upsert (no If-Match), while --if-match enforces optimistic concurrency."
-        )
+    )
     return_record = _resolve_return_record(no_return, return_record, default=False)
     payload = _load_payload(data_json, data_file)
+    try:
+        payload = _rebind_payload_lookups(ctx, entity_set, payload)
+    except D365Error as exc:
+        _handle_d365_error(ctx, exc)
+        return
     if validate and _validate_or_emit(ctx, entity_set, payload) is None:
         return
     with d365_errors(ctx, hint=_metadata_set_hint(entity_set),
