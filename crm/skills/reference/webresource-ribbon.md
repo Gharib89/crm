@@ -145,16 +145,18 @@ in the UI. `--lcid` is validated against the org's provisioned languages and err
 if not provisioned. Re-running for a second LCID adds a sibling `<Title>` (does not
 overwrite).
 
-**Button icons (`add-button` / `set-icon`) — reference forms differ; the web
-resource must exist and match its slot type.** `--modern-image` (the Unified
-Interface SVG icon) lands as the **bare web-resource name**; `--image16` /
-`--image32` (the classic rasters) land as `$webresource:<name>` directives — the
-CLI writes the correct form, so pass the plain name to every flag and never
-pre-prefix. Beyond the group-wide "web resource must already exist" rule, each icon
-resource must also **match its slot's type** — an SVG for `--modern-image`, a
-PNG/JPG/GIF/ICO raster for `--image16`/`--image32`; a missing or wrong-type
-resource errors up front, before the slow import round-trip. `set-icon` re-icons an
-existing button in place (no recreate); `add-button` sets the icon while creating.
+**Button icons (`add-button` / `set-icon`) — pass the plain name; it must exist
+and match its slot type.** `--modern-image` is the Unified Interface SVG icon
+(`ModernImage`); `--image16`/`--image32` are the classic rasters
+(`Image16by16`/`Image32by32`). Pass the plain web-resource name to every flag —
+the CLI writes each as a `$webresource:<name>` directive (never pre-prefix), which
+is what registers the solution dependency so the icon can't be deleted while a
+button still uses it. Beyond the group-wide "web resource must already exist"
+rule, each icon resource must also **match its slot's type** — an SVG for
+`--modern-image`, a PNG/JPG/GIF/ICO raster for `--image16`/`--image32`; a missing
+or wrong-type resource errors up front, before the slow import round-trip.
+`set-icon` re-icons an existing button in place (no recreate); `add-button` sets
+the icon while creating.
 
 **`hide-button` — validate the target-id first.** `--target-id` is the OOB control Id
 from `crm ribbon export ENTITY`. The command validates it against the live composed

@@ -420,8 +420,12 @@ def test_ribbon_set_icon_sets_modern_image(
                 if b.get("LabelText") == f"Icon{unique}"), None)
     assert btn is not None, "custom button missing from composed ribbon after add"
     composed_btn_id = btn.get("Id")
-    assert btn.get("ModernImage") == icon_a, (
-        f"expected ModernImage={icon_a!r} after add-button, got {btn.get('ModernImage')!r}"
+    # The button carries the icon A web resource in ModernImage. Assert by
+    # containment: it is stored as `$webresource:<name>`, but the composed ribbon
+    # may echo the directive verbatim or resolve it to a URL — either must name A.
+    assert icon_a in (btn.get("ModernImage") or ""), (
+        f"expected ModernImage to reference {icon_a!r} after add-button, "
+        f"got {btn.get('ModernImage')!r}"
     )
 
     # ── SET-ICON to icon B (change the existing button's icon) ────────────────
@@ -440,8 +444,10 @@ def test_ribbon_set_icon_sets_modern_image(
     upd = next((b for b in after.iter("Button")
                 if b.get("Id") == composed_btn_id), None)
     assert upd is not None, "custom button missing after set-icon"
-    assert upd.get("ModernImage") == icon_b, (
-        f"expected ModernImage={icon_b!r} after set-icon, got {upd.get('ModernImage')!r}"
+    mi = upd.get("ModernImage") or ""
+    assert icon_b in mi and icon_a not in mi, (
+        f"expected ModernImage to reference {icon_b!r} (not {icon_a!r}) after "
+        f"set-icon, got {mi!r}"
     )
 
 

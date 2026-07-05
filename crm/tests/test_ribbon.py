@@ -642,9 +642,10 @@ def test_add_custom_action_with_icon_sets_image_attributes():
                                image32="cwx_/icons/i32.png"))
     btn = diff.find(".//Button")
     assert btn is not None
-    # ModernImage takes the web resource name directly (UCI); the classic
-    # Image16by16/Image32by32 take a $webresource: directive.
-    assert btn.get("ModernImage") == "cwx_icon.svg"
+    # all three reference the web resource with the $webresource: directive, so a
+    # solution dependency is established (MS Learn: always use $webresource: for a
+    # web resource referenced from a ribbon control).
+    assert btn.get("ModernImage") == "$webresource:cwx_icon.svg"
     assert btn.get("Image16by16") == "$webresource:cwx_/icons/i16.png"
     assert btn.get("Image32by32") == "$webresource:cwx_/icons/i32.png"
 
@@ -670,7 +671,7 @@ def test_set_button_icon_sets_all_attributes():
         image32="cwx_/i32.png"))
     btn = diff.find(".//Button")
     assert btn is not None
-    assert btn.get("ModernImage") == "cwx_icon.svg"
+    assert btn.get("ModernImage") == "$webresource:cwx_icon.svg"
     assert btn.get("Image16by16") == "$webresource:cwx_/i16.png"
     assert btn.get("Image32by32") == "$webresource:cwx_/i32.png"
 
@@ -688,7 +689,7 @@ def test_set_button_icon_only_touches_given_and_protects_others():
     after = (btn.get("Id"), btn.get("Command"), btn.get("TemplateAlias"),
              btn.get("Sequence"), btn.get("LabelText"))
     assert before == after                          # identity attrs untouched
-    assert btn.get("ModernImage") == "cwx_icon.svg"
+    assert btn.get("ModernImage") == "$webresource:cwx_icon.svg"
     assert btn.get("Image16by16") == "$webresource:cwx_/existing16.png"  # kept
 
 

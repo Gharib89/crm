@@ -542,7 +542,7 @@ def test_ribbon_add_button_with_icons_writes_image_attrs(monkeypatch):
     assert isinstance(root, ET.Element)
     btn = root.find(".//Button")
     assert btn is not None
-    assert btn.get("ModernImage") == "cwx_icon.svg"
+    assert btn.get("ModernImage") == "$webresource:cwx_icon.svg"
     assert btn.get("Image16by16") == "$webresource:cwx_/i16.png"
     assert btn.get("Image32by32") == "$webresource:cwx_/i32.png"
 
@@ -577,7 +577,7 @@ def test_ribbon_set_icon_sets_attrs(monkeypatch):
     root = captured["root"]
     assert isinstance(root, ET.Element)
     btn = root.find(".//Button")
-    assert btn is not None and btn.get("ModernImage") == "cwx_icon.svg"
+    assert btn is not None and btn.get("ModernImage") == "$webresource:cwx_icon.svg"
     # protected attributes untouched
     assert btn.get("Command") == "cwx_ticket.form.Validate.Command"
     assert btn.get("LabelText") == "Validate"

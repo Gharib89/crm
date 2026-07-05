@@ -185,12 +185,15 @@ _CLASSIC_IMAGE_TYPES: frozenset[int] = frozenset({5, 6, 7, 10})  # PNG/JPG/GIF/I
 class ButtonIcon:
     """The icon web resources to write onto a ribbon ``<Button>``.
 
-    ``modern_image`` is the Unified Interface SVG — the ``ModernImage`` attribute,
-    which takes the web resource NAME directly. ``image16`` / ``image32`` are the
-    classic 16×16 / 32×32 rasters — the ``Image16by16`` / ``Image32by32``
-    attributes, which take a ``$webresource:`` directive (verified against MS
-    Learn's image-web-resources reference). All optional; ``None`` means "leave
-    that attribute unchanged".
+    Each field is a web resource NAME (as the user types it, e.g.
+    ``cwx_/icons/approve.svg``). ``modern_image`` is the Unified Interface SVG
+    (the ``ModernImage`` attribute); ``image16`` / ``image32`` are the classic
+    16×16 / 32×32 rasters (``Image16by16`` / ``Image32by32``). All three are
+    written with the ``$webresource:`` directive — MS Learn's web-resources
+    reference says to *always* use it when referencing a web resource from a
+    ribbon control, and only ``$webresource:`` references establish the solution
+    dependency that keeps the icon from being deleted out from under the button.
+    All optional; ``None`` means "leave that attribute unchanged".
     """
     modern_image: str | None = None
     image16: str | None = None
@@ -205,11 +208,11 @@ def _apply_icon_attrs(button: ET.Element, icon: ButtonIcon) -> None:
     """Set the image attributes given on ``icon`` onto ``button`` (leave others).
 
     Only attributes for the non-None fields are touched, so setting one icon slot
-    never clears another. ModernImage takes the web resource name directly;
-    Image16by16/Image32by32 take a ``$webresource:`` directive.
+    never clears another. All three reference the web resource with the
+    ``$webresource:`` directive (see :class:`ButtonIcon`).
     """
     if icon.modern_image:
-        button.set("ModernImage", icon.modern_image)
+        button.set("ModernImage", f"$webresource:{icon.modern_image}")
     if icon.image16:
         button.set("Image16by16", f"$webresource:{icon.image16}")
     if icon.image32:

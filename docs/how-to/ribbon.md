@@ -96,13 +96,15 @@ classic 16×16 and 32×32 rasters (`Image16by16` / `Image32by32`). Set them whil
 creating the button with `add-button`, or change them on an existing button with
 `set-icon` — no recreate needed. Each flag takes a **web resource name**:
 
-- `--modern-image` — an **SVG** web resource; used by the Unified Interface. Written
-  as the bare web-resource name (the platform resolves it; no `$webresource:` prefix).
+- `--modern-image` — an **SVG** web resource; used by the Unified Interface
+  (`ModernImage`).
 - `--image16` / `--image32` — a **raster** (PNG/JPG/GIF/ICO) web resource for the
-  classic 16×16 / 32×32 slots. Written as a `$webresource:<name>` directive.
+  classic 16×16 / 32×32 slots (`Image16by16` / `Image32by32`).
 
-You pass the plain web-resource name to every flag; the CLI writes the correct form
-for each slot, so never pre-prefix with `$webresource:`.
+You pass the plain web-resource name to every flag; the CLI writes each as a
+`$webresource:<name>` directive (which is what establishes the solution dependency
+that stops the icon being deleted while a button still uses it), so never
+pre-prefix with `$webresource:` yourself.
 
 ```bash
 # Give a modern (Unified Interface) SVG icon while adding the button
