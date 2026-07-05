@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.1 (2026-07-05)
+
+### Bug Fixes
+
+- Strip whitespace from profile URLs and test add before saving
+  ([#677](https://github.com/Gharib89/crm/pull/677),
+  [`d86cdd5`](https://github.com/Gharib89/crm/commit/d86cdd525d5d031ad952709304bd6526ed96fc96))
+
+### Chores
+
+- Add codex migration adapters
+  ([`5a021ed`](https://github.com/Gharib89/crm/commit/5a021edeb7753d47a44596bfa9645e4fe61e04a1))
+
+- **agents**: Extract live-e2e skill; gate commits for secrets + git discipline
+  ([#674](https://github.com/Gharib89/crm/pull/674),
+  [`8751873`](https://github.com/Gharib89/crm/commit/875187313a5e662bb3fbbcb46015f8717722a960))
+
+### Refactoring
+
+- **apply**: Migrate plugin assembly + step onto the component-kind adapter
+  ([#673](https://github.com/Gharib89/crm/pull/673),
+  [`cd16bf4`](https://github.com/Gharib89/crm/commit/cd16bf40f4c6a370da2ae6d3f33a6f10a92fe74b))
+
+
 ## v1.51.0 (2026-07-03)
 
 ### Bug Fixes
