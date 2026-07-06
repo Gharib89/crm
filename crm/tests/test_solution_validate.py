@@ -205,6 +205,29 @@ class TestRootParity:
         assert "no definition in customizations.xml" in errs[0]["message"]
         assert report["valid"] is False
 
+    def test_reproduced_ribbon_flow_passes_preimport_validation(self, tmp_path):
+        # #678 acceptance: the reproduced flow (entity in solution → edit its main
+        # form with `--solution` → `ribbon add-button --solution`) must pass
+        # pre-import validation. The ribbon round-trip calls validate_solution with
+        # check_collisions=False (ribbon.py) — assert that exact call is now valid.
+        form_guid = "44444444-4444-4444-4444-444444444444"
+        entity = (
+            '<Entity><Name>cwx_widget</Name>'
+            '<FormXml><forms type="main">'
+            f"<systemform><formid>{{{form_guid}}}</formid></systemform>"
+            "</forms></FormXml></Entity>"
+        )
+        p = tmp_path / "ribbon_roundtrip.zip"
+        _make_pkg(
+            p,
+            _sol('<RootComponent type="1" schemaName="cwx_widget"/>'
+                 f'<RootComponent type="60" id="{form_guid}"/>'),
+            _cust(entities=entity),
+        )
+        report = sv.validate_solution(p, check_collisions=False)
+        assert report["valid"] is True
+        assert [f for f in report["findings"] if f["check"] == "root-parity"] == []
+
 
 # ── Task 3: $webresource: ribbon refs ─────────────────────────────────────────
 
