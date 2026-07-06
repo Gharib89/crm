@@ -48,7 +48,6 @@ def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast)
     if bind_id and not bind_set:
         ctx.emit(False, error="--bind-id requires --bind-set.")
         return
-    backend = ctx.backend() if not ctx.dry_run else None
     try:
         params = json.loads(params_json) if params_json else None
         if params is not None and not isinstance(params, dict):
@@ -65,7 +64,7 @@ def action_function(ctx: CLIContext, name, params_json, bind_set, bind_id, cast)
     else:
         path = call
     with d365_errors(ctx):
-        result = (backend or ctx.backend()).get(path, params=aliases or None)
+        result = ctx.backend().get(path, params=aliases or None)
     ctx.emit(True, data=result or {})
 
 

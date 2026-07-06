@@ -108,8 +108,8 @@ def table(
     spec["solution"] = {"unique_name": solution}
 
     # --- 4. Apply via apply_spec ---
-    backend = ctx.backend()
     with d365_errors(ctx):
+        backend = ctx.backend()
         res = apply_mod.apply_spec(
             backend, spec, stage_only=ctx.stage_only
         )
