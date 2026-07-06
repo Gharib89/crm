@@ -9,6 +9,22 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.2 (2026-07-06)
+
+### Bug Fixes
+
+- Normalize update write payloads
+  ([`12f4793`](https://github.com/Gharib89/crm/commit/12f47930276c0654f7679158ac2bcf476d0e762d))
+
+### Documentation
+
+- Clarify integer bounds helper contract
+  ([`12f4793`](https://github.com/Gharib89/crm/commit/12f47930276c0654f7679158ac2bcf476d0e762d))
+
+- Clarify read-shape update round trips
+  ([`12f4793`](https://github.com/Gharib89/crm/commit/12f47930276c0654f7679158ac2bcf476d0e762d))
+
+
 ## v1.51.1 (2026-07-05)
 
 ### Bug Fixes
