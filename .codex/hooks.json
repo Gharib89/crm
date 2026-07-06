@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/inject-memory-index.py\"",
+            "async": false
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "hooks": [
