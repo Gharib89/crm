@@ -23,16 +23,20 @@ lookup bind (`"<nav>@odata.bind": "/<set>(<guid>)"`) is passed through unchanged
 ### Round-tripping an export (READ-shape lookups auto-rebind)
 
 `data import` rewrites any lookup that arrives in the server's **READ shape**
-`_<attr>_value` (the raw-GUID form `data export` and `query odata` emit) into the
-WRITE shape `"<nav>@odata.bind": "/<set>(<guid>)"`, resolving the navigation
-property and target entity set from relationship metadata. So an exported row
-imports unedited — no manual `@odata.bind` editing. (`entity create` and
-`entity upsert` do the same on their `--data` payloads.) Specifics:
+`_<attr>_value` (the raw-GUID form `entity get`, `data export`, and `query odata`
+emit) into the WRITE shape `"<nav>@odata.bind": "/<set>(<guid>)"`, resolving the
+navigation property and target entity set from relationship metadata. So an
+exported row imports unedited — no manual `@odata.bind` editing. (`entity create`,
+`entity update`, and `entity upsert` do the same on their `--data` payloads.)
+Specifics:
 
 - A read-only lookup value (e.g. `_createdby_value`) is dropped — it can't be
   written. Read-only OData annotation keys (`@odata.etag`, `@odata.context`,
   formatted-value and per-value annotations) are stripped; a hand-written
   `<nav>@odata.bind` you provide is preserved.
+- `entity create`, `entity update`, and `entity upsert` also drop crm's synthetic
+  `_entity_id` and `_entity_id_url` keys, so an `entity get --json` payload can be
+  edited and passed to `entity update` directly.
 - A `null` `_<attr>_value` clears the lookup (`<nav>@odata.bind: null`).
 - A payload already in write shape (plain columns + your own `@odata.bind`, no
   `_value`/annotation keys) is left untouched — no metadata fetch.
@@ -45,9 +49,9 @@ imports unedited — no manual `@odata.bind` editing. (`entity create` and
   record, so to round-trip a polymorphic lookup you must export **with**
   annotations.
 
-This is lookup-only: non-lookup read-only / unique scalar fields are not stripped,
-so a whole-record export may still be rejected on those (a separate concern), and
-there is no export-side "import-ready" flag.
+This is lookup/envelope-only: non-lookup read-only / unique scalar fields are not
+stripped, so a whole-record export may still be rejected on those (a separate
+concern), and there is no export-side "import-ready" flag.
 
 ### Upsert records by GUID
 
