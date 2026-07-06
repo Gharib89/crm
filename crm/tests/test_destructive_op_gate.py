@@ -424,14 +424,15 @@ class TestCliConfirmParity:
     def test_entity_delete_no_yes_non_tty_aborts(self, monkeypatch):
         from crm import cli as crm_cli
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        # No input => EOF on stdin, the real non-TTY agent scenario. click.confirm
-        # raises Abort; the documented JSON envelope must still be emitted.
+        # No input => the real non-TTY agent scenario. The helper must fail fast
+        # with a clean JSON envelope naming --yes.
         result = self._runner().invoke(
             crm_cli.cli,
             ["--json", "entity", "delete", "contacts", _GUID],
         )
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_app_delete_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
@@ -452,7 +453,8 @@ class TestCliConfirmParity:
         result = self._runner().invoke(
             crm_cli.cli, ["--json", "app", "delete", "cwx_crmworx"])
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_solution_job_cancel_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
@@ -473,7 +475,8 @@ class TestCliConfirmParity:
             crm_cli.cli, ["--json", "solution", "job-cancel", _GUID],
         )
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_async_cancel_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
@@ -494,7 +497,8 @@ class TestCliConfirmParity:
             crm_cli.cli, ["--json", "async", "cancel", _GUID],
         )
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_plugin_unregister_assembly_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
@@ -518,7 +522,8 @@ class TestCliConfirmParity:
             crm_cli.cli, ["--json", "plugin", "unregister-assembly", "Contoso.Plugins"],
         )
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_plugin_unregister_step_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
@@ -542,4 +547,5 @@ class TestCliConfirmParity:
             crm_cli.cli, ["--json", "plugin", "unregister-step", "My Step"],
         )
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output

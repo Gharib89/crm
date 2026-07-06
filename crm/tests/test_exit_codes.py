@@ -34,13 +34,12 @@ def test_d365_server_error_exits_1(make_fake_backend, inject_backend, isolated_h
 
 
 def test_declined_confirmation_exits_1():
-    """Operational failure: a declined confirmation prompt → exit 1."""
+    """Operational failure: missing --yes under --json/non-TTY → exit 1."""
     result = CliRunner().invoke(
         cli, ["--json", "metadata", "delete-entity", "new_widget"], input="\n"
     )
     assert result.exit_code == 1, result.output
-    # output carries the confirm prompt before the envelope, so match the substring
-    assert '"error": "aborted by user"' in result.output
+    assert "Pass --yes to continue" in result.output
 
 
 def test_success_exits_0(make_fake_backend, inject_backend, isolated_home):

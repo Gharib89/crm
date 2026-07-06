@@ -249,7 +249,8 @@ class TestUninstallCommand:
         assert captured == {"unique_name": "ManagedApp", "force": True}
 
     def test_abort_without_yes_on_non_tty(self, monkeypatch):
-        # No --yes + EOF stdin → _confirm_destructive emits "aborted by user" + Exit(1).
+        # Under --json there is no interactive prompt: the helper must fail fast
+        # with a clean envelope naming --yes.
         called = {"core": False}
         monkeypatch.setattr("crm.core.solution.uninstall_solution",
                             lambda *a, **k: called.update(core=True))
@@ -259,7 +260,8 @@ class TestUninstallCommand:
         ])
         assert result.exit_code == 1, result.output
         assert called["core"] is False
-        assert "aborted by user" in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
 
 class TestStageAndUpgradeCommand:
@@ -329,7 +331,8 @@ class TestApplyUpgradeCommand:
         assert json.loads(result.output)["data"]["promoted"] is True
 
     def test_abort_without_yes_on_non_tty(self, monkeypatch):
-        # No --yes + EOF stdin → _confirm_destructive emits "aborted by user" + Exit(1).
+        # Under --json there is no interactive prompt: the helper must fail fast
+        # with a clean envelope naming --yes.
         called = {"core": False}
         monkeypatch.setattr("crm.core.solution.delete_and_promote",
                             lambda *a, **k: called.update(core=True))
@@ -339,7 +342,8 @@ class TestApplyUpgradeCommand:
         ])
         assert result.exit_code == 1, result.output
         assert called["core"] is False
-        assert "aborted by user" in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_core_error_exit_1(self, monkeypatch):
         def boom(backend, name):

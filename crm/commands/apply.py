@@ -15,7 +15,6 @@ import click
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import d365_errors, _journal
 from crm.commands._helpers.confirm import _confirm_destructive, _destructive_option
-from crm.commands._tty import _stdin_is_tty
 from crm.core import apply as apply_mod
 
 
@@ -89,14 +88,9 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
             "a solution: block to the spec (or re-export with "
             "`metadata export-spec --solution <unique_name>`).")
 
-    # Gate destructive pruning behind a confirmation (real runs only — --dry-run
-    # is a read-only preview that deletes nothing). Under --json / a non-TTY there
-    # is no interactive prompt, so an explicit --yes is required; on a TTY, prompt.
-    if prune and not ctx.dry_run:
-        if not yes and (ctx.json_mode or not _stdin_is_tty()):
-            ctx.emit(False, error="--prune permanently deletes org components and "
-                     "needs confirmation: pass --yes (no interactive prompt under "
-                     "--json or a non-TTY).")
+    # Gate destructive pruning behind a confirmation. Under --dry-run the shared
+    # helper returns immediately so the command reaches its read-only preview.
+    if prune:
         scope = (" (including data-bearing entities/attributes — destroys row data)"
                  if allow_data_loss else
                  "; data-bearing entities/attributes are skipped unless "

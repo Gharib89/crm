@@ -191,11 +191,10 @@ class TestSolutionImportConfirm:
 
     def test_default_overwrite_declined_aborts_exit_1(self, monkeypatch, zip_path):
         captured = self._stub_import(monkeypatch)
-        # non-TTY stdin (EOF) → click.confirm aborts → documented envelope. The
-        # prompt text prefixes the JSON on stdout, so match by substring.
+        # Under --json/non-TTY the helper now fail-fasts instead of prompting.
         result = CliRunner().invoke(cli, ["--json", "solution", "import", zip_path])
         assert result.exit_code == 1, result.output
-        assert '"error": "aborted by user"' in result.output
+        assert "Pass --yes to continue" in result.output
         assert "OVERWRITE unmanaged customizations" in result.output
         assert captured == {}  # import_solution never reached
 

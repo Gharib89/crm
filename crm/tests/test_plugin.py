@@ -1476,7 +1476,8 @@ class TestUnregisterCommands:
             "--json", "plugin", "unregister-assembly", "Contoso.Plugins",
         ])
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_unregister_step_yes_skips_prompt(self, monkeypatch):
         from crm.cli import cli
@@ -1499,7 +1500,8 @@ class TestUnregisterCommands:
             "--json", "plugin", "unregister-step", "My Step",
         ])
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_unregister_image_yes_skips_prompt(self, monkeypatch):
         from crm.cli import cli
@@ -1522,7 +1524,8 @@ class TestUnregisterCommands:
             "--json", "plugin", "unregister-image", _IMG_ID,
         ])
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_unregister_image_handles_d365_error(self, monkeypatch):
         import json

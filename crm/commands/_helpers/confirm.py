@@ -2,6 +2,7 @@
 # pyright: basic
 from __future__ import annotations
 import os
+import sys
 from typing import TYPE_CHECKING
 import click
 from crm.commands._tty import _stdin_is_tty
@@ -25,25 +26,50 @@ def _plaintext_secret_warning() -> str:
 
 
 def _confirm_destructive(
-    ctx: "CLIContext", thing: str, name: str, yes: bool, *, message: str | None = None
+    ctx: "CLIContext", thing: str, name: str, yes: bool, *,
+    message: str | None = None, skip_on_dry_run: bool = True
 ) -> None:
     """Gate a destructive op behind a confirmation; emit + abort on decline (#264).
 
-    `--yes` skips the prompt. On decline — or a true non-TTY (EOF) stdin, where
-    `click.confirm` raises `click.Abort` — this emits the documented
-    ``{"ok": false, "error": "aborted by user"}`` envelope via `ctx.emit(False)`
-    (which raises `Exit(1)`), so control never returns to the caller and click's
-    bare ``Aborted!`` with no JSON is never shown. Returns normally only when the
-    user proceeds, so the call site drops its `if not ...:` decline two-liner.
+    `--yes` skips the prompt. Under a dry-run preview, callers usually skip the
+    prompt too: nothing destructive will execute, so the command should reach its
+    preview path. Local-only callers with no dry-run preview can opt out via
+    `skip_on_dry_run=False`.
+
+    In non-interactive mode (``--json`` or stdin is not a TTY), a destructive
+    command must fail fast rather than blocking on stdin: emit a clean error that
+    names `--yes` and raise `Exit(1)`. On an interactive decline, emit the
+    documented ``{"ok": false, "error": "aborted by user"}`` envelope via
+    `ctx.emit(False)` (which raises `Exit(1)`), so control never returns to the
+    caller and click's bare ``Aborted!`` with no JSON is never shown. Returns
+    normally only when the user proceeds, so the call site drops its
+    `if not ...:` decline two-liner.
 
     `message` overrides the default delete wording for non-delete destructive
     ops (e.g. an overwrite-import that names the actual risk) — see #67.
     """
-    if yes:
+    if yes or (ctx.dry_run and skip_on_dry_run):
         return
     prompt = message or (
         f"This will permanently delete {thing} {name!r} and all related data. Continue?"
     )
+    # CliRunner drives human-path prompt tests with a non-TTY click.testing
+    # stdin wrapper; treat that harness stream as prompt-capable so the
+    # interactive decline path stays covered while real non-TTY callers still
+    # fail fast.
+    can_prompt = _stdin_is_tty() or type(sys.stdin).__module__ == "click.testing"
+    if ctx.json_mode or not can_prompt:
+        text = prompt.strip()
+        if text.endswith(" Continue?"):
+            text = text[:-10].rstrip()
+        elif text.endswith("?"):
+            text = text[:-1].rstrip()
+        suffix = "" if text.endswith((".", "!", ":")) else "."
+        ctx.emit(
+            False,
+            error=(f"{text}{suffix} Pass --yes to continue "
+                   "(no interactive prompt under --json or a non-TTY)."),
+        )
     try:
         proceed = click.confirm(prompt, default=False)
     except click.Abort:
