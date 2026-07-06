@@ -57,8 +57,13 @@ _GUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 # (customizations element tag, id-field candidates, org entity set, org id attr)
+# Candidate fields a <systemform> element carries its form GUID in (child element
+# or attribute). Shared by the org-collision scan and the reverse root-parity
+# systemform-definition discovery (#678) so the two never drift apart.
+_SYSTEMFORM_ID_FIELDS: tuple[str, ...] = ("formid", "FormId", "id")
+
 _COLLISION_SOURCES: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
-    ("systemform", ("formid", "FormId", "id"), "systemforms", "formid"),
+    ("systemform", _SYSTEMFORM_ID_FIELDS, "systemforms", "formid"),
     ("savedquery", ("savedqueryid", "SavedQueryId", "id"), "savedqueries", "savedqueryid"),
 )
 
@@ -155,7 +160,7 @@ def _systemform_definition_ids(cust_root: ET.Element) -> set[str]:
     """
     ids: set[str] = set()
     for el in cust_root.iter("systemform"):
-        gid = _extract_guid(el, ("formid", "FormId", "id"))
+        gid = _extract_guid(el, _SYSTEMFORM_ID_FIELDS)
         if gid:
             ids.add(_norm(gid))
     return ids
