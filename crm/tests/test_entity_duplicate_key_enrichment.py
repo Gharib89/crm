@@ -177,6 +177,90 @@ def test_entity_update_enriches_alternate_key_error(runner, backend, monkeypatch
     assert "alternate_keys" in data["meta"]
 
 
+def test_entity_update_rebinds_read_format_lookup_payload(runner, backend, monkeypatch):
+    """entity update accepts a read-format lookup value from get/query/export output."""
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    record_id = "11111111-0000-0000-0000-000000000001"
+    contact_id = "22222222-0000-0000-0000-000000000002"
+
+    with requests_mock.Mocker() as m:
+        m.get(backend.url_for("EntityDefinitions"), json={"value": [
+            {
+                "LogicalName": "account",
+                "EntitySetName": "accounts",
+                "PrimaryIdAttribute": "accountid",
+                "PrimaryNameAttribute": "name",
+            },
+            {
+                "LogicalName": "contact",
+                "EntitySetName": "contacts",
+                "PrimaryIdAttribute": "contactid",
+                "PrimaryNameAttribute": "fullname",
+            },
+        ]})
+        m.get(
+            backend.url_for("EntityDefinitions(LogicalName='account')/Attributes"),
+            json={"value": [
+                {"LogicalName": "name", "AttributeType": "String",
+                 "IsValidForCreate": True, "IsValidForUpdate": True},
+                {"LogicalName": "primarycontactid", "AttributeType": "Lookup",
+                 "IsValidForCreate": True, "IsValidForUpdate": True},
+            ]},
+        )
+        m.get(
+            backend.url_for(
+                "EntityDefinitions(LogicalName='account')/ManyToOneRelationships"
+            ),
+            json={"value": [
+                {
+                    "ReferencingAttribute": "primarycontactid",
+                    "ReferencedEntity": "contact",
+                    "ReferencingEntityNavigationPropertyName": "primarycontactid",
+                },
+            ]},
+        )
+        m.patch(backend.url_for(f"accounts({record_id})"), status_code=204)
+        result = runner.invoke(
+            cli,
+            ["--json", "entity", "update", "accounts", record_id,
+             "--data", json.dumps({
+                 "name": "Contoso",
+                 "_primarycontactid_value": contact_id,
+             })],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0, result.output
+    body = m.request_history[-1].json()
+    assert body == {
+        "name": "Contoso",
+        "primarycontactid@odata.bind": f"/contacts({contact_id})",
+    }
+
+
+def test_entity_update_strips_synthetic_envelope_keys(runner, backend, monkeypatch):
+    """entity update tolerates crm's own JSON envelope id fields."""
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    record_id = "11111111-0000-0000-0000-000000000001"
+
+    with requests_mock.Mocker() as m:
+        m.patch(backend.url_for(f"accounts({record_id})"), status_code=204)
+        result = runner.invoke(
+            cli,
+            ["--json", "entity", "update", "accounts", record_id,
+             "--data", json.dumps({
+                 "_entity_id": record_id,
+                 "_entity_id_url": backend.url_for(f"accounts({record_id})"),
+                 "name": "Contoso",
+             })],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert m.call_count == 1
+    assert m.request_history[-1].json() == {"name": "Contoso"}
+
+
 def test_entity_create_non_duplicate_key_error_not_enriched(runner, backend, monkeypatch):
     """Non-alternate-key errors are not enriched (no extra backend calls)."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)

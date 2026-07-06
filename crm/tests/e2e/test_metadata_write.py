@@ -146,6 +146,50 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
         raise
 
 
+@covers("metadata update-attribute")
+@pytest.mark.slow
+def test_update_integer_attribute_bounds(cli, ephemeral_entity, unique, ephemeral_solution):
+    """Integer --min/--max updates serialize as whole numbers accepted by Dataverse."""
+    attr_schema = f"new_e2eint{unique}"
+    attr_logical = attr_schema.lower()
+
+    r_add = cli([
+        "--json", "metadata", "add-attribute", ephemeral_entity,
+        "--kind", "integer",
+        "--schema-name", attr_schema,
+        "--display", f"E2E Int {unique}",
+        "--no-publish",
+        "--solution", ephemeral_solution,
+    ])
+    assert r_add.returncode == 0, r_add.stderr
+    env_add = json.loads(r_add.stdout)
+    assert env_add["ok"], env_add
+
+    try:
+        r_upd = cli([
+            "--json", "metadata", "update-attribute", ephemeral_entity, attr_logical,
+            "--min", "0",
+            "--max", "100",
+            "--no-publish",
+            "--solution", ephemeral_solution,
+        ])
+        assert r_upd.returncode == 0, r_upd.stderr
+        env_upd = json.loads(r_upd.stdout)
+        assert env_upd["ok"], env_upd
+
+        r_read = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
+        assert r_read.returncode == 0, r_read.stderr
+        attr_data = json.loads(r_read.stdout)["data"]
+        assert attr_data.get("MinValue") == 0
+        assert attr_data.get("MaxValue") == 100
+    finally:
+        cli([
+            "--json", "metadata", "delete-attribute", ephemeral_entity, attr_logical,
+            "--yes",
+            "--solution", ephemeral_solution,
+        ], check=False)
+
+
 # ---------------------------------------------------------------------------
 # metadata create-many-to-many  +  metadata delete-relationship (lifecycle)
 # ---------------------------------------------------------------------------

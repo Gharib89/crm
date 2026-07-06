@@ -192,6 +192,9 @@ crm --json metadata add-attribute cwx_ticket --kind picklist \
 ```
 `--kind` also accepts `integer` (with `--min`/`--max`), `memo`, `boolean`, `datetime`, etc.
 For `--kind string`/`memo`, `--max-length` is optional — omit it to default to 100 / 2000.
+For integer and bigint columns, `--min` / `--max` are whole-number bounds; fractional
+values are rejected before the request is sent. The same rule applies when changing
+those bounds later with `metadata update-attribute`.
 
 ## Add a datetime column with specific behavior
 
