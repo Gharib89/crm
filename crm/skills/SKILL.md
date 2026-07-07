@@ -34,8 +34,12 @@ against both targets.
 **`meta.profile` and `meta.url`** appear on every success envelope from a command
 that opened a backend connection — the serving profile name and Web API base URL,
 so the result is self-identifying without eyeball-matching GUIDs. They are absent
-on error envelopes and on local/meta verbs that never connect (`connection status`,
-`session`, `skill`, `profile list`, `self-update`, `repl`, `scaffold`).
+on local/meta verbs that never connect (`connection status`, `session`, `skill`,
+`profile list`, `self-update`, `repl`, `scaffold`).
+
+**Failure `meta` is optional.** Backend / Web API errors carry taxonomy metadata.
+Usage errors may omit `meta`; non-usage Click-layer failures include an empty
+`meta` object.
 
 **`meta.warnings`** is the one structured channel to scan for non-fatal advisories —
 it is an array (multiple warnings never clobber). Scan it for staged-but-unpublished

@@ -267,8 +267,15 @@ pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 
 
 def _emit_usage_envelope(message: str) -> None:
-    """Print the standard {ok: false, error: ...} JSON envelope for a usage error."""
+    """Print the standard {ok: false, error: ...} JSON usage-error envelope."""
     click.echo(json.dumps({"ok": False, "error": message}, indent=2, default=str))
+
+
+def _emit_click_error_envelope(message: str) -> None:
+    """Print the standard JSON envelope for non-usage ClickException failures."""
+    click.echo(
+        json.dumps({"ok": False, "error": message, "meta": {}}, indent=2, default=str)
+    )
 
 
 def _suppress_bare_repl(json_mode: bool) -> bool:
@@ -389,14 +396,18 @@ class _JsonAwareGroup(click.Group):
     def _render_usage_error(self, exc: "click.ClickException", json_mode: bool,
                             standalone: bool):
         """Render a non-global-flag ClickException exactly as before this hint was
-        added: usage errors under --json become the stdout envelope; the REPL
-        (non-standalone) and --json non-usage errors propagate to their own
-        handlers; a direct human invocation keeps Click's standalone rendering."""
-        if json_mode and isinstance(exc, click.UsageError):
-            _emit_usage_envelope(exc.format_message())
+        added, except that under --json any ClickException becomes a stdout JSON
+        envelope. A direct human invocation keeps Click's standalone rendering,
+        and the non-standalone human path still propagates to the REPL's
+        skin.error handler."""
+        if json_mode:
+            exit_code = exc.exit_code if isinstance(exc, click.UsageError) else 1
+            emit = (_emit_usage_envelope if isinstance(exc, click.UsageError)
+                    else _emit_click_error_envelope)
+            emit(exc.format_message())
             if standalone:
-                sys.exit(exc.exit_code)
-            raise click.exceptions.Exit(exc.exit_code)
+                sys.exit(exit_code)
+            raise click.exceptions.Exit(exit_code)
         if not standalone or json_mode:
             raise exc
         exc.show()
