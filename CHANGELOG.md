@@ -9,6 +9,20 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.3 (2026-07-07)
+
+### Bug Fixes
+
+- Guard backend construction against bad-profile tracebacks
+  ([#698](https://github.com/Gharib89/crm/pull/698),
+  [`9468bb5`](https://github.com/Gharib89/crm/commit/9468bb5c296eaec361938c62c8537f3b9e50e583))
+
+### Chores
+
+- Inject crm memory index into codex sessions
+  ([`eedd279`](https://github.com/Gharib89/crm/commit/eedd2791dfd8a739dd295c6b169c35656c037982))
+
+
 ## v1.51.2 (2026-07-06)
 
 ### Bug Fixes
