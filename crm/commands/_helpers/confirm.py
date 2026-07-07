@@ -40,7 +40,7 @@ def _confirm_destructive(
     names `--yes` and raise `Exit(1)`. On an interactive decline, emit the
     documented ``{"ok": false, "error": "aborted by user"}`` envelope via
     `ctx.emit(False)` (which raises `Exit(1)`), so control never returns to the
-    caller and click's bare ``Aborted!`` with no JSON is never shown. Returns
+    caller and click's raw ``Aborted!`` message is never shown. Returns
     normally only when the user proceeds, so the call site drops its
     `if not ...:` decline two-liner.
 

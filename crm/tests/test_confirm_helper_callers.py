@@ -75,11 +75,8 @@ def _zip_file(tmp_path: Path, name: str) -> str:
     return str(path)
 
 
-def _argv(case_id: str, tmp_path: Path, *, dry_run: bool) -> list[str]:
-    prefix = ["--json"]
-    if dry_run:
-        prefix.append("--dry-run")
-    common = {
+def _argv_map(tmp_path: Path, prefix: list[str]) -> dict[str, list[str]]:
+    return {
         "app:app_delete": [*prefix, "app", "delete", "cwx_crmworx"],
         "apply:apply_cmd": [*prefix, "apply", "-f", _spec_file(tmp_path), "--prune"],
         "async_ops:async_cancel": [*prefix, "async", "cancel", _GUID],
@@ -132,7 +129,11 @@ def _argv(case_id: str, tmp_path: Path, *, dry_run: bool) -> list[str]:
         "workflow:workflow_deactivate": [*prefix, "--profile", "t", "workflow", "deactivate", _GUID],
         "workflow:workflow_delete": [*prefix, "--profile", "t", "workflow", "delete", _GUID],
     }
-    return common[case_id]
+
+
+def _argv(case_id: str, tmp_path: Path, *, dry_run: bool) -> list[str]:
+    prefix = ["--json"] + (["--dry-run"] if dry_run else [])
+    return _argv_map(tmp_path, prefix)[case_id]
 
 
 def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None:
@@ -257,43 +258,18 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
 CALLERS = _helper_callers()
 
 
-def test_helper_callers_match_the_regression_sweep():
-    assert set(CALLERS) == {
-        "app:app_delete",
-        "apply:apply_cmd",
-        "async_ops:async_cancel",
-        "data:data_delete",
-        "entity:entity_delete",
-        "entity:entity_disassociate",
-        "entity:entity_clear_lookup",
-        "metadata:metadata_delete_entity",
-        "metadata:metadata_delete_attribute",
-        "metadata:metadata_delete_key",
-        "metadata:metadata_delete_relationship",
-        "metadata:metadata_delete_optionset",
-        "plugin:unregister_image_cmd",
-        "plugin:unregister_assembly_cmd",
-        "plugin:unregister_step_cmd",
-        "profile:profile_add",
-        "profile:profile_rm",
-        "ribbon:ribbon_remove",
-        "ribbon:ribbon_hide_button",
-        "security:create_role",
-        "security:set_role_privileges",
-        "security:assign_role",
-        "security:grant",
-        "security:revoke",
-        "solution:solution_remove_component",
-        "solution:solution_uninstall",
-        "solution:solution_stage_and_upgrade_cmd",
-        "solution:solution_apply_upgrade_cmd",
-        "solution:solution_job_cancel",
-        "solution:solution_import_cmd",
-        "translation:translation_import_cmd",
-        "webresource:webresource_delete",
-        "workflow:workflow_deactivate",
-        "workflow:workflow_delete",
-    }
+def test_every_discovered_caller_has_sweep_coverage(tmp_path):
+    """The argv map (`_argv_map`) is the executable coverage the sweeps below
+    run; assert it lines up exactly with the AST-discovered callers so a new
+    `_confirm_destructive` call site is caught. A new caller then needs only an
+    argv entry here (+ a stub in `_setup_case`) to be covered — there is no
+    separate hard-coded caller list to keep in sync."""
+    covered = set(_argv_map(tmp_path, ["--json"]))
+    discovered = set(CALLERS)
+    assert discovered - covered == set(), \
+        f"new destructive caller(s) missing argv coverage: {discovered - covered}"
+    assert covered - discovered == set(), \
+        f"stale argv entries with no matching caller: {covered - discovered}"
 
 
 def test_profile_callers_are_the_only_dry_run_opt_outs():
