@@ -101,8 +101,9 @@ accidental bare `crm`. Explicit `crm repl` always launches.
 
 Any verb carrying a `--yes` flag (visible in `crm describe`) permanently deletes,
 cancels, or overwrites server-side state. Omitting `--yes` in a non-TTY context
-fails fast with the standard `ok:false` envelope, an error that names `--yes`,
-and exit 1; on a TTY the verb prompts instead.
+fails fast (exit 1) with an error that names `--yes` — the standard `ok:false`
+envelope under `--json`, a human-formatted error otherwise; on a TTY the verb
+prompts instead.
 
 **Inform first, back up first.** Never run a destructive verb without telling the
 user what will be destroyed and getting their explicit go-ahead — `--yes` asserts

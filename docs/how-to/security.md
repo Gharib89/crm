@@ -235,8 +235,8 @@ Role assignment is cumulative (a principal can hold multiple roles) and is not
 cleanly reversible through this command, so `assign-role` is gated by an
 interactive confirmation prompt. Pass `--yes` to skip the prompt in
 non-interactive contexts (agents, CI). Omitting `--yes` in a non-TTY context
-fails fast with the standard `ok:false` envelope, an error that names `--yes`,
-and exit 1.
+fails fast (exit 1) with an error that names `--yes` — the standard `ok:false`
+envelope under `--json`, a human-formatted error otherwise.
 
 ## Admin-header options on assign-role
 

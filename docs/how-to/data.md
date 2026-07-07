@@ -267,8 +267,8 @@ name is derived from the entity-set name.
 ### Confirmation gate
 
 `data delete` is destructive and requires `--yes` for non-interactive use. On a TTY,
-omitting it prompts for confirmation. Under `--json` / no-TTY, omitting `--yes`
-fails fast with the standard `ok:false` envelope, an error that names `--yes`,
-and exit 1.
+omitting it prompts for confirmation. Under `--json` or a non-TTY, omitting
+`--yes` fails fast (exit 1) with an error that names `--yes` — the standard
+`ok:false` envelope under `--json`, a human-formatted error otherwise.
 
 Pass `--yes` whenever you call the command non-interactively (agent, CI, scripted run).
