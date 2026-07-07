@@ -57,8 +57,13 @@ _GUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 # (customizations element tag, id-field candidates, org entity set, org id attr)
+# Candidate fields a <systemform> element carries its form GUID in (child element
+# or attribute). Shared by the org-collision scan and the reverse root-parity
+# systemform-definition discovery (#678) so the two never drift apart.
+_SYSTEMFORM_ID_FIELDS: tuple[str, ...] = ("formid", "FormId", "id")
+
 _COLLISION_SOURCES: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
-    ("systemform", ("formid", "FormId", "id"), "systemforms", "formid"),
+    ("systemform", _SYSTEMFORM_ID_FIELDS, "systemforms", "formid"),
     ("savedquery", ("savedqueryid", "SavedQueryId", "id"), "savedqueries", "savedqueryid"),
 )
 
@@ -140,9 +145,31 @@ def _root_components(sol_root: ET.Element) -> set[tuple[int, str]]:
     return found
 
 
+def _systemform_definition_ids(cust_root: ET.Element) -> set[str]:
+    """Normalised GUIDs of every <systemform> definition embedded in the package.
+
+    An entity's main/quick/card forms are serialised as <systemform> elements
+    nested under Entities/Entity/FormXml (keyed by a <formid> child), NOT under
+    the InteractionCentricDashboards node that `_customization_components` scans.
+    Once such a form is edited with `--solution` it is legitimately declared as a
+    type-60 <RootComponent>, so collect its GUID to satisfy the reverse parity
+    direction (the form IS defined, just not where the node scan looks) — #678.
+    These ids feed reverse parity only; they are deliberately NOT added to the
+    forward set, since an entity form that is not itself root-declared travels
+    with its parent entity and must not be flagged as an undeclared component.
+    """
+    ids: set[str] = set()
+    for el in cust_root.iter("systemform"):
+        gid = _extract_guid(el, _SYSTEMFORM_ID_FIELDS)
+        if gid:
+            ids.add(_norm(gid))
+    return ids
+
+
 def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Finding]:
     cust = _customization_components(cust_root)
     root = _root_components(sol_root)
+    form_ids = _systemform_definition_ids(cust_root)
     findings: list[Finding] = []
     for ctype, name in sorted(cust - root):
         findings.append(Finding(
@@ -151,6 +178,8 @@ def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Find
             f"but not declared in <RootComponents>",
             component=name, location="customizations.xml"))
     for ctype, name in sorted(root - cust):
+        if ctype == _CT["systemform"] and name in form_ids:
+            continue  # entity-owned form defined inside Entity FormXml (#678)
         findings.append(Finding(
             "error", "root-parity",
             f"RootComponent {name!r} of type {ctype} is declared in solution.xml "

@@ -163,6 +163,71 @@ class TestRootParity:
         assert [f for f in report["findings"] if f["check"] == "root-parity"] == []
         assert report["valid"] is True
 
+    def test_entity_form_as_type60_root_satisfies_parity(self, tmp_path):
+        # #678: editing an entity's main form with `--solution` makes that form an
+        # explicit type-60 RootComponent. Its definition lives inside the entity's
+        # FormXml (<systemform><formid>), NOT the InteractionCentricDashboards node
+        # the customizations scan looks in — so the reverse parity direction must
+        # still discover it and NOT emit a false "no definition" error. The braces
+        # on the RootComponent id but not the <formid> also exercise _norm().
+        form_guid = "22222222-2222-2222-2222-222222222222"
+        entity = (
+            '<Entity><Name>cwx_widget</Name>'
+            '<FormXml><forms type="main">'
+            f"<systemform><formid>{form_guid}</formid></systemform>"
+            "</forms></FormXml></Entity>"
+        )
+        p = tmp_path / "entity_form_root.zip"
+        _make_pkg(
+            p,
+            _sol('<RootComponent type="1" schemaName="cwx_widget"/>'
+                 f'<RootComponent type="60" id="{{{form_guid}}}"/>'),
+            _cust(entities=entity),
+        )
+        report = sv.validate_solution(p)
+        errs = [f for f in report["findings"] if f["check"] == "root-parity"]
+        assert errs == []
+        assert report["valid"] is True
+
+    def test_orphan_type60_rootcomponent_still_flagged(self, tmp_path):
+        # Regression guard for orphan detection: a type-60 RootComponent whose GUID
+        # appears NOWHERE in the package (no dashboard, no entity form) is a genuine
+        # orphan and must still produce exactly one "no definition" error.
+        p = tmp_path / "orphan_form_root.zip"
+        _make_pkg(
+            p,
+            _sol('<RootComponent type="60" id="{33333333-3333-3333-3333-333333333333}"/>'),
+            _cust(),
+        )
+        report = sv.validate_solution(p)
+        errs = [f for f in report["findings"] if f["check"] == "root-parity"]
+        assert len(errs) == 1
+        assert "no definition in customizations.xml" in errs[0]["message"]
+        assert report["valid"] is False
+
+    def test_reproduced_ribbon_flow_passes_preimport_validation(self, tmp_path):
+        # #678 acceptance: the reproduced flow (entity in solution → edit its main
+        # form with `--solution` → `ribbon add-button --solution`) must pass
+        # pre-import validation. The ribbon round-trip calls validate_solution with
+        # check_collisions=False (ribbon.py) — assert that exact call is now valid.
+        form_guid = "44444444-4444-4444-4444-444444444444"
+        entity = (
+            '<Entity><Name>cwx_widget</Name>'
+            '<FormXml><forms type="main">'
+            f"<systemform><formid>{{{form_guid}}}</formid></systemform>"
+            "</forms></FormXml></Entity>"
+        )
+        p = tmp_path / "ribbon_roundtrip.zip"
+        _make_pkg(
+            p,
+            _sol('<RootComponent type="1" schemaName="cwx_widget"/>'
+                 f'<RootComponent type="60" id="{form_guid}"/>'),
+            _cust(entities=entity),
+        )
+        report = sv.validate_solution(p, check_collisions=False)
+        assert report["valid"] is True
+        assert [f for f in report["findings"] if f["check"] == "root-parity"] == []
+
 
 # ── Task 3: $webresource: ribbon refs ─────────────────────────────────────────
 

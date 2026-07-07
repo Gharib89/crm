@@ -4,7 +4,7 @@ Four real defects were surfaced while building the live e2e coverage
 (`crm/tests/e2e/`). None are test bugs — each reproduces through the normal CLI
 against a live org. #1, #2, and #3
 turned out to be **client-side** bugs in the CLI and are now fixed; **#4 is now FIXED
-(#269)** — its `xfail` is removed and the test passes live on both targets (see below).
+(#269, #678)** — its `xfail` is removed and the test passes live on both targets (see below).
 All four are now fixed.
 
 Repro uses a saved profile directly (`--profile`); no e2e harness needed. Targets
@@ -15,7 +15,7 @@ referenced: an on-prem NTLM org and a cloud OAuth/Dataverse org.
 | 1 | `metadata list-actions` / `list-functions` → HTTP 415 → ✅ fixed (client-side) | Gharib89/crm#266 (FIXED) |
 | 2 | `metadata update-relationship` → HTTP 405 → ✅ fixed (client-side) | Gharib89/crm#267 (FIXED) |
 | 3 | `form clone` reused internal form ids on on-prem → ✅ fixed (client-side) | Gharib89/crm#268 |
-| 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269 (FIXED) |
+| 4 | `ribbon add-button` / `remove` blocked by validation | Gharib89/crm#269, #678 (FIXED) |
 
 ---
 
@@ -158,12 +158,50 @@ crm --profile crmworx ribbon add-button <custom_entity> --label "E2E" --command-
 # → aborted in validate_solution / _check_org_collisions
 ```
 
+**Second failure mode (FIXED, #678)** — a distinct false positive in the same
+pre-import validation, surfaced once #269's collision skip let the import
+proceed far enough to reach it. If the target entity's main/quick/card form had
+previously been edited via `form ... --solution` against the same solution,
+that form is added to solution.xml as an explicit type-60 (`SystemForm`)
+`<RootComponent>`. Its definition IS present in the package, but nested inside
+`Entities/Entity/FormXml/.../systemform/<formid>` — not the
+`InteractionCentricDashboards` node the reverse root-parity scan
+(`_check_root_parity`) inspected for type-60 definitions — so it reported a
+false `"RootComponent '<guid>' of type 60 is declared in solution.xml but has
+no definition in customizations.xml"` error and aborted the ribbon write.
+
+**Fix (FIXED, #678)** — `crm.core.solution_validate._systemform_definition_ids`
+now collects the normalised GUID of every `<systemform>` element embedded
+anywhere in the package's `customizations.xml` (entity FormXml forms); a
+type-60 `RootComponent` whose id is in that set is no longer flagged in the
+reverse direction. Forward-direction (undeclared-component) checks, the
+export/import payload, orphan detection, and dashboard parity are unchanged —
+an orphan type-60 `RootComponent` with no matching `<systemform>` anywhere is
+still flagged.
+
+**Test** — offline: `test_solution_validate.py::TestRootParity::test_entity_form_as_type60_root_satisfies_parity`,
+`::test_orphan_type60_rootcomponent_still_flagged`, and
+`::test_reproduced_ribbon_flow_passes_preimport_validation` (exercises the
+same `check_collisions=False` path `apply_ribbon_change` uses). Live coverage
+for the ribbon write path is unchanged —
+`crm/tests/e2e/test_ribbon.py::test_ribbon_add_and_remove_button` — since this
+fix touches no command surface, only the offline validator.
+
+**Repro (pre-fix)**
+```
+# any form-editing verb with --solution adds the main form as a type-60 root component
+crm --profile crmworx form add-field some_entity some_attribute --solution ContosoCore
+crm --profile crmworx ribbon add-button some_entity --solution ContosoCore --label "E2E" --command-js "alert('x')"
+# → aborted in validate_solution / _check_root_parity:
+# "RootComponent '<formid>' of type 60 is declared in solution.xml but has no definition in customizations.xml"
+```
+
 ---
 
 ### Severity / notes
 - #1 made `list-actions`/`list-functions` non-functional on every target — **FIXED (#266)**.
 - #2 made `update-relationship` non-functional on every target — **FIXED (#267)**; the `xfail` is removed and the e2e passes live on both targets (and asserts an untouched cascade key survives the round-trip).
-- #4 made ribbon **write** verbs non-functional on every target (ribbon read/export worked) — **FIXED (#269)**; the `xfail` is removed and the e2e lifecycle passes live on both targets.
+- #4 made ribbon **write** verbs non-functional on every target (ribbon read/export worked) — **FIXED (#269, #678)**; the `xfail` is removed and the e2e lifecycle passes live on both targets. #678 fixed a second, narrower false positive (reverse root-parity on entity system forms) that only surfaces once a target entity's form has been edited via a solution-scoped `form` verb against the same solution — offline-only, no live e2e change required.
 - #3 is on-prem-only and intermittent (only collides on a repeat clone of the same source form).
 - All four are in **product code** (`crm/core/*`), out of scope for the test-completeness
   branch that found them. The e2e suite encodes them as `xfail`/capability-gates so the
