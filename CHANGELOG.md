@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.5 (2026-07-07)
+
+### Bug Fixes
+
+- Harden destructive confirmation helper ([#717](https://github.com/Gharib89/crm/pull/717),
+  [`d0f1a1d`](https://github.com/Gharib89/crm/commit/d0f1a1d74dd34a62cc2d3afef1b6670804445228))
+
+
 ## v1.51.4 (2026-07-07)
 
 ### Bug Fixes
