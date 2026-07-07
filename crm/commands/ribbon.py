@@ -54,7 +54,9 @@ def ribbon_export(ctx: CLIContext, entity, application, output):
         path = ("RetrieveApplicationRibbon()" if application
                 else f"RetrieveEntityRibbon(EntityName={odata_literal(entity)},"
                      "RibbonLocationFilter='All')")
-        ctx.emit(True, data=ctx.backend().get(path))
+        with d365_errors(ctx):
+            payload = ctx.backend().get(path)
+        ctx.emit(True, data=payload)
         return
     with d365_errors(ctx):
         root = (ribbon_mod.retrieve_application_ribbon(ctx.backend()) if application

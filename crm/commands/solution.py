@@ -868,8 +868,11 @@ def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
     online checks (GUID collisions, web-resource & option-set existence). Exits
     non-zero when any error-severity problem is found.
     """
-    backend = ctx.backend() if against_org else None
     with d365_errors(ctx):
+        # Construct the backend inside the guard so a bad profile / credential
+        # failure renders as the house envelope, not a traceback (#698). Stays
+        # offline by default: no backend is built without --against-org.
+        backend = ctx.backend() if against_org else None
         report = sv_mod.validate_solution(zip_path, backend=backend)
     if report["valid"]:
         ctx.emit(True, data=report)
