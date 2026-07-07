@@ -43,47 +43,49 @@ def _raise_oserror(*_args, **_kwargs):
 
 
 # --------------------------------------------------------------------------- #
-# Core sites — each must raise D365Error naming the path (exit 1 at the CLI).
+# Core sites — each must raise D365Error naming the path AND the operation
+# (exit 1 at the CLI).
 #
 # A scenario builder receives tmp_path and returns
-#   (pathlib_method_to_break, expected_path, call_the_site)
-# so the parametrized test can break exactly one filesystem op per site.
+#   (pathlib_method_to_break, expected_path, call_the_site, expected_operation)
+# so the parametrized test can break exactly one filesystem op per site and
+# assert the message names both the path and whether it was a read or write.
 # --------------------------------------------------------------------------- #
 def _export_json_write(tmp_path: Path):
     out = tmp_path / "export.json"
     return "write_text", out, lambda: export_mod.export_records(
-        None, "accounts", str(out), fmt="json")  # type: ignore[arg-type]
+        None, "accounts", str(out), fmt="json"), "cannot write"  # type: ignore[arg-type]
 
 
 def _export_csv_write(tmp_path: Path):
     out = tmp_path / "export.csv"
     return "open", out, lambda: export_mod.export_records(
-        None, "accounts", str(out), fmt="csv")  # type: ignore[arg-type]
+        None, "accounts", str(out), fmt="csv"), "cannot write"  # type: ignore[arg-type]
 
 
 def _export_mkdir(tmp_path: Path):
     out = tmp_path / "nested" / "export.json"
     return "mkdir", out, lambda: export_mod.export_records(
-        None, "accounts", str(out), fmt="json")  # type: ignore[arg-type]
+        None, "accounts", str(out), fmt="json"), "cannot write"  # type: ignore[arg-type]
 
 
 def _solution_export_write(tmp_path: Path):
     out = tmp_path / "solution.zip"
     encoded = base64.b64encode(b"zip-bytes").decode("ascii")
-    return "write_bytes", out, lambda: st_mod._write_export_file(str(out), encoded)
+    return "write_bytes", out, lambda: st_mod._write_export_file(str(out), encoded), "cannot write"
 
 
 def _solution_export_mkdir(tmp_path: Path):
     out = tmp_path / "nested" / "solution.zip"
     encoded = base64.b64encode(b"zip-bytes").decode("ascii")
-    return "mkdir", out, lambda: st_mod._write_export_file(str(out), encoded)
+    return "mkdir", out, lambda: st_mod._write_export_file(str(out), encoded), "cannot write"
 
 
 def _solution_import_read(tmp_path: Path):
     zip_path = tmp_path / "import.zip"
     zip_path.write_bytes(b"not-really-a-zip")  # is_file() guard must pass first
     return "read_bytes", zip_path, lambda: st_mod.import_solution(
-        object(), str(zip_path))  # type: ignore[arg-type]
+        object(), str(zip_path)), "cannot read"  # type: ignore[arg-type]
 
 
 _CORE_CASES = [
@@ -104,11 +106,14 @@ def test_core_io_failure_raises_d365error_naming_path(
     monkeypatch.setattr(
         export_mod, "_iter_records", lambda *a, **k: [{"id": "1", "name": "x"}]
     )
-    method, expected_path, call_site = scenario(tmp_path)
+    method, expected_path, call_site, expected_op = scenario(tmp_path)
     monkeypatch.setattr(Path, method, _raise_oserror)
     with pytest.raises(D365Error) as exc:
         call_site()
-    assert expected_path.name in str(exc.value)
+    message = str(exc.value)
+    # Name the path AND the operation (read vs write), per the #699 contract.
+    assert expected_path.name in message
+    assert expected_op in message.lower()
 
 
 # --------------------------------------------------------------------------- #
@@ -142,7 +147,9 @@ def test_command_input_read_failure_clean_envelope(
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
     assert env["ok"] is False
+    # Name the path AND the operation (both cases are input reads).
     assert filename in env["error"]
+    assert "could not read" in env["error"].lower()
 
 
 # --------------------------------------------------------------------------- #
@@ -181,4 +188,6 @@ def test_form_export_write_failure_clean_envelope(
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
     assert env["ok"] is False
+    # Name the path AND the operation (write).
     assert "form.xml" in env["error"]
+    assert "could not write" in env["error"].lower()
