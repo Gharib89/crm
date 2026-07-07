@@ -54,10 +54,9 @@ class TestGuards:
             input="n\n",
         )
         assert spy_core == []
-        # A non-TTY abort writes the confirm prompt to stdout ahead of the JSON
-        # envelope (shared-helper behavior), so slice from the first brace.
-        env = json.loads(result.output[result.output.index("{"):])
-        assert env == {"ok": False, "error": "aborted by user"}
+        env = json.loads(result.output)
+        assert env["ok"] is False
+        assert "--yes" in env["error"]
 
 
 class TestSubmit:

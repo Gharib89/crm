@@ -84,9 +84,8 @@ def create_role(ctx: CLIContext, name, business_unit, if_exists, solution,
     --if-exists skip an existing role is reused, not added). Use --dry-run to
     preview without writing.
     """
-    if not ctx.dry_run:
-        _confirm_destructive(ctx, "role", name, yes,
-                             message=f"Create security role {name!r}?")
+    _confirm_destructive(ctx, "role", name, yes,
+                         message=f"Create security role {name!r}?")
     solution = _resolve_solution(ctx, solution)
     with d365_errors(ctx):
         result = security_mod.create_role(
@@ -132,15 +131,14 @@ def set_role_privileges(ctx: CLIContext, role, access, entities, all_entities,
     # surprise --replace (which wipes privileges) on a security-sensitive verb.
     if add and replace:
         raise click.UsageError("--add and --replace are mutually exclusive")
-    if not ctx.dry_run:
-        verb = "Replace" if replace else "Add"
-        scope = "ALL entities" if all_entities else (entities or "named privileges")
-        message = (
-            f"{verb} privileges on role {role} (access=[{access or '-'}], "
-            f"scope={scope}) at depth {depth}? "
-            + ("--replace wipes privileges not in the resolved set." if replace else "")
-        )
-        _confirm_destructive(ctx, "role", role, yes, message=message)
+    verb = "Replace" if replace else "Add"
+    scope = "ALL entities" if all_entities else (entities or "named privileges")
+    message = (
+        f"{verb} privileges on role {role} (access=[{access or '-'}], "
+        f"scope={scope}) at depth {depth}? "
+        + ("--replace wipes privileges not in the resolved set." if replace else "")
+    )
+    _confirm_destructive(ctx, "role", role, yes, message=message)
     with d365_errors(ctx):
         result = security_mod.set_role_privileges(
             ctx.backend(), role,

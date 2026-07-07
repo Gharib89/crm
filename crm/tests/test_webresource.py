@@ -636,14 +636,15 @@ class TestWebresourceCommands:
             "crm.core.webresource.delete_webresource",
             lambda backend, name, **kw: called.update(deleted=True))
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        # No --yes and a non-TTY stdin (EOF) → click.confirm aborts before any
-        # delete; the documented JSON envelope is still emitted.
+        # Under --json there is no interactive prompt: the helper must fail fast
+        # with a clean envelope naming --yes before any delete runs.
         result = CliRunner().invoke(cli, [
             "--json", "webresource", "delete", "cwx_/foo.js",
         ])
         assert result.exit_code == 1
         assert called["deleted"] is False
-        assert '"error": "aborted by user"' in result.output
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
 
     def test_get_command_wires_core(self, monkeypatch):
         import json

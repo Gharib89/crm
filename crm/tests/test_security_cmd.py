@@ -288,12 +288,9 @@ class TestAssignRole:
         ], input="")  # EOF on stdin -> Abort
         assert result.exit_code == 1, result.output
         assert "user-guid-1" in result.output
-        # CliRunner mixes the confirm prompt into stdout before the JSON envelope;
-        # strip prompt prefix and parse the trailing JSON object.
-        json_start = result.stdout.rfind("{")
-        env = json.loads(result.stdout[json_start:])
+        env = json.loads(result.stdout)
         assert env["ok"] is False
-        assert env["error"] == "aborted by user"
+        assert "--yes" in env["error"]
 
     def test_assign_d365_error_clean_envelope(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
@@ -365,10 +362,9 @@ class TestGrant:
             "--to", "user:user-1", "--rights", "Read",
         ], input="")
         assert result.exit_code == 1, result.output
-        json_start = result.stdout.rfind("{")
-        env = json.loads(result.stdout[json_start:])
+        env = json.loads(result.stdout)
         assert env["ok"] is False
-        assert env["error"] == "aborted by user"
+        assert "--yes" in env["error"]
 
 
 # ── revoke ──────────────────────────────────────────────────────────────────
@@ -501,8 +497,8 @@ class TestCreateRole:
             "--json", "security", "create-role", "R",
         ], input="")
         assert result.exit_code == 1, result.output
-        env = json.loads(result.stdout[result.stdout.rfind("{"):])
-        assert env["error"] == "aborted by user"
+        env = json.loads(result.stdout)
+        assert "--yes" in env["error"]
 
     def test_dry_run_skips_confirm_and_marks_meta(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
@@ -605,8 +601,8 @@ class TestSetRolePrivileges:
             "--access", "read", "--all-entities", "--depth", "global",
         ], input="")
         assert result.exit_code == 1, result.output
-        env = json.loads(result.stdout[result.stdout.rfind("{"):])
-        assert env["error"] == "aborted by user"
+        env = json.loads(result.stdout)
+        assert "--yes" in env["error"]
 
     def test_d365_error_clean_envelope(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)

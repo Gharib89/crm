@@ -3,9 +3,9 @@
 
 Each verb mutates state (deletes a relationship row / clears a lookup via
 DELETE /$ref / flips a workflow's statecode) and must behave like the existing
-guarded deletes: expose `--yes`, prompt on a TTY, proceed with `--yes`, and abort
-on a non-TTY without `--yes` with the documented ``{"ok": false, "error":
-"aborted by user"}`` envelope and a non-zero exit — never touching the backend.
+guarded deletes: expose `--yes`, prompt on a TTY, proceed with `--yes`, and
+fail fast on a non-TTY without `--yes` with a clean error naming that flag —
+never touching the backend.
 """
 # pyright: basic
 from __future__ import annotations
@@ -21,13 +21,8 @@ _REC = "11111111-1111-1111-1111-111111111111"
 
 
 def _envelope(output: str) -> dict:
-    """Extract the JSON envelope from `output`.
-
-    On a non-TTY abort `click.confirm` still writes its prompt to stdout ahead of
-    the emitted envelope (shared-helper behavior, identical to `entity delete`),
-    so slice from the first brace before parsing.
-    """
-    return json.loads(output[output.index("{"):])
+    """Extract the JSON envelope from `output`."""
+    return json.loads(output)
 
 
 def _seed_profile(tmp_path, monkeypatch):
@@ -75,7 +70,9 @@ class TestEntityDisassociateGuard:
             cli, ["--json", "--profile", "t", "entity", "disassociate",
                   "accounts", _REC, "primarycontactid"])
         assert result.exit_code != 0
-        assert _envelope(result.output) == {"ok": False, "error": "aborted by user"}
+        env = _envelope(result.output)
+        assert env["ok"] is False
+        assert "--yes" in env["error"]
         assert called["hit"] is False
 
     def test_prompt_decline_aborts(self, monkeypatch, tmp_path):
@@ -88,6 +85,7 @@ class TestEntityDisassociateGuard:
             return {"disassociated": True}
 
         monkeypatch.setattr(ent_cmd.entity_mod, "disassociate", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "entity", "disassociate",
@@ -131,7 +129,9 @@ class TestEntityClearLookupGuard:
             cli, ["--json", "--profile", "t", "entity", "clear-lookup",
                   "accounts", _REC, "primarycontactid"])
         assert result.exit_code != 0
-        assert _envelope(result.output) == {"ok": False, "error": "aborted by user"}
+        env = _envelope(result.output)
+        assert env["ok"] is False
+        assert "--yes" in env["error"]
         assert called["hit"] is False
 
     def test_prompt_decline_aborts(self, monkeypatch, tmp_path):
@@ -144,6 +144,7 @@ class TestEntityClearLookupGuard:
             return {"cleared": True}
 
         monkeypatch.setattr(ent_cmd.entity_mod, "clear_lookup", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "entity", "clear-lookup",
@@ -185,7 +186,9 @@ class TestWorkflowDeactivateGuard:
         result = CliRunner().invoke(
             cli, ["--json", "--profile", "t", "workflow", "deactivate", _REC])
         assert result.exit_code != 0
-        assert _envelope(result.output) == {"ok": False, "error": "aborted by user"}
+        env = _envelope(result.output)
+        assert env["ok"] is False
+        assert "--yes" in env["error"]
         assert called["hit"] is False
 
     def test_prompt_decline_aborts(self, monkeypatch, tmp_path):
@@ -198,6 +201,7 @@ class TestWorkflowDeactivateGuard:
             return {"workflow_id": wid, "statecode": 0}
 
         monkeypatch.setattr(wf_cmd.workflow_mod, "set_workflow_state", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "workflow", "deactivate", _REC], input="n\n")

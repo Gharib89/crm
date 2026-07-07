@@ -181,7 +181,8 @@ def profile_add(ctx: CLIContext, url, name_opt, auth_opt, username, domain,
 
     if name in session_mod.list_profiles() and not yes:
         _confirm_destructive(ctx, "profile", name, yes,
-                             message=f"Profile {name!r} exists. Overwrite?")
+                             message=f"Profile {name!r} exists. Overwrite?",
+                             skip_on_dry_run=False)
 
     negotiate = api_version is None
     try:
@@ -498,7 +499,7 @@ def profile_rm(ctx: CLIContext, name, yes):
     if name not in session_mod.list_profiles():
         _handle_d365_error(ctx, D365Error(f"Profile {name!r} not found."))
         return
-    _confirm_destructive(ctx, "profile", name, yes)
+    _confirm_destructive(ctx, "profile", name, yes, skip_on_dry_run=False)
     keyring_store.delete_secret(name)
     session_mod.clear_profile_secret(name)
     session_mod.delete_profile(name)

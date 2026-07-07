@@ -255,8 +255,7 @@ class TestComponentCommands:
             "--solution", "CRMWorx", "--type", "61", "--id", _GUID,
         ], input="\n")
         assert result.exit_code == 1, result.output
-        # output carries the confirm prompt before the envelope; match the substring
-        assert '"error": "aborted by user"' in result.output
+        assert "Pass --yes to continue" in result.output
         assert called["core"] is False                   # gated before the core call
 
     def test_remove_component_yes_wires_core(self, monkeypatch):

@@ -219,7 +219,7 @@ crm --json entity disassociate accounts <account-guid> \
 crm --json entity clear-lookup contacts <contact-guid> parentcustomerid_account --yes
 ```
 
-Both verbs permanently alter server-side state and require confirmation. Pass `--yes` when calling non-interactively — omitting it in a non-TTY context (e.g. `--json` or piped) aborts with `{"ok": false, "error": "aborted by user"}` and exit 1. On an interactive terminal the verb prompts for confirmation instead.
+Both verbs permanently alter server-side state and require confirmation. Pass `--yes` when calling non-interactively — omitting it in a non-TTY context (e.g. `--json` or piped) fails fast (exit 1) with an error that names `--yes` — the standard `ok:false` envelope under `--json`, a human-formatted error otherwise. On an interactive terminal the verb prompts for confirmation instead.
 
 ## Audit a record's related data before clone/delete (`entity children`)
 

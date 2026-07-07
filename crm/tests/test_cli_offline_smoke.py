@@ -17,14 +17,14 @@ class TestDeleteEntityCli:
         from crm.cli import cli
 
         runner = CliRunner()
-        # No --yes, default Enter on confirm prompt → aborted
+        # Under --json/non-TTY the helper now fail-fasts instead of prompting.
         result = runner.invoke(
             cli, ["--json", "metadata", "delete-entity", "new_widget"],
             input="\n",
         )
-        # Declined confirmation is an operational failure → exit 1 (ADR 0001)
+        # Missing --yes is an operational failure → exit 1 (ADR 0001)
         assert result.exit_code == 1
-        assert '"error": "aborted by user"' in result.output
+        assert "Pass --yes to continue" in result.output
 
 
 class TestAddAttributeBooleanDefaultParsing:

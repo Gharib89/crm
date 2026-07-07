@@ -235,7 +235,8 @@ Role assignment is cumulative (a principal can hold multiple roles) and is not
 cleanly reversible through this command, so `assign-role` is gated by an
 interactive confirmation prompt. Pass `--yes` to skip the prompt in
 non-interactive contexts (agents, CI). Omitting `--yes` in a non-TTY context
-aborts safely with `{"ok": false, "error": "aborted by user"}` (exit 1).
+fails fast (exit 1) with an error that names `--yes` — the standard `ok:false`
+envelope under `--json`, a human-formatted error otherwise.
 
 ## Admin-header options on assign-role
 
@@ -351,4 +352,3 @@ returned by the Web API).
 
 > **Note:** `ModifyAccess` (changing rights on an existing share without a full
 > revoke+re-grant) is not currently implemented.
-

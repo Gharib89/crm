@@ -62,11 +62,7 @@ def app_delete(ctx: CLIContext, name_or_id, yes):
     the app (e.g. appsetting on on-prem) before deleting the app, and lists every
     record it removed. Refuses a managed app.
     """
-    # --dry-run is a read-only preview (no writes); never gate it behind the
-    # destructive confirm prompt — that would make the preview unreachable in a
-    # non-TTY (the confirm aborts on EOF) and defeats the safety check.
-    if not ctx.dry_run:
-        _confirm_destructive(ctx, "model-driven app", name_or_id, yes)
+    _confirm_destructive(ctx, "model-driven app", name_or_id, yes)
     with d365_errors(ctx):
         info = app_mod.delete_app(ctx.backend(), name_or_id)
     ctx.emit(True, data=info)

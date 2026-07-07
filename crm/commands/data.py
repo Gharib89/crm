@@ -156,14 +156,11 @@ def data_delete(ctx: CLIContext, entity_set, fetch_xml, fetchxml_file, job_name,
         raise click.UsageError("Provide exactly one of --fetchxml or --fetchxml-file.")
     if fetchxml_file is not None:
         fetch_xml = fetchxml_file.read()
-    # --dry-run issues no writes, so don't gate it behind the destructive prompt;
-    # the core still previews the matched count via a read.
-    if not ctx.dry_run:
-        _confirm_destructive(
-            ctx, "records", entity_set, yes,
-            message=(f"This submits a BulkDelete job that permanently deletes all "
-                     f"{entity_set} records matching the FetchXML query. Continue?"),
-        )
+    _confirm_destructive(
+        ctx, "records", entity_set, yes,
+        message=(f"This submits a BulkDelete job that permanently deletes all "
+                 f"{entity_set} records matching the FetchXML query. Continue?"),
+    )
     with d365_errors(ctx):
         result = bulk_delete_mod.bulk_delete(
             ctx.backend(), entity_set, fetch_xml,
