@@ -33,11 +33,7 @@ def _helper_callers() -> dict[str, bool]:
     callers: dict[str, bool] = {}
     for path in sorted(_COMMANDS.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        stack: list[str] = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                stack.append(node.name)
-                stack.pop()
+
         class Visitor(ast.NodeVisitor):
             def __init__(self) -> None:
                 self.stack: list[str] = []

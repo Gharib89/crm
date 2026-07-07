@@ -178,11 +178,13 @@ class TestTranslationCommands:
         _seed_profile(tmp_path, monkeypatch)
         src = _write_translations_zip(tmp_path / "labels.zip")
         from crm.cli import cli
+        # No TTY (CliRunner), no --yes → fail fast naming --yes rather than
+        # blocking on a prompt (human-mode non-interactive path).
         result = CliRunner().invoke(
             cli, ["--profile", "t", "translation", "import", str(src)],
         )
         assert result.exit_code == 1
-        assert "aborted by user" in result.output
+        assert "Pass --yes to continue" in result.output
 
     def test_import_command_with_publish_flag_calls_publish_all(self, monkeypatch, tmp_path):
         _seed_profile(tmp_path, monkeypatch)

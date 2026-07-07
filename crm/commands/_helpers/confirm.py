@@ -2,7 +2,6 @@
 # pyright: basic
 from __future__ import annotations
 import os
-import sys
 from typing import TYPE_CHECKING
 import click
 from crm.commands._tty import _stdin_is_tty
@@ -53,17 +52,12 @@ def _confirm_destructive(
     prompt = message or (
         f"This will permanently delete {thing} {name!r} and all related data. Continue?"
     )
-    # CliRunner drives human-path prompt tests with a non-TTY click.testing
-    # stdin wrapper; treat that harness stream as prompt-capable so the
-    # interactive decline path stays covered while real non-TTY callers still
-    # fail fast.
-    can_prompt = _stdin_is_tty() or type(sys.stdin).__module__ == "click.testing"
-    if ctx.json_mode or not can_prompt:
+    if ctx.json_mode or not _stdin_is_tty():
         text = prompt.strip()
-        if text.endswith(" Continue?"):
-            text = text[:-10].rstrip()
-        elif text.endswith("?"):
-            text = text[:-1].rstrip()
+        for tail in (" Continue?", "?"):
+            if text.endswith(tail):
+                text = text[:-len(tail)].rstrip()
+                break
         suffix = "" if text.endswith((".", "!", ":")) else "."
         ctx.emit(
             False,

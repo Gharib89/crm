@@ -107,6 +107,7 @@ class TestWorkflowDeleteCommand:
             return _delete_info(True)
 
         monkeypatch.setattr(wf_cmd.workflow_mod, "delete_workflow", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "workflow", "delete", _ACT_ID], input="n\n")
@@ -135,6 +136,7 @@ class TestWorkflowDeleteCommand:
             return _delete_info(True)
 
         monkeypatch.setattr(wf_cmd.workflow_mod, "delete_workflow", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "workflow", "delete", _ACT_ID], input="y\n")

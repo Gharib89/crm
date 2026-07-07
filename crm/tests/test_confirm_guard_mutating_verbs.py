@@ -85,6 +85,7 @@ class TestEntityDisassociateGuard:
             return {"disassociated": True}
 
         monkeypatch.setattr(ent_cmd.entity_mod, "disassociate", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "entity", "disassociate",
@@ -143,6 +144,7 @@ class TestEntityClearLookupGuard:
             return {"cleared": True}
 
         monkeypatch.setattr(ent_cmd.entity_mod, "clear_lookup", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "entity", "clear-lookup",
@@ -199,6 +201,7 @@ class TestWorkflowDeactivateGuard:
             return {"workflow_id": wid, "statecode": 0}
 
         monkeypatch.setattr(wf_cmd.workflow_mod, "set_workflow_state", _spy)
+        monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         from crm.cli import cli
         result = CliRunner().invoke(
             cli, ["--profile", "t", "workflow", "deactivate", _REC], input="n\n")
