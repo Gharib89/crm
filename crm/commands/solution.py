@@ -682,7 +682,14 @@ def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
         ctx.emit(False, error="Provide --xml or --xml-file, not both.")
         return
     if xml_file:
-        parameter_xml = Path(xml_file).read_text(encoding="utf-8")
+        # click.Path(exists=True) validated the file at parse, but a permission
+        # edge or a delete-after-check race can still fail the read — surface it
+        # as the clean envelope (exit 1), matching this command's own errors.
+        try:
+            parameter_xml = Path(xml_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
+            return
     if not parameter_xml:
         ctx.emit(False, error="Either --xml or --xml-file is required.")
         return

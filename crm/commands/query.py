@@ -151,6 +151,9 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
         ctx.emit(False, error="Provide --xml or --file, not both.")
         return
     if xml_file:
+        # click.Path(exists=True) validated the file at parse, but a permission
+        # edge or a delete-after-check race can still fail the read — surface it
+        # as the clean envelope (exit 1), matching this command's own errors.
         try:
             fetch_xml = Path(xml_file).read_text(encoding="utf-8")
         except OSError as exc:
