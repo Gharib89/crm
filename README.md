@@ -430,7 +430,7 @@ across commands.
 `query odata` follows `@odata.nextLink` automatically when you opt in: `--all`
 merges every page into one `data` array (no `meta.next_link` in the result); `--max-records N` follows pages only until N rows are collected and caps the array there. When `--max-records` truncated the result (more rows existed), `meta.truncated: true` appears in the envelope. Default (neither flag) is unchanged: one server page, `meta.next_link` present when more pages exist — that default single page also sets `meta.has_more: true` and adds a `meta.warnings` advisory to page via `meta.next_link` (or `--all`/`--max-records` on `query odata`); a `--count` that lands exactly on the server's 5000-row cap alongside a cursor gets a second warning that the count is a clamped lower bound. These cursor-driven signals also appear on `query saved`/`query user`; `query fetchxml` pages via a FetchXML cookie (no cursor), so it never surfaces them, and `--all`/`--max-records`/`--count` are `query odata`-only. A read that fits in one page gets neither signal.
 
-Every `--json` failure comes back as a valid envelope with `ok:false` and
+CLI-handled `--json` failures come back as valid envelopes with `ok:false` and
 `error`. Backend / Web API failures add `meta`:
 `{"status": 404, "code": "...", "category": "not_found", "retryable": false}`.
 Usage errors may omit `meta`; non-usage Click-layer failures include an empty
