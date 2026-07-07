@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.4 (2026-07-07)
+
+### Bug Fixes
+
+- Recognise entity FormXml system forms in reverse root-parity check
+  ([#716](https://github.com/Gharib89/crm/pull/716),
+  [`5bf86e9`](https://github.com/Gharib89/crm/commit/5bf86e96bb09e2164bcb1337ca74128d04edd75a))
+
+
 ## v1.51.3 (2026-07-07)
 
 ### Bug Fixes
