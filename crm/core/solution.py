@@ -483,8 +483,7 @@ def list_solutions(backend: D365Backend, *, managed: bool | None = None) -> list
     }
     if managed is not None:
         params["$filter"] = f"ismanaged eq {'true' if managed else 'false'}"
-    result = as_dict(backend.get("solutions", params=params))
-    return result.get("value", [])
+    return backend.get_collection("solutions", params=params)
 
 
 def solution_info(backend: D365Backend, unique_name: str) -> dict[str, Any]:
@@ -504,10 +503,11 @@ def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str
     params = {
         "$select": "componenttype,objectid,rootcomponentbehavior",
         "$filter": f"_solutionid_value eq {solution_id}",
-        "$top": "5000",
     }
-    result = as_dict(backend.get("solutioncomponents", params=params))
-    return result.get("value", [])
+    # No `$top`: it is a hard limit that suppresses `@odata.nextLink`, capping a
+    # large solution's inventory at the server page ceiling. get_collection
+    # follows the cursor to exhaustion instead.
+    return backend.get_collection("solutioncomponents", params=params)
 
 
 def retrieve_missing_components(

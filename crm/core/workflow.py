@@ -467,8 +467,7 @@ def list_workflows(
         "$select": "workflowid,name,category,primaryentity,statecode,statuscode,ondemand,type",
         "$filter": " and ".join(filters),
     }
-    result = backend.get("workflows", params=params)
-    return as_dict(result).get("value", [])
+    return backend.get_collection("workflows", params=params)
 
 
 def assess_workflow_migration(row: dict[str, Any]) -> dict[str, Any]:
