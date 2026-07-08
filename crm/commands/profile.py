@@ -422,12 +422,15 @@ def profile_list(ctx: CLIContext):
 @click.option("--client-id", default=None)
 @click.option("--api-version", default=None)
 @click.option("--publisher-prefix", default=None, callback=_validate_prefix_opt)
+@click.option("--verify-ssl/--no-verify-ssl", "verify_ssl", default=None,
+              help="Enable or skip SSL certificate verification (parity with "
+                   "`profile add`'s --no-verify-ssl).")
 @click.option("--read-only/--no-read-only", "read_only", default=None,
               help="Set or clear the read-only guardrail. Clearing (--no-read-only) "
                    "requires an interactive terminal to confirm.")
 @pass_ctx
 def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
-                 client_id, api_version, publisher_prefix, read_only):
+                 client_id, api_version, publisher_prefix, verify_ssl, read_only):
     """Change a profile's fields (not its secret — use set-password).
 
     No NAME argument shows a picker."""
@@ -450,6 +453,7 @@ def profile_edit(ctx: CLIContext, name, url, username, domain, tenant_id,
     if client_id is not None: p.client_id = client_id
     if api_version is not None: p.api_version = api_version
     if publisher_prefix is not None: p.publisher_prefix = publisher_prefix
+    if verify_ssl is not None: p.verify_ssl = verify_ssl
     # Read-only is asymmetric: tighten (--read-only) anywhere, but clearing it
     # (--no-read-only) is gated behind a real TTY + confirmation so a
     # non-interactive run (agent/CI/--json) can't flip the guardrail off. Same
