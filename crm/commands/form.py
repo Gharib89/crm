@@ -599,7 +599,11 @@ def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None
         return
     formxml = form.get("formxml", "")
     if output:
-        Path(output).write_text(formxml, encoding="utf-8")
+        try:
+            Path(output).write_text(formxml, encoding="utf-8")
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not write {output!r}: {exc}")
+            return
         ctx.emit(True, data={"entity": entity, "form": form_name, "output": output})
     elif ctx.json_mode:
         ctx.emit(True, data={"entity": entity, "form": form_name, "formxml": formxml})

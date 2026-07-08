@@ -37,11 +37,14 @@ def export_records(
         page_size=page_size, max_records=max_records,
     ))
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    if fmt == "json":
-        out.write_text(json.dumps(records, indent=2, default=str), encoding="utf-8")
-    else:
-        _write_csv(out, records, select=select)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if fmt == "json":
+            out.write_text(json.dumps(records, indent=2, default=str), encoding="utf-8")
+        else:
+            _write_csv(out, records, select=select)
+    except OSError as exc:
+        raise D365Error(f"cannot write export file {out}: {exc}") from exc
 
     return {
         "output": str(out),

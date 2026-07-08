@@ -114,8 +114,11 @@ def _import_solution_sync(
 def _write_export_file(output_path: str | Path, encoded: str) -> tuple[Path, int]:
     data = base64.b64decode(encoded)
     out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(data)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+    except OSError as exc:
+        raise D365Error(f"cannot write solution file {out}: {exc}") from exc
     return out, len(data)
 
 
@@ -317,7 +320,10 @@ def import_solution(
         raise D365Error(f"Solution file not found: {zip_path}")
     # Read the zip once: sniff the managed flag in-memory and reuse the same
     # bytes for the base64 upload (no second disk read).
-    data = p.read_bytes()
+    try:
+        data = p.read_bytes()
+    except OSError as exc:
+        raise D365Error(f"cannot read solution file {zip_path}: {exc}") from exc
     managed = _sniff_solution_managed(io.BytesIO(data))
     encoded = base64.b64encode(data).decode("ascii")
     import_job_id = _new_guid()

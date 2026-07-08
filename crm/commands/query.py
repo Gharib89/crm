@@ -150,7 +150,17 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     if xml_inline and xml_file:
         ctx.emit(False, error="Provide --xml or --file, not both.")
         return
-    fetch_xml = xml_inline or (Path(xml_file).read_text(encoding="utf-8") if xml_file else None)
+    if xml_file:
+        # click.Path(exists=True) validated the file at parse, but a permission
+        # edge or a delete-after-check race can still fail the read — surface it
+        # as the clean envelope (exit 1), matching this command's own errors.
+        try:
+            fetch_xml = Path(xml_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
+            return
+    else:
+        fetch_xml = xml_inline
     if not fetch_xml:
         ctx.emit(False, error="Either --xml or --file is required.")
         return
