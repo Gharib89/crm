@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.8 (2026-07-08)
+
+### Bug Fixes
+
+- Prevent repl completion backend construction
+  ([`4480495`](https://github.com/Gharib89/crm/commit/4480495a42517b5643e51f736e9fcc4157d31384))
+
+### Documentation
+
+- Restructure CLAUDE.md walls into scannable lists
+  ([`dd8e19b`](https://github.com/Gharib89/crm/commit/dd8e19b08da65739d0555ae185a49c771ada4c92))
+
+
 ## v1.51.7 (2026-07-08)
 
 ### Bug Fixes
