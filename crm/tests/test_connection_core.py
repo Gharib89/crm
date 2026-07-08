@@ -6,7 +6,7 @@ import pytest
 
 from crm.core import connection as conn_mod
 from crm.core import session as session_mod
-from crm.utils.d365_backend import ConnectionProfile, D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 
 @pytest.fixture
@@ -62,6 +62,26 @@ class TestResolveCredentials:
         monkeypatch.setattr("questionary.password", lambda *a, **kw: _FakePw())
         r = conn_mod.resolve_credentials("contoso", allow_prompt=True)
         assert r.password == "prompted-secret"
+
+
+class TestBackendConstructionValidation:
+    """The backend's constructor validation names the offending profile, so a
+    multi-profile debugging session doesn't have to hunt for which one is broken."""
+
+    def test_missing_url_names_the_profile(self):
+        profile = ConnectionProfile(
+            name="brokenprod", url="", domain="CONTOSO", username="alice")
+        with pytest.raises(D365Error, match="brokenprod") as exc:
+            D365Backend(profile, "pw")
+        assert "server URL" in str(exc.value)
+
+    def test_missing_username_names_the_profile(self):
+        profile = ConnectionProfile(
+            name="brokenntlm", url="https://crm.contoso.local/c",
+            domain="CONTOSO", username="", auth_scheme="ntlm")
+        with pytest.raises(D365Error, match="brokenntlm") as exc:
+            D365Backend(profile, "pw")
+        assert "username" in str(exc.value)
 
 
 class TestSaveSecret:

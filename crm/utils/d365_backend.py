@@ -446,9 +446,9 @@ class D365Backend:
     def __init__(self, profile: ConnectionProfile, password: str,
                  dry_run: bool = False, retry_on_ambiguous: bool = False):
         if not profile.url:
-            raise D365Error("Profile is missing the server URL.")
+            raise D365Error(f"Profile {profile.name!r} is missing the server URL.")
         if profile.auth_scheme != "oauth" and not profile.username:
-            raise D365Error("Profile is missing the username.")
+            raise D365Error(f"Profile {profile.name!r} is missing the username.")
 
         # Deferred transport import (#247). Surface a broken/partial install
         # (requests absent) as a clean D365Error — the contract the lazy command

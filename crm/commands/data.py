@@ -27,6 +27,14 @@ def data_group():
 @click.option("--format", "fmt", type=click.Choice(["csv", "json"]))
 @pass_ctx
 def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size, max_records, fmt):
+    """Export records from an entity set to a CSV/JSON file.
+
+    Pages through the entity set (``--page-size`` per request, capped by
+    ``--max-records``), narrowing columns with ``--select`` and rows with an OData
+    ``--filter``, and writes the result to ``--output``. ``--format`` is optional —
+    when omitted it is inferred from the output file's suffix (``.csv`` → csv, else
+    json).
+    """
     select_list: list[str] = []
     for s in select:
         select_list.extend(part.strip() for part in s.split(",") if part.strip())

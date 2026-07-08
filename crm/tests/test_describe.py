@@ -143,6 +143,33 @@ def test_describe_repl_excluded_even_when_named_explicitly():
     assert json.loads(result.output)["ok"] is False
 
 
+def test_no_unset_sentinel_leaks_into_defaults():
+    """A param with no declared default must serialize as a real default or null —
+    never Click's internal UNSET sentinel stringified to 'Sentinel.UNSET', which
+    would mislead an agent generating invocations from the catalogue."""
+    result = CliRunner().invoke(cli, ["--json", "describe"])
+    assert result.exit_code == 0, result.output
+    assert "Sentinel.UNSET" not in result.output
+    data = json.loads(result.output)["data"]
+    # An option with no declared default reports null, not the sentinel.
+    export = _by_path(data, "data export")
+    assert _param(export, "filter_")["default"] is None
+
+
+def test_hidden_options_are_omitted():
+    """Options marked hidden=True are excluded from the catalogue everywhere —
+    the catalogue advertises only the documented public surface. `solution pack`
+    carries a hidden `--solutionpackager-path` (deprecated alias) and
+    `workflow export` a hidden `--out`; neither may appear."""
+    data = _describe()
+    pack = _by_path(data, "solution pack")
+    assert "solutionpackager_path" not in {p["name"] for p in pack["params"]}
+    # A visible sibling option on the same command is still present.
+    assert "pac_path" in {p["name"] for p in pack["params"]}
+    wf_export = _by_path(data, "workflow export")
+    assert "out_path" not in {p["name"] for p in wf_export["params"]}
+
+
 def test_describe_human_mode_lists_command_paths():
     result = CliRunner().invoke(cli, ["describe"])
     assert result.exit_code == 0, result.output
