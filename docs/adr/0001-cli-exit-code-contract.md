@@ -34,6 +34,9 @@ unchanged). See [CONTEXT.md](../../CONTEXT.md) for the term definitions.
   change.
 - The sibling "JSON-error-envelope" issue may reshape usage-error *output* but must
   keep their exit code at `2`, or it contradicts this contract.
+- Under `--json`, Click-layer failures also render as JSON envelopes: usage errors
+  keep exit `2`, while non-usage `ClickException`s are operational failures
+  (`1`) with `{ok:false,error,meta:{}}`.
 - Detail beyond the code is intentionally only in the JSON envelope, never the code.
 - REPL behaviour is unchanged: in-REPL commands run with `standalone_mode=False`, so
   Click returns the code instead of terminating the session.

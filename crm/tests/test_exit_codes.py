@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 
+import click
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
+from crm.commands import query as query_cmds
 from crm.utils.d365_backend import D365Error
 
 
@@ -112,6 +114,25 @@ def test_root_level_bad_parameter_json_envelope():
     env = json.loads(result.output)
     assert env["ok"] is False
     assert isinstance(env["error"], str) and env["error"]
+
+
+def test_non_usage_click_exception_json_envelope(monkeypatch):
+    """Non-Usage ClickException under --json stays in the standard envelope."""
+    def boom(*args, **kwargs):
+        raise click.ClickException("forced click failure")
+
+    monkeypatch.setattr(query_cmds.query_count, "callback", boom)
+    result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])
+
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    assert env["error"] == "forced click failure"
+    assert env["meta"] == {}
+    assert "Traceback" not in result.output
+    assert "Traceback" not in result.stderr
+    assert "Error: forced click failure" not in result.output
+    assert "Error: forced click failure" not in result.stderr
 
 
 def test_usage_error_human_path_not_json():
