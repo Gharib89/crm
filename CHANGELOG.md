@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.12 (2026-07-08)
+
+### Bug Fixes
+
+- Honor dry-run contract in workflow/plugin state changers
+  ([#730](https://github.com/Gharib89/crm/pull/730),
+  [`439daec`](https://github.com/Gharib89/crm/commit/439daecef42f8e7f06a059a99113b8336bcad24a))
+
+### Documentation
+
+- Document dry-run preview shapes for workflow/plugin state changers
+  ([#730](https://github.com/Gharib89/crm/pull/730),
+  [`439daec`](https://github.com/Gharib89/crm/commit/439daecef42f8e7f06a059a99113b8336bcad24a))
+
+
 ## v1.51.11 (2026-07-08)
 
 ### Bug Fixes
