@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.10 (2026-07-08)
+
+### Bug Fixes
+
+- Keep read commands successful when session state can't be persisted
+  ([#719](https://github.com/Gharib89/crm/pull/719),
+  [`7c2ba3f`](https://github.com/Gharib89/crm/commit/7c2ba3f541fc0543df2e30076abb993e11315a94))
+
+
 ## v1.51.9 (2026-07-08)
 
 ### Bug Fixes
