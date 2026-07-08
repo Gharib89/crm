@@ -9,6 +9,30 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.14 (2026-07-08)
+
+### Bug Fixes
+
+- Create profile secret files 0600 and make atomic writes collision-safe
+  ([#733](https://github.com/Gharib89/crm/pull/733),
+  [`4688d5f`](https://github.com/Gharib89/crm/commit/4688d5fe6fb1edfdabdba9bee05711e4f84a6f28))
+
+- Make atomic-write temp name independent of target name length
+  ([#733](https://github.com/Gharib89/crm/pull/733),
+  [`4688d5f`](https://github.com/Gharib89/crm/commit/4688d5fe6fb1edfdabdba9bee05711e4f84a6f28))
+
+### Documentation
+
+- Drop dead guides/session-locking.md reference from atomic-write docstring
+  ([#733](https://github.com/Gharib89/crm/pull/733),
+  [`4688d5f`](https://github.com/Gharib89/crm/commit/4688d5fe6fb1edfdabdba9bee05711e4f84a6f28))
+
+### Testing
+
+- Scope concurrent-writer stress test to POSIX ([#733](https://github.com/Gharib89/crm/pull/733),
+  [`4688d5f`](https://github.com/Gharib89/crm/commit/4688d5fe6fb1edfdabdba9bee05711e4f84a6f28))
+
+
 ## v1.51.13 (2026-07-08)
 
 ### Bug Fixes
