@@ -61,6 +61,25 @@ def test_plaintext_file_is_0600():
     assert (path.stat().st_mode & 0o777) == 0o600
 
 
+@pytest.mark.skipif(os.name != "posix", reason="file-mode creation only enforced on POSIX")
+def test_secret_file_created_0600_without_post_write_chmod(monkeypatch):
+    # Hardening (#687): the secret file is *created* 0600 (create-with-mode), so it
+    # is never group/world-readable for any instant. No create-then-chmod widen
+    # window — hence no os.chmod fixup call at all.
+    _save_base_profile()
+    real_chmod = os.chmod
+    calls: list[str] = []
+
+    def spy_chmod(path, mode, *a, **k):  # type: ignore[no-untyped-def]
+        calls.append(str(path))
+        return real_chmod(path, mode, *a, **k)
+
+    monkeypatch.setattr(session_mod.os, "chmod", spy_chmod)
+    path = session_mod.save_profile_secret_plaintext("prod", "p@ss")
+    assert (path.stat().st_mode & 0o777) == 0o600
+    assert calls == [], f"secret file must be created 0600, not chmod'd after: {calls}"
+
+
 def test_secret_survives_unrelated_profile_resave():
     # Regression (#130): an unrelated profile mutation (e.g. a publisher_prefix edit)
     # re-saves via save_profile(); a stored plaintext secret must survive it.
