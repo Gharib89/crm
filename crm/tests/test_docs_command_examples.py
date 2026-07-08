@@ -370,6 +370,12 @@ ALLOWLIST: dict[str, str] = {
     "bpf": "guides/crmworx-walkthrough: hypothetical future command (#37)",
     # README architecture diagram, not an invocation.
     "(Click + REPL)": "README architecture ASCII diagram",
+    # ADR 0022 prose: a rejected Terraform-style verb (folded into `--dry-run apply`).
+    "plan": "ADR 0022: rejected `crm plan` verb, documented as not built",
+    # ADR 0022 prose: no such command; drift is `export-spec` + `--dry-run apply`.
+    "diff": "ADR 0022: rejected `crm diff` command, documented as not built",
+    # ADR 0022 proposed-but-unshipped surface for the plan-artifact feature.
+    "apply --from-plan plan.json": "ADR 0022: proposed unshipped `--from-plan` surface",
 }
 
 
