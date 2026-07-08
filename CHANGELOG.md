@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.7 (2026-07-08)
+
+### Bug Fixes
+
+- Guard solution publish --xml-file read; parametrize the IO sweep
+  ([#722](https://github.com/Gharib89/crm/pull/722),
+  [`5d5d7a9`](https://github.com/Gharib89/crm/commit/5d5d7a9740d9437269630b9ea79e6eb118bf0914))
+
+- Wrap unguarded file IO in the OSError→domain-error idiom
+  ([#722](https://github.com/Gharib89/crm/pull/722),
+  [`5d5d7a9`](https://github.com/Gharib89/crm/commit/5d5d7a9740d9437269630b9ea79e6eb118bf0914))
+
+- Wrap unguarded file IO in the OSError→domain-error idiom (#699)
+  ([#722](https://github.com/Gharib89/crm/pull/722),
+  [`5d5d7a9`](https://github.com/Gharib89/crm/commit/5d5d7a9740d9437269630b9ea79e6eb118bf0914))
+
+### Chores
+
+- **agents**: Add merge-gate skill; ship deviation log; brief known-unknowns
+  ([#724](https://github.com/Gharib89/crm/pull/724),
+  [`9706f77`](https://github.com/Gharib89/crm/commit/9706f7785ad6fdf3e285740721d8afc42c0604f4))
+
+### Testing
+
+- Assert the operation (read/write), not just the path, in the IO sweep
+  ([#722](https://github.com/Gharib89/crm/pull/722),
+  [`5d5d7a9`](https://github.com/Gharib89/crm/commit/5d5d7a9740d9437269630b9ea79e6eb118bf0914))
+
+- Isolate CRM_HOME in the file-IO sweep so CLI runs stay hermetic
+  ([#722](https://github.com/Gharib89/crm/pull/722),
+  [`5d5d7a9`](https://github.com/Gharib89/crm/commit/5d5d7a9740d9437269630b9ea79e6eb118bf0914))
+
+
 ## v1.51.6 (2026-07-08)
 
 ### Bug Fixes
