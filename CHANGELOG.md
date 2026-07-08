@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.18 (2026-07-08)
+
+### Performance Improvements
+
+- Lazy the appmodule saxutils and completion-registry subprocess/tempfile imports
+  ([#749](https://github.com/Gharib89/crm/pull/749),
+  [`1c9f6ef`](https://github.com/Gharib89/crm/commit/1c9f6efe05e9eeec3e5bf0c6bc71ece7489f3d4b))
+
+
 ## v1.51.17 (2026-07-08)
 
 ### Bug Fixes
