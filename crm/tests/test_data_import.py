@@ -768,9 +768,9 @@ def _stub_backend_with_attrs(
 class TestCsvBomTolerance:
     def test_bom_prefixed_csv_first_column_not_corrupted(self, tmp_path: Path) -> None:
         """An Excel-saved CSV carries a UTF-8 BOM; the reader must strip it so the
-        first column name is `name`, not `﻿name`."""
+        first column name is `name`, not `\ufeffname`."""
         p = tmp_path / "data.csv"
-        p.write_bytes("﻿name,age\r\nJoe,3\r\n".encode("utf-8"))
+        p.write_bytes("\ufeffname,age\r\nJoe,3\r\n".encode("utf-8"))
         backend = _make_stub_backend([_make_2xx_results(1)])
         _import_records(backend, "accounts", p, mode="create")
         ops = backend.batch.call_args[0][0]
@@ -780,7 +780,7 @@ class TestCsvBomTolerance:
         """The sibling JSONL reader is BOM-tolerant too — a BOM must not corrupt
         the first key of the first object."""
         p = tmp_path / "data.jsonl"
-        p.write_bytes(("﻿" + json.dumps({"name": "Joe"}) + "\n").encode("utf-8"))
+        p.write_bytes(("\ufeff" + json.dumps({"name": "Joe"}) + "\n").encode("utf-8"))
         backend = _make_stub_backend([_make_2xx_results(1)])
         _import_records(backend, "accounts", p, mode="create")
         ops = backend.batch.call_args[0][0]
@@ -826,6 +826,19 @@ class TestCsvStringAlternateKey:
         _import_records(backend, "accounts", p, mode="upsert", alt_key=["code"])
         ops = backend.batch.call_args[0][0]
         assert ops[0]["url"] == "accounts(code=42)"
+
+    def test_metadata_failure_degrades_to_shape_coercion(self, tmp_path: Path) -> None:
+        """If the column-type lookup fails, the CSV import degrades to shape-based
+        coercion (prior behavior) rather than aborting — the type check adds a new
+        metadata dependency that must not hard-fail a previously-working import."""
+        p = tmp_path / "data.csv"
+        p.write_text("accountnumber,name\r\n10023,Acme\r\n", encoding="utf-8")
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        backend.get.side_effect = D365Error("metadata unreachable", status=500)
+        # Must not raise; degrades to shape coercion (numeric-looking → bare key).
+        _import_records(backend, "accounts", p, mode="upsert", alt_key=["accountnumber"])
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["url"] == "accounts(accountnumber=10023)"
 
     def test_string_key_body_columns_still_coerced(self, tmp_path: Path) -> None:
         """Only the alternate-key column keeps string identity; ordinary numeric

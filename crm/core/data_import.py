@@ -132,31 +132,37 @@ def _string_key_columns(
     the quoted ``key='10023'`` form, so the upsert/delete would silently miss
     (#683). Resolves the set→logical name the same way
     :func:`~crm.core.entity.lookup_alternate_key_schema` does, then reads the
-    attribute types; returns an empty set if the entity set is unknown so the
-    caller falls back to shape-based coercion (prior behavior).
+    attribute types. Returns an empty set — the caller then falls back to
+    shape-based coercion (prior behavior) — when the entity set is unknown *or*
+    the metadata reads fail: this check adds a new metadata dependency to a path
+    that worked without it, so a transient/permission failure must degrade to the
+    old behavior rather than hard-fail a previously-working import.
     """
     from crm.core import metadata as meta_mod
     from crm.utils.d365_backend import as_dict, odata_literal
 
-    result = as_dict(backend.get(
-        "EntityDefinitions",
-        params={
-            "$select": "LogicalName",
-            "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
-        },
-    ))
-    matches: list[dict[str, Any]] = result.get("value", [])
-    if not matches:
+    try:
+        result = as_dict(backend.get(
+            "EntityDefinitions",
+            params={
+                "$select": "LogicalName",
+                "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
+            },
+        ))
+        matches: list[dict[str, Any]] = result.get("value", [])
+        if not matches:
+            return set()
+        logical = matches[0].get("LogicalName") or ""
+        if not logical:
+            return set()
+        wanted = set(attrs)
+        return {
+            a["LogicalName"]
+            for a in meta_mod.list_attributes(backend, logical)
+            if a.get("LogicalName") in wanted and a.get("AttributeType") in ("String", "Memo")
+        }
+    except D365Error:
         return set()
-    logical = matches[0].get("LogicalName") or ""
-    if not logical:
-        return set()
-    wanted = set(attrs)
-    return {
-        a["LogicalName"]
-        for a in meta_mod.list_attributes(backend, logical)
-        if a.get("LogicalName") in wanted and a.get("AttributeType") in ("String", "Memo")
-    }
 
 
 # ── op builders ──────────────────────────────────────────────────────────────
