@@ -9,6 +9,24 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.16 (2026-07-08)
+
+### Bug Fixes
+
+- Preserve lookup schema-name casing and export entity/optionset/view descriptions
+  ([#745](https://github.com/Gharib89/crm/pull/745),
+  [`dba87c8`](https://github.com/Gharib89/crm/commit/dba87c85ab9b1d23f59af79ad8283711bd9982e7))
+
+### Documentation
+
+- ADR 0022 plan artifact (approval-gated apply) + glossary terms
+  ([`5aadace`](https://github.com/Gharib89/crm/commit/5aadacef68f9f2305654d59b528611f085e06bf9))
+
+- Clarify optionset description is applied on create, not update-reconciled
+  ([#745](https://github.com/Gharib89/crm/pull/745),
+  [`dba87c8`](https://github.com/Gharib89/crm/commit/dba87c85ab9b1d23f59af79ad8283711bd9982e7))
+
+
 ## v1.51.15 (2026-07-08)
 
 ### Bug Fixes
