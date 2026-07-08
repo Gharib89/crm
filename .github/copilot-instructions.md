@@ -12,7 +12,6 @@ Focus on correctness, error handling, and contract violations. CI already runs p
 - Dry-run mutators must return a `{_dry_run, would_*}` preview, never the bare success key (`deleted: true` etc.) — `backend.request` short-circuits ALL methods including pre-flight GETs in dry-run, so existence checks silently no-op.
 - Text file I/O must pass `encoding="utf-8"` (Windows defaults to cp1252). Unix-only imports (`fcntl`, `pwd`, `termios`, …) need `try/except ImportError` at the import line.
 - Logic enforcing header invariants ("never emit both X and Y") must use `requests`' `CaseInsensitiveDict`, not a plain dict.
-- Never `assert` for a runtime invariant in shipped code — `assert` is stripped under `python -O` (the frozen build can run optimized); raise `D365Error` (or the appropriate domain error) even for logically-unreachable checks.
 - `@odata.bind` navigation-property names must match `$metadata` casing — system entities (sdkmessage*, solution, …) use lowercase logical names; flag guessed PascalCase.
 - `CLIContext.emit(meta=...)` renders in HUMAN mode too — JSON-only meta fields must be gated on `ctx.json_mode`.
 - When serializing Click options, include `opt.secondary_opts` (the `--no-*` forms), not just `opt.opts`.
