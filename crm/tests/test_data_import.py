@@ -750,19 +750,29 @@ def _stub_backend_with_attrs(
     logical: str = "account",
 ) -> Any:
     """Stub backend whose .batch() returns successive chunks and whose .get()
-    serves the EntityDefinitions (set→logical) + Attributes metadata the
-    alternate-key column-type check reads."""
+    serves the Attributes metadata the alternate-key column-type check reads."""
     backend = _make_stub_backend(results_per_chunk)
 
     def _get(path: str, params: Any = None, **_kw: Any) -> dict[str, Any]:
-        if path == "EntityDefinitions":
-            return {"value": [{"LogicalName": logical}]}
         if path == f"EntityDefinitions(LogicalName='{logical}')/Attributes":
             return {"value": attrs}
         raise AssertionError(f"unexpected GET {path!r}")
 
     backend.get.side_effect = _get
     return backend
+
+
+@pytest.fixture()
+def stub_name_map(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Serve the set→logical resolution from a hand-built NameMap so the
+    column-type check exercises the shared seam without a live GET."""
+    from crm.core import entity_names
+
+    nm = entity_names.NameMap(
+        logical_to_set={"account": "accounts"},
+        set_to_logical={"accounts": "account"},
+    )
+    monkeypatch.setattr(entity_names, "load_name_map", lambda backend, **_kw: nm)
 
 
 class TestCsvBomTolerance:
@@ -787,6 +797,7 @@ class TestCsvBomTolerance:
         assert ops[0]["body"] == {"name": "Joe"}
 
 
+@pytest.mark.usefixtures("stub_name_map")
 class TestCsvStringAlternateKey:
     def test_numeric_looking_string_key_keeps_string_identity(self, tmp_path: Path) -> None:
         """A numeric-looking CSV alternate-key value on a String column builds the
@@ -827,13 +838,22 @@ class TestCsvStringAlternateKey:
         ops = backend.batch.call_args[0][0]
         assert ops[0]["url"] == "accounts(code=42)"
 
-    def test_metadata_failure_degrades_to_shape_coercion(self, tmp_path: Path) -> None:
+    def test_metadata_failure_degrades_to_shape_coercion(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """If the column-type lookup fails, the CSV import degrades to shape-based
         coercion (prior behavior) rather than aborting — the type check adds a new
         metadata dependency that must not hard-fail a previously-working import."""
+        from crm.core import entity_names
+
         p = tmp_path / "data.csv"
         p.write_text("accountnumber,name\r\n10023,Acme\r\n", encoding="utf-8")
         backend = _make_stub_backend([_make_2xx_results(1)])
+
+        def _boom(_backend: Any, **_kw: Any) -> Any:
+            raise D365Error("metadata unreachable", status=500)
+
+        monkeypatch.setattr(entity_names, "load_name_map", _boom)
         backend.get.side_effect = D365Error("metadata unreachable", status=500)
         # Must not raise; degrades to shape coercion (numeric-looking → bare key).
         _import_records(backend, "accounts", p, mode="upsert", alt_key=["accountnumber"])

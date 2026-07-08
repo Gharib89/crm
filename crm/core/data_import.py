@@ -130,31 +130,22 @@ def _string_key_columns(
     A numeric-looking CSV cell for such a column must keep its string identity:
     coerced to a number it builds a bare ``key=10023`` path where Dataverse needs
     the quoted ``key='10023'`` form, so the upsert/delete would silently miss
-    (#683). Resolves the set→logical name the same way
-    :func:`~crm.core.entity.lookup_alternate_key_schema` does, then reads the
-    attribute types. Returns an empty set — the caller then falls back to
-    shape-based coercion (prior behavior) — when the entity set is unknown *or*
-    the metadata reads fail: this check adds a new metadata dependency to a path
-    that worked without it, so a transient/permission failure must degrade to the
-    old behavior rather than hard-fail a previously-working import.
+    (#683). Resolves the set→logical name through the shared cached name-map
+    seam (#261) — warm on this path, since :func:`resolve_alternate_key` already
+    resolved the same entity set one step earlier — then reads the attribute
+    types. Returns an empty set — the caller then falls back to shape-based
+    coercion (prior behavior) — when the entity set is unknown *or* the metadata
+    reads fail: this check adds a new metadata dependency to a path that worked
+    without it, so a transient/permission failure must degrade to the old
+    behavior rather than hard-fail a previously-working import.
     """
+    # Local imports keep the core package import-cycle-free (mirrors
+    # lookup_alternate_key_schema in crm.core.entity).
+    from crm.core import entity_names
     from crm.core import metadata as meta_mod
-    from crm.utils.d365_backend import as_dict, odata_literal
 
     try:
-        result = as_dict(backend.get(
-            "EntityDefinitions",
-            params={
-                "$select": "LogicalName",
-                "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
-            },
-        ))
-        matches: list[dict[str, Any]] = result.get("value", [])
-        if not matches:
-            return set()
-        logical = matches[0].get("LogicalName") or ""
-        if not logical:
-            return set()
+        logical = entity_names.resolve_logical_name(backend, entity_set)
         wanted = set(attrs)
         return {
             a["LogicalName"]
