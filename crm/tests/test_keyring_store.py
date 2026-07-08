@@ -141,6 +141,42 @@ def test_set_secret_converts_backend_error_to_d365error(erroring):
         keyring_store.set_secret("prod", "x")
 
 
+def _no_backend_keyring(monkeypatch):
+    """A keyring whose backend reports unusable (null backend) — set_secret's
+    no-backend branch."""
+    null_mod = keyring_store._NULL_BACKEND_MODULE
+
+    class _NullBackend:
+        pass
+    _NullBackend.__module__ = null_mod
+
+    class _Kr:
+        def get_keyring(self):
+            return _NullBackend()
+    monkeypatch.setattr(keyring_store, "_import_keyring", lambda: _Kr())
+
+
+def test_set_secret_no_backend_points_at_current_remediation(monkeypatch):
+    """The no-backend error must name credential sources that exist today
+    (`set-password` / `--password`) and never the removed env-var path."""
+    _no_backend_keyring(monkeypatch)
+    with pytest.raises(D365Error) as exc:
+        keyring_store.set_secret("prod", "x")
+    msg = str(exc.value)
+    assert "env var" not in msg.lower()
+    assert "--store-password-plaintext" in msg
+    assert "--password" in msg
+
+
+def test_set_secret_backend_write_failure_points_at_current_remediation(erroring):
+    """A backend write failure's error must also drop the stale env-var advice."""
+    with pytest.raises(D365Error) as exc:
+        keyring_store.set_secret("prod", "x")
+    msg = str(exc.value)
+    assert "env var" not in msg.lower()
+    assert "--store-password-plaintext" in msg
+
+
 def test_is_available_false_for_null_backend(monkeypatch):
     # A backend object whose class lives in the null-backend module is "unusable".
     null_mod = keyring_store._NULL_BACKEND_MODULE

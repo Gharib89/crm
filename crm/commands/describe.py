@@ -16,10 +16,26 @@ from crm.cli import CLIContext, cli, pass_ctx
 # worth enumerating and is not meant to be driven programmatically.
 _EXCLUDED = {"repl"}
 
+# Click stores an internal UNSET sentinel as a param's `default` when none was
+# declared. It isn't a re-exported symbol, so capture the singleton from a
+# throwaway option (public API) and compare by identity — see `_default`.
+_UNSET_DEFAULT = click.Option(["--x"]).default
+
 
 def _choices(param: click.Parameter) -> list[str] | None:
     """Return a Choice param's enum values verbatim, or None for non-Choice types."""
     return list(param.type.choices) if isinstance(param.type, click.Choice) else None
+
+
+def _default(param: click.Parameter):
+    """Serialize a param's default, mapping Click's internal UNSET sentinel to None.
+
+    A param with no declared default holds Click's UNSET sentinel; emitted verbatim
+    it stringifies (via the JSON encoder's `default=str`) to the literal
+    "Sentinel.UNSET", a phantom value that misleads an agent generating invocations
+    from the catalogue. Report a real default or an explicit null instead."""
+    default = param.default
+    return None if default is _UNSET_DEFAULT else default
 
 
 def _serialize_option(opt: click.Option) -> dict:
@@ -34,7 +50,7 @@ def _serialize_option(opt: click.Option) -> dict:
         "is_flag": bool(opt.is_flag),
         "multiple": bool(opt.multiple),
         "choices": _choices(opt),
-        "default": opt.default,
+        "default": _default(opt),
         "envvar": opt.envvar,
     }
 
@@ -46,13 +62,18 @@ def _serialize_argument(arg: click.Argument) -> dict:
         "required": bool(arg.required),
         "multiple": bool(arg.multiple),
         "choices": _choices(arg),
-        "default": arg.default,
+        "default": _default(arg),
     }
 
 
 def _describe_command(cmd: click.Command, path: list[str]) -> dict:
     args = [_serialize_argument(p) for p in cmd.params if isinstance(p, click.Argument)]
-    params = [_serialize_option(p) for p in cmd.params if isinstance(p, click.Option)]
+    # Hidden options are deliberately off the public surface (deprecated aliases,
+    # internal escape hatches); dropping them keeps the catalogue truthful.
+    params = [
+        _serialize_option(p) for p in cmd.params
+        if isinstance(p, click.Option) and not p.hidden
+    ]
     return {
         "name": path[-1],
         "path": " ".join(path),
@@ -92,7 +113,8 @@ def describe_cmd(ctx: CLIContext, group: str | None):
     # Root sticky global options (--json, --dry-run, --profile, …) are not part of
     # any subcommand but apply to every invocation, so surface them separately.
     root_options = [
-        _serialize_option(p) for p in cli.params if isinstance(p, click.Option)
+        _serialize_option(p) for p in cli.params
+        if isinstance(p, click.Option) and not p.hidden
     ]
     if group:
         # Excluded leaves (repl) are absent from the catalogue everywhere — naming

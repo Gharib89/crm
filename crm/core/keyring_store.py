@@ -94,9 +94,10 @@ def set_secret(profile_name: str, secret: str) -> None:
         # _import_keyring raises the actionable message; if it imported but has
         # no backend, raise the same guidance here.
         _import_keyring()
+        # Reuse the shared remediation so all keyring failure paths give identical,
+        # non-drifting guidance (never the removed env-var flow).
         raise D365Error(
-            "No usable OS keyring backend is available. Use "
-            "--store-password-plaintext, or env vars, instead."
+            "No usable OS keyring backend is available." + _SECRET_FALLBACK
         )
     try:
         _import_keyring().set_password(KEYRING_SERVICE, profile_name, secret)
@@ -104,8 +105,7 @@ def set_secret(profile_name: str, secret: str) -> None:
         # Convert a backend write failure into a D365Error so the CLI's handler
         # reports it cleanly instead of leaking a raw keyring traceback.
         raise D365Error(
-            f"Failed to store the secret in the OS keyring: {exc}. Use "
-            "--store-password-plaintext, or env vars, instead."
+            f"Failed to store the secret in the OS keyring: {exc}." + _SECRET_FALLBACK
         ) from exc
 
 
