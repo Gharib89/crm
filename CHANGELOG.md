@@ -9,6 +9,14 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.19 (2026-07-08)
+
+### Bug Fixes
+
+- Harden apply spec-read + alt-key name-map seam + orphaned temp-file reap (#744 #743 #740 #739)
+  ([`43ee3ae`](https://github.com/Gharib89/crm/commit/43ee3ae60f8c963083fa5147df9fd0d8ad4f763f))
+
+
 ## v1.51.18 (2026-07-08)
 
 ### Performance Improvements
