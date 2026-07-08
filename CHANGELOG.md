@@ -9,6 +9,38 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.11 (2026-07-08)
+
+### Bug Fixes
+
+- Require confirmation for unguarded destructive commands
+  ([#728](https://github.com/Gharib89/crm/pull/728),
+  [`996be24`](https://github.com/Gharib89/crm/commit/996be24b630037bdd99f7db6d6ea08c50093948f))
+
+### Chores
+
+- **agents**: Add blindspot + quiz-before-merge skills, .agent symlink tree
+  ([#729](https://github.com/Gharib89/crm/pull/729),
+  [`df85958`](https://github.com/Gharib89/crm/commit/df85958850dbf2db2434f3cd977ba3e1c9554248))
+
+- **agents**: Restructure CLAUDE.md, add blindspot + quiz-before-merge skills, .agent symlinks
+  ([#729](https://github.com/Gharib89/crm/pull/729),
+  [`df85958`](https://github.com/Gharib89/crm/commit/df85958850dbf2db2434f3cd977ba3e1c9554248))
+
+### Documentation
+
+- Add assert-under-optimize house rule to copilot instructions
+  ([#729](https://github.com/Gharib89/crm/pull/729),
+  [`df85958`](https://github.com/Gharib89/crm/commit/df85958850dbf2db2434f3cd977ba3e1c9554248))
+
+- Add assert-under-optimize house rule to copilot instructions
+  ([`d678151`](https://github.com/Gharib89/crm/commit/d678151d914c04b92a9e580df5f895352090659d))
+
+- Restructure CLAUDE.md walls into scannable lists
+  ([#729](https://github.com/Gharib89/crm/pull/729),
+  [`df85958`](https://github.com/Gharib89/crm/commit/df85958850dbf2db2434f3cd977ba3e1c9554248))
+
+
 ## v1.51.10 (2026-07-08)
 
 ### Bug Fixes
