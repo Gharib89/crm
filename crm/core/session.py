@@ -206,9 +206,15 @@ def _reap_stale_temps(parent: Path) -> None:
     """Unlink orphaned atomic-write temp files in *parent* older than the reap
     threshold. A hard kill (SIGKILL, power loss) between ``os.open`` and
     ``os.replace`` leaves a unique ``.<pid>.<hex>.tmp`` that nothing else reaps;
-    without this they accumulate unbounded on agent fleets. Call **only** while
-    holding the parent-directory lock so a reap can't race a live writer.
-    Best-effort — any failure is swallowed, matching the module's stance."""
+    without this they accumulate unbounded on agent fleets.
+
+    The age threshold is what makes this safe against a live writer: an in-flight
+    temp is milliseconds old, far below the hour cutoff, so it is never a reap
+    candidate. Callers *should* additionally run this under the parent-directory
+    lock, but that lock is best-effort (absent on platforms without ``fcntl``,
+    and its acquisition failures are swallowed), so the threshold — not the lock —
+    is the guarantee. Best-effort throughout: any failure is swallowed, matching
+    the module's stance."""
     cutoff = time.time() - _TEMP_REAP_AGE_SECONDS
     try:
         entries = list(parent.glob(".*.tmp"))
@@ -255,8 +261,9 @@ def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> 
             except (OSError, AttributeError):
                 pass
 
-        # While the directory lock is held (so no reap can race a live writer),
-        # sweep temp files orphaned by crashed writes (#743).
+        # Sweep temp files orphaned by crashed writes (#743). Runs under the
+        # directory lock when it was acquired above (best-effort); the >1h age
+        # threshold keeps it safe from live writers regardless.
         _reap_stale_temps(path.parent)
 
         # Unique temp name in the target dir: two concurrent writers get distinct
