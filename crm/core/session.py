@@ -51,12 +51,9 @@ def save_profile(profile: ConnectionProfile) -> Path:
     if existing_secret is not None:
         payload["_secret"] = existing_secret
     p = profile_path(profile.name)
-    _atomic_write_json(p, payload)
-    # _atomic_write_json writes a fresh tmp file (default 0644) and renames over
-    # the original, dropping any prior 0600. Re-enforce it when a plaintext
-    # secret is present so an unrelated re-save can't widen its permissions.
-    if existing_secret is not None and os.name == "posix":
-        os.chmod(p, 0o600)
+    # When a plaintext secret is present, create the file 0600 from the first byte
+    # so an unrelated re-save can't widen its permissions — even momentarily.
+    _atomic_write_json(p, payload, mode=0o600 if existing_secret is not None else None)
     return p
 
 
@@ -97,9 +94,8 @@ def rename_profile(old: str, new: str) -> None:
     data = _read_profile_raw(old)  # FileNotFoundError if old is missing
     data["name"] = new
     dest = profile_path(new)
-    _atomic_write_json(dest, data)
-    if "_secret" in data and os.name == "posix":
-        os.chmod(dest, 0o600)
+    # Carry the 0600 mode onto the renamed file at creation when it holds a secret.
+    _atomic_write_json(dest, data, mode=0o600 if "_secret" in data else None)
     delete_profile(old)
 
 
@@ -127,9 +123,7 @@ def save_profile_secret_plaintext(name: str, secret: str) -> Path:
     data = _read_profile_raw(name)
     data["_secret"] = secret
     p = profile_path(name)
-    _atomic_write_json(p, data)
-    if os.name == "posix":
-        os.chmod(p, 0o600)
+    _atomic_write_json(p, data, mode=0o600)  # created 0600 — never a widen window
     return p
 
 
@@ -194,28 +188,65 @@ def append_history(state: dict[str, Any], command: str, max_len: int = 500) -> N
 # ── Locked atomic write ─────────────────────────────────────────────────
 
 
-def _atomic_write_json(path: Path, payload: Any) -> None:
-    """Write JSON atomically via tmp + rename. Uses an exclusive lock during write.
+def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> None:
+    """Write JSON atomically: write a per-process-unique temp file, then rename it
+    over *path*. The whole write-and-replace is serialized by an exclusive lock on
+    the parent directory, so concurrent crm processes (agent fleets run many at
+    once) can't interleave and corrupt shared state.
 
-    See guides/session-locking.md for the wider pattern.
+    *mode*, when given, is the permission the temp file is *created* with (via
+    ``os.open`` ``O_CREAT|O_EXCL``) — pass ``0o600`` for secret-bearing files so the
+    secret is never group/world-readable for any instant (no create-then-chmod
+    widen window). When omitted, the temp file takes the umask default, matching
+    prior behavior for non-secret session/profile writes.
     """
     try:
         import fcntl
     except ImportError:
-        fcntl = None  # Windows: no flock, rely on atomic rename only
+        fcntl = None  # Windows: no flock, rely on the atomic rename alone
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        if fcntl is not None:
+
+    # Lock the parent directory (a stable target that always exists) for the whole
+    # write-replace, instead of the old too-late lock on the temp fd — which, with
+    # a shared temp name, was defeated by a concurrent open() truncation before the
+    # lock was ever taken.
+    lock_fd = os.open(path.parent, os.O_RDONLY) if fcntl is not None else None
+    try:
+        if lock_fd is not None and fcntl is not None:
             try:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
             except (OSError, AttributeError):
                 pass
-        json.dump(payload, f, indent=2, sort_keys=True)
-        f.flush()
-        os.fsync(f.fileno())
-    tmp.replace(path)
+
+        # Unique temp name in the target dir: two concurrent writers get distinct
+        # temp files instead of clobbering one shared "<name>.tmp". The name is a
+        # short fixed shape independent of path.name, so a very long (but valid,
+        # uncapped) profile name can't push the temp past NAME_MAX while the target
+        # itself still fits. O_EXCL + retry guards the (astronomically rare) clash.
+        create_mode = 0o666 if mode is None else mode
+        while True:
+            tmp = path.with_name(f".{os.getpid()}.{os.urandom(6).hex()}.tmp")
+            try:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, create_mode)
+                break
+            except FileExistsError:
+                continue
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, sort_keys=True)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)  # don't leak a unique temp file on a failed write
+            except OSError:
+                pass
+            raise
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
 
 
 # ── History file (REPL line history) ────────────────────────────────────
