@@ -44,8 +44,10 @@ does not bloat with defaults). Covered now:
 - optionset (global) — `description` (#701).
 
 Descriptions (entity / optionset / view) are emitted only when non-empty and wherever
-the corresponding `apply` adapter already reconciles them; attribute and
-lookup-column descriptions were already emitted.
+the corresponding `apply` adapter already consumes them: entity and view descriptions
+are reconciled on update, while the global option set description is applied on create
+(the optionset reconcile inserts only missing options, so a drifted description is not
+updated on re-apply). Attribute and lookup-column descriptions were already emitted.
 
 Adapter fields intentionally NOT emitted (documented gaps, not oversights):
 - attribute `default_value` and boolean `true_label`/`false_label` live under the
@@ -160,8 +162,9 @@ def _add_global_optionset(
         "display_name": display or name,
         "options": metadata.flatten_options(raw),
     }
-    # apply reconciles the option set description; emit it (when non-empty) so
-    # documentation metadata round-trips (#701).
+    # apply applies the option set description on create (create_optionset); the
+    # reconcile path updates only options, so emit it (when non-empty) so the
+    # description round-trips into a freshly seeded org (#701).
     description = metadata.label_text(_as_dict(raw.get("Description")))
     if description:
         entry["description"] = description

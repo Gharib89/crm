@@ -549,7 +549,8 @@ class TestGlobalPicklist:
         os_entry = spec["optionsets"][0]
         assert os_entry["name"] == "new_priorityset"
         assert os_entry["display_name"] == "Priority"
-        # The global option set Description round-trips (apply reconciles it).
+        # The global option set Description round-trips into the spec (apply seeds
+        # it on create; the optionset reconcile path updates only options).
         assert os_entry["description"] == "Priority levels"
         assert os_entry["options"] == [
             {"value": 10, "label": "Low"},
