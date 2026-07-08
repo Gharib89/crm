@@ -1083,3 +1083,61 @@ class TestParseResponseEdgeCases:
             text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
         )
         assert results[0]["status"] == 204
+
+
+# ── run_batched: chunked $batch execution helper (issue #703) ────────────────
+
+
+def _json_batch_response(bodies: list[dict[str, Any]], boundary: str = "batchresp") -> bytes:
+    """Multipart $batch response: one 200 application/json part per body."""
+    import json as _json
+    parts = [
+        "Content-Type: application/http\r\n"
+        "Content-Transfer-Encoding: binary\r\n"
+        "\r\n"
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n"
+        + _json.dumps(b)
+        for b in bodies
+    ]
+    text = (
+        f"--{boundary}\r\n"
+        + f"\r\n--{boundary}\r\n".join(parts)
+        + f"\r\n--{boundary}--\r\n"
+    )
+    return text.encode("utf-8")
+
+
+class TestRunBatched:
+    def test_chunks_into_ceil_n_over_size_posts(self, backend, profile):
+        from crm.core.batch import run_batched
+        from crm.utils.d365_types import BatchOperation
+        hdr = {"Content-Type": "multipart/mixed; boundary=batchresp"}
+        ops: list[BatchOperation] = [
+            {"method": "GET", "url": f"accounts({i})"} for i in range(5)
+        ]
+        with requests_mock.Mocker() as m:
+            m.post(profile.api_base + "$batch", [
+                {"content": _json_batch_response([{"i": 0}, {"i": 1}]), "headers": hdr, "status_code": 200},
+                {"content": _json_batch_response([{"i": 2}, {"i": 3}]), "headers": hdr, "status_code": 200},
+                {"content": _json_batch_response([{"i": 4}]), "headers": hdr, "status_code": 200},
+            ])
+            results = run_batched(backend, ops, chunk_size=2)
+            posts = [r for r in m.request_history if r.method == "POST"]
+        # ceil(5/2) = 3 $batch POSTs, results concatenated in input order.
+        assert len(posts) == 3
+        bodies = [r["body"] for r in results]
+        assert [b["i"] for b in bodies if isinstance(b, dict)] == [0, 1, 2, 3, 4]
+
+    def test_empty_ops_issue_no_request(self, backend):
+        from crm.core.batch import run_batched
+        with requests_mock.Mocker() as m:
+            results = run_batched(backend, [])
+            assert m.request_history == []
+        assert results == []
+
+    def test_non_positive_chunk_size_raises(self, backend):
+        from crm.core.batch import run_batched
+        with pytest.raises(D365Error, match="positive"):
+            run_batched(backend, [], chunk_size=0)

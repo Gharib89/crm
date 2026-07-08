@@ -2914,6 +2914,31 @@ def _mock_solution_prune(m, backend, components):
                            "rootcomponentbehavior": 0} for ct, oid in components]})
 
 
+_PRUNE_BATCH_HDR = {"Content-Type": "multipart/mixed; boundary=batchresp"}
+
+
+def _mock_prune_name_batch(m, backend, bodies):
+    """Mock the single `$batch` that resolves top-level prune-candidate names.
+
+    `bodies` is one JSON body per candidate (issue #703 batches the per-candidate
+    name-resolution GETs), in the order the reads are issued — componenttype
+    order, sorted objectid within each type.
+    """
+    parts = [
+        "Content-Type: application/http\r\n"
+        "Content-Transfer-Encoding: binary\r\n"
+        "\r\n"
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n"
+        + json.dumps(b)
+        for b in bodies
+    ]
+    text = "--batchresp\r\n" + "\r\n--batchresp\r\n".join(parts) + "\r\n--batchresp--\r\n"
+    return m.post(backend.url_for("$batch"), content=text.encode("utf-8"),
+                  headers=_PRUNE_BATCH_HDR, status_code=200)
+
+
 def test_apply_dry_run_reports_solution_role_extra_as_prune_candidate(dry_backend):
     # A role lives in the target solution; the spec declares no roles → prune-
     # candidate. Dry-run surfaces it (deleted=False) and writes nothing.
@@ -2934,8 +2959,7 @@ def test_apply_prune_deletes_schema_only_extra(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
-        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
-              json={"name": "contoso_/orphan.js"})
+        _mock_prune_name_batch(m, backend, [{"name": "contoso_/orphan.js"}])
         del_mock = m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, prune=True)
     assert res["ok"] is True
@@ -2950,8 +2974,7 @@ def test_apply_prune_deletes_plugin_step_extra(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(92, _STEP_ID)])
-        m.get(backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"),
-              json={"name": "Orphan Step"})
+        _mock_prune_name_batch(m, backend, [{"name": "Orphan Step"}])
         del_mock = m.delete(
             backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, prune=True)
@@ -2961,27 +2984,73 @@ def test_apply_prune_deletes_plugin_step_extra(backend):
     assert del_mock.called
 
 
+def test_prune_candidate_names_resolved_in_one_batch(backend):
+    # issue #703: N top-level candidates → one $batch of name GETs, not N GETs.
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, backend, [(20, _ROLE_ID), (61, _WR_ID)])
+        # Bodies follow componenttype order: role (20) then webresource (61).
+        _mock_prune_name_batch(m, backend,
+                               [{"name": "Orphan Role"}, {"name": "contoso_/orphan.js"}])
+        cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
+        batch_posts = [r for r in m.request_history
+                       if r.method == "POST" and r.url.endswith("$batch")]
+        candidate_gets = [r for r in m.request_history if r.method == "GET"
+                          and (f"roles({_ROLE_ID})" in r.url
+                               or f"webresourceset({_WR_ID})" in r.url)]
+    assert len(batch_posts) == 1        # one $batch, not one GET per candidate
+    assert candidate_gets == []         # no per-candidate sequential reads
+    assert {c["kind"] for c in cands} == {"security-role", "webresource"}
+
+
+def test_prune_candidate_names_resolved_directly_under_read_only(profile):
+    # $batch is refused on a read-only profile; prune's name-resolution reads must
+    # fall back to direct GETs so planning still works (issue #703).
+    import dataclasses
+    from crm.utils.d365_backend import D365Backend
+    ro = D365Backend(dataclasses.replace(profile, read_only=True), password="pw")
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, ro, [(20, _ROLE_ID)])
+        m.get(ro.url_for(f"roles({_ROLE_ID})"), json={"name": "Orphan Role"})
+        cands = apply_mod._prune_candidates(ro, spec, "ContosoCore")
+        assert "POST" not in {r.method for r in m.request_history}  # no $batch
+    assert [c["name"] for c in cands] == ["Orphan Role"]
+
+
+def test_prune_candidate_names_resolved_directly_under_dry_run(dry_backend):
+    # Under --dry-run $batch is short-circuited, so name resolution must fall back
+    # to direct GETs (read paths execute under dry-run) — no $batch POST.
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, dry_backend, [(20, _ROLE_ID)])
+        m.get(dry_backend.url_for(f"roles({_ROLE_ID})"), json={"name": "Orphan Role"})
+        cands = apply_mod._prune_candidates(dry_backend, spec, "ContosoCore")
+        assert "POST" not in {r.method for r in m.request_history}
+    assert [c["name"] for c in cands] == ["Orphan Role"]
+
+
 def test_apply_prune_refuses_data_bearing_without_force(backend):
     # An entity is data-bearing: --prune alone reports it but never deletes it.
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(1, _ENT_ID)])
-        m.get(backend.url_for(f"EntityDefinitions({_ENT_ID})"),
-              json={"LogicalName": "contoso_orphan"})
+        _mock_prune_name_batch(m, backend, [{"LogicalName": "contoso_orphan"}])
         res = apply_mod.apply_spec(backend, spec, prune=True)
     assert res["ok"] is True
     assert res["pruned"] == [{
         "kind": "entity", "name": "contoso_orphan", "deleted": False,
         "reason": "data-bearing; pass --allow-data-loss to delete"}]
-    assert _writes(m) == []  # nothing deleted
+    # The candidate name resolves via a read-only $batch (issue #703), so assert
+    # the data-bearing entity is never DELETEd — not merely that no POST happened.
+    assert [r for r in m.request_history if r.method == "DELETE"] == []
 
 
 def test_apply_prune_deletes_data_bearing_with_allow_data_loss(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(1, _ENT_ID)])
-        m.get(backend.url_for(f"EntityDefinitions({_ENT_ID})"),
-              json={"LogicalName": "contoso_orphan"})
+        _mock_prune_name_batch(m, backend, [{"LogicalName": "contoso_orphan"}])
         # delete_entity's pre-flight reads the live definition by logical name.
         m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_orphan')"),
               json={"IsCustomEntity": True, "IsManaged": False, "MetadataId": _ENT_ID})
@@ -3058,8 +3127,8 @@ def test_prune_candidates_matches_declared_name_case_insensitively(backend):
             "webresources": [{"name": "Contoso_/Orphan.js", "file": "x.js"}]}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
-        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
-              json={"name": "contoso_/orphan.js"})  # org's stored (lower) casing
+        # org's stored (lower) casing
+        _mock_prune_name_batch(m, backend, [{"name": "contoso_/orphan.js"}])
         cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
     assert cands == []  # declared (case-insensitively) → not a prune-candidate
 
@@ -3147,8 +3216,7 @@ def test_apply_cmd_prune_yes_deletes_schema_only(backend, monkeypatch, tmp_path)
     spec_path.write_text("solution:\n  unique_name: ContosoCore\n")
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
-        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
-              json={"name": "contoso_/orphan.js"})
+        _mock_prune_name_batch(m, backend, [{"name": "contoso_/orphan.js"}])
         del_mock = m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
         result = CliRunner().invoke(
             cli, ["--json", "apply", "-f", str(spec_path), "--prune", "--yes"])
@@ -3694,8 +3762,7 @@ def test_apply_prune_delete_failure_lands_in_failed(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
-        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
-              json={"name": "contoso_/orphan.js"})
+        _mock_prune_name_batch(m, backend, [{"name": "contoso_/orphan.js"}])
         m.delete(backend.url_for(f"webresourceset({_WR_ID})"),
                  status_code=500, json={"error": {"message": "delete failed"}})
         res = apply_mod.apply_spec(backend, spec, prune=True)
@@ -3753,7 +3820,7 @@ def test_prune_delete_security_role_kind(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(20, _ROLE_ID)])
-        m.get(backend.url_for(f"roles({_ROLE_ID})"), json={"name": "Orphan Role"})
+        _mock_prune_name_batch(m, backend, [{"name": "Orphan Role"}])
         del_mock = m.delete(backend.url_for(f"roles({_ROLE_ID})"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, prune=True)
     assert del_mock.called
@@ -3769,8 +3836,7 @@ def test_apply_prune_suppressed_on_failed_convergence(backend):
             "entities": [{"schema_name": "contoso_Project", "display_name": "P"}]}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
-        m.get(backend.url_for(f"webresourceset({_WR_ID})"),
-              json={"name": "contoso_/orphan.js"})
+        _mock_prune_name_batch(m, backend, [{"name": "contoso_/orphan.js"}])
         # entity create fails
         m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
               status_code=404)

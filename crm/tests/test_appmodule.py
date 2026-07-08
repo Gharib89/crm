@@ -361,6 +361,49 @@ def _deletes(m):
     return [r for r in m.request_history if r.method == "DELETE"]
 
 
+_BATCH_HDR = {"Content-Type": "multipart/mixed; boundary=batchresp"}
+
+
+def _batch_delete_response(statuses, boundary: str = "batchresp") -> bytes:
+    """Build a multipart `$batch` response, one part per dependent DELETE.
+
+    Each item is an int HTTP status: 204 for a deleted dependent, or an error
+    status (e.g. 400) carrying an OData error for one that won't delete —
+    mirroring the per-dependent DELETEs `delete_app` now batches (issue #703).
+    """
+    import json as _json
+    parts = []
+    for st in statuses:
+        if 200 <= st < 300:
+            parts.append(
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                f"HTTP/1.1 {st} No Content\r\n"
+                "\r\n"
+            )
+        else:
+            parts.append(
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                f"HTTP/1.1 {st} Error\r\n"
+                "Content-Type: application/json\r\n"
+                "\r\n"
+                + _json.dumps({"error": {"code": "0x0", "message": "not deletable"}})
+            )
+    text = (
+        f"--{boundary}\r\n"
+        + f"\r\n--{boundary}\r\n".join(parts)
+        + f"\r\n--{boundary}--\r\n"
+    )
+    return text.encode("utf-8")
+
+
+def _batch_posts(m):
+    return [r for r in m.request_history if r.method == "POST" and r.url.endswith("$batch")]
+
+
 class TestDeleteApp:
     def _name_map(self, monkeypatch):
         """Stub load_name_map so child set/PK resolution needs no metadata GET."""
@@ -381,16 +424,22 @@ class TestDeleteApp:
             m.get(backend.url_for(_REL_URL), json=_RELS)
             m.get(backend.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
-            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=204)
+            m.post(backend.url_for("$batch"),
+                   content=_batch_delete_response([204]),
+                   headers=_BATCH_HDR, status_code=200)
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, _APP_ID)
         assert out["deleted"] is True
         assert out["appmodule"] == _APP_ID
         assert out["dependents_deleted"] == [{"entity": "appsetting", "id": _APPSETTING_ID}]
-        # Dependent row deleted BEFORE the appmodule.
+        # Dependents deleted via one $batch BEFORE the appmodule DELETE.
+        batch = _batch_posts(m)
         dels = _deletes(m)
-        assert dels[0].url.endswith(f"appsettings({_APPSETTING_ID})")
-        assert dels[-1].url.lower().endswith(f"appmodules({_APP_ID})")
+        assert len(batch) == 1
+        assert f"appsettings({_APPSETTING_ID})" in batch[0].text
+        assert len(dels) == 1  # only the parent DELETE is a standalone request now
+        assert dels[0].url.lower().endswith(f"appmodules({_APP_ID})")
+        assert m.request_history.index(batch[0]) < m.request_history.index(dels[0])
 
     def test_sweeps_all_referencing_children_ignoring_cascade(self, backend, monkeypatch):
         # The sweep keys off "a row references the app", NOT metadata cascade — so
@@ -404,12 +453,16 @@ class TestDeleteApp:
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
             m.get(backend.url_for("appconfigs"),
                   json={"value": [{"appconfigid": _APPCONFIG_ID}]})
-            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=204)
-            m.delete(backend.url_for(f"appconfigs({_APPCONFIG_ID})"), status_code=204)
+            m.post(backend.url_for("$batch"),
+                   content=_batch_delete_response([204, 204]),
+                   headers=_BATCH_HDR, status_code=200)
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, _APP_ID)
         entities = {d["entity"] for d in out["dependents_deleted"]}
         assert entities == {"appsetting", "appconfig"}
+        # Both dependents removed in a single $batch, not one DELETE each.
+        assert len(_batch_posts(m)) == 1
+        assert _deletes(m) and _deletes(m)[0].url.lower().endswith(f"appmodules({_APP_ID})")
 
     def test_child_delete_failure_does_not_abort_sweep(self, backend, monkeypatch):
         # A dependent that won't delete is left for the parent DELETE to cascade;
@@ -421,8 +474,9 @@ class TestDeleteApp:
             m.get(backend.url_for(_REL_URL), json=_RELS)
             m.get(backend.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
-            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=400,
-                     json={"error": {"code": "0x0", "message": "not deletable"}})
+            m.post(backend.url_for("$batch"),
+                   content=_batch_delete_response([400]),
+                   headers=_BATCH_HDR, status_code=200)
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, _APP_ID)
         assert out["deleted"] is True
@@ -506,7 +560,9 @@ class TestDeleteApp:
             m.get(backend.url_for(_REL_URL), json=_RELS)
             m.get(backend.url_for("appsettings"),
                   json={"value": [{"appsettingid": _APPSETTING_ID}]})
-            m.delete(backend.url_for(f"appsettings({_APPSETTING_ID})"), status_code=204)
+            m.post(backend.url_for("$batch"),
+                   content=_batch_delete_response([204]),
+                   headers=_BATCH_HDR, status_code=200)
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=400, json={
                 "error": {"code": "0x80048d21",
                           "message": "cannot delete; referenced by another record"}})

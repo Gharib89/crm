@@ -11,6 +11,8 @@ import json
 from typing import Any, cast
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_types import BatchOperation
+from crm.core.batch import run_batched
 from crm.core import dependencies as dep_mod
 from crm.core import entity_names
 from crm.core import metadata_cache
@@ -373,29 +375,68 @@ def _enrich_lookups(
         return
     by_attr = lookup_nav_map(backend, logical_name)
 
-    set_names: dict[str, str] = {}
-
-    def _set_name(ref_logical: str) -> str:
-        if ref_logical not in set_names:
-            rb = as_dict(backend.get(
-                f"EntityDefinitions(LogicalName='{ref_logical}')",
-                params={"$select": "EntitySetName"},
-            ))
-            set_names[ref_logical] = rb.get("EntitySetName") or ""
-        return set_names[ref_logical]
+    # Every distinct target entity across all matched lookups, in first-seen
+    # order, resolved in one $batch instead of one GET per target (issue #703).
+    refs: list[str] = []
+    seen: set[str] = set()
+    for attr in lookups:
+        for ref, _ in by_attr.get(attr["logical_name"]) or []:
+            if ref not in seen:
+                seen.add(ref)
+                refs.append(ref)
+    set_names = _resolve_set_names(backend, refs)
 
     for attr in lookups:
         matched = by_attr.get(attr["logical_name"])
         if not matched:
             continue
         attr["targets"] = [
-            {"logical": ref, "set_name": _set_name(ref)} for ref, _ in matched
+            {"logical": ref, "set_name": set_names.get(ref, "")} for ref, _ in matched
         ]
         # For the common single-target lookup there is exactly one relationship;
         # a polymorphic lookup surfaces the first navigation property here.
         nav = matched[0][1]
         if nav:
             attr["bind_key"] = f"{nav}@odata.bind"
+
+
+def _set_name_via_get(backend: D365Backend, ref_logical: str) -> str:
+    """Resolve one referenced entity's EntitySetName via a direct GET."""
+    rb = as_dict(backend.get(
+        f"EntityDefinitions(LogicalName='{ref_logical}')",
+        params={"$select": "EntitySetName"},
+    ))
+    return rb.get("EntitySetName") or ""
+
+
+def _resolve_set_names(backend: D365Backend, refs: list[str]) -> dict[str, str]:
+    """Map each referenced entity logical name to its EntitySetName in one ``$batch``.
+
+    One round trip in place of one GET per distinct target (issue #703).
+    ``$batch`` is short-circuited under ``--dry-run`` and refused on a read-only
+    profile, so in both cases the reads run directly (``describe`` is read-only
+    and its GETs always execute). A failing read aborts, exactly as the
+    per-request GET did.
+    """
+    if not refs:
+        return {}
+    if backend.dry_run or backend.read_only:
+        return {ref: _set_name_via_get(backend, ref) for ref in refs}
+    ops: list[BatchOperation] = [
+        {"method": "GET",
+         "url": f"EntityDefinitions(LogicalName='{ref}')?$select=EntitySetName"}
+        for ref in refs
+    ]
+    # Fail-fast: continue-on-error off so the server stops at the first failing
+    # read and we never iterate past it.
+    out: dict[str, str] = {}
+    for ref, res in zip(refs, run_batched(backend, ops, continue_on_error=False)):
+        err = res.get("error")
+        if err:
+            raise D365Error(str(err), status=res.get("status"))
+        body = res.get("body")
+        out[ref] = (body.get("EntitySetName") or "") if isinstance(body, dict) else ""
+    return out
 
 
 def describe_entity(backend: D365Backend, logical_name: str) -> dict[str, Any]:
