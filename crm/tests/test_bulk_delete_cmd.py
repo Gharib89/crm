@@ -78,3 +78,14 @@ class TestSubmit:
         ])
         assert spy_core[0]["wait"] is True
         assert spy_core[0]["job_name"] == "nightly"
+
+    def test_fetchxml_file_bom_stripped(self, spy_core, tmp_path):
+        """A FetchXML file saved with a UTF-8 BOM is read without the BOM leaking
+        into the query string (#683)."""
+        f = tmp_path / "q.xml"
+        f.write_bytes(("\ufeff" + _FETCH).encode("utf-8"))
+        result = CliRunner().invoke(cli, [
+            "data", "delete", "contacts", "--yes", "--fetchxml-file", str(f),
+        ])
+        assert result.exit_code == 0
+        assert spy_core[0]["fetch_xml"] == _FETCH

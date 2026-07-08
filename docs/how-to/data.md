@@ -123,12 +123,16 @@ crm data import cwx_tickets tickets.csv
 Format is inferred from the `.csv` suffix (override with `--format csv`). Cell
 values are coerced best-effort: empty → null, `true`/`false` (case-insensitive)
 → bool, integer-looking strings → int, float-looking strings → float, everything
-else → string.
+else → string. Files are read as UTF-8 and a leading byte-order mark (BOM) is
+tolerated, so a CSV saved by Excel imports identically to a clean one.
 
 **Caveat:** non-finite tokens (`NaN`, `inf`, `Infinity`) are kept as strings, and
 integer-looking strings with leading zeros (`"007"`, postal codes) are coerced to
 integers — losing the leading zeros. For IDs, postal codes, and lookup
-`@odata.bind` values, prefer JSONL.
+`@odata.bind` values, prefer JSONL. (Exception: when a numeric-looking column is
+used as the `--key` alternate key and the target column is string-typed, its
+value keeps its exact string identity — leading zeros and all — so the upsert
+matches the right record.)
 
 ### Chunked non-transactional import with continue-on-error
 

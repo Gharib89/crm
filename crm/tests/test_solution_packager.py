@@ -83,6 +83,16 @@ def test_pack_builds_reverse_argv(fake_run, exe):
     assert info["zipfile"] == "out.zip"
 
 
+def test_subprocess_capture_pins_utf8_decode(fake_run, exe):
+    """pac output is captured with an explicit UTF-8 / error-tolerant decode,
+    not the OS locale default — so a Windows cp1252 console can't mojibake it
+    (#683)."""
+    sp.extract_solution(zipfile="sol.zip", folder="src/sol", pac_path=exe)
+    _argv, kwargs = fake_run[-1]
+    assert kwargs.get("encoding") == "utf-8"
+    assert kwargs.get("errors") == "replace"
+
+
 def test_exit_code_propagated_and_stdout_tailed(monkeypatch, exe):
     body = "\n".join(f"line{i}" for i in range(30)) + "\n"
 

@@ -116,7 +116,11 @@ def _run_pac(
     ]
     try:
         proc = subprocess.run(
-            argv, check=False, capture_output=True, text=True, timeout=timeout,
+            argv, check=False, capture_output=True, text=True,
+            # Pin the capture decode to UTF-8 (error-tolerant) instead of the OS
+            # locale default, so a Windows cp1252 console can't mojibake pac's
+            # output in error messages and the stdout tail (#683).
+            encoding="utf-8", errors="replace", timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
         raise D365Error(
