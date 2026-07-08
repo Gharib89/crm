@@ -157,8 +157,7 @@ accidents, not a determined same-user process — for real enforcement, use a
 dedicated app registration / user with a **read-only security role** server-side.
 A read-only refusal is never a `--dry-run` preview: `--dry-run` is checked first,
 so a read-only + dry-run mutation still previews (`ok:true`), while a real
-mutation is refused (`ok:false`, exit 1). See
-[ADR 0021](../adr/0021-read-only-profile-tty-gated-guardrail.md).
+mutation is refused (`ok:false`, exit 1).
 
 ## Rename a profile
 
