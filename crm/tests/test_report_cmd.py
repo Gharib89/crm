@@ -152,7 +152,7 @@ class TestReportDelete:
         rid = _REPORT["reportid"]
         with rm_module.Mocker() as m:
             m.delete(backend.url_for(f"reports({rid})"), status_code=204)
-            result = CliRunner().invoke(cli, ["--json", "report", "delete", rid])
+            result = CliRunner().invoke(cli, ["--json", "report", "delete", rid, "--yes"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"] == {"deleted": True, "reportid": rid}

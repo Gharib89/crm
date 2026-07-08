@@ -87,7 +87,7 @@ def test_dashboard_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         # org-owned dashboards are not bound to a single table
         assert env["data"]["objecttypecode"] == "none", env
     finally:
-        deleted = cli(["--json", "dashboard", "delete", dashboard_id])
+        deleted = cli(["--json", "dashboard", "delete", dashboard_id, "--yes"])
         assert deleted.returncode == 0, deleted.stderr
         assert json.loads(deleted.stdout)["data"]["deleted"] is True
 
@@ -178,7 +178,7 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique, ephemeral_solution)
                     assert int(rowspan) == \
                         len(section.findall("rows/row")), formxml
     finally:
-        cli(["--json", "dashboard", "delete", dashboard_id])
+        cli(["--json", "dashboard", "delete", dashboard_id, "--yes"])
 
 
 # ── dashboard add-iframe / add-webresource / remove-component ─────────────────
@@ -262,4 +262,4 @@ def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique, ephemeral_so
         assert f"$webresource:{wr_name}" in formxml2, formxml2
         assert _control(cells2[0]).get("classid", "").lower() == _IFRAME_CLASSID
     finally:
-        cli(["--json", "dashboard", "delete", dashboard_id])
+        cli(["--json", "dashboard", "delete", dashboard_id, "--yes"])

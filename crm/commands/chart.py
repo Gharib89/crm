@@ -6,6 +6,8 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _confirm_destructive,
+    _destructive_option,
     _emit_with_warning,
     _journal,
     _publish_option,
@@ -61,9 +63,11 @@ def chart_get(ctx: CLIContext, chart_id: str, user_owned: bool) -> None:
 @click.argument("chart_id")
 @click.option("--user", "user_owned", is_flag=True,
               help="Delete a user chart instead of a system chart.")
+@_destructive_option
 @pass_ctx
-def chart_delete(ctx: CLIContext, chart_id: str, user_owned: bool) -> None:
+def chart_delete(ctx: CLIContext, chart_id: str, user_owned: bool, yes: bool) -> None:
     """Delete a chart by CHART_ID."""
+    _confirm_destructive(ctx, "chart", chart_id, yes)
     with d365_errors(ctx):
         info = charts_mod.delete_chart(ctx.backend(), chart_id, user=user_owned)
     ctx.emit(True, data=info)

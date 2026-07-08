@@ -46,6 +46,9 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "entity": {"delete"},
     "data": {"delete"},
     "app": {"delete"},
+    "dashboard": {"delete"},
+    "chart": {"delete"},
+    "report": {"delete"},
     "solution": {
         "job-cancel",
         "import",

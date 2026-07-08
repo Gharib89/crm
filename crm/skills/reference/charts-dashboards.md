@@ -15,7 +15,8 @@ flag and a `userqueryvisualizationid` id field.
 crm --json chart list contact                          # system charts (default)
 crm --json chart list contact --user                   # user charts
 crm --json chart get <id>                              # single chart, with its XML
-crm --json chart delete <id> [--user]                  # delete
+crm --json chart delete <id> --yes                     # delete
+crm --json chart delete <id> --user --yes              # delete a user chart
 ```
 
 A chart carries two XML columns: `datadescription` (aggregate FetchXML, references
@@ -98,7 +99,7 @@ type, so other form types never appear.
 crm --json dashboard list                              # org dashboards (no formxml)
 crm --json dashboard get <id>                          # single dashboard, with formxml
 crm --json dashboard create --name "Sales" --formxml dash.xml --solution ContosoCore
-crm --json dashboard delete <id>
+crm --json dashboard delete <id> --yes
 ```
 
 **The CLI does not author FormXml** — it posts the file verbatim. To version a

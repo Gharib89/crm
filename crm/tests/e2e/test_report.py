@@ -76,6 +76,6 @@ def test_report_lifecycle(cli, unique, ephemeral_solution):
         if rc_id:
             cli(["--json", "entity", "delete", "reportcategories", rc_id, "--yes"])
     finally:
-        deleted = cli(["--json", "report", "delete", report_id])
+        deleted = cli(["--json", "report", "delete", report_id, "--yes"])
         assert deleted.returncode == 0, deleted.stderr
         assert json.loads(deleted.stdout)["data"]["deleted"] is True

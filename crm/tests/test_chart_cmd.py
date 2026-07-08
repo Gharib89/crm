@@ -75,7 +75,7 @@ class TestChartDelete:
         cid = _CHART["savedqueryvisualizationid"]
         with rm_module.Mocker() as m:
             m.delete(backend.url_for(f"savedqueryvisualizations({cid})"), status_code=204)
-            result = CliRunner().invoke(cli, ["--json", "chart", "delete", cid])
+            result = CliRunner().invoke(cli, ["--json", "chart", "delete", cid, "--yes"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"] == {"deleted": True, "savedqueryvisualizationid": cid}

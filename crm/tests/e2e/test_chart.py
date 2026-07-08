@@ -99,7 +99,7 @@ def test_chart_system_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert env["data"]["primaryentitytypecode"] == "contact"
         assert "<fetch" in env["data"]["datadescription"]
     finally:
-        deleted = cli(["--json", "chart", "delete", chart_id])
+        deleted = cli(["--json", "chart", "delete", chart_id, "--yes"])
         assert deleted.returncode == 0, deleted.stderr
         assert json.loads(deleted.stdout)["data"]["deleted"] is True
 
@@ -142,7 +142,7 @@ def test_chart_user_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         ids = [c["userqueryvisualizationid"] for c in json.loads(listed.stdout)["data"]]
         assert chart_id in ids
     finally:
-        deleted = cli(["--json", "chart", "delete", chart_id, "--user"])
+        deleted = cli(["--json", "chart", "delete", chart_id, "--user", "--yes"])
         assert deleted.returncode == 0, deleted.stderr
         assert json.loads(deleted.stdout)["data"]["deleted"] is True
 
@@ -230,5 +230,5 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         data = _get()
         assert '<category alias="groupby_column">' in data["datadescription"], data
     finally:
-        deleted = cli(["--json", "chart", "delete", chart_id, "--user"])
+        deleted = cli(["--json", "chart", "delete", chart_id, "--user", "--yes"])
         assert deleted.returncode == 0, deleted.stderr

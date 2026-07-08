@@ -64,7 +64,7 @@ class TestDashboardDelete:
         with rm_module.Mocker() as m:
             m.get(backend.url_for(f"systemforms({did})"), json={"formid": did, "type": 0})
             m.delete(backend.url_for(f"systemforms({did})"), status_code=204)
-            result = CliRunner().invoke(cli, ["--json", "dashboard", "delete", did])
+            result = CliRunner().invoke(cli, ["--json", "dashboard", "delete", did, "--yes"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"] == {"deleted": True, "formid": did}

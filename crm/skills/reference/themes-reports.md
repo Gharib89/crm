@@ -51,7 +51,7 @@ crm --json report get <id>                             # one report, body includ
 crm --json report create --name "Pipeline" --body-file pipeline.rdl --solution ContosoCore
 crm --json report create --name "Ext Dash" --url "https://example.com/dash" --solution ContosoCore
 crm --json report set-category <id> --category sales --solution ContosoCore
-crm --json report delete <id>
+crm --json report delete <id> --yes
 ```
 
 **`--org` makes a report org-wide by setting `ispersonal=false`** on the `reports`

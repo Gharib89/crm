@@ -101,28 +101,22 @@ commands` instead of a hung prompt (under `--json`, the standard `{ok:false,erro
 envelope). Always pass a subcommand; set `CRM_NO_REPL=1` to harden against an
 accidental bare `crm`. Explicit `crm repl` always launches.
 
-### Destructive verbs — `--yes` required
+### Destructive operations — `--yes` required
 
-Any verb carrying a `--yes` flag (visible in `crm describe`) permanently deletes,
-cancels, or overwrites server-side state. Omitting `--yes` in a non-TTY context
-fails fast (exit 1) with an error that names `--yes` — the standard `ok:false`
-envelope under `--json`, a human-formatted error otherwise; on a TTY the verb
-prompts instead.
+Destructive operations delete/cancel/overwrite server-side state and are `--yes`-gated.
+Without it, non-TTY runs fail fast (exit 1) with an error naming `--yes`
+(`ok:false` under `--json`); TTY runs prompt. If a command exposes `--yes` only
+for a destructive mode, the reference file names that risk.
 
-**Inform first, back up first.** Never run a destructive verb without telling the
-user what will be destroyed and getting their explicit go-ahead — `--yes` asserts
-the *user's* confirmed intent, not the agent's. Before an irreversible operation,
-capture a restorable copy when one is possible; the matching export/read verb
-usually exists (`solution export` before `import`/`uninstall`/`apply-upgrade`,
-`data export` or `entity get` before record deletes, `metadata export-spec` before
+**Inform first, back up first.** Tell the user what will be destroyed and get
+explicit go-ahead — `--yes` asserts the *user's* intent, not the agent's. Before
+irreversible operations, capture a restorable copy when possible and report where it landed:
+`solution export` before `import`/`uninstall`/`apply-upgrade`, `data export` or
+`entity get` before record deletes, `metadata export-spec` before
 `delete-entity`/`delete-attribute`, `workflow export` before `workflow delete`,
-`translation export` before `translation import`). Report where the backup landed
-alongside the result. The largest blast radii:
-`solution import` (overwrites unmanaged customizations org-wide), `data delete`
-(server-side bulk delete of every record matching a FetchXML query),
-`metadata delete-entity` (drops a custom table and ALL its rows), and
-`solution apply-upgrade` / `solution stage-and-upgrade --promote` (replaces the
-base solution and deletes its patches).
+`translation export` before `translation import`. Largest blast radii:
+`solution import`, `data delete`, `metadata delete-entity`, and
+`solution apply-upgrade` / `solution stage-and-upgrade --promote`.
 
 ## Hard constraints
 

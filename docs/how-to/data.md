@@ -96,10 +96,10 @@ returns a clean error listing the defined keys. List alternate keys with
 
 ```bash
 # Delete by GUID
-crm data import contacts to_delete.jsonl --mode delete --id-column contactid
+crm data import contacts to_delete.jsonl --mode delete --id-column contactid --yes
 
 # Delete by alternate key
-crm data import accounts to_delete.jsonl --mode delete --key accountnumber
+crm data import accounts to_delete.jsonl --mode delete --key accountnumber --yes
 ```
 
 `--mode delete` issues a `$batch` DELETE per row, keyed by `--id-column` (the
@@ -109,6 +109,10 @@ identical; DELETE carries no body). Like the other modes it reports per-row
 success/failure in `data.failures` and respects the global `--dry-run` flag
 (zero writes, `dry_run: true`). As with upsert, exactly one of `--id-column` or
 `--key` is required.
+
+Only delete mode is destructive: `--mode create` and `--mode upsert` do not
+prompt, while `--mode delete` prompts unless `--yes` is passed. Under `--json` or
+a non-TTY, omitting `--yes` fails fast with an error that names `--yes`.
 
 ### Import from CSV
 

@@ -57,6 +57,10 @@ class TestIsDestructive:
     def test_entity_delete_is_destructive(self):
         assert core.is_destructive("entity", "delete") is True
 
+    @pytest.mark.parametrize("group", ["dashboard", "chart", "report"])
+    def test_designer_asset_delete_is_destructive(self, group):
+        assert core.is_destructive(group, "delete") is True
+
     @pytest.mark.parametrize("group,verb", [
         ("other-group", "assign-role"),  # ROLE_VERBS gate by verb name, any group
         ("security", "delete-role"),
