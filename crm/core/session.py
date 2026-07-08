@@ -199,8 +199,6 @@ def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> 
     secret is never group/world-readable for any instant (no create-then-chmod
     widen window). When omitted, the temp file takes the umask default, matching
     prior behavior for non-secret session/profile writes.
-
-    See guides/session-locking.md for the wider pattern.
     """
     try:
         import fcntl
