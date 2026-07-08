@@ -9,6 +9,21 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.21 (2026-07-08)
+
+### Performance Improvements
+
+- Collapse redundant reads and cap batch Retry-After
+  ([#753](https://github.com/Gharib89/crm/pull/753),
+  [`0dd27e0`](https://github.com/Gharib89/crm/commit/0dd27e05bbfe23b0ae5185abbb04a2ab313c0779))
+
+### Testing
+
+- Make validate request-count assertions explicitly case-insensitive
+  ([#753](https://github.com/Gharib89/crm/pull/753),
+  [`0dd27e0`](https://github.com/Gharib89/crm/commit/0dd27e05bbfe23b0ae5185abbb04a2ab313c0779))
+
+
 ## v1.51.20 (2026-07-08)
 
 ### Bug Fixes
