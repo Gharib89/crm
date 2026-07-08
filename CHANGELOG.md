@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.20 (2026-07-08)
+
+### Bug Fixes
+
+- Address Copilot review on #703 batching ([#752](https://github.com/Gharib89/crm/pull/752),
+  [`c67cf23`](https://github.com/Gharib89/crm/commit/c67cf230291e162771f67111f7b651b258bc92b2))
+
+### Documentation
+
+- Note run_batched $batch retry semantics (#703 review)
+  ([#752](https://github.com/Gharib89/crm/pull/752),
+  [`c67cf23`](https://github.com/Gharib89/crm/commit/c67cf230291e162771f67111f7b651b258bc92b2))
+
+### Performance Improvements
+
+- Route four N+1 HTTP loops through $batch ([#752](https://github.com/Gharib89/crm/pull/752),
+  [`c67cf23`](https://github.com/Gharib89/crm/commit/c67cf230291e162771f67111f7b651b258bc92b2))
+
+
 ## v1.51.19 (2026-07-08)
 
 ### Bug Fixes
