@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.9 (2026-07-08)
+
+### Bug Fixes
+
+- Follow @odata.nextLink in workflow/solution list paths
+  ([#727](https://github.com/Gharib89/crm/pull/727),
+  [`71e2f44`](https://github.com/Gharib89/crm/commit/71e2f448cdc6db82bfa2eff95a0657602b9130a3))
+
+
 ## v1.51.8 (2026-07-08)
 
 ### Bug Fixes
