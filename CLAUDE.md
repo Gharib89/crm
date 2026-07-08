@@ -14,14 +14,7 @@ Setup is `crm profile add` (interactive wizard on a TTY; flag-driven for scripti
 
 ## Branch & worktree discipline
 
-The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions — **never develop in it directly**. Any feature or bug fix happens in a **git worktree on a fresh branch**:
-
-1. `EnterWorktree` (or `git worktree add`).
-2. Rename the auto branch to a clean name: `git branch -m feat/<topic>`.
-3. All work, commits, and the PR happen from that branch.
-4. Remove the worktree after merge.
-
-Worktrees have no `.venv` — verify with `PYTHONPATH=$WT <main-venv>/bin/python -m pytest` (the main venv's editable install points at the main checkout otherwise). In the shared checkout itself: read-only work and small docs-only commits to `main` (via a throwaway worktree if the dir is on someone else's branch). Before **any** git mutation anywhere: `git branch --show-current && git status -sb` first, and stage with explicit paths, never `git add -A`.
+The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions — **never develop in it directly**. Any feature or bug fix happens in a **git worktree on a fresh branch**: `EnterWorktree` (or `git worktree add`), rename the auto branch to a clean name (`git branch -m feat/<topic>`), do all work + commits there, PR from that branch, remove the worktree after merge. Worktrees have no `.venv` — verify with `PYTHONPATH=$WT <main-venv>/bin/python -m pytest` (the main venv's editable install points at the main checkout otherwise). In the shared checkout itself: read-only work and small docs-only commits to `main` (via a throwaway worktree if the dir is on someone else's branch). Before **any** git mutation anywhere: `git branch --show-current && git status -sb` first, and stage with explicit paths, never `git add -A`.
 
 ## Commands
 
@@ -50,13 +43,7 @@ Every feature / new command / flag / behavior change ships its docs in the **sam
 - **README.md** — user-facing capability or install change.
 - **CHANGELOG.md** — do **not** hand-edit. `python-semantic-release` owns it: it generates each version's section from the Conventional Commit history at release time (see **Release** below). Ship a good `fix:`/`feat:` commit subject instead; for a squash-merge, set the squash *subject* to that line so PSR bumps and documents correctly. There is no `## [Unreleased]` section to maintain.
 - **docs/** — matching `docs/how-to/<group>.md` and `docs/reference/cli.md`.
-- **SKILL ↔ CLI** — `crm/skills/` is the single tracked agent skill (source of truth): a thin `SKILL.md` router + `reference/*.md`. `crm skill install` copies the whole tree into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). Rules:
-    - **Self-contained** — the skill ships to users who have only the skill, not the repo; never link a shipped skill file to a repo path (`docs/**`, `CONTEXT.md`) — inline what's needed.
-    - **Never restate flags/choices/defaults** — the skill states only what `crm describe`/`--help` cannot (workflows, gotchas, the JSON contract).
-    - **Never track an in-repo copy** of the **crm** skill; source of truth is `crm/skills/`.
-    - The one tracked `.claude/skills/` tree holds the cloud routine's `cloud-ship/ship/tdd/code-review` workflow skills — unlike the crm skill, these have no *separate* source tree, so `.claude/skills/` is itself their source of truth (see `docs/agents/cloud-ship-routine.md`).
-    - When editing `crm/skills/`, the docs-sync agent invokes the **`writing-great-skills`** skill (vendored at `.claude/skills/writing-great-skills/` — a copy of the global skill that can drift; re-sync from `~/.claude/skills/writing-great-skills/`) as the authority for skill structure and description rules.
-    - See `docs/contributing/skill-and-cli.md`.
+- **SKILL ↔ CLI** — `crm/skills/` is the single tracked agent skill (source of truth): a thin `SKILL.md` router + `reference/*.md`. `crm skill install` copies the whole tree into a harness dir outside the repo (`~/.claude/skills/crm/`, etc.). The skill is **self-contained** — it ships to users who have only the skill, not the repo, so never link a shipped skill file to a repo path (`docs/**`, `CONTEXT.md`); inline what's needed. The skill states only what `crm describe`/`--help` cannot (workflows, gotchas, the JSON contract) — **never restate flags/choices/defaults**. Never track an in-repo copy of the **crm** skill (source of truth `crm/skills/`); the one tracked `.claude/skills/` tree holds the cloud routine's `cloud-ship/ship/tdd/code-review` workflow skills — unlike the crm skill, these have no *separate* source tree, so `.claude/skills/` is itself their source of truth (see `docs/agents/cloud-ship-routine.md`). When editing `crm/skills/`, the docs-sync agent invokes the **`writing-great-skills`** skill (vendored at `.claude/skills/writing-great-skills/` — a copy of the global skill that can drift; re-sync from `~/.claude/skills/writing-great-skills/`) as the authority for skill structure and description rules. See `docs/contributing/skill-and-cli.md`.
 - **E2E coverage gate** — every new/changed D365-touching command must ship a live e2e test under `crm/tests/e2e/` stamped `@covers("<group> <verb>")`, **or** an `E2E_SKIP` entry with a reason in `crm/tests/e2e/coverage.py`. The offline gate (`crm/tests/test_e2e_coverage_gate.py`) fails CI otherwise. Local/meta groups (`profile`, `session`, `skill`, `self-update`, `repl`, `scaffold`) are out of scope (`LOCAL_GROUPS`). See `crm/tests/TEST.md`.
 - **Test classification docs** — a capability-gate change (`@requires_cloud` / `@requires_onprem` added or removed on an e2e test) must update the live-run table in `crm/tests/TEST.md`; fixing or reclassifying a defect tracked in `crm/tests/e2e/DISCOVERED_BUGS.md` must update that entry in the same change.
 
@@ -70,19 +57,11 @@ Live e2e runs (`D365_E2E=1 pytest -m e2e`) and any live-org verification follow 
 
 Releases are cut **automatically** by `python-semantic-release` (`.github/workflows/semantic-release.yml`, config in `pyproject.toml` `[tool.semantic_release]`). Every push to `main` reads the Conventional Commit history since the last tag, bumps the version in BOTH `setup.py` and `crm/__init__.py`, updates `CHANGELOG.md` (`mode=update`, inserted at the `<!-- version list -->` marker), commits `chore(release): vX.Y.Z`, and pushes tag `vX.Y.Z`. So **commit messages drive the bump**: `feat:`→minor, `fix:`/`perf:`→patch, breaking (`!`/`BREAKING CHANGE:`)→major (post-1.0: `allow_zero_version=false`, `major_on_zero=true`).
 
-**Bump discipline — reserve `feat:` for substantial new capability; minor is not the default.** A small enhancement (a new flag/alias on an existing command, a tweak, a polish) ships as `fix:` or `perf:` → **patch** bump. Use `feat:` only for a genuinely new command, a new query mode, or a materially new capability → minor bump. The minor digit tracks real features; the patch digit absorbs the steady stream of small improvements.
+**Bump discipline — reserve `feat:` for substantial new capability; minor is not the default.** A small enhancement (a new flag/alias on an existing command, a tweak, a polish) ships as `fix:` or `perf:` → **patch** bump. Use `feat:` only for a genuinely new command, a new query mode, or a materially new capability → minor bump. This keeps the version from inflating one minor per issue (the v4.22 problem): the minor digit tracks real features, the patch digit absorbs the steady stream of small improvements — same semantics as Claude Code's own versioning.
 
 The tag push uses **`RELEASE_PAT`**, NOT `GITHUB_TOKEN` — a tag pushed with `GITHUB_TOKEN` does not trigger downstream workflows, so `release.yml` would never fire. PSR itself does not build or create the GitHub release (`vcs_release: false`); the tag fires `release.yml`, which builds the PyInstaller binaries, uploads to R2, and creates the GitHub release. `scripts/check_tag_version.py` still gates that the tag matches `setup.py`.
 
-Manual release (fallback / re-cut): bump both version files, then push the tag yourself (a human/PAT tag push fires `release.yml`).
-
-Any PyInstaller bundle-shape change must touch all **5 sites**:
-
-1. `crm.spec`
-2. `.github/workflows/release.yml`
-3. `.github/workflows/ci.yml` (the `package` job)
-4. `scripts/build.sh`
-5. `scripts/build.ps1`
+Manual release (fallback / re-cut): bump both version files, then push the tag yourself (a human/PAT tag push fires `release.yml`). Any PyInstaller bundle-shape change must touch all 5 sites: `crm.spec`, `.github/workflows/release.yml`, `.github/workflows/ci.yml` (the `package` job), `scripts/build.sh`, `scripts/build.ps1`.
 
 ## Agent skills
 
