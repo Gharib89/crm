@@ -23,10 +23,31 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
 
+# The alt-key enrichment path now resolves through the cached name-map seam
+# (#261), which reads/writes the on-disk entity-definitions cache under
+# CRM_HOME. Isolate it per test — matching the sibling alt-key suites
+# (test_data_import_cmd, test_entity_upsert_alt_key) — so a map cached by one
+# test can't leak into another (and tests never touch the real ~/.crm cache).
+pytestmark = pytest.mark.usefixtures("isolated_home")
+
 
 @pytest.fixture
 def runner():
     return CliRunner()
+
+
+def _stub_account_name_map(monkeypatch):
+    """Serve the accounts set→logical + primary-id resolution from a hand-built
+    NameMap so the alt-key lookup exercises the shared cached seam (#261) without
+    a live EntityDefinitions GET (and without polluting the shared cache)."""
+    from crm.core import entity_names
+
+    nm = entity_names.NameMap(
+        logical_to_set={"account": "accounts"},
+        set_to_logical={"accounts": "account"},
+        primary_id={"account": "accountid"},
+    )
+    monkeypatch.setattr(entity_names, "load_name_map", lambda backend, **_kw: nm)
 
 
 # ── _parse_response: 412 body-code handling ────────────────────────────────
@@ -109,16 +130,13 @@ def test_handle_d365_error_extra_meta_merged(backend):
 def test_entity_create_enriches_alternate_key_error(runner, backend, monkeypatch):
     """entity create with duplicate-key error returns enriched meta.alternate_keys."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    _stub_account_name_map(monkeypatch)
 
     with requests_mock.Mocker() as m:
         # The create POST fails with 412 + 0x80060892
         m.post(backend.url_for("accounts"), status_code=412, json={
             "error": {"code": "0x80060892", "message": "Entity Key violated."}
         })
-        # Entity set lookup
-        m.get(backend.url_for("EntityDefinitions"), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
         # Keys fetch
         m.get(backend.url_for("EntityDefinitions(LogicalName='account')/Keys"), json={"value": [
             {
@@ -147,15 +165,13 @@ def test_entity_create_enriches_alternate_key_error(runner, backend, monkeypatch
 def test_entity_update_enriches_alternate_key_error(runner, backend, monkeypatch):
     """entity update with duplicate-key error returns enriched meta.alternate_keys."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    _stub_account_name_map(monkeypatch)
     record_id = "11111111-0000-0000-0000-000000000001"
 
     with requests_mock.Mocker() as m:
         m.patch(backend.url_for(f"accounts({record_id})"), status_code=412, json={
             "error": {"code": "0x80060892", "message": "Entity Key violated."}
         })
-        m.get(backend.url_for("EntityDefinitions"), json={"value": [
-            {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-        ]})
         m.get(backend.url_for("EntityDefinitions(LogicalName='account')/Keys"), json={"value": [
             {
                 "LogicalName": "account_code_ak",

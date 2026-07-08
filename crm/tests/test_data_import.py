@@ -635,15 +635,14 @@ def _stub_backend_with_keys(
     *,
     keys: list[dict[str, Any]],
     logical: str = "account",
-    primary_id: str = "accountid",
 ) -> Any:
     """Stub backend whose .batch() returns successive chunks and whose .get()
-    serves the EntityDefinitions + Keys metadata the enrichment reads."""
+    serves the Keys metadata the enrichment reads. The set→logical + primary-id
+    resolution now comes from the cached name-map seam — stub it with the
+    ``stub_name_map`` fixture (#261)."""
     backend = _make_stub_backend(results_per_chunk)
 
     def _get(path: str, params: Any = None, **_kw: Any) -> dict[str, Any]:
-        if path == "EntityDefinitions":
-            return {"value": [{"LogicalName": logical, "PrimaryIdAttribute": primary_id}]}
         if path == f"EntityDefinitions(LogicalName='{logical}')/Keys":
             return {"value": keys}
         raise AssertionError(f"unexpected GET {path!r}")
@@ -653,7 +652,9 @@ def _stub_backend_with_keys(
 
 
 class TestAltKeyEnrichment:
-    def test_collision_attaches_alternate_keys_per_row(self, tmp_path: Path) -> None:
+    def test_collision_attaches_alternate_keys_per_row(
+        self, tmp_path: Path, stub_name_map: None
+    ) -> None:
         """A row failing with 0x80060892 gains alternate_keys + the colliding values."""
         p = tmp_path / "data.jsonl"
         p.write_text(
@@ -672,7 +673,9 @@ class TestAltKeyEnrichment:
         assert fail["alternate_keys"][0]["name"] == "account_code_ak"
         assert fail["alternate_keys"][0]["payload_values"] == {"accountnumber": "B-2"}
 
-    def test_single_metadata_lookup_for_many_failed_rows(self, tmp_path: Path) -> None:
+    def test_single_metadata_lookup_for_many_failed_rows(
+        self, tmp_path: Path, stub_name_map: None
+    ) -> None:
         """The per-entity key schema is fetched ONCE, with per-row colliding values."""
         p = tmp_path / "data.jsonl"
         p.write_text(
@@ -684,12 +687,15 @@ class TestAltKeyEnrichment:
         backend = _stub_backend_with_keys(results, keys=_ACCOUNT_NUMBER_KEY)
         result = _import_records(backend, "accounts", p, chunk_size=10)
 
-        # One EntityDefinitions GET + one Keys GET for the whole import.
-        assert backend.get.call_count == 2
+        # One Keys GET for the whole import — the set→logical + primary-id
+        # resolution is served by the cached name-map seam (stubbed), not a GET.
+        assert backend.get.call_count == 1
         assert result["failures"][0]["alternate_keys"][0]["payload_values"] == {"accountnumber": "A-1"}
         assert result["failures"][1]["alternate_keys"][0]["payload_values"] == {"accountnumber": "B-2"}
 
-    def test_primary_id_collision_hint_per_row(self, tmp_path: Path) -> None:
+    def test_primary_id_collision_hint_per_row(
+        self, tmp_path: Path, stub_name_map: None
+    ) -> None:
         """A row whose payload carries the primary id gets the PK-collision hint."""
         guid = "11111111-1111-1111-1111-111111111111"
         p = tmp_path / "data.jsonl"
@@ -725,8 +731,11 @@ class TestAltKeyEnrichment:
         assert backend.get.call_count == 0
         assert "alternate_keys" not in result["failures"][0]
 
-    def test_metadata_lookup_failure_leaves_failure_unenriched(self, tmp_path: Path) -> None:
-        """If the schema lookup fails, the original failure entry is unchanged."""
+    def test_metadata_lookup_failure_leaves_failure_unenriched(
+        self, tmp_path: Path, stub_name_map: None
+    ) -> None:
+        """If the schema lookup fails (Keys read unreachable), the original failure
+        entry is unchanged."""
         p = tmp_path / "data.jsonl"
         p.write_text('{"name": "Alpha", "accountnumber": "A-1"}\n', encoding="utf-8")
         results = [[_alt_key_failure()]]
@@ -771,6 +780,7 @@ def stub_name_map(monkeypatch: pytest.MonkeyPatch) -> None:
     nm = entity_names.NameMap(
         logical_to_set={"account": "accounts"},
         set_to_logical={"accounts": "account"},
+        primary_id={"account": "accountid"},
     )
     monkeypatch.setattr(entity_names, "load_name_map", lambda backend, **_kw: nm)
 

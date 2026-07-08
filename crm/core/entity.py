@@ -155,29 +155,22 @@ def lookup_alternate_key_schema(
 ) -> "AltKeySchema | None":
     """Fetch *entity_set*'s alternate-key schema, or ``None`` if unavailable.
 
-    One ``EntityDefinitions`` GET (mapping the entity set to its logical name +
-    primary id) plus one ``Keys`` GET. Returns ``None`` for an unknown entity set
-    or any backend failure — callers treat that as "no hint available" and never
-    surface the error. Bulk callers fetch this **once** and reuse it across rows,
-    since the alternate-key schema is identical for every row of one import."""
+    Resolves the set→logical name + primary id through the shared cached name-map
+    seam (#261) — warm on the alt-key import path, since ``resolve_alternate_key``
+    resolved the same entity set one step earlier — then reads the ``Keys``. The
+    seam is also case-insensitive where the old filtered GET was not (#314).
+    Returns ``None`` for an unknown entity set or any backend failure — callers
+    treat that as "no hint available" and never surface the error. Bulk callers
+    fetch this **once** and reuse it across rows, since the alternate-key schema
+    is identical for every row of one import."""
     try:
-        result = as_dict(backend.get(
-            "EntityDefinitions",
-            params={
-                "$select": "LogicalName,PrimaryIdAttribute",
-                "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
-            },
-        ))
-        matches: list[dict[str, Any]] = result.get("value", [])
-        if not matches:
-            return None
-        logical_name: str = matches[0].get("LogicalName") or ""
-        primary_id: str = matches[0].get("PrimaryIdAttribute") or ""
-        if not logical_name:
-            return None
-        # Local import keeps the core package import-cycle-free (mirrors
+        # Local imports keep the core package import-cycle-free (mirrors
         # resolve_alternate_key above).
+        from crm.core import entity_names
         from crm.core import metadata as meta_mod
+        nm = entity_names.load_name_map(backend)
+        logical_name = nm.resolve(entity_set)  # case-insensitive; raises on miss
+        primary_id = nm.primary_id_for(logical_name) or ""
         keys = meta_mod.list_entity_keys(backend, logical_name)
         return AltKeySchema(primary_id=primary_id, keys=keys)
     except Exception:
