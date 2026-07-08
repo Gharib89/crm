@@ -251,9 +251,15 @@ Full coverage = the **union** of the two runs. Capability-gated tests skip on th
 non-matching target (e.g. `plugin register-image` is on-prem-only;
 `solution layer-conflicts` are cloud-only). The `bigint` attribute test xfails on
 on-prem (system-managed) and xpasses on cloud. The 5/4 xfails are documented product
-defects — see `crm/tests/e2e/DISCOVERED_BUGS.md`. Skips (`sla activate`,
-`workflow activate`) are data-gated: those records aren't present on either test org
-(`query saved`/`query user` now self-seed a throwaway view, so they no longer skip).
+defects — see `crm/tests/e2e/DISCOVERED_BUGS.md`. `sla activate` skips are data-gated:
+that record isn't present on either test org. `workflow activate`/`deactivate` (both
+targets) and `workflow clone` (cloud) are no longer data-gated — a durable draft
+**background on-demand** unmanaged classic workflow on Account ("E2E Seed: On-Demand
+Draft") is seeded on both orgs (#732). Recreate it without the web app by round-tripping
+genuine designer XAML: `workflow export` any classic workflow → edit `name`/`ondemand` →
+`workflow import` (cloud) or `workflow clone` + `workflow update --on-demand` (where the
+id already exists); the Web API accepts genuine XAML even though it can't author it (#534).
+(`query saved`/`query user` now self-seed a throwaway view, so they no longer skip.)
 Hostnames omitted (Contoso placeholders only).
 
 ## Realistic Workflow Scenarios
