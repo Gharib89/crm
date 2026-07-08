@@ -65,9 +65,12 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
 ### 4 · Integration test
 
 - **D365-touching change** → follow the `live-e2e` skill: run the PR's new/changed
-  e2e tests plus the existing e2e tests for the touched command groups
-  (`D365_E2E=1 pytest -m e2e -k <group>`, worktree-code recipe), on **every live
-  target the touched commands support** — a single-target green has guessed the
+  e2e tests plus the existing e2e tests for the touched command groups. Select by
+  the group's test **files** (`D365_E2E=1 pytest -m e2e crm/tests/e2e/test_<group>*.py`,
+  worktree-code recipe) — `@covers(...)` stamps are a coverage registry, not
+  pytest markers, so `-k`/`-m` cannot select on them; confirm the touched verbs
+  appear in the selected files' `@covers` strings before trusting the run. Run on
+  **every live target the touched commands support** — a single-target green has guessed the
   wrong capability gate before. Pin `--profile`, confirm the org via
   `crm connection whoami`, and quote both in the verdict. A target unreachable
   (VPN down, trial expired) is an explicit skip with reason, never a silent pass.
