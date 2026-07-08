@@ -186,6 +186,42 @@ def test_metadata_export_spec(cli, tmp_path):
     assert os.path.getsize(out) > 0
 
 
+@covers("metadata export-spec")
+def test_export_spec_emits_customer_column(cli, backend, ephemeral_entity):
+    """#700: a custom Customer column must be exported as kind 'customer' (not
+    dropped with a warning). Add a Customer column to the scratch entity, export
+    the entity, and assert the column rides the spec as the customer kind — with
+    no target_entity (apply's customer path forbids one) and no …idtype companion.
+    """
+    from crm.core import metadata_attrs as ma
+
+    schema = "new_E2ECustSpec"
+    info = ma.add_attribute(
+        backend,
+        entity=ephemeral_entity,
+        kind="customer",
+        schema_name=schema,
+        display_name="E2E CustSpec",
+        publish=False,
+    )
+    assert info.get("created"), info
+
+    r = cli(["--json", "metadata", "export-spec", ephemeral_entity])
+    assert r.returncode == 0, r.stderr
+    env = json.loads(r.stdout)
+    assert env["ok"], env
+    attrs = env["data"]["entities"][0].get("attributes", [])
+    match = [a for a in attrs if a["schema_name"].lower() == schema.lower()]
+    assert match, f"customer column {schema!r} missing from export: {attrs}"
+    col = match[0]
+    assert col["kind"] == "customer"
+    assert "target_entity" not in col
+    # The server-managed …idtype companion is not user-declared → must not appear.
+    assert not any(
+        a["schema_name"].lower() == f"{schema.lower()}type" for a in attrs
+    ), f"…idtype companion leaked into export: {attrs}"
+
+
 @covers("metadata cache-clear")
 def test_metadata_cache_clear(cli):
     r = cli(["--json", "metadata", "cache-clear"])

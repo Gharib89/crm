@@ -571,9 +571,9 @@ crm apply -f project.yaml
   `has_notes`, `has_activities`, `primary_attr_max_length`. Fields equal to their
   platform default are omitted.
 - Primary name attribute: `schema_name` + `label` (represented as `primary_attr`).
-- Custom, apply-creatable attributes (14 kinds: `string`, `memo`, `integer`,
+- Custom, apply-creatable attributes (15 kinds: `string`, `memo`, `integer`,
   `bigint`, `decimal`, `double`, `money`, `boolean`, `datetime`, `picklist`,
-  `multiselect`, `lookup`, `image`, `file`). Each attribute is deep-read to capture
+  `multiselect`, `lookup`, `customer`, `image`, `file`). Each attribute is deep-read to capture
   `MaxLength`, `FormatName`, `Precision`, `RequiredLevel`, and option-set options.
   Also captured where applicable: `auto_number_format` (string), `min_value` /
   `max_value` (integer/bigint), `behavior_name` (datetime), `max_size_kb` (file).
@@ -611,6 +611,10 @@ Caveats:
   when it differs from the `UserLocal` default.
 - A polymorphic (multi-target) lookup is exported with its first target only and
   re-created as a single-target lookup (`apply` creates single-target lookups).
+- A Customer column (the account/contact composite lookup) is exported as
+  `kind: customer` with **no** `target_entity` — its targets are fixed to
+  `account` + `contact`, so `apply` re-creates it from the kind alone. The
+  server-managed `…idtype` companion column is not emitted.
 
 `apply` ignores unknown keys, so the spec file remains apply-consumable throughout.
 Attribute types that `apply` cannot create (Owner, State, Status, and other system

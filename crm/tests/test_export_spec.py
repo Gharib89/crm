@@ -140,6 +140,20 @@ def _lookup_info():
     }
 
 
+def _customer_info():
+    # A Customer column reads back as AttributeTypeName.Value "CustomerType" on a
+    # LookupAttributeMetadata, carrying its fixed account+contact Targets (verified
+    # live on cloud v9.2 + on-prem v9.1, and per MS Learn). Placeholder GUIDs / no
+    # secrets per the e2e fixture rule.
+    return {
+        "SchemaName": "new_CustomerId",
+        "DisplayName": _label("Customer"),
+        "AttributeTypeName": {"Value": "CustomerType"},
+        "RequiredLevel": {"Value": "None"},
+        "Targets": ["account", "contact"],
+    }
+
+
 def _local_pick_info():
     return {
         "SchemaName": "new_Stage",
@@ -305,6 +319,95 @@ class TestLookupAttribute:
         col = spec["entities"][0]["attributes"][0]
         assert col["kind"] == "lookup"
         assert col["target_entity"] == "account"
+
+
+class TestCustomerAttribute:
+    def test_customer_emitted_as_customer_kind(self, backend):
+        # #700: a Customer column reads back AttributeTypeName.Value "CustomerType";
+        # export must emit it as kind "customer" (which apply accepts), NOT drop it.
+        attrs = {"value": [_shallow("new_name"), _shallow("new_customerid")]}
+        warnings: list[str] = []
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_customerid"), json=_customer_info())
+            spec = build_entity_spec(backend, "new_project", warnings=warnings)
+
+        col = spec["entities"][0]["attributes"][0]
+        assert col["kind"] == "customer"
+        assert col["schema_name"] == "new_CustomerId"
+        # apply's customer path forbids target_entity (fixed account+contact
+        # Targets), so the projection must not carry one.
+        assert "target_entity" not in col
+        # Emitted, not dropped-with-a-warning (the #700 regression).
+        assert warnings == []
+
+    def test_customer_projection_round_trips_through_validate_spec(self, backend):
+        attrs = {"value": [_shallow("new_name"), _shallow("new_customerid")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_customerid"), json=_customer_info())
+            spec = build_entity_spec(backend, "new_project", solution="testsln")
+
+        apply.validate_spec(spec)  # must not raise
+
+    def test_customer_idtype_companion_excluded(self, backend):
+        # A Customer column's server-managed …idtype (EntityNameType) companion is
+        # IsCustomAttribute=true but IsValidForCreate=false: not independently
+        # creatable, so the spec skips it — otherwise a re-apply would collide with
+        # the companion the server auto-generates for the parent customer column.
+        # Never deep-read (no _attr_url mock → requests_mock raises if fetched).
+        attrs = {"value": [
+            _shallow("new_name"),
+            _shallow("new_customerid"),
+            _shallow("new_customeridtype", valid_for_create=False),
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_customerid"), json=_customer_info())
+            spec = build_entity_spec(backend, "new_project")
+
+        cols = spec["entities"][0]["attributes"]
+        assert [c["schema_name"] for c in cols] == ["new_CustomerId"]
+
+    def test_exported_customer_is_not_a_false_prune_extra(self, backend):
+        # #700 root harm: because export dropped the Customer column, apply's prune
+        # pass saw the still-live column as an orphan and would delete it under
+        # --prune --allow-data-loss. With export fixed, the exported spec DECLARES
+        # the column, so `_prune_candidates` no longer flags it. This is the
+        # round-trip acceptance: the exported spec fed to the planner against the
+        # same metadata produces zero prune candidates for the Customer column.
+        cust_mid = "22222222-2222-2222-2222-222222222222"
+        attrs = {"value": [
+            {"LogicalName": "new_name", "SchemaName": "new_name",
+             "IsCustomAttribute": True, "IsValidForCreate": True},
+            {"LogicalName": "new_customerid", "SchemaName": "new_customerid",
+             "IsCustomAttribute": True, "IsValidForCreate": True,
+             "MetadataId": cust_mid},
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_customerid"), json=_customer_info())
+            spec = build_entity_spec(backend, "new_project", solution="ContosoCore")
+
+            # The Customer column is a solution member; feed the exported spec to
+            # apply's prune planner against the same live attributes.
+            m.get(backend.url_for("solutions"),
+                  json={"value": [{"solutionid": cust_mid, "uniquename": "ContosoCore"}]})
+            m.get(backend.url_for("solutioncomponents"),
+                  json={"value": [{"componenttype": 2, "objectid": cust_mid,
+                                   "rootcomponentbehavior": 0}]})
+            cands = apply._prune_candidates(backend, spec, "ContosoCore")
+
+        # The live Customer column is declared by the exported spec → not an extra.
+        assert not any(c["name"] == "new_customerid" for c in cands), cands
 
 
 class TestLocalPicklist:
