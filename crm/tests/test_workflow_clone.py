@@ -182,6 +182,31 @@ class TestCloneWorkflow:
             with pytest.raises(D365Error, match="not supported"):
                 workflow.clone_workflow_to_entity(backend, _SRC_ID, "cwx_ticketclone")
 
+    def test_dry_run_previews_no_patch(self, dry_backend):
+        """Dry-run runs the live source GET but issues no PATCH; it emits the
+        {_dry_run, would_clone} preview, never a fabricated `activated` success."""
+        from crm.core import workflow
+        with requests_mock.Mocker() as m:
+            m.get(dry_backend.url_for(f"workflows({_SRC_ID})"), json=self._src())
+            m.patch(requests_mock.ANY, status_code=204)
+            out = workflow.clone_workflow_to_entity(
+                dry_backend, _SRC_ID, "cwx_ticketclone", name="My Clone",
+                activate=True, solution="cwx_sol",
+            )
+        assert not _patches(m), "dry-run must not PATCH"
+        assert out["_dry_run"] is True
+        assert "activated" not in out
+        would = out["would_clone"]
+        assert would["source_id"] == _SRC_ID
+        assert would["primaryentity"] == "cwx_ticketclone"
+        assert would["name"] == "My Clone"
+        assert would["category"] == 0
+        assert would["activate"] is True
+        assert would["solution"] == "cwx_sol"
+        # a fresh GUID was previewed for the clone, distinct from the source
+        assert uuid.UUID(would["workflow_id"])
+        assert would["workflow_id"] != _SRC_ID
+
 
 from click.testing import CliRunner
 

@@ -1383,6 +1383,22 @@ class TestSetStepState:
         assert [r for r in m.request_history if r.method == "PATCH"][0].json()["statecode"] == 1
         assert [r for r in m.request_history if r.method == "PATCH"][0].json()["statuscode"] == 2
 
+    def test_dry_run_previews_no_patch(self, profile):
+        """Dry-run runs the live step-resolution GET but issues no PATCH; it
+        emits the {_dry_run, would_set_state} preview, never `updated: True`."""
+        from crm.core import plugin
+        dry = D365Backend(profile, password="pw", dry_run=True)
+        with requests_mock.Mocker() as m:
+            _mock_image_resolution(m, dry)
+            m.patch(dry.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"),
+                    status_code=204)
+            out = plugin.set_step_state(dry, step="My Step", enable=False)
+        assert not _patches(m), "dry-run must not PATCH"
+        assert out["_dry_run"] is True
+        assert out["would_set_state"] == {"statecode": 1, "statuscode": 2}
+        assert out["sdkmessageprocessingstepid"] == _STEP_ID
+        assert "updated" not in out
+
 
 class TestUnregisterImage:
     def test_guid_deletes_directly(self, backend):

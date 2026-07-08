@@ -474,7 +474,14 @@ def set_step_state(
     state_int = 0 if enable else 1
     status_int = 1 if enable else 2
     body = {"statecode": state_int, "statuscode": status_int}
-    backend.patch(f"sdkmessageprocessingsteps({step_id})", json_body=body)
+    result = as_dict(backend.patch(
+        f"sdkmessageprocessingsteps({step_id})", json_body=body))
+    # Honour the dry-run contract: surface the backend's echo as a preview
+    # rather than fabricating an `updated: True` success (sibling to register_step).
+    if result.get("_dry_run"):
+        result["would_set_state"] = body
+        result["sdkmessageprocessingstepid"] = step_id
+        return result
     return {
         "updated": True,
         "sdkmessageprocessingstepid": step_id,

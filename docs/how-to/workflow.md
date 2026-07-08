@@ -82,7 +82,11 @@ If you pass an activation-record GUID (type=2 — the compiled copy the server c
 {"ok": true, "data": {...}, "meta": {"note": "Operated on parent definition <parent-guid>; activation-record GUID <passed-guid> was passed."}}
 ```
 
-Passing a draft GUID is unchanged: no note, and on a live run no extra round-trip. If the parent cannot be resolved, the command surfaces the server's original `0x80045003` rejection with a hint naming the parent definition GUID when known. Under `--dry-run` the resolution GET always runs (whichever GUID you pass), so the preview is keyed on the same GUID the live run would patch.
+Passing a draft GUID is unchanged: no note, and on a live run no extra round-trip. If the parent cannot be resolved, the command surfaces the server's original `0x80045003` rejection with a hint naming the parent definition GUID when known. Under `--dry-run` the resolution GET always runs (whichever GUID you pass), so the preview is keyed on the same GUID the live run would patch, and the payload carries the standard dry-run markers rather than a fabricated success:
+
+```json
+{"ok": true, "data": {"_dry_run": true, "would_set_state": {"statecode": 1, "statuscode": 2}, "workflow_id": "<definition-guid>", "resolved_from_activation_id": null}}
+```
 
 `crm entity delete workflows <guid>` against that same activation-record GUID fails too — D365 rejects deleting activation rows directly (server code `0x80045004`). You can't delete the activation; deactivate its parent definition instead, which removes the activation — or use `crm workflow delete`, which handles the whole sequence (see below). The error carries a hint: when the parent can be resolved it names the parent GUID and the exact `crm workflow deactivate <parent-guid>` command; otherwise it points you at the activation row's `parentworkflowid` lookup.
 
@@ -168,6 +172,12 @@ crm --json workflow clone <workflow-guid> \
 ```
 
 Action and business-process-flow cloning is not yet supported; use solution export/import for those.
+
+Under `--dry-run` the source definition is read live but nothing is written; the preview reports the clone that would be created:
+
+```json
+{"ok": true, "data": {"_dry_run": true, "would_clone": {"source_id": "<src-guid>", "workflow_id": "<new-guid>", "name": "Ticket Clone", "primaryentity": "cwx_ticketclone", "category": 0, "activate": true, "solution": "my_solution"}}}
+```
 
 ## Export a workflow definition
 

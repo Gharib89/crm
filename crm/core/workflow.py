@@ -350,12 +350,29 @@ def clone_workflow_to_entity(
         "type": TYPE_DEFINITION,
         "xaml": new_xaml,
     })
-    entity_ops.upsert(
+    upserted = entity_ops.upsert(
         backend, "workflows", new_id, payload,
         caller_id=caller_id, caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
+
+    # Honour the dry-run contract: surface the backend's echo as a preview
+    # rather than issuing the activation/solution writes and fabricating an
+    # `activated` success (mirrors the would_update shape of update_workflow).
+    if upserted.get("_dry_run"):
+        return {
+            "_dry_run": True,
+            "would_clone": {
+                "source_id": workflow_id,
+                "workflow_id": new_id,
+                "name": payload["name"],
+                "primaryentity": target_entity,
+                "category": category,
+                "activate": activate,
+                "solution": solution,
+            },
+        }
 
     activated = False
     if activate:
@@ -553,8 +570,8 @@ def set_workflow_state(
     state, status = STATE_ACTIVATED if activate else STATE_DRAFT
     body: dict[str, Any] = {"statecode": state, "statuscode": status}
 
-    def _patch(target_id: str) -> None:
-        backend.patch(
+    def _patch(target_id: str) -> dict[str, Any]:
+        return as_dict(backend.patch(
             f"workflows({target_id})",
             json_body=body,
             etag="*",
@@ -562,7 +579,7 @@ def set_workflow_state(
             caller_object_id=caller_object_id,
             suppress_duplicate_detection=suppress_duplicate_detection,
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
-        )
+        ))
 
     target_id = workflow_id
     resolved_from: str | None = None
@@ -575,7 +592,7 @@ def set_workflow_state(
             target_id, resolved_from = parent, workflow_id
 
     try:
-        _patch(target_id)
+        result = _patch(target_id)
     except D365Error as exc:
         if not (auto_resolve_parent and exc.code == ACTIVATION_PATCH_ERROR_CODE):
             raise
@@ -584,8 +601,19 @@ def set_workflow_state(
             caller_id=caller_id, caller_object_id=caller_object_id)
         if not parent:
             raise
-        _patch(parent)
+        result = _patch(parent)
         target_id, resolved_from = parent, workflow_id
+
+    # Honour the dry-run contract: surface the backend's echo as a preview
+    # rather than fabricating an `activated: True` success (mirrors the
+    # would_update shape of update_workflow — a dict of what would be written).
+    if result.get("_dry_run"):
+        return {
+            "_dry_run": True,
+            "would_set_state": {"statecode": state, "statuscode": status},
+            "workflow_id": target_id,
+            "resolved_from_activation_id": resolved_from,
+        }
 
     return {
         "workflow_id": target_id,
