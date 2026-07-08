@@ -567,9 +567,9 @@ crm apply -f project.yaml
 
 **What is captured:**
 
-- Entity: `schema_name`, `display_name`, `display_collection_name`, `ownership`,
-  `has_notes`, `has_activities`, `primary_attr_max_length`. Fields equal to their
-  platform default are omitted.
+- Entity: `schema_name`, `display_name`, `display_collection_name`, `description`,
+  `ownership`, `has_notes`, `has_activities`, `primary_attr_max_length`. Fields
+  equal to their platform default (and an empty `description`) are omitted.
 - Primary name attribute: `schema_name` + `label` (represented as `primary_attr`).
 - Custom, apply-creatable attributes (15 kinds: `string`, `memo`, `integer`,
   `bigint`, `decimal`, `double`, `money`, `boolean`, `datetime`, `picklist`,
@@ -578,7 +578,8 @@ crm apply -f project.yaml
   Also captured where applicable: `auto_number_format` (string), `min_value` /
   `max_value` (integer/bigint), `behavior_name` (datetime), `max_size_kb` (file).
   Picklists/multiselects bound to a global option set emit `optionset_name`; the
-  referenced global option set is captured as a top-level `optionsets` entry.
+  referenced global option set is captured as a top-level `optionsets` entry
+  (including its `description` when set).
   Calculated and rollup columns (custom columns with `SourceType` 1/2) are also
   captured: the exported spec includes `source_type` (`"calculated"` or `"rollup"`)
   and `formula_definition` (the live FormulaDefinition XAML), so `apply` can
@@ -589,9 +590,12 @@ crm apply -f project.yaml
   flat cascade keys (`cascade_assign`, `cascade_delete`, `cascade_reparent`,
   `cascade_share`, `cascade_unshare`, `cascade_merge`), associated-menu keys
   (`menu_behavior`, `menu_label`, `menu_order`), `is_hierarchical`, and the lookup
-  column's `lookup_description`. Keys equal to platform defaults are omitted.
+  column's `lookup_description`. Keys equal to platform defaults are omitted. The
+  lookup column's `lookup_schema` carries the referencing attribute's true schema
+  name (original casing), so a re-applied spec re-creates the column with matching
+  casing.
 - Views (with `--with-views`): public saved queries with parseable column layouts,
-  including `filter_active` and `order_desc` where set.
+  including `filter_active`, `order_desc`, and `description` where set.
 - A publisher is never emitted — an existing entity does not know its publisher.
   A top-level `solution:` block is emitted only when `--solution <name>` is
   passed to `export-spec`; `crm apply` requires one, so a spec exported without

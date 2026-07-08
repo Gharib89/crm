@@ -232,8 +232,12 @@ def read_entity_relationships(
         referencing_entity: str = row.get("ReferencingEntity") or ""
         referencing_attr: str = row.get("ReferencingAttribute") or ""
 
-        # Look up the display name, required level, and description for the
-        # lookup column (one read; all three are adapter keys).
+        # Look up the schema name, display name, required level, and description
+        # for the lookup column (one read; all four are adapter keys). The
+        # relationship row's ReferencingAttribute is the lowercase logical name;
+        # the attribute's SchemaName carries the original casing, so sourcing
+        # lookup_schema from the attribute keeps a round-tripped org's casing (#701).
+        lookup_schema: str = referencing_attr
         lookup_display: str = referencing_attr
         required: str | None = None
         lookup_description: str | None = None
@@ -242,6 +246,9 @@ def read_entity_relationships(
                 attr_info = _meta_mod.attribute_info(
                     backend, referencing_entity, referencing_attr
                 )
+                schema = attr_info.get("SchemaName")
+                if isinstance(schema, str) and schema:
+                    lookup_schema = schema
                 dn_obj = cast("dict[str, Any]", attr_info.get("DisplayName") or {})
                 text = label_text(dn_obj)
                 if text:
@@ -261,7 +268,7 @@ def read_entity_relationships(
             "schema_name": schema_name,
             "referenced_entity": referenced_entity,
             "referencing_entity": referencing_entity,
-            "lookup_schema": referencing_attr,
+            "lookup_schema": lookup_schema,
             "lookup_display": lookup_display,
         }
         if required is not None:

@@ -92,6 +92,7 @@ _ENTITY = {
     "SchemaName": "new_Project",
     "DisplayName": _label("Project"),
     "DisplayCollectionName": _label("Projects"),
+    "Description": _label("Project tracking table"),
     "OwnershipType": "UserOwned",
     "PrimaryNameAttribute": "new_name",
 }
@@ -208,12 +209,27 @@ class TestEntityLevel:
         assert ent["schema_name"] == "new_Project"
         assert ent["display_name"] == "Project"
         assert ent["display_collection_name"] == "Projects"
+        # The entity Description round-trips (apply reconciles entity description).
+        assert ent["description"] == "Project tracking table"
         assert ent["ownership"] == "UserOwned"
         assert ent["primary_attr"] == {"schema_name": "new_Name", "label": "Project Name"}
         # Primary name attribute is NOT re-created as a column.
         assert "attributes" not in ent
         # No global option sets referenced.
         assert "optionsets" not in spec
+
+    def test_entity_description_omitted_when_blank(self, backend):
+        """An entity with no Description emits no `description` key (no spec bloat;
+        an omitted description never drifts on re-apply)."""
+        entity_no_desc = {k: v for k, v in _ENTITY.items() if k != "Description"}
+        attrs = {"value": [_shallow("new_name")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=entity_no_desc)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            spec = build_entity_spec(backend, "new_project")
+
+        assert "description" not in spec["entities"][0]
 
 
 class TestStringAttribute:
@@ -506,6 +522,7 @@ class TestGlobalPicklist:
         gos = {
             "Name": "new_priorityset",
             "DisplayName": _label("Priority"),
+            "Description": _label("Priority levels"),
             "Options": [_opt(10, "Low"), _opt(20, "High")],
         }
         with requests_mock.Mocker() as m:
@@ -532,10 +549,37 @@ class TestGlobalPicklist:
         os_entry = spec["optionsets"][0]
         assert os_entry["name"] == "new_priorityset"
         assert os_entry["display_name"] == "Priority"
+        # The global option set Description round-trips (apply reconciles it).
+        assert os_entry["description"] == "Priority levels"
         assert os_entry["options"] == [
             {"value": 10, "label": "Low"},
             {"value": 20, "label": "High"},
         ]
+
+    def test_global_optionset_description_omitted_when_blank(self, backend):
+        """A global option set with no Description emits no `description` key."""
+        attrs = {"value": [_shallow("new_name"), _shallow("new_priority")]}
+        glob = {"Name": "new_priorityset", "IsGlobal": True}
+        cast_a = {"LogicalName": "new_priority", "OptionSet": None, "GlobalOptionSet": glob}
+        gos = {
+            "Name": "new_priorityset",
+            "DisplayName": _label("Priority"),
+            "Options": [_opt(10, "Low")],
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_priority"),
+                  json=_global_pick_info("new_Priority"))
+            m.get(_pick_cast_url(backend, "new_priority"), json=cast_a)
+            m.get(
+                backend.url_for("GlobalOptionSetDefinitions(Name='new_priorityset')"),
+                json=gos,
+            )
+            spec = build_entity_spec(backend, "new_project")
+
+        assert "description" not in spec["optionsets"][0]
 
 
 class TestMultiselect:
@@ -836,6 +880,7 @@ class TestOptInViewsAndRelationships:
         }]}
         rel_attr = {
             "LogicalName": "new_projectid",
+            "SchemaName": "new_ProjectId",
             "DisplayName": _label("Project"),
             "RequiredLevel": {"Value": "None"},
         }
@@ -850,7 +895,10 @@ class TestOptInViewsAndRelationships:
         rels = spec["entities"][0]["relationships"]
         assert len(rels) == 1
         assert rels[0]["schema_name"] == "new_project_new_task"
-        assert rels[0]["lookup_schema"] == "new_projectid"
+        # lookup_schema preserves the referencing attribute's SchemaName casing
+        # (not the lowercase ReferencingAttribute logical name) so the exported
+        # spec round-trips to a matching column casing (#701).
+        assert rels[0]["lookup_schema"] == "new_ProjectId"
 
     def test_non_default_cascade_round_trips_through_validate_spec(self, backend):
         """Acceptance: a relationship with a non-default cascade exports the flat

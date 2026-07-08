@@ -1370,6 +1370,50 @@ class TestReadEntityViews:
         ]
         assert v["order_by"] == "cwx_name"
 
+    def test_view_description_emitted_when_present(self, backend):
+        """A saved query's description round-trips (apply reconciles view
+        description), so the reader must select and project it (#701)."""
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 200)]
+        layoutxml = build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = build_fetchxml("cwx_ticket", cols, None, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "All Tickets",
+                    "description": "Every ticket in the system",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert views[0]["description"] == "Every ticket in the system"
+        # The reader must $select description to receive it.
+        assert "description" in m.last_request.qs["$select"][0]
+
+    def test_view_description_omitted_when_blank(self, backend):
+        from crm.core.views import read_entity_views
+        cols = [("cwx_name", 200)]
+        layoutxml = build_layoutxml("cwx_ticket", 10042, cols)
+        fetchxml = build_fetchxml("cwx_ticket", cols, None, False)
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("savedqueries"),
+                json={"value": [{
+                    "savedqueryid": _READ_VIEW_ID,
+                    "name": "All Tickets",
+                    "description": "",
+                    "layoutxml": layoutxml,
+                    "fetchxml": fetchxml,
+                    "isdefault": False,
+                }]},
+            )
+            views = read_entity_views(backend, "cwx_ticket")
+        assert "description" not in views[0]
+
     def test_view_with_no_order_element(self, backend):
         from crm.core.views import read_entity_views
         cols = [("cwx_name", 200)]
