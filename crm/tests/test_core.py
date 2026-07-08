@@ -1085,6 +1085,11 @@ class TestWorkflow:
         assert backend.dry_run is True
         assert info["workflow_id"] == parent_guid
         assert info["resolved_from_activation_id"] == wid
+        # The preview honours the dry-run contract: the _dry_run marker and a
+        # would_set_state echo, never a fabricated `activated: True` success.
+        assert info["_dry_run"] is True
+        assert info["would_set_state"] == {"statecode": 0, "statuscode": 1}
+        assert "activated" not in info
         # The GET is the only real request; the PATCH stays a dry-run preview.
         assert [r.method for r in m.request_history] == ["GET"]
 
@@ -1099,6 +1104,9 @@ class TestWorkflow:
         assert backend.dry_run is True
         assert info["workflow_id"] == wid
         assert info["resolved_from_activation_id"] is None
+        assert info["_dry_run"] is True
+        assert info["would_set_state"] == {"statecode": 1, "statuscode": 2}
+        assert "activated" not in info
         assert [r.method for r in m.request_history] == ["GET"]
 
     def test_execute_workflow_posts_bound_action(self, backend):
