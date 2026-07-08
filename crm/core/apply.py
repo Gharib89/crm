@@ -1692,8 +1692,8 @@ def _prune_candidates(
     # Resolve every in-solution objectid's name in one $batch instead of one GET
     # per candidate (issue #703). `top_specs` keeps (kind, name_col, oid) in the
     # deterministic order the reads are issued so each result maps back to its
-    # candidate. Under --dry-run $batch is short-circuited, so the reads run
-    # directly (prune planning is read-only and must preview real names).
+    # candidate. $batch is short-circuited under --dry-run and refused on a
+    # read-only profile, so in both cases the reads run directly (pure GETs).
     top_specs: list[tuple[str, str, str, str]] = []  # (kind, name_col, oid, url)
     for ct, (path_tmpl, name_col, kind) in _PRUNE_TOPLEVEL.items():
         for oid in sorted(by_type.get(ct, set())):
@@ -1701,13 +1701,15 @@ def _prune_candidates(
                 (kind, name_col, oid, f"{path_tmpl.format(id=oid)}?$select={name_col}"))
 
     top_rows: list[dict[str, Any]] = []
-    if backend.dry_run:
+    if backend.dry_run or backend.read_only:
         top_rows = [as_dict(backend.get(url)) for _, _, _, url in top_specs]
     else:
         ops: list[BatchOperation] = [
             {"method": "GET", "url": url} for _, _, _, url in top_specs
         ]
-        for res in run_batched(backend, ops):
+        # Fail-fast: continue-on-error off so the server stops at the first
+        # failing read and we never iterate past it.
+        for res in run_batched(backend, ops, continue_on_error=False):
             err = res.get("error")
             if err:
                 # A failing name-resolution read aborts planning, exactly as the

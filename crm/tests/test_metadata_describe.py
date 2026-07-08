@@ -188,6 +188,30 @@ class TestLookupBindEnrichment:
         assert by_name["new_contactid"]["targets"] == [
             {"logical": "contact", "set_name": "contacts"}]
 
+    def test_read_only_profile_resolves_set_name_directly_not_batch(self, profile):
+        # $batch is refused on a read-only profile; describe's set-name reads must
+        # fall back to direct GETs so the brief still builds (issue #703).
+        import dataclasses
+        from crm.core import metadata as meta
+        from crm.utils.d365_backend import D365Backend
+        ro = D365Backend(dataclasses.replace(profile, read_only=True), password="pw")
+        attrs = {"value": [_attr("new_accountid", "Lookup")]}
+        m2o = {"value": [{
+            "ReferencingAttribute": "new_accountid", "ReferencedEntity": "account",
+            "ReferencingEntityNavigationPropertyName": "new_AccountId",
+            "ReferencedEntityNavigationPropertyName": "new_project_AccountId"}]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(ro), json=_ENTITY)
+            m.get(_attrs_url(ro), json=attrs)
+            m.get(_m2o_url(ro), json=m2o)
+            m.get(ro.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"EntitySetName": "accounts"})
+            brief = meta.describe_entity(ro, "new_project")
+            assert "POST" not in {r.method for r in m.request_history}  # no $batch
+        lookup = next(a for a in brief["writable_attributes"]
+                      if a["logical_name"] == "new_accountid")
+        assert lookup["targets"] == [{"logical": "account", "set_name": "accounts"}]
+
     def test_describe_bind_key_round_trips_through_entity_validate(self, backend):
         """describe's `bind_key` must be accepted by `entity create --validate`.
 

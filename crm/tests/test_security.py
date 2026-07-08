@@ -634,6 +634,20 @@ class TestSetRolePrivileges:
         assert meta_gets == []                # no per-entity sequential reads
         assert result["count"] == 2
 
+    def test_read_only_profile_reads_privileges_directly_not_batch(self, profile):
+        # $batch is refused on a read-only profile; the pure-GET privilege reads
+        # must fall back to direct GETs so resolve still works (issue #703).
+        import dataclasses
+        from crm.utils.d365_backend import D365Backend
+        ro = D365Backend(dataclasses.replace(profile, read_only=True), password="pw")
+        with requests_mock.Mocker() as m:
+            m.get(ro.url_for("EntityDefinitions(LogicalName='account')"),
+                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            privs, _warnings = sec.resolve_role_privileges(
+                ro, access=["read"], entities=["account"], depth="global")
+            assert "POST" not in {r.method for r in m.request_history}  # no $batch
+        assert [p["name"] for p in privs] == ["prvReadAccount"]
+
     def test_replace_uses_replace_action(self, backend, profile):
         with requests_mock.Mocker() as m:
             m.post(profile.api_base + "$batch",

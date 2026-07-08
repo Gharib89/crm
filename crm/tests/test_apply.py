@@ -3003,6 +3003,21 @@ def test_prune_candidate_names_resolved_in_one_batch(backend):
     assert {c["kind"] for c in cands} == {"security-role", "webresource"}
 
 
+def test_prune_candidate_names_resolved_directly_under_read_only(profile):
+    # $batch is refused on a read-only profile; prune's name-resolution reads must
+    # fall back to direct GETs so planning still works (issue #703).
+    import dataclasses
+    from crm.utils.d365_backend import D365Backend
+    ro = D365Backend(dataclasses.replace(profile, read_only=True), password="pw")
+    spec = {"solution": {"unique_name": "ContosoCore"}}
+    with requests_mock.Mocker() as m:
+        _mock_solution_prune(m, ro, [(20, _ROLE_ID)])
+        m.get(ro.url_for(f"roles({_ROLE_ID})"), json={"name": "Orphan Role"})
+        cands = apply_mod._prune_candidates(ro, spec, "ContosoCore")
+        assert "POST" not in {r.method for r in m.request_history}  # no $batch
+    assert [c["name"] for c in cands] == ["Orphan Role"]
+
+
 def test_prune_candidate_names_resolved_directly_under_dry_run(dry_backend):
     # Under --dry-run $batch is short-circuited, so name resolution must fall back
     # to direct GETs (read paths execute under dry-run) — no $batch POST.

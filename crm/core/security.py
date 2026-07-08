@@ -641,12 +641,13 @@ def _entity_privileges_bulk(
     One round trip in place of one GET per entity (issue #703). Preserves the
     single-entity failure mapping: a 404 subrequest becomes the same
     ``unknown entity`` :class:`D365Error`, raised for the first failing entity in
-    input order. Under ``--dry-run`` ``$batch`` is short-circuited, so the reads
-    are issued directly (read paths still execute under dry-run).
+    input order. ``$batch`` is short-circuited under ``--dry-run`` and refused on
+    a read-only profile, so in both cases the reads are issued directly (they are
+    pure GETs, which always execute).
     """
     if not logicals:
         return {}
-    if backend.dry_run:
+    if backend.dry_run or backend.read_only:
         return {lg: _entity_privileges(backend, lg) for lg in logicals}
     ops: list[BatchOperation] = [
         {"method": "GET",
@@ -654,7 +655,9 @@ def _entity_privileges_bulk(
                 "?$select=Privileges"}
         for lg in logicals
     ]
-    results = run_batched(backend, ops)
+    # Fail-fast (raise on the first failing entity), so continue-on-error is off:
+    # the server stops at that subrequest and we never read past it.
+    results = run_batched(backend, ops, continue_on_error=False)
     out: dict[str, list[dict[str, Any]]] = {}
     for lg, res in zip(logicals, results):
         err = res.get("error")

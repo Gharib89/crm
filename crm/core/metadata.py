@@ -412,22 +412,25 @@ def _set_name_via_get(backend: D365Backend, ref_logical: str) -> str:
 def _resolve_set_names(backend: D365Backend, refs: list[str]) -> dict[str, str]:
     """Map each referenced entity logical name to its EntitySetName in one ``$batch``.
 
-    One round trip in place of one GET per distinct target (issue #703). Under
-    ``--dry-run`` ``$batch`` is short-circuited, so the reads run directly
-    (``describe`` is read-only). A failing read aborts, exactly as the
+    One round trip in place of one GET per distinct target (issue #703).
+    ``$batch`` is short-circuited under ``--dry-run`` and refused on a read-only
+    profile, so in both cases the reads run directly (``describe`` is read-only
+    and its GETs always execute). A failing read aborts, exactly as the
     per-request GET did.
     """
     if not refs:
         return {}
-    if backend.dry_run:
+    if backend.dry_run or backend.read_only:
         return {ref: _set_name_via_get(backend, ref) for ref in refs}
     ops: list[BatchOperation] = [
         {"method": "GET",
          "url": f"EntityDefinitions(LogicalName='{ref}')?$select=EntitySetName"}
         for ref in refs
     ]
+    # Fail-fast: continue-on-error off so the server stops at the first failing
+    # read and we never iterate past it.
     out: dict[str, str] = {}
-    for ref, res in zip(refs, run_batched(backend, ops)):
+    for ref, res in zip(refs, run_batched(backend, ops, continue_on_error=False)):
         err = res.get("error")
         if err:
             raise D365Error(str(err), status=res.get("status"))

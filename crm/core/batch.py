@@ -39,8 +39,10 @@ def run_batched(
     ``error`` instead of aborting the batch). The caller maps each result back to
     its originating item. ``$batch`` is short-circuited under ``--dry-run``, so a
     caller that must still issue real reads there branches on ``backend.dry_run``
-    before calling this.
+    (and ``backend.read_only``, which also refuses ``$batch``) before calling this.
     """
+    if chunk_size < 1:
+        raise D365Error(f"chunk_size must be a positive integer; got {chunk_size}")
     ops_list = list(ops)
     results: list[BatchResult] = []
     for start in range(0, len(ops_list), chunk_size):

@@ -1136,3 +1136,8 @@ class TestRunBatched:
             results = run_batched(backend, [])
             assert m.request_history == []
         assert results == []
+
+    def test_non_positive_chunk_size_raises(self, backend):
+        from crm.core.batch import run_batched
+        with pytest.raises(D365Error, match="positive"):
+            run_batched(backend, [], chunk_size=0)
