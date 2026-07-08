@@ -222,10 +222,18 @@ def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> 
                 pass
 
         # Unique temp name in the target dir: two concurrent writers get distinct
-        # temp files instead of clobbering one shared "<name>.tmp".
-        tmp = path.with_name(f".{path.name}.{os.getpid()}.{os.urandom(4).hex()}.tmp")
+        # temp files instead of clobbering one shared "<name>.tmp". The name is a
+        # short fixed shape independent of path.name, so a very long (but valid,
+        # uncapped) profile name can't push the temp past NAME_MAX while the target
+        # itself still fits. O_EXCL + retry guards the (astronomically rare) clash.
         create_mode = 0o666 if mode is None else mode
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, create_mode)
+        while True:
+            tmp = path.with_name(f".{os.getpid()}.{os.urandom(6).hex()}.tmp")
+            try:
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, create_mode)
+                break
+            except FileExistsError:
+                continue
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(payload, f, indent=2, sort_keys=True)

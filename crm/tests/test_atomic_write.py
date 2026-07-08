@@ -58,6 +58,20 @@ def test_concurrent_writers_never_corrupt_state(tmp_path):
     assert not [n for n in os.listdir(tmp_path) if n.endswith(".tmp")]
 
 
+@pytest.mark.skipif(os.name != "posix", reason="NAME_MAX temp-name length behavior is POSIX")
+def test_long_target_name_does_not_overflow_temp_name(tmp_path):
+    # A long-but-valid name whose file fits NAME_MAX must not yield a temp name that
+    # overflows it (profile names are uncapped). The temp name is independent of the
+    # target name, so this succeeds where a <name>-derived temp would ENAMETOOLONG.
+    name_max = os.pathconf(str(tmp_path), "PC_NAME_MAX")
+    stem = "x" * (name_max - len(".json"))
+    target = tmp_path / f"{stem}.json"
+    assert len(target.name) <= name_max
+    session_mod._atomic_write_json(target, {"ok": 1}, mode=0o600)
+    assert json.loads(target.read_text(encoding="utf-8")) == {"ok": 1}
+    assert (target.stat().st_mode & 0o777) == 0o600
+
+
 @pytest.mark.skipif(os.name != "posix", reason="file-mode creation only enforced on POSIX")
 def test_mode_is_applied_at_creation(tmp_path):
     target = tmp_path / "secret.json"
