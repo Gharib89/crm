@@ -125,7 +125,9 @@ verify with `solution import-result <id>`, then promote separately.
   keep the parent's `major.minor`. Pass `--version` for a specific build/revision.
 - `stage-and-upgrade` reuses the `solution import` pipeline — same per-component
   result parsing, the on-prem synchronous-`ImportSolution` fallback, and
-  `meta.warnings` on a partial failure all apply.
+  `meta.warnings` on a partial failure all apply. The two `import` escape hatches
+  carry over too: `--skip-dependency-check` (past a product-update dependency block)
+  and `--formatted` (attach the Excel report under `formatted_results`).
 - `uninstall` **pre-checks** `RetrieveDependenciesForUninstall` and refuses (no
   DELETE) when blockers exist; `--force` skips the check. Inspect blockers first
   with `solution dependencies <name>`.

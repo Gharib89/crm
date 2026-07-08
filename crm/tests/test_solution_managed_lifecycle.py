@@ -285,6 +285,43 @@ class TestStageAndUpgradeCommand:
         assert result.exit_code == 0, result.output
         assert captured["holding_solution"] is True
         assert promoted["called"] is False  # no --promote → stage only
+        # Parity flags default off, same as `solution import` (#706).
+        assert captured["skip_dependency_check"] is False
+        assert captured["formatted"] is False
+
+    def test_skip_dependency_check_threads_to_import(self, monkeypatch, tmp_path):
+        """`stage-and-upgrade --skip-dependency-check` wires through to
+        import_solution(skip_dependency_check=True), like `solution import` (#706)."""
+        zip_path = tmp_path / "up.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.solution.import_solution",
+            lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "stage-and-upgrade", str(zip_path),
+            "--skip-dependency-check", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["skip_dependency_check"] is True
+
+    def test_formatted_threads_to_import(self, monkeypatch, tmp_path):
+        """`stage-and-upgrade --formatted` wires through to
+        import_solution(formatted=True), like `solution import` (#706)."""
+        zip_path = tmp_path / "up.zip"
+        zip_path.write_bytes(b"PK\x03\x04stub")
+        captured = {}
+        monkeypatch.setattr(
+            "crm.core.solution.import_solution",
+            lambda backend, path, **kw: captured.update(kw) or {"status": "succeeded"})
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = CliRunner().invoke(cli, [
+            "--json", "solution", "stage-and-upgrade", str(zip_path),
+            "--formatted", "--yes",
+        ])
+        assert result.exit_code == 0, result.output
+        assert captured["formatted"] is True
 
     def test_promote_requires_solution_exit_2(self, monkeypatch, tmp_path):
         zip_path = tmp_path / "up.zip"
