@@ -131,6 +131,10 @@ def list_types_cmd(ctx: CLIContext, assembly):
                    "the derived name would exceed the platform's 256-char limit.")
 @click.option("--configuration", default=None,
               help="Unsecure configuration string.")
+@click.option("--secure-configuration", "secure_configuration", default=None,
+              help="Secure configuration string, stored as a separate related "
+                   "record linked from the step. Write-only; the platform never "
+                   "returns it and it is not echoed in the command output.")
 @click.option("--async-auto-delete", "asyncautodelete", is_flag=True,
               help="Auto-delete the system job on success (async steps only).")
 @click.option("--assembly", default=None,
@@ -139,7 +143,7 @@ def list_types_cmd(ctx: CLIContext, assembly):
 @pass_ctx
 def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
                       entity, stage, mode, rank, filtering_attributes, name,
-                      configuration, asyncautodelete,
+                      configuration, secure_configuration, asyncautodelete,
                       assembly, solution):
     """Register a plug-in step (sdkmessageprocessingstep).
 
@@ -153,6 +157,7 @@ def register_step_cmd(ctx: CLIContext, message, plugin_type, service_endpoint,
             service_endpoint=service_endpoint, entity=entity, stage=stage,
             mode=mode, rank=rank, filtering_attributes=filtering_attributes,
             name=name, configuration=configuration,
+            secure_configuration=secure_configuration,
             asyncautodelete=asyncautodelete,
             assembly=assembly, solution=solution)
     _emit_with_warning(ctx, info, None,

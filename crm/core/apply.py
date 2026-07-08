@@ -1526,12 +1526,16 @@ REGISTRY: dict[str, Adapter] = {
             "configuration": "configuration",
         },
         transforms={},
-        # assembly (the parent's name) is supplied by the driver; asyncautodelete
-        # and service_endpoint are register_step params the apply spec does not
-        # expose, so the driver leaves them at their builder defaults — injected
-        # (driver-owned, never spec-sourced), exactly as `publish` is for attribute.
+        # assembly (the parent's name) is supplied by the driver; asyncautodelete,
+        # service_endpoint, and secure_configuration are register_step params the
+        # apply spec does not expose, so the driver leaves them at their builder
+        # defaults — injected (driver-owned, never spec-sourced), exactly as
+        # `publish` is for attribute. (secure_configuration is write-only, so it
+        # cannot be reconciled against a live read — the declarative apply spec
+        # covers only unsecure `configuration`.)
         injected=frozenset(
-            {"backend", "assembly", "solution", "asyncautodelete", "service_endpoint"}),
+            {"backend", "assembly", "solution", "asyncautodelete",
+             "service_endpoint", "secure_configuration"}),
         defaults={},
         required_block_keys=("message",),
         block_label="plug-in step",

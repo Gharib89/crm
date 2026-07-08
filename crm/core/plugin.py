@@ -304,6 +304,7 @@ def register_step(
     filtering_attributes: str | None = None,
     name: str | None = None,
     configuration: str | None = None,
+    secure_configuration: str | None = None,
     asyncautodelete: bool = False,
     assembly: str | None = None,
     service_endpoint: str | None = None,
@@ -334,6 +335,12 @@ def register_step(
     other stages raise D365Error. The derived default `name` plus a very long
     fully-qualified typename can exceed the platform's 256-char `name` limit —
     pass `name` explicitly if so (the server enforces the limit, not this code).
+
+    `configuration` is the unsecure step config (a plain field on the step).
+    `secure_configuration` is the secure step config, a separate related record
+    (`sdkmessageprocessingstepsecureconfig`) linked from the step; it is created
+    and bound via a deep insert on registration and is write-only — never echoed
+    back in the return value.
 
     Dry-run returns the backend preview as-is (no real POST).
     """
@@ -414,6 +421,15 @@ def register_step(
     }
     if configuration is not None:
         body["configuration"] = configuration
+    # Unlike unsecure `configuration` (a plain field on the step), the secure
+    # configuration is a separate `sdkmessageprocessingstepsecureconfig` record
+    # linked from the step via the `sdkmessageprocessingstepsecureconfigid`
+    # lookup. A deep insert on that single-valued nav-property creates the
+    # related record and binds it in the same POST. It is write-only per platform
+    # semantics — passed on registration, never echoed back in `out` below.
+    if secure_configuration is not None:
+        body["sdkmessageprocessingstepsecureconfigid"] = {
+            "secureconfig": secure_configuration}
     if asyncautodelete:
         body["asyncautodelete"] = True
     # sdkmessageprocessingstep nav-props are lowercase logical names in $metadata;

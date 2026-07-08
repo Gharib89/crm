@@ -110,18 +110,29 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
     assert got["authtype"] == 4          # Webhook Key
     assert got["url"] == "https://example.com/e2e-hook"
 
+    # secure_configuration exercises the deep insert on a real org: the secure
+    # config is a separate related record created and bound to the step in the
+    # same POST (a mock can't validate the nav-property casing — the #159 lesson).
     step = plugin_mod.register_step(
         backend, message="Create", entity="account",
-        service_endpoint=name, name=f"e2e webhook step {os.getpid()}")
+        service_endpoint=name, name=f"e2e webhook step {os.getpid()}",
+        secure_configuration="e2e-secret-cfg")
     assert step["created"] is True
+    # Write-only: the secret is never echoed back in the return value.
+    assert "e2e-secret-cfg" not in str(step)
     state["step_id"] = step["sdkmessageprocessingstepid"]
     assert state["step_id"], f"no step id parsed: {step}"
 
     bound = backend.get(
         f"sdkmessageprocessingsteps({state['step_id']})",
-        params={"$expand": "eventhandler_serviceendpoint($select=serviceendpointid)"})
+        params={"$expand": "eventhandler_serviceendpoint($select=serviceendpointid)",
+                "$select": "_sdkmessageprocessingstepsecureconfigid_value"})
     handler = bound.get("eventhandler_serviceendpoint") or {}
     assert handler.get("serviceendpointid", "").lower() == se_id.lower()
+    # The deep insert created and bound a secure-config record — the lookup is
+    # readable (write-only applies to the secret value, not the link).
+    assert bound.get("_sdkmessageprocessingstepsecureconfigid_value"), (
+        f"secure-config record not linked to step: {bound}")
 
     disabled = plugin_mod.set_step_state(backend, step=state["step_id"], enable=False)
     assert disabled["enabled"] is False
@@ -245,11 +256,17 @@ def test_assembly_register_step_unregister_lifecycle(
         pytest.fail(f"seeded plug-in type {asm.type_name!r} not queryable after create")
 
     # 2. Register a step bound to the no-op plug-in type. The step never fires.
+    # --secure-configuration exercises the deep insert: the secure config is a
+    # separate related record linked from the step, created and bound in the same
+    # POST. The value is write-only (never returned), so success is proven by the
+    # step's secure-config lookup being populated, not by reading the secret back.
     step_result = cli(
         ["--json", "plugin", "register-step",
          "--message", "Create", "--entity", "account",
          "--plugin-type", asm.type_name, "--assembly", asm.assembly_name,
          "--name", f"{asm.assembly_name} create step",
+         "--configuration", "unsecure-cfg",
+         "--secure-configuration", "e2e-secret-cfg",
          "--solution", ephemeral_solution],
         check=False,
     )
@@ -260,6 +277,15 @@ def test_assembly_register_step_unregister_lifecycle(
     assert step_data["data"]["created"] is True
     step_id = step_data["data"]["sdkmessageprocessingstepid"]
     assert step_id, f"no step id parsed: {step_data}"
+    # Write-only: the secret is never echoed in the command output.
+    assert "e2e-secret-cfg" not in step_result.stdout
+    # But the deep insert must have created and bound a secure-config record —
+    # the lookup value on the step is readable and confirms the link.
+    step_row = backend.get(
+        f"sdkmessageprocessingsteps({step_id})",
+        params={"$select": "_sdkmessageprocessingstepsecureconfigid_value"})
+    assert step_row.get("_sdkmessageprocessingstepsecureconfigid_value"), (
+        f"secure-config record not linked to step: {step_row}")
 
     # 3. Unregister the step.
     unstep_result = cli(
