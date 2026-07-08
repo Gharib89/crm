@@ -382,20 +382,17 @@ def validate_payload(
     # Resolve the entity-set name to its logical name through the shared seam
     # (#261) — served read-through from the metadata cache, no per-call GET when
     # warm. Replaces the hand-rolled `EntitySetName eq` filter GET.
-    logical_name = entity_names.load_name_map(backend).logical_for(entity_set)
+    name_map = entity_names.load_name_map(backend)
+    logical_name = name_map.logical_for(entity_set)
     if not logical_name:
         raise D365Error(f"Unknown entity set: {entity_set!r}")
 
-    # PrimaryIdAttribute is only consumed by the create-path warning below, so
-    # fetch it lazily — and only then — with a targeted describe GET (not name
-    # resolution). The non-create path pays nothing for it.
-    primary_id_attr: str | None = None
-    if is_create:
-        ent = as_dict(backend.get(
-            f"EntityDefinitions(LogicalName={odata_literal(logical_name)})",
-            params={"$select": "PrimaryIdAttribute"},
-        ))
-        primary_id_attr = ent.get("PrimaryIdAttribute") or None
+    # PrimaryIdAttribute is only consumed by the create-path warning below. The
+    # name-map collection already selects it (#704), so read it from that cached
+    # entity definition rather than issuing a separate targeted describe GET.
+    primary_id_attr: str | None = (
+        name_map.primary_id_for(logical_name) if is_create else None
+    )
 
     attrs = as_dict(backend.get(
         f"EntityDefinitions(LogicalName={odata_literal(logical_name)})/Attributes",

@@ -329,22 +329,44 @@ class TestPrimaryIdWarning:
             )
         assert result == {"ok": True}
 
-    def test_create_path_fetches_primary_id_via_targeted_get(self, backend):
-        """PrimaryIdAttribute now comes from a targeted describe GET on the create
-        path (#261): the name-map collection GET no longer carries it, since the
-        cache stores only logical/set names. Cold cache → 3 GETs (collection,
-        attributes, primary-id); no ManyToOne for a bind-free payload."""
+    def test_create_path_sources_primary_id_from_cached_definition(self, backend):
+        """PrimaryIdAttribute comes from the cached entity definition — the
+        name-map collection GET already selects it — so the create path issues no
+        separate primary-id GET (#704). Cold cache → 2 GETs (collection,
+        attributes); no ManyToOne for a bind-free payload, and no targeted
+        EntityDefinitions describe GET."""
         from crm.core import entity as ent
         with requests_mock.Mocker() as m:
             _mock_two_pid(m, backend)
-            ent.validate_payload(
+            result = ent.validate_payload(
                 backend, "accounts", {"name": "Contoso"},
                 is_create=True,
             )
             paths = [r.path for r in m.request_history]
-        assert len(paths) == 3
-        assert any(p.endswith("/entitydefinitions(logicalname='account')") for p in paths)
-        assert not any("ManyToOneRelationships" in p for p in paths)
+        assert result == {"ok": True}
+        assert len(paths) == 2
+        assert not any(p.endswith("/entitydefinitions(logicalname='account')") for p in paths)
+        assert not any("manytoonerelationships" in p for p in paths)
+
+    def test_warm_cache_create_issues_single_metadata_get(self, backend):
+        """With the entity definitions warm in cache, a create-path validation
+        issues exactly ONE metadata GET — the attributes fetch — because both the
+        logical name and PrimaryIdAttribute are served from the cached definition,
+        not a live GET (#704)."""
+        from crm.core import entity as ent
+        from crm.core import entity_names
+        with requests_mock.Mocker() as m:
+            m.get(_sets_url(backend), json=_SETS_PID)
+            m.get(_attrs_url(backend), json=_ATTRS)
+            # Warm the definitions cache (one collection GET), then measure.
+            entity_names.load_name_map(backend, refresh=True)
+            start = len(m.request_history)
+            ent.validate_payload(
+                backend, "accounts", {"name": "Contoso"}, is_create=True,
+            )
+            after = m.request_history[start:]
+        assert len(after) == 1
+        assert after[0].path.endswith("/attributes")
 
 
 class TestPrimaryIdWarnCommand:

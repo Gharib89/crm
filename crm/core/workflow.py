@@ -728,20 +728,28 @@ def update_workflow(
         "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
     }
 
-    # Resolve a type=2 activation-record id to its type=1 parent before any edit.
-    parent = _resolve_parent_workflow_id(
-        backend, workflow_id,
-        caller_id=caller_id, caller_object_id=caller_object_id)
-    target_id = parent or workflow_id
-    resolved_from = workflow_id if parent else None
-
-    # Existence + state check. Runs live even under dry-run (reads-execute rule),
-    # so a missing id raises here before any write and the preview is real.
+    # One read of the row serves both the type=2 → parent resolution and the
+    # existence/state check (#704): a type=1 definition (the common case) reads
+    # its own name/statecode here, so the parentworkflowid lookup and the
+    # existence check share a single GET; only a type=2 activation row — which
+    # carries a parentworkflowid — needs a second GET of the resolved parent.
+    # Runs live even under dry-run (reads-execute rule), so a missing id raises
+    # here before any write and the preview is real.
     current = as_dict(backend.get(
-        f"workflows({target_id})",
-        params={"$select": "name,statecode"},
+        f"workflows({workflow_id})",
+        params={"$select": "parentworkflowid,name,statecode"},
         caller_id=caller_id, caller_object_id=caller_object_id,
     ))
+    parent = current.get("_parentworkflowid_value") or current.get("parentworkflowid")
+    if parent:
+        target_id, resolved_from = parent, workflow_id
+        current = as_dict(backend.get(
+            f"workflows({target_id})",
+            params={"$select": "name,statecode"},
+            caller_id=caller_id, caller_object_id=caller_object_id,
+        ))
+    else:
+        target_id, resolved_from = workflow_id, None
     result_name = changes.get("name", current.get("name"))
 
     if backend.dry_run:
