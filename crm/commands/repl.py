@@ -310,8 +310,8 @@ class _ReplCompleter(Completer):
     ``--no-*`` forms), Choice flag values, profile names after ``--profile``,
     and entity names at their existing slots (``complete_entity_token``)."""
 
-    def __init__(self, backend_getter, cache: MetadataCache):
-        self._get_backend = backend_getter
+    def __init__(self, materialized_backend_getter, cache: MetadataCache):
+        self._get_backend = materialized_backend_getter
         self._cache = cache
 
     def get_completions(self, document, complete_event):
@@ -360,7 +360,7 @@ def repl(click_ctx: click.Context):
     ctx.skin.print_banner()
     ctx.skin.info(f"Session: {ctx.session_name}  |  Type 'help' for commands, 'quit' to exit.")
     cache = MetadataCache(use_cache=ctx.cache_metadata or ctx.refresh_metadata, refresh=ctx.refresh_metadata)
-    completer = _ReplCompleter(ctx.backend, cache)
+    completer = _ReplCompleter(ctx.materialized_backend, cache)
     pt_session = ctx.skin.create_prompt_session(completer=completer)
     state = session_mod.load_session(ctx.session_name)
 

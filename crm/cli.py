@@ -241,6 +241,10 @@ class CLIContext:
         self.connection_resolved = True
         return self._backend
 
+    def materialized_backend(self) -> "D365Backend | None":
+        """Return the cached backend, if one already exists, without resolving it."""
+        return self._backend
+
     def invalidate_backend(self) -> None:
         """Drop the cached D365Backend so the next backend() call rebuilds it.
 

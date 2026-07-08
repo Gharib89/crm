@@ -9,9 +9,11 @@ completion that `complete_repl_line` composes on top of it.
 from __future__ import annotations
 
 import pytest
+from click.testing import CliRunner
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
+from crm.cli import CLIContext, cli
 from crm.commands.repl import MetadataCache, _ReplCompleter, complete_repl_line
 
 pytestmark = pytest.mark.usefixtures("isolated_home")
@@ -222,3 +224,37 @@ class TestReplCompleter:
             lambda: __import__("types").SimpleNamespace(
                 profile=__import__("types").SimpleNamespace(name="orga")), cache)
         assert _completions(completer, "entity get accounts --select ") == []
+
+
+def test_repl_completion_does_not_construct_backend(monkeypatch):
+    """A keystroke-triggered completion must not call CLIContext.backend().
+
+    With no active profile on a TTY, that call launches `profile add`; completion
+    must resolve from already-materialized state instead.
+    """
+    captured = {}
+    backend_calls = {"n": 0}
+
+    def forbidden_backend(self):
+        backend_calls["n"] += 1
+        raise AssertionError("completion constructed a backend")
+
+    def create_prompt_session(self, *, completer=None, **kwargs):
+        captured["completer"] = completer
+        return object()
+
+    def get_input(self, prompt_session, **kwargs):
+        assert _completions(captured["completer"], "ent") == ["entity"]
+        raise EOFError
+
+    monkeypatch.setattr(CLIContext, "backend", forbidden_backend)
+    monkeypatch.setattr("crm.utils.repl_skin.ReplSkin.print_banner", lambda self: None)
+    monkeypatch.setattr("crm.utils.repl_skin.ReplSkin.info", lambda self, message: None)
+    monkeypatch.setattr("crm.utils.repl_skin.ReplSkin.print_goodbye", lambda self: None)
+    monkeypatch.setattr("crm.utils.repl_skin.ReplSkin.create_prompt_session", create_prompt_session)
+    monkeypatch.setattr("crm.utils.repl_skin.ReplSkin.get_input", get_input)
+
+    result = CliRunner().invoke(cli, ["repl"])
+
+    assert result.exit_code == 0, result.output
+    assert backend_calls["n"] == 0
