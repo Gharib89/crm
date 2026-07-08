@@ -10,7 +10,7 @@ need: a multi-file map, a full suite run, CI logs, a poll loop. When you can
 already point at the target — one or two known files, a single test node, one
 projected `gh` call — work inline; a subagent there costs more than it saves
 (spawn overhead, relay loss, re-reading). A small-lane run typically spawns none
-of its own (the `review` skill and the poll loop bring theirs); a large or
+of its own (the `code-review` skill and the poll loop bring theirs); a large or
 unfamiliar change may spawn several. Every lever below is subject to this rule.
 In rough order of impact:
 
@@ -65,7 +65,7 @@ shows a decision, not a gap. Create exactly these ten items:
 - [ ] 1 · Understand — fetch issue, derive success, claim it, apply spec precedence
 - [ ] 2 · Implement — classify (docs/code/infra), then TDD per class
 - [ ] 3 · Integrated test — live-test only what you touched, on the reported target
-- [ ] 4 · Docs-sync + self-review — sync docs first so the review covers them, then `review` skill on the diff, auto-triage findings
+- [ ] 4 · Docs-sync + self-review — sync docs first so the review covers them, then `code-review` skill on the diff, auto-triage findings
 - [ ] 5 · Local gate — mirror the full CI checks (covers the synced docs), all green
 - [ ] 6 · Open PR — ready (non-draft), Conventional-Commit title, reflect on the issue
 - [ ] 7 · Review-bot loop — only if the repo has a bot; drive to the ceiling

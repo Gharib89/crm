@@ -30,8 +30,8 @@ things this skill exists to enforce on top of `ship`:
 ## Compose, don't inline
 
 Run `ship` by **invoking the Skill tool** (skill `ship`) — never paraphrase or
-hand-roll its phases from this skill. `ship` in turn composes `tdd` and `review`;
-when it reaches those phases, invoke `tdd` / `review` via the Skill tool too. All
+hand-roll its phases from this skill. `ship` in turn composes `tdd` and `code-review`;
+when it reaches those phases, invoke `tdd` / `code-review` via the Skill tool too. All
 four ship as sibling skills in the clone's `.claude/skills/`.
 
 ## The fire
@@ -105,7 +105,7 @@ carries the open PR, so later fires skip it until the merge closes it.
   gate**.
 - **Subagent tools are absent too.** `ship`'s delegation rule and model-tier
   table are inert in a fire — run everything inline in the main thread (the
-  `review` skill's two axes included), and compensate by projecting every `gh` /
+  `code-review` skill's two axes included), and compensate by projecting every `gh` /
   CLI call harder, since nothing can be offloaded.
 - **`gh` and `git push` hit GitHub directly** (the GitHub MCP connector is
   brokered separately). The claim state machine and `ship`'s PR/CI steps are all

@@ -20,7 +20,7 @@ test). On top of that:
   [copilot-loop.md](copilot-loop.md) is canonical.
 - **Subagents: usually none of your own.** You can already point at the file (no
   mapper), and the proving test node's output is short (run it inline); the
-  `review` skill and the poll loop bring their own. The delegation rule is in
+  `code-review` skill and the poll loop bring their own. The delegation rule is in
   [context-discipline.md](context-discipline.md).
 
 ## The floor — never collapses

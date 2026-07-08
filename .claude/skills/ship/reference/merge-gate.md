@@ -21,7 +21,7 @@ Integrated tests
   - target(s) run: <which, e.g. on-prem / cloud / both>  → <pass | handed to you>
   - <anything skipped and why>
 
-Self-review (review skill)
+Self-review (code-review skill)
   - <comment> → <fixed | rejected: reason | n/a>
   ...
 
