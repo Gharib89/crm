@@ -10,10 +10,12 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 | `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
 | `wontfix`                  | `wontfix`            | Will not be actioned                     |
 | _(local — no role)_        | `agent-working`      | Claimed by `/ship` — in progress, or PR open awaiting human merge |
+| _(local — no role)_        | `gate-passed`        | PR label — `/merge-gate` verified it merge-confident (see `docs/agents/pr-merge-gate.md`) |
+| _(local — no role)_        | `gate-failed`        | PR label — `/merge-gate` escalated it for a maintainer decision |
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
-`agent-working` is not a triage role — it is a runtime claim state that `/ship` sets while it works an issue (see `CLAUDE.md` → "Triage labels"). It is listed here only so the label is recognized, not stripped.
+`agent-working` is not a triage role — it is a runtime claim state that `/ship` sets while it works an issue (see `CLAUDE.md` → "Triage labels"). It is listed here only so the label is recognized, not stripped. `gate-passed` / `gate-failed` are likewise not triage roles: they live on **PRs**, set only by the `merge-gate` skill after `/ship`'s pipeline ends.
 
 Edit the right-hand column to match whatever vocabulary you actually use.
 

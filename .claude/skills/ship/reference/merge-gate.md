@@ -17,6 +17,9 @@ Implementation
   - <what was built, 1–3 lines>
   - tests added/updated: <files / count>
 
+Deviations from plan
+  - <departure: what + why, conservative option taken>   (or: None — plan held)
+
 Integrated tests
   - target(s) run: <which, e.g. on-prem / cloud / both>  → <pass | handed to you>
   - <anything skipped and why>
