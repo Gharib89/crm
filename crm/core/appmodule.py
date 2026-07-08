@@ -16,7 +16,6 @@ Shapes verified live against D365 CE on-prem 9.1 (walkthrough §11):
 from __future__ import annotations
 
 from typing import Any
-from xml.sax.saxutils import quoteattr
 
 from crm.utils.d365_backend import (
     D365Backend, D365Error, as_dict, classify_d365_error, normalize_guid,
@@ -475,6 +474,10 @@ def build_sitemapxml(
     All attribute values are quoteattr-escaped. Raises D365Error on empty input,
     duplicate Ids, or broken Area/Group references.
     """
+    # Lazy: saxutils is needed only by this sitemap-XML builder, not by the
+    # common appmodule paths — keep it off the module import cost (#702).
+    from xml.sax.saxutils import quoteattr
+
     if not areas:
         raise D365Error("a sitemap needs at least one area.")
 

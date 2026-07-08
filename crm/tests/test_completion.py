@@ -43,10 +43,12 @@ class TestGenerate:
         # A binary that exits 0 but emits nothing (not a real `crm` completion
         # invocation) must raise, so the frozen refresh never writes a blank script.
         # Stub subprocess.run so the test is portable (no reliance on a real binary).
+        # generate_via_binary imports subprocess at function scope (#702), so patch
+        # the stdlib module directly rather than a module-level attribute.
         import subprocess
 
         monkeypatch.setattr(
-            "crm.commands.completion_registry.subprocess.run",
+            subprocess, "run",
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout="  \n", stderr="boom"),
         )
         with pytest.raises(RuntimeError, match="no completion output"):

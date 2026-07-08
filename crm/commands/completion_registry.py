@@ -20,8 +20,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -154,6 +152,10 @@ def read_marker() -> dict[str, Any] | None:
 
 def write_marker(shell: str, script_path: str, installed_version: str) -> None:
     """Atomically record the installed completion script (unique temp + os.replace)."""
+    # Lazy: tempfile is only reached when a completion script is actually
+    # installed — this module is imported eagerly (crm/cli.py) on every run (#702).
+    import tempfile
+
     path = marker_path()
     payload = {"shell": shell, "script_path": script_path,
                "installed_version": installed_version}
@@ -245,6 +247,10 @@ def generate_via_binary(shell: str, binary: str) -> str:
     binary at ``binary`` is the freshly-swapped NEW build, so shelling out to it
     yields the new template. Raises ``CalledProcessError`` on a non-zero exit.
     """
+    # Lazy: subprocess is only reached on a frozen self-update refresh — this
+    # module is imported eagerly (crm/cli.py) on every run (#702).
+    import subprocess
+
     env = {**os.environ, _COMPLETE_VAR: f"{shell}_source"}
     # Bounded: rendering the script is near-instant, but a wedged binary must not
     # hang `self-update` forever. A timeout raises TimeoutExpired, which the
