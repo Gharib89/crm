@@ -195,10 +195,11 @@ def append_history(state: dict[str, Any], command: str, max_len: int = 500) -> N
 # in flight.
 _TEMP_REAP_AGE_SECONDS = 3600
 
-# Matches exactly the temp names this module creates (`.<pid>.<hex>.tmp`) so the
-# reap can never touch an unrelated dot-prefixed `.tmp` file that happens to sit
-# in the same directory.
-_TEMP_NAME_RE = re.compile(r"\.\d+\.[0-9a-f]+\.tmp")
+# Matches exactly the temp names this module creates —
+# `.{os.getpid()}.{os.urandom(6).hex()}.tmp`, i.e. digits then 12 hex chars — so
+# the reap can never touch an unrelated dot-prefixed `.tmp` file that happens to
+# sit in the same directory. Keep the 12 in lockstep with the urandom(6) above.
+_TEMP_NAME_RE = re.compile(r"\.\d+\.[0-9a-f]{12}\.tmp")
 
 
 def _reap_stale_temps(parent: Path) -> None:

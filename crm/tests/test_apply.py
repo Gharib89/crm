@@ -2106,7 +2106,9 @@ def test_apply_spec_file_unreadable_returns_envelope(monkeypatch, tmp_path):
     monkeypatch.setattr(builtins, "open", boom)
     result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec_file)])
     assert result.exit_code == 1
+    # No traceback on either stream (Click 8.2+ separates stdout/stderr).
     assert "Traceback" not in result.output
+    assert "Traceback" not in result.stderr
     payload = json.loads(result.output)
     assert payload["ok"] is False
     assert "spec file" in payload["error"].lower()

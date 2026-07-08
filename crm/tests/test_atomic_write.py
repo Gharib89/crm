@@ -94,7 +94,7 @@ def test_stale_temp_file_is_reaped_on_write(tmp_path):
     # A hard kill between os.open and os.replace orphans a unique
     # .<pid>.<hex>.tmp that nothing else reaps. The next write, holding the dir
     # lock, sweeps orphans older than the threshold (#743).
-    stale = tmp_path / ".12345.deadbeef.tmp"
+    stale = tmp_path / ".12345.deadbeefcafe.tmp"
     stale.write_text("orphan", encoding="utf-8")
     old = time.time() - session_mod._TEMP_REAP_AGE_SECONDS - 60
     os.utime(stale, (old, old))
@@ -124,7 +124,7 @@ def test_unrelated_dot_tmp_file_is_not_reaped(tmp_path):
 def test_fresh_temp_file_is_not_reaped(tmp_path):
     # A temp file with a current mtime belongs to a live writer (or a just-crashed
     # one) — it must survive the reap so an in-flight write isn't clobbered.
-    fresh = tmp_path / ".67890.cafebabe.tmp"
+    fresh = tmp_path / ".67890.cafebabe1234.tmp"
     fresh.write_text("in-flight", encoding="utf-8")
 
     target = tmp_path / "state.json"
