@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -188,6 +189,32 @@ def append_history(state: dict[str, Any], command: str, max_len: int = 500) -> N
 # ── Locked atomic write ─────────────────────────────────────────────────
 
 
+# A live writer holds its temp file for milliseconds; an hour is a wide margin
+# past that, so anything older is an orphan from a crashed write, never a temp
+# in flight.
+_TEMP_REAP_AGE_SECONDS = 3600
+
+
+def _reap_stale_temps(parent: Path) -> None:
+    """Unlink orphaned atomic-write temp files in *parent* older than the reap
+    threshold. A hard kill (SIGKILL, power loss) between ``os.open`` and
+    ``os.replace`` leaves a unique ``.<pid>.<hex>.tmp`` that nothing else reaps;
+    without this they accumulate unbounded on agent fleets. Call **only** while
+    holding the parent-directory lock so a reap can't race a live writer.
+    Best-effort — any failure is swallowed, matching the module's stance."""
+    cutoff = time.time() - _TEMP_REAP_AGE_SECONDS
+    try:
+        entries = list(parent.glob(".*.tmp"))
+    except OSError:
+        return
+    for entry in entries:
+        try:
+            if entry.stat().st_mtime < cutoff:
+                entry.unlink()
+        except OSError:
+            pass
+
+
 def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> None:
     """Write JSON atomically: write a per-process-unique temp file, then rename it
     over *path*. The whole write-and-replace is serialized by an exclusive lock on
@@ -218,6 +245,10 @@ def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> 
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
             except (OSError, AttributeError):
                 pass
+
+        # While the directory lock is held (so no reap can race a live writer),
+        # sweep temp files orphaned by crashed writes (#743).
+        _reap_stale_temps(path.parent)
 
         # Unique temp name in the target dir: two concurrent writers get distinct
         # temp files instead of clobbering one shared "<name>.tmp". The name is a

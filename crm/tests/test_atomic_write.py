@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 
 import pytest
 
@@ -87,3 +88,31 @@ def test_default_mode_matches_plain_create(tmp_path):
     target = tmp_path / "plain.json"
     session_mod._atomic_write_json(target, {"x": 1})
     assert (target.stat().st_mode & 0o777) == (ref.stat().st_mode & 0o777)
+
+
+def test_stale_temp_file_is_reaped_on_write(tmp_path):
+    # A hard kill between os.open and os.replace orphans a unique
+    # .<pid>.<hex>.tmp that nothing else reaps. The next write, holding the dir
+    # lock, sweeps orphans older than the threshold (#743).
+    stale = tmp_path / ".12345.deadbeef.tmp"
+    stale.write_text("orphan", encoding="utf-8")
+    old = time.time() - session_mod._TEMP_REAP_AGE_SECONDS - 60
+    os.utime(stale, (old, old))
+
+    target = tmp_path / "state.json"
+    session_mod._atomic_write_json(target, {"a": 1})
+
+    assert not stale.exists()
+    assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1}
+
+
+def test_fresh_temp_file_is_not_reaped(tmp_path):
+    # A temp file with a current mtime belongs to a live writer (or a just-crashed
+    # one) — it must survive the reap so an in-flight write isn't clobbered.
+    fresh = tmp_path / ".67890.cafebabe.tmp"
+    fresh.write_text("in-flight", encoding="utf-8")
+
+    target = tmp_path / "state.json"
+    session_mod._atomic_write_json(target, {"a": 1})
+
+    assert fresh.exists()
