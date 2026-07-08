@@ -987,9 +987,9 @@ class D365Backend:
 
             if resp.status_code in (429, 503) and attempt < max_attempts:
                 retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
-                delay = retry_after if retry_after is not None else _compute_delay(
-                    attempt - 1, self.profile, retry_after=None
-                )
+                # Route Retry-After through _compute_delay so a hostile header is
+                # capped at retry_max_delay, matching the single-request path (#704).
+                delay = _compute_delay(attempt - 1, self.profile, retry_after=retry_after)
                 _log_retry("POST", url, attempt - 1, delay,
                            effective_max=self._effective_retry_max, reason=f"HTTP {resp.status_code}")
                 resp.close()

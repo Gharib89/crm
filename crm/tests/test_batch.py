@@ -556,6 +556,40 @@ class TestBatchMethod:
         assert m.call_count == 2
         assert results[0]["status"] == 200
 
+    def test_batch_caps_hostile_retry_after(self, backend, profile, fixed_boundaries, monkeypatch):
+        """A huge server `Retry-After` on a batch 429 is capped at the profile's
+        retry_max_delay — the same cap the single-request path applies via
+        _compute_delay — so a hostile header can't stall a run indefinitely (#704)."""
+        import time
+
+        sleeps: list[float] = []
+        monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+        resp_body = (
+            "--batchresp\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            "\r\n"
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"value": []}\r\n'
+            "--batchresp--\r\n"
+        )
+        huge = str(int(profile.retry_max_delay) + 100_000)
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                [
+                    {"status_code": 429, "headers": {"Retry-After": huge}, "text": ""},
+                    {"status_code": 200,
+                     "headers": {"Content-Type": "multipart/mixed; boundary=batchresp"},
+                     "content": resp_body.encode("utf-8")},
+                ],
+            )
+            backend.batch([{"method": "GET", "url": "accounts"}])
+        # Capped, not the raw hostile value.
+        assert sleeps == [profile.retry_max_delay]
+
     @pytest.mark.parametrize("method,url", [("POST", "accounts"), ("PATCH", "accounts(x)")])
     def test_batch_rejects_missing_body(self, backend, method, url):
         with pytest.raises(D365Error, match="body required"):

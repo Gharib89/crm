@@ -53,6 +53,19 @@ class TestUpdateWorkflow:
         assert out["updated"] == {"name": "New name"}
         assert out["resolved_from_activation_id"] is None
 
+    def test_definition_update_reads_row_once(self, backend):
+        """A type=1 definition update reads the row a single time: the parent
+        resolution and the existence/state check are served by one GET (#704).
+        Only a type=2 activation row needs a second GET (of the parent)."""
+        from crm.core import workflow
+        url = backend.url_for(f"workflows({_WF_ID})")
+        with requests_mock.Mocker() as m:
+            m.get(url, json={"name": "Old", "statecode": 0})
+            m.patch(url, status_code=204)
+            workflow.update_workflow(backend, _WF_ID, name="New name")
+        gets = [r for r in m.request_history if r.method == "GET"]
+        assert len(gets) == 1, [r.url for r in gets]
+
     @pytest.mark.parametrize("kwarg,field,value", [
         ("name", "name", "Renamed"),
         ("scope", "scope", 4),
