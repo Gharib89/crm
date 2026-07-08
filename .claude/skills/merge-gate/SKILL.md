@@ -42,8 +42,8 @@ Every comment posted to the PR starts with:
 
 ### 2 · Checkout
 
-Fetch the PR branch and check it out in a **fresh worktree** (`git fetch origin
-<branch>` + `git worktree add`); never in the shared checkout. All gate fixes are
+Fetch the PR branch and check it out in a **fresh worktree**
+(`git fetch origin <branch>` + `git worktree add`); never in the shared checkout. All gate fixes are
 commits on the PR's own branch. Diff base for every check below:
 `git diff origin/<default-branch>...HEAD`.
 

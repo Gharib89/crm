@@ -18,7 +18,7 @@ Implementation
   - tests added/updated: <files / count>
 
 Deviations from plan
-  - <departure: what + why, conservative option taken>   (or: none — plan held)
+  - <departure: what + why, conservative option taken>   (or: None — plan held)
 
 Integrated tests
   - target(s) run: <which, e.g. on-prem / cloud / both>  → <pass | handed to you>
