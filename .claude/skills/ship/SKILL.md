@@ -145,7 +145,12 @@ test-first per class —
 [reference/implement.md](reference/implement.md).** **Stay surgical** — implement
 only what the issue asks; every changed line should trace to it. An adjacent bug or
 cleanup you spot is **out of scope**: file a `needs-triage` issue for it and move
-on, don't fix it inline. If the core work itself balloons mid-flight — the diff
+on, don't fix it inline. **Keep a deviations log** from the first edit: whenever
+the territory forces a departure from the issue/brief/plan — an edge case the
+spec missed, a wrong assumption, a **known unknown** the brief flagged — resolve
+it by the conservative option, log what + why, and keep going; the log lands
+verbatim in the PR body's **Deviations from plan** section (phase 6) and the
+merge summary. If the core work itself balloons mid-flight — the diff
 outgrows what one PR can carry, or the fix demands a redesign the issue never
 scoped — **stop and report** with a split proposal instead of pushing through (the
 ambiguity rail applies mid-run too).
@@ -193,7 +198,9 @@ project's automated review. Title it as a Conventional-Commit subject derived fr
 the issue (release tooling reads this on squash-merge). **If the repo has a PR
 template (`.github/PULL_REQUEST_TEMPLATE.md` / `docs/pull_request_template.md`),
 fill it in** — write the summary and tick / strike-through each checklist item
-honestly against the work you did, keeping the `Closes #<issue>` keyword. Don't
+honestly against the work you did, keeping the `Closes #<issue>` keyword, and
+copy the phase-2 deviations log into the **Deviations from plan** section
+("None" only if the plan genuinely held). Don't
 pass a raw `--body` that bypasses the template; let it populate, then edit. (No
 template → a plain body that closes the issue.) An
 automated round-1 review may fire on PR creation — **don't re-request round 1.**

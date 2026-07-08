@@ -7,6 +7,13 @@
 <!-- What changed and why, in 1-3 lines. Link the issue so it auto-closes: -->
 Closes #
 
+## Deviations from plan
+
+<!-- Where the work departed from the issue/brief/plan — an edge case the spec
+     missed, a wrong assumption, a conservative fallback chosen. One line each:
+     what + why. Write "None" only if the plan genuinely held. -->
+- None
+
 ## Type
 
 - [ ] `feat` — new command / query mode / materially new capability (minor bump)

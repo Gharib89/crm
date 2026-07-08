@@ -88,6 +88,10 @@ echo '{"reviewers":["copilot-pull-request-reviewer[bot]"]}' | \
 
 Then verify `requested_reviewers` actually populated — a bare HTTP 201 can silently no-op (passing the display name `"Copilot"` instead of the bot login is the classic trap). Review effort is **Medium** (the only model lever); house rules + a known-non-issues list live in `.github/copilot-instructions.md` (only its first 4000 chars are read).
 
+### PR merge gate
+
+Inbound agent-shipped PRs (cloud-ship routine, codex, teammates' agents) get a second, local review pass via the **`merge-gate`** skill before the maintainer merges: drift checklist + targeted live e2e + scoped fix-in-place + Copilot re-request, ending in a `gate-passed`/`gate-failed` label. Gate rounds carry their own 3-round budget, exempt from the shipping run's ceiling above. See `docs/agents/pr-merge-gate.md`.
+
 ### Domain docs
 
 Single-context — `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
