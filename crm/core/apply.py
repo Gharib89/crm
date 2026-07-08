@@ -19,6 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar, cast
 
+from crm.core.batch import run_batched
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
 from crm.core.metadata_attrs import ATTRIBUTE_KINDS
@@ -32,6 +33,7 @@ from crm.core import solution as sol_mod
 from crm.core import views as views_mod
 from crm.core import webresource as wr_mod
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_types import BatchOperation
 
 Entry = dict[str, Any]
 
@@ -1687,16 +1689,40 @@ def _prune_candidates(
         "plugin-step": {s["name"].lower() for p in _as_list(spec.get("plugins"))
                         for s in _as_list(p.get("steps"))},
     }
+    # Resolve every in-solution objectid's name in one $batch instead of one GET
+    # per candidate (issue #703). `top_specs` keeps (kind, name_col, oid) in the
+    # deterministic order the reads are issued so each result maps back to its
+    # candidate. Under --dry-run $batch is short-circuited, so the reads run
+    # directly (prune planning is read-only and must preview real names).
+    top_specs: list[tuple[str, str, str, str]] = []  # (kind, name_col, oid, url)
     for ct, (path_tmpl, name_col, kind) in _PRUNE_TOPLEVEL.items():
         for oid in sorted(by_type.get(ct, set())):
-            row = as_dict(backend.get(path_tmpl.format(id=oid),
-                                      params={"$select": name_col}))
-            name = row.get(name_col)
-            if isinstance(name, str) and name and name.lower() not in declared_top[kind]:
-                # The id-keyed deleters (role/webresource/step) take the objectid;
-                # delete_entity takes the logical name, which IS this name.
-                ref = name if kind == "entity" else oid
-                out.append({"kind": kind, "name": name, "ref": ref, "entity": None})
+            top_specs.append(
+                (kind, name_col, oid, f"{path_tmpl.format(id=oid)}?$select={name_col}"))
+
+    top_rows: list[dict[str, Any]] = []
+    if backend.dry_run:
+        top_rows = [as_dict(backend.get(url)) for _, _, _, url in top_specs]
+    else:
+        ops: list[BatchOperation] = [
+            {"method": "GET", "url": url} for _, _, _, url in top_specs
+        ]
+        for res in run_batched(backend, ops):
+            err = res.get("error")
+            if err:
+                # A failing name-resolution read aborts planning, exactly as the
+                # per-request `backend.get` did (fail-fast, not partial prune).
+                raise D365Error(str(err), status=res.get("status"))
+            body = res.get("body")
+            top_rows.append(body if isinstance(body, dict) else {})
+
+    for (kind, name_col, oid, _url), row in zip(top_specs, top_rows):
+        name = row.get(name_col)
+        if isinstance(name, str) and name and name.lower() not in declared_top[kind]:
+            # The id-keyed deleters (role/webresource/step) take the objectid;
+            # delete_entity takes the logical name, which IS this name.
+            ref = name if kind == "entity" else oid
+            out.append({"kind": kind, "name": name, "ref": ref, "entity": None})
 
     # Entity-scoped kinds: only entities the spec declares, and only collections
     # it declares (presence of the key = the spec is authoritative over it, so an

@@ -43,6 +43,30 @@ def _opt(value: int, lbl: str) -> dict:
     return {"Value": value, "Label": {"UserLocalizedLabel": {"Label": lbl}}}
 
 
+_BATCH_HDR = {"Content-Type": "multipart/mixed; boundary=batchresp"}
+
+
+def _mock_set_name_batch(m, backend, bodies):
+    """Mock the single `$batch` that resolves lookup targets' EntitySetName.
+
+    `bodies` is one JSON body per distinct target, first-seen order (issue #703
+    batches the per-target set-name GETs).
+    """
+    parts = [
+        "Content-Type: application/http\r\n"
+        "Content-Transfer-Encoding: binary\r\n"
+        "\r\n"
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n"
+        + json.dumps(b)
+        for b in bodies
+    ]
+    text = "--batchresp\r\n" + "\r\n--batchresp\r\n".join(parts) + "\r\n--batchresp--\r\n"
+    return m.post(backend.url_for("$batch"), content=text.encode("utf-8"),
+                  headers=_BATCH_HDR, status_code=200)
+
+
 _ENTITY = {
     "LogicalName": "new_project",
     "EntitySetName": "new_projects",
@@ -111,11 +135,8 @@ class TestLookupBindEnrichment:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_m2o_url(backend), json=m2o)
-            # Per-referenced-entity set-name resolution.
-            m.get(
-                backend.url_for("EntityDefinitions(LogicalName='account')"),
-                json={"EntitySetName": "accounts"},
-            )
+            # Per-referenced-entity set-name resolution, now via one $batch.
+            _mock_set_name_batch(m, backend, [{"EntitySetName": "accounts"}])
             brief = meta.describe_entity(backend, "new_project")
 
         by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
@@ -129,6 +150,43 @@ class TestLookupBindEnrichment:
         # A non-lookup attribute carries neither enrichment key.
         assert "bind_key" not in by_name["new_name"]
         assert "targets" not in by_name["new_name"]
+
+    def test_multiple_lookup_targets_resolved_in_one_batch(self, backend):
+        # issue #703: N distinct lookup targets → one $batch of set-name GETs,
+        # not one GET per target, and no per-target sequential reads.
+        from crm.core import metadata as meta
+        attrs = {"value": [
+            _attr("new_accountid", "Lookup"),
+            _attr("new_contactid", "Lookup"),
+        ]}
+        m2o = {"value": [
+            {"ReferencingAttribute": "new_accountid", "ReferencedEntity": "account",
+             "ReferencingEntityNavigationPropertyName": "new_AccountId",
+             "ReferencedEntityNavigationPropertyName": "new_project_AccountId"},
+            {"ReferencingAttribute": "new_contactid", "ReferencedEntity": "contact",
+             "ReferencingEntityNavigationPropertyName": "new_ContactId",
+             "ReferencedEntityNavigationPropertyName": "new_project_ContactId"},
+        ]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_m2o_url(backend), json=m2o)
+            _mock_set_name_batch(m, backend,
+                                 [{"EntitySetName": "accounts"},
+                                  {"EntitySetName": "contacts"}])
+            brief = meta.describe_entity(backend, "new_project")
+            batch_posts = [r for r in m.request_history
+                           if r.method == "POST" and r.url.endswith("$batch")]
+            target_gets = [r for r in m.request_history if r.method == "GET"
+                           and ("LogicalName='account'" in r.url
+                                or "LogicalName='contact'" in r.url)]
+        assert len(batch_posts) == 1        # one $batch, not one GET per target
+        assert target_gets == []            # no per-target sequential reads
+        by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
+        assert by_name["new_accountid"]["targets"] == [
+            {"logical": "account", "set_name": "accounts"}]
+        assert by_name["new_contactid"]["targets"] == [
+            {"logical": "contact", "set_name": "contacts"}]
 
     def test_describe_bind_key_round_trips_through_entity_validate(self, backend):
         """describe's `bind_key` must be accepted by `entity create --validate`.
@@ -157,10 +215,7 @@ class TestLookupBindEnrichment:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_m2o_url(backend), json=m2o)
-            m.get(
-                backend.url_for("EntityDefinitions(LogicalName='account')"),
-                json={"EntitySetName": "accounts"},
-            )
+            _mock_set_name_batch(m, backend, [{"EntitySetName": "accounts"}])
             brief = meta.describe_entity(backend, "new_project")
             lookup = next(
                 a for a in brief["writable_attributes"]

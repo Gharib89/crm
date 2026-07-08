@@ -1,14 +1,55 @@
-"""$batch JSON-file loader + result rendering."""
+"""$batch JSON-file loader + result rendering + chunked-execution helper."""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_types import BatchOperation, BatchResult
 
 _VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
+
+# Ops per $batch POST. Matches the batch-size limit the other batched hot paths
+# use (entity children counts, data import) — the platform caps a $batch at ~1000
+# subrequests, so 100 keeps each request comfortably within it (issue #703).
+BATCH_CHUNK_SIZE = 100
+
+
+def run_batched(
+    backend: D365Backend,
+    ops: Sequence[BatchOperation],
+    *,
+    transactional: bool = False,
+    continue_on_error: bool = True,
+    chunk_size: int = BATCH_CHUNK_SIZE,
+) -> list[BatchResult]:
+    """Execute ``ops`` via ``$batch`` in chunks, one HTTP round trip per chunk.
+
+    Collapses an N+1 request loop into ``ceil(N / chunk_size)`` ``$batch`` POSTs,
+    returning one :class:`BatchResult` per op in input order (chunks
+    concatenated). An empty ``ops`` issues no request — a zero-op ``$batch`` is
+    a server error, never sent.
+
+    Defaults suit independent read/delete fan-out: ``transactional=False`` (each
+    subrequest stands alone; GETs cannot ride a changeset) and
+    ``continue_on_error=True`` (one failing subrequest surfaces as that result's
+    ``error`` instead of aborting the batch). The caller maps each result back to
+    its originating item. ``$batch`` is short-circuited under ``--dry-run``, so a
+    caller that must still issue real reads there branches on ``backend.dry_run``
+    before calling this.
+    """
+    ops_list = list(ops)
+    results: list[BatchResult] = []
+    for start in range(0, len(ops_list), chunk_size):
+        results.extend(backend.batch(
+            ops_list[start:start + chunk_size],
+            transactional=transactional,
+            continue_on_error=continue_on_error,
+        ))
+    return results
 
 
 def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:

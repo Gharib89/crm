@@ -456,6 +456,48 @@ def _entity_priv(name, pid, *, basic=True, local=True, deep=True, glob=True):
     }
 
 
+_BATCH_HDR = {"Content-Type": "multipart/mixed; boundary=batchresp"}
+
+
+def _batch_priv_response(entities, boundary: str = "batchresp") -> bytes:
+    """Build a multipart `$batch` response, one part per entity (issue #703).
+
+    Each item is either a list of `Privileges` metadata rows (→ 200 with a
+    `{"Privileges": [...]}` body) or a `(status, message)` tuple (→ that HTTP
+    status carrying an OData error), mirroring the per-entity privilege reads
+    `resolve_role_privileges` now batches.
+    """
+    parts = []
+    for it in entities:
+        if isinstance(it, tuple):
+            status, msg = it
+            parts.append(
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                f"HTTP/1.1 {status} Error\r\n"
+                "Content-Type: application/json\r\n"
+                "\r\n"
+                + json.dumps({"error": {"message": msg}})
+            )
+        else:
+            parts.append(
+                "Content-Type: application/http\r\n"
+                "Content-Transfer-Encoding: binary\r\n"
+                "\r\n"
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: application/json\r\n"
+                "\r\n"
+                + json.dumps({"Privileges": it})
+            )
+    text = (
+        f"--{boundary}\r\n"
+        + f"\r\n--{boundary}\r\n".join(parts)
+        + f"\r\n--{boundary}--\r\n"
+    )
+    return text.encode("utf-8")
+
+
 class TestCreateRole:
     def test_defaults_business_unit_to_caller(self, backend):
         with requests_mock.Mocker() as m:
@@ -550,14 +592,15 @@ def _action_url(backend, action):
 
 
 class TestSetRolePrivileges:
-    def test_access_entities_builds_clamped_body(self, backend):
+    def test_access_entities_builds_clamped_body(self, backend, profile):
         privs = [
             _meta_priv("prvReadAccount", "Read", pid=_PRV_READ),
             _meta_priv("prvWriteAccount", "Write", pid=_PRV_WRITE),
         ]
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
-                  json={"Privileges": privs})
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response([privs]),
+                   headers=_BATCH_HDR, status_code=200)
             m.post(_action_url(backend, _ADD_ACTION), status_code=204)
             result = sec.set_role_privileges(
                 backend, _ROLE_ID, access=["read", "write"], entities=["account"],
@@ -569,10 +612,34 @@ class TestSetRolePrivileges:
         sent = {p["PrivilegeId"]: p["Depth"] for p in body["Privileges"]}
         assert sent == {_PRV_READ: "Global", _PRV_WRITE: "Global"}
 
-    def test_replace_uses_replace_action(self, backend):
+    def test_multi_entity_privileges_read_in_one_batch(self, backend, profile):
+        # issue #703: N entities → one $batch of Privileges GETs, not N GETs.
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
-                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response([
+                       [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)],
+                       [_meta_priv("prvReadContact", "Read", pid=_PRV_WRITE)],
+                   ]),
+                   headers=_BATCH_HDR, status_code=200)
+            m.post(_action_url(backend, _ADD_ACTION), status_code=204)
+            result = sec.set_role_privileges(
+                backend, _ROLE_ID, access=["read"], entities=["account", "contact"],
+                depth="global",
+            )
+            batch_posts = [r for r in m.request_history
+                           if r.method == "POST" and r.url.endswith("$batch")]
+            meta_gets = [r for r in m.request_history
+                         if r.method == "GET" and "EntityDefinitions" in r.url]
+        assert len(batch_posts) == 1          # one $batch, not one GET per entity
+        assert meta_gets == []                # no per-entity sequential reads
+        assert result["count"] == 2
+
+    def test_replace_uses_replace_action(self, backend, profile):
+        with requests_mock.Mocker() as m:
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response(
+                       [[_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]]),
+                   headers=_BATCH_HDR, status_code=200)
             m.post(_action_url(backend, _REPLACE_ACTION), status_code=204)
             result = sec.set_role_privileges(
                 backend, _ROLE_ID, access=["read"], entities=["account"],
@@ -608,11 +675,13 @@ class TestSetRolePrivileges:
         qs = m.request_history[0].qs
         assert qs["$filter"][0] == "accessright eq 1"
 
-    def test_missing_access_for_entity_is_skipped_with_warning(self, backend):
+    def test_missing_access_for_entity_is_skipped_with_warning(self, backend, profile):
         # account metadata exposes only Read here — requesting assign skips + warns.
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
-                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response(
+                       [[_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]]),
+                   headers=_BATCH_HDR, status_code=200)
             m.post(_action_url(backend, _ADD_ACTION), status_code=204)
             result = sec.set_role_privileges(
                 backend, _ROLE_ID, access=["read", "assign"], entities=["account"],
@@ -621,10 +690,12 @@ class TestSetRolePrivileges:
         assert result["count"] == 1
         assert any("no assign privilege" in w for w in result["warnings"])
 
-    def test_all_skipped_raises_empty(self, backend):
+    def test_all_skipped_raises_empty(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
-                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response(
+                       [[_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]]),
+                   headers=_BATCH_HDR, status_code=200)
             with pytest.raises(D365Error, match="no privileges resolved"):
                 sec.set_role_privileges(
                     backend, _ROLE_ID, access=["assign"], entities=["account"],
@@ -639,10 +710,11 @@ class TestSetRolePrivileges:
                     backend, _ROLE_ID, privilege_names=["prvNope"], depth="global",
                 )
 
-    def test_unknown_entity_raises(self, backend):
+    def test_unknown_entity_raises(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("EntityDefinitions(LogicalName='nope')"),
-                  status_code=404, json={"error": {"message": "Not found"}})
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response([(404, "Not found")]),
+                   headers=_BATCH_HDR, status_code=200)
             with pytest.raises(D365Error, match="unknown entity"):
                 sec.set_role_privileges(
                     backend, _ROLE_ID, access=["read"], entities=["nope"], depth="global",
@@ -675,11 +747,13 @@ class TestSetRolePrivileges:
                 backend, _ROLE_ID, access=["read"], entities=["account"], depth="cosmic",
             )
 
-    def test_role_name_resolved_to_id(self, backend):
+    def test_role_name_resolved_to_id(self, backend, profile):
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("roles"), json={"value": [{"roleid": _ROLE_ID}]})
-            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
-                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response(
+                       [[_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]]),
+                   headers=_BATCH_HDR, status_code=200)
             m.post(_action_url(backend, _ADD_ACTION), status_code=204)
             result = sec.set_role_privileges(
                 backend, "Agent Read-Only", access=["read"], entities=["account"],
@@ -711,10 +785,12 @@ class TestSetRolePrivileges:
         assert "applied" not in result
         assert all(h.method != "POST" for h in m.request_history)
 
-    def test_depth_alias_organization_maps_to_global(self, backend):
+    def test_depth_alias_organization_maps_to_global(self, backend, profile):
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("EntityDefinitions(LogicalName='account')"),
-                  json={"Privileges": [_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]})
+            m.post(profile.api_base + "$batch",
+                   content=_batch_priv_response(
+                       [[_meta_priv("prvReadAccount", "Read", pid=_PRV_READ)]]),
+                   headers=_BATCH_HDR, status_code=200)
             m.post(_action_url(backend, _ADD_ACTION), status_code=204)
             result = sec.set_role_privileges(
                 backend, _ROLE_ID, access=["read"], entities=["account"],

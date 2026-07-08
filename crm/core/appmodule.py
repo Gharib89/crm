@@ -20,9 +20,11 @@ from typing import Any
 from crm.utils.d365_backend import (
     D365Backend, D365Error, as_dict, classify_d365_error, normalize_guid,
     odata_literal)
+from crm.core.batch import run_batched
 from crm.core.entity_names import load_name_map
 from crm.core.metadata import maybe_publish
 from crm.core import metadata_constraints as mc
+from crm.utils.d365_types import BatchOperation
 
 # Default app-icon web resource the platform ships (MS Learn, op-9-1).
 DEFAULT_APP_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
@@ -330,15 +332,17 @@ def delete_app(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
 
     deleted: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
-    for dep in dependents:
-        try:
-            backend.delete(f"{dep['set']}({dep['id']})")
-            deleted.append(dep)
-        except D365Error:
-            # Won't delete (e.g. a Cascade child the platform manages) — record it
-            # and let the parent DELETE cascade it, or surface it as the blocker
-            # below; never abort the sweep or drop it silently (ADR 0007).
-            skipped.append(dep)
+    # One $batch of DELETEs in place of one round trip per dependent (issue #703).
+    # Non-transactional + continue-on-error keeps each delete independent: a
+    # dependent that won't delete (e.g. a Cascade child the platform manages) is
+    # recorded and left for the parent DELETE to cascade, or surfaced as the
+    # blocker below — never aborting the sweep or dropping it silently (ADR 0007).
+    ops: list[BatchOperation] = [
+        {"method": "DELETE", "url": f"{dep['set']}({dep['id']})"}
+        for dep in dependents
+    ]
+    for dep, res in zip(dependents, run_batched(backend, ops)):
+        (skipped if res.get("error") else deleted).append(dep)
     try:
         backend.delete(f"appmodules({app_id})")
     except D365Error as exc:

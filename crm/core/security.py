@@ -11,7 +11,9 @@ from typing import Any, cast
 
 from crm.core import entity as entity_mod
 from crm.core import entity_names
+from crm.core.batch import run_batched
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
+from crm.utils.d365_types import BatchOperation
 
 # ── Constants ────────────────────────────────────────────────────────────
 
@@ -631,6 +633,44 @@ def _entity_privileges(backend: D365Backend, logical: str) -> list[dict[str, Any
     return []
 
 
+def _entity_privileges_bulk(
+    backend: D365Backend, logicals: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """Fetch the Privileges complex property for many entities in one ``$batch``.
+
+    One round trip in place of one GET per entity (issue #703). Preserves the
+    single-entity failure mapping: a 404 subrequest becomes the same
+    ``unknown entity`` :class:`D365Error`, raised for the first failing entity in
+    input order. Under ``--dry-run`` ``$batch`` is short-circuited, so the reads
+    are issued directly (read paths still execute under dry-run).
+    """
+    if not logicals:
+        return {}
+    if backend.dry_run:
+        return {lg: _entity_privileges(backend, lg) for lg in logicals}
+    ops: list[BatchOperation] = [
+        {"method": "GET",
+         "url": f"EntityDefinitions(LogicalName='{lg.replace(chr(39), chr(39) * 2)}')"
+                "?$select=Privileges"}
+        for lg in logicals
+    ]
+    results = run_batched(backend, ops)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for lg, res in zip(logicals, results):
+        err = res.get("error")
+        if err:
+            if res.get("status") == 404:
+                raise D365Error(f"unknown entity {lg!r}")
+            raise D365Error(str(err), status=res.get("status"))
+        body = res.get("body")
+        privileges = body.get("Privileges") if isinstance(body, dict) else None
+        out[lg] = (
+            cast("list[dict[str, Any]]", privileges)
+            if isinstance(privileges, list) else []
+        )
+    return out
+
+
 def _all_entity_privileges(backend: D365Backend, access: list[str]) -> list[dict[str, Any]]:
     """Fetch every privilege matching the requested access types, org-wide."""
     clauses = " or ".join(f"accessright eq {_ACCESS_BITMASK[a]}" for a in access)
@@ -709,10 +749,11 @@ def resolve_role_privileges(
             resolved[pid] = {"name": norm["name"], "privilegeid": pid, "depth": chosen}
 
     if access and entities:
-        for ent in entities:
-            logical = ent.strip().lower()
+        logicals = [ent.strip().lower() for ent in entities]
+        privs_by_logical = _entity_privileges_bulk(backend, logicals)
+        for logical in logicals:
             by_type: dict[str, dict[str, Any]] = {}
-            for raw in _entity_privileges(backend, logical):
+            for raw in privs_by_logical[logical]:
                 ptype = raw.get("PrivilegeType")
                 if isinstance(ptype, str):
                     by_type[ptype] = raw
