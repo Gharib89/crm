@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.15 (2026-07-08)
+
+### Bug Fixes
+
+- Export Customer columns as the customer kind ([#742](https://github.com/Gharib89/crm/pull/742),
+  [`5a7fa62`](https://github.com/Gharib89/crm/commit/5a7fa620d0141810d5bb74721eb9025271415835))
+
+- Truth-pass discoverability surfaces (catalogue, error text, docstring, skill)
+  ([#738](https://github.com/Gharib89/crm/pull/738),
+  [`b6bd23a`](https://github.com/Gharib89/crm/commit/b6bd23a1c31b9912cc0a8c57ffa1ab899b6e1499))
+
+### Documentation
+
+- Note workflow-run + >5000-row seeds and the count-cache caveat
+  ([`8ec3754`](https://github.com/Gharib89/crm/commit/8ec3754fb18634f195bc2728d2fcb465ab7e08e6))
+
+
 ## v1.51.14 (2026-07-08)
 
 ### Bug Fixes
