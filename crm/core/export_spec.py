@@ -33,11 +33,21 @@ Wider apply-surface emit (#597): each kind's projected dict mirrors the fields i
 does not bloat with defaults). Covered now:
 - relationship — flat `cascade_*` (six dimensions), `menu_behavior`/`menu_label`/
   `menu_order`, `is_hierarchical`, and the lookup column's `lookup_description`
-  (see `relationships.read_entity_relationships`);
-- view — `filter_active`, `order_desc` (see `views.read_entity_views`);
+  (see `relationships.read_entity_relationships`). The lookup column's
+  `lookup_schema` carries the referencing attribute's SchemaName casing (read from
+  the attribute metadata, not the relationship's lowercase ReferencingAttribute),
+  so a round-tripped org re-creates the column with matching casing (#701);
+- view — `filter_active`, `order_desc`, `description` (see `views.read_entity_views`);
 - attribute — `auto_number_format` (string), `min_value`/`max_value` (integer/bigint),
   `behavior_name` (datetime), `max_size_kb` (file);
-- entity — `has_notes`, `has_activities`, `primary_attr_max_length`.
+- entity — `has_notes`, `has_activities`, `primary_attr_max_length`, `description`;
+- optionset (global) — `description` (#701).
+
+Descriptions (entity / optionset / view) are emitted only when non-empty and wherever
+the corresponding `apply` adapter already consumes them: entity and view descriptions
+are reconciled on update, while the global option set description is applied on create
+(the optionset reconcile inserts only missing options, so a drifted description is not
+updated on re-apply). Attribute and lookup-column descriptions were already emitted.
 
 Adapter fields intentionally NOT emitted (documented gaps, not oversights):
 - attribute `default_value` and boolean `true_label`/`false_label` live under the
@@ -147,11 +157,18 @@ def _add_global_optionset(
         return
     raw = optionsets.get_optionset(backend, name)
     display = metadata.label_text(_as_dict(raw.get("DisplayName")))
-    accumulator[name] = {
+    entry: dict[str, Any] = {
         "name": name,
         "display_name": display or name,
         "options": metadata.flatten_options(raw),
     }
+    # apply applies the option set description on create (create_optionset); the
+    # reconcile path updates only options, so emit it (when non-empty) so the
+    # description round-trips into a freshly seeded org (#701).
+    description = metadata.label_text(_as_dict(raw.get("Description")))
+    if description:
+        entry["description"] = description
+    accumulator[name] = entry
 
 
 def _project_options(
@@ -393,6 +410,11 @@ def build_entity_spec(
     collection = metadata.label_text(_as_dict(ent.get("DisplayCollectionName")))
     if collection:
         entity["display_collection_name"] = collection
+    # apply reconciles the entity description; emit it (when non-empty) so
+    # documentation metadata round-trips (#701).
+    description = metadata.label_text(_as_dict(ent.get("Description")))
+    if description:
+        entity["description"] = description
     ownership = ent.get("OwnershipType")
     if isinstance(ownership, str) and ownership:
         entity["ownership"] = ownership

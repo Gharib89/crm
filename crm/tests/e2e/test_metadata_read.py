@@ -222,6 +222,131 @@ def test_export_spec_emits_customer_column(cli, backend, ephemeral_entity):
     ), f"…idtype companion leaked into export: {attrs}"
 
 
+@covers("metadata export-spec")
+def test_export_spec_roundtrips_lookup_casing_and_descriptions(
+    cli, backend, ephemeral_solution, unique, tmp_path
+):
+    """#701: exported lookups must carry the referencing attribute's SchemaName
+    casing (not the lowercase logical name), and entity / optionset / view
+    descriptions must round-trip. Build a scratch entity carrying all four, export
+    it, assert the casing + descriptions, then re-apply (dry-run) and assert zero
+    description drift and that the lookup is NOT re-planned (a casing mismatch on
+    re-apply would create a divergent column)."""
+    import yaml
+
+    from crm.core import apply as apply_mod
+    from crm.core import metadata as meta_mod
+    from crm.core import metadata_attrs as ma
+    from crm.core import optionsets as os_mod
+    from crm.core import relationships as rel_mod
+    from crm.core import views as view_mod
+
+    ent_schema = f"new_E2eRt{unique}"
+    lookup_schema = f"new_E2eRt{unique}Acct"   # PascalCase → the casing under test
+    rel_schema = f"new_e2ert{unique}_account"
+    os_name = f"new_e2ert{unique}os"
+    pick_schema = f"new_E2eRt{unique}Pick"
+    ent_desc = "E2E round-trip entity description"
+    os_desc = "E2E round-trip optionset description"
+    view_desc = "E2E round-trip view description"
+
+    created = meta_mod.create_entity(
+        backend, schema_name=ent_schema, display_name=f"E2eRt {unique}",
+        description=ent_desc,
+    )
+    logical = created["logical_name"]
+    try:
+        info = meta_mod.entity_info(backend, logical)
+        otc = int(info["ObjectTypeCode"])
+        primary = info["PrimaryNameAttribute"]
+
+        # Global option set with a description + a picklist bound to it.
+        os_mod.create_optionset(
+            backend, name=os_name, display_name="E2eRt OS",
+            description=os_desc, options=[(None, "One"), (None, "Two")],
+        )
+        ma.add_attribute(
+            backend, entity=logical, kind="picklist", schema_name=pick_schema,
+            display_name="E2eRt Pick", optionset_name=os_name,
+        )
+        # Self-referential 1:N so the scratch entity is the referenced ("1") side
+        # `read_entity_relationships` enumerates; the lookup column (PascalCase
+        # schema) lands on the same entity, keeping the fixture self-contained.
+        rel_mod.create_one_to_many(
+            backend, schema_name=rel_schema, referenced_entity=logical,
+            referencing_entity=logical, lookup_schema=lookup_schema,
+            lookup_display="E2eRt Parent",
+        )
+        # A view with a description.
+        view_mod.create_view(
+            backend, entity=logical, object_type_code=otc,
+            name=f"E2eRt View {unique}", columns=[(primary, 200)],
+            description=view_desc,
+        )
+
+        # Export the whole entity, baking in the solution block for re-apply.
+        out = tmp_path / "spec.yaml"
+        r = cli([
+            "--json", "metadata", "export-spec", logical,
+            "--with-relationships", "--with-views",
+            "--solution", ephemeral_solution, "-o", str(out),
+        ])
+        assert r.returncode == 0, r.stderr
+        spec = yaml.safe_load(out.read_text(encoding="utf-8"))
+        entity = spec["entities"][0]
+
+        # 1) Entity description round-trips.
+        assert entity["description"] == ent_desc
+
+        # 2) Lookup schema-name casing preserved (not the lowercase logical name).
+        rels = entity["relationships"]
+        rel = next(r for r in rels if r["schema_name"].lower() == rel_schema.lower())
+        assert rel["lookup_schema"] == lookup_schema
+
+        # 3) Global option set description round-trips.
+        os_entry = next(
+            o for o in spec["optionsets"] if o["name"].lower() == os_name.lower()
+        )
+        assert os_entry["description"] == os_desc
+
+        # 4) View description round-trips.
+        view = next(
+            v for v in entity["views"] if v["name"] == f"E2eRt View {unique}"
+        )
+        assert view["description"] == view_desc
+
+        # Round-trip: re-apply the exported spec read-only (dry-run). The lookup
+        # already exists with matching casing, so it must NOT be planned for
+        # creation, and no entity description drift may be reported. dry_run is
+        # construction-only, so build a throwaway read-only backend.
+        from crm.core.connection import resolve_credentials
+        from crm.utils.d365_backend import D365Backend
+        dry = resolve_credentials("e2e")
+        dry_backend = D365Backend(dry.profile, dry.password, dry_run=True)
+        report = apply_mod.apply_spec(dry_backend, spec)
+        planned_rels = [
+            e for e in report.get("planned", [])
+            if str(e.get("name", "")).lower() == rel_schema.lower()
+        ]
+        assert not planned_rels, f"lookup re-planned (casing mismatch?): {planned_rels}"
+        # Reconcile diff shapes vary by kind ({"description": …} vs
+        # {"fields": [… "description" …]}), so scan the serialized diff.
+        desc_drift = [
+            e for e in report.get("updated", [])
+            if "description" in json.dumps(e.get("diff") or {})
+        ]
+        assert not desc_drift, f"description drift on re-apply: {desc_drift}"
+    finally:
+        try:
+            meta_mod.delete_entity(backend, logical)
+        except Exception:  # noqa: BLE001 — best-effort cleanup, never mask the test
+            pass
+        try:
+            os_mod.delete_optionset(backend, os_name)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 @covers("metadata cache-clear")
 def test_metadata_cache_clear(cli):
     r = cli(["--json", "metadata", "cache-clear"])

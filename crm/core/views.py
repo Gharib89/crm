@@ -273,6 +273,8 @@ def read_entity_views(
     - ``filter_active``: bool — omitted unless fetchxml carries the active-state
       (``statecode eq 0``) filter
     - ``is_default``: bool
+    - ``description``: str — omitted unless the saved query has a non-empty
+      description
 
     ``query_type`` is not projected: the read filters to ``querytype eq 0``
     (public views), so it is always the ``"public"`` default the apply adapter
@@ -289,7 +291,7 @@ def read_entity_views(
                 f"returnedtypecode eq {odata_literal(entity_logical_name)} "
                 "and querytype eq 0"
             ),
-            "$select": "name,savedqueryid,querytype,layoutxml,fetchxml,isdefault",
+            "$select": "name,savedqueryid,querytype,layoutxml,fetchxml,isdefault,description",
         },
     )
 
@@ -306,6 +308,11 @@ def read_entity_views(
             "columns": columns,
             "is_default": bool(row.get("isdefault", False)),
         }
+        # apply reconciles the view description; emit it (when non-empty) so
+        # documentation metadata round-trips (#701).
+        description = row.get("description")
+        if isinstance(description, str) and description:
+            view["description"] = description
         if order_by is not None:
             view["order_by"] = order_by
         if order_desc:

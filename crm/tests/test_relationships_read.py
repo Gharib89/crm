@@ -49,6 +49,7 @@ _FULL_ROW = {
 
 _ATTR_INFO = {
     "LogicalName": "new_accountid",
+    "SchemaName": "new_AccountId",
     "DisplayName": {
         "UserLocalizedLabel": {"Label": "Account", "LanguageCode": 1033},
         "LocalizedLabels": [{"Label": "Account", "LanguageCode": 1033}],
@@ -72,7 +73,9 @@ class TestReadEntityRelationshipsFull:
         assert r["schema_name"] == "new_account_new_project"
         assert r["referenced_entity"] == "account"
         assert r["referencing_entity"] == "new_project"
-        assert r["lookup_schema"] == "new_accountid"
+        # lookup_schema carries the attribute's true SchemaName casing (from the
+        # attribute read), not the relationship's lowercase ReferencingAttribute.
+        assert r["lookup_schema"] == "new_AccountId"
         assert r["lookup_display"] == "Account"
         assert r["required"] == "None"
 
@@ -232,6 +235,24 @@ class TestReadEntityRelationshipsFull:
         # Required level still captured
         assert result[0]["required"] == "Recommended"
 
+    def test_lookup_schema_uses_attribute_schema_name_casing(self, backend):
+        """The 1:N relationship row's ReferencingAttribute is the lowercase logical
+        name; the referencing attribute's SchemaName carries the original casing.
+        `lookup_schema` must be sourced from the attribute metadata so a
+        round-tripped org re-creates the lookup with matching casing (#701)."""
+        from crm.core import relationships as rel
+        attr_mixed_case = {
+            "LogicalName": "new_accountid",
+            "SchemaName": "New_AccountID",
+            "DisplayName": {"UserLocalizedLabel": {"Label": "Account", "LanguageCode": 1033}},
+            "RequiredLevel": {"Value": "None"},
+        }
+        with requests_mock.Mocker() as m:
+            m.get(_o2m_url(backend), json={"value": [_FULL_ROW]})
+            m.get(_attr_url(backend, "new_project", "new_accountid"), json=attr_mixed_case)
+            result = rel.read_entity_relationships(backend, "new_project")
+        assert result[0]["lookup_schema"] == "New_AccountID"
+
     def test_lookup_description_emitted_when_present(self, backend):
         """The lookup column's Description rides the attribute read the projection
         already makes, so it is emitted as `lookup_description` (an adapter key);
@@ -344,4 +365,7 @@ class TestReadEntityRelationshipsFull:
         assert len(result) == 1
         r = result[0]
         assert r["lookup_display"] == "new_accountid"
+        # SchemaName is unreadable (404) → lookup_schema falls back to the
+        # relationship's lowercase ReferencingAttribute.
+        assert r["lookup_schema"] == "new_accountid"
         assert "required" not in r

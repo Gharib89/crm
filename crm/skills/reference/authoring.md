@@ -74,10 +74,14 @@ attribute — `default_value`, `true_label/false_label`, `min_value/max_value`,
 
 `export-spec` emits the subset of these keys that map to live Web API fields —
 relationships emit flat `cascade_assign/delete/…`, `menu_behavior/label/order`,
-`is_hierarchical`, and `lookup_description`; attributes emit
-`auto_number_format`, `min_value`/`max_value`, `max_size_kb`, `behavior_name`;
-entity emits `has_notes`, `has_activities`, `primary_attr_max_length`; views emit
-`filter_active`, `order_desc`. Fields equal to platform defaults are omitted.
+`is_hierarchical`, and `lookup_description` (the lookup column's `lookup_schema`
+carries the referencing attribute's true schema-name casing, so the column
+round-trips with matching casing); attributes emit `auto_number_format`,
+`min_value`/`max_value`, `max_size_kb`, `behavior_name`; entity emits `has_notes`,
+`has_activities`, `primary_attr_max_length`, `description`; views emit
+`filter_active`, `order_desc`, `description`; global option sets emit
+`description`. Fields equal to platform defaults (and empty descriptions) are
+omitted.
 
 Reconciliation also runs under `--dry-run`, read-only (writes suppressed by the
 reads-execute rule), so a dry-run is a full drift report: every declared
