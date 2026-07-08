@@ -37,15 +37,21 @@ def _batch_error_code(body: "dict[str, Any] | str | None") -> str | None:
 # ── CSV value coercion ───────────────────────────────────────────────────────
 
 
-def _coerce_csv_value(raw: str | None) -> Any:
+def _coerce_csv_value(raw: str | None, *, as_string: bool = False) -> Any:
     """Coerce a raw CSV string cell to a Python value.
 
     Order: empty → None, then bool, then int, then float, else str.
     A missing cell (``None``, as ``csv.DictReader`` yields for a short row) is
-    treated as empty.
+    treated as empty. With *as_string* the (non-empty) cell keeps its verbatim
+    string identity — no bool/int/float coercion — so a numeric-looking value on
+    a string-typed alternate-key column (an account number like ``"10023"``, or a
+    leading-zero code) is not turned into a number that would build the wrong
+    key-URL form (#683).
     """
     if raw is None or raw == "":
         return None
+    if as_string:
+        return raw
     if raw.lower() == "true":
         return True
     if raw.lower() == "false":
@@ -70,7 +76,9 @@ def _coerce_csv_value(raw: str | None) -> Any:
 
 def _read_jsonl(path: Path) -> Generator[dict[str, Any], None, None]:
     """Yield one JSON object per non-blank line from a JSONL file."""
-    with path.open(encoding="utf-8") as fh:
+    # utf-8-sig tolerates a UTF-8 BOM (Excel/Windows editors add one) so it can't
+    # corrupt the first object's first key; pure UTF-8 is unaffected (#683).
+    with path.open(encoding="utf-8-sig") as fh:
         for lineno, line in enumerate(fh, 1):
             stripped = line.strip()
             if not stripped:
@@ -86,9 +94,18 @@ def _read_jsonl(path: Path) -> Generator[dict[str, Any], None, None]:
             yield obj
 
 
-def _read_csv(path: Path) -> Generator[dict[str, Any], None, None]:
-    """Yield one coerced dict per row from a CSV file."""
-    with path.open(encoding="utf-8", newline="") as fh:
+def _read_csv(
+    path: Path, string_columns: "frozenset[str]" = frozenset()
+) -> Generator[dict[str, Any], None, None]:
+    """Yield one coerced dict per row from a CSV file.
+
+    Columns named in *string_columns* keep their verbatim string value instead of
+    being coerced by shape — used for string-typed alternate-key columns so a
+    numeric-looking key builds the correct quoted key-URL form (#683).
+    """
+    # utf-8-sig strips a leading UTF-8 BOM (an Excel-saved CSV has one) that would
+    # otherwise corrupt the first column's name; pure UTF-8 is unaffected (#683).
+    with path.open(encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
             # csv.DictReader collects columns beyond the header under the None
@@ -98,7 +115,48 @@ def _read_csv(path: Path) -> Generator[dict[str, Any], None, None]:
                 raise D365Error(
                     f"CSV line {reader.line_num}: more columns than the header"
                 )
-            yield {k: _coerce_csv_value(v) for k, v in row.items()}
+            yield {
+                k: _coerce_csv_value(v, as_string=k in string_columns)
+                for k, v in row.items()
+            }
+
+
+def _string_key_columns(
+    backend: D365Backend, entity_set: str, attrs: list[str]
+) -> set[str]:
+    """Names in *attrs* whose D365 column type renders as a quoted string literal
+    in an alternate-key URL (``String`` / ``Memo``).
+
+    A numeric-looking CSV cell for such a column must keep its string identity:
+    coerced to a number it builds a bare ``key=10023`` path where Dataverse needs
+    the quoted ``key='10023'`` form, so the upsert/delete would silently miss
+    (#683). Resolves the set→logical name the same way
+    :func:`~crm.core.entity.lookup_alternate_key_schema` does, then reads the
+    attribute types; returns an empty set if the entity set is unknown so the
+    caller falls back to shape-based coercion (prior behavior).
+    """
+    from crm.core import metadata as meta_mod
+    from crm.utils.d365_backend import as_dict, odata_literal
+
+    result = as_dict(backend.get(
+        "EntityDefinitions",
+        params={
+            "$select": "LogicalName",
+            "$filter": f"EntitySetName eq {odata_literal(entity_set)}",
+        },
+    ))
+    matches: list[dict[str, Any]] = result.get("value", [])
+    if not matches:
+        return set()
+    logical = matches[0].get("LogicalName") or ""
+    if not logical:
+        return set()
+    wanted = set(attrs)
+    return {
+        a["LogicalName"]
+        for a in meta_mod.list_attributes(backend, logical)
+        if a.get("LogicalName") in wanted and a.get("AttributeType") in ("String", "Memo")
+    }
 
 
 # ── op builders ──────────────────────────────────────────────────────────────
@@ -286,7 +344,14 @@ def import_records(
     if resolved_fmt == "jsonl":
         records: list[dict[str, Any]] = list(_read_jsonl(path))
     else:
-        records = list(_read_csv(path))
+        # String-typed alternate-key columns keep their CSV text verbatim rather
+        # than being coerced by shape — a numeric-looking key needs the quoted
+        # key-URL form (#683). Consult column metadata rather than guessing.
+        string_cols: frozenset[str] = (
+            frozenset(_string_key_columns(backend, entity_set, alt_key))
+            if alt_key is not None else frozenset()
+        )
+        records = list(_read_csv(path, string_cols))
 
     # ── rebind READ-format lookups ─────────────────────────────────────────────
     # `data export` / `query odata` emit lookups as read-only `_<attr>_value`

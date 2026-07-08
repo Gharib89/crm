@@ -134,7 +134,7 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
 @click.argument("entity_set", shell_complete=_complete_entity_set_names)
 @click.option("--fetchxml", "fetch_xml", default=None,
               help="FetchXML <fetch> document selecting the records to delete.")
-@click.option("--fetchxml-file", type=click.File("r"), default=None,
+@click.option("--fetchxml-file", type=click.File("r", encoding="utf-8-sig"), default=None,
               help="Read the FetchXML from a file instead of --fetchxml.")
 @click.option("--job-name", "job_name", default=None,
               help="Name for the bulk-delete system job (default derived from the entity).")

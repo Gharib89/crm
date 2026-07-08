@@ -64,7 +64,9 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
     if allow_data_loss and not prune:
         raise click.UsageError("--allow-data-loss only applies with --prune.")
 
-    with open(spec_file, encoding="utf-8") as fh:
+    # utf-8-sig tolerates a leading UTF-8 BOM (Windows editors add one) on the
+    # spec file, matching crm's file-boundary read policy (#683).
+    with open(spec_file, encoding="utf-8-sig") as fh:
         try:
             spec = yaml.safe_load(fh)
         except yaml.YAMLError as exc:

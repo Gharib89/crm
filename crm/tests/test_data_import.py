@@ -738,3 +738,105 @@ class TestAltKeyEnrichment:
         assert "alternate_keys" not in fail
         assert fail["index"] == 1
         assert fail["status"] == 412
+
+
+# ── file-boundary encoding fidelity (#683) ─────────────────────────────────────
+
+
+def _stub_backend_with_attrs(
+    results_per_chunk: list[list[BatchResult]],
+    *,
+    attrs: list[dict[str, Any]],
+    logical: str = "account",
+) -> Any:
+    """Stub backend whose .batch() returns successive chunks and whose .get()
+    serves the EntityDefinitions (set→logical) + Attributes metadata the
+    alternate-key column-type check reads."""
+    backend = _make_stub_backend(results_per_chunk)
+
+    def _get(path: str, params: Any = None, **_kw: Any) -> dict[str, Any]:
+        if path == "EntityDefinitions":
+            return {"value": [{"LogicalName": logical}]}
+        if path == f"EntityDefinitions(LogicalName='{logical}')/Attributes":
+            return {"value": attrs}
+        raise AssertionError(f"unexpected GET {path!r}")
+
+    backend.get.side_effect = _get
+    return backend
+
+
+class TestCsvBomTolerance:
+    def test_bom_prefixed_csv_first_column_not_corrupted(self, tmp_path: Path) -> None:
+        """An Excel-saved CSV carries a UTF-8 BOM; the reader must strip it so the
+        first column name is `name`, not `﻿name`."""
+        p = tmp_path / "data.csv"
+        p.write_bytes("﻿name,age\r\nJoe,3\r\n".encode("utf-8"))
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        _import_records(backend, "accounts", p, mode="create")
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["body"] == {"name": "Joe", "age": 3}
+
+    def test_bom_prefixed_jsonl_first_key_not_corrupted(self, tmp_path: Path) -> None:
+        """The sibling JSONL reader is BOM-tolerant too — a BOM must not corrupt
+        the first key of the first object."""
+        p = tmp_path / "data.jsonl"
+        p.write_bytes(("﻿" + json.dumps({"name": "Joe"}) + "\n").encode("utf-8"))
+        backend = _make_stub_backend([_make_2xx_results(1)])
+        _import_records(backend, "accounts", p, mode="create")
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["body"] == {"name": "Joe"}
+
+
+class TestCsvStringAlternateKey:
+    def test_numeric_looking_string_key_keeps_string_identity(self, tmp_path: Path) -> None:
+        """A numeric-looking CSV alternate-key value on a String column builds the
+        quoted key URL `(accountnumber='10023')`, not a bare `=10023` (#683)."""
+        p = tmp_path / "data.csv"
+        p.write_text("accountnumber,name\r\n10023,Acme\r\n", encoding="utf-8")
+        backend = _stub_backend_with_attrs(
+            [_make_2xx_results(1)],
+            attrs=[{"LogicalName": "accountnumber", "AttributeType": "String"}],
+        )
+        _import_records(backend, "accounts", p, mode="upsert", alt_key=["accountnumber"])
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["url"] == "accounts(accountnumber='10023')"
+
+    def test_leading_zero_string_key_preserved(self, tmp_path: Path) -> None:
+        """Verbatim string identity preserves a leading zero a coerce-then-restring
+        approach would drop (`00042` must not become `42`)."""
+        p = tmp_path / "data.csv"
+        p.write_text("accountnumber,name\r\n00042,Acme\r\n", encoding="utf-8")
+        backend = _stub_backend_with_attrs(
+            [_make_2xx_results(1)],
+            attrs=[{"LogicalName": "accountnumber", "AttributeType": "String"}],
+        )
+        _import_records(backend, "accounts", p, mode="upsert", alt_key=["accountnumber"])
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["url"] == "accounts(accountnumber='00042')"
+
+    def test_integer_typed_key_stays_bare(self, tmp_path: Path) -> None:
+        """A non-string alternate-key column still coerces by shape — an integer
+        key renders bare `(code=42)`, so the fix doesn't over-quote numeric keys."""
+        p = tmp_path / "data.csv"
+        p.write_text("code,name\r\n42,Beta\r\n", encoding="utf-8")
+        backend = _stub_backend_with_attrs(
+            [_make_2xx_results(1)],
+            attrs=[{"LogicalName": "code", "AttributeType": "Integer"}],
+        )
+        _import_records(backend, "accounts", p, mode="upsert", alt_key=["code"])
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["url"] == "accounts(code=42)"
+
+    def test_string_key_body_columns_still_coerced(self, tmp_path: Path) -> None:
+        """Only the alternate-key column keeps string identity; ordinary numeric
+        body columns are still coerced to their native type."""
+        p = tmp_path / "data.csv"
+        p.write_text("accountnumber,revenue\r\n10023,500\r\n", encoding="utf-8")
+        backend = _stub_backend_with_attrs(
+            [_make_2xx_results(1)],
+            attrs=[{"LogicalName": "accountnumber", "AttributeType": "String"}],
+        )
+        _import_records(backend, "accounts", p, mode="upsert", alt_key=["accountnumber"])
+        ops = backend.batch.call_args[0][0]
+        assert ops[0]["url"] == "accounts(accountnumber='10023')"
+        assert ops[0]["body"] == {"revenue": 500}
