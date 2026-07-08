@@ -161,6 +161,9 @@ def test_ribbon_add_and_remove_button(
     request.addfinalizer(_cleanup_wr)
 
     # ── ADD-BUTTON ────────────────────────────────────────────────────────────
+    # --publish: add-button stages by default (parity with the other ribbon
+    # verbs), and `ribbon list` reads the *exported* solution, which only carries
+    # published customizations — so verify-via-list requires publishing here.
     add_result = cli([
         "--json", "ribbon", "add-button", ephemeral_entity,
         "--solution", ephemeral_solution,
@@ -169,6 +172,7 @@ def test_ribbon_add_and_remove_button(
         "--webresource", wr_name,
         "--function", js_func,
         "--param", "PrimaryControl",
+        "--publish",
     ])
     assert add_result.returncode == 0, (
         f"ribbon add-button failed:\n{add_result.stderr}\nstdout: {add_result.stdout}"
@@ -198,6 +202,7 @@ def test_ribbon_add_and_remove_button(
         "--solution", ephemeral_solution,
         "--button-id", actual_button_id,
         "--yes",
+        "--publish",  # publish so the removal is reflected in the exported list
     ])
     assert remove_result.returncode == 0, (
         f"ribbon remove failed:\n{remove_result.stderr}\nstdout: {remove_result.stdout}"

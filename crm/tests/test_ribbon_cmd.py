@@ -172,6 +172,70 @@ def test_ribbon_remove_deletes_button(monkeypatch):
     assert captured["remaining"] == 0
 
 
+def _patch_add_button_capturing(monkeypatch, captured):
+    def fake_apply(backend, *, solution, entity, mutate, publish=True, **kw):
+        captured["publish"] = publish
+        return {"status": "succeeded"}
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr(ribbon_mod, "resolve_webresource_id",
+                        lambda backend, name: "guid-1")
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+
+
+def _run_add_button(*extra):
+    return CliRunner().invoke(cli, [
+        "ribbon", "add-button", "cwx_ticket", "--solution", "MySol",
+        "--label", "Validate", "--location", "form",
+        "--webresource", "cwx_/scripts/x.js", "--function", "ns.fn",
+        "--param", "PrimaryControl", *extra])
+
+
+def test_ribbon_add_button_stages_by_default(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_add_button_capturing(monkeypatch, captured)
+    res = _run_add_button()
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is False
+
+
+def test_ribbon_add_button_publish_flag_publishes(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_add_button_capturing(monkeypatch, captured)
+    res = _run_add_button("--publish")
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is True
+
+
+def _patch_remove_capturing(monkeypatch, captured):
+    def fake_apply(backend, *, solution, entity, mutate, publish=True, **kw):
+        captured["publish"] = publish
+        return {"status": "succeeded"}
+    monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+
+
+def _run_remove(*extra):
+    return CliRunner().invoke(cli, [
+        "ribbon", "remove", "cwx_ticket", "--solution", "MySol",
+        "--button-id", "cwx_ticket.form.Validate.CustomAction", "--yes", *extra])
+
+
+def test_ribbon_remove_stages_by_default(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_remove_capturing(monkeypatch, captured)
+    res = _run_remove()
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is False
+
+
+def test_ribbon_remove_publish_flag_publishes(monkeypatch):
+    captured: dict[str, object] = {}
+    _patch_remove_capturing(monkeypatch, captured)
+    res = _run_remove("--publish")
+    assert res.exit_code == 0, res.output
+    assert captured["publish"] is True
+
+
 _COMPOSED = (
     "<RibbonDefinitions><RibbonDefinition><Tabs><Tab><Groups><Group><Controls>"
     "<Button Id='Mscrm.HomepageGrid.account.Deactivate' "

@@ -33,7 +33,7 @@ The inverse of `add-components` (RemoveAppComponents): same repeatable `kind:gui
 ```bash
 crm --json app set-sitemap "CRMWorx Sitemap" --xml-file sitemap.xml --unique-name cwx_crmworx
 ```
-Reads SiteMapXml from `--xml-file`; `--unique-name` sets `sitemapnameunique` so the sitemap auto-associates with that app.
+Reads SiteMapXml from `--xml-file`; `--unique-name` sets `sitemapnameunique` so the sitemap auto-associates with that app. Creation **stages** by default (no publish); pass `--publish` to publish it immediately, exactly as on `build-sitemap`.
 
 ## Build a sitemap from structured input
 

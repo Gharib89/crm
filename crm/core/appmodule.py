@@ -437,11 +437,13 @@ def set_sitemap(
     sitemap_xml: str,
     unique_name: str | None = None,
     solution: str | None = None,
+    publish: bool = False,
 ) -> dict[str, Any]:
     """Create a sitemaps row from raw SiteMapXml. Returns `{created, sitemapid}`.
 
     Pass `unique_name` equal to the app's uniquename to auto-associate the
-    sitemap with that app (Dataverse links them by sitemapnameunique).
+    sitemap with that app (Dataverse links them by sitemapnameunique). With
+    `publish=True`, run PublishAllXml after creation (mirrors `build_sitemap`).
     """
     if not sitemap_name.strip():
         raise D365Error("sitemap_name must not be empty.")
@@ -460,6 +462,7 @@ def set_sitemap(
     if not smid:
         out["sitemap_lookup_error"] = (
             f"Could not parse sitemapid from response: {entity_id_url!r}")
+    maybe_publish(backend, out, publish)
     return out
 
 
