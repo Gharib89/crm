@@ -2088,6 +2088,32 @@ def test_apply_command_human_mode_shows_replace_blocked_reason(backend, monkeypa
     assert "ownership change" in result.output
 
 
+def test_apply_spec_file_unreadable_returns_envelope(monkeypatch, tmp_path):
+    # OSError on the spec read (permission denied, or the file vanished between
+    # Click's existence check and open — TOCTOU) → clean error envelope, never a
+    # raw traceback (#739). Click's Path(exists=True) validates via stat, so the
+    # file must exist; we make open() itself raise.
+    import builtins
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text("solution:\n  unique_name: contoso\n", encoding="utf-8")
+    real_open = builtins.open
+
+    def boom(path, *a, **k):
+        if str(path) == str(spec_file):
+            raise PermissionError(13, "Permission denied")
+        return real_open(path, *a, **k)
+
+    monkeypatch.setattr(builtins, "open", boom)
+    result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec_file)])
+    assert result.exit_code == 1
+    # No traceback on either stream (Click 8.2+ separates stdout/stderr).
+    assert "Traceback" not in result.output
+    assert "Traceback" not in result.stderr
+    payload = json.loads(result.output)
+    assert payload["ok"] is False
+    assert "spec file" in payload["error"].lower()
+
+
 def test_apply_updates_attribute_description_on_drift(backend):
     # Description drift alone (display unchanged) → updated.
     attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code",

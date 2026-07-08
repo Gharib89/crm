@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -188,6 +190,46 @@ def append_history(state: dict[str, Any], command: str, max_len: int = 500) -> N
 # ── Locked atomic write ─────────────────────────────────────────────────
 
 
+# A live writer holds its temp file for milliseconds; an hour is a wide margin
+# past that, so anything older is an orphan from a crashed write, never a temp
+# in flight.
+_TEMP_REAP_AGE_SECONDS = 3600
+
+# Matches exactly the temp names this module creates —
+# `.{os.getpid()}.{os.urandom(6).hex()}.tmp`, i.e. digits then 12 hex chars — so
+# the reap can never touch an unrelated dot-prefixed `.tmp` file that happens to
+# sit in the same directory. Keep the 12 in lockstep with the urandom(6) above.
+_TEMP_NAME_RE = re.compile(r"\.\d+\.[0-9a-f]{12}\.tmp")
+
+
+def _reap_stale_temps(parent: Path) -> None:
+    """Unlink orphaned atomic-write temp files in *parent* older than the reap
+    threshold. A hard kill (SIGKILL, power loss) between ``os.open`` and
+    ``os.replace`` leaves a unique ``.<pid>.<hex>.tmp`` that nothing else reaps;
+    without this they accumulate unbounded on agent fleets.
+
+    The age threshold is what makes this safe against a live writer: an in-flight
+    temp is milliseconds old, far below the hour cutoff, so it is never a reap
+    candidate. Callers *should* additionally run this under the parent-directory
+    lock, but that lock is best-effort (absent on platforms without ``fcntl``,
+    and its acquisition failures are swallowed), so the threshold — not the lock —
+    is the guarantee. Best-effort throughout: any failure is swallowed, matching
+    the module's stance."""
+    cutoff = time.time() - _TEMP_REAP_AGE_SECONDS
+    try:
+        entries = list(parent.glob(".*.tmp"))
+    except OSError:
+        return
+    for entry in entries:
+        if not _TEMP_NAME_RE.fullmatch(entry.name):
+            continue
+        try:
+            if entry.stat().st_mtime < cutoff:
+                entry.unlink()
+        except OSError:
+            pass
+
+
 def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> None:
     """Write JSON atomically: write a per-process-unique temp file, then rename it
     over *path*. The whole write-and-replace is serialized by an exclusive lock on
@@ -218,6 +260,11 @@ def _atomic_write_json(path: Path, payload: Any, *, mode: int | None = None) -> 
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)  # pyright: ignore[reportUnknownMemberType, reportAttributeAccessIssue]
             except (OSError, AttributeError):
                 pass
+
+        # Sweep temp files orphaned by crashed writes (#743). Runs under the
+        # directory lock when it was acquired above (best-effort); the >1h age
+        # threshold keeps it safe from live writers regardless.
+        _reap_stale_temps(path.parent)
 
         # Unique temp name in the target dir: two concurrent writers get distinct
         # temp files instead of clobbering one shared "<name>.tmp". The name is a

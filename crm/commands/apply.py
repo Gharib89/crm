@@ -66,12 +66,15 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
 
     # utf-8-sig tolerates a leading UTF-8 BOM (Windows editors add one) on the
     # spec file, matching crm's file-boundary read policy (#683).
-    with open(spec_file, encoding="utf-8-sig") as fh:
-        try:
+    try:
+        with open(spec_file, encoding="utf-8-sig") as fh:
             spec = yaml.safe_load(fh)
-        except yaml.YAMLError as exc:
-            ctx.emit(False, error=f"Could not parse spec file: {exc}")
-            return
+    except OSError as exc:
+        ctx.emit(False, error=f"Could not read spec file {spec_file}: {exc}")
+        return
+    except yaml.YAMLError as exc:
+        ctx.emit(False, error=f"Could not parse spec file: {exc}")
+        return
     if not isinstance(spec, dict):
         ctx.emit(False, error="Spec must be a mapping "
                  "(publisher / solution / entities / optionsets).")

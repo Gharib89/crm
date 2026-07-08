@@ -13,6 +13,7 @@ import pytest
 import requests_mock
 
 from crm.core import entity as entity_mod
+from crm.core import entity_names
 from crm.utils.d365_backend import D365Error
 
 
@@ -38,18 +39,25 @@ def test_is_alternate_key_error_fallback_via_response_body():
 # ── enrich_dupe_key (lookup + build) ─────────────────────────────────────────
 
 
-def _entity_defs_url(backend):
-    return backend.url_for("EntityDefinitions")
-
-
 def _keys_url(backend, logical_name: str):
     return backend.url_for(f"EntityDefinitions(LogicalName='{logical_name}')/Keys")
 
 
+def _stub_names(monkeypatch, *, logical="account", entity_set="accounts",
+                primary_id="accountid"):
+    """Stub the cached name-map seam (#261) so the set→logical + primary-id
+    resolution is served without a live GET — mirrors ba4ca21's approach for the
+    sibling data_import path."""
+    nm = entity_names.NameMap(
+        logical_to_set={logical: entity_set},
+        set_to_logical={entity_set: logical},
+        primary_id={logical: primary_id},
+        primary_name={},
+    )
+    monkeypatch.setattr(entity_names, "load_name_map", lambda backend, **_kw: nm)
+
+
 def _mock_account_key(m, backend, key_rows):
-    m.get(_entity_defs_url(backend), json={"value": [
-        {"LogicalName": "account", "PrimaryIdAttribute": "accountid"}
-    ]})
     m.get(_keys_url(backend, "account"), json={"value": key_rows})
 
 
@@ -61,7 +69,8 @@ _COMPOSITE_KEY = [{
 }]
 
 
-def test_enrich_returns_alternate_keys_with_payload_values(backend):
+def test_enrich_returns_alternate_keys_with_payload_values(backend, monkeypatch):
+    _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, _COMPOSITE_KEY)
         result = entity_mod.enrich_dupe_key(
@@ -76,7 +85,8 @@ def test_enrich_returns_alternate_keys_with_payload_values(backend):
     assert k["payload_values"] == {"accountnumber": "ACC-001", "name": "Contoso"}
 
 
-def test_enrich_empty_payload_values_when_no_intersection(backend):
+def test_enrich_empty_payload_values_when_no_intersection(backend, monkeypatch):
+    _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, _COMPOSITE_KEY)
         result = entity_mod.enrich_dupe_key(
@@ -85,7 +95,8 @@ def test_enrich_empty_payload_values_when_no_intersection(backend):
     assert result["alternate_keys"][0]["payload_values"] == {}
 
 
-def test_enrich_primary_id_collision_hint(backend):
+def test_enrich_primary_id_collision_hint(backend, monkeypatch):
+    _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, [])  # no alt keys, but payload has the PK
         result = entity_mod.enrich_dupe_key(
@@ -98,7 +109,8 @@ def test_enrich_primary_id_collision_hint(backend):
     assert "accountid" in result["primary_id_hint"]
 
 
-def test_enrich_no_primary_id_hint_when_not_in_payload(backend):
+def test_enrich_no_primary_id_hint_when_not_in_payload(backend, monkeypatch):
+    _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, [])
         result = entity_mod.enrich_dupe_key(
@@ -118,10 +130,11 @@ def test_enrich_non_alt_key_code_returns_empty_without_lookup(backend):
     assert m.call_count == 0
 
 
-def test_enrich_lookup_failure_returns_empty(backend):
+def test_enrich_lookup_failure_returns_empty(backend, monkeypatch):
     """A backend failure during lookup is swallowed (original error unmasked)."""
+    _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), status_code=500,
+        m.get(_keys_url(backend, "account"), status_code=500,
               json={"error": {"message": "Server error"}})
         result = entity_mod.enrich_dupe_key(
             backend, "accounts", {"name": "x"}, code="0x80060892",
@@ -129,25 +142,28 @@ def test_enrich_lookup_failure_returns_empty(backend):
     assert result == {}
 
 
-def test_enrich_unknown_entity_set_returns_empty(backend):
-    with requests_mock.Mocker() as m:
-        m.get(_entity_defs_url(backend), json={"value": []})
-        result = entity_mod.enrich_dupe_key(
-            backend, "unknownsets", {"name": "x"}, code="0x80060892",
-        )
+def test_enrich_unknown_entity_set_returns_empty(backend, monkeypatch):
+    # The name-map seam resolves accounts only; an unknown set raises inside
+    # resolve() → swallowed to None → {} (no Keys GET reached).
+    _stub_names(monkeypatch)
+    result = entity_mod.enrich_dupe_key(
+        backend, "unknownsets", {"name": "x"}, code="0x80060892",
+    )
     assert result == {}
 
 
-def test_lookup_alternate_key_schema_reused_across_payloads(backend):
+def test_lookup_alternate_key_schema_reused_across_payloads(backend, monkeypatch):
     """The schema is fetched once and `dupe_key_hint` applied per payload — the
     bulk-import path's single-lookup-N-rows shape."""
+    _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
         _mock_account_key(m, backend, _COMPOSITE_KEY)
         schema = entity_mod.lookup_alternate_key_schema(backend, "accounts")
         assert schema is not None
         h1 = entity_mod.dupe_key_hint(schema, {"accountnumber": "A", "name": "X"})
         h2 = entity_mod.dupe_key_hint(schema, {"accountnumber": "B", "name": "Y"})
-    # One EntityDefinitions GET + one Keys GET — not per payload.
-    assert m.call_count == 2
+    # One Keys GET only — the set→logical resolution is served by the cached
+    # name-map seam (stubbed here), not a per-lookup EntityDefinitions GET.
+    assert m.call_count == 1
     assert h1["alternate_keys"][0]["payload_values"] == {"accountnumber": "A", "name": "X"}
     assert h2["alternate_keys"][0]["payload_values"] == {"accountnumber": "B", "name": "Y"}
