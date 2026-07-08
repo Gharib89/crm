@@ -126,14 +126,30 @@ def test_validate_precision_non_precision_kind_raises():
 
 # ── KINDS table + the two lookups round-trip ──
 
-def test_kinds_has_fourteen_kinds():
-    assert len(mc.KINDS) == 14
+def test_kinds_has_fifteen_kinds():
+    assert len(mc.KINDS) == 15
 
 
 def test_kind_round_trips_through_cast_and_type_name():
     for kind, info in mc.KINDS.items():
-        assert mc.kind_for_cast(info.cast) == kind
+        # Every kind's type_name is a unique discriminator, so it round-trips.
         assert mc.kind_for_type_name(info.type_name) == kind
+        # `customer` shares the LookupAttributeMetadata cast with `lookup`, so the
+        # cast reverse-map resolves that shared cast to the canonical `lookup`;
+        # only the type_name distinguishes the two. Every other cast round-trips.
+        expected = "lookup" if kind == "customer" else kind
+        assert mc.kind_for_cast(info.cast) == expected
+
+
+def test_customer_and_lookup_share_a_cast_but_differ_by_type_name():
+    # #700: a Customer column reads back as CustomerType on a
+    # LookupAttributeMetadata — the same cast as a plain lookup. Export relies on
+    # the type_name (not the cast) to map it to the "customer" kind apply accepts.
+    assert mc.KINDS["customer"].cast == mc.KINDS["lookup"].cast
+    assert mc.kind_for_type_name("CustomerType") == "customer"
+    assert mc.kind_for_type_name("LookupType") == "lookup"
+    # The shared cast reverse-maps to the canonical lookup, not customer.
+    assert mc.kind_for_cast(mc.KINDS["customer"].cast) == "lookup"
 
 
 def test_kind_for_cast_tolerates_leading_hash():

@@ -79,10 +79,14 @@ class KindInfo:
 
 
 # Attribute kinds with a distinct live type discriminator: the 13 builder-backed
-# kinds plus the special-cased "lookup". (The "customer" kind add_attribute also
-# accepts has no own entry — a Customer column reads back as a LookupType, so it
-# reverse-maps to "lookup"; only its Targets distinguish it.) Casts mirror the
-# create builders' inline literals; type_names mirror the live
+# kinds plus the special-cased "lookup" and "customer". A Customer column reads
+# back as AttributeTypeName.Value "CustomerType" on a LookupAttributeMetadata
+# (verified live on cloud v9.2 + on-prem v9.1, and per MS Learn) — a distinct
+# type_name from "lookup", so it reverse-maps to the "customer" kind add_attribute
+# accepts (fixed account+contact targets). Because it SHARES the
+# LookupAttributeMetadata cast with "lookup", `customer` is excluded from the cast
+# reverse-map below — the type_name, not the cast, distinguishes the two. Casts
+# mirror the create builders' inline literals; type_names mirror the live
 # AttributeTypeName.Value discriminators.
 KINDS: dict[str, KindInfo] = {
     "string": KindInfo("Microsoft.Dynamics.CRM.StringAttributeMetadata", "StringType"),
@@ -100,11 +104,17 @@ KINDS: dict[str, KindInfo] = {
         "MultiSelectPicklistType",
     ),
     "lookup": KindInfo("Microsoft.Dynamics.CRM.LookupAttributeMetadata", "LookupType"),
+    "customer": KindInfo("Microsoft.Dynamics.CRM.LookupAttributeMetadata", "CustomerType"),
     "image": KindInfo("Microsoft.Dynamics.CRM.ImageAttributeMetadata", "ImageType"),
     "file": KindInfo("Microsoft.Dynamics.CRM.FileAttributeMetadata", "FileType"),
 }
 
-_CAST_TO_KIND: dict[str, str] = {info.cast: kind for kind, info in KINDS.items()}
+# `customer` shares LookupAttributeMetadata with `lookup`; excluding it keeps the
+# cast reverse-map unambiguous (that shared cast resolves to the canonical
+# `lookup`). The type_name map has no such collision — each type_name is unique.
+_CAST_TO_KIND: dict[str, str] = {
+    info.cast: kind for kind, info in KINDS.items() if kind != "customer"
+}
 _TYPE_NAME_TO_KIND: dict[str, str] = {info.type_name: kind for kind, info in KINDS.items()}
 
 
