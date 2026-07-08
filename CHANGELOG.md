@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.17 (2026-07-08)
+
+### Bug Fixes
+
+- Allowlist ADR-0022 rejected/unshipped command examples
+  ([#748](https://github.com/Gharib89/crm/pull/748),
+  [`e3f9ed2`](https://github.com/Gharib89/crm/commit/e3f9ed27d6d0ceec8a7fcef6b4f877369a8af276))
+
+
 ## v1.51.16 (2026-07-08)
 
 ### Bug Fixes
