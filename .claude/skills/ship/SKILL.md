@@ -2,7 +2,7 @@
 name: ship
 description: >-
   Take a tracker issue to a merge-ready PR in one unattended run, stopping only
-  at a human merge gate. Composes the `tdd` and `review` skills. Use when the
+  at a human merge gate. Composes the `tdd` and `code-review` skills. Use when the
   user wants to ship an issue or take an issue through to a PR; also invoked by
   the cloud ship routine.
 argument-hint: "[issue-number]"
@@ -69,12 +69,12 @@ subagent and the poll loop with a model explicitly — never default-inherit.
 | Work | Model |
 |------|-------|
 | Investigation / mapping, poll loops (review + CI) | haiku |
-| Mechanical edits & fixes, docs-sync helper, running the gates/tests, `review` skill's **Spec** axis | sonnet |
-| Triage judgment (phases 4 & 7), `review` skill's **Standards / code** axis | opus |
+| Mechanical edits & fixes, docs-sync helper, running the gates/tests, `code-review` skill's **Spec** axis | sonnet |
+| Triage judgment (phases 4 & 7), `code-review` skill's **Standards / code** axis | opus |
 
 Triage and code review are judgment — running them on the cheap tier under-reads
 diffs. Poll loops, file-mapping, and running the gates are mechanical — running them
-on the strong tier burns budget for nothing. The `review` skill sets its own
+on the strong tier burns budget for nothing. The `code-review` skill sets its own
 per-axis models (Standards = opus, Spec = sonnet). Fall back to the nearest
 available tier rather than running everything on one model.
 
@@ -106,9 +106,9 @@ this long run from bloating the window, **and names your required first action:
 creating the run's ten-item task list** (one per phase below). Don't start phase 0
 until that list exists.
 
-**Compose, don't reinline.** Load the `tdd` skill (phase 2) and the `review` skill
+**Compose, don't reinline.** Load the `tdd` skill (phase 2) and the `code-review` skill
 (phases 4, 7) through the Skill tool when their phase begins — never hand-roll
-their logic. The `review` skill picks its own per-axis tiers (opus code / sonnet
+their logic. The `code-review` skill picks its own per-axis tiers (opus code / sonnet
 spec); run finding-**triage** at the judgment tier, mechanical helpers at the cheap
 tier (table above).
 
@@ -170,7 +170,7 @@ mechanical tier if it has one, else by hand — and fold the edits into this cha
 bugfix that restores already-documented behavior, test-only / build / tooling
 changes, or pure comments; when you skip, say so in one line at the merge gate.
 
-**Self-review.** Invoke the `review` skill against the diff — now including the
+**Self-review.** Invoke the `code-review` skill against the diff — now including the
 docs-sync edits — (it runs its two axes on their own tiers — opus for code, sonnet
 for spec). **Auto-triage** each finding (this is the canonical definition — phase 7
 reuses it): harden rather than rip out capability,

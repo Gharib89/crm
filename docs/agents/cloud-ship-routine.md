@@ -19,7 +19,7 @@ Objective: produce ONE merge-ready PR for Gharib89/crm and then stop.
 
 Invoke the `cloud-ship` skill via the Skill tool and follow it exactly — do not
 paraphrase or inline its steps. The skill is a sibling in the clone's
-`.claude/skills/` (alongside `ship`, `tdd`, `review`); it bootstraps the sandbox,
+`.claude/skills/` (alongside `ship`, `tdd`, `code-review`); it bootstraps the sandbox,
 picks the oldest open `ready-for-agent` issue, ships it via `ship`, and stops at
 the merge gate without merging.
 
