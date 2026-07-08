@@ -150,7 +150,9 @@ Key points:
   the secure value lives in a **separate related record**
   (`sdkmessageprocessingstepsecureconfig`) created and linked to the step on
   registration. It is write-only per platform semantics — the value is never
-  returned by the platform and is not echoed in the command output.
+  returned by the platform and is omitted from normal command output. A
+  `--dry-run` preview echoes the request body verbatim, so it *does* include
+  the value; treat dry-run output as sensitive.
 - `--entity` sets the `primaryobjecttypecode`. Omit it to fire on all entities.
 - `--filtering-attributes` (comma-separated) restricts an Update step to
   specific columns; ignored for non-Update messages.

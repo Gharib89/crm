@@ -339,8 +339,9 @@ def register_step(
     `configuration` is the unsecure step config (a plain field on the step).
     `secure_configuration` is the secure step config, a separate related record
     (`sdkmessageprocessingstepsecureconfig`) linked from the step; it is created
-    and bound via a deep insert on registration and is write-only — never echoed
-    back in the return value.
+    and bound via a deep insert on registration and is write-only — the platform
+    never returns it and it is omitted from the success return value. (A dry-run
+    echoes the request body verbatim, so its preview does include the value.)
 
     Dry-run returns the backend preview as-is (no real POST).
     """
