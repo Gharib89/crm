@@ -50,11 +50,23 @@ def _journal(ctx, target, result, *, solution=None, staged=None):
 
 def _touch_session(ctx: "CLIContext", entity_set: str, *,
                    last_query: dict | None = None) -> None:
-    state = session_mod.load_session(ctx.session_name)
-    state["current_entity_set"] = entity_set
-    if last_query is not None:
-        state["last_query"] = last_query
-    session_mod.save_session(state, ctx.session_name)
+    """Best-effort persist read-command session breadcrumbs (issue #719).
+
+    The `current_entity_set` / `last_query` metadata is optional convenience
+    state, so a filesystem that cannot be written (a read-only sandbox, an
+    unwritable `CRM_HOME`) must not turn an otherwise-successful read command
+    into a failure. Persistence stays strict in `crm/core/session.py`; only the
+    call site swallows the FS error — and only `OSError`, so a real bug in the
+    session logic still surfaces. Mirrors `_journal` above.
+    """
+    try:
+        state = session_mod.load_session(ctx.session_name)
+        state["current_entity_set"] = entity_set
+        if last_query is not None:
+            state["last_query"] = last_query
+        session_mod.save_session(state, ctx.session_name)
+    except OSError:
+        pass
 
 
 @contextmanager
