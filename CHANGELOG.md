@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.6 (2026-07-08)
+
+### Bug Fixes
+
+- Render click exceptions as json envelopes ([#721](https://github.com/Gharib89/crm/pull/721),
+  [`e4e54cc`](https://github.com/Gharib89/crm/commit/e4e54cc684baa3b1230bfbe2a4ec07d70f4a62bd))
+
+### Chores
+
+- **agents**: Align workflow skills, complete cloud-env skill closure
+  ([`5e29c43`](https://github.com/Gharib89/crm/commit/5e29c43482e22c2c79e8bbc59db264240d0ecf44))
+
+
 ## v1.51.5 (2026-07-07)
 
 ### Bug Fixes
