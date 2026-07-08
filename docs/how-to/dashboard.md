@@ -88,8 +88,11 @@ under `--dry-run` — it is validated before any backend call.
 ## Delete a dashboard
 
 ```bash
-crm dashboard delete 1111aaaa-2222-bbbb-3333-cccccccccccc
+crm dashboard delete 1111aaaa-2222-bbbb-3333-cccccccccccc --yes
 ```
+
+`delete` is destructive: omitting `--yes` prompts on a TTY, and under `--json`
+or a non-TTY it fails fast with an error that names `--yes`.
 
 Under `--dry-run`, delete returns
 `{_dry_run: true, would_delete: true, formid: <id>}` without issuing the `DELETE`.

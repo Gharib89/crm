@@ -354,7 +354,7 @@ def test_data_import_delete_by_id_column(backend, cli, tmp_path, unique):
         )
         result = cli([
             "--json", "data", "import", "contacts", str(del_file),
-            "--mode", "delete", "--id-column", "contactid",
+            "--mode", "delete", "--id-column", "contactid", "--yes",
         ])
         assert result.returncode == 0, (
             f"data import --mode delete failed:\n{result.stderr}\nstdout: {result.stdout}"

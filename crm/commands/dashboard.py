@@ -6,6 +6,8 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _confirm_destructive,
+    _destructive_option,
     _emit_with_warning,
     _journal,
     _publish_option,
@@ -49,9 +51,11 @@ def dashboard_get(ctx: CLIContext, dashboard_id: str) -> None:
 
 @dashboard_group.command("delete")
 @click.argument("dashboard_id")
+@_destructive_option
 @pass_ctx
-def dashboard_delete(ctx: CLIContext, dashboard_id: str) -> None:
+def dashboard_delete(ctx: CLIContext, dashboard_id: str, yes: bool) -> None:
     """Delete a dashboard by DASHBOARD_ID."""
+    _confirm_destructive(ctx, "dashboard", dashboard_id, yes)
     with d365_errors(ctx):
         info = dashboard_mod.delete_dashboard(ctx.backend(), dashboard_id)
     ctx.emit(True, data=info)

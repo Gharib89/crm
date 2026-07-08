@@ -14,6 +14,8 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _confirm_destructive,
+    _destructive_option,
     _emit_with_warning,
     _journal,
     _read_file,
@@ -61,9 +63,11 @@ def report_get(ctx: CLIContext, report_id: str) -> None:
 
 @report_group.command("delete")
 @click.argument("report_id")
+@_destructive_option
 @pass_ctx
-def report_delete(ctx: CLIContext, report_id: str) -> None:
+def report_delete(ctx: CLIContext, report_id: str, yes: bool) -> None:
     """Delete a report by REPORT_ID."""
+    _confirm_destructive(ctx, "report", report_id, yes)
     with d365_errors(ctx):
         info = report_mod.delete_report(ctx.backend(), report_id)
     ctx.emit(True, data=info)

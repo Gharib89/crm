@@ -84,6 +84,18 @@ class TestBlocksDestructive:
         assert r.returncode == 0
         assert r.stderr == ""
 
+    @pytest.mark.parametrize("group", ["dashboard", "chart", "report"])
+    def test_block_designer_asset_delete_no_yes(self, group):
+        r = _run(f"crm {group} delete {_GUID}")
+        assert r.returncode == BLOCK
+        assert f"{group} delete" in r.stderr
+
+    @pytest.mark.parametrize("group", ["dashboard", "chart", "report"])
+    def test_allow_designer_asset_delete_with_yes(self, group):
+        r = _run(f"crm {group} delete {_GUID} --yes")
+        assert r.returncode == 0
+        assert r.stderr == ""
+
     def test_block_solution_job_cancel_no_yes(self):
         r = _run("crm solution job-cancel 22222222-2222-2222-2222-222222222222")
         assert r.returncode == BLOCK
@@ -408,6 +420,46 @@ class TestCliConfirmParity:
         from click.testing import CliRunner
         return CliRunner()
 
+    def _delete_import_file(self, tmp_path):
+        path = tmp_path / "delete.jsonl"
+        path.write_text(f'{{"contactid":"{_GUID}"}}\n', encoding="utf-8")
+        return str(path)
+
+    def _issue_697_cases(self, tmp_path):
+        return [
+            (
+                "dashboard",
+                ["dashboard", "delete", _GUID],
+                "crm.commands.dashboard.dashboard_mod.delete_dashboard",
+                lambda backend, dashboard_id: {"deleted": dashboard_id},
+            ),
+            (
+                "chart",
+                ["chart", "delete", _GUID],
+                "crm.commands.chart.charts_mod.delete_chart",
+                lambda backend, chart_id, *, user=False: {"deleted": chart_id, "user": user},
+            ),
+            (
+                "report",
+                ["report", "delete", _GUID],
+                "crm.commands.report.report_mod.delete_report",
+                lambda backend, report_id: {"deleted": report_id},
+            ),
+            (
+                "data-import-delete",
+                [
+                    "data", "import", "contacts", self._delete_import_file(tmp_path),
+                    "--mode", "delete", "--id-column", "contactid",
+                ],
+                "crm.commands.data.import_mod.import_records",
+                lambda *a, **k: {
+                    "imported": 1, "failed": 0, "chunks": 1,
+                    "entity_set": "contacts", "mode": "delete",
+                    "dry_run": False, "format": "jsonl", "failures": [],
+                },
+            ),
+        ]
+
     def test_entity_delete_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli
         called = {}
@@ -433,6 +485,40 @@ class TestCliConfirmParity:
         assert result.exit_code == 1
         assert '"ok": false' in result.output
         assert "--yes" in result.output
+
+    @pytest.mark.parametrize("case_index", range(4))
+    def test_issue_697_delete_yes_skips_prompt(self, monkeypatch, tmp_path, case_index):
+        from crm import cli as crm_cli
+        label, argv, patch_path, replacement = self._issue_697_cases(tmp_path)[case_index]
+        called = {}
+
+        def wrapped(*args, **kwargs):
+            called["hit"] = label
+            return replacement(*args, **kwargs)
+
+        monkeypatch.setattr(patch_path, wrapped)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(crm_cli.cli, ["--json", *argv, "--yes"])
+        assert result.exit_code == 0, result.output
+        assert called["hit"] == label
+
+    @pytest.mark.parametrize("case_index", range(4))
+    def test_issue_697_delete_no_yes_non_tty_aborts(self, monkeypatch, tmp_path, case_index):
+        from crm import cli as crm_cli
+        label, argv, patch_path, replacement = self._issue_697_cases(tmp_path)[case_index]
+        called = {}
+
+        def wrapped(*args, **kwargs):
+            called["hit"] = label
+            return replacement(*args, **kwargs)
+
+        monkeypatch.setattr(patch_path, wrapped)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        result = self._runner().invoke(crm_cli.cli, ["--json", *argv])
+        assert result.exit_code == 1
+        assert '"ok": false' in result.output
+        assert "--yes" in result.output
+        assert "hit" not in called
 
     def test_app_delete_yes_skips_prompt(self, monkeypatch):
         from crm import cli as crm_cli

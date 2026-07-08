@@ -123,7 +123,7 @@ class TestDeleteMode:
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
         result = CliRunner().invoke(cli, [
             "--json", "data", "import", "accounts", str(f),
-            "--mode", "delete", "--id-column", "accountid",
+            "--mode", "delete", "--id-column", "accountid", "--yes",
         ])
         assert result.exit_code == 0, result.output
         assert stub.ops[0]["method"] == "DELETE"

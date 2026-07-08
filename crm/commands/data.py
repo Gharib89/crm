@@ -64,9 +64,10 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
               help="Send each op as a top-level operation; no changeset wrapping.")
 @click.option("--continue-on-error", is_flag=True, default=False,
               help="Send Prefer: odata.continue-on-error (requires --no-transaction).")
+@_destructive_option
 @pass_ctx
 def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, alt_key,
-                chunk_size, no_transaction, continue_on_error):
+                chunk_size, no_transaction, continue_on_error, yes):
     """Bulk-import records from a JSONL/CSV file via $batch."""
     if continue_on_error and not no_transaction:
         raise click.UsageError(
@@ -89,6 +90,12 @@ def data_import(ctx: CLIContext, entity_set, input_file, fmt, mode, id_column, a
     requested_key = [a.strip() for a in alt_key.split(",") if a.strip()] if alt_key else []
     if alt_key and not requested_key:
         raise click.UsageError("--key must name at least one attribute.")
+    if mode == "delete":
+        _confirm_destructive(
+            ctx, "records", entity_set, yes,
+            message=(f"This permanently deletes {entity_set} records from "
+                     f"{input_file}. Continue?"),
+        )
     with d365_errors(ctx):
         alt_key_attrs = (
             entity_mod.resolve_alternate_key(ctx.backend(), entity_set, requested_key)

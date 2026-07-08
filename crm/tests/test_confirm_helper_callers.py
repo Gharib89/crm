@@ -75,12 +75,24 @@ def _zip_file(tmp_path: Path, name: str) -> str:
     return str(path)
 
 
+def _jsonl_file(tmp_path: Path, name: str) -> str:
+    path = tmp_path / name
+    path.write_text('{"contactid":"11111111-1111-1111-1111-111111111111"}\n', encoding="utf-8")
+    return str(path)
+
+
 def _argv_map(tmp_path: Path, prefix: list[str]) -> dict[str, list[str]]:
     return {
         "app:app_delete": [*prefix, "app", "delete", "cwx_crmworx"],
         "apply:apply_cmd": [*prefix, "apply", "-f", _spec_file(tmp_path), "--prune"],
         "async_ops:async_cancel": [*prefix, "async", "cancel", _GUID],
+        "chart:chart_delete": [*prefix, "chart", "delete", _GUID],
         "data:data_delete": [*prefix, "data", "delete", "contacts", "--fetchxml", _FETCH],
+        "data:data_import": [
+            *prefix, "data", "import", "contacts", _jsonl_file(tmp_path, "delete.jsonl"),
+            "--mode", "delete", "--id-column", "contactid",
+        ],
+        "dashboard:dashboard_delete": [*prefix, "dashboard", "delete", _GUID],
         "entity:entity_delete": [*prefix, "--profile", "t", "entity", "delete", "contacts", _GUID],
         "entity:entity_disassociate": [
             *prefix, "--profile", "t", "entity", "disassociate", "accounts", _GUID, "primarycontactid"
@@ -101,6 +113,7 @@ def _argv_map(tmp_path: Path, prefix: list[str]) -> dict[str, list[str]]:
             "--username", "alice", "--password", "pw", "--name", "t"
         ],
         "profile:profile_rm": [*prefix, "profile", "rm", "t"],
+        "report:report_delete": [*prefix, "report", "delete", _GUID],
         "ribbon:ribbon_remove": [
             *prefix, "ribbon", "remove", "account", "--button-id", "some.button", "--solution", "CRMWorx"
         ],
@@ -161,6 +174,19 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
     elif case_id == "data:data_delete":
         monkeypatch.setattr("crm.commands.data.bulk_delete_mod.bulk_delete",
                             lambda *a, **k: _record(called, "bulk"))
+    elif case_id == "data:data_import":
+        monkeypatch.setattr("crm.commands.data.import_mod.import_records",
+                            lambda *a, **k: _record(called, "import", {
+                                "imported": 1, "failed": 0, "chunks": 1,
+                                "entity_set": "contacts", "mode": "delete",
+                                "dry_run": False, "format": "jsonl", "failures": [],
+                            }))
+    elif case_id == "dashboard:dashboard_delete":
+        monkeypatch.setattr("crm.commands.dashboard.dashboard_mod.delete_dashboard",
+                            lambda *a, **k: _record(called, "dashboard"))
+    elif case_id == "chart:chart_delete":
+        monkeypatch.setattr("crm.commands.chart.charts_mod.delete_chart",
+                            lambda *a, **k: _record(called, "chart"))
     elif case_id == "entity:entity_delete":
         monkeypatch.setattr("crm.commands.entity.entity_mod.delete",
                             lambda *a, **k: _record(called, "delete"))
@@ -194,6 +220,9 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
     elif case_id == "plugin:unregister_step_cmd":
         monkeypatch.setattr("crm.commands.plugin.plugin_mod.unregister_step",
                             lambda *a, **k: _record(called, "plugin-step"))
+    elif case_id == "report:report_delete":
+        monkeypatch.setattr("crm.commands.report.report_mod.delete_report",
+                            lambda *a, **k: _record(called, "report"))
     elif case_id == "ribbon:ribbon_remove":
         monkeypatch.setattr("crm.commands.ribbon.ribbon_mod.apply_ribbon_change",
                             lambda *a, **k: _record(called, "ribbon-remove"))

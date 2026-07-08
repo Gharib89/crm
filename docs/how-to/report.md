@@ -121,8 +121,11 @@ under `--dry-run` — it is validated before any backend call.
 ## Delete a report
 
 ```bash
-crm report delete 1111aaaa-2222-bbbb-3333-cccccccccccc
+crm report delete 1111aaaa-2222-bbbb-3333-cccccccccccc --yes
 ```
+
+`delete` is destructive: omitting `--yes` prompts on a TTY, and under `--json`
+or a non-TTY it fails fast with an error that names `--yes`.
 
 Deletes the `reports` record permanently. Any associated `reportcategory`
 records are cascade-deleted by the server.

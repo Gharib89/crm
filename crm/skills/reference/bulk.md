@@ -46,7 +46,8 @@ crm --json --dry-run data import accounts records.jsonl
 or `--key`; passing both is a usage error. `--key`/`--id-column` are rejected
 under `--mode create`.** `--mode delete` resolves the target record by GUID or
 alternate key exactly as upsert does (DELETE carries no body) and reports per-row
-results in `data.failures` just like the other modes.
+results in `data.failures` just like the other modes. Only `--mode delete` uses
+the destructive confirmation path; create/upsert imports do not prompt.
 
 **Alternate-key import gotcha.** `--key` resolves and validates the key against
 entity metadata before the first row is processed. If the alternate key's index

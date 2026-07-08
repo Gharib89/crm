@@ -388,7 +388,7 @@ crm data export opportunities -o /tmp/op.csv \
 # <nav>@odata.bind from metadata, so an export round-trips with no hand-editing.
 crm data import accounts records.jsonl
 crm data import accounts updates.jsonl --mode upsert --key accountnumber
-crm data import accounts to_delete.jsonl --mode delete --key accountnumber
+crm data import accounts to_delete.jsonl --mode delete --key accountnumber --yes
 crm --dry-run data import accounts records.jsonl   # preview: zero writes, dry_run:true
 
 # Server-side BulkDelete job — deletes all records matching a FetchXML query
