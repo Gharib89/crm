@@ -232,7 +232,7 @@ Creates a patch solution and returns `{cloned, parent_solution, display_name, ve
 ```bash
 crm solution stage-and-upgrade docs/artifacts/crmworx_2_0.zip --yes
 ```
-Imports the zip in *holding* mode — staged for upgrade, not yet applied — reusing the same import pipeline as `solution import` (per-component result parsing, the on-prem synchronous `ImportSolution` fallback, progress ticks). Gated as destructive: `--yes` skips the prompt for non-interactive use.
+Imports the zip in *holding* mode — staged for upgrade, not yet applied — reusing the same import pipeline as `solution import` (per-component result parsing, the on-prem synchronous `ImportSolution` fallback, progress ticks). Because it shares that pipeline it also accepts the same two escape hatches as `solution import`: `--skip-dependency-check` (set `SkipProductUpdateDependencies: true` to proceed past a product-update dependency block) and `--formatted` (also attach the Excel-format `RetrieveFormattedImportJobResults` report verbatim under `formatted_results`). Gated as destructive: `--yes` skips the prompt for non-interactive use.
 
 **Apply the staged upgrade** with `--promote` (`DeleteAndPromote` — replaces the base solution and its patches with the holding solution):
 

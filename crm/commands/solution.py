@@ -505,16 +505,23 @@ def solution_uninstall(ctx: CLIContext, unique_name, force, yes):
                    "(required with --promote).")
 @click.option("--no-publish", is_flag=True)
 @click.option("--no-overwrite", is_flag=True)
+@click.option("--skip-dependency-check", "skip_dependency_check", is_flag=True,
+              help="Set ImportSolution SkipProductUpdateDependencies to proceed "
+                   "past a product-update dependency block.")
 @click.option("--timeout", type=int, default=None,
               help="Async operation timeout in seconds. Overrides profile.async_timeout.")
 @click.option("--no-retry", is_flag=True,
               help="Disable the 429/5xx retry loop for this invocation.")
 @click.option("--quiet", "-q", is_flag=True,
               help="Suppress per-tick import-progress lines on stderr.")
+@click.option("--formatted", is_flag=True,
+              help="Also fetch the Excel-format RetrieveFormattedImportJobResults "
+                   "report and attach it verbatim under formatted_results.")
 @click.option("--yes", is_flag=True, help="Skip the staging/promote confirmation prompt.")
 @pass_ctx
 def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_name,
-                                   no_publish, no_overwrite, timeout, no_retry, quiet, yes):
+                                   no_publish, no_overwrite, skip_dependency_check,
+                                   timeout, no_retry, quiet, formatted, yes):
     """Stage a managed-solution upgrade as a holding solution (ImportSolution HoldingSolution).
 
     Stages only by default; pass --promote (with --solution) to also apply the
@@ -538,8 +545,10 @@ def solution_stage_and_upgrade_cmd(ctx: CLIContext, zip_path, promote, solution_
                 publish_workflows=not no_publish,
                 overwrite_unmanaged_customizations=not no_overwrite,
                 holding_solution=True,
+                skip_dependency_check=skip_dependency_check,
                 timeout=timeout,
                 quiet=quiet,
+                formatted=formatted,
             )
             # Promote only a real, succeeded stage — never under --dry-run.
             if promote and not info.get("_dry_run"):
