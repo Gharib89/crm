@@ -97,6 +97,8 @@ and (entity-scoped) the message filter for that entity — and reports each unde
 `data.references[] = {kind, value, _exists}`. A reference that does not resolve
 stays a non-failing preview (`ok: true`) and adds a `meta.warnings` advisory
 naming it, so a dangling name is caught before the real write 400s.
+`set-step-state --dry-run` previews as `{_dry_run, would_set_state:{statecode,
+statuscode}, sdkmessageprocessingstepid}` — never a bare `updated: true`.
 
 ### Debugging a plug-in via trace logs
 
@@ -230,6 +232,12 @@ On on-prem v9.1, a published business rule (category `2`) cannot be deactivated
 via the Web API — `deactivate` returns `0x80045002` (`Cannot update a published
 workflow definition`); deactivate it from the classic UI instead. `deactivate`
 works normally for classic workflows (category `0`).
+
+`activate` / `deactivate` / `clone` honor `--dry-run` (resolution GETs still
+fire): `activate`/`deactivate` preview as `{_dry_run, would_set_state:{statecode,
+statuscode}, workflow_id, resolved_from_activation_id}` and `clone` as `{_dry_run,
+would_clone:{source_id, workflow_id, name, primaryentity, category, activate,
+solution}}` — never a fabricated `activated: true`.
 
 ### Updating a workflow — metadata and XAML paths
 

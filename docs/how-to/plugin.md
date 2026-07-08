@@ -263,6 +263,8 @@ crm --json plugin set-step-state "Contoso.Plugins.AccountPostUpdate: Update of a
 
 Resolves by step name or GUID; an ambiguous name errors — use the GUID.
 
+Under `--dry-run` the step-resolution GET runs live but no state change is written; the preview carries the standard dry-run markers rather than a fabricated `updated: true`: `{_dry_run, would_set_state: {statecode, statuscode}, sdkmessageprocessingstepid}`.
+
 ## Unregister a step
 
 ```bash
