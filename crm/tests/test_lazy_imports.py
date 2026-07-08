@@ -33,6 +33,13 @@ TRANSPORT_MODULES = ("requests", "requests_ntlm", "spnego", "cryptography")
 # and must never pull these in.
 NTLM_CHAIN_MODULES = ("requests_ntlm", "spnego")
 
+# Heavyweight stdlib chains that must load only when the code path that needs
+# them runs, not at CLI bootstrap (#702). completion_registry is imported
+# eagerly by crm/cli.py (PowerShell completion registration), so its
+# subprocess/tempfile use would otherwise be paid on every invocation;
+# appmodule's saxutils is needed only by the sitemap-XML builder.
+LAZY_STDLIB_MODULES = ("subprocess", "tempfile", "xml.sax.saxutils")
+
 
 def test_building_oauth_session_does_not_import_ntlm_chain():
     """Building a backend for an OAuth profile must not import the NTLM auth
@@ -118,6 +125,56 @@ def test_version_does_not_import_command_modules_or_backend():
     assert data["exit"] == 0
     assert data["output"].startswith("crm, version"), data["output"]
     assert data["leaked"] == [], f"fast path imported deferred modules: {data['leaked']}"
+
+
+def test_bootstrap_does_not_import_lazy_stdlib_chains():
+    """CLI bootstrap must not import the heavyweight stdlib chains that only rare
+    code paths need (#702): subprocess/tempfile (pulled in eagerly by
+    completion_registry, imported at crm/cli.py load for PowerShell completion)
+    and xml.sax.saxutils (appmodule's sitemap-XML builder). Invoked via
+    ``cli.main`` in a fresh interpreter — NOT ``click.testing.CliRunner``, which
+    itself imports tempfile and would mask the guard."""
+    probe = (
+        "import sys, json, io\n"
+        "from crm.cli import cli\n"
+        # Swallow the version banner so stdout carries only our JSON verdict.
+        "sys.stdout = io.StringIO()\n"
+        "try:\n"
+        "    cli.main(['--version'], standalone_mode=True)\n"
+        "except SystemExit:\n"
+        "    pass\n"
+        "sys.stdout = sys.__stdout__\n"
+        f"chains = {list(LAZY_STDLIB_MODULES)!r}\n"
+        "leaked = sorted(m for m in chains if m in sys.modules)\n"
+        "print(json.dumps({'leaked': leaked}))\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["leaked"] == [], (
+        f"CLI bootstrap imported lazy stdlib chains it never uses: {data['leaked']}"
+    )
+
+
+def test_importing_appmodule_does_not_import_saxutils():
+    """appmodule is loaded lazily (only when the `app` command runs), so the
+    bootstrap guard above can't catch a top-level saxutils re-import in it.
+    Importing the module directly must leave xml.sax.saxutils out of sys.modules
+    — it belongs at the sitemap-XML builder's call site, not module scope (#702).
+    Fresh interpreter so sys.modules starts clean."""
+    probe = (
+        "import sys, json\n"
+        "import crm.core.appmodule\n"
+        "print(json.dumps({'leaked': 'xml.sax.saxutils' in sys.modules}))\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", probe],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    data = json.loads(proc.stdout)
+    assert data["leaked"] is False, (
+        "importing crm.core.appmodule eagerly imported xml.sax.saxutils"
+    )
 
 
 def test_lazy_group_still_resolves_a_subcommand():
