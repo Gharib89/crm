@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -194,6 +195,11 @@ def append_history(state: dict[str, Any], command: str, max_len: int = 500) -> N
 # in flight.
 _TEMP_REAP_AGE_SECONDS = 3600
 
+# Matches exactly the temp names this module creates (`.<pid>.<hex>.tmp`) so the
+# reap can never touch an unrelated dot-prefixed `.tmp` file that happens to sit
+# in the same directory.
+_TEMP_NAME_RE = re.compile(r"\.\d+\.[0-9a-f]+\.tmp")
+
 
 def _reap_stale_temps(parent: Path) -> None:
     """Unlink orphaned atomic-write temp files in *parent* older than the reap
@@ -208,6 +214,8 @@ def _reap_stale_temps(parent: Path) -> None:
     except OSError:
         return
     for entry in entries:
+        if not _TEMP_NAME_RE.fullmatch(entry.name):
+            continue
         try:
             if entry.stat().st_mtime < cutoff:
                 entry.unlink()

@@ -70,7 +70,7 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
         with open(spec_file, encoding="utf-8-sig") as fh:
             spec = yaml.safe_load(fh)
     except OSError as exc:
-        ctx.emit(False, error=f"Could not read spec file: {exc}")
+        ctx.emit(False, error=f"Could not read spec file {spec_file}: {exc}")
         return
     except yaml.YAMLError as exc:
         ctx.emit(False, error=f"Could not parse spec file: {exc}")

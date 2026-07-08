@@ -106,6 +106,21 @@ def test_stale_temp_file_is_reaped_on_write(tmp_path):
     assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1}
 
 
+def test_unrelated_dot_tmp_file_is_not_reaped(tmp_path):
+    # The reap must only touch this module's own `.<pid>.<hex>.tmp` temps, never
+    # an unrelated dot-prefixed .tmp file that happens to share the directory —
+    # even when it's old.
+    other = tmp_path / ".editor-swap.tmp"
+    other.write_text("not ours", encoding="utf-8")
+    old = time.time() - session_mod._TEMP_REAP_AGE_SECONDS - 60
+    os.utime(other, (old, old))
+
+    target = tmp_path / "state.json"
+    session_mod._atomic_write_json(target, {"a": 1})
+
+    assert other.exists()
+
+
 def test_fresh_temp_file_is_not_reaped(tmp_path):
     # A temp file with a current mtime belongs to a live writer (or a just-crashed
     # one) — it must survive the reap so an in-flight write isn't clobbered.
