@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.22 (2026-07-08)
+
+### Bug Fixes
+
+- --publish parity on ribbon add-button/remove and app set-sitemap
+  ([#754](https://github.com/Gharib89/crm/pull/754),
+  [`edda0a3`](https://github.com/Gharib89/crm/commit/edda0a37f50b04924ac9c0cc41a783434e04ea0f))
+
+- Add --skip-dependency-check and --formatted to solution stage-and-upgrade
+  ([#756](https://github.com/Gharib89/crm/pull/756),
+  [`de5e239`](https://github.com/Gharib89/crm/commit/de5e2390a42421284e6b8462aab979096832c8e3))
+
+
 ## v1.51.21 (2026-07-08)
 
 ### Performance Improvements
