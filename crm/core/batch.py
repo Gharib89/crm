@@ -40,6 +40,14 @@ def run_batched(
     its originating item. ``$batch`` is short-circuited under ``--dry-run``, so a
     caller that must still issue real reads there branches on ``backend.dry_run``
     (and ``backend.read_only``, which also refuses ``$batch``) before calling this.
+
+    Retry semantics differ from a per-item ``backend.get``/``delete`` loop: only
+    the outer ``$batch`` POST is retried (429/503 via :meth:`D365Backend.batch`);
+    a *subrequest* that returns a retryable status surfaces as that op's ``error``
+    rather than being retried on its own. This is inherent to routing through
+    ``$batch`` and is accepted for the round-trip savings — throttling normally
+    applies to the outer POST (which is retried); a caller needing per-item retry
+    parity on transient subrequest failures should not use this helper.
     """
     if chunk_size < 1:
         raise D365Error(f"chunk_size must be a positive integer; got {chunk_size}")
