@@ -259,8 +259,16 @@ Draft") is seeded on both orgs (#732). Recreate it without the web app by round-
 genuine designer XAML: `workflow export` any classic workflow → edit `name`/`ondemand` →
 `workflow import` (cloud) or `workflow clone` + `workflow update --on-demand` (where the
 id already exists); the Web API accepts genuine XAML even though it can't author it (#534).
-(`query saved`/`query user` now self-seed a throwaway view, so they no longer skip.)
-Hostnames omitted (Contoso placeholders only).
+`workflow run` (cloud, `requires_cloud`) is likewise seeded — a second, **activated**
+on-demand copy on Account ("E2E Seed: On-Demand Activated"; the draft one must stay draft
+for activate/deactivate, so `workflow run` needs its own). The `$count`-clamp assertion
+(`test_diagnostics.py`) has a durable >5000-row table on both orgs (5001 marker-tagged
+contacts, `jobtitle="E2E-BULK-SEED"`, bulk-deletable), but its gate reads
+`RetrieveTotalRecordCount`, which the platform **caches ~12–24h** — the live collection
+`$count` already clamps at 5000+`has_more`, yet the test stays skipped until the cached
+count refreshes past 5000. (`query saved`/`query user` now self-seed a throwaway view, so
+they no longer skip.) `audit detail` stays skipped (org auditing off, deliberately
+un-seeded). Hostnames omitted (Contoso placeholders only).
 
 ## Realistic Workflow Scenarios
 
