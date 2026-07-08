@@ -342,7 +342,9 @@ class TestPrimaryIdWarning:
                 backend, "accounts", {"name": "Contoso"},
                 is_create=True,
             )
-            paths = [r.path for r in m.request_history]
+            # Lower-case both sides so the negative assertions can't silently
+            # no-op under a different URL-normalization casing.
+            paths = [r.path.lower() for r in m.request_history]
         assert result == {"ok": True}
         assert len(paths) == 2
         assert not any(p.endswith("/entitydefinitions(logicalname='account')") for p in paths)
@@ -366,7 +368,7 @@ class TestPrimaryIdWarning:
             )
             after = m.request_history[start:]
         assert len(after) == 1
-        assert after[0].path.endswith("/attributes")
+        assert after[0].path.lower().endswith("/attributes")
 
 
 class TestPrimaryIdWarnCommand:
