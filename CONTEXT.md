@@ -263,6 +263,26 @@ A table capability the platform switches on after creation but never off —
 disable is **replace-blocked**.
 _Avoid_: toggle (it is one-way).
 
+**Plan**:
+A saved, self-contained drift report — the resolved spec, its computed
+per-component verdicts, sha256-pinned file payloads, and the target's identity
+and **plan intent** — written by `--dry-run apply -o` and executed by
+`apply --from-plan`. The unit of approval: what was approved is what runs
+([ADR 0022](docs/adr/0022-plan-artifact-approval-gated-apply.md)).
+_Avoid_: diff file, snapshot, changeset.
+
+**Plan intent**:
+The destructive and staging choices fixed when a **plan** is created —
+`--prune`, `--allow-data-loss`, `--stage-only` — recorded in the plan and
+replayed by `--from-plan`, never re-specified at apply time.
+_Avoid_: apply flags.
+
+**Stale plan**:
+A **plan** whose recorded verdicts no longer match what reconcile recomputes
+against the live org. `--from-plan` refuses it whole — zero writes, exit `1` —
+and the remedy is always re-plan and re-approve.
+_Avoid_: expired plan, plan conflict.
+
 ### Cloning
 
 **Schema clone**:
