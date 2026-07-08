@@ -330,6 +330,31 @@ class TestSetSitemap:
         with pytest.raises(D365Error, match="must not be empty"):
             appmodule.set_sitemap(backend, sitemap_name="x", sitemap_xml="   ")
 
+    def test_set_sitemap_does_not_publish_by_default(self, backend):
+        from crm.core import appmodule
+        sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("sitemaps"), status_code=204,
+                   headers={"OData-EntityId": sm_url})
+            out = appmodule.set_sitemap(backend, sitemap_name="X",
+                                        sitemap_xml="<SiteMap/>")
+        assert "published" not in out
+        assert not any(r.method == "POST" and "PublishAllXml" in r.url
+                       for r in m.request_history)
+
+    def test_set_sitemap_publishes_when_requested(self, backend):
+        from crm.core import appmodule
+        sm_url = backend.url_for(f"sitemaps({_SITEMAP_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(backend.url_for("sitemaps"), status_code=204,
+                   headers={"OData-EntityId": sm_url})
+            m.post(backend.url_for("PublishAllXml"), status_code=204)
+            out = appmodule.set_sitemap(backend, sitemap_name="X",
+                                        sitemap_xml="<SiteMap/>", publish=True)
+        assert out["published"] is True
+        assert any(r.method == "POST" and "PublishAllXml" in r.url
+                   for r in m.request_history)
+
     def test_app_set_sitemap_command_wires_core(self, monkeypatch):
         from click.testing import CliRunner
         from crm.cli import cli
@@ -355,6 +380,30 @@ class TestSetSitemap:
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
         assert captured["unique_name"] == "cwx_crmworx"
         assert captured["sitemap_xml"].startswith("<SiteMap")
+        assert captured["publish"] is False  # stages by default
+
+    def test_app_set_sitemap_publish_flag_wires_core(self, monkeypatch):
+        from click.testing import CliRunner
+        from crm.cli import cli
+        captured = {}
+
+        def fake_set_sitemap(backend, **kw):
+            captured.update(kw)
+            return {"created": True, "sitemapid": _SITEMAP_ID,
+                    "sitemapname": kw["sitemap_name"]}
+
+        monkeypatch.setattr("crm.core.appmodule.set_sitemap", fake_set_sitemap)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("sm.xml", "w", encoding="utf-8") as fh:
+                fh.write("<SiteMap><Area Id='cwx' /></SiteMap>")
+            result = runner.invoke(cli, [
+                "--json", "app", "set-sitemap", "CRMWorx SiteMap",
+                "--xml-file", "sm.xml", "--solution", "cwx_sol", "--publish",
+            ])
+        assert result.exit_code == 0, result.output
+        assert captured["publish"] is True
 
 
 def _deletes(m):

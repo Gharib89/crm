@@ -32,7 +32,8 @@ crm ribbon add-button cwx_ticket --solution MySolution \
 ```
 
 `--location` is `form`, `homegrid`, or `subgrid`. Override the target group with
-`--group <id>`. The web resource must already exist in the org/solution.
+`--group <id>`. The web resource must already exist in the org/solution. The edit
+**stages** by default (no publish); pass `--publish` to publish it immediately.
 
 ## Remove a button
 
@@ -40,6 +41,9 @@ crm ribbon add-button cwx_ticket --solution MySolution \
 crm ribbon remove cwx_ticket --solution MySolution \
     --button-id cwx_ticket.form.Validate.CustomAction --yes
 ```
+
+Like `add-button`, this **stages** by default; pass `--publish` to publish the
+removal immediately (or run `crm solution publish-all` once your edits are done).
 
 ## Set a button's label and tooltips
 

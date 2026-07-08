@@ -207,16 +207,18 @@ def app_build_sitemap(ctx: CLIContext, sitemap_name, areas, groups, subareas,
 @click.option("--unique-name", default=None,
               help="App uniquename to link the sitemap to (sets sitemapnameunique).")
 @_solution_option
+@_publish_option
 @pass_ctx
 def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name,
-                    solution):
+                    solution, publish):
     """Create a sitemap from a SiteMapXml file."""
     with open(xml_file, "r", encoding="utf-8") as fh:
         xml = fh.read()
     solution = _resolve_solution(ctx, solution)
+    publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = app_mod.set_sitemap(ctx.backend(), sitemap_name=sitemap_name,
                                    sitemap_xml=xml, unique_name=unique_name,
-                                   solution=solution)
-    _emit_with_warning(ctx, info, None)
+                                   solution=solution, publish=publish)
+    _emit_with_warning(ctx, info, None, meta=ctx.staged_meta())
     _journal(ctx, sitemap_name, info, solution=solution)

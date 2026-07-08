@@ -120,12 +120,14 @@ def ribbon_list(ctx: CLIContext, entity, solution):
 @click.option("--sequence", type=int, default=50, show_default=True)
 @click.option("--id", "id_base", default=None,
               help="Override the generated id base ({entity}.{location}.{label}).")
+@_publish_option
 @_solution_option
 @pass_ctx
 def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
-                      function, param, sequence, id_base, solution):
+                      function, param, sequence, id_base, publish, solution):
     """Add a JavaScript command-bar button to an entity (no manual XML editing)."""
     solution = _resolve_solution(ctx, solution)
+    publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         ribbon_mod.resolve_webresource_id(ctx.backend(), webresource)
         group = ribbon_mod.resolve_group(location, entity, group_override)
@@ -137,7 +139,8 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
                 function=function, param=param, sequence=sequence)
 
         result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate)
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate,
+            publish=publish)
     ctx.emit(True, data={"button_id": ids.custom_action, "group": group,
                          "result": result},
              warnings=None)
@@ -149,11 +152,13 @@ def ribbon_add_button(ctx, entity, label, location, group_override, webresource,
 @click.option("--button-id", "button_id", required=True,
               help="The CustomAction Id to remove (see `crm ribbon list`).")
 @_destructive_option
+@_publish_option
 @_solution_option
 @pass_ctx
-def ribbon_remove(ctx, entity, button_id, yes, solution):
+def ribbon_remove(ctx, entity, button_id, yes, publish, solution):
     """Remove a custom button (CustomAction + its CommandDefinition)."""
     solution = _resolve_solution(ctx, solution)
+    publish = _resolve_publish(ctx, publish)
     _confirm_destructive(ctx, "ribbon button", button_id, yes)
 
     def mutate(diff):
@@ -165,7 +170,8 @@ def ribbon_remove(ctx, entity, button_id, yes, solution):
 
     with d365_errors(ctx):
         result = ribbon_mod.apply_ribbon_change(
-            ctx.backend(), solution=solution, entity=entity, mutate=mutate)
+            ctx.backend(), solution=solution, entity=entity, mutate=mutate,
+            publish=publish)
     ctx.emit(True, data={"removed": button_id, "result": result},
              warnings=None)
     _journal(ctx, button_id, result, solution=solution)
