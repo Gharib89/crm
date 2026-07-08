@@ -266,16 +266,13 @@ class CLIContext:
 pass_ctx = click.make_pass_decorator(CLIContext, ensure=True)
 
 
-def _emit_usage_envelope(message: str) -> None:
-    """Print the standard {ok: false, error: ...} JSON usage-error envelope."""
-    click.echo(json.dumps({"ok": False, "error": message}, indent=2, default=str))
-
-
-def _emit_click_error_envelope(message: str) -> None:
-    """Print the standard JSON envelope for non-usage ClickException failures."""
-    click.echo(
-        json.dumps({"ok": False, "error": message, "meta": {}}, indent=2, default=str)
-    )
+def _emit_error_envelope(message: str, *, meta: dict[str, Any] | None = None) -> None:
+    """Print the standard {ok: false, error: ...} JSON error envelope. Usage errors
+    omit `meta`; non-usage ClickException failures pass an empty `meta` object."""
+    env: dict[str, Any] = {"ok": False, "error": message}
+    if meta is not None:
+        env["meta"] = meta
+    click.echo(json.dumps(env, indent=2, default=str))
 
 
 def _suppress_bare_repl(json_mode: bool) -> bool:
@@ -376,7 +373,7 @@ class _JsonAwareGroup(click.Group):
             if hint is None:
                 return self._render_usage_error(exc, json_mode, standalone)
             if json_mode:
-                _emit_usage_envelope(hint)
+                _emit_error_envelope(hint)
             else:
                 click.echo(f"Error: {hint}", err=True)
             if standalone:
@@ -401,13 +398,13 @@ class _JsonAwareGroup(click.Group):
         and the non-standalone human path still propagates to the REPL's
         skin.error handler."""
         if json_mode:
-            exit_code = exc.exit_code if isinstance(exc, click.UsageError) else 1
-            emit = (_emit_usage_envelope if isinstance(exc, click.UsageError)
-                    else _emit_click_error_envelope)
-            emit(exc.format_message())
+            # Usage errors omit meta and keep Click's exit 2; non-usage
+            # ClickExceptions carry an empty meta and Click's default exit 1.
+            meta = None if isinstance(exc, click.UsageError) else {}
+            _emit_error_envelope(exc.format_message(), meta=meta)
             if standalone:
-                sys.exit(exit_code)
-            raise click.exceptions.Exit(exit_code)
+                sys.exit(exc.exit_code)
+            raise click.exceptions.Exit(exc.exit_code)
         if not standalone or json_mode:
             raise exc
         exc.show()
@@ -699,7 +696,7 @@ def cli(ctx: click.Context, json_mode: bool, dry_run: bool,
         if _suppress_bare_repl(json_mode):
             msg = "no subcommand given; run crm --help to list commands"
             if json_mode:
-                _emit_usage_envelope(msg)
+                _emit_error_envelope(msg)
             else:
                 click.echo(f"Error: {msg}", err=True)
             raise click.exceptions.Exit(2)
