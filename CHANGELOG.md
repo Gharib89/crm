@@ -9,6 +9,28 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.51.13 (2026-07-08)
+
+### Bug Fixes
+
+- Degrade alt-key column-type lookup gracefully; use explicit BOM escapes in tests
+  ([#731](https://github.com/Gharib89/crm/pull/731),
+  [`a8f1a9a`](https://github.com/Gharib89/crm/commit/a8f1a9afb4ac02215b84e66f4e6a28b513da185b))
+
+- Make file-boundary reads UTF-8/BOM-tolerant and alt-key CSV values type-correct
+  ([#731](https://github.com/Gharib89/crm/pull/731),
+  [`a8f1a9a`](https://github.com/Gharib89/crm/commit/a8f1a9afb4ac02215b84e66f4e6a28b513da185b))
+
+- Resolve alt-key column types through the cached name-map seam
+  ([#731](https://github.com/Gharib89/crm/pull/731),
+  [`a8f1a9a`](https://github.com/Gharib89/crm/commit/a8f1a9afb4ac02215b84e66f4e6a28b513da185b))
+
+### Documentation
+
+- Note durable on-demand workflow seed unblocking activate/clone e2e
+  ([`d25dc4c`](https://github.com/Gharib89/crm/commit/d25dc4c3a0ddb20a72948c25a6bddb989d39b63e))
+
+
 ## v1.51.12 (2026-07-08)
 
 ### Bug Fixes
