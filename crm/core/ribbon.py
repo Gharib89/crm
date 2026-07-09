@@ -932,7 +932,7 @@ def load_ribbon_diff_file(path: "str | Path") -> ET.Element:
     if root.tag != "RibbonDiffXml":
         raise D365Error(
             f"diff file {p} has root <{root.tag}>, expected <RibbonDiffXml> — pass a "
-            "file written by `crm ribbon export ENTITY --solution S --to FILE`")
+            "file written by `crm ribbon export ENTITY --solution S --output FILE`")
     return ensure_ribbon_diff_skeleton(root)
 
 

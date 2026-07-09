@@ -637,9 +637,9 @@ def ribbon_add_custom_rule(ctx, entity, command_id, webresource, function,
 def ribbon_apply(ctx, entity, from_file, publish, solution):
     """Import a local RibbonDiffXml working-copy file, full-replacing ENTITY's ribbon.
 
-    The terminal step of the offline flow: `ribbon export ENTITY --solution S --to
-    f.xml`, compose N `--diff-file` edits against f.xml, then `ribbon apply ENTITY
-    --solution S --from f.xml` — one export → import → publish. ENTITY's
+    The terminal step of the offline flow: `ribbon export ENTITY --solution S
+    --output f.xml`, compose N `--diff-file` edits against f.xml, then `ribbon apply
+    ENTITY --solution S --from f.xml` — one export → import → publish. ENTITY's
     <RibbonDiffXml> in the solution is replaced VERBATIM with the file's content
     (desired-state: an element removed offline does not reappear from live state).
     """
