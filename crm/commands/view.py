@@ -63,7 +63,7 @@ def _parse_column(raw: str) -> tuple[str, int]:
 def _parse_order(raw: str) -> tuple[str, bool]:
     """Parse '<attribute> [asc|desc]' → (attribute, descending).
 
-    Mirrors the OData `$orderby` idiom (`query odata --orderby`). Direction
+    Mirrors the OData `$orderby` idiom (`query odata --order-by`). Direction
     token is case-insensitive; default ascending. Anything else is a usage error.
     """
     parts = raw.split()
@@ -122,7 +122,9 @@ def view_create(ctx: CLIContext, entity, name, object_type_code, columns,
                 solution, publish):
     """Create a system view on ENTITY (public by default; see --query-type)."""
     # --order-by is canonical; --order is a hidden deprecated alias (#711).
-    order_by = order_by or order_alias
+    # Precedence by presence, not truthiness: an explicit --order-by "" stays
+    # "provided" and reaches _parse_order (a usage error), as it did pre-#711.
+    order_by = order_by if order_by is not None else order_alias
     parsed = [_parse_column(c) for c in columns]
     order_desc = False
     if order_by is not None:

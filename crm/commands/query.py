@@ -100,7 +100,9 @@ def query_odata(ctx: CLIContext, entity_set, select, filter_, top, order_by, ord
     A '?' or '$' in the positional arg is rejected client-side before the request.
     """
     # --order-by is canonical; --orderby is a hidden deprecated alias (#711).
-    orderby = order_by or orderby
+    # Precedence by presence, not truthiness (an explicit --order-by wins even
+    # if empty; core then treats an empty $orderby as "no ordering" as before).
+    orderby = order_by if order_by is not None else orderby
     with d365_errors(ctx):
         result = query_mod.odata_query(
             ctx.backend(), entity_set,

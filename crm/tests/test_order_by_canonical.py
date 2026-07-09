@@ -72,6 +72,17 @@ def test_view_create_order_alias_identical(monkeypatch):
     assert captured["order_desc"] is True
 
 
+def test_view_create_empty_order_by_is_usage_error(monkeypatch):
+    # Precedence is by presence, not truthiness: an explicit empty --order-by
+    # stays "provided" and reaches _parse_order (a usage error), as pre-#711.
+    monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+    result = CliRunner().invoke(cli, [
+        "--json", "view", "create", "cwx_ticket", "--name", "X", "--otc", "1",
+        "--column", "cwx_name:220", "--order-by", "", "--no-publish",
+    ])
+    assert result.exit_code == 2, result.output
+
+
 # --- vocabulary regression: catalogue advertises only the canonical spelling ---
 
 def _catalogue() -> dict:
