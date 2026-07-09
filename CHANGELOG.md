@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.57.0 (2026-07-09)
+
+### Bug Fixes
+
+- Pin an unreadable payload as null instead of aborting the plan write
+  ([#778](https://github.com/Gharib89/crm/pull/778),
+  [`611d25d`](https://github.com/Gharib89/crm/commit/611d25dd6a3553bf1d46f8df7ade5c5ca553b5a7))
+
+### Features
+
+- Serialize the dry-run apply drift report as a plan artifact (-o/--plan-out)
+  ([#778](https://github.com/Gharib89/crm/pull/778),
+  [`611d25d`](https://github.com/Gharib89/crm/commit/611d25dd6a3553bf1d46f8df7ade5c5ca553b5a7))
+
+### Refactoring
+
+- Stream payload hashing and include resolved path in read error
+  ([#778](https://github.com/Gharib89/crm/pull/778),
+  [`611d25d`](https://github.com/Gharib89/crm/commit/611d25dd6a3553bf1d46f8df7ade5c5ca553b5a7))
+
+
 ## v1.56.1 (2026-07-09)
 
 ### Bug Fixes
