@@ -387,6 +387,77 @@ def test_apply_dry_run_drift_report_writes_nothing(cli, backend, ephemeral_entit
 
 @pytest.mark.slow
 @covers("apply")
+def test_apply_dry_run_plan_out_serializes_drift_report(cli, backend, ephemeral_entity,
+                                                        ephemeral_solution, tmp_path, request):
+    """`--dry-run apply -o plan.json` writes a plan artifact of the drift report (#746).
+
+    Seed a column, then dry-run a drifted spec with `-o`: the plan lands on disk
+    carrying a header stamped with the live org's WhoAmI OrganizationId, the spec
+    embedded verbatim, and a verdict record for the drifted column — while the live
+    column stays unchanged (dry-run writes nothing). Target-agnostic; column cleaned
+    up in a finalizer.
+    """
+    from crm.core import connection as conn_mod
+    from crm.core import metadata as meta_mod
+
+    suffix = ephemeral_entity[-8:]
+    attr_schema = f"new_applyplan_{suffix}"
+    attr_logical = attr_schema.lower()
+
+    def _cleanup():
+        try:
+            backend.delete(
+                f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+                f"/Attributes(LogicalName='{attr_logical}')"
+            )
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    def _spec(attr):
+        return {"solution": {"unique_name": ephemeral_solution},
+                "entities": [{"schema_name": ephemeral_entity,
+                              "display_name": f"E2E {suffix}", "attributes": [attr]}]}
+
+    base_attr = {"kind": "string", "schema_name": attr_schema,
+                 "display_name": "Plan Test", "max_length": 50}
+    spec_path = tmp_path / "plan_spec.json"
+    spec_path.write_text(json.dumps(_spec(base_attr)), encoding="utf-8")
+
+    # Seed the column for real (applied first run, skipped on re-run — both fine).
+    seed = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert seed["ok"] is True, f"seed apply failed: {seed}"
+
+    # Dry-run a drifted spec with -o: the drift is serialized to the plan file.
+    drifted_spec = _spec({**base_attr, "display_name": "Plan Test Renamed", "max_length": 120})
+    spec_path.write_text(json.dumps(drifted_spec), encoding="utf-8")
+    plan_path = tmp_path / "plan.json"
+    preview = json.loads(cli(
+        ["--json", "--dry-run", "apply", "-f", str(spec_path), "-o", str(plan_path)]).stdout)
+    assert preview["ok"] is True, f"dry-run apply failed: {preview}"
+    assert preview["meta"]["plan_out"] == str(plan_path), f"plan_out not echoed: {preview}"
+
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan["plan_format"] == 1, plan
+    # Header identity is the live org's actual WhoAmI OrganizationId.
+    org_id = conn_mod.whoami(backend).get("OrganizationId")
+    assert plan["header"]["organization_id"] == org_id, plan["header"]
+    assert plan["header"]["solution"] == ephemeral_solution, plan["header"]
+    assert plan["spec"] == drifted_spec, "spec not embedded verbatim"
+    # The drifted column has a verdict record carrying the field-level diff.
+    updated = [v for v in plan["verdicts"]
+               if v["name"] == attr_schema and v["verdict"] == "updated"]
+    assert updated and "diff" in updated[0], f"drifted column not serialized: {plan['verdicts']}"
+
+    # The live column is unchanged — writing the plan issued no mutation.
+    live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
+    assert meta_mod.label_text(live.get("DisplayName") or {}) == "Plan Test", (
+        f"plan-out mutated the display name: {live.get('DisplayName')}")
+
+
+@pytest.mark.slow
+@covers("apply")
 def test_apply_webresource_create_noop_update(cli, backend, ephemeral_solution,
                                               tmp_path, unique, request):
     """apply creates a web resource from a file, no-ops an unchanged re-apply, and

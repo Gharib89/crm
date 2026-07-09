@@ -4669,3 +4669,80 @@ def test_adapter_reconcile_plugin_step_config_drift_updated(backend):
         verdict, payload = _reconcile_through_adapter(backend, "plugin-step", step, ctx, entry)
     assert verdict == "updated"
     assert payload["diff"]["fields"] == ["rank"]
+
+
+# ── -o/--plan-out: serialize the dry-run drift report as a plan artifact (#746) ──
+
+
+def _mock_whoami(m, backend, org_id=_GUID2):
+    m.get(backend.url_for("WhoAmI"), json={"OrganizationId": org_id})
+
+
+def test_apply_plan_out_requires_dry_run(backend, monkeypatch, tmp_path):
+    # -o without --dry-run is a usage error (exit 2), before any backend work.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+    spec_path = _write_spec(tmp_path)
+    out = tmp_path / "plan.json"
+    result = CliRunner().invoke(
+        cli, ["--json", "apply", "-f", str(spec_path), "-o", str(out)])
+    assert result.exit_code == 2
+    assert "--dry-run" in json.loads(result.output)["error"]
+    assert not out.exists()
+
+
+def test_apply_dry_run_writes_plan_artifact(dry_backend, monkeypatch, tmp_path):
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    spec_path = _write_spec(tmp_path)
+    out = tmp_path / "plan.json"
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, dry_backend, org_id="org-abc")
+        m.get(dry_backend.url_for("publishers"), json={"value": []})
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
+        m.get(dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
+              status_code=404)
+        m.get(dry_backend.url_for("GlobalOptionSetDefinitions(Name='contoso_priority')"),
+              status_code=404)
+        result = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is True
+    assert env["meta"]["plan_out"] == str(out)
+    # The plan landed on disk and carries the header + a verdict per planned component.
+    plan = json.loads(out.read_text(encoding="utf-8"))
+    assert plan["plan_format"] == 1
+    assert plan["header"]["organization_id"] == "org-abc"
+    assert plan["header"]["solution"] == _SOLUTION["unique_name"]
+    assert plan["header"]["intent"] == {
+        "prune": False, "allow_data_loss": False, "stage_only": False}
+    assert plan["spec"] == _FULL_SPEC
+    assert [v["verdict"] for v in plan["verdicts"]] == ["planned"] * len(_FULL_KINDS)
+    assert [v["kind"] for v in plan["verdicts"]] == _FULL_KINDS
+
+
+def test_apply_dry_run_writes_plan_even_when_replace_blocked(dry_backend, monkeypatch, tmp_path):
+    # -o always writes the plan, including when the dry-run exits 1 (replace_blocked):
+    # the plan doubles as the drift-report artifact. Exit code is unchanged.
+    monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
+    ent = {"schema_name": "contoso_Project", "display_name": "Project",
+           "ownership": "OrganizationOwned",
+           "primary_attr": {"schema_name": "contoso_Name", "label": "Name"}}
+    spec = {"solution": _SOLUTION, "entities": [ent]}
+    spec_path = _write_spec(tmp_path, spec)
+    out = tmp_path / "plan.json"
+    with requests_mock.Mocker() as m:
+        _mock_whoami(m, dry_backend)
+        # Solution absent → planned, so dry-run prune detection enumerates nothing;
+        # the entity still exists live (UserOwned) and drifts to replace_blocked.
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
+        _mock_entity_live(m, dry_backend, ownership="UserOwned")
+        result = CliRunner().invoke(
+            cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(out)])
+    assert result.exit_code == 1, result.output
+    env = json.loads(result.output)
+    assert env["ok"] is False
+    # The plan is written despite the exit-1 verdict, and records the block.
+    plan = json.loads(out.read_text(encoding="utf-8"))
+    blocked = [v for v in plan["verdicts"] if v["verdict"] == "replace_blocked"]
+    assert [v["kind"] for v in blocked] == ["entity"]
+    assert "reason" in blocked[0]

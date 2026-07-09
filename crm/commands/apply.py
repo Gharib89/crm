@@ -33,10 +33,15 @@ from crm.core import apply as apply_mod
 @click.option("--allow-data-loss", is_flag=True,
               help="With --prune, also delete data-bearing extras (entities, "
                    "attributes) — this destroys their row data.")
+@click.option("-o", "--plan-out", "plan_out",
+              type=click.Path(dir_okay=False, writable=True),
+              help="Serialize the --dry-run drift report to this path as a plan "
+                   "artifact (JSON). Valid only with the global --dry-run flag. The "
+                   "plan is always written, including when the dry-run exits 1.")
 @_destructive_option
 @pass_ctx
 def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
-              prune, allow_data_loss, yes):
+              prune, allow_data_loss, plan_out, yes):
     """Apply a declarative desired-state spec.
 
     The spec declares a publisher, solution, entities (with attributes, option
@@ -63,6 +68,12 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
 
     if allow_data_loss and not prune:
         raise click.UsageError("--allow-data-loss only applies with --prune.")
+
+    # A plan serializes a drift report, so it only means anything under --dry-run
+    # (which suppresses writes while live reads still fire). Reject the combination
+    # up front as a usage error (exit 2), before any backend work.
+    if plan_out and not ctx.dry_run:
+        raise click.UsageError("-o/--plan-out requires the global --dry-run flag.")
 
     # utf-8-sig tolerates a leading UTF-8 BOM (Windows editors add one) on the
     # spec file, matching crm's file-boundary read policy (#683).
@@ -106,12 +117,28 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
                      "that the spec no longer declares" + scope
                      + ". This cannot be undone. Continue?"))
 
+    base_dir = os.path.dirname(os.path.abspath(spec_file))
     with d365_errors(ctx):
+        backend = ctx.backend()
         res = apply_mod.apply_spec(
-            ctx.backend(), spec, stage_only=ctx.stage_only,
+            backend, spec, stage_only=ctx.stage_only,
             include_referenced_optionsets=include_referenced_optionsets,
-            base_dir=os.path.dirname(os.path.abspath(spec_file)),
+            base_dir=base_dir,
             prune=prune, allow_data_loss=allow_data_loss)
+        # Serialize the drift report as a plan artifact when -o was passed (only
+        # reachable under --dry-run, checked above). Written before emit so a
+        # replace-blocked dry-run (res.ok False → emit exits 1) still lands the
+        # plan — it doubles as the drift-report artifact regardless of exit code.
+        if plan_out:
+            from crm.core import connection as conn_mod
+            from crm.core import plan as plan_mod
+            org_id = conn_mod.whoami(backend).get("OrganizationId")
+            plan_doc = plan_mod.build_plan(
+                spec=spec, report=res, backend=backend, organization_id=org_id,
+                solution=sol_block["unique_name"], base_dir=base_dir,
+                prune=prune, allow_data_loss=allow_data_loss,
+                stage_only=ctx.stage_only)
+            plan_mod.write_plan(plan_out, plan_doc)
 
     data = {k: res[k] for k in (
         "applied", "updated", "skipped", "replace_blocked", "pruned", "planned", "failed")}
@@ -129,6 +156,9 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
             f"{e['kind']} {e['name']}: {e.get('error', 'unknown error')}"
             for e in res["failed"]))
     error = " | ".join(parts) or None
-    ctx.emit(res["ok"], data=data, error=error, meta={"staged": res["staged"]})
+    meta: dict[str, object] = {"staged": res["staged"]}
+    if plan_out:
+        meta["plan_out"] = plan_out
+    ctx.emit(res["ok"], data=data, error=error, meta=meta)
     if res["ok"]:
         _journal(ctx, spec_file, data)
