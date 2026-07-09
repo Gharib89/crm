@@ -679,3 +679,139 @@ def test_ribbon_set_rules_and_add_custom_rule(
     # appended the custom rule reference — exact ordered set, no drop/reorder.
     assert enable_refs == ["Mscrm.SelectionCountExactlyOne", rule_id], enable_refs
     assert display_refs == ["Mscrm.HideOnModern"], display_refs
+
+
+# ── ribbon apply (working-copy flow: export --solution → offline edits → apply) ─
+
+
+@covers("ribbon apply")
+@pytest.mark.slow
+def test_ribbon_apply_working_copy_flow(
+    cli, backend, ephemeral_entity, ephemeral_solution, unique, request, tmp_path
+):
+    """The offline working-copy flow end-to-end (#773): export the entity's editable
+    RibbonDiffXml fragment with `--solution`, compose THREE offline `--diff-file`
+    edits (add-button + set-label + set-rules) against the local file with no backend
+    calls, then `ribbon apply` it — a single export→import→publish. Assert the
+    composed ribbon shows all three edits (the button, its new label, its rule),
+    proving the file-flow composes to the same result as three published live verbs.
+    """
+    _add_entity_to_solution(backend, ephemeral_solution, ephemeral_entity)
+
+    # A JS web resource for the button's command (validated at apply's import).
+    wr_name = f"new_e2eapply_{unique}.js"
+    js_src = tmp_path / f"{unique}.js"
+    js_src.write_bytes(b"// e2e ribbon apply test")
+    wr_result = cli([
+        "--json", "webresource", "create", "--name", wr_name,
+        "--file", str(js_src), "--display-name", f"E2E Apply WR {unique}",
+        "--solution", ephemeral_solution,
+    ])
+    assert wr_result.returncode == 0, (
+        f"webresource create failed:\n{wr_result.stderr}\n{wr_result.stdout}"
+    )
+    wr_id = json.loads(wr_result.stdout)["data"].get("webresourceid")
+    assert wr_id, "webresourceid missing from create response"
+
+    # ── EXPORT --solution → local working-copy fragment file ──────────────────
+    diff_file = tmp_path / "ribbon_diff.xml"
+    export = cli([
+        "--json", "ribbon", "export", ephemeral_entity,
+        "--solution", ephemeral_solution, "--output", str(diff_file),
+    ])
+    assert export.returncode == 0, (
+        f"ribbon export --solution failed:\n{export.stderr}\n{export.stdout}"
+    )
+    exp_env = json.loads(export.stdout)
+    assert exp_env["ok"], exp_env
+    assert exp_env["data"].get("solution") == ephemeral_solution, exp_env["data"]
+    assert diff_file.exists(), "export --solution wrote no fragment file"
+    assert diff_file.read_text(encoding="utf-8").lstrip().startswith("<"), (
+        "exported fragment does not look like XML"
+    )
+
+    label = f"Apply{unique}"
+    new_label = f"Applied{unique}"
+
+    # ── THREE OFFLINE EDITS against the local file (zero backend calls) ────────
+    add = cli([
+        "--json", "ribbon", "add-button", ephemeral_entity,
+        "--diff-file", str(diff_file),
+        "--label", label, "--location", "form",
+        "--webresource", wr_name, "--function", "ns.e2eApply",
+        "--param", "PrimaryControl",
+    ])
+    assert add.returncode == 0, f"add-button --diff-file failed:\n{add.stderr}\n{add.stdout}"
+    add_env = json.loads(add.stdout)
+    assert add_env["ok"], add_env
+    button_id = add_env["data"]["button_id"]
+    assert add_env["data"].get("diff_file") == str(diff_file), add_env["data"]
+    command_id = button_id[: -len(".CustomAction")] + ".Command"
+    composed_btn_id = button_id[: -len(".CustomAction")] + ".Button"
+
+    relabel = cli([
+        "--json", "ribbon", "set-label", ephemeral_entity,
+        "--diff-file", str(diff_file), "--button-id", button_id,
+        "--label", new_label,
+    ])
+    assert relabel.returncode == 0, (
+        f"set-label --diff-file failed:\n{relabel.stderr}\n{relabel.stdout}"
+    )
+    assert json.loads(relabel.stdout)["ok"]
+
+    rules = cli([
+        "--json", "ribbon", "set-rules", ephemeral_entity,
+        "--diff-file", str(diff_file), "--command-id", command_id,
+        "--enable-rule", "Mscrm.SelectionCountExactlyOne",
+    ])
+    assert rules.returncode == 0, (
+        f"set-rules --diff-file failed:\n{rules.stderr}\n{rules.stdout}"
+    )
+    assert json.loads(rules.stdout)["ok"]
+
+    # ── APPLY (single export → import → publish) ──────────────────────────────
+    apply_result = cli([
+        "--json", "ribbon", "apply", ephemeral_entity,
+        "--solution", ephemeral_solution, "--from", str(diff_file),
+    ])
+    assert apply_result.returncode == 0, (
+        f"ribbon apply failed:\n{apply_result.stderr}\n{apply_result.stdout}"
+    )
+    apply_env = json.loads(apply_result.stdout)
+    assert apply_env["ok"], apply_env
+
+    # Teardown (LIFO): strip the button first so its $webresource: reference does
+    # not dangle when the web resource is deleted, then delete the web resource.
+    def _cleanup_wr():
+        try:
+            backend.delete(f"webresourceset({wr_id})")
+        except Exception:
+            pass
+
+    def _remove_button():
+        cli([
+            "--json", "ribbon", "remove", ephemeral_entity,
+            "--solution", ephemeral_solution,
+            "--button-id", button_id, "--yes", "--publish",
+        ], check=False)
+
+    request.addfinalizer(_cleanup_wr)
+    request.addfinalizer(_remove_button)
+
+    # ── VERIFY (T3): the composed ribbon shows all three edits ────────────────
+    composed = _composed_ribbon(cli, ephemeral_entity)
+    btn = next((b for b in composed.iter("Button")
+                if b.get("Id") == composed_btn_id), None)
+    assert btn is not None, (
+        f"custom button {composed_btn_id!r} missing from composed ribbon after apply"
+    )
+    assert btn.get("LabelText") == new_label, (
+        f"expected relabelled {new_label!r}, got {btn.get('LabelText')!r}"
+    )
+    cdef = next((c for c in composed.iter("CommandDefinition")
+                 if c.get("Id") == command_id), None)
+    assert cdef is not None, f"command {command_id!r} absent from composed ribbon"
+    enable_refs = {e.get("Id") for e in cdef.findall("EnableRules/EnableRule")}
+    assert "Mscrm.SelectionCountExactlyOne" in enable_refs, (
+        f"set-rules edit missing from composed ribbon: {enable_refs}"
+    )

@@ -86,6 +86,7 @@ except `export` works through the solution-zip pipeline — all solution-scoped.
 ```bash
 crm --json ribbon export account                 # one table's composed RibbonDiffXml
 crm --json ribbon export --application           # application-wide ribbon (no ENTITY)
+crm --json ribbon export account --solution ContosoCore --output diff.xml  # editable fragment (working-copy flow)
 crm --json ribbon list account --solution ContosoCore
 crm --json ribbon add-button account --solution ContosoCore ...
 crm --json ribbon set-label account --solution ContosoCore --button-id <CustomAction_Id> ...
@@ -98,6 +99,7 @@ crm --json ribbon set-rules account --solution ContosoCore \
 crm --json ribbon add-custom-rule account --solution ContosoCore \
     --command-id account.form.MyBtn.Command \
     --webresource contoso_/scripts/ribbon.js --function ns.canRun
+crm --json ribbon apply account --solution ContosoCore --from diff.xml  # import + publish the working-copy file
 ```
 
 **`ribbon export` — give exactly one target.** An `ENTITY` exports that one
@@ -116,15 +118,34 @@ pipeline, `add-button` / `set-label` / `set-icon` / `remove` / `hide-button` /
 ticks. The command has not hung; **do not retry** a slow call (a second, parallel
 attempt races the first import). Confirm the outcome afterward with `ribbon list`.
 
-**Publish before you edit a staged button — ribbon edits do NOT chain unpublished.**
+**Publish before you edit a staged button — live ribbon edits do NOT chain unpublished.**
 `add-button` **stages** by default (like every customization write). But unlike
 forms/views, an **unpublished `RibbonDiffXml` is not carried by the solution export**
-that `set-label` / `set-rules` / `add-custom-rule` read to locate their target — so a
-button you just added without `--publish` is invisible to them, and they fail with
-`… not found` / `available: []`. So either add the button **with `--publish`**, or run
-`crm solution publish-all` before the follow-up edit. (The error now says this when it
-sees an empty diff.) This also means multi-button ribbon builds cannot batch-then-publish
-like other customizations — each edit needs the prior one published first.
+that the live `set-label` / `set-rules` / `add-custom-rule` read to locate their target
+— so a button you just added without `--publish` is invisible to them, and they fail
+with `… not found` / `available: []`. So either add the button **with `--publish`**, or
+run `crm solution publish-all` before the follow-up edit. (The error now says this when
+it sees an empty diff.) To batch several edits without any inter-edit publish, use the
+**working-copy flow** below — that is the composition path.
+
+**Working-copy flow (`export --solution` → `--diff-file` → `apply`) composes offline.**
+`ribbon export ENTITY --solution S --output f.xml` writes the entity's editable
+`RibbonDiffXml` fragment (not the composed read-only ribbon). The write verbs
+`add-button` / `add-custom-rule` / `set-label` / `set-rules` / `remove` then accept
+`--diff-file f.xml`: they mutate the local file with **zero backend calls** and compose
+freely (the second edit sees the first — no publish needed between them). `ribbon apply
+ENTITY --solution S --from f.xml` **full-replaces** the entity's live `RibbonDiffXml`
+with the file (desired-state: an element removed offline does not reappear) and does one
+export → import → publish. Key points for driving it:
+- `--diff-file` is mutually exclusive with `--solution` / `--publish` (usage error, exit 2).
+- In file mode the live pre-validations are deferred to `apply`'s import: the
+  web-resource existence check (`add-button` / `add-custom-rule`) and the `--lcid`
+  provisioned-language check (`set-label`) do not run offline — a bad reference surfaces
+  at `apply`, not at the edit. `ENTITY` is still required offline (pure id logic).
+- `ribbon apply` defaults to **publish** (unlike the staging verbs); pass `--no-publish`
+  to stage. Under `--dry-run` it previews the import without writing.
+- `hide-button` has **no** `--diff-file` mode — it needs the live composed ribbon to
+  validate `--target-id` and derive the command, so it stays live-only.
 
 **Platform rule allow-list — the server silently ignores unknown `Mscrm.*` ids.**
 `set-rules` validates each `Mscrm.*` id against a curated allow-list and rejects
