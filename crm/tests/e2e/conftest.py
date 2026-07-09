@@ -305,6 +305,24 @@ def _enforce_capability(request):
         pytest.skip("requires an on-prem/NTLM target")
 
 
+# "Automated e2e, safe to delete" marker stamped into every SHARED-fixture
+# artifact name/display on the long-lived shared cloud org (#760, #769), so leaks
+# are greppable and safe to sweep. It doubles as a Dataverse customization PREFIX,
+# whose rules are the strictest name constraint here: 2-8 alphanumerics, letter
+# start, MaxLength 8 (crm.core.solution.validate_customization_prefix). A clearer
+# token like "automated_e2e" is an illegal prefix (underscore + too long), so this
+# is the DB-legal squash of "automated e2e". crm/tests/test_e2e_marker.py pins it.
+E2E_MARKER = "ae2e"
+
+
+def _marker_prefix(suffix: str) -> str:
+    """Customization prefix for a throwaway publisher: the marker plus a short
+    unique tail, capped at Dataverse's 8-char prefix limit. Stays unique per run
+    (not a fixed literal) so concurrent runs on the shared org never collide on the
+    environment-unique publisher prefix."""
+    return f"{E2E_MARKER}{suffix}"[:8]
+
+
 @pytest.fixture(scope="session")
 def ephemeral_entity(backend):
     """One uniquely-named custom entity for the whole session — backs attribute/
@@ -314,8 +332,10 @@ def ephemeral_entity(backend):
     from crm.core import metadata as meta_mod
 
     suffix = _uuid.uuid4().hex[:8]
-    schema = f"new_E2E{suffix}"
-    info = meta_mod.create_entity(backend, schema_name=schema, display_name=f"E2E {suffix}")
+    schema = f"new_{E2E_MARKER}{suffix}"
+    info = meta_mod.create_entity(
+        backend, schema_name=schema, display_name=f"{E2E_MARKER} {suffix}"
+    )
     yield info["logical_name"]
     try:
         meta_mod.delete_entity(backend, info["logical_name"])
@@ -335,9 +355,9 @@ def ephemeral_solution(backend):
     from crm.core import solution as sol_mod
 
     suffix = _uuid.uuid4().hex[:8]
-    prefix = f"e2e{suffix[:4]}"
-    pub_name = f"new_e2epub_{suffix}"
-    sol_name = f"new_e2esol_{suffix}"
+    prefix = _marker_prefix(suffix)
+    pub_name = f"new_{E2E_MARKER}pub_{suffix}"
+    sol_name = f"new_{E2E_MARKER}sol_{suffix}"
     pub = sol_mod.create_publisher(
         backend, name=pub_name, prefix=prefix,
         option_value_prefix=10000 + (int(suffix, 16) % 90000),
