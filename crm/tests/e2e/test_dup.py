@@ -191,8 +191,10 @@ def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
     data = json.loads(result.stdout)["data"]
     assert data.get("status") == "completed", data
     assert isinstance(data.get("duplicates"), list), data
-    # The seeded pair are duplicates of each other → both appear as base records.
-    detected = {d.get("_baserecordid_value") for d in data["duplicates"]}
-    assert set(accounts) & detected, (
-        f"seeded pair {accounts} not among detected base records {detected}"
+    # Both seeded rows are flagged, each as a base record under the job. (The async
+    # job does NOT populate the matched-counterpart lookup `_duplicaterecordid_value`
+    # — verified live 2026-07-09 — so the base ref is the only usable record id.)
+    base = {d.get("_baserecordid_value") for d in data["duplicates"]}
+    assert set(accounts) & base, (
+        f"seeded pair {accounts} not among detected base records {base}"
     )

@@ -386,8 +386,10 @@ def check(
 # ── Bulk detect (async job over a query scope) ────────────────────────────────
 
 # The detected duplicates are logged as `duplicaterecord` rows linked to the job
-# via `_asyncoperationid_value`; `_baserecordid_value` is the swept record and
-# `duplicateid` the record it duplicates. The server caps a job at 5,000 results.
+# via `_asyncoperationid_value`; `_baserecordid_value` is the flagged record. The
+# async job does NOT populate `_duplicaterecordid_value` (the matched-counterpart
+# lookup) — verified live 2026-07-09 — and `duplicateid` is only the log row's own
+# PK, so neither is a usable counterpart ref. The server caps a job at 5,000 results.
 _DUPLICATE_RECORDS_SET = "duplicaterecords"
 _DUP_RECORD_SELECT = "_baserecordid_value,duplicateid,_asyncoperationid_value,createdon"
 

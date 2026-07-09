@@ -69,9 +69,11 @@ class TestSubmit:
 
     def test_wait_polls_and_reports_duplicates(self, backend, profile):
         base = profile.api_base
+        # The async job flags each record as a base record; the matched-counterpart
+        # lookup is left empty, so a row carries only its base ref + the log PK.
         dupes = [
-            {"_baserecordid_value": "a1", "duplicateid": "b1"},
-            {"_baserecordid_value": "a2", "duplicateid": "b2"},
+            {"_baserecordid_value": "a1", "duplicateid": "row1"},
+            {"_baserecordid_value": "a2", "duplicateid": "row2"},
         ]
         with requests_mock.Mocker() as m:
             _mock_submit(m, base)

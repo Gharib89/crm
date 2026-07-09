@@ -46,7 +46,7 @@ exist. Detection requires the entity to be duplicate-detection-enabled.
 table (or the `--fetchxml`/`--fetchxml-file` scope, whose `<entity>` must be
 `ENTITY`; converted to a `QueryExpression` server-side like `data delete`). Like
 `publish` it is async: without `--wait` → `status: "submitted"` + `job_id`, with
-`--wait` it polls to `completed` and lists the detected pairs. Detection **only**
+`--wait` it polls to `completed` and lists the flagged records. Detection **only**
 — nothing is merged/deleted; results are logged as `duplicaterecord` rows (server
 caps a job at **5,000**). It writes *data*, not customizations, so it takes **no
 `--solution`**. Needs the entity duplicate-detection-enabled with published rules.
@@ -70,12 +70,14 @@ caps a job at **5,000**). It writes *data*, not customizations, so it takes **no
 
 `bulk-detect` → `data` is `{job_id, job_name, entity, status}`; submitted →
 `status: "submitted"` (no results yet); with `--wait` → `status: "completed"`
-plus `count` + `duplicates` (the logged `duplicaterecord` rows, `_baserecordid_value`
-= the swept record, `duplicateid` = the record it duplicates):
+plus `count` + `duplicates` (the logged `duplicaterecord` rows). `_baserecordid_value`
+is the flagged record; `duplicateid` is only the log row's own id. **The async job
+does not populate a matched-counterpart ref** (`_duplicaterecordid_value` stays
+empty), so the result is the set of records flagged under the rules, not pairs:
 
 ```json
 {"job_id": "<guid>", "entity": "account", "status": "completed", "count": 2,
- "duplicates": [{"_baserecordid_value": "<guid>", "duplicateid": "<guid>"}]}
+ "duplicates": [{"_baserecordid_value": "<guid>", "duplicateid": "<log-row-guid>"}]}
 ```
 
 `get` → `data` is the rule record plus a `conditions` array:

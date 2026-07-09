@@ -143,14 +143,14 @@ class TestDupBulkDetect:
             m.get(backend.url_for(f"asyncoperations({_JOB_ID})"),
                   json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30})
             m.get(backend.url_for("duplicaterecords"),
-                  json={"value": [{"_baserecordid_value": "a1", "duplicateid": "b1"}]})
+                  json={"value": [{"_baserecordid_value": "a1", "duplicateid": "row1"}]})
             result = CliRunner().invoke(
                 cli, ["--json", "dup", "bulk-detect", "account", "--wait"])
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
         assert data["status"] == "completed"
         assert data["count"] == 1
-        assert data["duplicates"][0]["duplicateid"] == "b1"
+        assert data["duplicates"][0]["_baserecordid_value"] == "a1"
 
     def test_wait_human_mode_renders_duplicate_table(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
@@ -159,12 +159,12 @@ class TestDupBulkDetect:
             m.get(backend.url_for(f"asyncoperations({_JOB_ID})"),
                   json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30})
             m.get(backend.url_for("duplicaterecords"),
-                  json={"value": [{"_baserecordid_value": "base-1", "duplicateid": "dup-1"}]})
+                  json={"value": [{"_baserecordid_value": "base-1", "duplicateid": "row-1"}]})
             result = CliRunner().invoke(cli, ["dup", "bulk-detect", "account", "--wait"])
         assert result.exit_code == 0, result.output
-        # Human mode renders the detected pairs as a table.
-        assert "baserecordid" in result.output and "duplicateid" in result.output
-        assert "base-1" in result.output and "dup-1" in result.output
+        # Human mode renders the flagged records as a table.
+        assert "baserecordid" in result.output
+        assert "base-1" in result.output
 
     def test_both_fetchxml_sources_is_usage_error(self, backend, monkeypatch, tmp_path):
         _use_backend(monkeypatch, backend)

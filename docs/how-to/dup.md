@@ -119,8 +119,8 @@ server-side, the same as `data delete`).
 Without `--wait` the command returns once the job is submitted (`status:
 "submitted"`, with a `job_id`); with `--wait` it polls to completion and lists
 the detected duplicates (`--timeout` caps the wait). Detection **only** — nothing
-is merged or deleted. The detected pairs are logged as `duplicaterecord` rows and
-returned in both JSON and the human table:
+is merged or deleted. Each flagged record is logged as a `duplicaterecord` row
+(its `_baserecordid_value`) and returned in both JSON and the human table:
 
 ```json
 {
@@ -129,11 +129,16 @@ returned in both JSON and the human table:
   "status": "completed",
   "count": 2,
   "duplicates": [
-    { "_baserecordid_value": "<guid>", "duplicateid": "<guid>" }
+    { "_baserecordid_value": "<guid>", "duplicateid": "<log-row-guid>" }
   ]
 }
 ```
 
+> `_baserecordid_value` is the flagged record; `duplicateid` is only the
+> detection-log row's own id. The async job does **not** populate a matched-
+> counterpart reference (`_duplicaterecordid_value` stays empty), so the output
+> is the set of records flagged under the rules, not explicit pairs.
+>
 > The server caps a single job at **5,000** detected duplicates, and detection
 > only fires for **published** rules on a duplicate-detection-enabled entity.
 

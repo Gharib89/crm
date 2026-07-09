@@ -204,10 +204,11 @@ def dup_bulk_detect(ctx: CLIContext, entity, fetch_xml, fetchxml_file, job_name,
         )
     duplicates = result.get("duplicates")
     if isinstance(duplicates, list):
-        rows = [[d.get("_baserecordid_value") or "", d.get("duplicateid") or ""]
-                for d in duplicates]
+        # Each row flags one base record; the async job leaves the matched-
+        # counterpart lookup empty, so the record id is all there is to show.
+        rows = [[d.get("_baserecordid_value") or ""] for d in duplicates]
         ctx.emit(True, data=result, table={
-            "headers": ["baserecordid", "duplicateid"], "rows": rows,
+            "headers": ["baserecordid"], "rows": rows,
         })
     else:
         ctx.emit(True, data=result)
