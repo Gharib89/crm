@@ -10,6 +10,16 @@ Integer and bigint `--min` / `--max` bounds are whole-number fields on both
 `metadata add-attribute` and `metadata update-attribute`; fractional input is
 rejected before the request is sent.
 
+## Auditing (`--audit` / `--no-audit`)
+
+`--audit`/`--no-audit` sets the `IsAuditEnabled` managed property on a table or
+column, uniformly across `create-entity`, `add-attribute`, `update-entity`, and
+`update-attribute`. **Gotcha:** this per-table/column flag is inert until
+auditing is turned on at the **organization** level — set it and the value is
+stored, but no audit records are written until org auditing is enabled (a
+one-time environment step in PPAC, not a crm verb). Omit the flag to leave the
+value unchanged.
+
 ## Datetime column behavior gotchas (`--behavior`)
 
 `DateTimeBehavior` controls whether a datetime column stores time-zone-offset data

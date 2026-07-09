@@ -514,6 +514,7 @@ one call. Write verbs new in 0.5.0:
 - `metadata update-relationship <schema>` — update cascade/menu on an existing relationship; `--hierarchical / --no-hierarchical` sets `IsHierarchical` on a 1:N (rejected for N:N)
 - `metadata can-relate <entity> --as referenced|referencing|many-to-many` — read-only eligibility check before creating a relationship; `--valid-partners` lists legal partner tables (N:N partner list is org-global, not entity-scoped)
 - `metadata create-entity` accepts `--data-provider`, `--data-source`, `--external-name`, `--external-collection-name` to create a VIRTUAL (external-data-backed) table; on v9.1 virtual tables are read-only and require the data-provider record to exist first
+- `--audit / --no-audit` on `create-entity`, `add-attribute`, `update-entity`, and `update-attribute` toggles the `IsAuditEnabled` managed property on a table/column (requires org-level auditing to be turned on for audit records to be written)
 - `metadata list-optionsets` / `get-optionset` / `create-optionset` / `update-optionset` / `delete-optionset` — global option sets
 - `metadata keys <entity>` / `create-key <entity> --key-attributes col1,col2` / `delete-key <entity> <key>` — read, create, and drop alternate keys (the natural-key index that `entity upsert --key` / `data import --mode upsert --key` match on)
 - `metadata delete-entity <logical-name>` — drop a custom entity (gated)

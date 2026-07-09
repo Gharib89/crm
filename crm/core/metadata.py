@@ -526,6 +526,7 @@ def create_entity(
     has_activities: bool = False,
     has_notes: bool = False,
     is_activity: bool = False,
+    is_audit_enabled: bool | None = None,
     data_provider_id: str | None = None,
     data_source_id: str | None = None,
     external_name: str | None = None,
@@ -548,6 +549,9 @@ def create_entity(
         has_activities: Enable activities on the entity.
         has_notes: Enable notes (annotations) on the entity.
         is_activity: Create as an activity entity (mutually exclusive with most options).
+        is_audit_enabled: Enable/disable auditing on the table (the
+            `IsAuditEnabled` managed property). Requires org-level auditing to be
+            on for audit records to be written. Omit to leave the server default.
         data_provider_id: Virtual-entity data provider GUID. Setting any of the
             four `external_*` / `data_*` arguments marks this a *virtual* table
             (its rows live in an external store). Virtual tables are read-only on
@@ -643,6 +647,10 @@ def create_entity(
     }
     if description:
         body["Description"] = label(description)
+    if is_audit_enabled is not None:
+        # BooleanManagedProperty: the server fills CanBeChanged from the default
+        # on create, so only Value is written (mirrors the update path).
+        body["IsAuditEnabled"] = {"Value": is_audit_enabled}
     if is_virtual:
         body["ExternalName"] = external_name
         body["ExternalCollectionName"] = external_collection_name

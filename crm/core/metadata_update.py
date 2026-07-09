@@ -158,6 +158,7 @@ def _build_entity_changes(
     has_activities: bool | None,
     has_notes: bool | None,
     is_sla_enabled: bool | None,
+    is_audit_enabled: bool | None = None,
 ) -> dict[str, Any]:
     changes: dict[str, Any] = {}
     if display_name is not None:
@@ -178,6 +179,10 @@ def _build_entity_changes(
         # onto the retrieved property object preserves CanBeChanged /
         # ManagedPropertyLogicalName (the retrieve-merge-write contract).
         changes["IsSLAEnabled"] = {"Value": is_sla_enabled}
+    if is_audit_enabled is not None:
+        # IsAuditEnabled is likewise a BooleanManagedProperty; the sparse
+        # {"Value": …} merges onto the retrieved object, preserving CanBeChanged.
+        changes["IsAuditEnabled"] = {"Value": is_audit_enabled}
     return changes
 
 
@@ -192,6 +197,7 @@ def update_entity(
     has_activities: bool | None = None,
     has_notes: bool | None = None,
     is_sla_enabled: bool | None = None,
+    is_audit_enabled: bool | None = None,
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
@@ -211,12 +217,13 @@ def update_entity(
         has_activities=has_activities,
         has_notes=has_notes,
         is_sla_enabled=is_sla_enabled,
+        is_audit_enabled=is_audit_enabled,
     )
     if not changes:
         raise D365Error(
             "nothing to update — pass at least one of "
             "--display/--display-collection/--description/--ownership/"
-            "--has-activities/--has-notes."
+            "--has-activities/--has-notes/--audit."
         )
     path = f"EntityDefinitions(LogicalName='{logical_name}')"
     out = _retrieve_merge_write(
@@ -237,6 +244,7 @@ def _build_attribute_changes(
     min_value: float | None,
     max_value: float | None,
     format_name: str | None,
+    is_audit_enabled: bool | None = None,
 ) -> dict[str, Any]:
     """Build the sparse `changes` dict, validated against the attribute type.
 
@@ -290,6 +298,11 @@ def _build_attribute_changes(
             raise D365Error(
                 "--format is only valid for string or datetime attributes."
             )
+    if is_audit_enabled is not None:
+        # IsAuditEnabled lives on the base AttributeMetadata (valid for every
+        # type), so it needs no odata_type guard. Sparse {"Value": …} merges
+        # onto the retrieved BooleanManagedProperty, preserving CanBeChanged.
+        changes["IsAuditEnabled"] = {"Value": is_audit_enabled}
     return changes
 
 
@@ -306,6 +319,7 @@ def update_attribute(
     min_value: float | None = None,
     max_value: float | None = None,
     format_name: str | None = None,
+    is_audit_enabled: bool | None = None,
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
@@ -333,13 +347,13 @@ def update_attribute(
         v is None
         for v in (
             display_name, description, required, max_length, precision,
-            min_value, max_value, format_name,
+            min_value, max_value, format_name, is_audit_enabled,
         )
     ):
         raise D365Error(
             "nothing to update — pass at least one of "
             "--display/--description/--required/--max-length/--precision/"
-            "--min/--max/--format."
+            "--min/--max/--format/--audit."
         )
 
     base_path = (
@@ -366,6 +380,7 @@ def update_attribute(
         min_value=min_value,
         max_value=max_value,
         format_name=format_name,
+        is_audit_enabled=is_audit_enabled,
     )
 
     out = _retrieve_merge_write(

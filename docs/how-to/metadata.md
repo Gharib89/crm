@@ -146,6 +146,25 @@ crm --json metadata create-entity \
 ```
 Note the returned `entity_set_name` (plural, e.g. `cwx_tickets`) — that is what `entity`/`query` commands take, not the logical name.
 
+## Enable or disable auditing on a table or column
+
+`--audit`/`--no-audit` sets the platform's `IsAuditEnabled` managed property, and is available with identical semantics on all four metadata create/update verbs: `create-entity`, `add-attribute`, `update-entity`, and `update-attribute`. Omit the flag to leave the value unchanged (create uses the server default; update keeps the current value).
+
+```bash
+# Audit a whole table at creation, plus one sensitive column:
+crm --json metadata create-entity --schema-name cwx_Ticket --display "Support Ticket" \
+  --audit --solution cwx_crmworx
+crm --json metadata add-attribute cwx_ticket --kind string --schema-name cwx_SSN \
+  --display "SSN" --audit --solution cwx_crmworx
+
+# Toggle auditing on an existing table/column (retrieve-merge-write; every other
+# property is preserved):
+crm --json metadata update-entity cwx_ticket --audit --solution cwx_crmworx
+crm --json metadata update-attribute cwx_ticket cwx_ssn --no-audit --solution cwx_crmworx
+```
+
+**Org-level auditing is a prerequisite.** The `IsAuditEnabled` flag on a table/column only takes effect once auditing is turned on at the organization level (PPAC → your environment → **Audit settings**, or the org `IsAuditEnabled` setting). Until then the metadata flag is stored but no audit records are written. crm sets the table/column property; enabling org-level auditing is a one-time environment step outside this CLI.
+
 ## Create a virtual (external-data-backed) table
 
 A virtual table maps to data held in an external store. Rows are never
