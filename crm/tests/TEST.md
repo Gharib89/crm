@@ -108,7 +108,7 @@ is aimed at on-prem/VPN.)
 stamp every artifact name/display with the `E2E_MARKER` constant (`conftest.py`, currently
 `"ae2e"`), plus a unique per-run suffix. On the long-lived shared cloud org (#760) this makes
 an automated e2e leak greppable and safe to sweep. The marker doubles as the publisher
-customization **prefix** (`_marker_prefix`), so it is kept DB-legal — 2–8 alphanumerics,
+customization **prefix** (`marker_prefix`), so it is kept DB-legal — 2–8 alphanumerics,
 letter-start, ≤8 chars (`crm.core.solution.validate_customization_prefix`); the offline
 `crm/tests/test_e2e_marker.py` pins those rules. Per-test literals (`E2E WR`, `E2E View`, …)
 are already suffixed + self-cleaning and are deliberately left unmarked.

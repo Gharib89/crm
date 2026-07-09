@@ -315,7 +315,7 @@ def _enforce_capability(request):
 E2E_MARKER = "ae2e"
 
 
-def _marker_prefix(suffix: str) -> str:
+def marker_prefix(suffix: str) -> str:
     """Customization prefix for a throwaway publisher: the marker plus a short
     random tail, capped at Dataverse's 8-char prefix limit (so only the first
     ``8 - len(marker)`` chars of ``suffix`` survive). Deriving it from the per-run
@@ -357,7 +357,7 @@ def ephemeral_solution(backend):
     from crm.core import solution as sol_mod
 
     suffix = _uuid.uuid4().hex[:8]
-    prefix = _marker_prefix(suffix)
+    prefix = marker_prefix(suffix)
     pub_name = f"new_{E2E_MARKER}pub_{suffix}"
     sol_name = f"new_{E2E_MARKER}sol_{suffix}"
     pub = sol_mod.create_publisher(

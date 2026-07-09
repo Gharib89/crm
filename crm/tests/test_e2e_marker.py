@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from crm.core.solution import validate_customization_prefix
-from crm.tests.e2e.conftest import E2E_MARKER, _marker_prefix
+from crm.tests.e2e.conftest import E2E_MARKER, marker_prefix
 
 
 def test_marker_is_a_db_legal_customization_prefix():
@@ -24,8 +24,8 @@ def test_marker_is_a_db_legal_customization_prefix():
 
 
 @pytest.mark.parametrize("suffix", ["", "a", "abcd", "0123abcd", "deadbeefcafe"])
-def test_marker_prefix_stays_db_legal_for_any_suffix(suffix):
-    prefix = _marker_prefix(suffix)
+def test_marker_prefix_stays_db_legal_for_any_suffix(suffix: str):
+    prefix = marker_prefix(suffix)
     assert prefix.startswith(E2E_MARKER), prefix
     assert len(prefix) <= 8, prefix
     validate_customization_prefix(prefix)  # 2-8 alnum, letter-start, not 'mscrm'
@@ -34,5 +34,5 @@ def test_marker_prefix_stays_db_legal_for_any_suffix(suffix):
 def test_marker_prefix_varies_with_the_run_suffix():
     # The prefix must track the random per-run suffix, not be a fixed literal, or
     # concurrent runs on the shared org clash on the environment-unique publisher
-    # prefix. (Only the surviving head of the suffix matters — see _marker_prefix.)
-    assert _marker_prefix("aaaabbbb") != _marker_prefix("ccccdddd")
+    # prefix. (Only the surviving head of the suffix matters — see marker_prefix.)
+    assert marker_prefix("aaaabbbb") != marker_prefix("ccccdddd")
