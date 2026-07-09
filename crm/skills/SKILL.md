@@ -168,7 +168,7 @@ For per-domain detail:
 | composing classic-workflow **step XAML** to hand `workflow update --xaml-file` (on-prem logic path): the provenance wall, the direct-PATCH routine, the snippet library | `reference/workflow-xaml.md` |
 | security: roles & assignment | `reference/security.md` |
 | field (column) security: profiles, column permissions, assign to users/teams | `reference/fieldsec.md` |
-| duplicate-detection rules: create/condition/publish/unpublish, check a candidate record | `reference/dup.md` |
+| duplicate-detection rules: create/condition/publish/unpublish, check a candidate record, bulk-detect existing duplicates | `reference/dup.md` |
 | connection roles: create, scope to an entity type, match as reciprocal partners | `reference/connectionrole.md` |
 | server-side audit history (`audit history` / `audit detail`) — distinct from `session audit` | `reference/troubleshooting.md` |
 | errors, retries, connection diagnostics, session/audit, on-prem vs cloud | `reference/troubleshooting.md` |

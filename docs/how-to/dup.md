@@ -1,9 +1,9 @@
 # How-to: dup
 
 Manage **duplicate-detection rules** headlessly: create a rule for an entity,
-add match conditions, publish it (so detection runs), and test a candidate
-record against the published rules. See the [CLI reference](../reference/cli.md)
-for every flag.
+add match conditions, publish it (so detection runs), test a candidate record
+against the published rules, and sweep an existing table for duplicates. See the
+[CLI reference](../reference/cli.md) for every flag.
 
 Duplicate detection in Dynamics 365 is driven by **duplicate rules**
 (`duplicaterule`). A rule binds a *base* entity to a *matching* entity (usually
@@ -18,7 +18,8 @@ rules per entity type.
 1. `dup create` — create the rule (unpublished).
 2. `dup add-condition` — add one or more match conditions.
 3. `dup publish` — build the match codes (async); the rule becomes active.
-4. `dup check` — test a candidate record against the published rules.
+4. `dup check` — test a *candidate* record against the published rules, **or**
+   `dup bulk-detect` — sweep *existing* rows for duplicates (async job).
 5. `dup unpublish` — retire the rule (deletes its match codes; synchronous).
 
 ## Create a rule
@@ -99,6 +100,42 @@ the "would creating this be a duplicate?" check. Supply the values inline with
 > matches only against **published** rules on a duplicate-detection-enabled
 > entity. With no published rule the result is always empty, even for an obvious
 > duplicate.
+
+## Sweep a table for existing duplicates
+
+```bash
+crm --json dup bulk-detect account --wait
+crm --json dup bulk-detect account --fetchxml-file ./scope.xml --wait
+```
+
+Where `check` tests one *candidate* record, `bulk-detect` sweeps the *existing*
+rows of a table for duplicates against its published rules, via the asynchronous
+`BulkDetectDuplicates` job — the org-wide equivalent of the "Detect Duplicates"
+button. `ENTITY` is the table to sweep. By default it sweeps the whole table;
+pass `--fetchxml`/`--fetchxml-file` to narrow the scope to the matched rows (the
+FetchXML `<entity>` must be `ENTITY`, and is converted to a `QueryExpression`
+server-side, the same as `data delete`).
+
+Without `--wait` the command returns once the job is submitted (`status:
+"submitted"`, with a `job_id`); with `--wait` it polls to completion and lists
+the detected duplicates (`--timeout` caps the wait). Detection **only** — nothing
+is merged or deleted. The detected pairs are logged as `duplicaterecord` rows and
+returned in both JSON and the human table:
+
+```json
+{
+  "job_id": "...",
+  "entity": "account",
+  "status": "completed",
+  "count": 2,
+  "duplicates": [
+    { "_baserecordid_value": "<guid>", "duplicateid": "<guid>" }
+  ]
+}
+```
+
+> The server caps a single job at **5,000** detected duplicates, and detection
+> only fires for **published** rules on a duplicate-detection-enabled entity.
 
 ## List and inspect rules
 

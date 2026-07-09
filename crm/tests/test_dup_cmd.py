@@ -124,6 +124,59 @@ class TestDupUnpublish:
         assert m.last_request.json()["DuplicateRuleId"] == _RULE_ID
 
 
+class TestDupBulkDetect:
+    def test_submit_returns_job_id(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.post(backend.url_for("BulkDetectDuplicates"), json={"JobId": _JOB_ID})
+            result = CliRunner().invoke(cli, ["--json", "dup", "bulk-detect", "account"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)["data"]
+        assert data["status"] == "submitted"
+        assert data["job_id"] == _JOB_ID
+        assert m.last_request.json()["Query"]["EntityName"] == "account"
+
+    def test_wait_lists_detected_duplicates(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.post(backend.url_for("BulkDetectDuplicates"), json={"JobId": _JOB_ID})
+            m.get(backend.url_for(f"asyncoperations({_JOB_ID})"),
+                  json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30})
+            m.get(backend.url_for("duplicaterecords"),
+                  json={"value": [{"_baserecordid_value": "a1", "duplicateid": "b1"}]})
+            result = CliRunner().invoke(
+                cli, ["--json", "dup", "bulk-detect", "account", "--wait"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)["data"]
+        assert data["status"] == "completed"
+        assert data["count"] == 1
+        assert data["duplicates"][0]["duplicateid"] == "b1"
+
+    def test_wait_human_mode_renders_duplicate_table(self, backend, monkeypatch):
+        _use_backend(monkeypatch, backend)
+        with rm_module.Mocker() as m:
+            m.post(backend.url_for("BulkDetectDuplicates"), json={"JobId": _JOB_ID})
+            m.get(backend.url_for(f"asyncoperations({_JOB_ID})"),
+                  json={"asyncoperationid": _JOB_ID, "statecode": 3, "statuscode": 30})
+            m.get(backend.url_for("duplicaterecords"),
+                  json={"value": [{"_baserecordid_value": "base-1", "duplicateid": "dup-1"}]})
+            result = CliRunner().invoke(cli, ["dup", "bulk-detect", "account", "--wait"])
+        assert result.exit_code == 0, result.output
+        # Human mode renders the detected pairs as a table.
+        assert "baserecordid" in result.output and "duplicateid" in result.output
+        assert "base-1" in result.output and "dup-1" in result.output
+
+    def test_both_fetchxml_sources_is_usage_error(self, backend, monkeypatch, tmp_path):
+        _use_backend(monkeypatch, backend)
+        f = tmp_path / "q.xml"
+        f.write_text('<fetch><entity name="account"/></fetch>', encoding="utf-8")
+        result = CliRunner().invoke(cli, [
+            "--json", "dup", "bulk-detect", "account",
+            "--fetchxml", '<fetch><entity name="account"/></fetch>',
+            "--fetchxml-file", str(f)])
+        assert result.exit_code == 2, result.output
+
+
 class TestDupCheck:
     def test_check_with_inline_data(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)

@@ -115,3 +115,84 @@ def test_dup_lifecycle(backend, cli, request, unique, ephemeral_solution):
         f"dup unpublish failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
     assert json.loads(result.stdout)["data"].get("unpublished") is True
+
+
+# ── bulk-detect (async job over a query scope) ────────────────────────────────
+
+
+@covers("dup bulk-detect")
+@pytest.mark.slow
+def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
+    """Publish a name-match rule, seed a duplicate account pair, then sweep for it.
+
+    Narrows the sweep with a FetchXML filter on the unique name so the job only
+    considers the two seeded rows — fast and deterministic regardless of org data.
+    """
+    name = f"E2E BulkDetect {unique}"
+    acct_name = f"E2E Dupe Co {unique}"
+    rule_id: list[str] = []
+    accounts: list[str] = []
+
+    def _cleanup():
+        for aid in accounts:
+            try:
+                backend.delete(f"accounts({aid})")
+            except Exception:
+                pass
+        if rule_id:
+            rid = rule_id[0]
+            try:
+                backend.post("UnpublishDuplicateRule", json_body={"DuplicateRuleId": rid})
+            except Exception:
+                pass
+            try:
+                backend.delete(f"duplicaterules({rid})")
+            except Exception:
+                pass
+
+    request.addfinalizer(_cleanup)
+
+    # A published exact-name rule on account.
+    result = cli([
+        "--json", "dup", "create", "account", "--name", name,
+        "--solution", ephemeral_solution,
+    ])
+    assert result.returncode == 0, f"dup create failed:\n{result.stderr}"
+    rid = json.loads(result.stdout)["data"]["duplicateruleid"]
+    rule_id.append(rid)
+    result = cli([
+        "--json", "dup", "add-condition", rid, "--attr", "name", "--operator", "exact",
+        "--solution", ephemeral_solution,
+    ])
+    assert result.returncode == 0, f"dup add-condition failed:\n{result.stderr}"
+    result = cli(["--json", "dup", "publish", rid, "--wait"])
+    assert result.returncode == 0, f"dup publish failed:\n{result.stderr}"
+
+    # Seed two accounts sharing the same name — a duplicate pair.
+    for _ in range(2):
+        row = backend.post("accounts", json_body={"name": acct_name})
+        aid = row.get("_entity_id") if isinstance(row, dict) else None
+        if aid:
+            accounts.append(str(aid))
+    assert len(accounts) == 2, f"failed to seed duplicate pair: {accounts}"
+
+    # Sweep, narrowed to just the seeded name so the job stays small/deterministic.
+    fetch = (
+        f'<fetch><entity name="account"><attribute name="accountid"/>'
+        f'<filter><condition attribute="name" operator="eq" value="{acct_name}"/></filter>'
+        "</entity></fetch>"
+    )
+    result = cli([
+        "--json", "dup", "bulk-detect", "account", "--fetchxml", fetch, "--wait",
+    ])
+    assert result.returncode == 0, (
+        f"dup bulk-detect failed:\n{result.stderr}\nstdout: {result.stdout}"
+    )
+    data = json.loads(result.stdout)["data"]
+    assert data.get("status") == "completed", data
+    assert isinstance(data.get("duplicates"), list), data
+    # The seeded pair are duplicates of each other → both appear as base records.
+    detected = {d.get("_baserecordid_value") for d in data["duplicates"]}
+    assert set(accounts) & detected, (
+        f"seeded pair {accounts} not among detected base records {detected}"
+    )

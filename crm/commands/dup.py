@@ -167,3 +167,48 @@ def dup_check(ctx: CLIContext, entity, data_file, data_json, matching_entity, to
             matching_entity=matching_entity, top=top,
         )
     ctx.emit(True, data=info)
+
+
+@dup_group.command("bulk-detect")
+@click.argument("entity")
+@click.option("--fetchxml", "fetch_xml", default=None,
+              help="FetchXML <fetch> narrowing the swept records (its <entity> "
+                   "must be ENTITY). Omit to sweep the whole table.")
+@click.option("--fetchxml-file", type=click.File("r", encoding="utf-8-sig"), default=None,
+              help="Read the narrowing FetchXML from a file instead of --fetchxml.")
+@click.option("--job-name", "job_name", default=None,
+              help="Name for the detection system job (default derived from ENTITY).")
+@click.option("--wait", is_flag=True, default=False,
+              help="Block until the job finishes, then report the detected duplicates.")
+@click.option("--timeout", type=int, default=None,
+              help="Seconds to wait under --wait (default: the profile's async timeout).")
+@pass_ctx
+def dup_bulk_detect(ctx: CLIContext, entity, fetch_xml, fetchxml_file, job_name,
+                    wait, timeout) -> None:
+    """Sweep ENTITY for duplicates via the async BulkDetectDuplicates job.
+
+    Detects duplicates among ENTITY rows according to the **published** duplicate
+    rules for that table and logs them as duplicaterecord rows. Sweeps the whole
+    table by default, or the records matched by --fetchxml. Returns the job id
+    immediately; pass --wait to poll to completion and list the detected
+    duplicates. Detection only — nothing is merged or deleted.
+    """
+    if fetch_xml and fetchxml_file:
+        raise click.UsageError("Provide at most one of --fetchxml or --fetchxml-file.")
+    if fetchxml_file is not None:
+        fetch_xml = fetchxml_file.read()
+    with d365_errors(ctx):
+        result = dup_mod.bulk_detect(
+            ctx.backend(), entity, fetch_xml=fetch_xml,
+            job_name=job_name, wait=wait, timeout=timeout,
+        )
+    duplicates = result.get("duplicates")
+    if isinstance(duplicates, list):
+        rows = [[d.get("_baserecordid_value") or "", d.get("duplicateid") or ""]
+                for d in duplicates]
+        ctx.emit(True, data=result, table={
+            "headers": ["baserecordid", "duplicateid"], "rows": rows,
+        })
+    else:
+        ctx.emit(True, data=result)
+    _journal(ctx, entity, result)
