@@ -575,6 +575,16 @@ def entity_associate(ctx: CLIContext, target_set, target_id, nav, related_set, r
 def entity_disassociate(ctx: CLIContext, target_set, target_id, nav, related_set, related_id, yes,
                         as_user, as_user_object_id, suppress_dup_detection, bypass_plugins):
     """Disassociate two records. Omit --related-* for single-valued lookups."""
+    # A half-supplied flag pair is a caller mistake caught before any backend
+    # call — a usage error (exit 2), like `--bind-id` without `--bind-set`. The
+    # core keeps its own status-less guard as the single rule authority for the
+    # direct-core/apply path (exit 1); this maps it to exit 2 on the CLI.
+    if bool(related_set) != bool(related_id):
+        raise click.UsageError(
+            "--related-set and --related-id must be supplied together (a "
+            "collection-valued nav property) or neither (a single-valued "
+            "lookup); got only one."
+        )
     _confirm_destructive(
         ctx, "relationship", f"{target_set}({target_id}).{nav}", yes,
         message=f"This will remove the {nav!r} relationship on "

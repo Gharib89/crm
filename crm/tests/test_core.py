@@ -562,6 +562,19 @@ class TestAssociate:
                 )
         assert not m.request_history  # nothing sent to the server
 
+    def test_disassociate_half_pair_cli_exit_2(self):
+        # On the CLI the same half-pair mistake is a usage error (exit 2, before
+        # any backend call), like `--bind-id` without `--bind-set`.
+        from click.testing import CliRunner
+        from crm import cli as cli_mod
+        result = CliRunner().invoke(
+            cli_mod.cli,
+            ["--json", "entity", "disassociate", "accounts", _GUID,
+             "contact_customer_accounts", "--related-set", "contacts"],
+        )
+        assert result.exit_code == 2, result.output
+        assert json.loads(result.output)["ok"] is False
+
     def test_set_lookup_patches_odata_bind(self, backend):
         other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
         with requests_mock.Mocker() as m:
