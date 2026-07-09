@@ -194,7 +194,9 @@ def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
     # Both seeded rows are flagged, each as a base record under the job. (The async
     # job does NOT populate the matched-counterpart lookup `_duplicaterecordid_value`
     # — verified live 2026-07-09 — so the base ref is the only usable record id.)
+    # The fetch narrows the sweep to exactly this pair, so BOTH seeded rows must
+    # be flagged — a subset check catches a regression where only one is reported.
     base = {d.get("_baserecordid_value") for d in data["duplicates"]}
-    assert set(accounts) & base, (
-        f"seeded pair {accounts} not among detected base records {base}"
+    assert set(accounts) <= base, (
+        f"seeded pair {accounts} not all among detected base records {base}"
     )

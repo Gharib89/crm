@@ -125,6 +125,7 @@ is merged or deleted. Each flagged record is logged as a `duplicaterecord` row
 ```json
 {
   "job_id": "...",
+  "job_name": "crm dup bulk-detect account",
   "entity": "account",
   "status": "completed",
   "count": 2,

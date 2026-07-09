@@ -76,7 +76,8 @@ does not populate a matched-counterpart ref** (`_duplicaterecordid_value` stays
 empty), so the result is the set of records flagged under the rules, not pairs:
 
 ```json
-{"job_id": "<guid>", "entity": "account", "status": "completed", "count": 2,
+{"job_id": "<guid>", "job_name": "crm dup bulk-detect account", "entity": "account",
+ "status": "completed", "count": 2,
  "duplicates": [{"_baserecordid_value": "<guid>", "duplicateid": "<log-row-guid>"}]}
 ```
 
