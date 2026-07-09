@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from crm import __version__
 from crm.core import plan as plan_mod
+from crm.utils.d365_backend import D365Error
 
 # NIST SHA-256 test vector: sha256(b"abc"). An independent source of truth for the
 # payload-pin assertion, not a value recomputed the way the code computes it.
@@ -159,3 +162,265 @@ def test_write_plan_roundtrips_json(tmp_path):
     assert json.loads(out.read_text(encoding="utf-8")) == plan
     # Written with a trailing newline (POSIX text file).
     assert out.read_text(encoding="utf-8").endswith("\n")
+
+
+# ── slice 2 (#747): load / pre-flight / divergence gate for `--from-plan` ──────
+#
+# These exercise the pure seams of plan execution — no network. `preflight_plan`
+# reads only `backend.profile.api_base`; `diff_plan` compares two in-memory
+# dicts; `load_plan` is file IO. The recompute+execute orchestration (`run_plan`,
+# which drives `apply_spec`) is covered against the wire in test_apply.py.
+
+
+def _header(**over):
+    """A plan header matching the `backend` fixture's identity by default."""
+    base = {
+        "url": "https://crm.contoso.local/contoso/api/data/v9.2/",
+        "organization_id": "org-guid-123",
+        "solution": "ContosoCore",
+        "cli_version": __version__,
+        "created_at": "2026-07-09T00:00:00+00:00",
+        "intent": {"prune": False, "allow_data_loss": False, "stage_only": False},
+    }
+    base.update(over)
+    return base
+
+
+def _plan(*, verdicts=None, payloads=None, header=None, plan_format=None):
+    return {
+        "plan_format": plan_mod.PLAN_FORMAT_VERSION if plan_format is None else plan_format,
+        "header": _header() if header is None else header,
+        "spec": _SPEC,
+        "payloads": payloads or {},
+        "verdicts": verdicts or [],
+    }
+
+
+# ── load_plan ────────────────────────────────────────────────────────────────
+
+
+def test_load_plan_reads_json(tmp_path):
+    p = tmp_path / "p.json"
+    plan = _plan(verdicts=[{"kind": "entity", "name": "x", "verdict": "planned"}])
+    plan_mod.write_plan(str(p), plan)
+    assert plan_mod.load_plan(str(p)) == plan
+
+
+def test_load_plan_rejects_invalid_json(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_text("{not json", encoding="utf-8")
+    with pytest.raises(D365Error, match="not valid JSON"):
+        plan_mod.load_plan(str(p))
+
+
+def test_load_plan_rejects_non_object(tmp_path):
+    p = tmp_path / "arr.json"
+    p.write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(D365Error, match="must be a JSON object"):
+        plan_mod.load_plan(str(p))
+
+
+@pytest.mark.parametrize("bad, match", [
+    ({"plan_format": 1, "header": []}, "header"),
+    ({"plan_format": 1, "header": {"intent": []}}, "intent"),
+    ({"plan_format": 1, "verdicts": {}}, "verdicts.*list"),
+    ({"plan_format": 1, "verdicts": ["not-an-object"]}, "verdict"),
+    ({"plan_format": 1, "payloads": []}, "payloads"),
+    ({"plan_format": 1, "payloads": {"x.js": 123}}, "payloads"),
+    ({"plan_format": 1, "spec": []}, "spec"),
+])
+def test_load_plan_rejects_malformed_shapes(tmp_path, bad, match):
+    # A JSON-valid but structurally-wrong plan (hand-edited / corrupt) must fail as
+    # a clean D365Error at the parse boundary — not an AttributeError/TypeError that
+    # escapes the error envelope downstream in preflight/run_plan.
+    p = tmp_path / "bad.json"
+    p.write_text(json.dumps(bad), encoding="utf-8")
+    with pytest.raises(D365Error, match=match):
+        plan_mod.load_plan(str(p))
+
+
+# ── preflight_plan: refusals + warnings ────────────────────────────────────────
+
+
+def test_preflight_clean_plan_returns_no_warnings(backend):
+    plan = _plan(verdicts=[{"kind": "entity", "name": "x", "verdict": "planned"}])
+    assert plan_mod.preflight_plan(
+        plan, backend, organization_id="org-guid-123", base_dir=None) == []
+
+
+def test_preflight_refuses_unknown_plan_format(backend):
+    plan = _plan(plan_format=plan_mod.PLAN_FORMAT_VERSION + 1)
+    with pytest.raises(D365Error, match="plan format"):
+        plan_mod.preflight_plan(plan, backend, organization_id="org-guid-123", base_dir=None)
+
+
+def test_preflight_refuses_org_mismatch(backend):
+    plan = _plan()
+    with pytest.raises(D365Error, match="organization"):
+        plan_mod.preflight_plan(
+            plan, backend, organization_id="a-different-org", base_dir=None)
+
+
+def test_preflight_url_mismatch_is_a_warning_not_a_refusal(backend):
+    plan = _plan(header=_header(url="https://other.crm.dynamics.com/api/data/v9.2/"))
+    warnings = plan_mod.preflight_plan(
+        plan, backend, organization_id="org-guid-123", base_dir=None)
+    assert any("other.crm.dynamics.com" in w for w in warnings)
+
+
+def test_preflight_cli_version_mismatch_is_a_warning_not_a_refusal(backend):
+    plan = _plan(header=_header(cli_version="0.0.1-ancient"))
+    warnings = plan_mod.preflight_plan(
+        plan, backend, organization_id="org-guid-123", base_dir=None)
+    assert any("0.0.1-ancient" in w for w in warnings)
+
+
+def test_preflight_refuses_replace_blocked_plan(backend):
+    plan = _plan(verdicts=[{"kind": "entity", "name": "x", "verdict": "replace_blocked",
+                            "reason": "ownership"}])
+    with pytest.raises(D365Error, match="not executable"):
+        plan_mod.preflight_plan(plan, backend, organization_id="org-guid-123", base_dir=None)
+
+
+def test_preflight_refuses_failed_plan(backend):
+    plan = _plan(verdicts=[{"kind": "webresource", "name": "x", "verdict": "failed",
+                            "error": "cannot read file"}])
+    with pytest.raises(D365Error, match="not executable"):
+        plan_mod.preflight_plan(plan, backend, organization_id="org-guid-123", base_dir=None)
+
+
+def test_preflight_refuses_missing_payload(backend, tmp_path):
+    plan = _plan(payloads={"scripts/x.js": _SHA256_ABC})
+    with pytest.raises(D365Error, match="missing"):
+        plan_mod.preflight_plan(
+            plan, backend, organization_id="org-guid-123", base_dir=str(tmp_path))
+
+
+def test_preflight_refuses_changed_payload(backend, tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "x.js").write_bytes(b"different-content")
+    plan = _plan(payloads={"scripts/x.js": _SHA256_ABC})
+    with pytest.raises(D365Error, match="changed"):
+        plan_mod.preflight_plan(
+            plan, backend, organization_id="org-guid-123", base_dir=str(tmp_path))
+
+
+def test_preflight_accepts_matching_payload(backend, tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "x.js").write_bytes(b"abc")  # sha256 == _SHA256_ABC
+    plan = _plan(payloads={"scripts/x.js": _SHA256_ABC})
+    assert plan_mod.preflight_plan(
+        plan, backend, organization_id="org-guid-123", base_dir=str(tmp_path)) == []
+
+
+# ── diff_plan: the whole-run divergence gate ───────────────────────────────────
+
+
+def test_diff_plan_identical_report_is_not_stale(backend):
+    report = _report(planned=[{"kind": "entity", "name": "contoso_Project"}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    assert plan_mod.diff_plan(plan, report) == []
+
+
+def test_diff_plan_flags_added_component(backend):
+    plan_report = _report(planned=[{"kind": "entity", "name": "contoso_Project"}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    # Live now also computes a second planned component the plan never approved.
+    live = _report(planned=[{"kind": "entity", "name": "contoso_Project"},
+                            {"kind": "attribute", "name": "contoso_Code"}])
+    div = plan_mod.diff_plan(plan, live)
+    assert [(d["kind"], d["name"]) for d in div] == [("attribute", "contoso_Code")]
+    assert div[0]["plan"] == "absent"
+    assert div[0]["live"] == "planned"
+
+
+def test_diff_plan_flags_removed_component(backend):
+    plan_report = _report(planned=[{"kind": "entity", "name": "contoso_Project"},
+                                   {"kind": "attribute", "name": "contoso_Code"}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    live = _report(planned=[{"kind": "entity", "name": "contoso_Project"}])
+    div = plan_mod.diff_plan(plan, live)
+    assert [(d["kind"], d["name"]) for d in div] == [("attribute", "contoso_Code")]
+    assert div[0]["plan"] == "planned"
+    assert div[0]["live"] == "absent"
+
+
+def test_diff_plan_flags_verdict_change(backend):
+    plan_report = _report(planned=[{"kind": "entity", "name": "contoso_Project"}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    # The entity now exists and matches → live computes `skipped`, not `planned`.
+    live = _report(skipped=[{"kind": "entity", "name": "contoso_Project"}])
+    div = plan_mod.diff_plan(plan, live)
+    assert len(div) == 1
+    assert div[0]["plan"] == "planned"
+    assert div[0]["live"] == "skipped"
+
+
+def test_diff_plan_flags_changed_field_set_on_update(backend):
+    plan_report = _report(updated=[{"kind": "entity", "name": "contoso_Project",
+                                    "diff": {"display_name": {"old": "P", "new": "Project"}}}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    # Same verdict, but live now also drifts `description` → different field set.
+    live = _report(updated=[{"kind": "entity", "name": "contoso_Project",
+                             "diff": {"display_name": {"old": "P", "new": "Project"},
+                                      "description": {"old": "", "new": "d"}}}])
+    div = plan_mod.diff_plan(plan, live)
+    assert len(div) == 1
+    assert "display_name" in div[0]["plan"] and "description" not in div[0]["plan"]
+    assert "description" in div[0]["live"]
+
+
+def test_diff_plan_update_same_field_set_different_live_value_is_not_stale(backend):
+    # Action level: field VALUES need no byte equality — only the changed-field
+    # SET must match. A live `old` value that shifted (someone edited it and back)
+    # does not invalidate the plan when the same field would still be updated.
+    plan_report = _report(updated=[{"kind": "entity", "name": "contoso_Project",
+                                    "diff": {"display_name": {"old": "P", "new": "Project"}}}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    live = _report(updated=[{"kind": "entity", "name": "contoso_Project",
+                             "diff": {"display_name": {"old": "SHIFTED", "new": "Project"}}}])
+    assert plan_mod.diff_plan(plan, live) == []
+
+
+def test_diff_plan_pruned_ignored_without_prune_intent(backend):
+    # Without prune intent, `pruned` entries are informational — a stray new
+    # solution component surfacing live does not invalidate the plan.
+    plan_report = _report()
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=False, allow_data_loss=False, stage_only=False)
+    live = _report(pruned=[{"kind": "view", "name": "Stray", "deleted": False}])
+    assert plan_mod.diff_plan(plan, live) == []
+
+
+def test_diff_plan_pruned_participates_under_prune_intent(backend):
+    plan_report = _report(pruned=[{"kind": "view", "name": "Stale", "deleted": False,
+                                   "would_prune": True}])
+    plan = plan_mod.build_plan(
+        spec=_SPEC, report=plan_report, backend=backend, organization_id="org-guid-123",
+        solution="ContosoCore", base_dir=None,
+        prune=True, allow_data_loss=False, stage_only=False)
+    # Under prune intent, a pruned candidate the plan approved that live no longer
+    # sees (deleted out of band) is a divergence.
+    live = _report()
+    div = plan_mod.diff_plan(plan, live)
+    assert [(d["kind"], d["name"]) for d in div] == [("view", "Stale")]

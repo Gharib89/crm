@@ -550,7 +550,12 @@ The full envelope is
 mode the envelope's `meta` also carries `dry_run: true`. Add `-o/--plan-out FILE`
 (dry-run only) to serialize that drift report as a self-contained **plan**
 artifact — spec, payload `sha256` pins, and per-component verdicts — for review in
-a PR or ticket. See [how-to/apply](docs/how-to/apply.md).
+a PR or ticket. `crm apply --from-plan FILE` then executes that plan **only if it
+is still exactly true**: it re-reconciles against the live org, refuses a stale
+plan (any diverged component → `ok=false`, exit 1, no writes), and replays the
+plan's own intent (`--prune` / `--allow-data-loss` / `--stage-only`) rather than
+letting you re-specify it — so what was approved is what runs. `--dry-run
+--from-plan` re-verifies without executing. See [how-to/apply](docs/how-to/apply.md).
 
 `crm scaffold table DISPLAY --column 'DISPLAY:KIND[:opts]' ...` is the quick
 one-liner path: builds an entity + N columns in memory and runs them through the

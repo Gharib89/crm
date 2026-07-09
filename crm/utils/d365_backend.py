@@ -10,6 +10,7 @@ parsed JSON or a raised `D365Error`.
 
 from __future__ import annotations
 
+import copy
 import json
 import os as _os
 import random
@@ -495,6 +496,24 @@ class D365Backend:
         flip it off. A guardrail, not a security boundary — see request().
         """
         return self._read_only
+
+    def as_dry_run(self) -> "D365Backend":
+        """A dry-run twin sharing this backend's session and auth (``self`` if
+        already dry-run).
+
+        Writes on the twin are previewed, not issued, while reads run for real —
+        exactly like a ``dry_run=True`` backend. Used for a read-only verify pass
+        that must precede real writes on the *same* connection: ``apply
+        --from-plan`` recomputes the drift report on a twin before executing the
+        plan on this backend (ADR 0022). The original stays real — this returns a
+        new object rather than toggling the (deliberately immutable) ``dry_run``
+        flag in place, so there is no save/restore footgun.
+        """
+        if self._dry_run:
+            return self
+        twin = copy.copy(self)
+        twin._dry_run = True
+        return twin
 
     # ── Auth helpers ─────────────────────────────────────────────────────
 

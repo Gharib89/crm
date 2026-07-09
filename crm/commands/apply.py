@@ -19,9 +19,16 @@ from crm.core import apply as apply_mod
 
 
 @click.command("apply")
-@click.option("-f", "--file", "spec_file", required=True,
+@click.option("-f", "--file", "spec_file",
               type=click.Path(exists=True, dir_okay=False, readable=True),
-              help="Path to the YAML or JSON desired-state spec.")
+              help="Path to the YAML or JSON desired-state spec. Exactly one of "
+                   "-f/--file or --from-plan is required.")
+@click.option("--from-plan", "from_plan",
+              type=click.Path(exists=True, dir_okay=False, readable=True),
+              help="Execute a saved plan (from `--dry-run apply -o`) only if it is "
+                   "still exactly true. Mutually exclusive with -f; its intent "
+                   "(prune / allow-data-loss / stage-only) is replayed, not "
+                   "re-specified. With --dry-run, re-verifies without executing.")
 @click.option("--include-referenced-optionsets/--no-include-referenced-optionsets",
               "include_referenced_optionsets", default=True, show_default=True,
               help="Add a picklist's referenced global option set to the target "
@@ -40,7 +47,7 @@ from crm.core import apply as apply_mod
                    "plan is always written, including when the dry-run exits 1.")
 @_destructive_option
 @pass_ctx
-def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
+def apply_cmd(ctx: CLIContext, spec_file, from_plan, include_referenced_optionsets,
               prune, allow_data_loss, plan_out, yes):
     """Apply a declarative desired-state spec.
 
@@ -65,6 +72,26 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
     only kinds under a confirmation, data-bearing kinds only with --allow-data-loss.
     """
     import yaml
+
+    # Source selection: exactly one of -f/--file or --from-plan. --from-plan
+    # replays a saved plan; -f applies a spec.
+    if bool(spec_file) == bool(from_plan):
+        raise click.UsageError(
+            "apply requires exactly one of -f/--file or --from-plan.")
+    if from_plan:
+        # Plan intent is fixed at plan time and replayed — re-specifying it here
+        # would reintroduce "what runs ≠ what was approved" (ADR 0022). -o
+        # serializes a fresh drift report from -f, so it has no meaning either.
+        conflicting = [name for name, on in (
+            ("--prune", prune), ("--allow-data-loss", allow_data_loss),
+            ("--stage-only", ctx.stage_only), ("-o/--plan-out", bool(plan_out)))
+            if on]
+        if conflicting:
+            raise click.UsageError(
+                f"{', '.join(conflicting)} cannot be combined with --from-plan — "
+                "plan intent is fixed at plan time and replayed (ADR 0022).")
+        _apply_from_plan(ctx, from_plan, include_referenced_optionsets, yes)
+        return
 
     if allow_data_loss and not prune:
         raise click.UsageError("--allow-data-loss only applies with --prune.")
@@ -140,12 +167,28 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
                 stage_only=ctx.stage_only)
             plan_mod.write_plan(plan_out, plan_doc)
 
-    data = {k: res[k] for k in (
+    meta: dict[str, object] = {"staged": res["staged"]}
+    if plan_out:
+        meta["plan_out"] = plan_out
+    data = _apply_data(res)
+    ctx.emit(res["ok"], data=data, error=_apply_error_summary(res), meta=meta)
+    if res["ok"]:
+        _journal(ctx, spec_file, data)
+
+
+def _apply_data(res: dict) -> dict:
+    """The per-bucket data payload the apply envelope carries (both -f and --from-plan)."""
+    return {k: res[k] for k in (
         "applied", "updated", "skipped", "replace_blocked", "pruned", "planned", "failed")}
-    # On ok=False the human path prints only `error` (not the data buckets), so
-    # summarize the failing components there — otherwise a human running
-    # `crm apply` would see "Operation failed" with no reason. JSON carries the
-    # full buckets regardless.
+
+
+def _apply_error_summary(res: dict) -> "str | None":
+    """Summarize the failing components for the human `error` line, or None.
+
+    On ok=False the human path prints only `error` (not the data buckets), so this
+    names the refused/failed components — otherwise a human would see "Operation
+    failed" with no reason. JSON carries the full buckets regardless.
+    """
     parts: list[str] = []
     if res["replace_blocked"]:
         parts.append("refused (no write) — " + "; ".join(
@@ -155,10 +198,65 @@ def apply_cmd(ctx: CLIContext, spec_file, include_referenced_optionsets,
         parts.append("failed — " + "; ".join(
             f"{e['kind']} {e['name']}: {e.get('error', 'unknown error')}"
             for e in res["failed"]))
-    error = " | ".join(parts) or None
-    meta: dict[str, object] = {"staged": res["staged"]}
-    if plan_out:
-        meta["plan_out"] = plan_out
-    ctx.emit(res["ok"], data=data, error=error, meta=meta)
+    return " | ".join(parts) or None
+
+
+def _apply_from_plan(ctx: CLIContext, plan_path: str,
+                     include_referenced_optionsets: bool, yes: bool) -> None:
+    """Execute (or, under --dry-run, re-verify) a saved plan — ADR 0022 slice 2.
+
+    Pre-flight refuses an un-executable plan (bad format / wrong org / unclean /
+    payload drift), replays the plan's destructive gate for a real prune run, then
+    recomputes the drift report and executes only if the plan is still exactly
+    true. `--dry-run --from-plan` stops after the compare (the CI pre-check).
+    """
+    from crm.core import connection as conn_mod
+    from crm.core import plan as plan_mod
+
+    base_dir = os.path.dirname(os.path.abspath(plan_path))
+    with d365_errors(ctx):
+        plan_doc = plan_mod.load_plan(plan_path)
+        backend = ctx.backend()
+        org_id = conn_mod.whoami(backend).get("OrganizationId")
+        warnings = plan_mod.preflight_plan(
+            plan_doc, backend, organization_id=org_id, base_dir=base_dir)
+        # Replay the destructive gate only for a real prune execution — a dry-run
+        # verify writes nothing, so it needs no confirmation.
+        if plan_mod.plan_intent(plan_doc)["prune"] and not ctx.dry_run:
+            _confirm_destructive(
+                ctx, "org components", "not declared in the plan", yes,
+                message=("This plan's intent permanently DELETES components in the "
+                         "target solution that the spec no longer declares. This "
+                         "cannot be undone. Continue?"))
+        outcome = plan_mod.run_plan(
+            backend, plan_doc, base_dir=base_dir, verify_only=ctx.dry_run,
+            include_referenced_optionsets=include_referenced_optionsets)
+    _emit_plan_outcome(ctx, plan_path, outcome, warnings)
+
+
+def _emit_plan_outcome(ctx: CLIContext, plan_path: str, outcome: dict,
+                       warnings: "list[str]") -> None:
+    """Map a `run_plan` outcome onto the {ok, data, meta} envelope."""
+    meta: dict[str, object] = {"from_plan": plan_path}
+    if warnings:
+        meta["warnings"] = warnings
+    status = outcome["status"]
+    if status == "valid":
+        ctx.emit(True, data={"plan_valid": True}, meta=meta)
+        return
+    if status == "stale":
+        divergences = outcome["divergences"]
+        summary = "; ".join(
+            f"{d['kind']} {d['name']}: plan said {d['plan']}, live now computes {d['live']}"
+            for d in divergences)
+        ctx.emit(False, data={"plan_valid": False, "divergences": divergences},
+                 error=f"stale plan — {len(divergences)} component(s) diverged: {summary}",
+                 meta=meta)
+        return
+    # Executed for real: emit the apply result, same shape as the -f path.
+    res = outcome["result"]
+    meta["staged"] = res["staged"]
+    data = _apply_data(res)
+    ctx.emit(res["ok"], data=data, error=_apply_error_summary(res), meta=meta)
     if res["ok"]:
-        _journal(ctx, spec_file, data)
+        _journal(ctx, plan_path, data)

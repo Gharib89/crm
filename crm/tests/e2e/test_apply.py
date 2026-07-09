@@ -456,6 +456,79 @@ def test_apply_dry_run_plan_out_serializes_drift_report(cli, backend, ephemeral_
         f"plan-out mutated the display name: {live.get('DisplayName')}")
 
 
+@covers("apply")
+def test_apply_from_plan_round_trip_and_staleness(cli, backend, ephemeral_entity,
+                                                  ephemeral_solution, tmp_path, request):
+    """`apply --from-plan` runs a plan only while it is still exactly true (#747).
+
+    Seed a column, plan a rename (`--dry-run -o`), then: (1) verify the plan
+    (`--dry-run --from-plan`) reports it valid; (2) execute it for real
+    (`--from-plan`) — the rename lands live; (3) re-verify — the plan is now stale
+    (the rename already applied, so reconcile computes `skipped`, diverging from the
+    plan's `updated`) and is refused with a nonzero exit. Target-agnostic; column
+    cleaned up in a finalizer.
+    """
+    from crm.core import metadata as meta_mod
+
+    suffix = ephemeral_entity[-8:]
+    attr_schema = f"new_fromplan_{suffix}"
+    attr_logical = attr_schema.lower()
+
+    def _cleanup():
+        try:
+            backend.delete(
+                f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+                f"/Attributes(LogicalName='{attr_logical}')"
+            )
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    def _spec(attr):
+        return {"solution": {"unique_name": ephemeral_solution},
+                "entities": [{"schema_name": ephemeral_entity,
+                              "display_name": f"E2E {suffix}", "attributes": [attr]}]}
+
+    base_attr = {"kind": "string", "schema_name": attr_schema,
+                 "display_name": "From Plan", "max_length": 50}
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(_spec(base_attr)), encoding="utf-8")
+
+    # Seed the column for real (applied first run, skipped on re-run — both fine).
+    seed = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
+    assert seed["ok"] is True, f"seed apply failed: {seed}"
+
+    # Plan a rename (dry-run -o writes the plan; nothing lands yet).
+    drifted = _spec({**base_attr, "display_name": "From Plan Renamed"})
+    spec_path.write_text(json.dumps(drifted), encoding="utf-8")
+    plan_path = tmp_path / "plan.json"
+    preview = json.loads(cli(
+        ["--json", "--dry-run", "apply", "-f", str(spec_path), "-o", str(plan_path)]).stdout)
+    assert preview["ok"] is True, f"plan preview failed: {preview}"
+
+    # (1) Verify mode: the plan is still exactly true.
+    verify = json.loads(cli(
+        ["--json", "--dry-run", "apply", "--from-plan", str(plan_path)]).stdout)
+    assert verify["ok"] is True and verify["data"]["plan_valid"] is True, verify
+
+    # (2) Execute for real — the approved rename lands live.
+    run = json.loads(cli(["--json", "apply", "--from-plan", str(plan_path)]).stdout)
+    assert run["ok"] is True, f"from-plan execution failed: {run}"
+    assert [v["name"] for v in run["data"]["updated"]] == [attr_schema], run["data"]
+    live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
+    assert meta_mod.label_text(live.get("DisplayName") or {}) == "From Plan Renamed", live
+
+    # (3) Re-verify — the plan is now stale (rename already applied → skipped now).
+    stale = cli(
+        ["--json", "--dry-run", "apply", "--from-plan", str(plan_path)], check=False)
+    assert stale.returncode == 1, f"expected stale exit 1: {stale.stdout}"
+    stale_env = json.loads(stale.stdout)
+    assert stale_env["ok"] is False, stale_env
+    assert stale_env["data"]["plan_valid"] is False, stale_env
+    assert any(d["name"] == attr_schema for d in stale_env["data"]["divergences"]), stale_env
+
+
 @pytest.mark.slow
 @covers("apply")
 def test_apply_webresource_create_noop_update(cli, backend, ephemeral_solution,
