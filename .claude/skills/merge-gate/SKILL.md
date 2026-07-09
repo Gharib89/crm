@@ -51,8 +51,11 @@ commits on the PR's own branch. Diff base for every check below:
 
 Two layers, both against the diff:
 
-1. Invoke the `code-review` skill (Standards + Spec axes, its own per-axis tiers).
-   The spec source is the linked issue + agent brief.
+1. Invoke the tracked **`code-review`** skill *by name* (Standards + Spec axes, its
+   own per-axis tiers) — the two-axis pass **is** the review gate. Spec source: the
+   linked issue + agent brief. A hand-rolled reviewer subagent is not a substitute;
+   if the skill errors or seems missing, fix that and re-invoke rather than
+   improvise around it.
 2. The **drift checklist** — the seven repo-specific gates in
    [reference/drift-checklist.md](reference/drift-checklist.md). Work through all
    seven; each ends in an explicit pass / fail / n-a with evidence. An unchecked
@@ -74,6 +77,8 @@ evidence. Every finding gets a one-line disposition for the verdict comment.
   wrong capability gate before. Pin `--profile`, confirm the org via
   `crm connection whoami`, and quote both in the verdict. A target unreachable
   (VPN down, trial expired) is an explicit skip with reason, never a silent pass.
+  **Done = the full `test_<group>*.py` file(s) ran green on every supported
+  target** — the PR's own new test node passing alone is not the integration test.
 - **No D365 surface** (docs, local groups, offline-provable refactor) → offline
   suite only; say so in the verdict.
 
@@ -111,19 +116,25 @@ pass/n-a, live runs green where required) or **`gate-failed`** (unconverged,
 design-level finding, or an unfixable checklist failure — the comment says which
 and what the maintainer should decide).
 
-### 8 · Follow-ups — report to the maintainer
+### 8 · Issues surfaced — confirm in the verdict, then report
 
-After the verdict (never before — this is the last step), report in the session,
-not on the PR:
+The gate is **surface-only**: it files nothing and touches no out-of-scope code
+(the same discipline step 5 applies to design-level findings). Its job is to make
+the issue trail explicit — so the verdict comment's **Issues surfaced** section,
+and the session report after it, both answer two questions:
 
-- **Issues to file or act on**: anything the PR body or the author agent's notes
-  says was filed or still needs filing, plus out-of-scope problems the review
-  itself surfaced (adjacent bugs, debt, doc gaps beyond this PR).
-- Inform-only: list each with a one-line description and a suggested action; the
-  maintainer decides what gets filed or dispatched. File nothing yourself.
+- **Filed during this PR** — issues the author agent's notes or the PR body say it
+  filed, plus any filed mid-gate. Link each by number.
+- **Needs filing** — out-of-scope problems the review surfaced (adjacent bugs,
+  debt, doc gaps beyond this PR) with no issue yet: one line + a suggested action
+  each; the maintainer decides. State an explicit **"none — nothing out-of-scope
+  surfaced"** when the trail is clean, so an empty section never reads as unchecked.
+
+Report the same two lists in the session after the verdict (never before); the
+maintainer decides what gets filed or dispatched — file nothing yourself.
 
 In a sweep, finish each PR's steps 1–7 before the next, then give one
-consolidated report: per-PR verdict line + the combined follow-ups list.
+consolidated report: per-PR verdict line + the combined issues list.
 
 ## Model tiers
 

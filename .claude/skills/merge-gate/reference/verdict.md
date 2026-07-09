@@ -30,7 +30,7 @@ Drift checklist
   7. Scope discipline     <✅ | ❌> — <notes>
 
 Integration tests
-  - <target>: <profile> (whoami: <org>) → <pass | fail | skipped: reason>
+  - <target>: <profile> (v<ver>, confirmed via whoami) → <pass | fail | skipped: reason>
   - offline suite: <✓/✗>
 
 Fixes pushed by the gate
@@ -41,10 +41,16 @@ Review dispositions
 
 Copilot gate rounds: <n>/3 — <converged | not converged | skipped: no push>
 
+Issues surfaced (surface-only — the gate files nothing)
+  - Filed during this PR: <#N — desc | none>
+  - Needs filing (maintainer's call): <#? desc + suggested action | none — nothing out-of-scope surfaced>
+
 <gate-failed only:>
 Escalation: <the design-level problem / unconverged theme, and the decision
 needed from the maintainer.>
 ```
 
 Quote real command output for the load-bearing claims (live e2e result, local
-gate) — evidence, not assertion. Keep dispositions one line each.
+gate) — evidence, not assertion. Keep dispositions one line each. **Never paste
+org identifiers** (hostnames, org/tenant GUIDs) into the comment — this is a
+public repo; profile name + version is enough to name a target.
