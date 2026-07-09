@@ -28,6 +28,12 @@ a = Analysis(
         # yaml is lazy-imported inside crm.commands.apply (spec parsing); list it so
         # the frozen bundle ships PyYAML despite no module-level reference.
         'yaml',
+        # jq (a C extension, single top-level `jq.*.so`) backs the global --jq
+        # output shaper. It's imported lazily (only when --jq is passed, to keep
+        # cold-start cheap), so PyInstaller's static analysis can't see it — list
+        # it so the frozen bundle ships the extension. Without this, `crm --jq …`
+        # crashes in the binary while working under a pip install.
+        'jq',
         # The crm.commands.* modules below are resolved at runtime via
         # importlib.import_module() in _LazyJsonAwareGroup.get_command (crm/cli.py),
         # which PyInstaller's static analysis cannot follow. List every module that
