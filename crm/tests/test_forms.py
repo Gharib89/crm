@@ -106,6 +106,15 @@ class TestRetargetFormxml:
         out = retarget_formxml("<form/>", src_entity="new_project", dst_entity="cwx_ticketclone")
         assert out == "<form/>"
 
+    def test_backslash_in_dst_entity_inserted_literally(self):
+        # dst_entity is caller-controlled; a backslash must be inserted verbatim,
+        # not interpreted as a regex replacement escape (\g / \1) that would
+        # raise or corrupt the output XML.
+        from crm.core.forms import retarget_formxml
+        xml = '<control entityname="new_project" />'
+        out = retarget_formxml(xml, src_entity="new_project", dst_entity=r"cwx_\1clone")
+        assert r'entityname="cwx_\1clone"' in out
+
 
 class TestCloneFormToEntity:
     def test_posts_retargeted_form(self, backend):

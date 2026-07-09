@@ -75,10 +75,10 @@ def _iter_records(
                 page_size=page_size,
             )
         for rec in page.get("value", []):
-            fetched += 1
-            yield rec
             if max_records is not None and fetched >= max_records:
                 return
+            fetched += 1
+            yield rec
         next_link = page.get("@odata.nextLink")
         if not next_link:
             return

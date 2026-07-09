@@ -90,7 +90,10 @@ def retarget_formxml(formxml: str, *, src_entity: str, dst_entity: str) -> str:
     """
     if not formxml:
         return formxml
-    return re.sub(rf"\b{re.escape(src_entity)}\b", dst_entity, formxml)
+    # A function replacement inserts dst_entity literally; a plain string
+    # replacement would interpret backslashes/group refs (e.g. a name with a
+    # trailing "\1") and corrupt the output XML.
+    return re.sub(rf"\b{re.escape(src_entity)}\b", lambda _m: dst_entity, formxml)
 
 
 # The form-INTERNAL registration ids whose GUID values must be fresh per clone.

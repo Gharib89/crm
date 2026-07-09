@@ -85,7 +85,7 @@ class TestInstall:
         script_path = Path(marker["script_path"])
         assert script_path.read_text(encoding="utf-8").splitlines()[0] == "#compdef crm"
         assert marker["shell"] == "zsh"
-        assert f"source {script_path}" in result.output
+        assert f"source '{script_path}'" in result.output
         # Human mode prints the copy-paste line, not the JSON key/value dump.
         assert "rc_line" not in result.output
 
@@ -105,7 +105,7 @@ class TestInstall:
         assert data["shell"] == "fish"
         assert data["installed"] is True
         assert data["script_path"].endswith("crm.fish")
-        assert data["rc_line"] == f"source {data['script_path']}"
+        assert data["rc_line"] == f"source '{data['script_path']}'"
 
     def test_custom_path(self, tmp_path):
         target = tmp_path / "custom" / "crm.zsh"
@@ -199,8 +199,13 @@ class TestPowerShellCompletion:
             r". 'C:\Program Files\crm\crm.ps1'"
         )
         assert reg.rc_line("powershell", "a'b.ps1") == ". 'a''b.ps1'"
-        # Unix shells keep the bare `source` form (unchanged).
-        assert reg.rc_line("bash", "/home/u/crm.bash") == "source /home/u/crm.bash"
+        # Unix shells single-quote the path too, so a space no longer splits the
+        # `source` line; an embedded quote is close-escape-reopened ('\'').
+        assert reg.rc_line("bash", "/home/u/crm.bash") == "source '/home/u/crm.bash'"
+        assert reg.rc_line("zsh", "/home/a b/crm.zsh") == "source '/home/a b/crm.zsh'"
+        assert reg.rc_line("bash", "/home/o'brien/crm.bash") == (
+            r"source '/home/o'\''brien/crm.bash'"
+        )
 
     def test_complete_lists_top_level_commands(self, monkeypatch):
         # End-to-end: `crm <TAB>` yields top-level command names, tab-formatted as

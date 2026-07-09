@@ -595,17 +595,19 @@ def register_image(
     message_name = _resolve_sdkmessage_name(backend, message_id)
     # Platform validity rules (MS Learn "Register a plug-in"), enforced
     # client-side so the failure is explanatory instead of raw server noise.
-    if type_int == 1 and stage_int != _STAGE["postoperation"]:
+    # "both" (2) captures a pre- AND a post-image, so both sets of platform
+    # constraints apply to it — hence the membership tests rather than `== 0/1`.
+    if type_int in (1, 2) and stage_int != _STAGE["postoperation"]:
         raise D365Error(
             "A post-image requires a step registered in the PostOperation "
             f"stage (step {step!r} is registered in stage {stage_int}).",
             code="PostImageRequiresPostOperation")
-    if type_int == 0 and message_name.lower() == "create":
+    if type_int in (0, 2) and message_name.lower() == "create":
         raise D365Error(
             "A pre-image is not available on a Create-message step "
             "(the record does not exist before the operation).",
             code="PreImageInvalidForCreate")
-    if type_int == 1 and message_name.lower() == "delete":
+    if type_int in (1, 2) and message_name.lower() == "delete":
         raise D365Error(
             "A post-image is not available on a Delete-message step "
             "(the record no longer exists after the operation).",

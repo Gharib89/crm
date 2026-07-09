@@ -1658,13 +1658,13 @@ def _parse_batch_response(
 
     for part in _split_mime_parts(body, boundary):
         ctype_match = re.search(rb"Content-Type:\s*([^\r\n;]+)", part, re.IGNORECASE)
-        ctype_val = ctype_match.group(1).decode("utf-8").strip() if ctype_match else ""
+        ctype_val = ctype_match.group(1).decode("utf-8", errors="replace").strip() if ctype_match else ""
         if ctype_val.lower() == "multipart/mixed":
             # Changeset response
             inner_m = re.search(rb"boundary=([^\r\n;]+)", part, re.IGNORECASE)
             if not inner_m:
                 continue
-            inner_boundary = inner_m.group(1).decode("utf-8").strip('"')
+            inner_boundary = inner_m.group(1).decode("utf-8", errors="replace").strip('"')
             if changeset_cursor >= len(changeset_groups):
                 continue
             group = changeset_groups[changeset_cursor]

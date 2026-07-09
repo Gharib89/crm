@@ -319,6 +319,51 @@ class TestAddAttributeBoolean:
         assert body["OptionSet"]["TrueOption"]["Label"]["LocalizedLabels"][0]["Label"] == "On"
 
 
+class TestAddAttributeKindMismatchFlags:
+    """Kind-inapplicable flags are rejected, not silently ignored (#693)."""
+
+    def test_auto_number_format_rejected_off_string(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="auto-number-format"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="integer",
+                schema_name="new_Count", display_name="Count",
+                auto_number_format="INV-{SEQNUM:5}",
+            )
+
+    def test_default_value_rejected_off_boolean_and_picklist(self, backend):
+        # --default-value is documented for boolean/picklist only; on any other
+        # kind the builder drops it, so reject rather than silently ignore.
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="default-value"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="datetime",
+                schema_name="new_When", display_name="When",
+                default_value=5,
+            )
+
+    def test_true_false_label_rejected_off_boolean(self, backend):
+        from crm.core import metadata_attrs as ma
+        with pytest.raises(D365Error, match="true-label and --false-label"):
+            ma.add_attribute(
+                backend, entity="new_widget", kind="string",
+                schema_name="new_Label", display_name="Label",
+                max_length=100, true_label="On",
+            )
+
+    def test_default_labels_on_non_boolean_are_accepted(self, backend):
+        # The default "Yes"/"No" labels are never "supplied" — a non-boolean kind
+        # that leaves them untouched must not be rejected.
+        from crm.core import metadata_attrs as ma
+        with requests_mock.Mocker() as m:
+            _mock_post_and_readback(m, backend, "new_widget", "new_label", "String")
+            info = ma.add_attribute(
+                backend, entity="new_widget", kind="string",
+                schema_name="new_Label", display_name="Label", max_length=100,
+            )
+        assert info["created"] is True
+
+
 class TestAddAttributeDateTime:
     def test_datetime_default_format(self, backend):
         from crm.core import metadata_attrs as ma

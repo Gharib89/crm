@@ -571,6 +571,12 @@ def add_attribute(
         raise D365Error("if_exists must be 'error' or 'skip'.")
     if behavior_name is not None and kind != "datetime":
         raise D365Error("--behavior is not valid for this kind.")
+    if auto_number_format is not None and kind != "string":
+        raise D365Error("--auto-number-format is not valid for this kind.")
+    if default_value is not None and kind not in ("boolean", "picklist"):
+        raise D365Error("--default-value is not valid for this kind.")
+    if kind != "boolean" and (true_label != "Yes" or false_label != "No"):
+        raise D365Error("--true-label and --false-label are only valid for the boolean kind.")
     if source_type not in ("simple", "rollup", "calculated"):
         raise D365Error("source_type must be 'simple', 'rollup', or 'calculated'.")
     check_formula_compat(kind, source_type, formula_definition)

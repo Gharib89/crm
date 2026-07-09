@@ -288,6 +288,40 @@ class TestParseResponse:
 
 
 class TestExtractBatchError:
+    def test_invalid_utf8_in_subpart_content_type_does_not_raise(self):
+        # The subpart Content-Type scan in _parse_batch_response must decode with
+        # replacement (like the sibling transport decodes), not raise on a stray
+        # non-UTF-8 byte and mask the whole response (#693).
+        body = (
+            b"--batchresp\r\n"
+            b"Content-Type: application/htt\xffp\r\n"  # invalid byte in ctype
+            b"Content-Transfer-Encoding: binary\r\n"
+            b"\r\n"
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: application/json\r\n"
+            b"\r\n"
+            b'{"value": []}\r\n'
+            b"--batchresp--\r\n"
+        )
+        ops = [{"method": "GET", "url": "accounts"}]
+        results = _parse_batch_response(body, "multipart/mixed; boundary=batchresp", ops)
+        assert len(results) == 1
+        assert results[0]["status"] == 200
+
+    def test_invalid_utf8_in_changeset_boundary_does_not_raise(self):
+        # The inner changeset boundary is likewise decoded with replacement so a
+        # stray byte there can't raise (#693); it returns a result per op.
+        body = (
+            b"--batchresp\r\n"
+            b"Content-Type: multipart/mixed; boundary=cs\xff1\r\n"  # bad byte in boundary
+            b"\r\n"
+            b"--cs1--\r\n"
+            b"--batchresp--\r\n"
+        )
+        ops = [{"method": "POST", "url": "accounts", "body": {"name": "a"}}]
+        results = _parse_batch_response(body, "multipart/mixed; boundary=batchresp", ops)
+        assert len(results) == 1
+
     def test_invalid_utf8_in_part_does_not_raise(self):
         # Error-path robustness: malformed bytes in a part must not raise
         # UnicodeDecodeError and mask the original $batch failure.

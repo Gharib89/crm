@@ -710,6 +710,11 @@ def disassociate(
     URL becomes /<nav>/$ref and removes the reference.
     """
     target_path = build_record_path(target_set, target_id)
+    if bool(related_set) != bool(related_id):
+        raise D365Error(
+            "related_set and related_id must be supplied together (a collection-valued "
+            "nav property) or neither (a single-valued lookup); got only one."
+        )
     if related_set and related_id:
         related_url = backend.url_for(build_record_path(related_set, related_id))
         from urllib.parse import quote

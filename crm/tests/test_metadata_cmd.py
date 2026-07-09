@@ -295,17 +295,30 @@ class TestMetadataAddAttributeBranches:
         assert "must be int" in result.output
         assert not fake_backend.called
 
-    @pytest.mark.parametrize("kind", ["integer", "picklist"])
-    def test_valid_int_default_passes_validation(self, fake_backend, monkeypatch, kind):
-        # Valid int string must not exit 2.
+    def test_valid_picklist_default_passes_validation(self, fake_backend, monkeypatch):
+        # A valid int string for picklist (a --default-value kind) must not exit 2;
+        # it reaches the backend (which errors with no HTTP mock → exit 1).
         self._use(monkeypatch, fake_backend)
         result = CliRunner().invoke(cli, [
             "--json", "metadata", "add-attribute", "account",
-            "--kind", kind, "--schema-name", "new_Count",
+            "--kind", "picklist", "--schema-name", "new_Count",
             "--display", "Count", "--default-value", "42",
             "--solution", "TestSol", "--no-publish",
         ])
         assert result.exit_code != 2, result.output
+
+    def test_default_value_rejected_on_integer(self, fake_backend, monkeypatch):
+        # --default-value is documented for boolean/picklist only; on integer the
+        # core rejects it (#693) rather than silently dropping it — exit 1.
+        self._use(monkeypatch, fake_backend)
+        result = CliRunner().invoke(cli, [
+            "--json", "metadata", "add-attribute", "account",
+            "--kind", "integer", "--schema-name", "new_Count",
+            "--display", "Count", "--default-value", "42",
+            "--solution", "TestSol", "--no-publish",
+        ])
+        assert result.exit_code == 1, result.output
+        assert "not valid for this kind" in result.output
 
     def test_formula_file_read_success_then_backend(self, make_fake_backend,
                                                     monkeypatch, tmp_path):
